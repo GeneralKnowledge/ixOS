@@ -2,6 +2,18 @@
 
 This document records **verified** toolchain steps on Linux for Forge Mobile. It is updated from real runs, not assumed capabilities.
 
+## Milestone 1.5 verification (2026-10-15)
+
+| Check | Result |
+|-------|--------|
+| `cargo fmt --all -- --check` | Pass |
+| `cargo clippy --workspace --all-targets -- -D warnings` | Pass |
+| `cargo test --workspace` | Pass (26 tests) |
+| `./scripts/check-bindings.sh` | Pass |
+| `./scripts/validate-toolchain.sh` | Pass (non-interactive; SDK still missing) |
+| `./scripts/build-rust-ios.sh` | Blocked — no Darwin SDK |
+| Native iPhone build/run | **Not verified** (pending SDK + device) |
+
 ## Environment snapshot (2026-10-15, Cloud Agent VM)
 
 | Component | Version / status |

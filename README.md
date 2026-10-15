@@ -43,6 +43,8 @@ Install the binary: `cargo install --path crates/forge-cli --locked` (optional).
 
 Example apps include `forge.toml` — see [examples/counter/forge.toml](examples/counter/forge.toml).
 
+New apps: `cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp` — see [docs/project-generation.md](docs/project-generation.md).
+
 ## License
 
 Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and [LICENSE-APACHE](LICENSE-APACHE).

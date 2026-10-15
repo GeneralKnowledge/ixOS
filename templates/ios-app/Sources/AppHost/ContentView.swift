@@ -4,45 +4,65 @@ struct ContentView: View {
     @StateObject private var model = CounterViewModel()
 
     var body: some View {
+        Group {
+            if model.isBlocked {
+                blockedView
+            } else {
+                counterView
+            }
+        }
+        .padding()
+    }
+
+    private var counterView: some View {
         VStack(spacing: 24) {
             Text("\(model.count)")
                 .font(.system(size: 72, weight: .bold, design: .rounded))
-                .accessibilityLabel("Count")
-                .accessibilityValue("\(model.count)")
 
             HStack(spacing: 16) {
                 Button("Decrement") { model.decrement() }
                     .buttonStyle(.bordered)
-                    .accessibilityLabel("Decrement")
                 Button("Increment") { model.increment() }
                     .buttonStyle(.borderedProminent)
-                    .accessibilityLabel("Increment")
             }
 
             Button("Reset", role: .destructive) { model.reset() }
-                .accessibilityLabel("Reset counter")
 
-            HStack {
-                Image(systemName: model.persistenceOk ? "externaldrive.fill.badge.checkmark" : "externaldrive.badge.exclamationmark")
-                Text(model.persistenceOk ? "Saved" : "Save issue")
+            if !model.startupLabel.isEmpty {
+                Text(model.startupLabel)
                     .font(.footnote)
-                    .foregroundStyle(model.persistenceOk ? .secondary : .orange)
+                    .foregroundStyle(.secondary)
             }
-            .accessibilityElement(children: .combine)
 
             if let message = model.errorMessage {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.red)
                     .multilineTextAlignment(.center)
-                    .accessibilityLabel("Error")
-                    .accessibilityValue(message)
             }
 
             Text(forgeGreeting())
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }
-        .padding()
+    }
+
+    private var blockedView: some View {
+        VStack(spacing: 16) {
+            Text("Counter unavailable")
+                .font(.headline)
+            if let message = model.errorMessage {
+                Text(message)
+                    .font(.footnote)
+                    .multilineTextAlignment(.center)
+            }
+            Button("Retry") { model.retryOpen() }
+                .buttonStyle(.borderedProminent)
+            if model.canRecoverFromCorruption {
+                Button("Reset storage and start fresh", role: .destructive) {
+                    model.recoverFromCorruption()
+                }
+            }
+        }
     }
 }

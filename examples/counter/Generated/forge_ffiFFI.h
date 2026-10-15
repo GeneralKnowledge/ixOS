@@ -271,20 +271,25 @@ void*_Nonnull uniffi_forge_ffi_fn_constructor_forgecounterapp_new(RustBuffer sto
 RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_apply(void*_Nonnull ptr, RustBuffer action, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_LAST_PERSISTENCE_OK
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_LAST_PERSISTENCE_OK
-int8_t uniffi_forge_ffi_fn_method_forgecounterapp_last_persistence_ok(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SNAPSHOT
 RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_GREETING
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_GREETING
 RustBuffer uniffi_forge_ffi_fn_func_forge_greeting(RustCallStatus *_Nonnull out_status
     
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECOVER_COUNTER_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECOVER_COUNTER_APP
+void*_Nonnull uniffi_forge_ffi_fn_func_recover_counter_app(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
@@ -573,21 +578,27 @@ uint16_t uniffi_forge_ffi_checksum_func_forge_greeting(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
+uint16_t uniffi_forge_ffi_checksum_func_recover_counter_app(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_APPLY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_APPLY
 uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_apply(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_LAST_PERSISTENCE_OK
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_LAST_PERSISTENCE_OK
-uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_last_persistence_ok(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SNAPSHOT
 uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_STARTUP_KIND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_STARTUP_KIND
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind(void
     
 );
 #endif

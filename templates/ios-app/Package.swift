@@ -2,16 +2,17 @@
 
 import PackageDescription
 
+// Paths are relative to this package under examples/<name>/ inside the Forge workspace.
 let iosLibSearch = "../../build/ios-device/lib"
 
 let package = Package(
-    name: "Counter",
+    name: "FORGE_PACKAGE_NAME",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
     ],
     products: [
-        .executable(name: "Counter", targets: ["CounterApp"]),
+        .executable(name: "FORGE_PACKAGE_NAME", targets: ["AppHost"]),
     ],
     targets: [
         .target(
@@ -33,9 +34,9 @@ let package = Package(
             sources: ["forge_ffi.swift"]
         ),
         .executableTarget(
-            name: "CounterApp",
+            name: "AppHost",
             dependencies: ["ForgeFFI"],
-            path: "Sources/CounterApp"
+            path: "Sources/AppHost"
         ),
     ]
 )

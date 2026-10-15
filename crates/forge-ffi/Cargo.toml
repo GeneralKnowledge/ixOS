@@ -15,3 +15,6 @@ forge-core = { workspace = true }
 forge-storage = { workspace = true }
 thiserror = { workspace = true }
 uniffi = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"
