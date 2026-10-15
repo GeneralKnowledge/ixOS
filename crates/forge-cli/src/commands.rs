@@ -252,10 +252,7 @@ pub fn build_ios(runner: &dyn CommandRunner, project: &Path) -> Result<(), Strin
     run_checked(
         runner,
         "bash",
-        &[
-            package_script.to_str().unwrap(),
-            generated_arg.as_str(),
-        ],
+        &[package_script.to_str().unwrap(), generated_arg.as_str()],
         Some(&root),
     )?;
 
