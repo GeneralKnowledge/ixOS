@@ -28,6 +28,31 @@ forge-storage (JSON snapshot trait)
 - iOS: storage directory provided at init from Swift (`Application Support/Counter`).
 - Linux tests use temporary directories.
 
+### Action + persistence contract
+
+**Policy:** A domain action commits **only if** the required `save` succeeds.
+
+Implementation (`forge-ffi/src/session.rs`):
+
+1. Clone current engine state into a candidate.
+2. Apply the action on the candidate (domain errors return without touching live state or disk).
+3. Persist the candidate snapshot.
+4. On successful save, replace the live engine with the candidate.
+
+Failed saves leave memory and disk unchanged from the last committed state. This is **not** a multi-file transactional store — a crash during write may leave the temp file behind, but the primary snapshot file is replaced via rename after a full write.
+
+### Startup
+
+| Condition | Behaviour |
+|-----------|-----------|
+| No snapshot file | Fresh install (`StartupKind::FreshInstall`) |
+| Valid snapshot | Restore (`StartupKind::Restored`) |
+| Corrupt / unsupported snapshot | `ForgeAppError::CorruptPersistence` — no silent reset |
+| Read failure | `ForgeAppError::PersistenceReadFailed` |
+| Missing storage directory | `ForgeAppError::StorageDirectoryUnavailable` |
+
+Explicit recovery: `ForgeCounterApp.recoverFromCorruption` deletes invalid data, starts at zero, and saves once.
+
 ## Build pipeline
 
 ```

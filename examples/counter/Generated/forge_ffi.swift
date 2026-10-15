@@ -415,30 +415,6 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterBool : FfiConverter {
-    typealias FfiType = Int8
-    typealias SwiftType = Bool
-
-    public static func lift(_ value: Int8) throws -> Bool {
-        return value != 0
-    }
-
-    public static func lower(_ value: Bool) -> Int8 {
-        return value ? 1 : 0
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
-        return try lift(readInt(&buf))
-    }
-
-    public static func write(_ value: Bool, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterString: FfiConverter {
     typealias SwiftType = String
     typealias FfiType = RustBuffer
@@ -484,9 +460,9 @@ public protocol ForgeCounterAppProtocol : AnyObject {
     
     func apply(action: ForgeActionKind) throws  -> ActionOutcome
     
-    func lastPersistenceOk()  -> Bool
+    func snapshot() throws  -> CounterStateSnapshot
     
-    func snapshot()  -> CounterStateSnapshot
+    func startupKind() throws  -> StartupKind
     
 }
 
@@ -556,16 +532,16 @@ open func apply(action: ForgeActionKind)throws  -> ActionOutcome {
 })
 }
     
-open func lastPersistenceOk() -> Bool {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_forge_ffi_fn_method_forgecounterapp_last_persistence_ok(self.uniffiClonePointer(),$0
+open func snapshot()throws  -> CounterStateSnapshot {
+    return try  FfiConverterTypeCounterStateSnapshot.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
+    uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(self.uniffiClonePointer(),$0
     )
 })
 }
     
-open func snapshot() -> CounterStateSnapshot {
-    return try!  FfiConverterTypeCounterStateSnapshot.lift(try! rustCall() {
-    uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(self.uniffiClonePointer(),$0
+open func startupKind()throws  -> StartupKind {
+    return try  FfiConverterTypeStartupKind.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
+    uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -627,13 +603,11 @@ public func FfiConverterTypeForgeCounterApp_lower(_ value: ForgeCounterApp) -> U
 
 public struct ActionOutcome {
     public var snapshot: CounterStateSnapshot
-    public var persistenceOk: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(snapshot: CounterStateSnapshot, persistenceOk: Bool) {
+    public init(snapshot: CounterStateSnapshot) {
         self.snapshot = snapshot
-        self.persistenceOk = persistenceOk
     }
 }
 
@@ -644,15 +618,11 @@ extension ActionOutcome: Equatable, Hashable {
         if lhs.snapshot != rhs.snapshot {
             return false
         }
-        if lhs.persistenceOk != rhs.persistenceOk {
-            return false
-        }
         return true
     }
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(snapshot)
-        hasher.combine(persistenceOk)
     }
 }
 
@@ -664,14 +634,12 @@ public struct FfiConverterTypeActionOutcome: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ActionOutcome {
         return
             try ActionOutcome(
-                snapshot: FfiConverterTypeCounterStateSnapshot.read(from: &buf), 
-                persistenceOk: FfiConverterBool.read(from: &buf)
+                snapshot: FfiConverterTypeCounterStateSnapshot.read(from: &buf)
         )
     }
 
     public static func write(_ value: ActionOutcome, into buf: inout [UInt8]) {
         FfiConverterTypeCounterStateSnapshot.write(value.snapshot, into: &buf)
-        FfiConverterBool.write(value.persistenceOk, into: &buf)
     }
 }
 
@@ -828,6 +796,9 @@ public enum ForgeAppError {
     case WouldOverflow
     case PersistenceFailed
     case CorruptPersistence
+    case PersistenceReadFailed
+    case StorageDirectoryUnavailable
+    case InternalFailure
 }
 
 
@@ -848,6 +819,9 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
         case 2: return .WouldOverflow
         case 3: return .PersistenceFailed
         case 4: return .CorruptPersistence
+        case 5: return .PersistenceReadFailed
+        case 6: return .StorageDirectoryUnavailable
+        case 7: return .InternalFailure
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -875,6 +849,18 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
         case .CorruptPersistence:
             writeInt(&buf, Int32(4))
         
+        
+        case .PersistenceReadFailed:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .StorageDirectoryUnavailable:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .InternalFailure:
+            writeInt(&buf, Int32(7))
+        
         }
     }
 }
@@ -887,12 +873,86 @@ extension ForgeAppError: Foundation.LocalizedError {
         String(reflecting: self)
     }
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+
+public enum StartupKind {
+    
+    case freshInstall
+    case restored
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStartupKind: FfiConverterRustBuffer {
+    typealias SwiftType = StartupKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StartupKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .freshInstall
+        
+        case 2: return .restored
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: StartupKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .freshInstall:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .restored:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStartupKind_lift(_ buf: RustBuffer) throws -> StartupKind {
+    return try FfiConverterTypeStartupKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStartupKind_lower(_ value: StartupKind) -> RustBuffer {
+    return FfiConverterTypeStartupKind.lower(value)
+}
+
+
+
+extension StartupKind: Equatable, Hashable {}
+
+
 /**
  * Spike / diagnostics: fixed greeting from Rust (used in toolchain validation).
  */
 public func forgeGreeting() -> String {
     return try!  FfiConverterString.lift(try! rustCall() {
     uniffi_forge_ffi_fn_func_forge_greeting($0
+    )
+})
+}
+/**
+ * Deletes invalid persisted data and starts from zero with a successful initial save.
+ */
+public func recoverCounterApp(storageDirectory: String)throws  -> ForgeCounterApp {
+    return try  FfiConverterTypeForgeCounterApp.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
+    uniffi_forge_ffi_fn_func_recover_counter_app(
+        FfiConverterString.lower(storageDirectory),$0
     )
 })
 }
@@ -915,13 +975,16 @@ private var initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_forge_greeting() != 62083) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_recover_counter_app() != 21856) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 46578) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgecounterapp_last_persistence_ok() != 5311) {
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 51282) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 53311) {
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind() != 37697) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 60778) {

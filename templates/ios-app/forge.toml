@@ -1,6 +1,6 @@
 [app]
-name = "Counter"
-bundle_id = "org.forgemobile.counter"
+name = "FORGE_APP_NAME"
+bundle_id = "FORGE_BUNDLE_ID"
 minimum_ios = "17.0"
 
 [rust]

@@ -27,7 +27,17 @@
 ## Panics
 
 - Domain code must not panic on expected validation failures (use `Result`).
-- Unexpected panics may become fatal Swift errors from UniFFI — treat as bugs.
+- FFI layer avoids `.expect()` on mutex locks; poisoned locks map to `ForgeAppError::InternalFailure`.
+- Unexpected panics may still become fatal Swift errors from UniFFI scaffolding — treat as bugs.
+
+## Error categories
+
+| Category | Examples | Swift handling |
+|----------|----------|----------------|
+| Domain | `WouldUnderflow`, `WouldOverflow` | Inline error message; state unchanged |
+| Persistence | `PersistenceFailed`, `PersistenceReadFailed`, `StorageDirectoryUnavailable` | Message; blocked startup or save failure |
+| Corruption | `CorruptPersistence` | Blocked UI with optional `recoverFromCorruption` |
+| Internal | `InternalFailure` | Message; retry |
 
 ## Platform data
 

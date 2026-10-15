@@ -1,0 +1,111 @@
+import Foundation
+import ForgeFFI
+
+@MainActor
+final class CounterViewModel: ObservableObject {
+    @Published private(set) var count: Int64 = 0
+    @Published private(set) var startupLabel: String = ""
+    @Published var errorMessage: String?
+    @Published private(set) var isBlocked = false
+    @Published private(set) var canRecoverFromCorruption = false
+
+    private var app: ForgeCounterApp?
+    private let storageDirectory: String
+
+    init() {
+        storageDirectory = CounterViewModel.applicationSupportDirectory()
+        openApp()
+    }
+
+    func retryOpen() { openApp() }
+
+    func recoverFromCorruption() {
+        errorMessage = nil
+        do {
+            let recovered = try recoverCounterApp(storageDirectory: storageDirectory)
+            attach(app: recovered, afterRecovery: true)
+        } catch let error as ForgeAppError {
+            presentBlocked(error: error)
+        } catch {
+            isBlocked = true
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func increment() { apply(.increment) }
+    func decrement() { apply(.decrement) }
+    func reset() { apply(.reset) }
+
+    private func openApp() {
+        errorMessage = nil
+        isBlocked = false
+        canRecoverFromCorruption = false
+        do {
+            attach(app: try ForgeCounterApp(storageDirectory: storageDirectory), afterRecovery: false)
+        } catch let error as ForgeAppError {
+            presentBlocked(error: error)
+        } catch {
+            isBlocked = true
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func attach(app: ForgeCounterApp, afterRecovery: Bool) {
+        self.app = app
+        isBlocked = false
+        count = (try? app.snapshot())?.count ?? 0
+        if afterRecovery {
+            startupLabel = "Recovered — fresh counter"
+        } else if let kind = try? app.startupKind() {
+            startupLabel = kind == .freshInstall ? "Fresh install" : "Restored saved state"
+        }
+    }
+
+    private func apply(_ kind: ForgeActionKind) {
+        guard let app else { return }
+        errorMessage = nil
+        do {
+            count = try app.apply(action: kind).snapshot.count
+        } catch let error as ForgeAppError {
+            errorMessage = Self.message(for: error)
+            if let snap = try? app.snapshot() { count = snap.count }
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func presentBlocked(error: ForgeAppError) {
+        isBlocked = true
+        app = nil
+        switch error {
+        case .corruptPersistence:
+            canRecoverFromCorruption = true
+            errorMessage = "Stored counter data is invalid. You can reset storage or retry opening."
+        case .persistenceReadFailed:
+            errorMessage = "Could not read saved data. Check storage access and retry."
+        case .storageDirectoryUnavailable:
+            errorMessage = "Storage folder is unavailable. Retry after fixing permissions."
+        default:
+            errorMessage = Self.message(for: error)
+        }
+    }
+
+    private static func message(for error: ForgeAppError) -> String {
+        switch error {
+        case .wouldUnderflow: return "Count cannot go below zero."
+        case .wouldOverflow: return "Count cannot exceed one million."
+        case .persistenceFailed: return "Could not save counter state."
+        case .corruptPersistence: return "Stored counter data is invalid."
+        case .persistenceReadFailed: return "Could not read saved data."
+        case .storageDirectoryUnavailable: return "Storage folder is unavailable."
+        case .internalFailure: return "Internal error in Rust core."
+        }
+    }
+
+    private static func applicationSupportDirectory() -> String {
+        let urls = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let base = urls[0].appendingPathComponent("FORGE_APP_SUPPORT_DIR", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.path
+    }
+}

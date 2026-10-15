@@ -4,19 +4,33 @@ import ForgeFFI
 @MainActor
 final class CounterViewModel: ObservableObject {
     @Published private(set) var count: Int64 = 0
-    @Published private(set) var persistenceOk = true
+    @Published private(set) var startupLabel: String = ""
     @Published var errorMessage: String?
+    @Published private(set) var isBlocked = false
+    @Published private(set) var canRecoverFromCorruption = false
 
-    private let app: ForgeCounterApp
+    private var app: ForgeCounterApp?
+    private var storageDirectory: String = ""
 
     init() {
-        let dir = CounterViewModel.applicationSupportDirectory()
+        storageDirectory = CounterViewModel.applicationSupportDirectory()
+        openApp()
+    }
+
+    func retryOpen() {
+        openApp()
+    }
+
+    func recoverFromCorruption() {
+        errorMessage = nil
         do {
-            app = try ForgeCounterApp(storageDirectory: dir)
-            count = app.snapshot().count
-            persistenceOk = app.lastPersistenceOk()
+            let recovered = try recoverCounterApp(storageDirectory: storageDirectory)
+            attach(app: recovered, afterRecovery: true)
+        } catch let error as ForgeAppError {
+            presentBlocked(error: error)
         } catch {
-            fatalError("Failed to initialize Rust counter: \(error)")
+            isBlocked = true
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -24,18 +38,66 @@ final class CounterViewModel: ObservableObject {
     func decrement() { apply(.decrement) }
     func reset() { apply(.reset) }
 
+    private func openApp() {
+        errorMessage = nil
+        isBlocked = false
+        canRecoverFromCorruption = false
+        do {
+            let opened = try ForgeCounterApp(storageDirectory: storageDirectory)
+            attach(app: opened, afterRecovery: false)
+        } catch let error as ForgeAppError {
+            presentBlocked(error: error)
+        } catch {
+            isBlocked = true
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    private func attach(app: ForgeCounterApp, afterRecovery: Bool) {
+        self.app = app
+        isBlocked = false
+        count = (try? app.snapshot())?.count ?? 0
+        if afterRecovery {
+            startupLabel = "Recovered — fresh counter"
+        } else if let kind = try? app.startupKind() {
+            switch kind {
+            case .freshInstall:
+                startupLabel = "Fresh install"
+            case .restored:
+                startupLabel = "Restored saved state"
+            }
+        }
+    }
+
     private func apply(_ kind: ForgeActionKind) {
+        guard let app else { return }
         errorMessage = nil
         do {
             let outcome = try app.apply(action: kind)
             count = outcome.snapshot.count
-            persistenceOk = outcome.persistenceOk && app.lastPersistenceOk()
         } catch let error as ForgeAppError {
             errorMessage = CounterViewModel.message(for: error)
-            count = app.snapshot().count
-            persistenceOk = app.lastPersistenceOk()
+            if let snap = try? app.snapshot() {
+                count = snap.count
+            }
         } catch {
             errorMessage = error.localizedDescription
+        }
+    }
+
+    private func presentBlocked(error: ForgeAppError) {
+        isBlocked = true
+        app = nil
+        switch error {
+        case .corruptPersistence:
+            canRecoverFromCorruption = true
+            errorMessage = "Stored counter data is invalid. You can reset storage or retry opening."
+        case .persistenceReadFailed:
+            errorMessage = "Could not read saved data. Check storage access and retry."
+        case .storageDirectoryUnavailable:
+            errorMessage = "Storage folder is unavailable. Retry after fixing permissions."
+        default:
+            errorMessage = CounterViewModel.message(for: error)
         }
     }
 
@@ -44,7 +106,10 @@ final class CounterViewModel: ObservableObject {
         case .wouldUnderflow: return "Count cannot go below zero."
         case .wouldOverflow: return "Count cannot exceed one million."
         case .persistenceFailed: return "Could not save counter state."
-        case .corruptPersistence: return "Stored data was invalid; using safe defaults."
+        case .corruptPersistence: return "Stored counter data is invalid."
+        case .persistenceReadFailed: return "Could not read saved data."
+        case .storageDirectoryUnavailable: return "Storage folder is unavailable."
+        case .internalFailure: return "Internal error in Rust core."
         }
     }
 
