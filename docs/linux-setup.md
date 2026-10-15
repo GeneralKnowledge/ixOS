@@ -79,7 +79,7 @@ cargo run -p forge-cli -- build ios --project examples/counter
 Or step by step:
 
 ```bash
-./scripts/package-ios-library.sh
+./scripts/package-ios-library.sh examples/counter/Generated
 cd examples/counter && xtool dev
 ```
 

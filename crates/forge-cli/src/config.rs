@@ -47,6 +47,18 @@ impl ForgeConfig {
         if self.build.ios_simulator && !self.build.ios_device {
             return Err("ios_simulator requires ios_device in this release".into());
         }
+        if self.rust.core_crate != "forge-core" {
+            return Err(format!(
+                "unsupported core_crate '{}': v0.1 only builds forge-core from the workspace root",
+                self.rust.core_crate
+            ));
+        }
+        if self.rust.ffi_crate != "forge-ffi" {
+            return Err(format!(
+                "unsupported ffi_crate '{}': v0.1 only builds forge-ffi from the workspace root",
+                self.rust.ffi_crate
+            ));
+        }
         Ok(())
     }
 }
@@ -95,5 +107,25 @@ ios_simulator = false
         )
         .unwrap();
         assert_eq!(cfg.app.name, "Counter");
+    }
+
+    #[test]
+    fn rejects_unsupported_ffi_crate() {
+        let err = ForgeConfig::parse(
+            r#"
+[app]
+name = "Counter"
+bundle_id = "org.example.counter"
+minimum_ios = "17.0"
+[rust]
+core_crate = "forge-core"
+ffi_crate = "my-ffi"
+[build]
+ios_device = true
+ios_simulator = false
+"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("ffi_crate"));
     }
 }

@@ -9,6 +9,27 @@ const PLACEHOLDER_APP_NAME: &str = "FORGE_APP_NAME";
 const PLACEHOLDER_BUNDLE: &str = "FORGE_BUNDLE_ID";
 const PLACEHOLDER_SUPPORT_DIR: &str = "FORGE_APP_SUPPORT_DIR";
 
+/// Absolute path to an app package directory (SwiftPM + forge.toml).
+pub fn resolve_project_dir(project: &Path) -> PathBuf {
+    let root = workspace_root();
+    if project.is_absolute() {
+        project.to_path_buf()
+    } else {
+        root.join(project)
+    }
+}
+
+pub fn generated_dir_for_project(project: &Path) -> PathBuf {
+    resolve_project_dir(project).join("Generated")
+}
+
+fn generated_dir_arg(root: &Path, generated: &Path) -> String {
+    match generated.strip_prefix(root) {
+        Ok(rel) => rel.to_string_lossy().into_owned(),
+        Err(_) => generated.to_string_lossy().into_owned(),
+    }
+}
+
 pub fn workspace_root() -> PathBuf {
     if let Ok(dir) = std::env::var("FORGE_WORKSPACE") {
         return PathBuf::from(dir);
@@ -217,24 +238,29 @@ pub fn bindings_generate(runner: &dyn CommandRunner, out: &Path) -> Result<(), S
 
 pub fn build_ios(runner: &dyn CommandRunner, project: &Path) -> Result<(), String> {
     let root = workspace_root();
-    let forge_toml = project.join("forge.toml");
+    let project_dir = resolve_project_dir(project);
+    let forge_toml = project_dir.join("forge.toml");
     if forge_toml.exists() {
         let content = fs::read_to_string(&forge_toml).map_err(|e| e.to_string())?;
         ForgeConfig::parse(&content)?;
     }
 
+    let generated = generated_dir_for_project(project);
+    let generated_arg = generated_dir_arg(&root, &generated);
+    let package_script = root.join("scripts/package-ios-library.sh");
+
     run_checked(
         runner,
         "bash",
-        &[root
-            .join("scripts/package-ios-library.sh")
-            .to_str()
-            .unwrap()],
+        &[
+            package_script.to_str().unwrap(),
+            generated_arg.as_str(),
+        ],
         Some(&root),
     )?;
 
     if which_xtool(runner)? {
-        run_checked(runner, "xtool", &["dev"], Some(project))?;
+        run_checked(runner, "xtool", &["dev"], Some(&project_dir))?;
     } else {
         return Err(
             "xtool not available: Rust library packaged, but iOS app build requires xtool + Darwin SDK (see docs/linux-setup.md)".into(),
@@ -264,11 +290,7 @@ pub fn install_ios(runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String>
 }
 
 pub fn run_ios(runner: &dyn CommandRunner, project: &Path) -> Result<(), String> {
-    build_ios(runner, project)?;
-    if !which_xtool(runner)? {
-        return Err("xtool not installed".into());
-    }
-    run_checked(runner, "xtool", &["dev"], Some(project))
+    build_ios(runner, project)
 }
 
 fn which_xtool(runner: &dyn CommandRunner) -> Result<bool, String> {
@@ -282,6 +304,14 @@ fn which_xtool(runner: &dyn CommandRunner) -> Result<bool, String> {
 #[cfg(test)]
 mod init_tests {
     use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn generated_dir_for_counter_example() {
+        let root = workspace_root();
+        let gen = generated_dir_for_project(Path::new("examples/counter"));
+        assert_eq!(gen, root.join("examples/counter/Generated"));
+    }
 
     #[test]
     fn init_substitutes_placeholders_and_generates_bindings() {

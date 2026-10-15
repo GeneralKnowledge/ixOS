@@ -51,7 +51,7 @@ Failed saves leave memory and disk unchanged from the last committed state. This
 | Read failure | `ForgeAppError::PersistenceReadFailed` |
 | Missing storage directory | `ForgeAppError::StorageDirectoryUnavailable` |
 
-Explicit recovery: `ForgeCounterApp.recoverFromCorruption` deletes invalid data, starts at zero, and saves once.
+Explicit recovery: Rust exports `recover_counter_app` (Swift: `recoverCounterApp(storageDirectory:)`). The SwiftUI host may wrap that in a view-model method such as `recoverFromCorruption()`. Recovery deletes invalid data, starts at zero, and saves once.
 
 ## Build pipeline
 
