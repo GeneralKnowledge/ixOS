@@ -1,0 +1,17 @@
+name: Bindings
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+
+jobs:
+  bindings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Generate UniFFI Swift bindings
+        run: ./scripts/generate-bindings.sh
+      - name: Check bindings match committed files
+        run: ./scripts/check-bindings.sh

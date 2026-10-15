@@ -1,0 +1,12 @@
+[app]
+name = "Counter"
+bundle_id = "org.forgemobile.counter"
+minimum_ios = "17.0"
+
+[rust]
+core_crate = "forge-core"
+ffi_crate = "forge-ffi"
+
+[build]
+ios_device = true
+ios_simulator = false

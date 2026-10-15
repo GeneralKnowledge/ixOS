@@ -1,0 +1,17 @@
+[package]
+name = "forge-ffi"
+version = "0.1.0"
+description = "UniFFI boundary for Forge Mobile"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib", "lib"]
+name = "forge_ffi"
+
+[dependencies]
+forge-core = { workspace = true }
+forge-storage = { workspace = true }
+thiserror = { workspace = true }
+uniffi = { workspace = true }

@@ -1,0 +1,21 @@
+[package]
+name = "forge-cli"
+version = "0.1.0"
+description = "Forge Mobile developer CLI"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "forge"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "=4.5.37", features = ["derive"] }
+forge-core = { workspace = true }
+serde = { workspace = true }
+toml = "0.8"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"
