@@ -81,7 +81,7 @@ Pipeline **[stated in docs]**: host `cargo build` → `uniffi-bindgen` → `Gene
 | Read failure | Error, no silent reset |
 | Missing storage directory | Error |
 
-Explicit recovery path for corruption **[stated in docs]** (architecture names `ForgeCounterApp.recoverFromCorruption`; ffi-policy names optional `recoverFromCorruption` in Swift).
+Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app` / Swift `recoverCounterApp`; view models may expose `recoverFromCorruption()`).
 
 ### What crosses FFI **[stated in docs]**
 

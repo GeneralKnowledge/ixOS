@@ -6,7 +6,7 @@
 
 Each project includes:
 
-- `forge.toml` with validated app/rust/build sections
+- `forge.toml` with validated app/rust/build sections (`core_crate` / `ffi_crate` must be `forge-core` / `forge-ffi` in v0.1)
 - `Package.swift` with workspace-relative Rust library path (`../../build/ios-device/lib`)
 - `xtool.yml` with the supplied bundle identifier
 - `Sources/AppHost/` SwiftUI host (Counter sample UI)
@@ -34,8 +34,14 @@ Template sources use explicit tokens (never substring-replace product names):
 From repository root:
 
 ```bash
-./scripts/package-ios-library.sh
+./scripts/package-ios-library.sh examples/<Name>/Generated
 cd examples/<Name> && xtool dev
+```
+
+Or use the CLI (bindings path follows `--project`):
+
+```bash
+cargo run -p forge-cli -- build ios --project examples/<Name>
 ```
 
 Rust crates (`forge-core`, `forge-ffi`) are always built from the workspace root, not duplicated per app.

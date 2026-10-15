@@ -75,10 +75,10 @@ This is an **external prerequisite**, not a Rust compilation bug on Linux.
 ### Full packaging script
 
 ```bash
-./scripts/package-ios-library.sh
+./scripts/package-ios-library.sh examples/counter/Generated
 ```
 
-Runs binding generation, then attempts iOS static library build (same SDK requirement).
+Runs binding generation into the given app `Generated/` directory, then attempts iOS static library build (same SDK requirement).
 
 ### Toolchain report
 

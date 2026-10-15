@@ -32,7 +32,7 @@ Ensure the static library exists:
 
 ```bash
 ls build/ios-device/lib/libforge_ffi.a
-./scripts/package-ios-library.sh
+./scripts/package-ios-library.sh examples/counter/Generated
 ```
 
 If SwiftPM rejects `-L` flags, see [docs/adr/001-ios-static-linking.md](adr/001-ios-static-linking.md) for the artifact-bundle fallback.
@@ -41,6 +41,6 @@ If SwiftPM rejects `-L` flags, see [docs/adr/001-ios-static-linking.md](adr/001-
 
 Expected — Rust returns `ForgeAppError.wouldUnderflow`; the UI should show a message without crashing.
 
-## Persistence shows “Save issue”
+## Persistence shows “Could not save counter state”
 
-Rust failed to write JSON (permissions or disk). State in memory may still update on failed save — check logs and directory permissions under Application Support.
+Rust returned `ForgeAppError.persistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.

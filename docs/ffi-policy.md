@@ -36,7 +36,7 @@
 |----------|----------|----------------|
 | Domain | `WouldUnderflow`, `WouldOverflow` | Inline error message; state unchanged |
 | Persistence | `PersistenceFailed`, `PersistenceReadFailed`, `StorageDirectoryUnavailable` | Message; blocked startup or save failure |
-| Corruption | `CorruptPersistence` | Blocked UI with optional `recoverFromCorruption` |
+| Corruption | `CorruptPersistence` | Blocked UI; call `recoverCounterApp(storageDirectory:)` (often wrapped as `recoverFromCorruption()` in the view model) |
 | Internal | `InternalFailure` | Message; retry |
 
 ## Platform data

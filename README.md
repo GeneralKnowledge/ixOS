@@ -31,8 +31,8 @@ docs/                  # Architecture, setup, validation
 ```bash
 cargo run -p forge-cli -- doctor
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp
-cargo run -p forge-cli -- test
-cargo run -p forge-cli -- bindings generate
+cargo run -p forge-cli -- test   # workspace tests + rustfmt check
+cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- build ios --project examples/counter
 cargo run -p forge-cli -- devices
 ```
