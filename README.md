@@ -1,6 +1,6 @@
 # Forge Mobile
 
-Linux-first, Rust-first framework for building native iOS applications with **Rust** (domain logic), **UniFFI** (FFI), **SwiftUI** (UI), and **xtool** (build/sign/install from Linux).
+Linux-first, Rust-first framework for building native mobile apps with **Rust** (domain logic), **UniFFI** (FFI), and thin platform hosts: **SwiftUI + xtool** (iOS) and **Jetpack Compose + Gradle** (Android).
 
 This repository (`ixOS` on GitHub) ships a working **Counter** example, developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet.
 
@@ -13,6 +13,14 @@ This repository (`ixOS` on GitHub) ships a working **Counter** example, develope
 5. Generate bindings: `./scripts/generate-bindings.sh`
 6. Build Counter for iOS: `cargo run -p forge-cli -- build ios --project examples/counter`
 
+Android (SDK + NDK on Linux) — see [docs/android-setup.md](docs/android-setup.md):
+
+```bash
+cargo run -p forge-cli -- build android --project examples/counter-android
+```
+
+CI can assemble a **debug APK** on Ubuntu; iOS device builds still require the Darwin SDK locally.
+
 ## Repository layout
 
 ```
@@ -20,8 +28,10 @@ crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
-examples/counter       # SwiftUI + xtool app
-templates/ios-app      # `forge init` template
+examples/counter          # SwiftUI + xtool app
+examples/counter-android  # Compose + Gradle app
+templates/ios-app         # `forge init --platform ios`
+templates/android-app     # `forge init --platform android`
 scripts/               # Toolchain and build scripts
 docs/                  # Architecture, setup, validation
 ```
@@ -30,10 +40,12 @@ docs/                  # Architecture, setup, validation
 
 ```bash
 cargo run -p forge-cli -- doctor
-cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp
+cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
+cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter
+cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
 ```
 
@@ -43,7 +55,7 @@ Install the binary: `cargo install --path crates/forge-cli --locked` (optional).
 
 Example apps include `forge.toml` — see [examples/counter/forge.toml](examples/counter/forge.toml).
 
-New apps: `cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp` — see [docs/project-generation.md](docs/project-generation.md).
+New apps: `forge init MyApp --bundle-id org.example.myapp --platform ios|android` — see [docs/project-generation.md](docs/project-generation.md).
 
 ## License
 
@@ -53,7 +65,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks, not full iOS device builds.
-- No App Store / Android / networking in this release.
+- GitHub Actions CI runs Rust + binding checks and **Android debug APK** builds; full iOS device builds still need the Darwin SDK locally.
+- No App Store distribution or networking in this release.
 
 See [docs/toolchain-validation.md](docs/toolchain-validation.md) for verified commands and blockers.

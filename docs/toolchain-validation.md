@@ -88,6 +88,40 @@ Runs binding generation into the given app `Generated/` directory, then attempts
 
 Runs non-interactive checks. `xtool devices` is wrapped in `timeout 5` to avoid hangs when auth/devices are unavailable.
 
+## Android (Linux)
+
+### Kotlin binding generation
+
+```bash
+./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
+```
+
+**Outcome:** Produces `Generated/uniffi/forge_ffi/forge_ffi.kt` (JNA-based UniFFI scaffolding).
+
+### Native libraries + APK
+
+```bash
+export ANDROID_NDK_HOME=...   # NDK r28+ recommended
+./scripts/package-android-library.sh examples/counter-android/Generated
+cd examples/counter-android && ./gradlew :app:assembleDebug
+```
+
+**Outcome:** With SDK/NDK configured, CI and local Linux builds produce a debug APK containing `libforge_ffi.so` for each configured ABI (`arm64-v8a`, `x86_64` by default).
+
+### Android toolchain report
+
+```bash
+./scripts/validate-android-toolchain.sh
+```
+
+Included from `./scripts/validate-toolchain.sh` / `forge doctor`.
+
+| Check | Cloud Agent VM (typical) |
+|-------|--------------------------|
+| `./scripts/check-bindings.sh` (Kotlin) | Pass when committed bindings match |
+| `./gradlew :app:assembleDebug` | Requires SDK+NDK install |
+| Emulator instrumented run | Requires KVM + AVD (manual) |
+
 ## Integration strategy (confirmed)
 
 1. **Host** `cdylib` for UniFFI Swift generation (Linux CI).
