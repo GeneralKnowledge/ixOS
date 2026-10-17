@@ -47,10 +47,25 @@ done
 mkdir -p "$JNI_LIBS"
 
 echo "[forge] Building forge-ffi for Android (${PROFILE}) ABIs: ${NDK_TARGETS[*]}..."
+
+declare -a NDK_ARGS=()
+for abi in "${NDK_TARGETS[@]}"; do
+  NDK_ARGS+=(-t "$abi")
+done
+
+declare -a CARGO_PROFILE_ARGS=()
+if [[ "$PROFILE" == "release" ]]; then
+  CARGO_PROFILE_ARGS=(--release)
+else
+  CARGO_PROFILE_ARGS=(--profile "$PROFILE")
+fi
+
+export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$NDK_HOME}"
+
 cargo ndk \
-  -t "${NDK_TARGETS[@]}" \
+  "${NDK_ARGS[@]}" \
   -o "$JNI_LIBS" \
-  build -p forge-ffi --profile "$PROFILE"
+  build -p forge-ffi "${CARGO_PROFILE_ARGS[@]}"
 
 for abi in "${NDK_TARGETS[@]}"; do
   so="$JNI_LIBS/$abi/libforge_ffi.so"
