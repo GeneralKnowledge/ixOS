@@ -212,13 +212,19 @@ fn relocate_ios_xcode_host(dest: &Path, name: &str) -> Result<(), String> {
     let named_host = xcode.join(name);
     if template_proj.is_dir() {
         if named_proj.exists() {
-            return Err(format!("Xcode project already exists: {}", named_proj.display()));
+            return Err(format!(
+                "Xcode project already exists: {}",
+                named_proj.display()
+            ));
         }
         fs::rename(&template_proj, &named_proj).map_err(|e| e.to_string())?;
     }
     if template_host.is_dir() {
         if named_host.exists() {
-            return Err(format!("Xcode host folder already exists: {}", named_host.display()));
+            return Err(format!(
+                "Xcode host folder already exists: {}",
+                named_host.display()
+            ));
         }
         fs::rename(&template_host, &named_host).map_err(|e| e.to_string())?;
     }
