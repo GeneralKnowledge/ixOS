@@ -1,9 +1,10 @@
 import SwiftUI
 
-struct ContentView: View {
+public struct ContentView: View {
+    public init() {}
     @StateObject private var model = CounterViewModel()
 
-    var body: some View {
+    public var body: some View {
         Group {
             if model.isBlocked {
                 blockedView

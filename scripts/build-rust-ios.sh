@@ -13,7 +13,18 @@ if ! rustup target list --installed | grep -q "^${TARGET}$"; then
 fi
 
 SDKROOT_PATH=""
-if command -v swift >/dev/null 2>&1; then
+if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
+  if IOS_SDK="$(xcrun --sdk iphoneos --show-sdk-path 2>/dev/null)"; then
+    export SDKROOT="$IOS_SDK"
+    export CC="$(xcrun --sdk iphoneos --find clang 2>/dev/null || true)"
+    export CXX="$(xcrun --sdk iphoneos --find clang++ 2>/dev/null || true)"
+    export AR="$(xcrun --sdk iphoneos --find ar 2>/dev/null || true)"
+    export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${CC:-}"
+    echo "[forge] Using Xcode SDKROOT=$SDKROOT"
+  fi
+fi
+
+if [[ -z "${SDKROOT:-}" ]] && command -v swift >/dev/null 2>&1; then
   if swift sdk list 2>/dev/null | grep -q darwin; then
     CONFIG="$(swift sdk configure darwin "${TARGET/arm64-/arm64-}" --show-configuration 2>/dev/null || true)"
     if [[ -z "$CONFIG" ]]; then
@@ -49,4 +60,5 @@ cargo build -p forge-ffi --target "$TARGET" --profile "$PROFILE"
 OUT_DIR="$ROOT/build/ios-device/lib"
 mkdir -p "$OUT_DIR"
 cp "$ROOT/target/${TARGET}/${PROFILE}/libforge_ffi.a" "$OUT_DIR/"
+"$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
 echo "[forge] Staged $OUT_DIR/libforge_ffi.a"

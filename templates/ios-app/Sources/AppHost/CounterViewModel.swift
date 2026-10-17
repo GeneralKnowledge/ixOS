@@ -2,24 +2,24 @@ import Foundation
 import ForgeFFI
 
 @MainActor
-final class CounterViewModel: ObservableObject {
-    @Published private(set) var count: Int64 = 0
-    @Published private(set) var startupLabel: String = ""
-    @Published var errorMessage: String?
-    @Published private(set) var isBlocked = false
-    @Published private(set) var canRecoverFromCorruption = false
+public final class CounterViewModel: ObservableObject {
+    @Published public private(set) var count: Int64 = 0
+    @Published public private(set) var startupLabel: String = ""
+    @Published public var errorMessage: String?
+    @Published public private(set) var isBlocked = false
+    @Published public private(set) var canRecoverFromCorruption = false
 
     private var app: ForgeCounterApp?
     private let storageDirectory: String
 
-    init() {
+    public init() {
         storageDirectory = CounterViewModel.applicationSupportDirectory()
         openApp()
     }
 
-    func retryOpen() { openApp() }
+    public func retryOpen() { openApp() }
 
-    func recoverFromCorruption() {
+    public func recoverFromCorruption() {
         errorMessage = nil
         do {
             let recovered = try recoverCounterApp(storageDirectory: storageDirectory)
@@ -32,9 +32,9 @@ final class CounterViewModel: ObservableObject {
         }
     }
 
-    func increment() { apply(.increment) }
-    func decrement() { apply(.decrement) }
-    func reset() { apply(.reset) }
+    public func increment() { apply(.increment) }
+    public func decrement() { apply(.decrement) }
+    public func reset() { apply(.reset) }
 
     private func openApp() {
         errorMessage = nil

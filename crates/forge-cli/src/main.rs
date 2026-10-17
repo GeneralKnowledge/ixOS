@@ -68,6 +68,11 @@ enum BuildCommands {
     Ios {
         #[arg(long, default_value = "examples/counter")]
         project: PathBuf,
+        #[arg(
+            long,
+            help = "Only build Rust static library and regenerate bindings (skip xtool dev)"
+        )]
+        package_only: bool,
     },
     Android {
         #[arg(long, default_value = "examples/counter-android")]
@@ -120,7 +125,10 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Build { cmd } => match cmd {
-            BuildCommands::Ios { project } => commands::build_ios(runner, &project),
+            BuildCommands::Ios {
+                project,
+                package_only,
+            } => commands::build_ios(runner, &project, package_only),
             BuildCommands::Android { project, install } => {
                 commands::build_android(runner, &project, install)
             }

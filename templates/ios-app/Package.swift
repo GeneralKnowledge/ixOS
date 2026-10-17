@@ -12,7 +12,8 @@ let package = Package(
         .macOS(.v14),
     ],
     products: [
-        .executable(name: "FORGE_PACKAGE_NAME", targets: ["AppHost"]),
+        .executable(name: "FORGE_PACKAGE_NAME", targets: ["AppHostLauncher"]),
+        .library(name: "AppHost", targets: ["AppHost"]),
     ],
     targets: [
         .target(
@@ -33,10 +34,15 @@ let package = Package(
             path: "Generated",
             sources: ["forge_ffi.swift"]
         ),
-        .executableTarget(
+        .target(
             name: "AppHost",
             dependencies: ["ForgeFFI"],
             path: "Sources/AppHost"
+        ),
+        .executableTarget(
+            name: "AppHostLauncher",
+            dependencies: ["AppHost"],
+            path: "Sources/AppHostLauncher"
         ),
     ]
 )

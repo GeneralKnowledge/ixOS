@@ -19,3 +19,7 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
         run: cargo test --workspace
+      - name: native rebuild regression
+        run: ./scripts/test-native-rebuild.sh
+      - name: validate Xcode project layout
+        run: ./scripts/validate-xcode-project.sh

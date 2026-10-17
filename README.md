@@ -19,7 +19,7 @@ Android (SDK + NDK on Linux) — see [docs/android-setup.md](docs/android-setup.
 cargo run -p forge-cli -- build android --project examples/counter-android
 ```
 
-CI can assemble a **debug APK** on Ubuntu; iOS device builds still require the Darwin SDK locally.
+CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, and validates the **Xcode project layout** for the Counter example. Full iOS device builds and Xcode compilation require macOS (see [docs/ios-xcode.md](docs/ios-xcode.md)); Linux iOS builds still use the Darwin SDK via xtool.
 
 ## Repository layout
 
@@ -45,6 +45,7 @@ cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter
+cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
 ```

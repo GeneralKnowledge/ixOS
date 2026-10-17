@@ -52,6 +52,9 @@ jobs:
         working-directory: examples/counter-android
         run: ./gradlew :app:assembleDebug --no-daemon
 
+      - name: Verify packaged native libraries
+        run: ./scripts/verify-android-packaging.sh examples/counter-android
+
       - name: Check binding drift
         run: ./scripts/check-bindings.sh
 
