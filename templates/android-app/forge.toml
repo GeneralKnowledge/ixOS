@@ -1,0 +1,16 @@
+[app]
+name = "FORGE_APP_NAME"
+bundle_id = "FORGE_BUNDLE_ID"
+
+[android]
+min_sdk = 26
+abis = ["arm64-v8a", "x86_64"]
+
+[rust]
+core_crate = "forge-core"
+ffi_crate = "forge-ffi"
+
+[build]
+ios_device = false
+ios_simulator = false
+android = true

@@ -76,5 +76,9 @@ if command -v xtool >/dev/null; then
   fi
 fi
 
+if [[ -x "$ROOT/scripts/validate-android-toolchain.sh" ]]; then
+  "$ROOT/scripts/validate-android-toolchain.sh"
+fi
+
 echo
 echo "Validation complete. See docs/toolchain-validation.md for recorded outcomes."

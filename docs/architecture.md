@@ -1,19 +1,17 @@
 # Architecture
 
-Forge Mobile splits **portable Rust application logic** from a **thin SwiftUI host** and a **typed UniFFI boundary**.
+Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
+
+**iOS**
 
 ```
-SwiftUI (CounterApp)
-    ↓
-CounterViewModel (observable snapshot only)
-    ↓
-Generated UniFFI Swift (ForgeFFI)
-    ↓
-forge-ffi (adapter, persistence orchestration)
-    ↓
-forge-core (domain rules)
-    ↓
-forge-storage (JSON snapshot trait)
+SwiftUI (CounterApp) → CounterViewModel → Generated Swift (ForgeFFI) → forge-ffi → forge-core → forge-storage
+```
+
+**Android**
+
+```
+Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_ffi) → libforge_ffi.so → forge-ffi → forge-core → forge-storage
 ```
 
 ## Ownership
@@ -25,7 +23,8 @@ forge-storage (JSON snapshot trait)
 ## Persistence
 
 - Versioned JSON file (`forge-counter-v1.json`) via `JsonSnapshotStore`.
-- iOS: storage directory provided at init from Swift (`Application Support/Counter`).
+- iOS: storage directory provided at init from Swift (`Application Support/<App>`).
+- Android: storage directory provided at init from Kotlin (`filesDir` subfolder).
 - Linux tests use temporary directories.
 
 ### Action + persistence contract
@@ -56,9 +55,9 @@ Explicit recovery: Rust exports `recover_counter_app` (Swift: `recoverCounterApp
 ## Build pipeline
 
 ```
-cargo build (host) → uniffi-bindgen → Generated/*
-cargo build --target aarch64-apple-ios → build/ios-device/lib/libforge_ffi.a
-swiftpm + xtool dev → signed iOS app
+cargo build (host) → uniffi-bindgen → Generated/* (Swift or Kotlin)
+iOS: cargo build --target aarch64-apple-ios → build/ios-device/lib/libforge_ffi.a → swiftpm + xtool dev
+Android: cargo ndk → app/src/main/jniLibs/<abi>/libforge_ffi.so → Gradle assembleDebug
 ```
 
 See [toolchain-validation.md](toolchain-validation.md) for verified steps and blockers.

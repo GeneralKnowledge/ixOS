@@ -4,13 +4,14 @@
 
 - **Proc macros** only for this release (`uniffi::setup_scaffolding!`, `#[uniffi::export]`).
 - Pin UniFFI to the workspace version in [Cargo.toml](../Cargo.toml) (`0.28.3`).
-- Generate Swift with **library mode** from the **host** `libforge_ffi.so` — never from hand-edited UDL.
+- Generate Swift or Kotlin with **library mode** from the **host** `libforge_ffi.so` — never from hand-edited UDL.
 
 ## Generated artifacts
 
-- Output directory: `examples/counter/Generated/` (and template copy).
-- **Do not hand-edit** `forge_ffi.swift`, `forge_ffiFFI.h`, or `forge_ffiFFI.modulemap`.
-- Regenerate with `./scripts/generate-bindings.sh` or `forge bindings generate`.
+- iOS output: `examples/counter/Generated/` — `forge_ffi.swift`, headers, modulemap.
+- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
+- **Do not hand-edit** generated files.
+- Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
 - CI runs `./scripts/check-bindings.sh` to detect drift.
 
 ## Types across the boundary
