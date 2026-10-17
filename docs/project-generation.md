@@ -7,7 +7,8 @@
 ### iOS (`--platform ios`, default)
 
 - `forge.toml`, `Package.swift`, `xtool.yml`
-- `Sources/AppHost/` SwiftUI host
+- `Sources/AppHost/` SwiftUI library + `Sources/AppHostLauncher/` xtool entry point
+- `Xcode/<Name>.xcodeproj` conventional iOS application host (macOS)
 - `Generated/` Swift UniFFI output at init time
 
 ### Android (`--platform android`)

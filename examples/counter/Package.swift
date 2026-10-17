@@ -11,7 +11,8 @@ let package = Package(
         .macOS(.v14),
     ],
     products: [
-        .executable(name: "Counter", targets: ["CounterApp"]),
+        .executable(name: "Counter", targets: ["CounterLauncher"]),
+        .library(name: "CounterApp", targets: ["CounterApp"]),
     ],
     targets: [
         .target(
@@ -32,10 +33,15 @@ let package = Package(
             path: "Generated",
             sources: ["forge_ffi.swift"]
         ),
-        .executableTarget(
+        .target(
             name: "CounterApp",
             dependencies: ["ForgeFFI"],
             path: "Sources/CounterApp"
+        ),
+        .executableTarget(
+            name: "CounterLauncher",
+            dependencies: ["CounterApp"],
+            path: "Sources/CounterLauncher"
         ),
     ]
 )

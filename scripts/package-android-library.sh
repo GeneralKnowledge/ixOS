@@ -11,7 +11,7 @@ LANGUAGE="${FORGE_BINDINGS_LANGUAGE:-kotlin}"
 
 JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
 PROBE="$JNI_LIBS/arm64-v8a/libforge_ffi.so"
-if [[ ! -f "$PROBE" ]]; then
+if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$PROBE" android; then
   "$ROOT/scripts/build-rust-android.sh"
 fi
 

@@ -74,4 +74,5 @@ for abi in "${NDK_TARGETS[@]}"; do
     exit 1
   fi
   echo "[forge] Staged $so"
+  "$ROOT/scripts/write-native-build-meta.sh" "$so" android
 done

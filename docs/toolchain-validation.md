@@ -10,6 +10,8 @@ This document records **verified** toolchain steps on Linux for Forge Mobile. It
 | `cargo clippy --workspace --all-targets -- -D warnings` | Pass |
 | `cargo test --workspace` | Pass (26 tests) |
 | `./scripts/check-bindings.sh` | Pass |
+| `./scripts/test-native-rebuild.sh` | Pass |
+| `./scripts/validate-xcode-project.sh` | Pass (layout only; no macOS compile) |
 | `./scripts/validate-toolchain.sh` | Pass (non-interactive; SDK still missing) |
 | `./scripts/build-rust-ios.sh` | Blocked — no Darwin SDK |
 | Native iPhone build/run | **Not verified** (pending SDK + device) |

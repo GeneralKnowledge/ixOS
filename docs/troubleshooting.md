@@ -35,6 +35,12 @@ ls build/ios-device/lib/libforge_ffi.a
 ./scripts/package-ios-library.sh examples/counter/Generated
 ```
 
+Packaging scripts call `scripts/native-lib-needs-rebuild.sh` so changing Rust sources or iOS/Android build settings triggers a rebuild instead of reusing a stale `.a` / `.so`. Delete `build/ios-device/lib/libforge_ffi.a` (and its `.forge-build-meta` sidecar) to force a full iOS relink.
+
+## Xcode on macOS
+
+See [ios-xcode.md](ios-xcode.md). Use `forge build ios --package-only` before opening `examples/<app>/Xcode/<App>.xcodeproj`. Set a Development Team in Xcode; simulator builds are not supported until simulator Rust slices exist.
+
 If SwiftPM rejects `-L` flags, see [docs/adr/001-ios-static-linking.md](adr/001-ios-static-linking.md) for the artifact-bundle fallback.
 
 ## Decrement shows error at zero

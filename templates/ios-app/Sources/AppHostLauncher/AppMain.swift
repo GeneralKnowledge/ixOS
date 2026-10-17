@@ -1,7 +1,8 @@
+import AppHost
 import SwiftUI
 
 @main
-struct ForgeApp: App {
+struct ForgeAppLauncher: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
