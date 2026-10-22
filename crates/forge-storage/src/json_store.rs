@@ -165,6 +165,12 @@ mod tests {
             use std::os::unix::fs::PermissionsExt;
             perms.set_mode(0o500);
             fs::set_permissions(&parent, perms).unwrap();
+            // Root (common in containers and CI) ignores directory permissions,
+            // so there is no write failure to observe.
+            if fs::write(parent.join("probe"), b"").is_ok() {
+                eprintln!("skipping: read-only directory is still writable (running as root?)");
+                return;
+            }
         }
         let store = JsonSnapshotStore::new(&parent);
         let snap = CounterSnapshot { count: 1 };

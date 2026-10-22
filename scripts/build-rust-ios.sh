@@ -24,9 +24,11 @@ if [[ -z "${SDKROOT:-}" ]] && command -v xcrun >/dev/null 2>&1; then
   fi
 fi
 
-if [[ -z "${SDKROOT:-}" ]] && command -v swift >/dev/null 2>&1; then
+if [[ -n "${SDKROOT:-}" ]]; then
+  :
+elif command -v swift >/dev/null 2>&1; then
   if swift sdk list 2>/dev/null | grep -q darwin; then
-    CONFIG="$(swift sdk configure darwin "${TARGET/arm64-/arm64-}" --show-configuration 2>/dev/null || true)"
+    CONFIG="$(swift sdk configure darwin "${TARGET}" --show-configuration 2>/dev/null || true)"
     if [[ -z "$CONFIG" ]]; then
       CONFIG="$(swift sdk configure darwin arm64-apple-ios --show-configuration 2>/dev/null || true)"
     fi
