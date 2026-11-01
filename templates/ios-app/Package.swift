@@ -29,7 +29,7 @@ let package = Package(
             name: "ForgeFFI",
             dependencies: ["forge_ffiFFI"],
             path: "Generated/ForgeFFI",
-            // UniFFI 0.28 output predates Swift 6 strict concurrency checking.
+            // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedLibrary("forge_ffi"),

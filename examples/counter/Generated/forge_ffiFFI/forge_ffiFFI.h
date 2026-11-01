@@ -50,9 +50,9 @@ typedef void (*UniffiRustFutureContinuationCallback)(uint64_t, int8_t
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_FREE
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_FREE
-typedef void (*UniffiForeignFutureFree)(uint64_t
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_DROPPED_CALLBACK
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_DROPPED_CALLBACK
+typedef void (*UniffiForeignFutureDroppedCallback)(uint64_t
     );
 
 #endif
@@ -62,308 +62,300 @@ typedef void (*UniffiCallbackInterfaceFree)(uint64_t
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE
-typedef struct UniffiForeignFuture {
-    uint64_t handle;
-    UniffiForeignFutureFree _Nonnull free;
-} UniffiForeignFuture;
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_CLONE
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_CLONE
+typedef uint64_t (*UniffiCallbackInterfaceClone)(uint64_t
+    );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U8
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U8
-typedef struct UniffiForeignFutureStructU8 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_DROPPED_CALLBACK_STRUCT
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_DROPPED_CALLBACK_STRUCT
+typedef struct UniffiForeignFutureDroppedCallbackStruct {
+    uint64_t handle;
+    UniffiForeignFutureDroppedCallback _Nonnull free;
+} UniffiForeignFutureDroppedCallbackStruct;
+
+#endif
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U8
+typedef struct UniffiForeignFutureResultU8 {
     uint8_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructU8;
+} UniffiForeignFutureResultU8;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U8
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U8
-typedef void (*UniffiForeignFutureCompleteU8)(uint64_t, UniffiForeignFutureStructU8
+typedef void (*UniffiForeignFutureCompleteU8)(uint64_t, UniffiForeignFutureResultU8
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I8
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I8
-typedef struct UniffiForeignFutureStructI8 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I8
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I8
+typedef struct UniffiForeignFutureResultI8 {
     int8_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructI8;
+} UniffiForeignFutureResultI8;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I8
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I8
-typedef void (*UniffiForeignFutureCompleteI8)(uint64_t, UniffiForeignFutureStructI8
+typedef void (*UniffiForeignFutureCompleteI8)(uint64_t, UniffiForeignFutureResultI8
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U16
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U16
-typedef struct UniffiForeignFutureStructU16 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U16
+typedef struct UniffiForeignFutureResultU16 {
     uint16_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructU16;
+} UniffiForeignFutureResultU16;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U16
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U16
-typedef void (*UniffiForeignFutureCompleteU16)(uint64_t, UniffiForeignFutureStructU16
+typedef void (*UniffiForeignFutureCompleteU16)(uint64_t, UniffiForeignFutureResultU16
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I16
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I16
-typedef struct UniffiForeignFutureStructI16 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I16
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I16
+typedef struct UniffiForeignFutureResultI16 {
     int16_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructI16;
+} UniffiForeignFutureResultI16;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I16
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I16
-typedef void (*UniffiForeignFutureCompleteI16)(uint64_t, UniffiForeignFutureStructI16
+typedef void (*UniffiForeignFutureCompleteI16)(uint64_t, UniffiForeignFutureResultI16
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U32
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U32
-typedef struct UniffiForeignFutureStructU32 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U32
+typedef struct UniffiForeignFutureResultU32 {
     uint32_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructU32;
+} UniffiForeignFutureResultU32;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U32
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U32
-typedef void (*UniffiForeignFutureCompleteU32)(uint64_t, UniffiForeignFutureStructU32
+typedef void (*UniffiForeignFutureCompleteU32)(uint64_t, UniffiForeignFutureResultU32
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I32
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I32
-typedef struct UniffiForeignFutureStructI32 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I32
+typedef struct UniffiForeignFutureResultI32 {
     int32_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructI32;
+} UniffiForeignFutureResultI32;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I32
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I32
-typedef void (*UniffiForeignFutureCompleteI32)(uint64_t, UniffiForeignFutureStructI32
+typedef void (*UniffiForeignFutureCompleteI32)(uint64_t, UniffiForeignFutureResultI32
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U64
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_U64
-typedef struct UniffiForeignFutureStructU64 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_U64
+typedef struct UniffiForeignFutureResultU64 {
     uint64_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructU64;
+} UniffiForeignFutureResultU64;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U64
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_U64
-typedef void (*UniffiForeignFutureCompleteU64)(uint64_t, UniffiForeignFutureStructU64
+typedef void (*UniffiForeignFutureCompleteU64)(uint64_t, UniffiForeignFutureResultU64
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I64
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_I64
-typedef struct UniffiForeignFutureStructI64 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_I64
+typedef struct UniffiForeignFutureResultI64 {
     int64_t returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructI64;
+} UniffiForeignFutureResultI64;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I64
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_I64
-typedef void (*UniffiForeignFutureCompleteI64)(uint64_t, UniffiForeignFutureStructI64
+typedef void (*UniffiForeignFutureCompleteI64)(uint64_t, UniffiForeignFutureResultI64
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F32
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F32
-typedef struct UniffiForeignFutureStructF32 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_F32
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_F32
+typedef struct UniffiForeignFutureResultF32 {
     float returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructF32;
+} UniffiForeignFutureResultF32;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F32
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F32
-typedef void (*UniffiForeignFutureCompleteF32)(uint64_t, UniffiForeignFutureStructF32
+typedef void (*UniffiForeignFutureCompleteF32)(uint64_t, UniffiForeignFutureResultF32
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F64
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_F64
-typedef struct UniffiForeignFutureStructF64 {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_F64
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_F64
+typedef struct UniffiForeignFutureResultF64 {
     double returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructF64;
+} UniffiForeignFutureResultF64;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F64
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_F64
-typedef void (*UniffiForeignFutureCompleteF64)(uint64_t, UniffiForeignFutureStructF64
+typedef void (*UniffiForeignFutureCompleteF64)(uint64_t, UniffiForeignFutureResultF64
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_POINTER
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_POINTER
-typedef struct UniffiForeignFutureStructPointer {
-    void*_Nonnull returnValue;
-    RustCallStatus callStatus;
-} UniffiForeignFutureStructPointer;
-
-#endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_POINTER
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_POINTER
-typedef void (*UniffiForeignFutureCompletePointer)(uint64_t, UniffiForeignFutureStructPointer
-    );
-
-#endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_RUST_BUFFER
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_RUST_BUFFER
-typedef struct UniffiForeignFutureStructRustBuffer {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_RUST_BUFFER
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_RUST_BUFFER
+typedef struct UniffiForeignFutureResultRustBuffer {
     RustBuffer returnValue;
     RustCallStatus callStatus;
-} UniffiForeignFutureStructRustBuffer;
+} UniffiForeignFutureResultRustBuffer;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_RUST_BUFFER
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_RUST_BUFFER
-typedef void (*UniffiForeignFutureCompleteRustBuffer)(uint64_t, UniffiForeignFutureStructRustBuffer
+typedef void (*UniffiForeignFutureCompleteRustBuffer)(uint64_t, UniffiForeignFutureResultRustBuffer
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_VOID
-#define UNIFFI_FFIDEF_FOREIGN_FUTURE_STRUCT_VOID
-typedef struct UniffiForeignFutureStructVoid {
+#ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_VOID
+#define UNIFFI_FFIDEF_FOREIGN_FUTURE_RESULT_VOID
+typedef struct UniffiForeignFutureResultVoid {
     RustCallStatus callStatus;
-} UniffiForeignFutureStructVoid;
+} UniffiForeignFutureResultVoid;
 
 #endif
 #ifndef UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FOREIGN_FUTURE_COMPLETE_VOID
-typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStructVoid
+typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureResultVoid
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
-void*_Nonnull uniffi_forge_ffi_fn_clone_countereventsubscription(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
-void uniffi_forge_ffi_fn_free_countereventsubscription(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
-void uniffi_forge_ffi_fn_method_countereventsubscription_cancel(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
-uint64_t uniffi_forge_ffi_fn_method_countereventsubscription_next(void*_Nonnull ptr
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEROPERATION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEROPERATION
-void*_Nonnull uniffi_forge_ffi_fn_clone_counteroperation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_clone_counteroperation(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEROPERATION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEROPERATION
-void uniffi_forge_ffi_fn_free_counteroperation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+void uniffi_forge_ffi_fn_free_counteroperation(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_CANCEL
-void uniffi_forge_ffi_fn_method_counteroperation_cancel(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+void uniffi_forge_ffi_fn_method_counteroperation_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_ID
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_ID
-uint64_t uniffi_forge_ffi_fn_method_counteroperation_id(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_method_counteroperation_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_RESULT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_RESULT
-uint64_t uniffi_forge_ffi_fn_method_counteroperation_result(void*_Nonnull ptr
+uint64_t uniffi_forge_ffi_fn_method_counteroperation_result(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_STATUS
-RustBuffer uniffi_forge_ffi_fn_method_counteroperation_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_forge_ffi_fn_method_counteroperation_status(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_FORGECOUNTERAPP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_FORGECOUNTERAPP
-void*_Nonnull uniffi_forge_ffi_fn_clone_forgecounterapp(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_clone_forgecounterapp(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_FORGECOUNTERAPP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_FORGECOUNTERAPP
-void uniffi_forge_ffi_fn_free_forgecounterapp(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+void uniffi_forge_ffi_fn_free_forgecounterapp(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_FORGECOUNTERAPP_NEW
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_FORGECOUNTERAPP_NEW
-void*_Nonnull uniffi_forge_ffi_fn_constructor_forgecounterapp_new(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_constructor_forgecounterapp_new(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
-RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY
-RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_apply(void*_Nonnull ptr, RustBuffer action, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_apply(uint64_t ptr, RustBuffer action, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY_ACTION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY_ACTION
-uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(void*_Nonnull ptr, RustBuffer action
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(uint64_t ptr, RustBuffer action
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
-int8_t uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+int8_t uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SHUTDOWN
-uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(void*_Nonnull ptr
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SNAPSHOT
-RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_START_BULK_ADD
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_START_BULK_ADD
-void*_Nonnull uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(void*_Nonnull ptr, uint32_t amount, uint32_t step_delay_ms, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(uint64_t ptr, uint32_t amount, uint32_t step_delay_ms, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
-RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIBE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIBE
-void*_Nonnull uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
-uint32_t uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+uint32_t uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
+uint64_t uniffi_forge_ffi_fn_clone_countereventsubscription(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
+void uniffi_forge_ffi_fn_free_countereventsubscription(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+void uniffi_forge_ffi_fn_method_countereventsubscription_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+uint64_t uniffi_forge_ffi_fn_method_countereventsubscription_next(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_GREETING
@@ -379,7 +371,7 @@ uint64_t uniffi_forge_ffi_fn_func_open_counter_app(RustBuffer storage_directory,
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECOVER_COUNTER_APP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECOVER_COUNTER_APP
-void*_Nonnull uniffi_forge_ffi_fn_func_recover_counter_app(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
+uint64_t uniffi_forge_ffi_fn_func_recover_counter_app(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
@@ -602,26 +594,6 @@ void ffi_forge_ffi_rust_future_free_f64(uint64_t handle
 double ffi_forge_ffi_rust_future_complete_f64(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_POLL_POINTER
-#define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_POLL_POINTER
-void ffi_forge_ffi_rust_future_poll_pointer(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
-);
-#endif
-#ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_CANCEL_POINTER
-#define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_CANCEL_POINTER
-void ffi_forge_ffi_rust_future_cancel_pointer(uint64_t handle
-);
-#endif
-#ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_FREE_POINTER
-#define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_FREE_POINTER
-void ffi_forge_ffi_rust_future_free_pointer(uint64_t handle
-);
-#endif
-#ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_POINTER
-#define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_POINTER
-void*_Nonnull ffi_forge_ffi_rust_future_complete_pointer(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_POLL_RUST_BUFFER
 #define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_POLL_RUST_BUFFER
 void ffi_forge_ffi_rust_future_poll_rust_buffer(uint64_t handle, UniffiRustFutureContinuationCallback _Nonnull callback, uint64_t callback_data
@@ -677,18 +649,6 @@ uint16_t uniffi_forge_ffi_checksum_func_open_counter_app(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
 uint16_t uniffi_forge_ffi_checksum_func_recover_counter_app(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
-uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_cancel(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
-#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
-uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_next(void
     
 );
 #endif
@@ -773,6 +733,18 @@ uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_subscribe(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
 uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_next(void
     
 );
 #endif

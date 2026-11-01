@@ -159,7 +159,7 @@ public struct CounterEvents: AsyncSequence, Sendable {
         let subscription: UncheckedSendable<CounterEventSubscription>
 
         public mutating func next() async -> CounterEvent? {
-            // UniFFI 0.28 does not forward Swift task cancellation to Rust, so
+            // UniFFI (0.32) does not forward Swift task cancellation to Rust, so
             // do it here: cancelling the subscription ends the pending `next()`.
             let subscription = self.subscription
             if Task.isCancelled {
