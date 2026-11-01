@@ -47,7 +47,7 @@ cargo test --workspace
 ./scripts/generate-bindings.sh examples/counter/Generated
 ```
 
-**Outcome:** Produces `forge_ffi.swift`, `forge_ffiFFI.h`, `forge_ffiFFI.modulemap`.
+**Outcome:** Produces `ForgeFFI/forge_ffi.swift` and `forge_ffiFFI/forge_ffiFFI.h` + `forge_ffiFFI/module.modulemap`.
 
 Uses:
 
@@ -128,7 +128,7 @@ Included from `./scripts/validate-toolchain.sh` / `forge doctor`.
 
 1. **Host** `cdylib` for UniFFI Swift generation (Linux CI).
 2. **`aarch64-apple-ios` `staticlib`** staged to `build/ios-device/lib/libforge_ffi.a` when `SDKROOT` is set from xtool’s Darwin SDK.
-3. **SwiftPM** links the static library via `ForgeFfiC` target `linkerSettings` in [examples/counter/Package.swift](../examples/counter/Package.swift).
+3. **SwiftPM** links the static library via the `ForgeFFI` target `linkerSettings` in [examples/counter/Package.swift](../examples/counter/Package.swift).
 4. **xtool** builds the SwiftUI app: `cd examples/counter && xtool dev`.
 
 **Fallback:** SwiftPM `.binaryTarget` artifact bundle (SE-0482) if `-L`/`-l` flags are rejected by a future SwiftPM version — not required for the current manifest.

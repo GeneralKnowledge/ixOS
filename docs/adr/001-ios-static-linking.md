@@ -20,7 +20,7 @@ Use **(1) staged static library + linkerSettings** for **device-only** (`aarch64
 
 - No `xcodebuild` on Linux in the xtool workflow.
 - Single-arch device slice avoids `lipo` for v1.
-- UniFFI generates C headers/modulemap alongside Swift; a dedicated `ForgeFfiC` target exposes headers to SwiftPM.
+- UniFFI generates a C header and modulemap alongside Swift. `generate-bindings.sh` puts them in `Generated/forge_ffiFFI/`, exposed to SwiftPM as the system library `forge_ffiFFI`; the Swift file goes in `Generated/ForgeFFI/`.
 
 ## Consequences
 

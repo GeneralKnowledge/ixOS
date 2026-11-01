@@ -8,7 +8,7 @@
 
 ## Generated artifacts
 
-- iOS output: `examples/counter/Generated/` — `forge_ffi.swift`, headers, modulemap.
+- iOS output: `examples/counter/Generated/` — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
 - Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
