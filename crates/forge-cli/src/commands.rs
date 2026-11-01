@@ -391,7 +391,18 @@ fn walk_substitute(
 fn is_text_template(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("swift" | "toml" | "yml" | "yaml" | "md" | "kts" | "kt" | "xml" | "properties")
+        Some(
+            "swift"
+                | "toml"
+                | "yml"
+                | "yaml"
+                | "md"
+                | "kts"
+                | "kt"
+                | "xml"
+                | "properties"
+                | "xcscheme"
+        )
     ) || path
         .file_name()
         .is_some_and(|n| n == "Package.swift" || n == "project.pbxproj")

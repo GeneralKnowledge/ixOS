@@ -42,14 +42,14 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-apple-ios
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # -target, not -scheme: the Swift package also has an executable product
-      # named Counter, and Xcode's auto-generated scheme picks that one.
+      # The shared "App" scheme builds the app target (the Swift package has an
+      # executable product with the app's name, so a scheme named after it is ambiguous).
       - name: Build Counter.xcodeproj (device, unsigned)
         run: |
           xcodebuild build \
             -project examples/counter/Xcode/Counter.xcodeproj \
-            -target Counter \
-            -sdk iphoneos \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
       - name: Build an Xcode project generated from the iOS template
@@ -57,7 +57,7 @@ jobs:
           cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode
           xcodebuild build \
             -project examples/CiXcodeApp/Xcode/CiXcodeApp.xcodeproj \
-            -target CiXcodeApp \
-            -sdk iphoneos \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
