@@ -1,0 +1,63 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-host-tests:
+    name: Swift host tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Counter example (XCTest)
+        run: ./scripts/test-swift-host.sh examples/counter
+      - name: App generated from the iOS template (XCTest)
+        run: |
+          cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate
+          ./scripts/test-swift-host.sh examples/CiTemplateApp
+
+  xcode-build:
+    name: Xcode iOS build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and iOS target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # The shared "App" scheme builds the app target (the Swift package has an
+      # executable product with the app's name, so a scheme named after it is ambiguous).
+      - name: Build Counter.xcodeproj (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project examples/counter/Xcode/Counter.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Build an Xcode project generated from the iOS template
+        run: |
+          cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode
+          xcodebuild build \
+            -project examples/CiXcodeApp/Xcode/CiXcodeApp.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO

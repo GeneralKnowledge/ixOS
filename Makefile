@@ -1,7 +1,14 @@
-.PHONY: test fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: test test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
+
+test-android-host:
+	cargo build -p forge-ffi
+	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
+
+test-swift-host:
+	./scripts/test-swift-host.sh
 
 fmt:
 	cargo fmt --all

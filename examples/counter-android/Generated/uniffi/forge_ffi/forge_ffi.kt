@@ -905,7 +905,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_forge_ffi_checksum_func_forge_greeting() != 62083.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_forge_ffi_checksum_func_recover_counter_app() != 21856.toShort()) {
+    if (lib.uniffi_forge_ffi_checksum_func_recover_counter_app() != 9525.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 46578.toShort()) {
@@ -966,6 +966,29 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
  * @suppress
  * */
 object NoPointer
+
+/**
+ * @suppress
+ */
+public object FfiConverterUInt: FfiConverter<UInt, Int> {
+    override fun lift(value: Int): UInt {
+        return value.toUInt()
+    }
+
+    override fun read(buf: ByteBuffer): UInt {
+        return lift(buf.getInt())
+    }
+
+    override fun lower(value: UInt): Int {
+        return value.toInt()
+    }
+
+    override fun allocationSize(value: UInt) = 4UL
+
+    override fun write(value: UInt, buf: ByteBuffer) {
+        buf.putInt(value.toInt())
+    }
+}
 
 /**
  * @suppress
@@ -1489,21 +1512,44 @@ sealed class ForgeAppException: kotlin.Exception() {
     }
     
     class PersistenceFailed(
+        
+        val `reason`: kotlin.String
         ) : ForgeAppException() {
         override val message
-            get() = ""
+            get() = "reason=${ `reason` }"
     }
     
+    /**
+     * Stored data is unreadable or invalid. Hosts may offer a reset.
+     */
     class CorruptPersistence(
+        
+        val `reason`: kotlin.String
         ) : ForgeAppException() {
         override val message
-            get() = ""
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Stored data was written by a newer build. It is valid and must not be
+     * reset; the user needs to update the app.
+     */
+    class UnsupportedSchemaVersion(
+        
+        val `found`: kotlin.UInt, 
+        
+        val `supported`: kotlin.UInt
+        ) : ForgeAppException() {
+        override val message
+            get() = "found=${ `found` }, supported=${ `supported` }"
     }
     
     class PersistenceReadFailed(
+        
+        val `reason`: kotlin.String
         ) : ForgeAppException() {
         override val message
-            get() = ""
+            get() = "reason=${ `reason` }"
     }
     
     class StorageDirectoryUnavailable(
@@ -1536,11 +1582,21 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
         return when(buf.getInt()) {
             1 -> ForgeAppException.WouldUnderflow()
             2 -> ForgeAppException.WouldOverflow()
-            3 -> ForgeAppException.PersistenceFailed()
-            4 -> ForgeAppException.CorruptPersistence()
-            5 -> ForgeAppException.PersistenceReadFailed()
-            6 -> ForgeAppException.StorageDirectoryUnavailable()
-            7 -> ForgeAppException.InternalFailure()
+            3 -> ForgeAppException.PersistenceFailed(
+                FfiConverterString.read(buf),
+                )
+            4 -> ForgeAppException.CorruptPersistence(
+                FfiConverterString.read(buf),
+                )
+            5 -> ForgeAppException.UnsupportedSchemaVersion(
+                FfiConverterUInt.read(buf),
+                FfiConverterUInt.read(buf),
+                )
+            6 -> ForgeAppException.PersistenceReadFailed(
+                FfiConverterString.read(buf),
+                )
+            7 -> ForgeAppException.StorageDirectoryUnavailable()
+            8 -> ForgeAppException.InternalFailure()
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1558,14 +1614,23 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
             is ForgeAppException.PersistenceFailed -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+                + FfiConverterString.allocationSize(value.`reason`)
             )
             is ForgeAppException.CorruptPersistence -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ForgeAppException.UnsupportedSchemaVersion -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterUInt.allocationSize(value.`found`)
+                + FfiConverterUInt.allocationSize(value.`supported`)
             )
             is ForgeAppException.PersistenceReadFailed -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+                + FfiConverterString.allocationSize(value.`reason`)
             )
             is ForgeAppException.StorageDirectoryUnavailable -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -1590,22 +1655,31 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
             }
             is ForgeAppException.PersistenceFailed -> {
                 buf.putInt(3)
+                FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
             is ForgeAppException.CorruptPersistence -> {
                 buf.putInt(4)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ForgeAppException.UnsupportedSchemaVersion -> {
+                buf.putInt(5)
+                FfiConverterUInt.write(value.`found`, buf)
+                FfiConverterUInt.write(value.`supported`, buf)
                 Unit
             }
             is ForgeAppException.PersistenceReadFailed -> {
-                buf.putInt(5)
+                buf.putInt(6)
+                FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
             is ForgeAppException.StorageDirectoryUnavailable -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 Unit
             }
             is ForgeAppException.InternalFailure -> {
-                buf.putInt(7)
+                buf.putInt(8)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -1655,7 +1729,9 @@ public object FfiConverterTypeStartupKind: FfiConverterRustBuffer<StartupKind> {
     
 
         /**
-         * Deletes invalid persisted data and starts from zero with a successful initial save.
+         * Opens the app, replacing persisted data with a fresh counter **only** if it is
+         * corrupt. Valid data is restored; data from a newer build
+         * (`UnsupportedSchemaVersion`) or unreadable data is never overwritten.
          */
     @Throws(ForgeAppException::class) fun `recoverCounterApp`(`storageDirectory`: kotlin.String): ForgeCounterApp {
             return FfiConverterTypeForgeCounterApp.lift(

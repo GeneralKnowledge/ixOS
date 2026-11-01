@@ -1,11 +1,9 @@
 package FORGE_JAVA_PACKAGE
 
-import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
-import java.io.File
 import uniffi.forge_ffi.ForgeActionKind
 import uniffi.forge_ffi.ForgeAppException
 import uniffi.forge_ffi.ForgeCounterApp
@@ -13,7 +11,11 @@ import uniffi.forge_ffi.StartupKind
 import uniffi.forge_ffi.forgeGreeting
 import uniffi.forge_ffi.recoverCounterApp
 
-class CounterViewModel(context: Context) : ViewModel() {
+/**
+ * @param storageDirectory where Rust keeps its snapshot. [CounterViewModelFactory] passes a folder
+ *   under the app's files dir; tests pass a temporary folder.
+ */
+class CounterViewModel(private val storageDirectory: String) : ViewModel() {
     var count by mutableStateOf(0L)
         private set
     var startupLabel by mutableStateOf("")
@@ -22,13 +24,13 @@ class CounterViewModel(context: Context) : ViewModel() {
         private set
     var isBlocked by mutableStateOf(false)
         private set
+    /** True only for corrupt data. Data saved by a newer app version is never offered for reset. */
     var canRecoverFromCorruption by mutableStateOf(false)
         private set
 
     val greeting: String = forgeGreeting()
 
     private var app: ForgeCounterApp? = null
-    private val storageDirectory: String = storageDir(context)
 
     init {
         openApp()
@@ -71,27 +73,27 @@ class CounterViewModel(context: Context) : ViewModel() {
     }
 
     private fun attach(opened: ForgeCounterApp, afterRecovery: Boolean) {
+        val snapshot: Long
+        val kind: StartupKind
+        try {
+            snapshot = opened.snapshot().count
+            kind = opened.startupKind()
+        } catch (e: ForgeAppException) {
+            // Never show a made-up count when Rust could not report the real one.
+            opened.close()
+            presentBlocked(e)
+            return
+        }
         app?.close()
         app = opened
         isBlocked = false
-        count = try {
-            opened.snapshot().count
-        } catch (_: ForgeAppException) {
-            0L
-        }
+        canRecoverFromCorruption = false
+        count = snapshot
         startupLabel =
             when {
-                afterRecovery -> "Recovered — fresh counter"
-                else ->
-                    when (try {
-                        opened.startupKind()
-                    } catch (_: ForgeAppException) {
-                        null
-                    }) {
-                        StartupKind.FRESH_INSTALL -> "Fresh install"
-                        StartupKind.RESTORED -> "Restored saved state"
-                        null -> ""
-                    }
+                afterRecovery && kind == StartupKind.FRESH_INSTALL -> "Recovered — fresh counter"
+                kind == StartupKind.FRESH_INSTALL -> "Fresh install"
+                else -> "Restored saved state"
             }
     }
 
@@ -116,12 +118,17 @@ class CounterViewModel(context: Context) : ViewModel() {
         isBlocked = true
         app?.close()
         app = null
+        canRecoverFromCorruption = false
         when (error) {
             is ForgeAppException.CorruptPersistence -> {
                 canRecoverFromCorruption = true
                 errorMessage =
                     "Stored counter data is invalid. You can reset storage or retry opening."
             }
+            is ForgeAppException.UnsupportedSchemaVersion ->
+                errorMessage =
+                    "Your counter was saved by a newer version of this app. " +
+                    "Update the app to open it; your data has not been changed."
             is ForgeAppException.PersistenceReadFailed ->
                 errorMessage = "Could not read saved data. Check storage access and retry."
             is ForgeAppException.StorageDirectoryUnavailable ->
@@ -137,18 +144,14 @@ class CounterViewModel(context: Context) : ViewModel() {
     }
 
     companion object {
-        private fun storageDir(context: Context): String {
-            val base = File(context.filesDir, "counter")
-            base.mkdirs()
-            return base.absolutePath
-        }
-
         private fun messageFor(error: ForgeAppException): String =
             when (error) {
                 is ForgeAppException.WouldUnderflow -> "Count cannot go below zero."
                 is ForgeAppException.WouldOverflow -> "Count cannot exceed one million."
                 is ForgeAppException.PersistenceFailed -> "Could not save counter state."
                 is ForgeAppException.CorruptPersistence -> "Stored counter data is invalid."
+                is ForgeAppException.UnsupportedSchemaVersion ->
+                    "Saved data is from a newer version of this app."
                 is ForgeAppException.PersistenceReadFailed -> "Could not read saved data."
                 is ForgeAppException.StorageDirectoryUnavailable -> "Storage folder is unavailable."
                 is ForgeAppException.InternalFailure -> "Internal error in Rust core."

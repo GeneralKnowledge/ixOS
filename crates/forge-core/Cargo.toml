@@ -5,6 +5,7 @@ description = "Portable application core for Forge Mobile"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish = false
 
 [dependencies]
 serde = { workspace = true }

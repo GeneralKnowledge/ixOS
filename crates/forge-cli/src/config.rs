@@ -49,8 +49,9 @@ impl ForgeConfig {
         Ok(cfg)
     }
 
+    /// Only `[build] android = true` enables Android; an `[android]` section alone does not.
     pub fn android_enabled(&self) -> bool {
-        self.build.android || self.android.is_some()
+        self.build.android
     }
 
     pub fn ios_enabled(&self) -> bool {
@@ -113,8 +114,10 @@ impl ForgeConfig {
                 .application_id
                 .as_deref()
                 .unwrap_or(self.app.bundle_id.as_str());
-            if !is_valid_bundle_id(app_id) {
-                return Err(format!("invalid android application_id '{app_id}'"));
+            if !is_valid_android_application_id(app_id) {
+                return Err(format!(
+                    "invalid android application_id '{app_id}': each segment must start with a letter and use only letters, digits and underscores (no hyphens)"
+                ));
             }
         }
 
@@ -154,6 +157,93 @@ pub fn is_valid_bundle_id(id: &str) -> bool {
                 .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
             && part.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
     })
+}
+
+/// Android application IDs: two or more segments, each starting with a letter,
+/// with only ASCII letters, digits and underscores.
+pub fn is_valid_android_application_id(id: &str) -> bool {
+    let parts: Vec<&str> = id.split('.').collect();
+    parts.len() >= 2
+        && parts.iter().all(|part| {
+            part.chars().next().is_some_and(|c| c.is_ascii_alphabetic())
+                && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        })
+}
+
+/// Words that cannot be a segment of a Kotlin source package (Java reserved
+/// words and literals, plus Kotlin hard keywords).
+const RESERVED_PACKAGE_WORDS: &[&str] = &[
+    "abstract",
+    "as",
+    "assert",
+    "boolean",
+    "break",
+    "byte",
+    "case",
+    "catch",
+    "char",
+    "class",
+    "const",
+    "continue",
+    "default",
+    "do",
+    "double",
+    "else",
+    "enum",
+    "extends",
+    "false",
+    "final",
+    "finally",
+    "float",
+    "for",
+    "fun",
+    "goto",
+    "if",
+    "implements",
+    "import",
+    "in",
+    "instanceof",
+    "int",
+    "interface",
+    "is",
+    "long",
+    "native",
+    "new",
+    "null",
+    "object",
+    "package",
+    "private",
+    "protected",
+    "public",
+    "return",
+    "short",
+    "static",
+    "strictfp",
+    "super",
+    "switch",
+    "synchronized",
+    "this",
+    "throw",
+    "throws",
+    "transient",
+    "true",
+    "try",
+    "typealias",
+    "typeof",
+    "val",
+    "var",
+    "void",
+    "volatile",
+    "when",
+    "while",
+];
+
+/// A bundle ID that `forge init --platform android` can turn into the Kotlin package.
+pub fn is_valid_kotlin_package(id: &str) -> bool {
+    is_valid_android_application_id(id)
+        && id
+            .split('.')
+            .all(|part| !RESERVED_PACKAGE_WORDS.contains(&part))
 }
 
 pub fn is_valid_project_name(name: &str) -> bool {
@@ -229,6 +319,68 @@ android = true
         )
         .unwrap_err();
         assert!(err.contains("[android]"));
+    }
+
+    #[test]
+    fn android_section_alone_does_not_enable_android() {
+        let cfg = ForgeConfig::parse(
+            r#"
+[app]
+name = "Counter"
+bundle_id = "org.example.counter"
+minimum_ios = "17.0"
+
+[android]
+min_sdk = 26
+abis = ["arm64-v8a"]
+
+[rust]
+core_crate = "forge-core"
+ffi_crate = "forge-ffi"
+
+[build]
+ios_device = true
+android = false
+"#,
+        )
+        .unwrap();
+        assert!(!cfg.android_enabled());
+        assert!(cfg.ios_enabled());
+    }
+
+    #[test]
+    fn rejects_hyphenated_android_application_id() {
+        let err = ForgeConfig::parse(
+            r#"
+[app]
+name = "Counter"
+bundle_id = "org.my-app.counter"
+
+[android]
+min_sdk = 26
+abis = ["arm64-v8a"]
+
+[rust]
+core_crate = "forge-core"
+ffi_crate = "forge-ffi"
+
+[build]
+android = true
+"#,
+        )
+        .unwrap_err();
+        assert!(err.contains("application_id"), "{err}");
+    }
+
+    #[test]
+    fn kotlin_package_rules() {
+        assert!(is_valid_kotlin_package("org.example.my_app"));
+        assert!(!is_valid_kotlin_package("org.my-app.demo"));
+        assert!(!is_valid_kotlin_package("org.example.fun"));
+        assert!(!is_valid_kotlin_package("org.example.1app"));
+        assert!(!is_valid_kotlin_package("single"));
+        // iOS bundle IDs may still use hyphens.
+        assert!(is_valid_bundle_id("org.my-app.demo"));
     }
 
     #[test]

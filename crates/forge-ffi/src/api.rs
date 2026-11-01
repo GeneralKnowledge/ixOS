@@ -50,7 +50,7 @@ fn lock<T>(mutex: &Mutex<T>) -> Result<std::sync::MutexGuard<'_, T>, ForgeAppErr
 pub struct ForgeCounterApp {
     engine: Mutex<forge_core::CounterEngine>,
     store: JsonSnapshotStore,
-    startup_kind: Mutex<StartupKind>,
+    startup_kind: StartupKind,
 }
 
 #[uniffi::export]
@@ -62,12 +62,12 @@ impl ForgeCounterApp {
         Ok(Self {
             engine: Mutex::new(engine),
             store,
-            startup_kind: Mutex::new(to_public_startup(kind)),
+            startup_kind: to_public_startup(kind),
         })
     }
 
     pub fn startup_kind(&self) -> Result<StartupKind, ForgeAppError> {
-        Ok(*lock(&self.startup_kind)?)
+        Ok(self.startup_kind)
     }
 
     pub fn snapshot(&self) -> Result<CounterStateSnapshot, ForgeAppError> {
@@ -89,7 +89,9 @@ impl ForgeCounterApp {
     }
 }
 
-/// Deletes invalid persisted data and starts from zero with a successful initial save.
+/// Opens the app, replacing persisted data with a fresh counter **only** if it is
+/// corrupt. Valid data is restored; data from a newer build
+/// (`UnsupportedSchemaVersion`) or unreadable data is never overwritten.
 #[uniffi::export]
 pub fn recover_counter_app(storage_directory: String) -> Result<ForgeCounterApp, ForgeAppError> {
     let store = JsonSnapshotStore::new(storage_directory);
@@ -97,7 +99,7 @@ pub fn recover_counter_app(storage_directory: String) -> Result<ForgeCounterApp,
     Ok(ForgeCounterApp {
         engine: Mutex::new(engine),
         store,
-        startup_kind: Mutex::new(to_public_startup(kind)),
+        startup_kind: to_public_startup(kind),
     })
 }
 

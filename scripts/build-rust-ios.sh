@@ -56,11 +56,17 @@ if [[ -z "${SDKROOT:-}" ]]; then
   exit 1
 fi
 
-echo "[forge] Building forge-ffi for ${TARGET} (${PROFILE})..."
-cargo build -p forge-ffi --target "$TARGET" --profile "$PROFILE"
+# Cargo calls the debug profile "dev" but writes it to target/<triple>/debug.
+case "$PROFILE" in
+  dev | debug) CARGO_PROFILE="dev" PROFILE_DIR="debug" ;;
+  *) CARGO_PROFILE="$PROFILE" PROFILE_DIR="$PROFILE" ;;
+esac
+
+echo "[forge] Building forge-ffi for ${TARGET} (${CARGO_PROFILE})..."
+cargo build -p forge-ffi --target "$TARGET" --profile "$CARGO_PROFILE"
 
 OUT_DIR="$ROOT/build/ios-device/lib"
 mkdir -p "$OUT_DIR"
-cp "$ROOT/target/${TARGET}/${PROFILE}/libforge_ffi.a" "$OUT_DIR/"
+cp "$ROOT/target/${TARGET}/${PROFILE_DIR}/libforge_ffi.a" "$OUT_DIR/"
 "$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
 echo "[forge] Staged $OUT_DIR/libforge_ffi.a"

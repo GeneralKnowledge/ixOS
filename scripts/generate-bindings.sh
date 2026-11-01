@@ -31,9 +31,27 @@ if [[ ! -f "$LIB" ]]; then
 fi
 
 echo "[forge] Generating ${LANGUAGE} bindings into $OUT..."
-cargo run -p uniffi-bindgen -- generate \
-  --library "$LIB" \
-  --language "$LANGUAGE" \
-  --out-dir "$OUT"
+if [[ "$LANGUAGE" == "kotlin" ]]; then
+  cargo run -p uniffi-bindgen -- generate \
+    --library "$LIB" \
+    --language kotlin \
+    --out-dir "$OUT"
+else
+  # SwiftPM needs the Swift source and the C module in separate folders:
+  #   Generated/ForgeFFI/forge_ffi.swift                  (Swift target "ForgeFFI")
+  #   Generated/forge_ffiFFI/{forge_ffiFFI.h,module.modulemap}  (system library "forge_ffiFFI")
+  STAGE="$(mktemp -d)"
+  trap 'rm -rf "$STAGE"' EXIT
+  cargo run -p uniffi-bindgen -- generate \
+    --library "$LIB" \
+    --language swift \
+    --out-dir "$STAGE"
+  mkdir -p "$OUT/ForgeFFI" "$OUT/forge_ffiFFI"
+  mv "$STAGE/forge_ffi.swift" "$OUT/ForgeFFI/forge_ffi.swift"
+  mv "$STAGE/forge_ffiFFI.h" "$OUT/forge_ffiFFI/forge_ffiFFI.h"
+  mv "$STAGE/forge_ffiFFI.modulemap" "$OUT/forge_ffiFFI/module.modulemap"
+  # Older layout kept everything at the top level, which SwiftPM rejects.
+  rm -f "$OUT/forge_ffi.swift" "$OUT/forge_ffiFFI.h" "$OUT/forge_ffiFFI.modulemap"
+fi
 
 echo "[forge] Bindings generated."

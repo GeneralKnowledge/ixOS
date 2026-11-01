@@ -10,8 +10,23 @@ LANGUAGE="${FORGE_BINDINGS_LANGUAGE:-kotlin}"
 "$ROOT/scripts/generate-bindings.sh" "$GENERATED" "$LANGUAGE"
 
 JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
-PROBE="$JNI_LIBS/arm64-v8a/libforge_ffi.so"
-if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$PROBE" android; then
+ABIS="${FORGE_ANDROID_ABIS:-arm64-v8a x86_64}"
+
+# Rebuild if any configured ABI is missing or stale, or an unconfigured one is still staged.
+needs_rebuild=false
+for abi in $ABIS; do
+  if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$JNI_LIBS/$abi/libforge_ffi.so" android; then
+    needs_rebuild=true
+  fi
+done
+for so in "$JNI_LIBS"/*/libforge_ffi.so; do
+  [[ -f "$so" ]] || continue
+  abi="$(basename "$(dirname "$so")")"
+  if [[ " $ABIS " != *" $abi "* ]]; then
+    needs_rebuild=true
+  fi
+done
+if [[ "$needs_rebuild" == true ]]; then
   "$ROOT/scripts/build-rust-android.sh"
 fi
 

@@ -7,7 +7,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 "$ROOT/scripts/generate-bindings.sh" "$TMP/swift"
 
-for file in forge_ffi.swift forge_ffiFFI.h forge_ffiFFI.modulemap; do
+for file in ForgeFFI/forge_ffi.swift forge_ffiFFI/forge_ffiFFI.h forge_ffiFFI/module.modulemap; do
   if ! diff -u "$ROOT/examples/counter/Generated/$file" "$TMP/swift/$file"; then
     echo "error: $file is stale; run scripts/generate-bindings.sh" >&2
     exit 1

@@ -53,12 +53,24 @@ for abi in "${NDK_TARGETS[@]}"; do
   NDK_ARGS+=(-t "$abi")
 done
 
+# Cargo reserves the name "debug"; its debug profile is called "dev".
 declare -a CARGO_PROFILE_ARGS=()
-if [[ "$PROFILE" == "release" ]]; then
-  CARGO_PROFILE_ARGS=(--release)
-else
-  CARGO_PROFILE_ARGS=(--profile "$PROFILE")
-fi
+case "$PROFILE" in
+  release) CARGO_PROFILE_ARGS=(--release) ;;
+  dev | debug) CARGO_PROFILE_ARGS=(--profile dev) ;;
+  *) CARGO_PROFILE_ARGS=(--profile "$PROFILE") ;;
+esac
+
+# Drop libraries for ABIs that are no longer configured, so they do not end up in the APK.
+for dir in "$JNI_LIBS"/*/; do
+  [[ -d "$dir" ]] || continue
+  abi="$(basename "$dir")"
+  if [[ " ${NDK_TARGETS[*]} " != *" $abi "* && -f "$dir/libforge_ffi.so" ]]; then
+    echo "[forge] Removing stale $abi library (not in configured ABIs)"
+    rm -f "$dir/libforge_ffi.so" "$dir/libforge_ffi.so.forge-build-meta"
+    rmdir "$dir" 2>/dev/null || true
+  fi
+done
 
 export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$NDK_HOME}"
 

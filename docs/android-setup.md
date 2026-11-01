@@ -71,3 +71,17 @@ The Kotlin host passes an app-private directory string into `ForgeCounterApp` (t
 | Play 16 KB page warning | Use NDK r28+; run alignment probe in `validate-android-toolchain.sh` |
 
 See also [toolchain-validation.md](toolchain-validation.md) and [ffi-policy.md](ffi-policy.md).
+
+## forge.toml is the source of truth
+
+`app/build.gradle.kts` reads `forge.toml` directly, so builds from Android Studio and from `forge build android` agree:
+
+| forge.toml | Gradle |
+|------------|--------|
+| `[android] application_id` (or `[app] bundle_id` when unset) | `applicationId` |
+| `[android] min_sdk` | `minSdk` |
+| `[android] abis` | ABIs built into `jniLibs/` by `forge build android` |
+
+The Kotlin package and Gradle `namespace` are fixed when `forge init` creates the app. Android needs `[build] android = true`; an `[android]` section alone does not enable it. Bundle IDs for Android apps must be valid Kotlin packages: no hyphens, and no Java or Kotlin keywords as segments.
+
+Removing an ABI from `abis` deletes its staged library on the next build. For an unoptimized native build (useful for symbolicated crashes), set `FORGE_ANDROID_PROFILE=dev` (or `debug`); iOS uses `FORGE_IOS_PROFILE` the same way.

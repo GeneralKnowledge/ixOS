@@ -399,6 +399,22 @@ fileprivate class UniffiHandleMap<T> {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+    typealias FfiType = UInt32
+    typealias SwiftType = UInt32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -794,9 +810,21 @@ public enum ForgeAppError {
     
     case WouldUnderflow
     case WouldOverflow
-    case PersistenceFailed
-    case CorruptPersistence
-    case PersistenceReadFailed
+    case PersistenceFailed(reason: String
+    )
+    /**
+     * Stored data is unreadable or invalid. Hosts may offer a reset.
+     */
+    case CorruptPersistence(reason: String
+    )
+    /**
+     * Stored data was written by a newer build. It is valid and must not be
+     * reset; the user needs to update the app.
+     */
+    case UnsupportedSchemaVersion(found: UInt32, supported: UInt32
+    )
+    case PersistenceReadFailed(reason: String
+    )
     case StorageDirectoryUnavailable
     case InternalFailure
 }
@@ -817,11 +845,21 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
         
         case 1: return .WouldUnderflow
         case 2: return .WouldOverflow
-        case 3: return .PersistenceFailed
-        case 4: return .CorruptPersistence
-        case 5: return .PersistenceReadFailed
-        case 6: return .StorageDirectoryUnavailable
-        case 7: return .InternalFailure
+        case 3: return .PersistenceFailed(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .CorruptPersistence(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .UnsupportedSchemaVersion(
+            found: try FfiConverterUInt32.read(from: &buf), 
+            supported: try FfiConverterUInt32.read(from: &buf)
+            )
+        case 6: return .PersistenceReadFailed(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .StorageDirectoryUnavailable
+        case 8: return .InternalFailure
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -842,24 +880,33 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case .PersistenceFailed:
+        case let .PersistenceFailed(reason):
             writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
         
-        
-        case .CorruptPersistence:
+        case let .CorruptPersistence(reason):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
         
-        
-        case .PersistenceReadFailed:
+        case let .UnsupportedSchemaVersion(found,supported):
             writeInt(&buf, Int32(5))
+            FfiConverterUInt32.write(found, into: &buf)
+            FfiConverterUInt32.write(supported, into: &buf)
+            
         
+        case let .PersistenceReadFailed(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
         
         case .StorageDirectoryUnavailable:
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
         
         
         case .InternalFailure:
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -947,7 +994,9 @@ public func forgeGreeting() -> String {
 })
 }
 /**
- * Deletes invalid persisted data and starts from zero with a successful initial save.
+ * Opens the app, replacing persisted data with a fresh counter **only** if it is
+ * corrupt. Valid data is restored; data from a newer build
+ * (`UnsupportedSchemaVersion`) or unreadable data is never overwritten.
  */
 public func recoverCounterApp(storageDirectory: String)throws  -> ForgeCounterApp {
     return try  FfiConverterTypeForgeCounterApp.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
@@ -975,7 +1024,7 @@ private var initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_forge_greeting() != 62083) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_recover_counter_app() != 21856) {
+    if (uniffi_forge_ffi_checksum_func_recover_counter_app() != 9525) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 46578) {

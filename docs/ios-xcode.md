@@ -29,7 +29,7 @@ Signing credentials and provisioning profiles stay **outside** the repository. S
 
 3. Select a **physical iPhone** run destination (see simulator note below).
 
-4. Build and run (⌘R). Increment/decrement, force an invalid decrement at zero, then terminate and relaunch to confirm persistence under Application Support.
+4. Pick the shared **App** scheme (not the `Counter` scheme Xcode generates for the Swift package's executable product), then build and run (⌘R). Increment/decrement, force an invalid decrement at zero, then terminate and relaunch to confirm persistence under Application Support.
 
 The **Build Rust FFI** run script phase calls `scripts/package-ios-library.sh` so Xcode rebuilds the static library when Rust sources or build metadata change.
 

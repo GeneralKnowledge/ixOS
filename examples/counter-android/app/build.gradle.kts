@@ -4,12 +4,36 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Keep in sync with forge.toml [android] and [app].bundle_id
-val forgeMinSdk = 26
-val forgeApplicationId = "org.forgemobile.counter"
+// forge.toml is the source of truth for the application ID and minSdk, whether the build
+// starts from `forge build android` or from Android Studio.
+val forgeToml: List<String> = rootProject.file("forge.toml").readLines()
+
+fun forgeTomlValue(section: String, key: String): String? {
+    var current = ""
+    for (raw in forgeToml) {
+        val line = raw.trim()
+        if (line.startsWith("[")) {
+            current = line.removePrefix("[").substringBefore("]").trim()
+            continue
+        }
+        if (current != section || !line.contains("=")) continue
+        val (k, v) = line.split("=", limit = 2).map { it.trim() }
+        if (k == key) return v.substringBefore(" #").trim().removeSurrounding("\"")
+    }
+    return null
+}
+
+val forgeApplicationId: String =
+    forgeTomlValue("android", "application_id")
+        ?: forgeTomlValue("app", "bundle_id")
+        ?: error("forge.toml: missing [app] bundle_id")
+val forgeMinSdk: Int =
+    forgeTomlValue("android", "min_sdk")?.toInt()
+        ?: error("forge.toml: missing [android] min_sdk")
 
 android {
-    namespace = forgeApplicationId
+    // The Kotlin package of the app code (fixed when the app was generated).
+    namespace = "org.forgemobile.counter"
     compileSdk = 35
 
     defaultConfig {
@@ -39,6 +63,18 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            // JVM unit tests call the real Rust core through the generated bindings, using the
+            // host build of forge-ffi (`cargo build -p forge-ffi` from the workspace root).
+            it.systemProperty(
+                "jna.library.path",
+                rootProject.file("../../target/debug").absolutePath,
+            )
+        }
+    }
+
     sourceSets {
         getByName("main") {
             kotlin.srcDir("${rootProject.projectDir}/Generated")
@@ -61,4 +97,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("net.java.dev.jna:jna:5.15.0@aar")
+
+    testImplementation("junit:junit:4.13.2")
+    // Desktop JNA (with its host native dispatcher) for JVM unit tests.
+    testImplementation("net.java.dev.jna:jna:5.15.0")
 }

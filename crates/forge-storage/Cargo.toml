@@ -5,6 +5,7 @@ description = "Portable persistence for Forge Mobile"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish = false
 
 [dependencies]
 forge-core = { workspace = true }

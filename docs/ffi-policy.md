@@ -8,7 +8,7 @@
 
 ## Generated artifacts
 
-- iOS output: `examples/counter/Generated/` — `forge_ffi.swift`, headers, modulemap.
+- iOS output: `examples/counter/Generated/` — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
 - Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
@@ -36,8 +36,10 @@
 | Category | Examples | Swift handling |
 |----------|----------|----------------|
 | Domain | `WouldUnderflow`, `WouldOverflow` | Inline error message; state unchanged |
-| Persistence | `PersistenceFailed`, `PersistenceReadFailed`, `StorageDirectoryUnavailable` | Message; blocked startup or save failure |
+| Persistence | `PersistenceFailed`, `PersistenceReadFailed` (both carry a `reason` with the I/O error), `StorageDirectoryUnavailable` | Message; blocked startup or save failure |
 | Corruption | `CorruptPersistence` | Blocked UI; call `recoverCounterApp(storageDirectory:)` (often wrapped as `recoverFromCorruption()` in the view model) |
+| Newer data | `UnsupportedSchemaVersion` | Blocked UI asking the user to update the app. **Never offer a reset**: the data is valid, and `recoverCounterApp` refuses to overwrite it anyway |
+| Newer data | `UnsupportedSchemaVersion` | Blocked UI asking the user to update the app. **Never offer a reset**: the data is valid. `recoverCounterApp` refuses to overwrite it anyway |
 | Internal | `InternalFailure` | Message; retry |
 
 ## Platform data

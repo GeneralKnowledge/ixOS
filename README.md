@@ -42,15 +42,17 @@ docs/                  # Architecture, setup, validation
 cargo run -p forge-cli -- doctor
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
+cargo run -p forge-cli -- test --project examples/counter-android  # ...plus that app's host tests
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
-cargo run -p forge-cli -- build ios --project examples/counter
+cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
+cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev)
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
 ```
 
-Install the binary: `cargo install --path crates/forge-cli --locked` (optional).
+Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. New apps are still created under the workspace's `examples/`.
 
 ## Configuration
 
@@ -66,7 +68,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks and **Android debug APK** builds; full iOS device builds still need the Darwin SDK locally.
+- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter and template Xcode projects.
 - No App Store distribution or networking in this release.
 
 See [docs/toolchain-validation.md](docs/toolchain-validation.md) for verified commands and blockers.
