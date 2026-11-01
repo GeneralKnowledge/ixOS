@@ -8,7 +8,7 @@ Thank you for contributing to Forge Mobile.
 2. `cargo test --workspace`
 3. `cargo fmt --all`
 4. `cargo clippy --workspace --all-targets -- -D warnings`
-5. After changing `forge-ffi` public API: `./scripts/generate-bindings.sh` and commit `Generated/` updates.
+5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates.
 
 ## Pull requests
 

@@ -16,8 +16,13 @@ if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$FAKE" ios; then
   exit 1
 fi
 
-sleep 1
 LIBRS="$ROOT/crates/forge-ffi/src/lib.rs"
+# Remember the source mtime so the probe below only bumps it temporarily; the
+# file contents are never modified.
+touch -r "$LIBRS" "$TMP/librs-mtime"
+trap 'touch -r "$TMP/librs-mtime" "$LIBRS" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+
+sleep 1
 touch "$LIBRS"
 
 if ! "$ROOT/scripts/native-lib-needs-rebuild.sh" "$FAKE" ios; then
@@ -25,7 +30,7 @@ if ! "$ROOT/scripts/native-lib-needs-rebuild.sh" "$FAKE" ios; then
   exit 1
 fi
 
-git checkout -- "$LIBRS" 2>/dev/null || true
+touch -r "$TMP/librs-mtime" "$LIBRS"
 
 touch "$TMP/missing.so"
 if ! "$ROOT/scripts/native-lib-needs-rebuild.sh" "$TMP/missing.so" android; then
