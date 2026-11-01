@@ -4,7 +4,7 @@
 
 - **Proc macros** only for this release (`uniffi::setup_scaffolding!`, `#[uniffi::export]`).
 - Pin UniFFI to the workspace version in [Cargo.toml](../Cargo.toml) (`0.28.3`).
-- Generate Swift or Kotlin with **library mode** from the **host** `libforge_ffi.so` — never from hand-edited UDL.
+- Generate Swift or Kotlin with **library mode** from the **host** `libforge_ffi.so` (`libforge_ffi.dylib` on macOS) — never from hand-edited UDL.
 
 ## Generated artifacts
 

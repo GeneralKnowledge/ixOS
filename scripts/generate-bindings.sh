@@ -20,7 +20,11 @@ mkdir -p "$OUT"
 echo "[forge] Building forge-ffi (host) for binding generation..."
 cargo build -p forge-ffi
 
-LIB="$ROOT/target/debug/libforge_ffi.so"
+case "$(uname -s)" in
+  Darwin) LIB_EXT="dylib" ;;
+  *) LIB_EXT="so" ;;
+esac
+LIB="$ROOT/target/debug/libforge_ffi.${LIB_EXT}"
 if [[ ! -f "$LIB" ]]; then
   echo "error: expected host library at $LIB" >&2
   exit 1

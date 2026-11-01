@@ -22,4 +22,6 @@ jobs:
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
       - name: validate Xcode project layout
-        run: ./scripts/validate-xcode-project.sh
+        run: |
+          ./scripts/validate-xcode-project.sh
+          ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj

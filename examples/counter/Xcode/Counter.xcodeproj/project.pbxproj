@@ -130,7 +130,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nREPO_ROOT=\"${SRCROOT}/../../../..\"\ncd \"${REPO_ROOT}\"\nGENERATED=\"${SRCROOT}/../../Generated\"\nREL=\"${GENERATED#${REPO_ROOT}/}\"\n./scripts/package-ios-library.sh \"${REL}\"\n";
+			shellScript = "set -euo pipefail\nREPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\"\nGENERATED=\"$(cd \"${SRCROOT}/..\" && pwd)/Generated\"\ncd \"${REPO_ROOT}\"\n./scripts/package-ios-library.sh \"${GENERATED}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
