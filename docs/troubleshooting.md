@@ -45,8 +45,8 @@ If SwiftPM rejects `-L` flags, see [docs/adr/001-ios-static-linking.md](adr/001-
 
 ## Decrement shows error at zero
 
-Expected — Rust returns `ForgeAppError.wouldUnderflow`; the UI should show a message without crashing.
+Expected — Rust returns `ForgeAppError.WouldUnderflow`; the UI should show a message without crashing.
 
 ## Persistence shows “Could not save counter state”
 
-Rust returned `ForgeAppError.persistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.
+Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.

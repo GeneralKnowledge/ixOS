@@ -122,7 +122,7 @@ Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app
 
 - JSON snapshot **schema version** in envelope; filename includes version suffix (`forge-counter-v1.json`) (`docs/architecture.md` — storage section).
 - UniFFI/workspace dependency pin in root `Cargo.toml` (`docs/ffi-policy.md`).
-- **Migration** of old schema: not described as implemented **[my inference: gap unless code adds migrations]**.
+- **Migration** of old schema: `migrate` hook in `forge-storage` (no migrations yet, since only v1 exists). Newer versions are reported as `UnsupportedSchemaVersion`, not corruption.
 
 ### Toolchain validation / `doctor` **[stated in docs]**
 

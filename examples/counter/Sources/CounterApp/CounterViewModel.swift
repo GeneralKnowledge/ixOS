@@ -7,19 +7,21 @@ public final class CounterViewModel: ObservableObject {
     @Published public private(set) var startupLabel: String = ""
     @Published public var errorMessage: String?
     @Published public private(set) var isBlocked = false
+    /// True only when stored data is corrupt. Data saved by a newer app
+    /// version is valid, so it is never offered for reset.
     @Published public private(set) var canRecoverFromCorruption = false
 
     private var app: ForgeCounterApp?
-    private var storageDirectory: String = ""
+    private let storageDirectory: String
 
-    public init() {
-        storageDirectory = CounterViewModel.applicationSupportDirectory()
+    /// - Parameter storageDirectory: where Rust keeps its snapshot. Defaults to
+    ///   the app's Application Support folder; tests pass a temporary folder.
+    public init(storageDirectory: String? = nil) {
+        self.storageDirectory = storageDirectory ?? Self.applicationSupportDirectory()
         openApp()
     }
 
-    public func retryOpen() {
-        openApp()
-    }
+    public func retryOpen() { openApp() }
 
     public func recoverFromCorruption() {
         errorMessage = nil
@@ -43,8 +45,7 @@ public final class CounterViewModel: ObservableObject {
         isBlocked = false
         canRecoverFromCorruption = false
         do {
-            let opened = try ForgeCounterApp(storageDirectory: storageDirectory)
-            attach(app: opened, afterRecovery: false)
+            attach(app: try ForgeCounterApp(storageDirectory: storageDirectory), afterRecovery: false)
         } catch let error as ForgeAppError {
             presentBlocked(error: error)
         } catch {
@@ -54,18 +55,24 @@ public final class CounterViewModel: ObservableObject {
     }
 
     private func attach(app: ForgeCounterApp, afterRecovery: Bool) {
-        self.app = app
-        isBlocked = false
-        count = (try? app.snapshot())?.count ?? 0
-        if afterRecovery {
-            startupLabel = "Recovered — fresh counter"
-        } else if let kind = try? app.startupKind() {
-            switch kind {
-            case .freshInstall:
-                startupLabel = "Fresh install"
-            case .restored:
-                startupLabel = "Restored saved state"
+        do {
+            let snapshot = try app.snapshot()
+            let kind = try app.startupKind()
+            self.app = app
+            isBlocked = false
+            canRecoverFromCorruption = false
+            count = snapshot.count
+            if afterRecovery && kind == .freshInstall {
+                startupLabel = "Recovered — fresh counter"
+            } else {
+                startupLabel = kind == .freshInstall ? "Fresh install" : "Restored saved state"
             }
+        } catch let error as ForgeAppError {
+            // Never show a made-up count when Rust could not report the real one.
+            presentBlocked(error: error)
+        } catch {
+            isBlocked = true
+            errorMessage = error.localizedDescription
         }
     }
 
@@ -73,13 +80,10 @@ public final class CounterViewModel: ObservableObject {
         guard let app else { return }
         errorMessage = nil
         do {
-            let outcome = try app.apply(action: kind)
-            count = outcome.snapshot.count
+            count = try app.apply(action: kind).snapshot.count
         } catch let error as ForgeAppError {
-            errorMessage = CounterViewModel.message(for: error)
-            if let snap = try? app.snapshot() {
-                count = snap.count
-            }
+            errorMessage = Self.message(for: error)
+            if let snap = try? app.snapshot() { count = snap.count }
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -88,28 +92,32 @@ public final class CounterViewModel: ObservableObject {
     private func presentBlocked(error: ForgeAppError) {
         isBlocked = true
         app = nil
+        canRecoverFromCorruption = false
         switch error {
-        case .corruptPersistence:
+        case .CorruptPersistence:
             canRecoverFromCorruption = true
             errorMessage = "Stored counter data is invalid. You can reset storage or retry opening."
-        case .persistenceReadFailed:
+        case .UnsupportedSchemaVersion:
+            errorMessage = "Your counter was saved by a newer version of this app. Update the app to open it; your data has not been changed."
+        case .PersistenceReadFailed:
             errorMessage = "Could not read saved data. Check storage access and retry."
-        case .storageDirectoryUnavailable:
+        case .StorageDirectoryUnavailable:
             errorMessage = "Storage folder is unavailable. Retry after fixing permissions."
         default:
-            errorMessage = CounterViewModel.message(for: error)
+            errorMessage = Self.message(for: error)
         }
     }
 
     private static func message(for error: ForgeAppError) -> String {
         switch error {
-        case .wouldUnderflow: return "Count cannot go below zero."
-        case .wouldOverflow: return "Count cannot exceed one million."
-        case .persistenceFailed: return "Could not save counter state."
-        case .corruptPersistence: return "Stored counter data is invalid."
-        case .persistenceReadFailed: return "Could not read saved data."
-        case .storageDirectoryUnavailable: return "Storage folder is unavailable."
-        case .internalFailure: return "Internal error in Rust core."
+        case .WouldUnderflow: return "Count cannot go below zero."
+        case .WouldOverflow: return "Count cannot exceed one million."
+        case .PersistenceFailed: return "Could not save counter state."
+        case .CorruptPersistence: return "Stored counter data is invalid."
+        case .UnsupportedSchemaVersion: return "Saved data is from a newer version of this app."
+        case .PersistenceReadFailed: return "Could not read saved data."
+        case .StorageDirectoryUnavailable: return "Storage folder is unavailable."
+        case .InternalFailure: return "Internal error in Rust core."
         }
     }
 
