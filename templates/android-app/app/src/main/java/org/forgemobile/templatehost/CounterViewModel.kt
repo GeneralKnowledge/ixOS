@@ -154,6 +154,10 @@ class CounterViewModel(private val storageDirectory: String) : ViewModel() {
                     "Saved data is from a newer version of this app."
                 is ForgeAppException.PersistenceReadFailed -> "Could not read saved data."
                 is ForgeAppException.StorageDirectoryUnavailable -> "Storage folder is unavailable."
+                is ForgeAppException.InvalidInput -> "That value is not allowed."
+                is ForgeAppException.Cancelled -> "The operation was cancelled."
+                is ForgeAppException.ShutDown -> "The counter has been closed. Reopen it to continue."
+                is ForgeAppException.OperationInProgress -> "Another operation is still running."
                 is ForgeAppException.InternalFailure -> "Internal error in Rust core."
             }
     }

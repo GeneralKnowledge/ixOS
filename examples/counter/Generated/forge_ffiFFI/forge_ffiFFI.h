@@ -251,6 +251,56 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEREVENTSUBSCRIPTION
+void*_Nonnull uniffi_forge_ffi_fn_clone_countereventsubscription(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEREVENTSUBSCRIPTION
+void uniffi_forge_ffi_fn_free_countereventsubscription(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+void uniffi_forge_ffi_fn_method_countereventsubscription_cancel(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+uint64_t uniffi_forge_ffi_fn_method_countereventsubscription_next(void*_Nonnull ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEROPERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_COUNTEROPERATION
+void*_Nonnull uniffi_forge_ffi_fn_clone_counteroperation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEROPERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_COUNTEROPERATION
+void uniffi_forge_ffi_fn_free_counteroperation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_CANCEL
+void uniffi_forge_ffi_fn_method_counteroperation_cancel(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_ID
+uint64_t uniffi_forge_ffi_fn_method_counteroperation_id(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_RESULT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_RESULT
+uint64_t uniffi_forge_ffi_fn_method_counteroperation_result(void*_Nonnull ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_COUNTEROPERATION_STATUS
+RustBuffer uniffi_forge_ffi_fn_method_counteroperation_status(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_FORGECOUNTERAPP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_FORGECOUNTERAPP
 void*_Nonnull uniffi_forge_ffi_fn_clone_forgecounterapp(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
@@ -266,9 +316,29 @@ void uniffi_forge_ffi_fn_free_forgecounterapp(void*_Nonnull ptr, RustCallStatus 
 void*_Nonnull uniffi_forge_ffi_fn_constructor_forgecounterapp_new(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
+RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY
 RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_apply(void*_Nonnull ptr, RustBuffer action, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_APPLY_ACTION
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(void*_Nonnull ptr, RustBuffer action
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
+int8_t uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SHUTDOWN
+uint64_t uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(void*_Nonnull ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SNAPSHOT
@@ -276,15 +346,35 @@ RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_apply(void*_Nonnull ptr, R
 RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_START_BULK_ADD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_START_BULK_ADD
+void*_Nonnull uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(void*_Nonnull ptr, uint32_t amount, uint32_t step_delay_ms, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_STARTUP_KIND
 RustBuffer uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIBE
+void*_Nonnull uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
+uint32_t uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_GREETING
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_GREETING
 RustBuffer uniffi_forge_ffi_fn_func_forge_greeting(RustCallStatus *_Nonnull out_status
     
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_OPEN_COUNTER_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_OPEN_COUNTER_APP
+uint64_t uniffi_forge_ffi_fn_func_open_counter_app(RustBuffer storage_directory, RustBuffer mode
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_RECOVER_COUNTER_APP
@@ -578,9 +668,57 @@ uint16_t uniffi_forge_ffi_checksum_func_forge_greeting(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_OPEN_COUNTER_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_OPEN_COUNTER_APP
+uint16_t uniffi_forge_ffi_checksum_func_open_counter_app(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_RECOVER_COUNTER_APP
 uint16_t uniffi_forge_ffi_checksum_func_recover_counter_app(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEREVENTSUBSCRIPTION_NEXT
+uint16_t uniffi_forge_ffi_checksum_method_countereventsubscription_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_counteroperation_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_ID
+uint16_t uniffi_forge_ffi_checksum_method_counteroperation_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_RESULT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_RESULT
+uint16_t uniffi_forge_ffi_checksum_method_counteroperation_result(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_COUNTEROPERATION_STATUS
+uint16_t uniffi_forge_ffi_checksum_method_counteroperation_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_ACTIVE_OPERATION
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_active_operation(void
     
 );
 #endif
@@ -590,15 +728,51 @@ uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_apply(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_APPLY_ACTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_APPLY_ACTION
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_apply_action(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_IS_SHUT_DOWN
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_is_shut_down(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SHUTDOWN
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_shutdown(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SNAPSHOT
 uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_START_BULK_ADD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_START_BULK_ADD
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_start_bulk_add(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_STARTUP_KIND
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_STARTUP_KIND
 uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIBE
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_subscribe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECOUNTERAPP_SUBSCRIPTION_COUNT
+uint16_t uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count(void
     
 );
 #endif

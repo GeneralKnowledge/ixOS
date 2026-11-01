@@ -415,6 +415,22 @@ fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     typealias FfiType = Int64
     typealias SwiftType = Int64
@@ -424,6 +440,30 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
     }
 
     public static func write(_ value: Int64, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterBool : FfiConverter {
+    typealias FfiType = Int8
+    typealias SwiftType = Bool
+
+    public static func lift(_ value: Int8) throws -> Bool {
+        return value != 0
+    }
+
+    public static func lower(_ value: Bool) -> Int8 {
+        return value ? 1 : 0
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Bool {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: Bool, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -472,16 +512,423 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 
-public protocol ForgeCounterAppProtocol : AnyObject {
+/**
+ * One subscriber's stream of [`CounterEvent`]s.
+ *
+ * Owned by the host. Use it from a single consumer: concurrent `next()` calls
+ * on the same subscription are not supported. The subscription ends when the
+ * host calls `cancel()`, when it is released, or when the app shuts down.
+ */
+public protocol CounterEventSubscriptionProtocol : AnyObject {
     
-    func apply(action: ForgeActionKind) throws  -> ActionOutcome
+    /**
+     * Ends the subscription. A pending `next()` returns `None` straight away
+     * and undelivered events are discarded. Safe to call more than once.
+     */
+    func cancel() 
     
-    func snapshot() throws  -> CounterStateSnapshot
-    
-    func startupKind() throws  -> StartupKind
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    func next() async  -> CounterEvent?
     
 }
 
+/**
+ * One subscriber's stream of [`CounterEvent`]s.
+ *
+ * Owned by the host. Use it from a single consumer: concurrent `next()` calls
+ * on the same subscription are not supported. The subscription ends when the
+ * host calls `cancel()`, when it is released, or when the app shuts down.
+ */
+open class CounterEventSubscription:
+    CounterEventSubscriptionProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_countereventsubscription(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_countereventsubscription(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` straight away
+     * and undelivered events are discarded. Safe to call more than once.
+     */
+open func cancel() {try! rustCall() {
+    uniffi_forge_ffi_fn_method_countereventsubscription_cancel(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+open func next()async  -> CounterEvent? {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_countereventsubscription_next(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeCounterEvent.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCounterEventSubscription: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = CounterEventSubscription
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> CounterEventSubscription {
+        return CounterEventSubscription(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: CounterEventSubscription) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CounterEventSubscription {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: CounterEventSubscription, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterEventSubscription_lift(_ pointer: UnsafeMutableRawPointer) throws -> CounterEventSubscription {
+    return try FfiConverterTypeCounterEventSubscription.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterEventSubscription_lower(_ value: CounterEventSubscription) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeCounterEventSubscription.lower(value)
+}
+
+
+
+
+/**
+ * Handle to a long-running operation. Releasing it does not cancel the
+ * operation; its outcome is also delivered as an `OperationFinished` event.
+ */
+public protocol CounterOperationProtocol : AnyObject {
+    
+    /**
+     * Requests cancellation. Before the commit point the operation stops and
+     * `result()` fails with `Cancelled`; after it, this does nothing and
+     * `result()` returns the committed state.
+     */
+    func cancel() 
+    
+    func id()  -> UInt64
+    
+    /**
+     * Resolves when the operation ends. Can be awaited any number of times.
+     */
+    func result() async throws  -> CounterStateSnapshot
+    
+    func status()  -> OperationStatus
+    
+}
+
+/**
+ * Handle to a long-running operation. Releasing it does not cancel the
+ * operation; its outcome is also delivered as an `OperationFinished` event.
+ */
+open class CounterOperation:
+    CounterOperationProtocol {
+    fileprivate let pointer: UnsafeMutableRawPointer!
+
+    /// Used to instantiate a [FFIObject] without an actual pointer, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoPointer {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+    required public init(unsafeFromRawPointer pointer: UnsafeMutableRawPointer) {
+        self.pointer = pointer
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noPointer: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing [Pointer] the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noPointer: NoPointer) {
+        self.pointer = nil
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiClonePointer() -> UnsafeMutableRawPointer {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_counteroperation(self.pointer, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        guard let pointer = pointer else {
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_counteroperation(pointer, $0) }
+    }
+
+    
+
+    
+    /**
+     * Requests cancellation. Before the commit point the operation stops and
+     * `result()` fails with `Cancelled`; after it, this does nothing and
+     * `result()` returns the committed state.
+     */
+open func cancel() {try! rustCall() {
+    uniffi_forge_ffi_fn_method_counteroperation_cancel(self.uniffiClonePointer(),$0
+    )
+}
+}
+    
+open func id() -> UInt64 {
+    return try!  FfiConverterUInt64.lift(try! rustCall() {
+    uniffi_forge_ffi_fn_method_counteroperation_id(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Resolves when the operation ends. Can be awaited any number of times.
+     */
+open func result()async throws  -> CounterStateSnapshot {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_counteroperation_result(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCounterStateSnapshot.lift,
+            errorHandler: FfiConverterTypeForgeAppError.lift
+        )
+}
+    
+open func status() -> OperationStatus {
+    return try!  FfiConverterTypeOperationStatus.lift(try! rustCall() {
+    uniffi_forge_ffi_fn_method_counteroperation_status(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCounterOperation: FfiConverter {
+
+    typealias FfiType = UnsafeMutableRawPointer
+    typealias SwiftType = CounterOperation
+
+    public static func lift(_ pointer: UnsafeMutableRawPointer) throws -> CounterOperation {
+        return CounterOperation(unsafeFromRawPointer: pointer)
+    }
+
+    public static func lower(_ value: CounterOperation) -> UnsafeMutableRawPointer {
+        return value.uniffiClonePointer()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CounterOperation {
+        let v: UInt64 = try readInt(&buf)
+        // The Rust code won't compile if a pointer won't fit in a UInt64.
+        // We have to go via `UInt` because that's the thing that's the size of a pointer.
+        let ptr = UnsafeMutableRawPointer(bitPattern: UInt(truncatingIfNeeded: v))
+        if (ptr == nil) {
+            throw UniffiInternalError.unexpectedNullPointer
+        }
+        return try lift(ptr!)
+    }
+
+    public static func write(_ value: CounterOperation, into buf: inout [UInt8]) {
+        // This fiddling is because `Int` is the thing that's the same size as a pointer.
+        // The Rust code won't compile if a pointer won't fit in a `UInt64`.
+        writeInt(&buf, UInt64(bitPattern: Int64(Int(bitPattern: lower(value)))))
+    }
+}
+
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterOperation_lift(_ pointer: UnsafeMutableRawPointer) throws -> CounterOperation {
+    return try FfiConverterTypeCounterOperation.lift(pointer)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterOperation_lower(_ value: CounterOperation) -> UnsafeMutableRawPointer {
+    return FfiConverterTypeCounterOperation.lower(value)
+}
+
+
+
+
+/**
+ * One Rust app instance. Thread-safe; share it freely between host
+ * components. Each instance owns its storage directory: do not open two
+ * instances on the same directory at once.
+ */
+public protocol ForgeCounterAppProtocol : AnyObject {
+    
+    /**
+     * The running long-running operation, if any.
+     */
+    func activeOperation()  -> OperationStatus?
+    
+    /**
+     * Synchronous form of [`Self::apply_action`]; blocks the caller until the
+     * change is saved. Kept for existing callers such as the Android host.
+     */
+    func apply(action: ForgeActionKind) throws  -> ActionOutcome
+    
+    /**
+     * Applies an action on the instance's command thread. Resolves after the
+     * change has been saved (or rejected). Once sent it always runs to
+     * completion; dropping or cancelling the caller does not undo it.
+     */
+    func applyAction(action: ForgeActionKind) async throws  -> ActionOutcome
+    
+    func isShutDown()  -> Bool
+    
+    /**
+     * Shuts the instance down: new commands fail with `ShutDown`, the running
+     * operation is cancelled, commands already accepted finish, every event
+     * subscription ends. Resolves when all of that is done. Idempotent.
+     * Queries keep answering with the last committed state.
+     */
+    func shutdown() async 
+    
+    /**
+     * The last committed state. Answers immediately, even while a save is in
+     * progress.
+     */
+    func snapshot() throws  -> CounterStateSnapshot
+    
+    /**
+     * Starts adding `amount` as a long-running, cancellable operation (it
+     * stands in for work such as an import). Progress arrives as
+     * `OperationProgress` events; the whole amount is committed at the end or
+     * not at all. `step_delay_ms` is the simulated work per progress step
+     * (up to 20 steps).
+     */
+    func startBulkAdd(amount: UInt32, stepDelayMs: UInt32) throws  -> CounterOperation
+    
+    func startupKind() throws  -> StartupKind
+    
+    /**
+     * A new, independent event subscription. See
+     * [`CounterEventSubscription`] for its lifetime rules.
+     */
+    func subscribe() throws  -> CounterEventSubscription
+    
+    /**
+     * Number of live subscriptions (diagnostics and tests).
+     */
+    func subscriptionCount()  -> UInt32
+    
+}
+
+/**
+ * One Rust app instance. Thread-safe; share it freely between host
+ * components. Each instance owns its storage directory: do not open two
+ * instances on the same directory at once.
+ */
 open class ForgeCounterApp:
     ForgeCounterAppProtocol {
     fileprivate let pointer: UnsafeMutableRawPointer!
@@ -519,6 +966,10 @@ open class ForgeCounterApp:
     public func uniffiClonePointer() -> UnsafeMutableRawPointer {
         return try! rustCall { uniffi_forge_ffi_fn_clone_forgecounterapp(self.pointer, $0) }
     }
+    /**
+     * Opens the app synchronously, blocking the caller while state loads.
+     * Prefer [`open_counter_app`] from UI code.
+     */
 public convenience init(storageDirectory: String)throws  {
     let pointer =
         try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
@@ -540,6 +991,20 @@ public convenience init(storageDirectory: String)throws  {
     
 
     
+    /**
+     * The running long-running operation, if any.
+     */
+open func activeOperation() -> OperationStatus? {
+    return try!  FfiConverterOptionTypeOperationStatus.lift(try! rustCall() {
+    uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Synchronous form of [`Self::apply_action`]; blocks the caller until the
+     * change is saved. Kept for existing callers such as the Android host.
+     */
 open func apply(action: ForgeActionKind)throws  -> ActionOutcome {
     return try  FfiConverterTypeActionOutcome.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
     uniffi_forge_ffi_fn_method_forgecounterapp_apply(self.uniffiClonePointer(),
@@ -548,6 +1013,63 @@ open func apply(action: ForgeActionKind)throws  -> ActionOutcome {
 })
 }
     
+    /**
+     * Applies an action on the instance's command thread. Resolves after the
+     * change has been saved (or rejected). Once sent it always runs to
+     * completion; dropping or cancelling the caller does not undo it.
+     */
+open func applyAction(action: ForgeActionKind)async throws  -> ActionOutcome {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(
+                    self.uniffiClonePointer(),
+                    FfiConverterTypeForgeActionKind.lower(action)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeActionOutcome.lift,
+            errorHandler: FfiConverterTypeForgeAppError.lift
+        )
+}
+    
+open func isShutDown() -> Bool {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+    uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Shuts the instance down: new commands fail with `ShutDown`, the running
+     * operation is cancelled, commands already accepted finish, every event
+     * subscription ends. Resolves when all of that is done. Idempotent.
+     * Queries keep answering with the last committed state.
+     */
+open func shutdown()async  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(
+                    self.uniffiClonePointer()
+                    
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_void,
+            completeFunc: ffi_forge_ffi_rust_future_complete_void,
+            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * The last committed state. Answers immediately, even while a save is in
+     * progress.
+     */
 open func snapshot()throws  -> CounterStateSnapshot {
     return try  FfiConverterTypeCounterStateSnapshot.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
     uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(self.uniffiClonePointer(),$0
@@ -555,9 +1077,46 @@ open func snapshot()throws  -> CounterStateSnapshot {
 })
 }
     
+    /**
+     * Starts adding `amount` as a long-running, cancellable operation (it
+     * stands in for work such as an import). Progress arrives as
+     * `OperationProgress` events; the whole amount is committed at the end or
+     * not at all. `step_delay_ms` is the simulated work per progress step
+     * (up to 20 steps).
+     */
+open func startBulkAdd(amount: UInt32, stepDelayMs: UInt32)throws  -> CounterOperation {
+    return try  FfiConverterTypeCounterOperation.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
+    uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(self.uniffiClonePointer(),
+        FfiConverterUInt32.lower(amount),
+        FfiConverterUInt32.lower(stepDelayMs),$0
+    )
+})
+}
+    
 open func startupKind()throws  -> StartupKind {
     return try  FfiConverterTypeStartupKind.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
     uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * A new, independent event subscription. See
+     * [`CounterEventSubscription`] for its lifetime rules.
+     */
+open func subscribe()throws  -> CounterEventSubscription {
+    return try  FfiConverterTypeCounterEventSubscription.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
+    uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(self.uniffiClonePointer(),$0
+    )
+})
+}
+    
+    /**
+     * Number of live subscriptions (diagnostics and tests).
+     */
+open func subscriptionCount() -> UInt32 {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+    uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(self.uniffiClonePointer(),$0
     )
 })
 }
@@ -732,6 +1291,210 @@ public func FfiConverterTypeCounterStateSnapshot_lower(_ value: CounterStateSnap
     return FfiConverterTypeCounterStateSnapshot.lower(value)
 }
 
+
+/**
+ * Point-in-time status of a long-running operation.
+ */
+public struct OperationStatus {
+    public var operationId: UInt64
+    public var completed: UInt32
+    public var total: UInt32
+    public var cancelRequested: Bool
+    public var finished: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(operationId: UInt64, completed: UInt32, total: UInt32, cancelRequested: Bool, finished: Bool) {
+        self.operationId = operationId
+        self.completed = completed
+        self.total = total
+        self.cancelRequested = cancelRequested
+        self.finished = finished
+    }
+}
+
+
+
+extension OperationStatus: Equatable, Hashable {
+    public static func ==(lhs: OperationStatus, rhs: OperationStatus) -> Bool {
+        if lhs.operationId != rhs.operationId {
+            return false
+        }
+        if lhs.completed != rhs.completed {
+            return false
+        }
+        if lhs.total != rhs.total {
+            return false
+        }
+        if lhs.cancelRequested != rhs.cancelRequested {
+            return false
+        }
+        if lhs.finished != rhs.finished {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(operationId)
+        hasher.combine(completed)
+        hasher.combine(total)
+        hasher.combine(cancelRequested)
+        hasher.combine(finished)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOperationStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OperationStatus {
+        return
+            try OperationStatus(
+                operationId: FfiConverterUInt64.read(from: &buf), 
+                completed: FfiConverterUInt32.read(from: &buf), 
+                total: FfiConverterUInt32.read(from: &buf), 
+                cancelRequested: FfiConverterBool.read(from: &buf), 
+                finished: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: OperationStatus, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.operationId, into: &buf)
+        FfiConverterUInt32.write(value.completed, into: &buf)
+        FfiConverterUInt32.write(value.total, into: &buf)
+        FfiConverterBool.write(value.cancelRequested, into: &buf)
+        FfiConverterBool.write(value.finished, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOperationStatus_lift(_ buf: RustBuffer) throws -> OperationStatus {
+    return try FfiConverterTypeOperationStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOperationStatus_lower(_ value: OperationStatus) -> RustBuffer {
+    return FfiConverterTypeOperationStatus.lower(value)
+}
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Something meaningful that happened in the Rust app.
+ *
+ * Events are emitted only after the change they describe has been persisted.
+ */
+
+public enum CounterEvent {
+    
+    /**
+     * The committed counter value changed (from any command or operation).
+     */
+    case stateChanged(snapshot: CounterStateSnapshot
+    )
+    /**
+     * A long-running operation made progress. `completed` ≤ `total`.
+     */
+    case operationProgress(operationId: UInt64, completed: UInt32, total: UInt32
+    )
+    /**
+     * A long-running operation ended. Exactly one per operation.
+     */
+    case operationFinished(operationId: UInt64, outcome: OperationOutcome
+    )
+    /**
+     * This subscriber fell behind and `count` older events were discarded.
+     * Re-read `snapshot()` rather than relying on the missed events.
+     */
+    case eventsDropped(count: UInt64
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCounterEvent: FfiConverterRustBuffer {
+    typealias SwiftType = CounterEvent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CounterEvent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .stateChanged(snapshot: try FfiConverterTypeCounterStateSnapshot.read(from: &buf)
+        )
+        
+        case 2: return .operationProgress(operationId: try FfiConverterUInt64.read(from: &buf), completed: try FfiConverterUInt32.read(from: &buf), total: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 3: return .operationFinished(operationId: try FfiConverterUInt64.read(from: &buf), outcome: try FfiConverterTypeOperationOutcome.read(from: &buf)
+        )
+        
+        case 4: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CounterEvent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .stateChanged(snapshot):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCounterStateSnapshot.write(snapshot, into: &buf)
+            
+        
+        case let .operationProgress(operationId,completed,total):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt64.write(operationId, into: &buf)
+            FfiConverterUInt32.write(completed, into: &buf)
+            FfiConverterUInt32.write(total, into: &buf)
+            
+        
+        case let .operationFinished(operationId,outcome):
+            writeInt(&buf, Int32(3))
+            FfiConverterUInt64.write(operationId, into: &buf)
+            FfiConverterTypeOperationOutcome.write(outcome, into: &buf)
+            
+        
+        case let .eventsDropped(count):
+            writeInt(&buf, Int32(4))
+            FfiConverterUInt64.write(count, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterEvent_lift(_ buf: RustBuffer) throws -> CounterEvent {
+    return try FfiConverterTypeCounterEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCounterEvent_lower(_ value: CounterEvent) -> RustBuffer {
+    return FfiConverterTypeCounterEvent.lower(value)
+}
+
+
+
+extension CounterEvent: Equatable, Hashable {}
+
+
+
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
 
@@ -804,12 +1567,25 @@ extension ForgeActionKind: Equatable, Hashable {}
 
 
 
+/**
+ * Every error that crosses the FFI boundary.
+ *
+ * Grouped by what the host should do about it (see `docs/ffi-policy.md`):
+ * domain validation, persistence, corrupt or newer data, cancellation,
+ * lifecycle/resource, and internal failures. `reason` fields carry diagnostic
+ * text for logs; they are not meant to be shown to users verbatim.
+ */
 public enum ForgeAppError {
 
     
     
     case WouldUnderflow
     case WouldOverflow
+    /**
+     * An argument was outside what the operation accepts.
+     */
+    case InvalidInput(reason: String
+    )
     case PersistenceFailed(reason: String
     )
     /**
@@ -826,7 +1602,17 @@ public enum ForgeAppError {
     case PersistenceReadFailed(reason: String
     )
     case StorageDirectoryUnavailable
-    case InternalFailure
+    case Cancelled
+    /**
+     * The app instance has been shut down (or dropped); open a new one.
+     */
+    case ShutDown
+    /**
+     * Only one long-running operation runs at a time.
+     */
+    case OperationInProgress
+    case InternalFailure(reason: String
+    )
 }
 
 
@@ -845,21 +1631,29 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
         
         case 1: return .WouldUnderflow
         case 2: return .WouldOverflow
-        case 3: return .PersistenceFailed(
+        case 3: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .CorruptPersistence(
+        case 4: return .PersistenceFailed(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .UnsupportedSchemaVersion(
+        case 5: return .CorruptPersistence(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .UnsupportedSchemaVersion(
             found: try FfiConverterUInt32.read(from: &buf), 
             supported: try FfiConverterUInt32.read(from: &buf)
             )
-        case 6: return .PersistenceReadFailed(
+        case 7: return .PersistenceReadFailed(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .StorageDirectoryUnavailable
-        case 8: return .InternalFailure
+        case 8: return .StorageDirectoryUnavailable
+        case 9: return .Cancelled
+        case 10: return .ShutDown
+        case 11: return .OperationInProgress
+        case 12: return .InternalFailure(
+            reason: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -880,34 +1674,52 @@ public struct FfiConverterTypeForgeAppError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(2))
         
         
-        case let .PersistenceFailed(reason):
+        case let .InvalidInput(reason):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .CorruptPersistence(reason):
+        case let .PersistenceFailed(reason):
             writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .UnsupportedSchemaVersion(found,supported):
+        case let .CorruptPersistence(reason):
             writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .UnsupportedSchemaVersion(found,supported):
+            writeInt(&buf, Int32(6))
             FfiConverterUInt32.write(found, into: &buf)
             FfiConverterUInt32.write(supported, into: &buf)
             
         
         case let .PersistenceReadFailed(reason):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .StorageDirectoryUnavailable:
-            writeInt(&buf, Int32(7))
-        
-        
-        case .InternalFailure:
             writeInt(&buf, Int32(8))
         
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(9))
+        
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(10))
+        
+        
+        case .OperationInProgress:
+            writeInt(&buf, Int32(11))
+        
+        
+        case let .InternalFailure(reason):
+            writeInt(&buf, Int32(12))
+            FfiConverterString.write(reason, into: &buf)
+            
         }
     }
 }
@@ -920,6 +1732,167 @@ extension ForgeAppError: Foundation.LocalizedError {
         String(reflecting: self)
     }
 }
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * How [`open_counter_app`] treats existing data.
+ */
+
+public enum OpenMode {
+    
+    /**
+     * Restore valid data; report corrupt data as `CorruptPersistence`.
+     */
+    case normal
+    /**
+     * Like [`recover_counter_app`]: replace the data with a fresh counter
+     * **only** if it is corrupt. Newer-schema or unreadable data is never
+     * overwritten.
+     */
+    case recoverCorruptData
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOpenMode: FfiConverterRustBuffer {
+    typealias SwiftType = OpenMode
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OpenMode {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .normal
+        
+        case 2: return .recoverCorruptData
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: OpenMode, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .normal:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .recoverCorruptData:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpenMode_lift(_ buf: RustBuffer) throws -> OpenMode {
+    return try FfiConverterTypeOpenMode.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOpenMode_lower(_ value: OpenMode) -> RustBuffer {
+    return FfiConverterTypeOpenMode.lower(value)
+}
+
+
+
+extension OpenMode: Equatable, Hashable {}
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * How a long-running operation ended.
+ */
+
+public enum OperationOutcome {
+    
+    case completed(snapshot: CounterStateSnapshot
+    )
+    /**
+     * Cancelled before its commit point; nothing was changed.
+     */
+    case cancelled
+    /**
+     * Failed; nothing was changed.
+     */
+    case failed(error: ForgeAppError
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeOperationOutcome: FfiConverterRustBuffer {
+    typealias SwiftType = OperationOutcome
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> OperationOutcome {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .completed(snapshot: try FfiConverterTypeCounterStateSnapshot.read(from: &buf)
+        )
+        
+        case 2: return .cancelled
+        
+        case 3: return .failed(error: try FfiConverterTypeForgeAppError.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: OperationOutcome, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .completed(snapshot):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeCounterStateSnapshot.write(snapshot, into: &buf)
+            
+        
+        case .cancelled:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .failed(error):
+            writeInt(&buf, Int32(3))
+            FfiConverterTypeForgeAppError.write(error, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOperationOutcome_lift(_ buf: RustBuffer) throws -> OperationOutcome {
+    return try FfiConverterTypeOperationOutcome.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeOperationOutcome_lower(_ value: OperationOutcome) -> RustBuffer {
+    return FfiConverterTypeOperationOutcome.lower(value)
+}
+
+
+
+extension OperationOutcome: Equatable, Hashable {}
+
+
 
 // Note that we don't yet support `indirect` for enums.
 // See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
@@ -984,6 +1957,100 @@ public func FfiConverterTypeStartupKind_lower(_ value: StartupKind) -> RustBuffe
 extension StartupKind: Equatable, Hashable {}
 
 
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeOperationStatus: FfiConverterRustBuffer {
+    typealias SwiftType = OperationStatus?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeOperationStatus.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeOperationStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeCounterEvent: FfiConverterRustBuffer {
+    typealias SwiftType = CounterEvent?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCounterEvent.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCounterEvent.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
+private let UNIFFI_RUST_FUTURE_POLL_MAYBE_READY: Int8 = 1
+
+fileprivate let uniffiContinuationHandleMap = UniffiHandleMap<UnsafeContinuation<Int8, Never>>()
+
+fileprivate func uniffiRustCallAsync<F, T>(
+    rustFutureFunc: () -> UInt64,
+    pollFunc: (UInt64, @escaping UniffiRustFutureContinuationCallback, UInt64) -> (),
+    completeFunc: (UInt64, UnsafeMutablePointer<RustCallStatus>) -> F,
+    freeFunc: (UInt64) -> (),
+    liftFunc: (F) throws -> T,
+    errorHandler: ((RustBuffer) throws -> Swift.Error)?
+) async throws -> T {
+    // Make sure to call uniffiEnsureInitialized() since future creation doesn't have a
+    // RustCallStatus param, so doesn't use makeRustCall()
+    uniffiEnsureInitialized()
+    let rustFuture = rustFutureFunc()
+    defer {
+        freeFunc(rustFuture)
+    }
+    var pollResult: Int8;
+    repeat {
+        pollResult = await withUnsafeContinuation {
+            pollFunc(
+                rustFuture,
+                uniffiFutureContinuationCallback,
+                uniffiContinuationHandleMap.insert(obj: $0)
+            )
+        }
+    } while pollResult != UNIFFI_RUST_FUTURE_POLL_READY
+
+    return try liftFunc(makeRustCall(
+        { completeFunc(rustFuture, $0) },
+        errorHandler: errorHandler
+    ))
+}
+
+// Callback handlers for an async calls.  These are invoked by Rust when the future is ready.  They
+// lift the return value or error and resume the suspended function.
+fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: Int8) {
+    if let continuation = try? uniffiContinuationHandleMap.remove(handle: handle) {
+        continuation.resume(returning: pollResult)
+    } else {
+        print("uniffiFutureContinuationCallback invalid handle")
+    }
+}
 /**
  * Spike / diagnostics: fixed greeting from Rust (used in toolchain validation).
  */
@@ -994,9 +2061,28 @@ public func forgeGreeting() -> String {
 })
 }
 /**
+ * Opens the app without blocking the caller: state is loaded on the
+ * instance's command thread.
+ */
+public func openCounterApp(storageDirectory: String, mode: OpenMode)async throws  -> ForgeCounterApp {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_func_open_counter_app(FfiConverterString.lower(storageDirectory),FfiConverterTypeOpenMode.lower(mode)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_pointer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_pointer,
+            freeFunc: ffi_forge_ffi_rust_future_free_pointer,
+            liftFunc: FfiConverterTypeForgeCounterApp.lift,
+            errorHandler: FfiConverterTypeForgeAppError.lift
+        )
+}
+/**
  * Opens the app, replacing persisted data with a fresh counter **only** if it is
  * corrupt. Valid data is restored; data from a newer build
  * (`UnsupportedSchemaVersion`) or unreadable data is never overwritten.
+ * Synchronous; prefer `open_counter_app(…, OpenMode::RecoverCorruptData)`.
  */
 public func recoverCounterApp(storageDirectory: String)throws  -> ForgeCounterApp {
     return try  FfiConverterTypeForgeCounterApp.lift(try rustCallWithError(FfiConverterTypeForgeAppError.lift) {
@@ -1024,19 +2110,61 @@ private var initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_forge_greeting() != 62083) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_recover_counter_app() != 9525) {
+    if (uniffi_forge_ffi_checksum_func_open_counter_app() != 8213) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 46578) {
+    if (uniffi_forge_ffi_checksum_func_recover_counter_app() != 61377) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 51282) {
+    if (uniffi_forge_ffi_checksum_method_countereventsubscription_cancel() != 43960) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_countereventsubscription_next() != 54926) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_counteroperation_cancel() != 21852) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_counteroperation_id() != 1084) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_counteroperation_result() != 25763) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_counteroperation_status() != 29480) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_active_operation() != 61192) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 51868) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_apply_action() != 60536) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_is_shut_down() != 10214) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_shutdown() != 29158) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 11368) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_start_bulk_add() != 64015) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind() != 37697) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 60778) {
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_subscribe() != 24900) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count() != 36569) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 34964) {
         return InitializationResult.apiChecksumMismatch
     }
 

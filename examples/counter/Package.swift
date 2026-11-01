@@ -37,9 +37,17 @@ let package = Package(
                 .unsafeFlags(["-L", macosLibSearch], .when(platforms: [.macOS])),
             ]
         ),
+        // Thin Swift integration layer over the generated bindings: async/await,
+        // event sequences, cancellation, Swift error types. Views and view models
+        // import this, not ForgeFFI.
+        .target(
+            name: "CounterBridge",
+            dependencies: ["ForgeFFI"],
+            path: "Sources/CounterBridge"
+        ),
         .target(
             name: "CounterApp",
-            dependencies: ["ForgeFFI"],
+            dependencies: ["CounterBridge"],
             path: "Sources/CounterApp"
         ),
         .executableTarget(
@@ -49,7 +57,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CounterAppTests",
-            dependencies: ["CounterApp"],
+            dependencies: ["CounterApp", "CounterBridge"],
             path: "Tests/CounterAppTests"
         ),
     ]

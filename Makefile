@@ -1,4 +1,4 @@
-.PHONY: test test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: test check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
@@ -25,6 +25,9 @@ bindings-kotlin:
 check-bindings:
 	./scripts/check-bindings.sh
 
+check-template:
+	./scripts/check-template-sync.sh
+
 doctor:
 	./scripts/validate-toolchain.sh
 
@@ -34,4 +37,4 @@ package-ios:
 package-android:
 	./scripts/package-android-library.sh
 
-validate: fmt clippy test check-bindings
+validate: fmt clippy test check-bindings check-template

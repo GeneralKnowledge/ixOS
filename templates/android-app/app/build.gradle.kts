@@ -97,6 +97,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("net.java.dev.jna:jna:5.15.0@aar")
+    // The generated Kotlin bindings use coroutines for the Rust async exports
+    // (suspend functions), even though this host calls only the sync API.
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
 
     testImplementation("junit:junit:4.13.2")
     // Desktop JNA (with its host native dispatcher) for JVM unit tests.

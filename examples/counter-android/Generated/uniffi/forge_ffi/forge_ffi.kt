@@ -31,6 +31,13 @@ import java.nio.charset.CodingErrorAction
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlinx.coroutines.CancellableContinuation
+import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 
 // This is a helper for safely working with byte buffers returned from the Rust code.
 // A rust-owned buffer is represented by its capacity, its current length, and a
@@ -726,6 +733,38 @@ internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -745,20 +784,56 @@ internal interface UniffiLib : Library {
         }
     }
 
+    fun uniffi_forge_ffi_fn_clone_countereventsubscription(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Pointer
+    fun uniffi_forge_ffi_fn_free_countereventsubscription(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_forge_ffi_fn_method_countereventsubscription_cancel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_forge_ffi_fn_method_countereventsubscription_next(`ptr`: Pointer,
+    ): Long
+    fun uniffi_forge_ffi_fn_clone_counteroperation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Pointer
+    fun uniffi_forge_ffi_fn_free_counteroperation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_forge_ffi_fn_method_counteroperation_cancel(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_forge_ffi_fn_method_counteroperation_id(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    fun uniffi_forge_ffi_fn_method_counteroperation_result(`ptr`: Pointer,
+    ): Long
+    fun uniffi_forge_ffi_fn_method_counteroperation_status(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_forge_ffi_fn_clone_forgecounterapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
     fun uniffi_forge_ffi_fn_free_forgecounterapp(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_forge_ffi_fn_constructor_forgecounterapp_new(`storageDirectory`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_forge_ffi_fn_method_forgecounterapp_apply(`ptr`: Pointer,`action`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(`ptr`: Pointer,`action`: RustBuffer.ByValue,
+    ): Long
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(`ptr`: Pointer,
+    ): Long
     fun uniffi_forge_ffi_fn_method_forgecounterapp_snapshot(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(`ptr`: Pointer,`amount`: Int,`stepDelayMs`: Int,uniffi_out_err: UniffiRustCallStatus, 
+    ): Pointer
     fun uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Pointer
+    fun uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
     fun uniffi_forge_ffi_fn_func_forge_greeting(uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_forge_ffi_fn_func_open_counter_app(`storageDirectory`: RustBuffer.ByValue,`mode`: RustBuffer.ByValue,
+    ): Long
     fun uniffi_forge_ffi_fn_func_recover_counter_app(`storageDirectory`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Pointer
     fun ffi_forge_ffi_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -875,13 +950,41 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_forge_ffi_checksum_func_forge_greeting(
     ): Short
+    fun uniffi_forge_ffi_checksum_func_open_counter_app(
+    ): Short
     fun uniffi_forge_ffi_checksum_func_recover_counter_app(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_countereventsubscription_cancel(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_countereventsubscription_next(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_counteroperation_cancel(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_counteroperation_id(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_counteroperation_result(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_counteroperation_status(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_active_operation(
     ): Short
     fun uniffi_forge_ffi_checksum_method_forgecounterapp_apply(
     ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_apply_action(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_is_shut_down(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_shutdown(
+    ): Short
     fun uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot(
     ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_start_bulk_add(
+    ): Short
     fun uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_subscribe(
+    ): Short
+    fun uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count(
     ): Short
     fun uniffi_forge_ffi_checksum_constructor_forgecounterapp_new(
     ): Short
@@ -905,24 +1008,106 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_forge_ffi_checksum_func_forge_greeting() != 62083.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_forge_ffi_checksum_func_recover_counter_app() != 9525.toShort()) {
+    if (lib.uniffi_forge_ffi_checksum_func_open_counter_app() != 8213.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 46578.toShort()) {
+    if (lib.uniffi_forge_ffi_checksum_func_recover_counter_app() != 61377.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 51282.toShort()) {
+    if (lib.uniffi_forge_ffi_checksum_method_countereventsubscription_cancel() != 43960.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_countereventsubscription_next() != 54926.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_counteroperation_cancel() != 21852.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_counteroperation_id() != 1084.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_counteroperation_result() != 25763.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_counteroperation_status() != 29480.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_active_operation() != 61192.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_apply() != 51868.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_apply_action() != 60536.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_is_shut_down() != 10214.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_shutdown() != 29158.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_snapshot() != 11368.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_start_bulk_add() != 64015.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_startup_kind() != 37697.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 60778.toShort()) {
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_subscribe() != 24900.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count() != 36569.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 34964.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
 
 // Async support
+// Async return type handlers
+
+internal const val UNIFFI_RUST_FUTURE_POLL_READY = 0.toByte()
+internal const val UNIFFI_RUST_FUTURE_POLL_MAYBE_READY = 1.toByte()
+
+internal val uniffiContinuationHandleMap = UniffiHandleMap<CancellableContinuation<Byte>>()
+
+// FFI type for Rust future continuations
+internal object uniffiRustFutureContinuationCallbackImpl: UniffiRustFutureContinuationCallback {
+    override fun callback(data: Long, pollResult: Byte) {
+        uniffiContinuationHandleMap.remove(data).resume(pollResult)
+    }
+}
+
+internal suspend fun<T, F, E: kotlin.Exception> uniffiRustCallAsync(
+    rustFuture: Long,
+    pollFunc: (Long, UniffiRustFutureContinuationCallback, Long) -> Unit,
+    completeFunc: (Long, UniffiRustCallStatus) -> F,
+    freeFunc: (Long) -> Unit,
+    liftFunc: (F) -> T,
+    errorHandler: UniffiRustCallStatusErrorHandler<E>
+): T {
+    try {
+        do {
+            val pollResult = suspendCancellableCoroutine<Byte> { continuation ->
+                pollFunc(
+                    rustFuture,
+                    uniffiRustFutureContinuationCallbackImpl,
+                    uniffiContinuationHandleMap.insert(continuation)
+                )
+            }
+        } while (pollResult != UNIFFI_RUST_FUTURE_POLL_READY);
+
+        return liftFunc(
+            uniffiRustCallWithError(errorHandler, { status -> completeFunc(rustFuture, status) })
+        )
+    } finally {
+        freeFunc(rustFuture)
+    }
+}
 
 // Public interface members begin here.
 
@@ -993,6 +1178,29 @@ public object FfiConverterUInt: FfiConverter<UInt, Int> {
 /**
  * @suppress
  */
+public object FfiConverterULong: FfiConverter<ULong, Long> {
+    override fun lift(value: Long): ULong {
+        return value.toULong()
+    }
+
+    override fun read(buf: ByteBuffer): ULong {
+        return lift(buf.getLong())
+    }
+
+    override fun lower(value: ULong): Long {
+        return value.toLong()
+    }
+
+    override fun allocationSize(value: ULong) = 8UL
+
+    override fun write(value: ULong, buf: ByteBuffer) {
+        buf.putLong(value.toLong())
+    }
+}
+
+/**
+ * @suppress
+ */
 public object FfiConverterLong: FfiConverter<Long, Long> {
     override fun lift(value: Long): Long {
         return value
@@ -1010,6 +1218,29 @@ public object FfiConverterLong: FfiConverter<Long, Long> {
 
     override fun write(value: Long, buf: ByteBuffer) {
         buf.putLong(value)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterBoolean: FfiConverter<Boolean, Byte> {
+    override fun lift(value: Byte): Boolean {
+        return value.toInt() != 0
+    }
+
+    override fun read(buf: ByteBuffer): Boolean {
+        return lift(buf.get())
+    }
+
+    override fun lower(value: Boolean): Byte {
+        return if (value) 1.toByte() else 0.toByte()
+    }
+
+    override fun allocationSize(value: Boolean) = 1UL
+
+    override fun write(value: Boolean, buf: ByteBuffer) {
+        buf.put(lower(value))
     }
 }
 
@@ -1232,17 +1463,670 @@ private class JavaLangRefCleanable(
 ) : UniffiCleaner.Cleanable {
     override fun clean() = cleanable.clean()
 }
-public interface ForgeCounterAppInterface {
+/**
+ * One subscriber's stream of [`CounterEvent`]s.
+ *
+ * Owned by the host. Use it from a single consumer: concurrent `next()` calls
+ * on the same subscription are not supported. The subscription ends when the
+ * host calls `cancel()`, when it is released, or when the app shuts down.
+ */
+public interface CounterEventSubscriptionInterface {
     
-    fun `apply`(`action`: ForgeActionKind): ActionOutcome
+    /**
+     * Ends the subscription. A pending `next()` returns `None` straight away
+     * and undelivered events are discarded. Safe to call more than once.
+     */
+    fun `cancel`()
     
-    fun `snapshot`(): CounterStateSnapshot
-    
-    fun `startupKind`(): StartupKind
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    suspend fun `next`(): CounterEvent?
     
     companion object
 }
 
+/**
+ * One subscriber's stream of [`CounterEvent`]s.
+ *
+ * Owned by the host. Use it from a single consumer: concurrent `next()` calls
+ * on the same subscription are not supported. The subscription ends when the
+ * host calls `cancel()`, when it is released, or when the app shuts down.
+ */
+open class CounterEventSubscription: Disposable, AutoCloseable, CounterEventSubscriptionInterface {
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_free_countereventsubscription(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_clone_countereventsubscription(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` straight away
+     * and undelivered events are discarded. Safe to call more than once.
+     */override fun `cancel`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_countereventsubscription_cancel(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `next`() : CounterEvent? {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_countereventsubscription_next(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterOptionalTypeCounterEvent.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+
+    
+    
+    companion object
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCounterEventSubscription: FfiConverter<CounterEventSubscription, Pointer> {
+
+    override fun lower(value: CounterEventSubscription): Pointer {
+        return value.uniffiClonePointer()
+    }
+
+    override fun lift(value: Pointer): CounterEventSubscription {
+        return CounterEventSubscription(value)
+    }
+
+    override fun read(buf: ByteBuffer): CounterEventSubscription {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: CounterEventSubscription) = 8UL
+
+    override fun write(value: CounterEventSubscription, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Handle to a long-running operation. Releasing it does not cancel the
+ * operation; its outcome is also delivered as an `OperationFinished` event.
+ */
+public interface CounterOperationInterface {
+    
+    /**
+     * Requests cancellation. Before the commit point the operation stops and
+     * `result()` fails with `Cancelled`; after it, this does nothing and
+     * `result()` returns the committed state.
+     */
+    fun `cancel`()
+    
+    fun `id`(): kotlin.ULong
+    
+    /**
+     * Resolves when the operation ends. Can be awaited any number of times.
+     */
+    suspend fun `result`(): CounterStateSnapshot
+    
+    fun `status`(): OperationStatus
+    
+    companion object
+}
+
+/**
+ * Handle to a long-running operation. Releasing it does not cancel the
+ * operation; its outcome is also delivered as an `OperationFinished` event.
+ */
+open class CounterOperation: Disposable, AutoCloseable, CounterOperationInterface {
+
+    constructor(pointer: Pointer) {
+        this.pointer = pointer
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    /**
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noPointer: NoPointer) {
+        this.pointer = null
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
+    }
+
+    protected val pointer: Pointer?
+    protected val cleanable: UniffiCleaner.Cleanable
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithPointer(block: (ptr: Pointer) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the pointer being freed concurrently.
+        try {
+            return block(this.uniffiClonePointer())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val pointer: Pointer?) : Runnable {
+        override fun run() {
+            pointer?.let { ptr ->
+                uniffiRustCall { status ->
+                    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_free_counteroperation(ptr, status)
+                }
+            }
+        }
+    }
+
+    fun uniffiClonePointer(): Pointer {
+        return uniffiRustCall() { status ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_clone_counteroperation(pointer!!, status)
+        }
+    }
+
+    
+    /**
+     * Requests cancellation. Before the commit point the operation stops and
+     * `result()` fails with `Cancelled`; after it, this does nothing and
+     * `result()` returns the committed state.
+     */override fun `cancel`()
+        = 
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_counteroperation_cancel(
+        it, _status)
+}
+    }
+    
+    
+
+    override fun `id`(): kotlin.ULong {
+            return FfiConverterULong.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_counteroperation_id(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Resolves when the operation ends. Can be awaited any number of times.
+     */
+    @Throws(ForgeAppException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `result`() : CounterStateSnapshot {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_counteroperation_result(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeCounterStateSnapshot.lift(it) },
+        // Error FFI converter
+        ForgeAppException.ErrorHandler,
+    )
+    }
+
+    override fun `status`(): OperationStatus {
+            return FfiConverterTypeOperationStatus.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_counteroperation_status(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+
+    
+    
+    companion object
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCounterOperation: FfiConverter<CounterOperation, Pointer> {
+
+    override fun lower(value: CounterOperation): Pointer {
+        return value.uniffiClonePointer()
+    }
+
+    override fun lift(value: Pointer): CounterOperation {
+        return CounterOperation(value)
+    }
+
+    override fun read(buf: ByteBuffer): CounterOperation {
+        // The Rust code always writes pointers as 8 bytes, and will
+        // fail to compile if they don't fit.
+        return lift(Pointer(buf.getLong()))
+    }
+
+    override fun allocationSize(value: CounterOperation) = 8UL
+
+    override fun write(value: CounterOperation, buf: ByteBuffer) {
+        // The Rust code always expects pointers written as 8 bytes,
+        // and will fail to compile if they don't fit.
+        buf.putLong(Pointer.nativeValue(lower(value)))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a Pointer/Arc<T>
+// to the live Rust struct on the other side of the FFI.
+//
+// Each instance implements core operations for working with the Rust `Arc<T>` and the
+// Kotlin Pointer to work with the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque pointer to the underlying Rust struct.
+//     Method calls need to read this pointer from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its pointer should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the pointer, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the pointer, but is interrupted
+//      before it can pass the pointer over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read pointer value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * One Rust app instance. Thread-safe; share it freely between host
+ * components. Each instance owns its storage directory: do not open two
+ * instances on the same directory at once.
+ */
+public interface ForgeCounterAppInterface {
+    
+    /**
+     * The running long-running operation, if any.
+     */
+    fun `activeOperation`(): OperationStatus?
+    
+    /**
+     * Synchronous form of [`Self::apply_action`]; blocks the caller until the
+     * change is saved. Kept for existing callers such as the Android host.
+     */
+    fun `apply`(`action`: ForgeActionKind): ActionOutcome
+    
+    /**
+     * Applies an action on the instance's command thread. Resolves after the
+     * change has been saved (or rejected). Once sent it always runs to
+     * completion; dropping or cancelling the caller does not undo it.
+     */
+    suspend fun `applyAction`(`action`: ForgeActionKind): ActionOutcome
+    
+    fun `isShutDown`(): kotlin.Boolean
+    
+    /**
+     * Shuts the instance down: new commands fail with `ShutDown`, the running
+     * operation is cancelled, commands already accepted finish, every event
+     * subscription ends. Resolves when all of that is done. Idempotent.
+     * Queries keep answering with the last committed state.
+     */
+    suspend fun `shutdown`()
+    
+    /**
+     * The last committed state. Answers immediately, even while a save is in
+     * progress.
+     */
+    fun `snapshot`(): CounterStateSnapshot
+    
+    /**
+     * Starts adding `amount` as a long-running, cancellable operation (it
+     * stands in for work such as an import). Progress arrives as
+     * `OperationProgress` events; the whole amount is committed at the end or
+     * not at all. `step_delay_ms` is the simulated work per progress step
+     * (up to 20 steps).
+     */
+    fun `startBulkAdd`(`amount`: kotlin.UInt, `stepDelayMs`: kotlin.UInt): CounterOperation
+    
+    fun `startupKind`(): StartupKind
+    
+    /**
+     * A new, independent event subscription. See
+     * [`CounterEventSubscription`] for its lifetime rules.
+     */
+    fun `subscribe`(): CounterEventSubscription
+    
+    /**
+     * Number of live subscriptions (diagnostics and tests).
+     */
+    fun `subscriptionCount`(): kotlin.UInt
+    
+    companion object
+}
+
+/**
+ * One Rust app instance. Thread-safe; share it freely between host
+ * components. Each instance owns its storage directory: do not open two
+ * instances on the same directory at once.
+ */
 open class ForgeCounterApp: Disposable, AutoCloseable, ForgeCounterAppInterface {
 
     constructor(pointer: Pointer) {
@@ -1260,6 +2144,10 @@ open class ForgeCounterApp: Disposable, AutoCloseable, ForgeCounterAppInterface 
         this.pointer = null
         this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(pointer))
     }
+    /**
+     * Opens the app synchronously, blocking the caller while state loads.
+     * Prefer [`open_counter_app`] from UI code.
+     */
     constructor(`storageDirectory`: kotlin.String) :
         this(
     uniffiRustCallWithError(ForgeAppException) { _status ->
@@ -1332,6 +2220,25 @@ open class ForgeCounterApp: Disposable, AutoCloseable, ForgeCounterAppInterface 
     }
 
     
+    /**
+     * The running long-running operation, if any.
+     */override fun `activeOperation`(): OperationStatus? {
+            return FfiConverterOptionalTypeOperationStatus.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_active_operation(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Synchronous form of [`Self::apply_action`]; blocks the caller until the
+     * change is saved. Kept for existing callers such as the Android host.
+     */
     @Throws(ForgeAppException::class)override fun `apply`(`action`: ForgeActionKind): ActionOutcome {
             return FfiConverterTypeActionOutcome.lift(
     callWithPointer {
@@ -1345,6 +2252,75 @@ open class ForgeCounterApp: Disposable, AutoCloseable, ForgeCounterAppInterface 
     
 
     
+    /**
+     * Applies an action on the instance's command thread. Resolves after the
+     * change has been saved (or rejected). Once sent it always runs to
+     * completion; dropping or cancelling the caller does not undo it.
+     */
+    @Throws(ForgeAppException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `applyAction`(`action`: ForgeActionKind) : ActionOutcome {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_apply_action(
+                thisPtr,
+                FfiConverterTypeForgeActionKind.lower(`action`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeActionOutcome.lift(it) },
+        // Error FFI converter
+        ForgeAppException.ErrorHandler,
+    )
+    }
+
+    override fun `isShutDown`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_is_shut_down(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Shuts the instance down: new commands fail with `ShutDown`, the running
+     * operation is cancelled, commands already accepted finish, every event
+     * subscription ends. Resolves when all of that is done. Idempotent.
+     * Queries keep answering with the last committed state.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `shutdown`() {
+        return uniffiRustCallAsync(
+        callWithPointer { thisPtr ->
+            UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_shutdown(
+                thisPtr,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_free_void(future) },
+        // lift function
+        { Unit },
+        
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+    /**
+     * The last committed state. Answers immediately, even while a save is in
+     * progress.
+     */
     @Throws(ForgeAppException::class)override fun `snapshot`(): CounterStateSnapshot {
             return FfiConverterTypeCounterStateSnapshot.lift(
     callWithPointer {
@@ -1358,11 +2334,63 @@ open class ForgeCounterApp: Disposable, AutoCloseable, ForgeCounterAppInterface 
     
 
     
+    /**
+     * Starts adding `amount` as a long-running, cancellable operation (it
+     * stands in for work such as an import). Progress arrives as
+     * `OperationProgress` events; the whole amount is committed at the end or
+     * not at all. `step_delay_ms` is the simulated work per progress step
+     * (up to 20 steps).
+     */
+    @Throws(ForgeAppException::class)override fun `startBulkAdd`(`amount`: kotlin.UInt, `stepDelayMs`: kotlin.UInt): CounterOperation {
+            return FfiConverterTypeCounterOperation.lift(
+    callWithPointer {
+    uniffiRustCallWithError(ForgeAppException) { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_start_bulk_add(
+        it, FfiConverterUInt.lower(`amount`),FfiConverterUInt.lower(`stepDelayMs`),_status)
+}
+    }
+    )
+    }
+    
+
+    
     @Throws(ForgeAppException::class)override fun `startupKind`(): StartupKind {
             return FfiConverterTypeStartupKind.lift(
     callWithPointer {
     uniffiRustCallWithError(ForgeAppException) { _status ->
     UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_startup_kind(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * A new, independent event subscription. See
+     * [`CounterEventSubscription`] for its lifetime rules.
+     */
+    @Throws(ForgeAppException::class)override fun `subscribe`(): CounterEventSubscription {
+            return FfiConverterTypeCounterEventSubscription.lift(
+    callWithPointer {
+    uniffiRustCallWithError(ForgeAppException) { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_subscribe(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Number of live subscriptions (diagnostics and tests).
+     */override fun `subscriptionCount`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(
         it, _status)
 }
     }
@@ -1464,6 +2492,193 @@ public object FfiConverterTypeCounterStateSnapshot: FfiConverterRustBuffer<Count
 
 
 
+/**
+ * Point-in-time status of a long-running operation.
+ */
+data class OperationStatus (
+    var `operationId`: kotlin.ULong, 
+    var `completed`: kotlin.UInt, 
+    var `total`: kotlin.UInt, 
+    var `cancelRequested`: kotlin.Boolean, 
+    var `finished`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOperationStatus: FfiConverterRustBuffer<OperationStatus> {
+    override fun read(buf: ByteBuffer): OperationStatus {
+        return OperationStatus(
+            FfiConverterULong.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: OperationStatus) = (
+            FfiConverterULong.allocationSize(value.`operationId`) +
+            FfiConverterUInt.allocationSize(value.`completed`) +
+            FfiConverterUInt.allocationSize(value.`total`) +
+            FfiConverterBoolean.allocationSize(value.`cancelRequested`) +
+            FfiConverterBoolean.allocationSize(value.`finished`)
+    )
+
+    override fun write(value: OperationStatus, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`operationId`, buf)
+            FfiConverterUInt.write(value.`completed`, buf)
+            FfiConverterUInt.write(value.`total`, buf)
+            FfiConverterBoolean.write(value.`cancelRequested`, buf)
+            FfiConverterBoolean.write(value.`finished`, buf)
+    }
+}
+
+
+
+/**
+ * Something meaningful that happened in the Rust app.
+ *
+ * Events are emitted only after the change they describe has been persisted.
+ */
+sealed class CounterEvent {
+    
+    /**
+     * The committed counter value changed (from any command or operation).
+     */
+    data class StateChanged(
+        val `snapshot`: CounterStateSnapshot) : CounterEvent() {
+        companion object
+    }
+    
+    /**
+     * A long-running operation made progress. `completed` ≤ `total`.
+     */
+    data class OperationProgress(
+        val `operationId`: kotlin.ULong, 
+        val `completed`: kotlin.UInt, 
+        val `total`: kotlin.UInt) : CounterEvent() {
+        companion object
+    }
+    
+    /**
+     * A long-running operation ended. Exactly one per operation.
+     */
+    data class OperationFinished(
+        val `operationId`: kotlin.ULong, 
+        val `outcome`: OperationOutcome) : CounterEvent() {
+        companion object
+    }
+    
+    /**
+     * This subscriber fell behind and `count` older events were discarded.
+     * Re-read `snapshot()` rather than relying on the missed events.
+     */
+    data class EventsDropped(
+        val `count`: kotlin.ULong) : CounterEvent() {
+        companion object
+    }
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeCounterEvent : FfiConverterRustBuffer<CounterEvent>{
+    override fun read(buf: ByteBuffer): CounterEvent {
+        return when(buf.getInt()) {
+            1 -> CounterEvent.StateChanged(
+                FfiConverterTypeCounterStateSnapshot.read(buf),
+                )
+            2 -> CounterEvent.OperationProgress(
+                FfiConverterULong.read(buf),
+                FfiConverterUInt.read(buf),
+                FfiConverterUInt.read(buf),
+                )
+            3 -> CounterEvent.OperationFinished(
+                FfiConverterULong.read(buf),
+                FfiConverterTypeOperationOutcome.read(buf),
+                )
+            4 -> CounterEvent.EventsDropped(
+                FfiConverterULong.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: CounterEvent) = when(value) {
+        is CounterEvent.StateChanged -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeCounterStateSnapshot.allocationSize(value.`snapshot`)
+            )
+        }
+        is CounterEvent.OperationProgress -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`operationId`)
+                + FfiConverterUInt.allocationSize(value.`completed`)
+                + FfiConverterUInt.allocationSize(value.`total`)
+            )
+        }
+        is CounterEvent.OperationFinished -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`operationId`)
+                + FfiConverterTypeOperationOutcome.allocationSize(value.`outcome`)
+            )
+        }
+        is CounterEvent.EventsDropped -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`count`)
+            )
+        }
+    }
+
+    override fun write(value: CounterEvent, buf: ByteBuffer) {
+        when(value) {
+            is CounterEvent.StateChanged -> {
+                buf.putInt(1)
+                FfiConverterTypeCounterStateSnapshot.write(value.`snapshot`, buf)
+                Unit
+            }
+            is CounterEvent.OperationProgress -> {
+                buf.putInt(2)
+                FfiConverterULong.write(value.`operationId`, buf)
+                FfiConverterUInt.write(value.`completed`, buf)
+                FfiConverterUInt.write(value.`total`, buf)
+                Unit
+            }
+            is CounterEvent.OperationFinished -> {
+                buf.putInt(3)
+                FfiConverterULong.write(value.`operationId`, buf)
+                FfiConverterTypeOperationOutcome.write(value.`outcome`, buf)
+                Unit
+            }
+            is CounterEvent.EventsDropped -> {
+                buf.putInt(4)
+                FfiConverterULong.write(value.`count`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 
 enum class ForgeActionKind {
     
@@ -1497,6 +2712,14 @@ public object FfiConverterTypeForgeActionKind: FfiConverterRustBuffer<ForgeActio
 
 
 
+/**
+ * Every error that crosses the FFI boundary.
+ *
+ * Grouped by what the host should do about it (see `docs/ffi-policy.md`):
+ * domain validation, persistence, corrupt or newer data, cancellation,
+ * lifecycle/resource, and internal failures. `reason` fields carry diagnostic
+ * text for logs; they are not meant to be shown to users verbatim.
+ */
 sealed class ForgeAppException: kotlin.Exception() {
     
     class WouldUnderflow(
@@ -1509,6 +2732,17 @@ sealed class ForgeAppException: kotlin.Exception() {
         ) : ForgeAppException() {
         override val message
             get() = ""
+    }
+    
+    /**
+     * An argument was outside what the operation accepts.
+     */
+    class InvalidInput(
+        
+        val `reason`: kotlin.String
+        ) : ForgeAppException() {
+        override val message
+            get() = "reason=${ `reason` }"
     }
     
     class PersistenceFailed(
@@ -1558,10 +2792,36 @@ sealed class ForgeAppException: kotlin.Exception() {
             get() = ""
     }
     
-    class InternalFailure(
+    class Cancelled(
         ) : ForgeAppException() {
         override val message
             get() = ""
+    }
+    
+    /**
+     * The app instance has been shut down (or dropped); open a new one.
+     */
+    class ShutDown(
+        ) : ForgeAppException() {
+        override val message
+            get() = ""
+    }
+    
+    /**
+     * Only one long-running operation runs at a time.
+     */
+    class OperationInProgress(
+        ) : ForgeAppException() {
+        override val message
+            get() = ""
+    }
+    
+    class InternalFailure(
+        
+        val `reason`: kotlin.String
+        ) : ForgeAppException() {
+        override val message
+            get() = "reason=${ `reason` }"
     }
     
 
@@ -1582,21 +2842,29 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
         return when(buf.getInt()) {
             1 -> ForgeAppException.WouldUnderflow()
             2 -> ForgeAppException.WouldOverflow()
-            3 -> ForgeAppException.PersistenceFailed(
+            3 -> ForgeAppException.InvalidInput(
                 FfiConverterString.read(buf),
                 )
-            4 -> ForgeAppException.CorruptPersistence(
+            4 -> ForgeAppException.PersistenceFailed(
                 FfiConverterString.read(buf),
                 )
-            5 -> ForgeAppException.UnsupportedSchemaVersion(
+            5 -> ForgeAppException.CorruptPersistence(
+                FfiConverterString.read(buf),
+                )
+            6 -> ForgeAppException.UnsupportedSchemaVersion(
                 FfiConverterUInt.read(buf),
                 FfiConverterUInt.read(buf),
                 )
-            6 -> ForgeAppException.PersistenceReadFailed(
+            7 -> ForgeAppException.PersistenceReadFailed(
                 FfiConverterString.read(buf),
                 )
-            7 -> ForgeAppException.StorageDirectoryUnavailable()
-            8 -> ForgeAppException.InternalFailure()
+            8 -> ForgeAppException.StorageDirectoryUnavailable()
+            9 -> ForgeAppException.Cancelled()
+            10 -> ForgeAppException.ShutDown()
+            11 -> ForgeAppException.OperationInProgress()
+            12 -> ForgeAppException.InternalFailure(
+                FfiConverterString.read(buf),
+                )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
         }
     }
@@ -1610,6 +2878,11 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
             is ForgeAppException.WouldOverflow -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+            )
+            is ForgeAppException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
             )
             is ForgeAppException.PersistenceFailed -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -1636,9 +2909,22 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
             )
+            is ForgeAppException.Cancelled -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is ForgeAppException.ShutDown -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is ForgeAppException.OperationInProgress -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
             is ForgeAppException.InternalFailure -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
+                + FfiConverterString.allocationSize(value.`reason`)
             )
         }
     }
@@ -1653,39 +2939,191 @@ public object FfiConverterTypeForgeAppError : FfiConverterRustBuffer<ForgeAppExc
                 buf.putInt(2)
                 Unit
             }
-            is ForgeAppException.PersistenceFailed -> {
+            is ForgeAppException.InvalidInput -> {
                 buf.putInt(3)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ForgeAppException.CorruptPersistence -> {
+            is ForgeAppException.PersistenceFailed -> {
                 buf.putInt(4)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ForgeAppException.UnsupportedSchemaVersion -> {
+            is ForgeAppException.CorruptPersistence -> {
                 buf.putInt(5)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ForgeAppException.UnsupportedSchemaVersion -> {
+                buf.putInt(6)
                 FfiConverterUInt.write(value.`found`, buf)
                 FfiConverterUInt.write(value.`supported`, buf)
                 Unit
             }
             is ForgeAppException.PersistenceReadFailed -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
             is ForgeAppException.StorageDirectoryUnavailable -> {
-                buf.putInt(7)
+                buf.putInt(8)
+                Unit
+            }
+            is ForgeAppException.Cancelled -> {
+                buf.putInt(9)
+                Unit
+            }
+            is ForgeAppException.ShutDown -> {
+                buf.putInt(10)
+                Unit
+            }
+            is ForgeAppException.OperationInProgress -> {
+                buf.putInt(11)
                 Unit
             }
             is ForgeAppException.InternalFailure -> {
-                buf.putInt(8)
+                buf.putInt(12)
+                FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
 
 }
+
+
+
+/**
+ * How [`open_counter_app`] treats existing data.
+ */
+
+enum class OpenMode {
+    
+    /**
+     * Restore valid data; report corrupt data as `CorruptPersistence`.
+     */
+    NORMAL,
+    /**
+     * Like [`recover_counter_app`]: replace the data with a fresh counter
+     * **only** if it is corrupt. Newer-schema or unreadable data is never
+     * overwritten.
+     */
+    RECOVER_CORRUPT_DATA;
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOpenMode: FfiConverterRustBuffer<OpenMode> {
+    override fun read(buf: ByteBuffer) = try {
+        OpenMode.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: OpenMode) = 4UL
+
+    override fun write(value: OpenMode, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
+ * How a long-running operation ended.
+ */
+sealed class OperationOutcome {
+    
+    data class Completed(
+        val `snapshot`: CounterStateSnapshot) : OperationOutcome() {
+        companion object
+    }
+    
+    /**
+     * Cancelled before its commit point; nothing was changed.
+     */
+    object Cancelled : OperationOutcome()
+    
+    
+    /**
+     * Failed; nothing was changed.
+     */
+    data class Failed(
+        val `error`: ForgeAppException) : OperationOutcome() {
+        companion object
+    }
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeOperationOutcome : FfiConverterRustBuffer<OperationOutcome>{
+    override fun read(buf: ByteBuffer): OperationOutcome {
+        return when(buf.getInt()) {
+            1 -> OperationOutcome.Completed(
+                FfiConverterTypeCounterStateSnapshot.read(buf),
+                )
+            2 -> OperationOutcome.Cancelled
+            3 -> OperationOutcome.Failed(
+                FfiConverterTypeForgeAppError.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: OperationOutcome) = when(value) {
+        is OperationOutcome.Completed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeCounterStateSnapshot.allocationSize(value.`snapshot`)
+            )
+        }
+        is OperationOutcome.Cancelled -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is OperationOutcome.Failed -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeForgeAppError.allocationSize(value.`error`)
+            )
+        }
+    }
+
+    override fun write(value: OperationOutcome, buf: ByteBuffer) {
+        when(value) {
+            is OperationOutcome.Completed -> {
+                buf.putInt(1)
+                FfiConverterTypeCounterStateSnapshot.write(value.`snapshot`, buf)
+                Unit
+            }
+            is OperationOutcome.Cancelled -> {
+                buf.putInt(2)
+                Unit
+            }
+            is OperationOutcome.Failed -> {
+                buf.putInt(3)
+                FfiConverterTypeForgeAppError.write(value.`error`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
 
 
 
@@ -1716,6 +3154,78 @@ public object FfiConverterTypeStartupKind: FfiConverterRustBuffer<StartupKind> {
 }
 
 
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeOperationStatus: FfiConverterRustBuffer<OperationStatus?> {
+    override fun read(buf: ByteBuffer): OperationStatus? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeOperationStatus.read(buf)
+    }
+
+    override fun allocationSize(value: OperationStatus?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeOperationStatus.allocationSize(value)
+        }
+    }
+
+    override fun write(value: OperationStatus?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeOperationStatus.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeCounterEvent: FfiConverterRustBuffer<CounterEvent?> {
+    override fun read(buf: ByteBuffer): CounterEvent? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeCounterEvent.read(buf)
+    }
+
+    override fun allocationSize(value: CounterEvent?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeCounterEvent.allocationSize(value)
+        }
+    }
+
+    override fun write(value: CounterEvent?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeCounterEvent.write(value, buf)
+        }
+    }
+}
+
+
+
+
+
+
+
+
         /**
          * Spike / diagnostics: fixed greeting from Rust (used in toolchain validation).
          */ fun `forgeGreeting`(): kotlin.String {
@@ -1729,9 +3239,29 @@ public object FfiConverterTypeStartupKind: FfiConverterRustBuffer<StartupKind> {
     
 
         /**
+         * Opens the app without blocking the caller: state is loaded on the
+         * instance's command thread.
+         */
+    @Throws(ForgeAppException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+     suspend fun `openCounterApp`(`storageDirectory`: kotlin.String, `mode`: OpenMode) : ForgeCounterApp {
+        return uniffiRustCallAsync(
+        UniffiLib.INSTANCE.uniffi_forge_ffi_fn_func_open_counter_app(FfiConverterString.lower(`storageDirectory`),FfiConverterTypeOpenMode.lower(`mode`),),
+        { future, callback, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_poll_pointer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_complete_pointer(future, continuation) },
+        { future -> UniffiLib.INSTANCE.ffi_forge_ffi_rust_future_free_pointer(future) },
+        // lift function
+        { FfiConverterTypeForgeCounterApp.lift(it) },
+        // Error FFI converter
+        ForgeAppException.ErrorHandler,
+    )
+    }
+
+        /**
          * Opens the app, replacing persisted data with a fresh counter **only** if it is
          * corrupt. Valid data is restored; data from a newer build
          * (`UnsupportedSchemaVersion`) or unreadable data is never overwritten.
+         * Synchronous; prefer `open_counter_app(…, OpenMode::RecoverCorruptData)`.
          */
     @Throws(ForgeAppException::class) fun `recoverCounterApp`(`storageDirectory`: kotlin.String): ForgeCounterApp {
             return FfiConverterTypeForgeCounterApp.lift(
