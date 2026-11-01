@@ -48,6 +48,19 @@ jobs:
       - name: Package Rust FFI and Kotlin bindings
         run: ./scripts/package-android-library.sh examples/counter-android/Generated
 
+      - name: Build host forge-ffi for JVM unit tests
+        run: cargo build -p forge-ffi
+
+      - name: JVM unit tests (view model against the Rust core)
+        working-directory: examples/counter-android
+        run: ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Unit tests for an app generated from the Android template
+        run: |
+          cargo run -q -p forge-cli -- init CiTemplateAndroid --platform android --bundle-id org.example.citemplate
+          cd examples/CiTemplateAndroid
+          ./gradlew :app:testDebugUnitTest --no-daemon
+
       - name: Assemble debug APK
         working-directory: examples/counter-android
         run: ./gradlew :app:assembleDebug --no-daemon
@@ -57,6 +70,13 @@ jobs:
 
       - name: Check binding drift
         run: ./scripts/check-bindings.sh
+
+      - name: Upload unit test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-unit-test-reports
+          path: examples/*/app/build/reports/tests/
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

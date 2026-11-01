@@ -4,6 +4,8 @@ import PackageDescription
 
 // Paths are relative to this package under examples/<name>/ inside the Forge workspace.
 let iosLibSearch = "../../build/ios-device/lib"
+// Host (macOS) static library for `swift test`; see scripts/test-swift-host.sh.
+let macosLibSearch = "../../build/macos-host/lib"
 
 let package = Package(
     name: "FORGE_PACKAGE_NAME",
@@ -26,6 +28,7 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("forge_ffi"),
                 .unsafeFlags(["-L", iosLibSearch], .when(platforms: [.iOS])),
+                .unsafeFlags(["-L", macosLibSearch], .when(platforms: [.macOS])),
             ]
         ),
         .target(
@@ -43,6 +46,11 @@ let package = Package(
             name: "AppHostLauncher",
             dependencies: ["AppHost"],
             path: "Sources/AppHostLauncher"
+        ),
+        .testTarget(
+            name: "AppHostTests",
+            dependencies: ["AppHost"],
+            path: "Tests/AppHostTests"
         ),
     ]
 )

@@ -239,24 +239,30 @@ fn relocate_android_package(
     if template_package == bundle_id {
         return Ok(());
     }
-    let java_root = dest.join("app/src/main/java");
-    let old_dir = java_root.join(template_package.replace('.', "/"));
-    let new_dir = java_root.join(bundle_id.replace('.', "/"));
-    if !old_dir.is_dir() {
-        return Err(format!(
-            "android template java package missing at {}",
-            old_dir.display()
-        ));
+    // Main sources must exist; unit-test sources are optional.
+    for (source_set, required) in [("main", true), ("test", false)] {
+        let java_root = dest.join(format!("app/src/{source_set}/java"));
+        let old_dir = java_root.join(template_package.replace('.', "/"));
+        let new_dir = java_root.join(bundle_id.replace('.', "/"));
+        if !old_dir.is_dir() {
+            if required {
+                return Err(format!(
+                    "android template java package missing at {}",
+                    old_dir.display()
+                ));
+            }
+            continue;
+        }
+        if new_dir.exists() {
+            return Err(format!(
+                "java package path already exists: {}",
+                new_dir.display()
+            ));
+        }
+        fs::create_dir_all(new_dir.parent().ok_or("invalid android package path")?)
+            .map_err(|e| e.to_string())?;
+        fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?;
     }
-    if new_dir.exists() {
-        return Err(format!(
-            "java package path already exists: {}",
-            new_dir.display()
-        ));
-    }
-    fs::create_dir_all(new_dir.parent().ok_or("invalid android package path")?)
-        .map_err(|e| e.to_string())?;
-    fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?;
     Ok(())
 }
 

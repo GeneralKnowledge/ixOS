@@ -3,6 +3,8 @@
 import PackageDescription
 
 let iosLibSearch = "../../build/ios-device/lib"
+// Host (macOS) static library for `swift test`; see scripts/test-swift-host.sh.
+let macosLibSearch = "../../build/macos-host/lib"
 
 let package = Package(
     name: "Counter",
@@ -25,6 +27,7 @@ let package = Package(
             linkerSettings: [
                 .linkedLibrary("forge_ffi"),
                 .unsafeFlags(["-L", iosLibSearch], .when(platforms: [.iOS])),
+                .unsafeFlags(["-L", macosLibSearch], .when(platforms: [.macOS])),
             ]
         ),
         .target(
@@ -42,6 +45,11 @@ let package = Package(
             name: "CounterLauncher",
             dependencies: ["CounterApp"],
             path: "Sources/CounterLauncher"
+        ),
+        .testTarget(
+            name: "CounterAppTests",
+            dependencies: ["CounterApp"],
+            path: "Tests/CounterAppTests"
         ),
     ]
 )

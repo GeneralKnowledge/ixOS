@@ -39,6 +39,18 @@ android {
         compose = true
     }
 
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+        unitTests.all {
+            // JVM unit tests call the real Rust core through the generated bindings, using the
+            // host build of forge-ffi (`cargo build -p forge-ffi` from the workspace root).
+            it.systemProperty(
+                "jna.library.path",
+                rootProject.file("../../target/debug").absolutePath,
+            )
+        }
+    }
+
     sourceSets {
         getByName("main") {
             kotlin.srcDir("${rootProject.projectDir}/Generated")
@@ -61,4 +73,8 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("net.java.dev.jna:jna:5.15.0@aar")
+
+    testImplementation("junit:junit:4.13.2")
+    // Desktop JNA (with its host native dispatcher) for JVM unit tests.
+    testImplementation("net.java.dev.jna:jna:5.15.0")
 }

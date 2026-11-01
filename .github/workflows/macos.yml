@@ -1,0 +1,59 @@
+name: macOS
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-host-tests:
+    name: Swift host tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Show toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+      - name: Counter example (XCTest)
+        run: ./scripts/test-swift-host.sh examples/counter
+      - name: App generated from the iOS template (XCTest)
+        run: |
+          cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate
+          ./scripts/test-swift-host.sh examples/CiTemplateApp
+
+  xcode-build:
+    name: Xcode iOS build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+      - name: Build Counter.xcodeproj (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project examples/counter/Xcode/Counter.xcodeproj \
+            -scheme Counter \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Build an Xcode project generated from the iOS template
+        run: |
+          cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode
+          xcodebuild build \
+            -project examples/CiXcodeApp/Xcode/CiXcodeApp.xcodeproj \
+            -scheme CiXcodeApp \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
