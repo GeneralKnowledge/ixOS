@@ -900,7 +900,9 @@ ios_device = true
         assert!(pkg.contains("name: \"InitTestApp\""));
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         assert!(dest.join("Generated/ForgeFFI/forge_ffi.swift").is_file());
-        assert!(dest.join("Generated/forge_ffiFFI/module.modulemap").is_file());
+        assert!(dest
+            .join("Generated/forge_ffiFFI/module.modulemap")
+            .is_file());
         assert!(dest
             .join("Xcode/InitTestApp.xcodeproj/project.pbxproj")
             .is_file());
