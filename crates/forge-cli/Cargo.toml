@@ -5,6 +5,7 @@ description = "Forge Mobile developer CLI"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
+publish = false
 
 [[bin]]
 name = "forge"

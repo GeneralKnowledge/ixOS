@@ -1,0 +1,39 @@
+# cargo-deny configuration (run: cargo deny check). CI runs it on every PR.
+
+[graph]
+all-features = true
+
+[advisories]
+# Vulnerabilities anywhere in the tree fail. "Unmaintained" notices fail only for
+# our direct dependencies: the current ones (basic-toml, bincode, paste) come in
+# through uniffi's binding generator and go away when uniffi is upgraded.
+unmaintained = "workspace"
+ignore = []
+
+[licenses]
+# Compatible with this project's MIT OR Apache-2.0 license.
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.9
+# Licenses we would accept but no dependency uses yet.
+unused-allowed-license = "allow"
+
+[bans]
+multiple-versions = "allow"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

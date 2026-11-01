@@ -1,0 +1,25 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      cargo:
+        patterns: ["*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: gradle
+    directories:
+      - /examples/counter-android
+      - /templates/android-app
+    schedule:
+      interval: monthly
+    groups:
+      gradle:
+        patterns: ["*"]

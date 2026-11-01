@@ -17,9 +17,10 @@ jobs:
     name: Swift host tests
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Show toolchain
         run: |
           xcodebuild -version
@@ -35,17 +36,20 @@ jobs:
     name: Xcode iOS build
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-apple-ios
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and iOS target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # -target, not -scheme: the Swift package also has an executable product
+      # named Counter, and Xcode's auto-generated scheme picks that one.
       - name: Build Counter.xcodeproj (device, unsigned)
         run: |
           xcodebuild build \
             -project examples/counter/Xcode/Counter.xcodeproj \
-            -scheme Counter \
-            -destination 'generic/platform=iOS' \
+            -target Counter \
+            -sdk iphoneos \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
       - name: Build an Xcode project generated from the iOS template
@@ -53,7 +57,7 @@ jobs:
           cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode
           xcodebuild build \
             -project examples/CiXcodeApp/Xcode/CiXcodeApp.xcodeproj \
-            -scheme CiXcodeApp \
-            -destination 'generic/platform=iOS' \
+            -target CiXcodeApp \
+            -sdk iphoneos \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO

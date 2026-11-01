@@ -1,3 +1,5 @@
 [toolchain]
-channel = "stable"
+# Pinned so a new stable release (and its new Clippy lints) cannot turn CI red
+# without a code change. Bump deliberately; Dependabot does not track this file.
+channel = "1.97.0"
 components = ["rustfmt", "clippy"]

@@ -10,6 +10,12 @@ Thank you for contributing to Forge Mobile.
 4. `cargo clippy --workspace --all-targets -- -D warnings`
 5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates.
 
+## Toolchain and dependencies
+
+- Rust is pinned in `rust-toolchain.toml`; rustup installs it automatically. Bump it in its own PR and fix any new Clippy lints there. CI also checks the declared MSRV (1.88).
+- `cargo deny check` (install with `cargo install cargo-deny --locked`) audits advisories, licenses and sources using `deny.toml`. CI runs it on every PR.
+- Dependabot opens grouped weekly PRs for Cargo and GitHub Actions (pinned by commit SHA) and monthly ones for Gradle.
+
 ## Host app tests
 
 The view-model tests call the real Rust core through the generated bindings, so they catch binding and error-mapping mistakes that `cargo test` cannot.
