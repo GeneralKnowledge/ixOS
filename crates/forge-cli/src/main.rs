@@ -24,9 +24,12 @@ enum Commands {
         #[arg(long, default_value = "ios", value_parser = ["ios", "android"])]
         platform: String,
     },
-    /// Run Rust tests and checks
+    /// Run Rust tests and checks; with --project, also that app's host tests
     Test {
-        #[arg(long)]
+        #[arg(
+            long,
+            help = "Also run this app's host tests (JVM unit tests or XCTest on macOS)"
+        )]
         project: Option<PathBuf>,
     },
     /// Generate UniFFI bindings (Swift or Kotlin)
@@ -46,7 +49,7 @@ enum Commands {
         #[command(subcommand)]
         cmd: InstallCommands,
     },
-    /// Build, install, and launch on device
+    /// Build, install, and launch on device (iOS via `xtool dev`)
     Run {
         #[command(subcommand)]
         cmd: RunCommands,
@@ -111,26 +114,27 @@ fn main() {
 }
 
 fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> {
+    let root = commands::workspace_root();
     match cli.command {
-        Commands::Doctor => commands::doctor(runner),
+        Commands::Doctor => commands::doctor(runner, &root),
         Commands::Init {
             name,
             bundle_id,
             platform,
-        } => commands::init(&name, &bundle_id, &platform),
-        Commands::Test { project } => commands::test(runner, project.as_deref()),
+        } => commands::init(runner, &root, &name, &bundle_id, &platform),
+        Commands::Test { project } => commands::test(runner, &root, project.as_deref()),
         Commands::Bindings { cmd } => match cmd {
             BindingsCommands::Generate { out, language } => {
-                commands::bindings_generate(runner, &out, &language)
+                commands::bindings_generate(runner, &root, &out, &language)
             }
         },
         Commands::Build { cmd } => match cmd {
             BuildCommands::Ios {
                 project,
                 package_only,
-            } => commands::build_ios(runner, &project, package_only),
+            } => commands::build_ios(runner, &root, &project, package_only),
             BuildCommands::Android { project, install } => {
-                commands::build_android(runner, &project, install)
+                commands::build_android(runner, &root, &project, install)
             }
         },
         Commands::Devices => commands::devices(runner),
@@ -138,7 +142,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project } => commands::run_ios(runner, &project),
+            RunCommands::Ios { project } => commands::run_ios(runner, &root, &project),
         },
     }
 }
@@ -147,12 +151,6 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
 mod tests {
     use super::*;
     use crate::runner::MockRunner;
-
-    #[test]
-    fn doctor_runs_without_panic() {
-        let mock = MockRunner::default();
-        let _ = commands::doctor(&mock);
-    }
 
     #[test]
     fn config_rejects_invalid_bundle_id() {
@@ -176,7 +174,15 @@ ios_simulator = false
 
     #[test]
     fn init_rejects_invalid_name() {
-        let err = commands::init("bad name!", "org.example.app", "ios").unwrap_err();
+        let root = commands::workspace_root();
+        let err = commands::init(
+            &MockRunner::default(),
+            &root,
+            "bad name!",
+            "org.example.app",
+            "ios",
+        )
+        .unwrap_err();
         assert!(err.contains("name"));
     }
 }

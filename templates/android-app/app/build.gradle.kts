@@ -4,12 +4,36 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-// Keep in sync with forge.toml [android] and [app].bundle_id
-val forgeMinSdk = 26
-val forgeApplicationId = "FORGE_BUNDLE_ID"
+// forge.toml is the source of truth for the application ID and minSdk, whether the build
+// starts from `forge build android` or from Android Studio.
+val forgeToml: List<String> = rootProject.file("forge.toml").readLines()
+
+fun forgeTomlValue(section: String, key: String): String? {
+    var current = ""
+    for (raw in forgeToml) {
+        val line = raw.trim()
+        if (line.startsWith("[")) {
+            current = line.removePrefix("[").substringBefore("]").trim()
+            continue
+        }
+        if (current != section || !line.contains("=")) continue
+        val (k, v) = line.split("=", limit = 2).map { it.trim() }
+        if (k == key) return v.substringBefore(" #").trim().removeSurrounding("\"")
+    }
+    return null
+}
+
+val forgeApplicationId: String =
+    forgeTomlValue("android", "application_id")
+        ?: forgeTomlValue("app", "bundle_id")
+        ?: error("forge.toml: missing [app] bundle_id")
+val forgeMinSdk: Int =
+    forgeTomlValue("android", "min_sdk")?.toInt()
+        ?: error("forge.toml: missing [android] min_sdk")
 
 android {
-    namespace = forgeApplicationId
+    // The Kotlin package of the app code (fixed when the app was generated).
+    namespace = "FORGE_JAVA_PACKAGE"
     compileSdk = 35
 
     defaultConfig {
