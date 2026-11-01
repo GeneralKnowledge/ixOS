@@ -6,6 +6,8 @@ pub enum CounterAction {
     Increment,
     Decrement,
     Reset,
+    /// Adds `amount` in one step (used by long-running bulk operations).
+    Add(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -59,6 +61,15 @@ impl CounterEngine {
                 }
             }
             CounterAction::Reset => CounterSnapshot::initial(),
+            CounterAction::Add(amount) => {
+                let next = before.count + i64::from(amount);
+                if next > COUNTER_MAX {
+                    return Err(CounterError::WouldOverflow {
+                        maximum: COUNTER_MAX,
+                    });
+                }
+                CounterSnapshot { count: next }
+            }
         };
         next.validate()?;
         self.snapshot = next.clone();
@@ -102,6 +113,28 @@ mod tests {
     }
 
     #[test]
+    fn add_applies_the_whole_amount() {
+        let mut engine = CounterEngine::new();
+        assert_eq!(engine.apply(CounterAction::Add(250)).unwrap().count, 250);
+        assert_eq!(engine.apply(CounterAction::Add(0)).unwrap().count, 250);
+    }
+
+    #[test]
+    fn add_past_max_is_rejected_whole() {
+        let mut engine = CounterEngine::from_snapshot(CounterSnapshot {
+            count: COUNTER_MAX - 5,
+        })
+        .unwrap();
+        let err = engine.apply(CounterAction::Add(6)).unwrap_err();
+        assert!(matches!(err, CounterError::WouldOverflow { .. }));
+        assert_eq!(engine.snapshot().count, COUNTER_MAX - 5);
+        assert_eq!(
+            engine.apply(CounterAction::Add(5)).unwrap().count,
+            COUNTER_MAX
+        );
+    }
+
+    #[test]
     fn max_enforced() {
         let mut engine =
             CounterEngine::from_snapshot(CounterSnapshot { count: COUNTER_MAX }).unwrap();
@@ -122,6 +155,7 @@ mod proptests {
             Just(CounterAction::Increment),
             Just(CounterAction::Decrement),
             Just(CounterAction::Reset),
+            (0u32..300_000).prop_map(CounterAction::Add),
         ], 1..40)) {
             let mut engine = CounterEngine::new();
             for op in ops {
@@ -143,6 +177,7 @@ mod proptests {
             Just(CounterAction::Increment),
             Just(CounterAction::Decrement),
             Just(CounterAction::Reset),
+            (0u32..300_000).prop_map(CounterAction::Add),
         ], 0..50)) {
             let mut engine = CounterEngine::new();
             for op in ops {

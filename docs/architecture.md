@@ -5,8 +5,18 @@ Forge Mobile splits **portable Rust application logic** from **thin platform hos
 **iOS**
 
 ```
-SwiftUI (CounterApp) → CounterViewModel → Generated Swift (ForgeFFI) → forge-ffi → forge-core → forge-storage
+SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) → Generated Swift (ForgeFFI) → forge-ffi → forge-core → forge-storage
 ```
+
+| Layer | Owns | Must not |
+|-------|------|----------|
+| SwiftUI view + view model (`CounterApp` / `AppHost`) | Presentation state, user messages, task lifetimes | Implement counter rules; import `ForgeFFI` |
+| `CounterBridge` (thin Swift layer) | The Rust instance's lifetime, async/await adapters, event sequences, cancellation forwarding, Swift error translation, `Sendable` value types | Hold state of its own or duplicate Rust logic |
+| Generated `ForgeFFI` | Marshalling | Be edited by hand |
+| `forge-ffi` | Commands, queries, events, lifecycle; the serial command thread | Expose `forge-core`/`forge-storage` types directly |
+| `forge-core` / `forge-storage` | Domain rules / persistence | Know about FFI or threads |
+
+The bridge is per app: it is Counter-specific glue over the generated types. The iOS template carries an identical copy, checked by `scripts/check-template-sync.sh` in CI. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
 
 **Android**
 
@@ -17,7 +27,7 @@ Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_f
 ## Ownership
 
 - **Authoritative counter state** lives in `forge-core` inside `ForgeCounterApp` (Rust).
-- Swift holds a **display snapshot** updated after each successful or rejected Rust call.
+- Swift holds a **display snapshot**, updated from each command's result and from `StateChanged` events (so a change made by another component sharing the same client also shows).
 - Swift does **not** implement increment/decrement/reset rules locally.
 
 ## Persistence
@@ -31,14 +41,26 @@ Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_f
 
 **Policy:** A domain action commits **only if** the required `save` succeeds.
 
-Implementation (`forge-ffi/src/session.rs`):
+Implementation (`forge-ffi/src/session.rs`, run on the instance's command thread by `forge-ffi/src/app.rs`):
 
 1. Clone current engine state into a candidate.
 2. Apply the action on the candidate (domain errors return without touching live state or disk).
 3. Persist the candidate snapshot.
 4. On successful save, replace the live engine with the candidate.
 
-Failed saves leave memory and disk unchanged from the last committed state. This is **not** a multi-file transactional store — a crash during write may leave the temp file behind, but the primary snapshot file is replaced via rename after a full write.
+Failed saves leave memory and disk unchanged from the last committed state, and emit no event.
+
+### Concurrency and persistence
+
+Each `ForgeCounterApp` instance has **one serial command thread** that owns the engine and the store:
+
+- Every command (and every save) runs there, one at a time, in arrival order. Two commands can never interleave, so there are no lost updates and no lock is held across disk I/O.
+- After a successful save the thread publishes the committed snapshot and then emits `StateChanged`. A state change is never reported before it is on disk.
+- Queries (`snapshot`, `startup_kind`, `active_operation`) read the published snapshot under a short lock. A read during a write returns the state before that write, immediately.
+- A long-running operation (`start_bulk_add`) does its slow part on its own thread, so ordinary commands keep flowing, then sends **one** commit command. It is all-or-nothing: cancelled or failed before the commit, nothing changes. Its amount is applied to the state at the commit point and validated again there. One long-running operation at a time (`OperationInProgress`).
+- Shutdown runs every command already accepted, cancels the running operation and waits for it, ends every event subscription, then stops the thread.
+
+Not serialised: queries, and the slow part of a long-running operation. Opening two instances on the same storage directory at the same time is not supported (not enforced; each would overwrite the other's saves). This is **not** a multi-file transactional store — a crash during write may leave the temp file behind, but the primary snapshot file is replaced via rename after a full write.
 
 ### Startup
 
@@ -80,5 +102,5 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 |-------|------|
 | `forge-core` | Domain types, validation, property tests |
 | `forge-storage` | `SnapshotStore` trait, JSON implementation |
-| `forge-ffi` | UniFFI exports, `Mutex`-backed app instance |
+| `forge-ffi` | UniFFI exports; app instance with a serial command thread, events, cancellable operations |
 | `forge-cli` | Developer commands wrapping scripts and xtool |

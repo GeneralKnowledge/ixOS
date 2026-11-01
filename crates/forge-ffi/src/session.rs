@@ -10,7 +10,7 @@ pub enum StartupKind {
 }
 
 pub fn load_engine(
-    store: &impl SnapshotStore<Snapshot = CounterSnapshot>,
+    store: &(impl SnapshotStore<Snapshot = CounterSnapshot> + ?Sized),
 ) -> Result<(CounterEngine, StartupKind), ForgeAppError> {
     match store.load()? {
         None => Ok((CounterEngine::new(), StartupKind::FreshInstall)),
@@ -28,7 +28,7 @@ pub fn load_engine(
 /// Valid domain transitions commit only after a successful save.
 pub fn apply_action(
     engine: &mut CounterEngine,
-    store: &impl SnapshotStore<Snapshot = CounterSnapshot>,
+    store: &(impl SnapshotStore<Snapshot = CounterSnapshot> + ?Sized),
     action: CounterAction,
 ) -> Result<CounterSnapshot, ForgeAppError> {
     let mut candidate = engine.clone();
@@ -45,7 +45,7 @@ pub fn apply_action(
 /// The fresh state is written with the store's atomic replace, so there is
 /// never a moment with no snapshot file.
 pub fn recover_after_corruption(
-    store: &impl SnapshotStore<Snapshot = CounterSnapshot>,
+    store: &(impl SnapshotStore<Snapshot = CounterSnapshot> + ?Sized),
 ) -> Result<(CounterEngine, StartupKind), ForgeAppError> {
     match store.load() {
         Ok(Some(snapshot)) => {

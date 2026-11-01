@@ -29,6 +29,8 @@ jobs:
         run: cargo test --workspace
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
+      - name: iOS template matches the Counter example
+        run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
         run: |
           ./scripts/validate-xcode-project.sh

@@ -22,4 +22,4 @@ thiserror = "2.0"
 uniffi = { version = "0.32.2", features = ["cli"] }
 
 [workspace.metadata.uniffi]
-version = "0.28.3"
+version = "0.32.2"

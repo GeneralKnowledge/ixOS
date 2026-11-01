@@ -1,130 +1,204 @@
+import CounterBridge
 import Foundation
-import ForgeFFI
 
+/// Presentation state for the counter screen.
+///
+/// Holds no counter rules: every change goes to Rust through `CounterClient`,
+/// and the displayed count comes from Rust (a command's result, or a
+/// `.stateChanged` event). All work is awaited, so the main actor is never
+/// blocked; slow work runs on the Rust side.
 @MainActor
 public final class CounterViewModel: ObservableObject {
     @Published public private(set) var count: Int64 = 0
     @Published public private(set) var startupLabel: String = ""
     @Published public var errorMessage: String?
+    /// True until the first open attempt finishes.
+    @Published public private(set) var isLoading = true
     @Published public private(set) var isBlocked = false
     /// True only when stored data is corrupt. Data saved by a newer app
     /// version is valid, so it is never offered for reset.
     @Published public private(set) var canRecoverFromCorruption = false
+    /// Progress of the running bulk add (0...1), or nil when none is running.
+    @Published public private(set) var bulkAddProgress: Double?
+    @Published public private(set) var lastOperationMessage: String?
 
-    private var app: ForgeCounterApp?
-    private let storageDirectory: String
+    public private(set) var client: CounterClient?
+    private let storageDirectory: String?
+    private var isOpening = false
+    private var eventTask: Task<Void, Never>?
+    private var bulkAddTask: Task<Void, Never>?
 
     /// - Parameter storageDirectory: where Rust keeps its snapshot. Defaults to
     ///   the app's Application Support folder; tests pass a temporary folder.
+    ///   Nothing is opened until `open()`.
     public init(storageDirectory: String? = nil) {
-        self.storageDirectory = storageDirectory ?? Self.applicationSupportDirectory()
-        openApp()
+        self.storageDirectory = storageDirectory
     }
 
-    public func retryOpen() { openApp() }
+    /// Opens the Rust instance and starts listening for its events. Call it
+    /// from `.task`; calling it again while open (or opening) does nothing, so
+    /// a view that reappears never creates a second subscription.
+    public func open() async {
+        guard client == nil, !isOpening else { return }
+        await attach(recoverCorruptData: false)
+    }
 
-    public func recoverFromCorruption() {
+    public func retryOpen() async {
+        guard client == nil, !isOpening else { return }
+        await attach(recoverCorruptData: false)
+    }
+
+    public func recoverFromCorruption() async {
+        guard client == nil, !isOpening else { return }
+        await attach(recoverCorruptData: true)
+    }
+
+    /// Shuts the Rust instance down (saved state is already on disk).
+    public func close() async {
+        bulkAddTask?.cancel()
+        eventTask?.cancel()
+        let client = self.client
+        self.client = nil
+        await client?.shutdown()
+    }
+
+    public func increment() async { await apply(.increment) }
+    public func decrement() async { await apply(.decrement) }
+    public func reset() async { await apply(.reset) }
+
+    /// Starts a bulk add. Progress and completion arrive as Rust events; the
+    /// returned task (also used by `cancelBulkAdd()`) finishes when it ends.
+    ///
+    /// If this view model goes away first, the operation still runs to
+    /// completion in Rust and its result is saved; nothing here is updated.
+    @discardableResult
+    public func startBulkAdd(amount: UInt32 = 100, stepDelay: Duration = .milliseconds(100))
+        -> Task<Void, Never>?
+    {
+        guard let client, bulkAddTask == nil else { return nil }
+        errorMessage = nil
+        lastOperationMessage = nil
+        bulkAddProgress = 0
+        let task = Task { [weak self] in
+            do {
+                let state = try await client.bulkAdd(amount, stepDelay: stepDelay)
+                self?.show(state)
+                self?.lastOperationMessage = "Added \(amount)."
+            } catch is CancellationError {
+                self?.lastOperationMessage = "Bulk add cancelled; nothing was added."
+            } catch {
+                self?.showInline(error)
+            }
+            self?.bulkAddProgress = nil
+            self?.bulkAddTask = nil
+        }
+        bulkAddTask = task
+        return task
+    }
+
+    public func cancelBulkAdd() {
+        bulkAddTask?.cancel()
+    }
+
+    public var isBulkAddRunning: Bool { bulkAddProgress != nil }
+
+    // MARK: Private
+
+    private func attach(recoverCorruptData: Bool) async {
+        isOpening = true
+        defer {
+            isOpening = false
+            isLoading = false
+        }
         errorMessage = nil
         do {
-            let recovered = try recoverCounterApp(storageDirectory: storageDirectory)
-            attach(app: recovered, afterRecovery: true)
-        } catch let error as ForgeAppError {
-            presentBlocked(error: error)
-        } catch {
-            isBlocked = true
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    public func increment() { apply(.increment) }
-    public func decrement() { apply(.decrement) }
-    public func reset() { apply(.reset) }
-
-    private func openApp() {
-        errorMessage = nil
-        isBlocked = false
-        canRecoverFromCorruption = false
-        do {
-            attach(app: try ForgeCounterApp(storageDirectory: storageDirectory), afterRecovery: false)
-        } catch let error as ForgeAppError {
-            presentBlocked(error: error)
-        } catch {
-            isBlocked = true
-            errorMessage = error.localizedDescription
-        }
-    }
-
-    private func attach(app: ForgeCounterApp, afterRecovery: Bool) {
-        do {
-            let snapshot = try app.snapshot()
-            let kind = try app.startupKind()
-            self.app = app
+            let directory = try storageDirectory ?? Self.applicationSupportDirectory()
+            let client = try await CounterClient.open(
+                storageDirectory: directory, recoverCorruptData: recoverCorruptData)
+            // Subscribe before reading state, so no change is missed in between.
+            let events = try client.events()
+            let state = try client.currentState()
+            self.client = client
             isBlocked = false
             canRecoverFromCorruption = false
-            count = snapshot.count
-            if afterRecovery && kind == .freshInstall {
-                startupLabel = "Recovered — fresh counter"
-            } else {
-                startupLabel = kind == .freshInstall ? "Fresh install" : "Restored saved state"
+            show(state)
+            switch (recoverCorruptData, client.startupKind) {
+            case (true, .freshInstall): startupLabel = "Recovered — fresh counter"
+            case (_, .freshInstall): startupLabel = "Fresh install"
+            case (_, .restored): startupLabel = "Restored saved state"
             }
-        } catch let error as ForgeAppError {
-            // Never show a made-up count when Rust could not report the real one.
-            presentBlocked(error: error)
+            listen(to: events, client: client)
         } catch {
-            isBlocked = true
-            errorMessage = error.localizedDescription
+            presentBlocked(error)
         }
     }
 
-    private func apply(_ kind: ForgeActionKind) {
-        guard let app else { return }
+    private func listen(to events: CounterEvents, client: CounterClient) {
+        eventTask?.cancel()
+        // Weak, so a pending event wait never keeps this model alive. The loop
+        // ends when the task is cancelled or the Rust instance shuts down.
+        eventTask = Task { [weak self] in
+            for await event in events {
+                guard let self else { return }
+                self.handle(event, from: client)
+            }
+        }
+    }
+
+    private func handle(_ event: CounterEvent, from client: CounterClient) {
+        switch event {
+        case let .stateChanged(state):
+            show(state)
+        case let .operationProgress(progress):
+            if bulkAddTask != nil { bulkAddProgress = progress.fraction }
+        case .operationFinished:
+            // The bulk add task reports its own result.
+            break
+        case .eventsDropped:
+            if let state = try? client.currentState() { show(state) }
+        }
+    }
+
+    private func apply(_ action: CounterAction) async {
+        guard let client else { return }
         errorMessage = nil
         do {
-            count = try app.apply(action: kind).snapshot.count
-        } catch let error as ForgeAppError {
-            errorMessage = Self.message(for: error)
-            if let snap = try? app.snapshot() { count = snap.count }
+            show(try await client.apply(action))
         } catch {
-            errorMessage = error.localizedDescription
+            showInline(error)
         }
     }
 
-    private func presentBlocked(error: ForgeAppError) {
+    private func show(_ state: CounterState) {
+        count = state.count
+    }
+
+    private func showInline(_ error: any Error) {
+        errorMessage = (error as? CounterError)?.userMessage ?? error.localizedDescription
+        if let state = try? client?.currentState() { show(state) }
+    }
+
+    private func presentBlocked(_ error: any Error) {
         isBlocked = true
-        app = nil
+        client = nil
         canRecoverFromCorruption = false
-        switch error {
-        case .CorruptPersistence:
-            canRecoverFromCorruption = true
-            errorMessage = "Stored counter data is invalid. You can reset storage or retry opening."
-        case .UnsupportedSchemaVersion:
-            errorMessage = "Your counter was saved by a newer version of this app. Update the app to open it; your data has not been changed."
-        case .PersistenceReadFailed:
-            errorMessage = "Could not read saved data. Check storage access and retry."
-        case .StorageDirectoryUnavailable:
-            errorMessage = "Storage folder is unavailable. Retry after fixing permissions."
-        default:
-            errorMessage = Self.message(for: error)
+        guard let error = error as? CounterError else {
+            errorMessage = error.localizedDescription
+            return
         }
+        if case .corruptData = error { canRecoverFromCorruption = true }
+        errorMessage = error.userMessage
     }
 
-    private static func message(for error: ForgeAppError) -> String {
-        switch error {
-        case .WouldUnderflow: return "Count cannot go below zero."
-        case .WouldOverflow: return "Count cannot exceed one million."
-        case .PersistenceFailed: return "Could not save counter state."
-        case .CorruptPersistence: return "Stored counter data is invalid."
-        case .UnsupportedSchemaVersion: return "Saved data is from a newer version of this app."
-        case .PersistenceReadFailed: return "Could not read saved data."
-        case .StorageDirectoryUnavailable: return "Storage folder is unavailable."
-        case .InternalFailure: return "Internal error in Rust core."
+    private static func applicationSupportDirectory() throws -> String {
+        do {
+            let base = try FileManager.default
+                .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+                .appendingPathComponent("Counter", isDirectory: true)
+            try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+            return base.path
+        } catch {
+            throw CounterError.platform(detail: String(describing: error))
         }
-    }
-
-    private static func applicationSupportDirectory() -> String {
-        let urls = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
-        let base = urls[0].appendingPathComponent("Counter", isDirectory: true)
-        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
-        return base.path
     }
 }
