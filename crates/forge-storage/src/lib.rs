@@ -1,6 +1,8 @@
 mod json_store;
 
-pub use json_store::{JsonSnapshotStore, SnapshotEnvelope, StorageError, SCHEMA_VERSION};
+pub use json_store::{
+    write_atomic, JsonSnapshotStore, SnapshotEnvelope, StorageError, SCHEMA_VERSION,
+};
 
 /// Narrow persistence interface (SQLite or platform adapters can implement this later).
 pub trait SnapshotStore {

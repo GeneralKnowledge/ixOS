@@ -1,9 +1,10 @@
 //! Networking interface for Forge Mobile apps.
 //!
-//! **Prototype.** This crate fixes the *shape* of networking in Forge so app
-//! code and adapters can be written against it; it ships no real transport.
-//! [`NoopClient`] refuses every request with [`NetError::Unavailable`], and
-//! [`StaticClient`] returns canned responses for tests.
+//! This crate fixes the *shape* of networking in Forge so app code and
+//! adapters can be written against it. [`NoopClient`] refuses every request
+//! with [`NetError::Unavailable`], [`StaticClient`] returns canned responses
+//! for tests, and with the `ureq` feature [`UreqClient`] is a real blocking
+//! HTTPS transport (rustls with the platform certificate verifier).
 //!
 //! The design mirrors `forge-storage`'s `SnapshotStore`:
 //!
@@ -15,10 +16,15 @@
 //!   Rust, or by `URLSession` / OkHttp in the host through a UniFFI callback.
 //! - Typed errors the FFI layer can map to its own error enum.
 //!
-//! Nothing in `forge-ffi` uses this crate yet. See `docs/architecture.md`.
+//! `forge-ffi` uses it for the Weather example (`ForgeWeatherApp`). See
+//! `docs/architecture.md`.
 
 mod client;
 mod types;
+#[cfg(feature = "ureq")]
+mod ureq_client;
 
 pub use client::{HttpClient, NoopClient, StaticClient};
 pub use types::{Header, Method, NetError, Request, Response};
+#[cfg(feature = "ureq")]
+pub use ureq_client::{UreqClient, DEFAULT_MAX_BODY_BYTES, DEFAULT_TIMEOUT};

@@ -161,6 +161,34 @@ impl JsonSnapshotStore {
     }
 }
 
+/// Replaces the file at `path` with `data` atomically and durably: the bytes
+/// go to a sibling temp file which is synced, renamed over `path`, and then
+/// the directory is synced. Readers see the old file or the new one, never a
+/// torn write. The parent directory must exist.
+pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), StorageError> {
+    let directory = path.parent().ok_or(StorageError::MissingDirectory)?;
+    let mut tmp_name = path
+        .file_name()
+        .ok_or_else(|| StorageError::write("write file", "path has no file name"))?
+        .to_os_string();
+    tmp_name.push(".tmp");
+    let tmp = directory.join(tmp_name);
+    {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .open(&tmp)
+            .map_err(|err| StorageError::write("create temp file", err))?;
+        file.write_all(data)
+            .map_err(|err| StorageError::write("write temp file", err))?;
+        file.sync_all()
+            .map_err(|err| StorageError::write("sync temp file", err))?;
+    }
+    fs::rename(&tmp, path).map_err(|err| StorageError::write("replace file", err))?;
+    sync_directory(directory)
+}
+
 /// Makes a completed rename durable by syncing the directory that holds it.
 #[cfg(unix)]
 fn sync_directory(dir: &Path) -> Result<(), StorageError> {
@@ -195,22 +223,7 @@ impl super::SnapshotStore for JsonSnapshotStore {
         let envelope = SnapshotEnvelope::from_snapshot(snapshot);
         let data = serde_json::to_string_pretty(&envelope)
             .map_err(|err| StorageError::write("encode snapshot", err))?;
-        let path = self.path();
-        let tmp = path.with_extension("json.tmp");
-        {
-            let mut file = OpenOptions::new()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&tmp)
-                .map_err(|err| StorageError::write("create temp file", err))?;
-            file.write_all(data.as_bytes())
-                .map_err(|err| StorageError::write("write temp file", err))?;
-            file.sync_all()
-                .map_err(|err| StorageError::write("sync temp file", err))?;
-        }
-        fs::rename(&tmp, &path).map_err(|err| StorageError::write("replace snapshot", err))?;
-        sync_directory(&self.directory)?;
+        write_atomic(&self.path(), data.as_bytes())?;
         Ok(())
     }
 }

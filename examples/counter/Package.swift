@@ -33,6 +33,12 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [
                 .linkedLibrary("forge_ffi"),
+                // forge-net's HTTPS client verifies certificates with the
+                // system trust store (rustls-platform-verifier). A static
+                // library does not carry its framework dependencies, so link
+                // them here.
+                .linkedFramework("Security"),
+                .linkedFramework("CoreFoundation"),
                 .unsafeFlags(["-L", iosLibSearch], .when(platforms: [.iOS])),
                 .unsafeFlags(["-L", macosLibSearch], .when(platforms: [.macOS])),
             ]

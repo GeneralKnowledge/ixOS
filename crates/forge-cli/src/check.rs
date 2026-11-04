@@ -74,6 +74,8 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             name: "Xcode project layout",
             cmds: vec![
                 script(root, "validate-xcode-project.sh"),
+                script(root, "validate-xcode-project.sh")
+                    .arg(root.join("examples/weather/Xcode/Weather.xcodeproj/project.pbxproj")),
                 script(root, "validate-xcode-project.sh").arg(
                     root.join(
                         "templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
@@ -121,7 +123,10 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         },
         Step {
             name: "Swift host tests (XCTest)",
-            cmds: vec![script(root, "test-swift-host.sh").arg(root.join("examples/counter"))],
+            cmds: vec![
+                script(root, "test-swift-host.sh").arg(root.join("examples/counter")),
+                script(root, "test-swift-host.sh").arg(root.join("examples/weather")),
+            ],
             skip: swift_skip,
         },
     ]
@@ -238,6 +243,7 @@ mod tests {
             "cargo fmt --all -- --check",
             "check-template-sync.sh",
             "validate-xcode-project.sh",
+            "Weather.xcodeproj/project.pbxproj",
             "FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
             "cargo clippy --workspace --all-targets -- -D warnings",
             "cargo test --workspace",
@@ -245,7 +251,8 @@ mod tests {
             "test-native-rebuild.sh",
             "cargo build -p forge-ffi",
             "gradlew :app:testDebugUnitTest --no-daemon",
-            "test-swift-host.sh",
+            "examples/counter",
+            "examples/weather",
         ];
         assert_eq!(lines.len(), expected.len(), "{lines:#?}");
         for (line, want) in lines.iter().zip(expected) {

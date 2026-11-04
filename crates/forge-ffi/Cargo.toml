@@ -14,6 +14,9 @@ name = "forge_ffi"
 [dependencies]
 forge-core = { workspace = true }
 forge-storage = { workspace = true }
+forge-net = { workspace = true, features = ["ureq"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 uniffi = { workspace = true }
 

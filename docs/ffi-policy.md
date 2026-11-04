@@ -9,7 +9,7 @@
 
 ## Generated artifacts
 
-- iOS output: `examples/counter/Generated/` — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
+- iOS output: `examples/counter/Generated/` and an identical copy in `examples/weather/Generated/` (one `forge-ffi` library exports both apps' APIs) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
 - Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
@@ -27,6 +27,7 @@
    - `examples/counter/Generated/ForgeFFI/forge_ffi.swift`
    - `examples/counter/Generated/forge_ffiFFI/forge_ffiFFI.h`
    - `examples/counter/Generated/forge_ffiFFI/module.modulemap`
+   - the same three files under `examples/weather/Generated/`
    - `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`
 4. Prints the diff and exits non-zero on the first mismatch, naming the file and the command that regenerates it.
 
@@ -36,7 +37,8 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 
 ```bash
 # 1. Regenerate both languages
-./scripts/generate-bindings.sh                                        # Swift -> examples/counter/Generated
+./scripts/generate-bindings.sh examples/counter/Generated             # Swift
+./scripts/generate-bindings.sh examples/weather/Generated
 ./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
 #    (or: make bindings bindings-kotlin)
 

@@ -33,6 +33,10 @@ Signing credentials and provisioning profiles stay **outside** the repository. S
 
 The **Build Rust FFI** run script phase calls `scripts/package-ios-library.sh` so Xcode rebuilds the static library when Rust sources or build metadata change.
 
+## Weather example
+
+Same steps with `--project examples/weather` and `examples/weather/Xcode/Weather.xcodeproj`. The app asks for when-in-use location permission on first launch; deny it to try the city search fallback, or turn on Airplane Mode after one refresh to see the cached report with its "offline" notice. See [examples/weather/README.md](../examples/weather/README.md).
+
 ## Generated apps (`forge init`)
 
 After `forge init MyApp --bundle-id org.example.myapp --platform ios`:

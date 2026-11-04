@@ -1,0 +1,4 @@
+version: 1
+bundleID: org.forgemobile.weather
+# Merged into the generated Info.plist: the location permission prompt text.
+infoPath: Info.plist

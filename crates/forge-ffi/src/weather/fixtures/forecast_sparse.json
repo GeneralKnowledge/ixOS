@@ -1,0 +1,52 @@
+{
+ "latitude": 48.86,
+ "longitude": 2.34,
+ "utc_offset_seconds": 0,
+ "timezone": "GMT",
+ "timezone_abbreviation": "GMT",
+ "current": {
+  "time": "2026-11-04T19:30",
+  "interval": 900,
+  "temperature_2m": 9.4,
+  "apparent_temperature": null,
+  "weather_code": null
+ },
+ "hourly": {
+  "time": [
+   "2026-11-04T19:00",
+   "2026-11-04T20:00",
+   "2026-11-04T21:00"
+  ],
+  "temperature_2m": [
+   9.0,
+   null,
+   8.4
+  ],
+  "precipitation_probability": [
+   10
+  ],
+  "weather_code": [
+   3,
+   3,
+   3
+  ]
+ },
+ "daily": {
+  "time": [
+   "2026-11-04",
+   "2026-11-05"
+  ],
+  "weather_code": [
+   3,
+   3
+  ],
+  "temperature_2m_max": [
+   12.0,
+   null
+  ],
+  "temperature_2m_min": [
+   6.0,
+   7.0
+  ]
+ }
+}

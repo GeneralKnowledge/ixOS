@@ -28,6 +28,13 @@ confidence-threshold = 0.9
 # Licenses we would accept but no dependency uses yet.
 unused-allowed-license = "allow"
 
+# Mozilla's CA bundle as data. Only reached on wasm32 (via
+# rustls-platform-verifier, used by forge-net's `ureq` feature); every mobile
+# and desktop target uses the OS trust store instead.
+[[licenses.exceptions]]
+crate = "webpki-root-certs"
+allow = ["CDLA-Permissive-2.0"]
+
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"

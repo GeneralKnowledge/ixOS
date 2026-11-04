@@ -34,6 +34,7 @@ jobs:
       - name: validate Xcode project layout
         run: |
           ./scripts/validate-xcode-project.sh
+          ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj
 
   msrv:
