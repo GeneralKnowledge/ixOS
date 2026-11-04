@@ -660,7 +660,7 @@ mod tests {
             err,
             WeatherError::Server {
                 status: 400,
-                message: Some("nope".into())
+                reason: Some("nope".into())
             }
         );
 

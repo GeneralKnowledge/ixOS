@@ -5512,17 +5512,17 @@ sealed class WeatherException: kotlin.Exception() {
     }
     
     /**
-     * The service answered with a non-2xx status. `message` is its own
+     * The service answered with a non-2xx status. `reason` is its own
      * explanation, when it sent one.
      */
     class Server(
         
         val `status`: kotlin.UShort, 
         
-        val `message`: kotlin.String?
+        val `reason`: kotlin.String?
         ) : WeatherException() {
         override val message
-            get() = "status=${ `status` }, message=${ `message` }"
+            get() = "status=${ `status` }, reason=${ `reason` }"
     }
     
     /**
@@ -5632,7 +5632,7 @@ public object FfiConverterTypeWeatherError : FfiConverterRustBuffer<WeatherExcep
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterUShort.allocationSize(value.`status`)
-                + FfiConverterOptionalString.allocationSize(value.`message`)
+                + FfiConverterOptionalString.allocationSize(value.`reason`)
             )
             is WeatherException.BadResponse -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
@@ -5679,7 +5679,7 @@ public object FfiConverterTypeWeatherError : FfiConverterRustBuffer<WeatherExcep
             is WeatherException.Server -> {
                 buf.putInt(4)
                 FfiConverterUShort.write(value.`status`, buf)
-                FfiConverterOptionalString.write(value.`message`, buf)
+                FfiConverterOptionalString.write(value.`reason`, buf)
                 Unit
             }
             is WeatherException.BadResponse -> {

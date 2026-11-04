@@ -3849,10 +3849,10 @@ enum WeatherError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     )
     case Timeout
     /**
-     * The service answered with a non-2xx status. `message` is its own
+     * The service answered with a non-2xx status. `reason` is its own
      * explanation, when it sent one.
      */
-    case Server(status: UInt16, message: String?
+    case Server(status: UInt16, reason: String?
     )
     /**
      * The response was not the JSON this build expects.
@@ -3906,7 +3906,7 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
         case 3: return .Timeout
         case 4: return .Server(
             status: try FfiConverterUInt16.read(from: &buf), 
-            message: try FfiConverterOptionString.read(from: &buf)
+            reason: try FfiConverterOptionString.read(from: &buf)
             )
         case 5: return .BadResponse(
             reason: try FfiConverterString.read(from: &buf)
@@ -3945,10 +3945,10 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case let .Server(status,message):
+        case let .Server(status,reason):
             writeInt(&buf, Int32(4))
             FfiConverterUInt16.write(status, into: &buf)
-            FfiConverterOptionString.write(message, into: &buf)
+            FfiConverterOptionString.write(reason, into: &buf)
             
         
         case let .BadResponse(reason):

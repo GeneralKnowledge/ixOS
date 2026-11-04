@@ -90,10 +90,10 @@ pub(crate) fn status_error(status: u16, body: &[u8]) -> WeatherError {
     struct ApiError {
         reason: Option<String>,
     }
-    let message = serde_json::from_slice::<ApiError>(body)
+    let reason = serde_json::from_slice::<ApiError>(body)
         .ok()
         .and_then(|e| e.reason);
-    WeatherError::Server { status, message }
+    WeatherError::Server { status, reason }
 }
 
 // ---- Forecast ----
@@ -602,14 +602,14 @@ mod tests {
             err,
             WeatherError::Server {
                 status: 400,
-                message: Some("Latitude must be in range of -90 to 90°.".into())
+                reason: Some("Latitude must be in range of -90 to 90°.".into())
             }
         );
         assert_eq!(
             status_error(502, b"<html>"),
             WeatherError::Server {
                 status: 502,
-                message: None
+                reason: None
             }
         );
     }

@@ -12,7 +12,7 @@ public enum WeatherClientError: Error, Sendable, Equatable {
     case offline(detail: String)
     case timedOut
     /// The service answered with an error status.
-    case server(status: UInt16, message: String?)
+    case server(status: UInt16, reason: String?)
     /// The service answered with something this build cannot read.
     case badResponse(detail: String)
     /// TLS or another transport failure.
@@ -42,7 +42,7 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         case let .InvalidInput(reason): self = .invalidInput(detail: reason)
         case let .Offline(reason): self = .offline(detail: reason)
         case .Timeout: self = .timedOut
-        case let .Server(status, message): self = .server(status: status, message: message)
+        case let .Server(status, reason): self = .server(status: status, reason: reason)
         case let .BadResponse(reason): self = .badResponse(detail: reason)
         case let .Network(reason): self = .network(detail: reason)
         // Callers translate `.Cancelled` to `CancellationError` first.

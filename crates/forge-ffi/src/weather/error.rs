@@ -14,13 +14,10 @@ pub enum WeatherError {
     Offline { reason: String },
     #[error("the request timed out")]
     Timeout,
-    /// The service answered with a non-2xx status. `message` is its own
+    /// The service answered with a non-2xx status. `reason` is its own
     /// explanation, when it sent one.
     #[error("server returned HTTP {status}")]
-    Server {
-        status: u16,
-        message: Option<String>,
-    },
+    Server { status: u16, reason: Option<String> },
     /// The response was not the JSON this build expects.
     #[error("unexpected response: {reason}")]
     BadResponse { reason: String },
