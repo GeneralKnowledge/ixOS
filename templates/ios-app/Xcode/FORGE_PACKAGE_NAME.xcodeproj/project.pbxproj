@@ -126,7 +126,7 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/../../../../build/ios-device/lib/libforge_ffi.a",
+				"$(SRCROOT)/../../../build/ios-device/lib/libforge_ffi.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
