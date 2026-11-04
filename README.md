@@ -41,6 +41,7 @@ CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, a
 ```
 crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
+crates/forge-net       # Networking trait (prototype: no-op client, no transport yet)
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
@@ -81,14 +82,10 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 ## Known limitations
 
-- **Device-first; no iOS Simulator yet.** The Rust library ships as a single device slice (`aarch64-apple-ios`, [ADR 001](docs/adr/001-ios-static-linking.md)), so simulator builds fail. The Simulator only runs on macOS, so on Linux a device is the only option anyway; simulator slices for Mac users are on the [roadmap](docs/roadmap.md#ios-simulator-support--open).
-- **iOS builds on Linux need xtool's Darwin SDK**, extracted from an `Xcode.xip` you download from Apple. Hosted CI cannot do this, so Linux iOS builds are verified manually ([toolchain-validation.md](docs/toolchain-validation.md)).
-- **No networking.** A scope choice, not a technical blocker: this release demonstrates the FFI and persistence contract. A `forge-net` prototype is in progress ([roadmap](docs/roadmap.md#networking--in-progress-prototype)).
-- **No App Store or Play Store distribution.** The CLI produces debug builds only ([roadmap](docs/roadmap.md#store-distribution-app-store-google-play--open)).
-- **Android is pinned to AGP 8 / Gradle 8**; AGP 9 is not supported yet ([compatibility.md](docs/compatibility.md)).
-- CI covers Rust checks and binding drift, Android JVM unit tests and a debug APK, and on macOS the Swift host tests and an unsigned `xcodebuild` of the Counter and template projects. Device installs are not run in CI.
-
-## Repository files worth knowing
+- Device-first; simulator off by default in config.
+- iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
+- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter and template Xcode projects.
+- No App Store distribution in this release. No real networking yet either: `forge-net` defines the intended `HttpClient` interface with a no-op client, but no transport is wired into `forge-ffi` or the apps.
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

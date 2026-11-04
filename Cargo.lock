@@ -359,6 +359,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-net"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+]
+
+[[package]]
 name = "forge-storage"
 version = "0.1.0"
 dependencies = [
