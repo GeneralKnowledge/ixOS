@@ -58,8 +58,9 @@ Do not edit files under `Generated/`. Rebuild in Xcode afterward.
 
 ## Verification status
 
-| Check | CI (Linux) | Manual (macOS + device) |
-|-------|------------|-------------------------|
-| `scripts/validate-xcode-project.sh` | Yes | — |
-| Xcode build | No macOS runner in CI | Required for release confidence |
+| Check | CI | Manual (macOS + device) |
+|-------|----|-------------------------|
+| `scripts/validate-xcode-project.sh` | Yes (Linux) | — |
+| Unsigned Xcode build (`generic/platform=iOS`) | Yes (`macos-15`, example and template) | — |
+| Swift host tests (XCTest) | Yes (`macos-15`) | — |
 | Physical device install | No | Required for acceptance |
