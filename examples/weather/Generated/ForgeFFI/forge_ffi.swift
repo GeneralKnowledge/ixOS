@@ -3508,9 +3508,10 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case Http(status: UInt16, reason: String
     )
     /**
-     * The server's answer was not what this build expects.
+     * The server's answer was not what this build expects (the core's
+     * `Protocol` error; renamed because `.Protocol` is a metatype in Swift).
      */
-    case Protocol(reason: String
+    case BadResponse(reason: String
     )
     /**
      * Abandoned before it took effect (the app shut down mid-send).
@@ -3572,7 +3573,7 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             status: try FfiConverterUInt16.read(from: &buf), 
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 3: return .Protocol(
+        case 3: return .BadResponse(
             reason: try FfiConverterString.read(from: &buf)
             )
         case 4: return .Cancelled
@@ -3615,7 +3616,7 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Protocol(reason):
+        case let .BadResponse(reason):
             writeInt(&buf, Int32(3))
             FfiConverterString.write(reason, into: &buf)
             

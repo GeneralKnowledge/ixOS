@@ -19,7 +19,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 | 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
 | 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
-| 4 | SwiftUI host, `examples/chat` | Planned |
+| 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | Planned |
 | 6 | CI matrix, README, roadmap | Planned |
 
@@ -29,7 +29,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 examples/chat-core        # Rust domain: types, ChatClient, ChatRepo (in-memory + HTTP/SSE), SSE parser, JSON store
 crates/forge-ffi/src/chat # ForgeChatApp, the UniFFI surface (like src/weather)
 scripts/mock-chat-server  # In-memory axum server: `make mock-chat`
-examples/chat             # Phase 4: SwiftUI host
+examples/chat             # SwiftUI host
 examples/chat-android     # Phase 5: Compose host
 ```
 
@@ -212,7 +212,7 @@ The plan was written before the Weather example landed. Checked against the repo
 | `live_streams()`, `store_problem()` | Diagnostics: room threads still running, last persistence problem. |
 | `shutdown()`, `is_shut_down()` | Closes rooms, then event streams (queued events delivered first). |
 
-`ChatEvent` variants carry named fields (`MessageReceived { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`. Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
+`ChatEvent` variants carry named fields (`MessageReceived { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`, and calls the core's `Protocol` error `BadResponse` (`.Protocol` is a metatype in Swift). Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
 
 ## Android and TLS (Phase 5)
 

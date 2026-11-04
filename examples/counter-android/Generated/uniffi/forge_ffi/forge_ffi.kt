@@ -5430,9 +5430,10 @@ sealed class ChatException: kotlin.Exception() {
     }
     
     /**
-     * The server's answer was not what this build expects.
+     * The server's answer was not what this build expects (the core's
+     * `Protocol` error; renamed because `.Protocol` is a metatype in Swift).
      */
-    class Protocol(
+    class BadResponse(
         
         val `reason`: kotlin.String
         ) : ChatException() {
@@ -5530,7 +5531,7 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 FfiConverterUShort.read(buf),
                 FfiConverterString.read(buf),
                 )
-            3 -> ChatException.Protocol(
+            3 -> ChatException.BadResponse(
                 FfiConverterString.read(buf),
                 )
             4 -> ChatException.Cancelled()
@@ -5567,7 +5568,7 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 + FfiConverterUShort.allocationSize(value.`status`)
                 + FfiConverterString.allocationSize(value.`reason`)
             )
-            is ChatException.Protocol -> (
+            is ChatException.BadResponse -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`reason`)
@@ -5621,7 +5622,7 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.Protocol -> {
+            is ChatException.BadResponse -> {
                 buf.putInt(3)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
