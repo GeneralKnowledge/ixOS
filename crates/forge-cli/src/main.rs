@@ -1,6 +1,7 @@
 mod check;
 mod commands;
 mod config;
+mod doctor;
 mod ios_builder;
 mod runner;
 
