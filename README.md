@@ -47,6 +47,7 @@ crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # Compose + Gradle app
+examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store (hosts in progress, see docs/chat-demo.md)
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # `forge init --platform android`
 scripts/               # Toolchain and build scripts

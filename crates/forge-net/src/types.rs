@@ -127,6 +127,52 @@ impl Response {
     }
 }
 
+/// A response whose body is read incrementally, for long-lived bodies such
+/// as Server-Sent Events. Returned by [`crate::HttpClient::open_stream`].
+///
+/// Reading from `body` blocks until bytes arrive, the server closes the
+/// connection (`Ok(0)`), or the transport fails. Dropping it closes the
+/// connection.
+pub struct StreamingResponse {
+    pub status: u16,
+    pub headers: Vec<Header>,
+    pub body: Box<dyn std::io::Read + Send>,
+}
+
+impl StreamingResponse {
+    pub fn is_success(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+
+    /// First header with this name, compared case-insensitively.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|h| h.name.eq_ignore_ascii_case(name))
+            .map(|h| h.value.as_str())
+    }
+}
+
+impl std::fmt::Debug for StreamingResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StreamingResponse")
+            .field("status", &self.status)
+            .field("headers", &self.headers)
+            .finish_non_exhaustive()
+    }
+}
+
+impl From<Response> for StreamingResponse {
+    /// A buffered response as a stream over its (already complete) body.
+    fn from(response: Response) -> Self {
+        Self {
+            status: response.status,
+            headers: response.headers,
+            body: Box::new(std::io::Cursor::new(response.body)),
+        }
+    }
+}
+
 /// Why a request produced no [`Response`].
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum NetError {
