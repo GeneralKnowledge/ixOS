@@ -1,0 +1,18 @@
+[package]
+name = "mock-chat-server"
+version = "0.1.0"
+description = "In-memory chat server for the Chat example (HTTP + Server-Sent Events). Demo only."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+axum = "0.8"
+futures-util = { version = "0.3", default-features = false }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
+
+[dev-dependencies]
+chat-core = { workspace = true, features = ["ureq"] }
