@@ -9,7 +9,7 @@
 
 ## Generated artifacts
 
-- iOS output: `examples/counter/Generated/` and an identical copy in `examples/weather/Generated/` (one `forge-ffi` library exports both apps' APIs) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
+- iOS output: `examples/counter/Generated/` and an identical copy in `examples/weather/Generated/` (one `forge-ffi` library exports every example's API: Counter, Weather and Chat) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
 - Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
@@ -99,6 +99,18 @@ Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `Op
 - Dropping a Rust future (Kotlin cancellation) only abandons the result; the command still runs or the operation still finishes. Correctness never depends on futures being polled to the end.
 
 **Late completion.** An operation started from a view keeps running in Rust when the view or view model goes away. It commits (or not) as normal, its outcome is delivered to any live subscriber as `OperationFinished`, and the next open sees the saved state. The view model captures itself weakly, so a late result is simply dropped. A host that wants cancel-on-disappear calls `cancelBulkAdd()` from `.onDisappear`.
+
+## Long-lived event streams (Chat)
+
+`ForgeChatApp` (crates/forge-ffi/src/chat) is the reference for a stream that outlives any single command. Its contract, which the Swift and Kotlin hosts rely on:
+
+- **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like Counter's: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room's live server connection. Ending one never ends the other.
+- **Room connections are explicit commands, not tied to a future's lifetime**, because Swift does not cancel Rust futures (above) and Kotlin does. Both return at once. When `unsubscribe` returns, `StreamDisconnected { will_retry: false }` is queued and nothing more from that room's connection ever is. The Rust thread behind it ends at its next wake-up (a server heartbeat); `live_streams()` reports it, and the Rust tests assert it reaches 0.
+- **One event stream for every room.** Hosts filter by `conversation_id` (status changes by message id). Events are totally ordered and each is queued after the store change it describes, so re-reading `cached_messages` after any event (and after `EventsDropped` in particular) is always consistent.
+- **Async commands are not cancellable from the host.** Leaving a room must not cancel a send already on the wire; dropping the future only ignores the answer, the store and the event stream still get the outcome.
+- **Every event, every error is typed.** `ChatError` adds `Storage`/`Internal` to the core's variants; fields are `reason`/`detail` (never `message`, which Kotlin's `Throwable` owns).
+
+The design and the reasons are in [chat-demo.md](chat-demo.md).
 
 ## Lifecycle and ownership
 

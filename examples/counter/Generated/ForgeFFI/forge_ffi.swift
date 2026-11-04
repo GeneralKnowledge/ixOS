@@ -648,6 +648,173 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 /**
+ * One subscriber's stream of [`ChatEvent`]s, for every room of the app
+ * instance. Use it from a single consumer. It ends on `cancel()`, when it
+ * is released, or when the app shuts down.
+ *
+ * This is independent of `ForgeChatApp::subscribe(conversation_id)`, which
+ * opens a room's live connection: cancelling this stream does not close any
+ * room, and unsubscribing from a room does not end this stream.
+ */
+public protocol ChatEventSubscriptionProtocol: AnyObject, Sendable {
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` at once and
+     * undelivered events are discarded. Idempotent.
+     */
+    func cancel() 
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    func next() async  -> ChatEvent?
+    
+}
+/**
+ * One subscriber's stream of [`ChatEvent`]s, for every room of the app
+ * instance. Use it from a single consumer. It ends on `cancel()`, when it
+ * is released, or when the app shuts down.
+ *
+ * This is independent of `ForgeChatApp::subscribe(conversation_id)`, which
+ * opens a room's live connection: cancelling this stream does not close any
+ * room, and unsubscribing from a room does not end this stream.
+ */
+open class ChatEventSubscription: ChatEventSubscriptionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_chateventsubscription(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_chateventsubscription(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` at once and
+     * undelivered events are discarded. Idempotent.
+     */
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chateventsubscription_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+open func next()async  -> ChatEvent?  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chateventsubscription_next(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatEvent.lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatEventSubscription: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ChatEventSubscription
+
+    public static func lift(_ handle: UInt64) throws -> ChatEventSubscription {
+        return ChatEventSubscription(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ChatEventSubscription) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatEventSubscription {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ChatEventSubscription, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEventSubscription_lift(_ handle: UInt64) throws -> ChatEventSubscription {
+    return try FfiConverterTypeChatEventSubscription.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEventSubscription_lower(_ value: ChatEventSubscription) -> UInt64 {
+    return FfiConverterTypeChatEventSubscription.lower(value)
+}
+
+
+
+
+
+
+/**
  * One subscriber's stream of [`CounterEvent`]s.
  *
  * Owned by the host. Use it from a single consumer: concurrent `next()` calls
@@ -983,6 +1150,455 @@ public func FfiConverterTypeCounterOperation_lift(_ handle: UInt64) throws -> Co
 #endif
 public func FfiConverterTypeCounterOperation_lower(_ value: CounterOperation) -> UInt64 {
     return FfiConverterTypeCounterOperation.lower(value)
+}
+
+
+
+
+
+
+/**
+ * The Chat example's app instance. Thread-safe; share it freely.
+ */
+public protocol ForgeChatAppProtocol: AnyObject, Sendable {
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */
+    func cachedConversations()  -> [ChatConversation]
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */
+    func cachedMessages(conversationId: String)  -> [ChatMessage]
+    
+    /**
+     * A new event stream. Every consumer (the list screen, the chat
+     * screen) takes its own; each sees every event from now on.
+     */
+    func events() throws  -> ChatEventSubscription
+    
+    func isShutDown()  -> Bool
+    
+    func isSubscribed(conversationId: String)  -> Bool
+    
+    /**
+     * The room's `since` cursor (server time, Unix ms).
+     */
+    func lastSynced(conversationId: String)  -> Int64?
+    
+    /**
+     * Lists rooms from the server, prefetching new messages for rooms
+     * that are not open (they count as unread).
+     */
+    func listConversations() async throws  -> [ChatConversation]
+    
+    /**
+     * Room connection threads still running. Reaches 0 shortly after every
+     * room is unsubscribed: the proof that leaving a room stops Rust work.
+     */
+    func liveStreams()  -> UInt32
+    
+    /**
+     * Fetches messages (all, or newer than `since`, Unix ms), merges them
+     * into the store and returns the room's full stored list, oldest first.
+     */
+    func loadMessages(conversationId: String, since: Int64?) async throws  -> [ChatMessage]
+    
+    /**
+     * Sends a `Failed` message again with the same id.
+     */
+    func retryMessage(messageId: String) async throws  -> ChatMessage
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
+     * message, or the error that failed it.
+     */
+    func sendMessage(conversationId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * Closes every room and every event stream (queued events are still
+     * delivered first). Later commands fail with `ShutDown`. Idempotent.
+     */
+    func shutdown() 
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */
+    func storeProblem()  -> String?
+    
+    /**
+     * Opens the room's live connection and marks it read. Returns at once;
+     * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
+     */
+    func subscribe(conversationId: String) throws 
+    
+    /**
+     * `load_messages(id, last_synced(id))`: what to call when a chat opens.
+     */
+    func syncMessages(conversationId: String) async throws  -> [ChatMessage]
+    
+    /**
+     * Closes the room's live connection. On return `StreamDisconnected
+     * { will_retry: false }` is queued and nothing more from that room's
+     * stream will be. Idempotent.
+     */
+    func unsubscribe(conversationId: String) throws 
+    
+}
+/**
+ * The Chat example's app instance. Thread-safe; share it freely.
+ */
+open class ForgeChatApp: ForgeChatAppProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_forgechatapp(self.handle, $0) }
+    }
+    /**
+     * Opens the app against the chat server in `config.base_url`.
+     * `storage_directory` holds the chat store and is created if missing;
+     * an empty string keeps everything in memory.
+     *
+     * Fails with `InvalidInput` for a bad URL or timeout, and with `Storage`
+     * when the stored data was written by a newer build (it is left alone).
+     * A corrupt store does not fail: the app starts empty and
+     * `store_problem()` says why.
+     */
+public convenience init(storageDirectory: String, config: ChatAppConfig)throws  {
+    let handle =
+        try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_forgechatapp_new(
+        FfiConverterString.lower(storageDirectory),
+        FfiConverterTypeChatAppConfig_lower(config),uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_forgechatapp(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */
+open func cachedConversations() -> [ChatConversation]  {
+    return try!  FfiConverterSequenceTypeChatConversation.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_cached_conversations(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */
+open func cachedMessages(conversationId: String) -> [ChatMessage]  {
+    return try!  FfiConverterSequenceTypeChatMessage.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_cached_messages(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * A new event stream. Every consumer (the list screen, the chat
+     * screen) takes its own; each sees every event from now on.
+     */
+open func events()throws  -> ChatEventSubscription  {
+    return try  FfiConverterTypeChatEventSubscription_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_events(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func isShutDown() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_is_shut_down(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func isSubscribed(conversationId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_is_subscribed(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The room's `since` cursor (server time, Unix ms).
+     */
+open func lastSynced(conversationId: String) -> Int64?  {
+    return try!  FfiConverterOptionInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_last_synced(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Lists rooms from the server, prefetching new messages for rooms
+     * that are not open (they count as unread).
+     */
+open func listConversations()async throws  -> [ChatConversation]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgechatapp_list_conversations(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatConversation.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Room connection threads still running. Reaches 0 shortly after every
+     * room is unsubscribed: the proof that leaving a room stops Rust work.
+     */
+open func liveStreams() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_live_streams(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Fetches messages (all, or newer than `since`, Unix ms), merges them
+     * into the store and returns the room's full stored list, oldest first.
+     */
+open func loadMessages(conversationId: String, since: Int64?)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgechatapp_load_messages(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterOptionInt64.lower(since)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Sends a `Failed` message again with the same id.
+     */
+open func retryMessage(messageId: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgechatapp_retry_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
+     * message, or the error that failed it.
+     */
+open func sendMessage(conversationId: String, body: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgechatapp_send_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Closes every room and every event stream (queued events are still
+     * delivered first). Later commands fail with `ShutDown`. Idempotent.
+     */
+open func shutdown()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_shutdown(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */
+open func storeProblem() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_store_problem(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Opens the room's live connection and marks it read. Returns at once;
+     * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
+     */
+open func subscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_subscribe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * `load_messages(id, last_synced(id))`: what to call when a chat opens.
+     */
+open func syncMessages(conversationId: String)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_forgechatapp_sync_messages(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Closes the room's live connection. On return `StreamDisconnected
+     * { will_retry: false }` is queued and nothing more from that room's
+     * stream will be. Idempotent.
+     */
+open func unsubscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeChatApp: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = ForgeChatApp
+
+    public static func lift(_ handle: UInt64) throws -> ForgeChatApp {
+        return ForgeChatApp(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: ForgeChatApp) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeChatApp {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: ForgeChatApp, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeChatApp_lift(_ handle: UInt64) throws -> ForgeChatApp {
+    return try FfiConverterTypeForgeChatApp.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeChatApp_lower(_ value: ForgeChatApp) -> UInt64 {
+    return FfiConverterTypeForgeChatApp.lower(value)
 }
 
 
@@ -1826,6 +2442,252 @@ public func FfiConverterTypeActionOutcome_lower(_ value: ActionOutcome) -> RustB
 
 
 /**
+ * Settings for [`crate::ForgeChatApp::new`].
+ */
+public struct ChatAppConfig: Equatable, Hashable {
+    /**
+     * The chat server, e.g. `http://127.0.0.1:8787` (or
+     * `http://10.0.2.2:8787` from the Android emulator).
+     */
+    public var baseUrl: String
+    /**
+     * The local user's display name. Defaults to `"me"`.
+     */
+    public var user: String?
+    /**
+     * Timeout for list/load/send and for opening a stream. Default 10 s.
+     */
+    public var requestTimeoutMs: UInt32?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The chat server, e.g. `http://127.0.0.1:8787` (or
+         * `http://10.0.2.2:8787` from the Android emulator).
+         */baseUrl: String, 
+        /**
+         * The local user's display name. Defaults to `"me"`.
+         */user: String?, 
+        /**
+         * Timeout for list/load/send and for opening a stream. Default 10 s.
+         */requestTimeoutMs: UInt32?) {
+        self.baseUrl = baseUrl
+        self.user = user
+        self.requestTimeoutMs = requestTimeoutMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAppConfig: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAppConfig: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAppConfig {
+        return
+            try ChatAppConfig(
+                baseUrl: FfiConverterString.read(from: &buf), 
+                user: FfiConverterOptionString.read(from: &buf), 
+                requestTimeoutMs: FfiConverterOptionUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAppConfig, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.baseUrl, into: &buf)
+        FfiConverterOptionString.write(value.user, into: &buf)
+        FfiConverterOptionUInt32.write(value.requestTimeoutMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAppConfig_lift(_ buf: RustBuffer) throws -> ChatAppConfig {
+    return try FfiConverterTypeChatAppConfig.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAppConfig_lower(_ value: ChatAppConfig) -> RustBuffer {
+    return FfiConverterTypeChatAppConfig.lower(value)
+}
+
+
+/**
+ * A chat room as the conversation list shows it.
+ */
+public struct ChatConversation: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    /**
+     * Newest message time, Unix milliseconds. `None` for an empty room.
+     */
+    public var lastMessageAt: Int64?
+    /**
+     * Messages from others that arrived while the room was not open.
+     */
+    public var unreadCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, 
+        /**
+         * Newest message time, Unix milliseconds. `None` for an empty room.
+         */lastMessageAt: Int64?, 
+        /**
+         * Messages from others that arrived while the room was not open.
+         */unreadCount: UInt32) {
+        self.id = id
+        self.title = title
+        self.lastMessageAt = lastMessageAt
+        self.unreadCount = unreadCount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatConversation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatConversation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatConversation {
+        return
+            try ChatConversation(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                lastMessageAt: FfiConverterOptionInt64.read(from: &buf), 
+                unreadCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatConversation, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterOptionInt64.write(value.lastMessageAt, into: &buf)
+        FfiConverterUInt32.write(value.unreadCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatConversation_lift(_ buf: RustBuffer) throws -> ChatConversation {
+    return try FfiConverterTypeChatConversation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatConversation_lower(_ value: ChatConversation) -> RustBuffer {
+    return FfiConverterTypeChatConversation.lower(value)
+}
+
+
+public struct ChatMessage: Equatable, Hashable {
+    /**
+     * Chosen by the sending device; stable across retries.
+     */
+    public var id: String
+    public var conversationId: String
+    /**
+     * Display name. The local user's messages carry `ChatAppConfig.user`.
+     */
+    public var author: String
+    public var body: String
+    /**
+     * Unix milliseconds: device time until `Sent`, then server time.
+     */
+    public var sentAt: Int64
+    public var status: ChatMessageStatus
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Chosen by the sending device; stable across retries.
+         */id: String, conversationId: String, 
+        /**
+         * Display name. The local user's messages carry `ChatAppConfig.user`.
+         */author: String, body: String, 
+        /**
+         * Unix milliseconds: device time until `Sent`, then server time.
+         */sentAt: Int64, status: ChatMessageStatus) {
+        self.id = id
+        self.conversationId = conversationId
+        self.author = author
+        self.body = body
+        self.sentAt = sentAt
+        self.status = status
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMessage {
+        return
+            try ChatMessage(
+                id: FfiConverterString.read(from: &buf), 
+                conversationId: FfiConverterString.read(from: &buf), 
+                author: FfiConverterString.read(from: &buf), 
+                body: FfiConverterString.read(from: &buf), 
+                sentAt: FfiConverterInt64.read(from: &buf), 
+                status: FfiConverterTypeChatMessageStatus.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatMessage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.conversationId, into: &buf)
+        FfiConverterString.write(value.author, into: &buf)
+        FfiConverterString.write(value.body, into: &buf)
+        FfiConverterInt64.write(value.sentAt, into: &buf)
+        FfiConverterTypeChatMessageStatus.write(value.status, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessage_lift(_ buf: RustBuffer) throws -> ChatMessage {
+    return try FfiConverterTypeChatMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessage_lower(_ value: ChatMessage) -> RustBuffer {
+    return FfiConverterTypeChatMessage.lower(value)
+}
+
+
+/**
  * A point on Earth in WGS84 degrees.
  */
 public struct Coordinate: Equatable, Hashable {
@@ -2627,6 +3489,398 @@ public func FfiConverterTypeWind_lift(_ buf: RustBuffer) throws -> Wind {
 public func FfiConverterTypeWind_lower(_ value: Wind) -> RustBuffer {
     return FfiConverterTypeWind.lower(value)
 }
+
+
+/**
+ * Every error the Chat API returns. `reason`/`detail` are diagnostics, not
+ * UI copy.
+ */
+public 
+enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * The server could not be reached, the connection broke, or it timed out.
+     */
+    case Network(reason: String
+    )
+    case Http(status: UInt16, reason: String
+    )
+    /**
+     * The server's answer was not what this build expects.
+     */
+    case Protocol(reason: String
+    )
+    /**
+     * Abandoned before it took effect (the app shut down mid-send).
+     */
+    case Cancelled
+    case NotFound(conversationId: String
+    )
+    /**
+     * This host cannot do what was asked.
+     */
+    case UnsupportedOnHost(detail: String
+    )
+    case InvalidInput(reason: String
+    )
+    /**
+     * The stored chat data cannot be used (written by a newer build).
+     */
+    case Storage(reason: String
+    )
+    case ShutDown
+    /**
+     * A bug, not an expected condition.
+     */
+    case Internal(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension ChatError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
+    typealias SwiftType = ChatError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Network(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Http(
+            status: try FfiConverterUInt16.read(from: &buf), 
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Protocol(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Cancelled
+        case 5: return .NotFound(
+            conversationId: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .UnsupportedOnHost(
+            detail: try FfiConverterString.read(from: &buf)
+            )
+        case 7: return .InvalidInput(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 8: return .Storage(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 9: return .ShutDown
+        case 10: return .Internal(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Network(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Http(status,reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt16.write(status, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Protocol(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .NotFound(conversationId):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(conversationId, into: &buf)
+            
+        
+        case let .UnsupportedOnHost(detail):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(detail, into: &buf)
+            
+        
+        case let .InvalidInput(reason):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(8))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(9))
+        
+        
+        case let .Internal(reason):
+            writeInt(&buf, Int32(10))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatError_lift(_ buf: RustBuffer) throws -> ChatError {
+    return try FfiConverterTypeChatError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatError_lower(_ value: ChatError) -> RustBuffer {
+    return FfiConverterTypeChatError.lower(value)
+}
+
+
+/**
+ * What the host should render. One stream per app instance, for every
+ * room; filter by `conversation_id` (or, for status changes, message id).
+ */
+
+public enum ChatEvent: Equatable, Hashable {
+    
+    case conversationUpdated(conversation: ChatConversation
+    )
+    /**
+     * A message the host has not seen: someone else's, or our own at the
+     * moment it is written (status `Sending`). Upsert by `id`.
+     */
+    case messageReceived(message: ChatMessage
+    )
+    case messageStatusChanged(id: String, status: ChatMessageStatus
+    )
+    case streamConnected(conversationId: String
+    )
+    /**
+     * With `will_retry` the client is reconnecting on its own; without it
+     * the subscription is over (unsubscribed, shut down, or no such room).
+     */
+    case streamDisconnected(conversationId: String, reason: String, willRetry: Bool
+    )
+    /**
+     * This subscriber fell behind and `count` older events were discarded.
+     * Re-read `cached_conversations()` and, for the open room,
+     * `cached_messages(id)` instead of relying on the missed events.
+     */
+    case eventsDropped(count: UInt64
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
+    typealias SwiftType = ChatEvent
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatEvent {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .conversationUpdated(conversation: try FfiConverterTypeChatConversation.read(from: &buf)
+        )
+        
+        case 2: return .messageReceived(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        )
+        
+        case 3: return .messageStatusChanged(id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        )
+        
+        case 4: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 6: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatEvent, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .conversationUpdated(conversation):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeChatConversation.write(conversation, into: &buf)
+            
+        
+        case let .messageReceived(message):
+            writeInt(&buf, Int32(2))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageStatusChanged(id,status):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(id, into: &buf)
+            FfiConverterTypeChatMessageStatus.write(status, into: &buf)
+            
+        
+        case let .streamConnected(conversationId):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(conversationId, into: &buf)
+            
+        
+        case let .streamDisconnected(conversationId,reason,willRetry):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
+            FfiConverterBool.write(willRetry, into: &buf)
+            
+        
+        case let .eventsDropped(count):
+            writeInt(&buf, Int32(6))
+            FfiConverterUInt64.write(count, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvent_lift(_ buf: RustBuffer) throws -> ChatEvent {
+    return try FfiConverterTypeChatEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatEvent_lower(_ value: ChatEvent) -> RustBuffer {
+    return FfiConverterTypeChatEvent.lower(value)
+}
+
+
+
+
+public enum ChatMessageStatus: Equatable, Hashable {
+    
+    /**
+     * Written locally; the server has not confirmed it yet.
+     */
+    case sending
+    case sent
+    /**
+     * The last attempt failed; `retry_message` tries again.
+     */
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatMessageStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatMessageStatus: FfiConverterRustBuffer {
+    typealias SwiftType = ChatMessageStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatMessageStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sending
+        
+        case 2: return .sent
+        
+        case 3: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatMessageStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sending:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sent:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageStatus_lift(_ buf: RustBuffer) throws -> ChatMessageStatus {
+    return try FfiConverterTypeChatMessageStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) -> RustBuffer {
+    return FfiConverterTypeChatMessageStatus.lower(value)
+}
+
 
 
 /**
@@ -4091,6 +5345,30 @@ fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionInt64: FfiConverterRustBuffer {
+    typealias SwiftType = Int64?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterInt64.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterInt64.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionDouble: FfiConverterRustBuffer {
     typealias SwiftType = Double?
 
@@ -4235,6 +5513,30 @@ fileprivate struct FfiConverterOptionTypeWind: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeChatEvent: FfiConverterRustBuffer {
+    typealias SwiftType = ChatEvent?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatEvent.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatEvent.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeCounterEvent: FfiConverterRustBuffer {
     typealias SwiftType = CounterEvent?
 
@@ -4301,6 +5603,56 @@ fileprivate struct FfiConverterOptionTypeIntensity: FfiConverterRustBuffer {
         case 1: return try FfiConverterTypeIntensity.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatConversation: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatConversation]
+
+    public static func write(_ value: [ChatConversation], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatConversation.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatConversation] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatConversation]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatConversation.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatMessage]
+
+    public static func write(_ value: [ChatMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatMessage.read(from: &buf))
+        }
+        return seq
     }
 }
 
@@ -4535,6 +5887,60 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count() != 25398) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_cached_conversations() != 27991) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_cached_messages() != 10564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_events() != 37258) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_is_shut_down() != 30429) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed() != 62844) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_last_synced() != 58714) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_list_conversations() != 37290) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_live_streams() != 57994) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_load_messages() != 64913) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_retry_message() != 14201) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_send_message() != 51330) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_shutdown() != 46580) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_store_problem() != 6758) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() != 58798) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages() != 16027) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() != 7728) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chateventsubscription_cancel() != 39977) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chateventsubscription_next() != 21867) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_countereventsubscription_cancel() != 19225) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4578,6 +5984,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 57232) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_forgechatapp_new() != 607) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() != 13605) {

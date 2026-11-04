@@ -438,6 +438,7 @@ dependencies = [
 name = "forge-ffi"
 version = "0.1.0"
 dependencies = [
+ "chat-core",
  "forge-core",
  "forge-net",
  "forge-storage",
