@@ -716,6 +716,42 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count(
     ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_cached_conversations(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_cached_messages(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_events(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_is_shut_down(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_last_synced(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_list_conversations(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_live_streams(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_load_messages(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_retry_message(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_send_message(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_shutdown(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_store_problem(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_subscribe(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_chateventsubscription_cancel(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_chateventsubscription_next(
+    ): Int
     external fun uniffi_forge_ffi_checksum_method_countereventsubscription_cancel(
     ): Int
     external fun uniffi_forge_ffi_checksum_method_countereventsubscription_next(
@@ -745,6 +781,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_forge_ffi_checksum_method_weatheroperation_result(
     ): Int
     external fun uniffi_forge_ffi_checksum_constructor_forgecounterapp_new(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_constructor_forgechatapp_new(
     ): Int
     external fun uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new(
     ): Int
@@ -808,6 +846,52 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_forge_ffi_fn_method_forgecounterapp_subscription_count(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Int
+    external fun uniffi_forge_ffi_fn_clone_forgechatapp(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_forge_ffi_fn_free_forgechatapp(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_constructor_forgechatapp_new(`storageDirectory`: RustBuffer.ByValue,`config`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_cached_conversations(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_cached_messages(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_events(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_is_shut_down(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_is_subscribed(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_last_synced(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_list_conversations(`ptr`: Long,
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_live_streams(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_load_messages(`ptr`: Long,`conversationId`: RustBuffer.ByValue,`since`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_retry_message(`ptr`: Long,`messageId`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_send_message(`ptr`: Long,`conversationId`: RustBuffer.ByValue,`body`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_shutdown(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_store_problem(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_subscribe(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_sync_messages(`ptr`: Long,`conversationId`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_clone_chateventsubscription(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_forge_ffi_fn_free_chateventsubscription(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_chateventsubscription_cancel(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_chateventsubscription_next(`ptr`: Long,
+    ): Long
     external fun uniffi_forge_ffi_fn_clone_countereventsubscription(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_forge_ffi_fn_free_countereventsubscription(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1028,6 +1112,60 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_forge_ffi_checksum_method_forgecounterapp_subscription_count() and 0xFFFF) != 25398) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_cached_conversations() and 0xFFFF) != 27991) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_cached_messages() and 0xFFFF) != 10564) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_events() and 0xFFFF) != 37258) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_is_shut_down() and 0xFFFF) != 30429) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed() and 0xFFFF) != 62844) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_last_synced() and 0xFFFF) != 58714) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_list_conversations() and 0xFFFF) != 37290) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_live_streams() and 0xFFFF) != 57994) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_load_messages() and 0xFFFF) != 64913) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_retry_message() and 0xFFFF) != 14201) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_send_message() and 0xFFFF) != 51330) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_shutdown() and 0xFFFF) != 46580) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_store_problem() and 0xFFFF) != 6758) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() and 0xFFFF) != 58798) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages() and 0xFFFF) != 16027) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() and 0xFFFF) != 7728) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_chateventsubscription_cancel() and 0xFFFF) != 39977) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_chateventsubscription_next() and 0xFFFF) != 21867) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_forge_ffi_checksum_method_countereventsubscription_cancel() and 0xFFFF) != 19225) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1071,6 +1209,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() and 0xFFFF) != 57232) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_constructor_forgechatapp_new() and 0xFFFF) != 607) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() and 0xFFFF) != 13605) {
@@ -1522,6 +1663,314 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
         val byteBuf = toUtf8(value)
         buf.putInt(byteBuf.limit())
         buf.put(byteBuf)
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * One subscriber's stream of [`ChatEvent`]s, for every room of the app
+ * instance. Use it from a single consumer. It ends on `cancel()`, when it
+ * is released, or when the app shuts down.
+ *
+ * This is independent of `ForgeChatApp::subscribe(conversation_id)`, which
+ * opens a room's live connection: cancelling this stream does not close any
+ * room, and unsubscribing from a room does not end this stream.
+ */
+public interface ChatEventSubscriptionInterface {
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` at once and
+     * undelivered events are discarded. Idempotent.
+     */
+    fun `cancel`()
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    suspend fun `next`(): ChatEvent?
+    
+    companion object
+}
+
+/**
+ * One subscriber's stream of [`ChatEvent`]s, for every room of the app
+ * instance. Use it from a single consumer. It ends on `cancel()`, when it
+ * is released, or when the app shuts down.
+ *
+ * This is independent of `ForgeChatApp::subscribe(conversation_id)`, which
+ * opens a room's live connection: cancelling this stream does not close any
+ * room, and unsubscribing from a room does not end this stream.
+ */
+open class ChatEventSubscription: Disposable, AutoCloseable, ChatEventSubscriptionInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_forge_ffi_fn_free_chateventsubscription(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_forge_ffi_fn_clone_chateventsubscription(handle, status)
+        }
+    }
+
+    
+    /**
+     * Ends the subscription. A pending `next()` returns `None` at once and
+     * undelivered events are discarded. Idempotent.
+     */override fun `cancel`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_chateventsubscription_cancel(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The next event, or `None` once the subscription has ended.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `next`() : ChatEvent? {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_chateventsubscription_next(
+                uniffiHandle,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterOptionalTypeChatEvent.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatEventSubscription: FfiConverter<ChatEventSubscription, Long> {
+    override fun lower(value: ChatEventSubscription): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): ChatEventSubscription {
+        return ChatEventSubscription(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): ChatEventSubscription {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: ChatEventSubscription) = 8UL
+
+    override fun write(value: ChatEventSubscription, buf: ByteBuffer) {
+        buf.putLong(lower(value))
     }
 }
 
@@ -2156,6 +2605,667 @@ public object FfiConverterTypeCounterOperation: FfiConverter<CounterOperation, L
     override fun allocationSize(value: CounterOperation) = 8UL
 
     override fun write(value: CounterOperation, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * The Chat example's app instance. Thread-safe; share it freely.
+ */
+public interface ForgeChatAppInterface {
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */
+    fun `cachedConversations`(): List<ChatConversation>
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */
+    fun `cachedMessages`(`conversationId`: kotlin.String): List<ChatMessage>
+    
+    /**
+     * A new event stream. Every consumer (the list screen, the chat
+     * screen) takes its own; each sees every event from now on.
+     */
+    fun `events`(): ChatEventSubscription
+    
+    fun `isShutDown`(): kotlin.Boolean
+    
+    fun `isSubscribed`(`conversationId`: kotlin.String): kotlin.Boolean
+    
+    /**
+     * The room's `since` cursor (server time, Unix ms).
+     */
+    fun `lastSynced`(`conversationId`: kotlin.String): kotlin.Long?
+    
+    /**
+     * Lists rooms from the server, prefetching new messages for rooms
+     * that are not open (they count as unread).
+     */
+    suspend fun `listConversations`(): List<ChatConversation>
+    
+    /**
+     * Room connection threads still running. Reaches 0 shortly after every
+     * room is unsubscribed: the proof that leaving a room stops Rust work.
+     */
+    fun `liveStreams`(): kotlin.UInt
+    
+    /**
+     * Fetches messages (all, or newer than `since`, Unix ms), merges them
+     * into the store and returns the room's full stored list, oldest first.
+     */
+    suspend fun `loadMessages`(`conversationId`: kotlin.String, `since`: kotlin.Long?): List<ChatMessage>
+    
+    /**
+     * Sends a `Failed` message again with the same id.
+     */
+    suspend fun `retryMessage`(`messageId`: kotlin.String): ChatMessage
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
+     * message, or the error that failed it.
+     */
+    suspend fun `sendMessage`(`conversationId`: kotlin.String, `body`: kotlin.String): ChatMessage
+    
+    /**
+     * Closes every room and every event stream (queued events are still
+     * delivered first). Later commands fail with `ShutDown`. Idempotent.
+     */
+    fun `shutdown`()
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */
+    fun `storeProblem`(): kotlin.String?
+    
+    /**
+     * Opens the room's live connection and marks it read. Returns at once;
+     * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
+     */
+    fun `subscribe`(`conversationId`: kotlin.String)
+    
+    /**
+     * `load_messages(id, last_synced(id))`: what to call when a chat opens.
+     */
+    suspend fun `syncMessages`(`conversationId`: kotlin.String): List<ChatMessage>
+    
+    /**
+     * Closes the room's live connection. On return `StreamDisconnected
+     * { will_retry: false }` is queued and nothing more from that room's
+     * stream will be. Idempotent.
+     */
+    fun `unsubscribe`(`conversationId`: kotlin.String)
+    
+    companion object
+}
+
+/**
+ * The Chat example's app instance. Thread-safe; share it freely.
+ */
+open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+    /**
+     * Opens the app against the chat server in `config.base_url`.
+     * `storage_directory` holds the chat store and is created if missing;
+     * an empty string keeps everything in memory.
+     *
+     * Fails with `InvalidInput` for a bad URL or timeout, and with `Storage`
+     * when the stored data was written by a newer build (it is left alone).
+     * A corrupt store does not fail: the app starts empty and
+     * `store_problem()` says why.
+     */
+    constructor(`storageDirectory`: kotlin.String, `config`: ChatAppConfig) :
+        this(UniffiWithHandle, 
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_constructor_forgechatapp_new(
+    
+        
+        FfiConverterString.lower(`storageDirectory`),
+        FfiConverterTypeChatAppConfig.lower(`config`),_status)
+}
+    )
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_forge_ffi_fn_free_forgechatapp(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_forge_ffi_fn_clone_forgechatapp(handle, status)
+        }
+    }
+
+    
+    /**
+     * Conversations as stored, for a first render before the network.
+     */override fun `cachedConversations`(): List<ChatConversation> {
+            return FfiConverterSequenceTypeChatConversation.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_cached_conversations(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * A room's messages as stored, oldest first.
+     */override fun `cachedMessages`(`conversationId`: kotlin.String): List<ChatMessage> {
+            return FfiConverterSequenceTypeChatMessage.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_cached_messages(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * A new event stream. Every consumer (the list screen, the chat
+     * screen) takes its own; each sees every event from now on.
+     */
+    @Throws(ChatException::class)override fun `events`(): ChatEventSubscription {
+            return FfiConverterTypeChatEventSubscription.lift(
+    callWithHandle {
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_events(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isShutDown`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_is_shut_down(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    override fun `isSubscribed`(`conversationId`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_is_subscribed(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The room's `since` cursor (server time, Unix ms).
+     */override fun `lastSynced`(`conversationId`: kotlin.String): kotlin.Long? {
+            return FfiConverterOptionalLong.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_last_synced(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Lists rooms from the server, prefetching new messages for rooms
+     * that are not open (they count as unread).
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `listConversations`() : List<ChatConversation> {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_list_conversations(
+                uniffiHandle,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeChatConversation.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Room connection threads still running. Reaches 0 shortly after every
+     * room is unsubscribed: the proof that leaving a room stops Rust work.
+     */override fun `liveStreams`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_live_streams(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Fetches messages (all, or newer than `since`, Unix ms), merges them
+     * into the store and returns the room's full stored list, oldest first.
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `loadMessages`(`conversationId`: kotlin.String, `since`: kotlin.Long?) : List<ChatMessage> {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_load_messages(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`conversationId`),
+        FfiConverterOptionalLong.lower(`since`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeChatMessage.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Sends a `Failed` message again with the same id.
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `retryMessage`(`messageId`: kotlin.String) : ChatMessage {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_retry_message(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`messageId`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeChatMessage.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Sends a message. It is announced as `Sending` at once, then becomes
+     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
+     * message, or the error that failed it.
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `sendMessage`(`conversationId`: kotlin.String, `body`: kotlin.String) : ChatMessage {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_send_message(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`conversationId`),
+        FfiConverterString.lower(`body`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypeChatMessage.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Closes every room and every event stream (queued events are still
+     * delivered first). Later commands fail with `ShutDown`. Idempotent.
+     */override fun `shutdown`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_shutdown(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The last persistence problem, if any. Never fails a command.
+     */override fun `storeProblem`(): kotlin.String? {
+            return FfiConverterOptionalString.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_store_problem(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Opens the room's live connection and marks it read. Returns at once;
+     * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
+     */
+    @Throws(ChatException::class)override fun `subscribe`(`conversationId`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_subscribe(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * `load_messages(id, last_synced(id))`: what to call when a chat opens.
+     */
+    @Throws(ChatException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `syncMessages`(`conversationId`: kotlin.String) : List<ChatMessage> {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_sync_messages(
+                uniffiHandle,
+                
+        FfiConverterString.lower(`conversationId`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_forge_ffi_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_forge_ffi_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_forge_ffi_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceTypeChatMessage.lift(it) },
+        // Error FFI converter
+        ChatException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Closes the room's live connection. On return `StreamDisconnected
+     * { will_retry: false }` is queued and nothing more from that room's
+     * stream will be. Idempotent.
+     */
+    @Throws(ChatException::class)override fun `unsubscribe`(`conversationId`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeForgeChatApp: FfiConverter<ForgeChatApp, Long> {
+    override fun lower(value: ForgeChatApp): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): ForgeChatApp {
+        return ForgeChatApp(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): ForgeChatApp {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: ForgeChatApp) = 8UL
+
+    override fun write(value: ForgeChatApp, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -3486,6 +4596,186 @@ public object FfiConverterTypeActionOutcome: FfiConverterRustBuffer<ActionOutcom
 
 
 /**
+ * Settings for [`crate::ForgeChatApp::new`].
+ */
+data class ChatAppConfig (
+    /**
+     * The chat server, e.g. `http://127.0.0.1:8787` (or
+     * `http://10.0.2.2:8787` from the Android emulator).
+     */
+    var `baseUrl`: kotlin.String
+    , 
+    /**
+     * The local user's display name. Defaults to `"me"`.
+     */
+    var `user`: kotlin.String?
+    , 
+    /**
+     * Timeout for list/load/send and for opening a stream. Default 10 s.
+     */
+    var `requestTimeoutMs`: kotlin.UInt?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatAppConfig: FfiConverterRustBuffer<ChatAppConfig> {
+    override fun read(buf: ByteBuffer): ChatAppConfig {
+        return ChatAppConfig(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChatAppConfig) = (
+            FfiConverterString.allocationSize(value.`baseUrl`) +
+            FfiConverterOptionalString.allocationSize(value.`user`) +
+            FfiConverterOptionalUInt.allocationSize(value.`requestTimeoutMs`)
+    )
+
+    override fun write(value: ChatAppConfig, buf: ByteBuffer) {
+            FfiConverterString.write(value.`baseUrl`, buf)
+            FfiConverterOptionalString.write(value.`user`, buf)
+            FfiConverterOptionalUInt.write(value.`requestTimeoutMs`, buf)
+    }
+}
+
+
+
+/**
+ * A chat room as the conversation list shows it.
+ */
+data class ChatConversation (
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    /**
+     * Newest message time, Unix milliseconds. `None` for an empty room.
+     */
+    var `lastMessageAt`: kotlin.Long?
+    , 
+    /**
+     * Messages from others that arrived while the room was not open.
+     */
+    var `unreadCount`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatConversation: FfiConverterRustBuffer<ChatConversation> {
+    override fun read(buf: ByteBuffer): ChatConversation {
+        return ChatConversation(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalLong.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChatConversation) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterOptionalLong.allocationSize(value.`lastMessageAt`) +
+            FfiConverterUInt.allocationSize(value.`unreadCount`)
+    )
+
+    override fun write(value: ChatConversation, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterOptionalLong.write(value.`lastMessageAt`, buf)
+            FfiConverterUInt.write(value.`unreadCount`, buf)
+    }
+}
+
+
+
+data class ChatMessage (
+    /**
+     * Chosen by the sending device; stable across retries.
+     */
+    var `id`: kotlin.String
+    , 
+    var `conversationId`: kotlin.String
+    , 
+    /**
+     * Display name. The local user's messages carry `ChatAppConfig.user`.
+     */
+    var `author`: kotlin.String
+    , 
+    var `body`: kotlin.String
+    , 
+    /**
+     * Unix milliseconds: device time until `Sent`, then server time.
+     */
+    var `sentAt`: kotlin.Long
+    , 
+    var `status`: ChatMessageStatus
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatMessage: FfiConverterRustBuffer<ChatMessage> {
+    override fun read(buf: ByteBuffer): ChatMessage {
+        return ChatMessage(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterLong.read(buf),
+            FfiConverterTypeChatMessageStatus.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ChatMessage) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`conversationId`) +
+            FfiConverterString.allocationSize(value.`author`) +
+            FfiConverterString.allocationSize(value.`body`) +
+            FfiConverterLong.allocationSize(value.`sentAt`) +
+            FfiConverterTypeChatMessageStatus.allocationSize(value.`status`)
+    )
+
+    override fun write(value: ChatMessage, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`conversationId`, buf)
+            FfiConverterString.write(value.`author`, buf)
+            FfiConverterString.write(value.`body`, buf)
+            FfiConverterLong.write(value.`sentAt`, buf)
+            FfiConverterTypeChatMessageStatus.write(value.`status`, buf)
+    }
+}
+
+
+
+/**
  * A point on Earth in WGS84 degrees.
  */
 data class Coordinate (
@@ -4107,6 +5397,521 @@ public object FfiConverterTypeWind: FfiConverterRustBuffer<Wind> {
             FfiConverterOptionalUShort.write(value.`directionDeg`, buf)
     }
 }
+
+
+
+
+
+/**
+ * Every error the Chat API returns. `reason`/`detail` are diagnostics, not
+ * UI copy.
+ */
+sealed class ChatException: kotlin.Exception() {
+    
+    /**
+     * The server could not be reached, the connection broke, or it timed out.
+     */
+    class Network(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    class Http(
+        
+        val `status`: kotlin.UShort, 
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "status=${ `status` }, reason=${ `reason` }"
+    }
+    
+    /**
+     * The server's answer was not what this build expects.
+     */
+    class Protocol(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Abandoned before it took effect (the app shut down mid-send).
+     */
+    class Cancelled(
+        ) : ChatException() {
+        override val message
+            get() = ""
+    }
+    
+    class NotFound(
+        
+        val `conversationId`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "conversationId=${ `conversationId` }"
+    }
+    
+    /**
+     * This host cannot do what was asked.
+     */
+    class UnsupportedOnHost(
+        
+        val `detail`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "detail=${ `detail` }"
+    }
+    
+    class InvalidInput(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The stored chat data cannot be used (written by a newer build).
+     */
+    class Storage(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    class ShutDown(
+        ) : ChatException() {
+        override val message
+            get() = ""
+    }
+    
+    /**
+     * A bug, not an expected condition.
+     */
+    class Internal(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+
+    
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<ChatException> {
+        override fun lift(error_buf: RustBuffer.ByValue): ChatException = FfiConverterTypeChatError.lift(error_buf)
+    }
+
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> {
+    override fun read(buf: ByteBuffer): ChatException {
+        
+
+        return when(buf.getInt()) {
+            1 -> ChatException.Network(
+                FfiConverterString.read(buf),
+                )
+            2 -> ChatException.Http(
+                FfiConverterUShort.read(buf),
+                FfiConverterString.read(buf),
+                )
+            3 -> ChatException.Protocol(
+                FfiConverterString.read(buf),
+                )
+            4 -> ChatException.Cancelled()
+            5 -> ChatException.NotFound(
+                FfiConverterString.read(buf),
+                )
+            6 -> ChatException.UnsupportedOnHost(
+                FfiConverterString.read(buf),
+                )
+            7 -> ChatException.InvalidInput(
+                FfiConverterString.read(buf),
+                )
+            8 -> ChatException.Storage(
+                FfiConverterString.read(buf),
+                )
+            9 -> ChatException.ShutDown()
+            10 -> ChatException.Internal(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ChatException): ULong {
+        return when(value) {
+            is ChatException.Network -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.Http -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterUShort.allocationSize(value.`status`)
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.Protocol -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.Cancelled -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is ChatException.NotFound -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`conversationId`)
+            )
+            is ChatException.UnsupportedOnHost -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`detail`)
+            )
+            is ChatException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.Storage -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.ShutDown -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is ChatException.Internal -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+        }
+    }
+
+    override fun write(value: ChatException, buf: ByteBuffer) {
+        when(value) {
+            is ChatException.Network -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.Http -> {
+                buf.putInt(2)
+                FfiConverterUShort.write(value.`status`, buf)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.Protocol -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.Cancelled -> {
+                buf.putInt(4)
+                Unit
+            }
+            is ChatException.NotFound -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`conversationId`, buf)
+                Unit
+            }
+            is ChatException.UnsupportedOnHost -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`detail`, buf)
+                Unit
+            }
+            is ChatException.InvalidInput -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.Storage -> {
+                buf.putInt(8)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.ShutDown -> {
+                buf.putInt(9)
+                Unit
+            }
+            is ChatException.Internal -> {
+                buf.putInt(10)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * What the host should render. One stream per app instance, for every
+ * room; filter by `conversation_id` (or, for status changes, message id).
+ */
+sealed class ChatEvent {
+    
+    data class ConversationUpdated(
+        val `conversation`: uniffi.forge_ffi.ChatConversation) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * A message the host has not seen: someone else's, or our own at the
+     * moment it is written (status `Sending`). Upsert by `id`.
+     */
+    data class MessageReceived(
+        val `message`: uniffi.forge_ffi.ChatMessage) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+    data class MessageStatusChanged(
+        val `id`: kotlin.String, 
+        val `status`: uniffi.forge_ffi.ChatMessageStatus) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+    data class StreamConnected(
+        val `conversationId`: kotlin.String) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * With `will_retry` the client is reconnecting on its own; without it
+     * the subscription is over (unsubscribed, shut down, or no such room).
+     */
+    data class StreamDisconnected(
+        val `conversationId`: kotlin.String, 
+        val `reason`: kotlin.String, 
+        val `willRetry`: kotlin.Boolean) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * This subscriber fell behind and `count` older events were discarded.
+     * Re-read `cached_conversations()` and, for the open room,
+     * `cached_messages(id)` instead of relying on the missed events.
+     */
+    data class EventsDropped(
+        val `count`: kotlin.ULong) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
+    override fun read(buf: ByteBuffer): ChatEvent {
+        return when(buf.getInt()) {
+            1 -> ChatEvent.ConversationUpdated(
+                FfiConverterTypeChatConversation.read(buf),
+                )
+            2 -> ChatEvent.MessageReceived(
+                FfiConverterTypeChatMessage.read(buf),
+                )
+            3 -> ChatEvent.MessageStatusChanged(
+                FfiConverterString.read(buf),
+                FfiConverterTypeChatMessageStatus.read(buf),
+                )
+            4 -> ChatEvent.StreamConnected(
+                FfiConverterString.read(buf),
+                )
+            5 -> ChatEvent.StreamDisconnected(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                FfiConverterBoolean.read(buf),
+                )
+            6 -> ChatEvent.EventsDropped(
+                FfiConverterULong.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ChatEvent): ULong = when(value) {
+        is ChatEvent.ConversationUpdated -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeChatConversation.allocationSize(value.`conversation`)
+            )
+        }
+        is ChatEvent.MessageReceived -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeChatMessage.allocationSize(value.`message`)
+            )
+        }
+        is ChatEvent.MessageStatusChanged -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`id`)
+                + FfiConverterTypeChatMessageStatus.allocationSize(value.`status`)
+            )
+        }
+        is ChatEvent.StreamConnected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`conversationId`)
+            )
+        }
+        is ChatEvent.StreamDisconnected -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`conversationId`)
+                + FfiConverterString.allocationSize(value.`reason`)
+                + FfiConverterBoolean.allocationSize(value.`willRetry`)
+            )
+        }
+        is ChatEvent.EventsDropped -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterULong.allocationSize(value.`count`)
+            )
+        }
+    }
+
+    override fun write(value: ChatEvent, buf: ByteBuffer) {
+        when(value) {
+            is ChatEvent.ConversationUpdated -> {
+                buf.putInt(1)
+                FfiConverterTypeChatConversation.write(value.`conversation`, buf)
+                Unit
+            }
+            is ChatEvent.MessageReceived -> {
+                buf.putInt(2)
+                FfiConverterTypeChatMessage.write(value.`message`, buf)
+                Unit
+            }
+            is ChatEvent.MessageStatusChanged -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`id`, buf)
+                FfiConverterTypeChatMessageStatus.write(value.`status`, buf)
+                Unit
+            }
+            is ChatEvent.StreamConnected -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`conversationId`, buf)
+                Unit
+            }
+            is ChatEvent.StreamDisconnected -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`conversationId`, buf)
+                FfiConverterString.write(value.`reason`, buf)
+                FfiConverterBoolean.write(value.`willRetry`, buf)
+                Unit
+            }
+            is ChatEvent.EventsDropped -> {
+                buf.putInt(6)
+                FfiConverterULong.write(value.`count`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+enum class ChatMessageStatus {
+    
+    /**
+     * Written locally; the server has not confirmed it yet.
+     */
+    SENDING,
+    SENT,
+    /**
+     * The last attempt failed; `retry_message` tries again.
+     */
+    FAILED;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeChatMessageStatus: FfiConverterRustBuffer<ChatMessageStatus> {
+    override fun read(buf: ByteBuffer) = try {
+        ChatMessageStatus.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: ChatMessageStatus) = 4UL
+
+    override fun write(value: ChatMessageStatus, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
 
 
 
@@ -5844,6 +7649,38 @@ public object FfiConverterOptionalULong: FfiConverterRustBuffer<kotlin.ULong?> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalLong: FfiConverterRustBuffer<kotlin.Long?> {
+    override fun read(buf: ByteBuffer): kotlin.Long? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterLong.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.Long?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterLong.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.Long?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterLong.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalDouble: FfiConverterRustBuffer<kotlin.Double?> {
     override fun read(buf: ByteBuffer): kotlin.Double? {
         if (buf.get().toInt() == 0) {
@@ -6036,6 +7873,38 @@ public object FfiConverterOptionalTypeWind: FfiConverterRustBuffer<Wind?> {
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeChatEvent: FfiConverterRustBuffer<ChatEvent?> {
+    override fun read(buf: ByteBuffer): ChatEvent? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeChatEvent.read(buf)
+    }
+
+    override fun allocationSize(value: ChatEvent?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeChatEvent.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ChatEvent?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeChatEvent.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeCounterEvent: FfiConverterRustBuffer<CounterEvent?> {
     override fun read(buf: ByteBuffer): CounterEvent? {
         if (buf.get().toInt() == 0) {
@@ -6122,6 +7991,62 @@ public object FfiConverterOptionalTypeIntensity: FfiConverterRustBuffer<Intensit
         } else {
             buf.put(1)
             FfiConverterTypeIntensity.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeChatConversation: FfiConverterRustBuffer<List<ChatConversation>> {
+    override fun read(buf: ByteBuffer): List<ChatConversation> {
+        val len = buf.getInt()
+        return List<ChatConversation>(len) {
+            FfiConverterTypeChatConversation.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ChatConversation>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeChatConversation.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ChatConversation>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeChatConversation.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer<List<ChatMessage>> {
+    override fun read(buf: ByteBuffer): List<ChatMessage> {
+        val len = buf.getInt()
+        return List<ChatMessage>(len) {
+            FfiConverterTypeChatMessage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<ChatMessage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeChatMessage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<ChatMessage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeChatMessage.write(it, buf)
         }
     }
 }

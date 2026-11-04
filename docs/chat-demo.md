@@ -16,8 +16,8 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 
 | Phase | What | State |
 |---|---|---|
-| 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done.** `cargo test -p chat-core` |
-| 2 | FFI boundary in `forge-ffi`, Swift + Kotlin bindings | Planned |
+| 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
+| 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
 | 3 | `scripts/mock-chat-server` (axum, single file) + `make mock-chat` | Planned |
 | 4 | SwiftUI host, `examples/chat` | Planned |
 | 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | Planned |
@@ -27,7 +27,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 
 ```
 examples/chat-core        # Rust domain: types, ChatClient, ChatRepo (in-memory + HTTP/SSE), SSE parser, JSON store
-crates/forge-ffi/src/chat # Phase 2: ForgeChatApp, the UniFFI surface (like src/weather)
+crates/forge-ffi/src/chat # ForgeChatApp, the UniFFI surface (like src/weather)
 scripts/mock-chat-server  # Phase 3
 examples/chat             # Phase 4: SwiftUI host
 examples/chat-android     # Phase 5: Compose host
@@ -91,7 +91,7 @@ These are the guarantees the FFI layer and both hosts build on. Each has a test 
 
 ### Why explicit subscribe/unsubscribe
 
-Tying the subscription to the lifetime of an `AsyncSequence` / `Flow` would make cancellation depend on how each binding generator drops a future, and the async bridge milestone already found that UniFFI's Swift bindings do not cancel Rust futures when a `Task` is cancelled. Explicit commands make the contract visible and testable in Rust. The hosts still get an idiomatic stream: in Phase 2 the event sink feeds forge-ffi's existing pull-based subscription (`next()` async, bounded queue), which the Swift bridge wraps in an `AsyncSequence` and the Kotlin host in a `Flow`, exactly as Counter does.
+Tying the subscription to the lifetime of an `AsyncSequence` / `Flow` would make cancellation depend on how each binding generator drops a future, and the async bridge milestone already found that UniFFI's Swift bindings do not cancel Rust futures when a `Task` is cancelled. Explicit commands make the contract visible and testable in Rust. The hosts still get an idiomatic stream: the event sink feeds a pull-based subscription like Counter's (`next()` async, bounded queue), which the Swift bridge wraps in an `AsyncSequence` and the Kotlin host in a `Flow`.
 
 ### The `since` cursor
 
@@ -169,18 +169,28 @@ The plan was written before the Weather example landed. Checked against the repo
 | `"version": 1` | `"schema_version": 1` | The key every other Forge store uses. |
 | Seconds (`1730000000`) | Milliseconds | Second resolution makes `since` lossy within a busy second. |
 | Command list without retry | Added `retry_message` | Step 5 of the demo needs it. Client-chosen message ids make it idempotent. |
-| `Cancelled` "if the user navigates away mid-send" | Navigating away never cancels a send; `Cancelled` is for shutdown now and FFI operation cancel in Phase 2 | Step 2 of the demo says leaving cancels nothing; both cannot hold. Not cancelling is the better UX (the message is already on the wire). |
+| `Cancelled` "if the user navigates away mid-send" | Navigating away never cancels a send; `Cancelled` is what a send reports when the app shuts down while it is in flight | Step 2 of the demo says leaving cancels nothing; both cannot hold. Not cancelling is the better UX (the message is already on the wire). |
 | `StreamDisconnected { conversation_id, reason }` | Added `will_retry` | The UI needs to tell "reconnecting" from "gone". |
 | `ChatError` as listed | Added `InvalidInput` and `ShutDown` | Same grouping as `WeatherError` / `ForgeAppError` (input, lifecycle). |
 | Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` | One `forge_ffi` library exports every example's API and every `Generated/` copy is identical (see [ffi-policy.md](ffi-policy.md)); a second UniFFI cdylib would mean a second binding set and a second native library per app. |
 | `examples/chat-core` | As planned | It is a workspace member like the crates under `crates/`. |
 
-## Phase 2 notes (FFI)
+## The FFI surface (Phase 2)
 
-- `ForgeChatApp` in `forge-ffi/src/chat`, mirroring `ForgeWeatherApp`: commands return operation handles (or are `async`) and run on worker threads; `subscribe_events()` returns a pull-based subscription like `CounterEventSubscription`.
-- **High-frequency means the bounded queue will overflow.** Counter's queue drops the oldest event and returns `EventsDropped`. The FFI `ChatEvent` should add `EventsDropped { count }`, and the host's answer is to re-read `cached_messages` for the open room. This is the main FFI-contract question the demo exists to answer.
-- The pump threads and the sink lock are internal; nothing calls into Swift or Kotlin from a Rust thread.
-- Add the event-stream contract (points 1–8 above) to [ffi-policy.md](ffi-policy.md). UniFFI is already pinned (0.32.2).
+`crates/forge-ffi/src/chat` exposes `ForgeChatApp`. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), because every example shares one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
+
+| Rust export | Notes |
+|---|---|
+| `ForgeChatApp::new(storage_directory, ChatAppConfig { base_url, user, request_timeout_ms })` | Validates the URL and timeout. `""` keeps the store in memory. A store from a newer build fails with `Storage`. |
+| `events()` → `ChatEventSubscription` (`async next()`, `cancel()`) | One per consumer, queue of 256, then `EventsDropped { count }`: re-read `cached_*`. |
+| `async list_conversations()`, `async load_messages(id, since)`, `async sync_messages(id)` | Each runs on a worker thread. |
+| `async send_message(id, body)`, `async retry_message(message_id)` | Not cancellable from the host, on purpose. |
+| `subscribe(id)`, `unsubscribe(id)` | Synchronous, return at once. |
+| `cached_conversations()`, `cached_messages(id)`, `last_synced(id)`, `is_subscribed(id)` | Local reads. |
+| `live_streams()`, `store_problem()` | Diagnostics: room threads still running, last persistence problem. |
+| `shutdown()`, `is_shut_down()` | Closes rooms, then event streams (queued events delivered first). |
+
+`ChatEvent` variants carry named fields (`MessageReceived { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`. Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
 
 ## Android and TLS (Phase 5)
 
@@ -195,7 +205,7 @@ Two separate problems, and the demo as planned only hits one of them:
 |---|---|
 | Android TLS verifier not wired | See above: decided explicitly in Phase 5, never silent. |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
-| Event queue overflow under load | `EventsDropped` + re-read from the store (Phase 2). |
+| Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
 | A blocked stream read outlives unsubscribe | Heartbeats from the server; no events are emitted after unsubscribe regardless. |
 | Store rewrite per message is slow on a phone | Measured in Phase 4/5; batch writes in the FFI layer if needed. |
 | Scope creep (media, auth, receipts) | Non-goals above. |

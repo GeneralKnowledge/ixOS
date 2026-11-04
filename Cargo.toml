@@ -19,6 +19,7 @@ rust-version = "1.88"
 forge-core = { path = "crates/forge-core" }
 forge-storage = { path = "crates/forge-storage" }
 forge-net = { path = "crates/forge-net" }
+chat-core = { path = "examples/chat-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
