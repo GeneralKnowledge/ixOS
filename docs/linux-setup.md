@@ -13,6 +13,8 @@ Forge Mobile targets **Linux-first** development for native iOS apps using Rust,
 | Xcode `.xip` | Supplies iOS SDK via `xtool setup` (download in browser; license acceptance required) |
 | Apple ID / Developer credentials | `xtool setup` / `xtool auth` |
 
+Tested versions of each tool are in [compatibility.md](compatibility.md).
+
 ## Install Rust
 
 ```bash
@@ -83,6 +85,20 @@ Or step by step:
 cd examples/counter && xtool dev
 ```
 
-## Cloud Agent / CI note
+## CI note
 
-Hosted Linux CI in this repository runs **Rust tests and binding checks only**. iOS linking requires the Darwin SDK from `xtool setup`, which cannot be checked into the repo. Use a self-hosted runner with SDK installed for full iOS builds.
+Hosted Linux CI runs the Rust checks, binding drift, Android JVM tests and a debug APK build; macOS CI builds the Xcode projects and runs the Swift host tests. Linux iOS linking needs the Darwin SDK from `xtool setup`, which cannot be checked into the repo or downloaded in hosted CI. Use a self-hosted runner with the SDK installed for full Linux iOS builds.
+
+## Hosted agent VMs (`environment.json`)
+
+`environment.json` at the repo root is the bootstrap for hosted coding-agent VMs (fresh Ubuntu 24.04 images with the repo at `/workspace`). Its single `install` command runs the steps on this page non-interactively:
+
+1. `apt-get install` of `libncurses6`, `usbmuxd`, `libimobiledevice-utils`, `curl`, `ca-certificates`
+2. `rustup target add aarch64-apple-ios`
+3. Download of the latest xtool AppImage to `/usr/local/bin/xtool`
+4. Swift 6.2.3 from swift.org into `/usr/local` (skipped if already present)
+5. `cargo fetch`
+
+It holds no credentials or machine-specific paths, so it stays in the repo. It does **not** run `xtool setup` (that needs an Apple ID and an `Xcode.xip`), so agent VMs can run Rust, binding and template checks but not Linux iOS builds.
+
+Two known gaps: xtool is fetched as `latest` rather than the version in [compatibility.md](compatibility.md), and neither download is checksum-verified. If you change the install steps on this page, update `environment.json` to match.

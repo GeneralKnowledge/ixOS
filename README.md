@@ -1,19 +1,32 @@
 # Forge Mobile
 
+[![Rust](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml)
+[![Bindings](https://github.com/GeneralKnowledge/ixOS/actions/workflows/bindings.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/bindings.yml)
+[![Android](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml)
+[![macOS](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml)
+
 Linux-first, Rust-first framework for building native mobile apps with **Rust** (domain logic), **UniFFI** (FFI), and thin platform hosts: **SwiftUI + xtool** (iOS) and **Jetpack Compose + Gradle** (Android).
 
-This repository (`ixOS` on GitHub) ships a working **Counter** example, developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet.
+This repository (`ixOS` on GitHub) ships a working **Counter** example, developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 
 The Rust-to-Swift bridge is asynchronous: SwiftUI talks to a thin Swift layer (`CounterBridge`) that exposes Rust commands and queries as `async` calls and Rust events as an `AsyncSequence`, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
+
+## Why Forge?
+
+Forge is for teams that want **native UI on each platform** (SwiftUI, Jetpack Compose) over **one Rust core**, and want to do most of that work **from Linux**. It is not a cross-platform UI toolkit: you write each app's UI in its own language, and Forge supplies the shared core, the FFI contract (async commands, events, cancellation, typed errors), the packaging scripts, a CLI and templates.
+
+How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview UI) and **[Dioxus](https://dioxuslabs.com/)** (Rust UI) give you one UI for all platforms and are far more mature; **[Bevy](https://bevyengine.org/)** is a game engine with its own renderer. All three expect a Mac with Xcode for iOS builds today, while Forge builds and installs iOS apps from Linux through [xtool](https://github.com/xtool-org/xtool) (macOS with Xcode also works). **Plain [UniFFI](https://mozilla.github.io/uniffi-rs/)** is what Forge uses underneath; with UniFFI alone you write the iOS/Android packaging, binding regeneration, drift checks, host app wiring and the threading contract yourself. Pick Forge if native UI and a Linux-first workflow matter more to you than a shared UI or a large ecosystem; pick Tauri or Dioxus if you want one UI codebase; pick Bevy for games.
 
 ## Quick start (Linux)
 
 1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/), and [xtool](https://github.com/xtool-org/xtool) — see [docs/linux-setup.md](docs/linux-setup.md).
 2. Run `xtool setup` with your **Xcode.xip** to install the Darwin SDK.
-3. Validate: `./scripts/validate-toolchain.sh`
+3. Validate: `./scripts/validate-toolchain.sh`. If anything fails, [docs/toolchain-validation.md](docs/toolchain-validation.md) lists the verified commands and known blockers, and [docs/compatibility.md](docs/compatibility.md) the tested versions.
 4. Test Rust: `cargo test --workspace`
 5. Generate bindings: `./scripts/generate-bindings.sh`
 6. Build Counter for iOS: `cargo run -p forge-cli -- build ios --project examples/counter`
+
+Contributing? [CONTRIBUTING.md](CONTRIBUTING.md) starts with a three-command path to a green local build.
 
 Android (SDK + NDK on Linux) — see [docs/android-setup.md](docs/android-setup.md):
 
@@ -68,9 +81,15 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 ## Known limitations
 
-- Device-first; simulator off by default in config.
-- iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter and template Xcode projects.
-- No App Store distribution or networking in this release.
+- **Device-first; no iOS Simulator yet.** The Rust library ships as a single device slice (`aarch64-apple-ios`, [ADR 001](docs/adr/001-ios-static-linking.md)), so simulator builds fail. The Simulator only runs on macOS, so on Linux a device is the only option anyway; simulator slices for Mac users are on the [roadmap](docs/roadmap.md#ios-simulator-support--open).
+- **iOS builds on Linux need xtool's Darwin SDK**, extracted from an `Xcode.xip` you download from Apple. Hosted CI cannot do this, so Linux iOS builds are verified manually ([toolchain-validation.md](docs/toolchain-validation.md)).
+- **No networking.** A scope choice, not a technical blocker: this release demonstrates the FFI and persistence contract. A `forge-net` prototype is in progress ([roadmap](docs/roadmap.md#networking--in-progress-prototype)).
+- **No App Store or Play Store distribution.** The CLI produces debug builds only ([roadmap](docs/roadmap.md#store-distribution-app-store-google-play--open)).
+- **Android is pinned to AGP 8 / Gradle 8**; AGP 9 is not supported yet ([compatibility.md](docs/compatibility.md)).
+- CI covers Rust checks and binding drift, Android JVM unit tests and a debug APK, and on macOS the Swift host tests and an unsigned `xcodebuild` of the Counter and template projects. Device installs are not run in CI.
 
-See [docs/toolchain-validation.md](docs/toolchain-validation.md) for verified commands and blockers.
+## Repository files worth knowing
+
+- `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
+- `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).
+- `deny.toml` configures `cargo deny check` (advisories, licenses, sources).

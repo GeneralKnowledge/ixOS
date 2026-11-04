@@ -13,7 +13,52 @@
 - Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
-- CI runs `./scripts/check-bindings.sh` to detect drift.
+- CI runs `./scripts/check-bindings.sh` to detect drift (see below).
+
+## Binding drift
+
+**What drift means.** The Swift and Kotlin files under `Generated/` are committed, so hosts build without running UniFFI. They are a copy of what UniFFI produces from the current `forge-ffi` source. *Drift* is when the two disagree: someone changed an exported function, record, enum or error in `forge-ffi` (or bumped UniFFI) and did not regenerate, or someone hand-edited a generated file. A drifted binding can still compile and then fail at runtime with a checksum or symbol mismatch, which is why it is a CI failure.
+
+**How the check works.** `./scripts/check-bindings.sh` (CI: `.github/workflows/bindings.yml`):
+
+1. Builds the host `libforge_ffi` (`.so` on Linux, `.dylib` on macOS) with `cargo build -p forge-ffi`.
+2. Runs `uniffi-bindgen` in library mode into a temporary directory, once for Swift and once for Kotlin.
+3. Compares byte for byte (`diff -u`) against the committed copies:
+   - `examples/counter/Generated/ForgeFFI/forge_ffi.swift`
+   - `examples/counter/Generated/forge_ffiFFI/forge_ffiFFI.h`
+   - `examples/counter/Generated/forge_ffiFFI/module.modulemap`
+   - `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`
+4. Prints the diff and exits non-zero on the first mismatch, naming the file and the command that regenerates it.
+
+Templates do not commit bindings: `forge init` generates them into the new app, so a template cannot drift.
+
+**When the contract changes on purpose.** From the repo root:
+
+```bash
+# 1. Regenerate both languages
+./scripts/generate-bindings.sh                                        # Swift -> examples/counter/Generated
+./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
+#    (or: make bindings bindings-kotlin)
+
+# 2. Confirm the check is clean
+./scripts/check-bindings.sh
+
+# 3. Update the hand-written code that wraps the bindings
+#    - Swift bridge: examples/counter/Sources/CounterBridge/, then copy to
+#      templates/ios-app/Sources/CounterBridge/ and run ./scripts/check-template-sync.sh
+#    - Android host and its error mapping (messageFor)
+
+# 4. Commit the Generated/ changes in the same commit as the Rust change
+```
+
+Review the generated diff before committing: it should only contain the API you meant to change. Unexpected churn usually means a different UniFFI version (check `Cargo.lock`) or a stale `target/` build.
+
+**Common failures.**
+
+- *Diff in every file, no API change:* UniFFI version differs from the workspace pin. Run `cargo update -p uniffi --precise 0.32.2` or regenerate after `cargo clean -p forge-ffi`.
+- *Check passes locally, fails in CI:* the committed files were regenerated but not staged. `git status examples/*/Generated`.
+- *Kotlin differs, Swift does not:* only one language was regenerated. Run both commands in step 1.
+- *Whitespace-only diff:* UniFFI runs `swift-format` / `ktlint` on its output when they are on your `PATH`. The committed copies are unformatted (CI has neither tool), so regenerate with them off your `PATH`.
 
 ## Types across the boundary
 
