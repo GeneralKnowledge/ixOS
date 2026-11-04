@@ -42,7 +42,10 @@ docs/                  # Architecture, setup, validation
 
 ```bash
 cargo run -p forge-cli -- doctor
+cargo run -p forge-cli -- doctor --json   # machine-readable report for CI and scripts
+cargo run -p forge-cli -- check           # full local CI matrix (or: make check)
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios
+cargo run -p forge-cli -- init MyApp --path ~/projects/MyApp      # create the app outside the workspace
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- test --project examples/counter-android  # ...plus that app's host tests
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
@@ -54,7 +57,7 @@ cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
 ```
 
-Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. New apps are still created under the workspace's `examples/`.
+Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. New apps go under the workspace's `examples/` unless you pass `--path <dir>`; an app created outside the checkout points its build files at the checkout by absolute path.
 
 ## Configuration
 

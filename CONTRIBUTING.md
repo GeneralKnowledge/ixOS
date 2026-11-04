@@ -9,6 +9,7 @@ Thank you for contributing to Forge Mobile.
 3. `cargo fmt --all`
 4. `cargo clippy --workspace --all-targets -- -D warnings`
 5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates.
+6. Before opening a PR, run `cargo run -p forge-cli -- check` (or `make check`). It runs the same steps as CI: rustfmt, clippy, workspace tests, binding drift, template sync, the native rebuild regression, and the Android JVM and Swift host tests when the host has a JDK + Android SDK or macOS. Steps whose tools are missing are reported as skipped; add `--fail-fast` to stop at the first failure.
 
 ## Toolchain and dependencies
 

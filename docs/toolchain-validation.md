@@ -164,3 +164,25 @@ Running `xtool dev` without Darwin SDK may fail immediately. In Cloud Agent sand
 | Persistence save/load | `cargo test -p forge-storage` | relaunch |
 | Corrupt JSON | yes | n/a |
 | UniFFI bindings fresh | `./scripts/check-bindings.sh` | n/a |
+
+## Machine-readable report (`forge doctor --json`)
+
+`forge doctor --json` prints one JSON object and exits 0, whatever is missing, so CI and scripts can decide what to do. Fields (schema version 1; new fields may be added without a version bump):
+
+| Field | Meaning |
+|-------|---------|
+| `schema_version` | `1`. Bumped only when a field is removed or changes meaning. |
+| `forge_version`, `host.os`, `host.arch` | CLI version and host platform. |
+| `workspace.path`, `workspace.valid` | The workspace `forge` resolved, and whether it is a Forge checkout. |
+| `tools[]` | `name`, `status` (`ok`, `missing`, `error`), and `version` (first output line) or `detail`. Covers rustc, cargo, rustup, swift, xtool, usbmuxd, java, adb, cargo-ndk. |
+| `rust_targets[]`, `swift_sdks[]` | `rustup target list --installed` and `swift sdk list`. |
+| `env[]` | `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME`, `NDK_HOME`, `FORGE_WORKSPACE` (`value` is `null` when unset). |
+| `ready.rust` | rustc and cargo work. |
+| `ready.ios_xtool` | swift, xtool, a Darwin Swift SDK and the `aarch64-apple-ios` target are present. Device pairing and signing are not checked. |
+| `ready.android` | java, cargo-ndk, an Android SDK and NDK variable, and an Android Rust target are present. |
+
+Example: fail a CI job early when Android tooling is incomplete.
+
+```bash
+forge doctor --json | jq -e '.ready.android' >/dev/null || { echo "Android toolchain incomplete"; exit 1; }
+```

@@ -333,6 +333,7 @@ dependencies = [
  "clap",
  "forge-core",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "toml",

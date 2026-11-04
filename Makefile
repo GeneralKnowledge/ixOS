@@ -1,7 +1,11 @@
-.PHONY: test check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: test check check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
+
+# Full local CI matrix (fmt, clippy, tests, binding drift, template sync, host tests).
+check:
+	cargo run -q -p forge-cli -- check
 
 test-android-host:
 	cargo build -p forge-ffi
