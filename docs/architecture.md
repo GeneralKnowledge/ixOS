@@ -18,6 +18,8 @@ SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) →
 
 The bridge is per app: it is Counter-specific glue over the generated types. The iOS template carries an identical copy, checked by `scripts/check-template-sync.sh` in CI. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
 
+The Weather example ([examples/weather](../examples/weather/README.md)) has the same layering with `WeatherBridge` (`WeatherClient`, `LocationProvider`) over `ForgeWeatherApp`, which uses `forge-net` for HTTP. It re-exports the generated record and enum types instead of wrapping them, because exercising UniFFI's mapping of nested types is its purpose.
+
 **Android**
 
 ```
@@ -102,6 +104,6 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 |-------|------|
 | `forge-core` | Domain types, validation, property tests |
 | `forge-storage` | `SnapshotStore` trait, JSON implementation |
-| `forge-net` | Prototype `HttpClient` trait, request/response types, `NoopClient` and `StaticClient` (test double); not yet used by `forge-ffi` |
+| `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). Used by `forge-ffi`'s Weather API |
 | `forge-ffi` | UniFFI exports; app instance with a serial command thread, events, cancellable operations |
 | `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

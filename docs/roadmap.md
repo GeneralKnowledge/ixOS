@@ -35,11 +35,11 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 ## Medium term
 
-### Networking — In progress (prototype)
+### Networking — In progress
 
-There is no networking layer in this release. This is a **scope choice**, not a technical blocker: the reference so far demonstrates the FFI contract (async commands, events, cancellation, typed errors) and persistence. Rust HTTP clients cross-compile to iOS and Android fine.
+`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache.
 
-The first step is a small `forge-net` crate with a transport trait and a no-op implementation, so the intended shape (who owns the client, how requests cross the FFI boundary, how cancellation and errors map) is visible and can be built on. A real implementation, TLS configuration and platform reachability come after.
+Still open: Android (the certificate verifier needs a JNI init call and its companion library), interrupting a request in flight (ureq cannot; cancellation currently discards the late response), and platform reachability.
 
 ### iOS Simulator support — Open
 

@@ -41,10 +41,11 @@ CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, a
 ```
 crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
-crates/forge-net       # Networking trait (prototype: no-op client, no transport yet)
+crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
+examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # Compose + Gradle app
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # `forge init --platform android`
@@ -87,8 +88,8 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter and template Xcode projects.
-- No App Store distribution in this release. No real networking yet either: `forge-net` defines the intended `HttpClient` interface with a no-op client, but no transport is wired into `forge-ffi` or the apps.
+- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter, Weather and template Xcode projects.
+- No App Store distribution in this release. Networking is demonstrated by the iOS Weather example only ([examples/weather](examples/weather/README.md)); the Android host does not initialise the HTTPS client's certificate verifier yet.
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

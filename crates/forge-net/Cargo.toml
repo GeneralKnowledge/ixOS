@@ -1,11 +1,19 @@
 [package]
 name = "forge-net"
 version = "0.1.0"
-description = "Networking interface for Forge Mobile (prototype: trait + no-op client)"
+description = "Networking interface for Forge Mobile (trait, test doubles, optional ureq transport)"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+# Real HTTPS transport (`UreqClient`): ureq + rustls (ring) with the platform's
+# certificate verifier, so iOS/macOS use the system trust store.
+ureq = ["dep:ureq", "dep:rustls"]
+
 [dependencies]
 thiserror = { workspace = true }
+ureq = { version = "3.5", optional = true, default-features = false, features = ["rustls-no-provider", "platform-verifier", "gzip"] }
+rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12", "logging"] }

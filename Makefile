@@ -12,7 +12,8 @@ test-android-host:
 	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
 
 test-swift-host:
-	./scripts/test-swift-host.sh
+	./scripts/test-swift-host.sh examples/counter
+	./scripts/test-swift-host.sh examples/weather
 
 fmt:
 	cargo fmt --all
@@ -21,7 +22,8 @@ clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
 
 bindings:
-	./scripts/generate-bindings.sh
+	./scripts/generate-bindings.sh examples/counter/Generated
+	./scripts/generate-bindings.sh examples/weather/Generated
 
 bindings-kotlin:
 	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin

@@ -135,7 +135,11 @@ pub enum NetError {
     Unavailable,
     #[error("invalid request: {reason}")]
     InvalidRequest { reason: String },
-    /// DNS, TLS, connection refused/reset, offline, and similar.
+    /// The host could not be reached at all: no route, DNS failure,
+    /// connection refused. Apps usually present this as "offline".
+    #[error("offline: {reason}")]
+    Offline { reason: String },
+    /// Any other transport failure: TLS, protocol, a broken body, and similar.
     #[error("transport error: {reason}")]
     Transport { reason: String },
     #[error("request timed out")]
