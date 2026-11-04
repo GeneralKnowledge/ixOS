@@ -2,14 +2,32 @@
 
 Thank you for contributing to Forge Mobile.
 
+## Quick path: a green local build
+
+Assumes Linux (or macOS) with `rustup`, `git` and `make`. Nothing else: no Swift, xtool, Xcode, Android SDK or device is needed for this.
+
+```bash
+git clone https://github.com/GeneralKnowledge/ixOS.git && cd ixOS
+cargo test --workspace     # rustup installs the pinned toolchain on first run
+make validate              # rustfmt, clippy, tests, binding drift, template sync
+```
+
+That is the same set of checks as the Rust and Bindings CI jobs. `make validate` runs `cargo fmt --all`, so commit any formatting it applies. If something fails, compare your versions with [docs/compatibility.md](docs/compatibility.md).
+
+Going further:
+
+- Android JVM unit tests need a JDK 17 and the Android SDK: `make test-android-host` ([docs/android-setup.md](docs/android-setup.md)).
+- Swift host tests need macOS with Xcode: `make test-swift-host`.
+- Building an iOS app on Linux needs Swift, xtool and the Darwin SDK ([docs/linux-setup.md](docs/linux-setup.md)).
+- Looking for something to work on? See [docs/roadmap.md](docs/roadmap.md).
+
 ## Development
 
-1. Install toolchain per [docs/linux-setup.md](docs/linux-setup.md).
+1. Install the full toolchain per [docs/linux-setup.md](docs/linux-setup.md) when you need more than the quick path.
 2. `cargo test --workspace`
 3. `cargo fmt --all`
 4. `cargo clippy --workspace --all-targets -- -D warnings`
-5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates.
-6. Before opening a PR, run `cargo run -p forge-cli -- check` (or `make check`). It runs the same steps as CI: rustfmt, clippy, workspace tests, binding drift, template sync, the native rebuild regression, and the Android JVM and Swift host tests when the host has a JDK + Android SDK or macOS. Steps whose tools are missing are reported as skipped; add `--fail-fast` to stop at the first failure.
+5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates. See [Binding drift](docs/ffi-policy.md#binding-drift) for what the check compares and how to regenerate.
 
 ## Toolchain and dependencies
 
@@ -31,6 +49,7 @@ CI runs both, plus an unsigned `xcodebuild` of the example and of a freshly gene
 - Keep Rust domain logic free of Swift/iOS dependencies in `forge-core`.
 - Do not edit UniFFI-generated Swift/C files by hand.
 - Document behavioral changes in `docs/` when they affect developers.
+- When you bump a toolchain or build-tool version, update [docs/compatibility.md](docs/compatibility.md) in the same PR.
 - Record consequential packaging or architecture choices in `docs/adr/`.
 
 ## Code of conduct

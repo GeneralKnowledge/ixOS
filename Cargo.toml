@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/forge-core",
     "crates/forge-storage",
+    "crates/forge-net",
     "crates/forge-ffi",
     "crates/forge-cli",
     "crates/uniffi-bindgen",

@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::{self, ForgeConfig};
+use crate::ios_builder::IosBuilder;
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -719,6 +720,7 @@ fn package_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Resul
 
 pub fn build_ios(
     runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
     root: &Path,
     project: &Path,
     package_only: bool,
@@ -726,48 +728,45 @@ pub fn build_ios(
     let project_dir = package_ios(runner, root, project)?;
     if package_only {
         println!(
-            "Rust static library and Swift bindings are ready for {} (open Xcode/ or run xtool dev).",
-            project_dir.display()
+            "Rust static library and Swift bindings are ready for {} (open Xcode/ or build with {}).",
+            project_dir.display(),
+            builder.name()
         );
         return Ok(());
     }
-    require_xtool(runner)?;
-    run_checked(
-        runner,
-        Cmd::new("xtool").args(["dev", "build"]).cwd(&project_dir),
-    )
+    builder.build(runner, &project_dir)
 }
 
-/// Builds, installs and launches on a connected device (`xtool dev`).
-pub fn run_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Result<(), String> {
+/// Builds, installs and launches on a connected device.
+pub fn run_ios(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    root: &Path,
+    project: &Path,
+) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
-    require_xtool(runner)?;
-    run_checked(runner, Cmd::new("xtool").arg("dev").cwd(&project_dir))
+    builder.run(runner, &project_dir)
 }
 
-fn require_xtool(runner: &dyn CommandRunner) -> Result<(), String> {
-    if which_program(runner, "xtool") {
-        Ok(())
-    } else {
-        Err("xtool not available: use --package-only for macOS/Xcode builds, or install xtool + Darwin SDK (see docs/linux-setup.md)".into())
-    }
-}
-
-pub fn devices(runner: &dyn CommandRunner) -> Result<(), String> {
+pub fn devices(runner: &dyn CommandRunner, ios: &dyn IosBuilder) -> Result<(), String> {
     let mut listed = false;
     let mut found_tool = false;
     let mut errors: Vec<String> = Vec::new();
 
-    for (label, program, args) in [
-        ("Android (adb)", "adb", &["devices", "-l"][..]),
-        ("iOS (xtool)", "xtool", &["devices"]),
-    ] {
-        if !which_program(runner, program) {
+    let mut sources = vec![(
+        "Android (adb)".to_string(),
+        Cmd::new("adb").args(["devices", "-l"]),
+    )];
+    if let Some(cmd) = ios.devices_command() {
+        sources.push((format!("iOS ({})", ios.name()), cmd));
+    }
+    for (label, cmd) in sources {
+        if !which_program(runner, &cmd.program.to_string_lossy()) {
             continue;
         }
         found_tool = true;
         println!("--- {label} ---");
-        match runner.capture(&Cmd::new(program).args(args)) {
+        match runner.capture(&cmd) {
             Ok(output) => {
                 print!("{}", String::from_utf8_lossy(&output.stdout));
                 if output.status.success() {
@@ -785,15 +784,19 @@ pub fn devices(runner: &dyn CommandRunner) -> Result<(), String> {
     } else if found_tool {
         Err(errors.join("\n"))
     } else {
-        Err("no device tools found (install adb and/or xtool)".into())
+        Err(format!(
+            "no device tools found (install adb and/or {})",
+            ios.name()
+        ))
     }
 }
 
-pub fn install_ios(runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String> {
-    if !which_program(runner, "xtool") {
-        return Err("xtool not installed".into());
-    }
-    run_checked(runner, Cmd::new("xtool").arg("install").arg(ipa))
+pub fn install_ios(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    ipa: &Path,
+) -> Result<(), String> {
+    builder.install(runner, ipa)
 }
 
 pub(crate) fn which_program(runner: &dyn CommandRunner, program: &str) -> bool {
@@ -805,6 +808,7 @@ pub(crate) fn which_program(runner: &dyn CommandRunner, program: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ios_builder::XtoolBuilder;
     use crate::runner::{MockRunner, RealRunner};
     use std::ffi::OsString;
 
@@ -947,11 +951,11 @@ ios_device = true
     fn build_ios_requires_forge_toml_with_ios_enabled() {
         let (_tmp, root) = workspace(ANDROID_TOML, &[]);
         let mock = MockRunner::default();
-        let err = build_ios(&mock, &root, Path::new("apps/demo"), true).unwrap_err();
+        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
         assert!(err.contains("does not enable iOS"), "{err}");
 
         fs::remove_file(root.join("apps/demo/forge.toml")).unwrap();
-        let err = build_ios(&mock, &root, Path::new("apps/demo"), true).unwrap_err();
+        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
         assert!(err.contains("forge.toml"), "{err}");
         assert!(mock.calls().is_empty());
     }
@@ -961,7 +965,7 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        build_ios(&mock, &root, Path::new("apps/demo"), true).unwrap();
+        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap();
         let lines = mock.call_lines();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("package-ios-library.sh apps/demo/Generated"));
@@ -972,12 +976,12 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        build_ios(&mock, &root, Path::new("apps/demo"), false).unwrap();
+        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
 
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        run_ios(&mock, &root, Path::new("apps/demo")).unwrap();
+        run_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo")).unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev");
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
@@ -985,12 +989,74 @@ ios_device = true
         );
     }
 
+    /// A backend that records what it was asked to do, proving the iOS
+    /// commands only reach the toolchain through `IosBuilder`.
+    #[derive(Default)]
+    struct RecordingBuilder(std::sync::Mutex<Vec<String>>);
+
+    impl IosBuilder for RecordingBuilder {
+        fn name(&self) -> &'static str {
+            "fake"
+        }
+        fn ensure_available(&self, _: &dyn CommandRunner) -> Result<(), String> {
+            Ok(())
+        }
+        fn build(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("build {}", dir.display()));
+            Ok(())
+        }
+        fn run(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("run {}", dir.display()));
+            Ok(())
+        }
+        fn install(&self, _: &dyn CommandRunner, ipa: &Path) -> Result<(), String> {
+            self.0
+                .lock()
+                .unwrap()
+                .push(format!("install {}", ipa.display()));
+            Ok(())
+        }
+        fn devices_command(&self) -> Option<Cmd> {
+            None
+        }
+    }
+
+    #[test]
+    fn ios_commands_delegate_to_the_selected_builder() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = MockRunner::default();
+        mock.respond("bash", 0, "");
+        let fake = RecordingBuilder::default();
+        build_ios(&mock, &fake, &root, Path::new("apps/demo"), false).unwrap();
+        run_ios(&mock, &fake, &root, Path::new("apps/demo")).unwrap();
+        install_ios(&mock, &fake, Path::new("App.ipa")).unwrap();
+
+        let dir = root.join("apps/demo");
+        assert_eq!(
+            *fake.0.lock().unwrap(),
+            [
+                format!("build {}", dir.display()),
+                format!("run {}", dir.display()),
+                "install App.ipa".to_string(),
+            ]
+        );
+        // Only the backend-independent packaging script ran directly.
+        assert!(mock.call_lines().iter().all(|l| !l.contains("xtool")));
+    }
+
     #[test]
     fn build_ios_without_xtool_explains_package_only() {
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        let err = build_ios(&mock, &root, Path::new("apps/demo"), false).unwrap_err();
+        let err =
+            build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap_err();
         assert!(err.contains("--package-only"), "{err}");
     }
 
@@ -1038,12 +1104,12 @@ ios_device = true
     #[test]
     fn devices_reports_missing_tools() {
         let mock = MockRunner::default();
-        let err = devices(&mock).unwrap_err();
+        let err = devices(&mock, &XtoolBuilder).unwrap_err();
         assert!(err.contains("no device tools"));
 
         let mock = MockRunner::default();
         mock.respond("adb", 0, "List of devices attached\n");
-        devices(&mock).unwrap();
+        devices(&mock, &XtoolBuilder).unwrap();
         assert!(mock.call_lines().contains(&"adb devices -l".to_string()));
     }
 

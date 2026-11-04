@@ -102,5 +102,6 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 |-------|------|
 | `forge-core` | Domain types, validation, property tests |
 | `forge-storage` | `SnapshotStore` trait, JSON implementation |
+| `forge-net` | Prototype `HttpClient` trait, request/response types, `NoopClient` and `StaticClient` (test double); not yet used by `forge-ffi` |
 | `forge-ffi` | UniFFI exports; app instance with a serial command thread, events, cancellable operations |
-| `forge-cli` | Developer commands wrapping scripts and xtool |
+| `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

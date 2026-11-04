@@ -1,0 +1,11 @@
+[package]
+name = "forge-net"
+version = "0.1.0"
+description = "Networking interface for Forge Mobile (prototype: trait + no-op client)"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+thiserror = { workspace = true }
