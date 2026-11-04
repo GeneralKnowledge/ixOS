@@ -170,11 +170,15 @@ final class EventCollector: @unchecked Sendable {
         task = Task { [weak self] in
             for await event in events {
                 guard let self else { break }
-                self.lock.lock()
-                self.seen.append(event)
-                self.lock.unlock()
+                self.record(event)
             }
         }
+    }
+
+    /// Synchronous so the lock is never held across an `await`
+    /// (`NSLock.lock()` is unavailable from async code).
+    private func record(_ event: ChatEvent) {
+        lock.withLock { seen.append(event) }
     }
 
     func snapshot() -> [ChatEvent] {
