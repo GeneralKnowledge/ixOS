@@ -1,5 +1,6 @@
 mod commands;
 mod config;
+mod ios_builder;
 mod runner;
 
 use clap::{Parser, Subcommand};
@@ -115,6 +116,7 @@ fn main() {
 
 fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> {
     let root = commands::workspace_root();
+    let ios = ios_builder::XtoolBuilder;
     match cli.command {
         Commands::Doctor => commands::doctor(runner, &root),
         Commands::Init {
@@ -132,17 +134,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             BuildCommands::Ios {
                 project,
                 package_only,
-            } => commands::build_ios(runner, &root, &project, package_only),
+            } => commands::build_ios(runner, &ios, &root, &project, package_only),
             BuildCommands::Android { project, install } => {
                 commands::build_android(runner, &root, &project, install)
             }
         },
-        Commands::Devices => commands::devices(runner),
+        Commands::Devices => commands::devices(runner, &ios),
         Commands::Install { cmd } => match cmd {
-            InstallCommands::Ios { ipa } => commands::install_ios(runner, &ipa),
+            InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project } => commands::run_ios(runner, &root, &project),
+            RunCommands::Ios { project } => commands::run_ios(runner, &ios, &root, &project),
         },
     }
 }
