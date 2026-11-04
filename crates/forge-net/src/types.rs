@@ -1,0 +1,145 @@
+use std::time::Duration;
+
+use thiserror::Error;
+
+/// HTTP method. Kept to the methods apps commonly need.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Method {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+}
+
+impl Method {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Method::Get => "GET",
+            Method::Post => "POST",
+            Method::Put => "PUT",
+            Method::Patch => "PATCH",
+            Method::Delete => "DELETE",
+        }
+    }
+}
+
+/// A single header. A `Vec` keeps order and allows repeated names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Header {
+    pub name: String,
+    pub value: String,
+}
+
+/// An outgoing request. Build one with [`Request::get`] / [`Request::new`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Request {
+    pub method: Method,
+    /// Absolute `http://` or `https://` URL.
+    pub url: String,
+    pub headers: Vec<Header>,
+    pub body: Vec<u8>,
+    /// `None` leaves the timeout to the implementation.
+    pub timeout: Option<Duration>,
+}
+
+impl Request {
+    pub fn new(method: Method, url: impl Into<String>) -> Self {
+        Self {
+            method,
+            url: url.into(),
+            headers: Vec::new(),
+            body: Vec::new(),
+            timeout: None,
+        }
+    }
+
+    pub fn get(url: impl Into<String>) -> Self {
+        Self::new(Method::Get, url)
+    }
+
+    pub fn post(url: impl Into<String>, body: impl Into<Vec<u8>>) -> Self {
+        Self::new(Method::Post, url).body(body)
+    }
+
+    pub fn header(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        self.headers.push(Header {
+            name: name.into(),
+            value: value.into(),
+        });
+        self
+    }
+
+    pub fn body(mut self, body: impl Into<Vec<u8>>) -> Self {
+        self.body = body.into();
+        self
+    }
+
+    pub fn timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = Some(timeout);
+        self
+    }
+
+    /// Checks what every implementation would otherwise have to check: the
+    /// URL is absolute and uses `http` or `https`.
+    pub fn validate(&self) -> Result<(), NetError> {
+        let rest = self
+            .url
+            .strip_prefix("https://")
+            .or_else(|| self.url.strip_prefix("http://"));
+        match rest {
+            Some(host) if !host.is_empty() && !host.starts_with('/') => Ok(()),
+            _ => Err(NetError::InvalidRequest {
+                reason: format!("URL must be absolute http(s): {:?}", self.url),
+            }),
+        }
+    }
+}
+
+/// A completed HTTP exchange. A non-2xx status is still a `Response`, not an
+/// error: whether a 404 is a failure is the caller's decision.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Response {
+    pub status: u16,
+    pub headers: Vec<Header>,
+    pub body: Vec<u8>,
+}
+
+impl Response {
+    pub fn new(status: u16, body: impl Into<Vec<u8>>) -> Self {
+        Self {
+            status,
+            headers: Vec::new(),
+            body: body.into(),
+        }
+    }
+
+    pub fn is_success(&self) -> bool {
+        (200..300).contains(&self.status)
+    }
+
+    /// First header with this name, compared case-insensitively.
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|h| h.name.eq_ignore_ascii_case(name))
+            .map(|h| h.value.as_str())
+    }
+}
+
+/// Why a request produced no [`Response`].
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
+pub enum NetError {
+    /// No transport is configured (the [`crate::NoopClient`] default).
+    #[error("networking is not available in this build")]
+    Unavailable,
+    #[error("invalid request: {reason}")]
+    InvalidRequest { reason: String },
+    /// DNS, TLS, connection refused/reset, offline, and similar.
+    #[error("transport error: {reason}")]
+    Transport { reason: String },
+    #[error("request timed out")]
+    Timeout,
+    #[error("request was cancelled")]
+    Cancelled,
+}

@@ -28,6 +28,7 @@ CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, a
 ```
 crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
+crates/forge-net       # Networking trait (prototype: no-op client, no transport yet)
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
@@ -71,6 +72,6 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
 - GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter and template Xcode projects.
-- No App Store distribution or networking in this release.
+- No App Store distribution in this release. No real networking yet either: `forge-net` defines the intended `HttpClient` interface with a no-op client, but no transport is wired into `forge-ffi` or the apps.
 
 See [docs/toolchain-validation.md](docs/toolchain-validation.md) for verified commands and blockers.
