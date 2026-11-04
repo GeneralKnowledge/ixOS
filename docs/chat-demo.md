@@ -18,7 +18,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 |---|---|---|
 | 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
 | 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
-| 3 | `scripts/mock-chat-server` (axum, single file) + `make mock-chat` | Planned |
+| 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
 | 4 | SwiftUI host, `examples/chat` | Planned |
 | 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | Planned |
 | 6 | CI matrix, README, roadmap | Planned |
@@ -28,7 +28,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 ```
 examples/chat-core        # Rust domain: types, ChatClient, ChatRepo (in-memory + HTTP/SSE), SSE parser, JSON store
 crates/forge-ffi/src/chat # ForgeChatApp, the UniFFI surface (like src/weather)
-scripts/mock-chat-server  # Phase 3
+scripts/mock-chat-server  # In-memory axum server: `make mock-chat`
 examples/chat             # Phase 4: SwiftUI host
 examples/chat-android     # Phase 5: Compose host
 ```
@@ -137,9 +137,31 @@ One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::wr
 
 `HttpRepo` implements this over `forge_net::HttpClient`. Phase 1 added `HttpClient::open_stream` (a response whose body is read incrementally) to forge-net, with a real implementation in `UreqClient` (timeout covers connect + headers only) and a buffering default for test doubles, so `StaticClient` can serve canned SSE bodies.
 
+## The mock server (Phase 3)
+
+```sh
+make mock-chat                                 # http://127.0.0.1:8787, rooms general, random, forge
+make mock-chat ARGS="--bind 0.0.0.0:8787"      # reachable from a phone on the same network
+make mock-chat ARGS="--heartbeat-ms 1000"      # faster heartbeats (default 15 s)
+```
+
+Try it with curl:
+
+```sh
+curl localhost:8787/rooms
+curl -N localhost:8787/rooms/general/stream          # leave running: events appear here
+curl -X POST localhost:8787/rooms/general/messages \
+  -H 'Content-Type: application/json' -d '{"author":"curl","body":"hi"}'
+curl 'localhost:8787/rooms/general/messages?since=0'
+```
+
+`id` is optional on a POST from curl (the server assigns `srv-N`); clients always send their own. It answers `201` for a new message, `200` with the stored message when the id already exists, `400` for an empty author or body, and `404` for an unknown room. A stream subscriber that falls more than 1024 events behind is disconnected, and the client reconnects and catches up. Ctrl-C stops the server immediately, open streams included (no graceful shutdown, because killing the server is part of the demo). State is in memory only, so a restart starts empty.
+
+`scripts/mock-chat-server/tests/end_to_end.rs` runs chat-core's real HTTP + SSE client (`HttpRepo` over `UreqClient`) against the server over sockets: rooms, idempotent post, `since`, `404`s, and the six-step demo below with a real kill and restart on the same port.
+
 ## The demo interaction
 
-This goes in the README with a GIF once the hosts exist. `killer_demo_interaction` in the chat-core tests runs the same script against the in-memory server today.
+This goes in the README with a GIF once the hosts exist. `killer_demo_interaction` in the chat-core tests runs the same script against the in-memory repo, and `killer_demo_interaction_over_real_sockets` in the mock server tests runs it over HTTP.
 
 1. Open a chat, type a message, tap send. It goes `Sending` → `Sent`.
 2. Navigate back to the list. Nothing is cancelled: a message in flight still completes.

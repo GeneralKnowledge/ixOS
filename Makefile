@@ -1,7 +1,12 @@
-.PHONY: test check check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: mock-chat test check check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
+
+# In-memory chat server for the Chat example (http://127.0.0.1:8787).
+# Pass options with ARGS, e.g. make mock-chat ARGS="--bind 0.0.0.0:8787".
+mock-chat:
+	cargo run -q -p mock-chat-server -- $(ARGS)
 
 # Full local CI matrix (fmt, clippy, tests, binding drift, template sync, host tests).
 check:
