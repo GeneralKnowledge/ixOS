@@ -25,6 +25,6 @@ mod types;
 mod ureq_client;
 
 pub use client::{HttpClient, NoopClient, StaticClient};
-pub use types::{Header, Method, NetError, Request, Response};
+pub use types::{Header, Method, NetError, Request, Response, StreamingResponse};
 #[cfg(feature = "ureq")]
 pub use ureq_client::{UreqClient, DEFAULT_MAX_BODY_BYTES, DEFAULT_TIMEOUT};

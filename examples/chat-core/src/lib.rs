@@ -1,0 +1,40 @@
+//! Domain core of the Chat example.
+//!
+//! The Chat example stresses what Counter and Weather do not: a long-lived,
+//! high-frequency event stream that outlives any single command, explicit
+//! subscribe/unsubscribe with provable cancellation, multi-entity storage
+//! with a `since` cursor, and typed network/protocol errors. See
+//! `docs/chat-demo.md`.
+//!
+//! This crate has no FFI. It is plain, blocking Rust, testable on Linux:
+//!
+//! - [`ChatClient`]: the engine the hosts will drive (commands, the
+//!   per-room stream pumps, the store, one event sink).
+//! - [`ChatRepo`]: the server as the client sees it, with
+//!   [`InMemoryRepo`] (tests, and the reference semantics) and [`HttpRepo`]
+//!   (HTTP + Server-Sent Events through `forge_net`).
+//! - [`sse`]: a small Server-Sent Events reader.
+//! - [`store`]: the JSON snapshot, with its `migrate` hook.
+
+mod client;
+mod http;
+mod memory;
+mod repo;
+pub mod sse;
+pub mod store;
+mod types;
+
+pub use client::{ChatClient, ChatConfig, EventSink};
+pub use http::{HttpRepo, DEFAULT_TIMEOUT};
+pub use memory::{InMemoryRepo, MEMORY_HEARTBEAT};
+pub use repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
+pub use store::{ChatSnapshot, ChatStore, StoreError};
+pub use types::{ChatError, ChatEvent, Conversation, Message, MessageStatus};
+
+/// Wall-clock Unix milliseconds.
+pub(crate) fn now_ms() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}

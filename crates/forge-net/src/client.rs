@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use crate::types::{Method, NetError, Request, Response};
+use crate::types::{Method, NetError, Request, Response, StreamingResponse};
 
 /// Narrow networking interface. A real transport (Rust HTTP library, or a
 /// host `URLSession`/OkHttp adapter exposed through UniFFI) implements this.
@@ -12,17 +12,41 @@ pub trait HttpClient: Send + Sync {
     /// Performs `request` and blocks until a response or error. Call it from
     /// a worker thread (e.g. `forge-ffi`'s command thread), never the UI.
     fn send(&self, request: &Request) -> Result<Response, NetError>;
+
+    /// Performs `request` and returns once the status and headers have
+    /// arrived, leaving the body to be read incrementally. Use it for
+    /// long-lived bodies such as Server-Sent Events.
+    ///
+    /// The request's `timeout` covers connecting and receiving the headers
+    /// only; the body may stay open indefinitely.
+    ///
+    /// The default implementation buffers the whole body with [`send`]
+    /// first, which is right for test doubles (a canned SSE body is finite)
+    /// but not for a real transport, which should override it.
+    ///
+    /// [`send`]: HttpClient::send
+    fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
+        self.send(request).map(StreamingResponse::from)
+    }
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
     fn send(&self, request: &Request) -> Result<Response, NetError> {
         (**self).send(request)
     }
+
+    fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
+        (**self).open_stream(request)
+    }
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
     fn send(&self, request: &Request) -> Result<Response, NetError> {
         (**self).send(request)
+    }
+
+    fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
+        (**self).open_stream(request)
     }
 }
 
@@ -161,6 +185,29 @@ mod tests {
         assert_eq!(missing.status, 404);
         assert!(!missing.is_success());
         assert_eq!(client.received().len(), 3);
+    }
+
+    #[test]
+    fn default_open_stream_buffers_send() {
+        use std::io::Read;
+        let client = StaticClient::new().route(
+            Method::Get,
+            "https://example.com/stream",
+            Ok(Response::new(200, "data: hi\n\n")),
+        );
+        let mut stream = client
+            .open_stream(&Request::get("https://example.com/stream"))
+            .unwrap();
+        assert!(stream.is_success());
+        let mut body = String::new();
+        stream.body.read_to_string(&mut body).unwrap();
+        assert_eq!(body, "data: hi\n\n");
+        assert_eq!(
+            NoopClient
+                .open_stream(&Request::get("https://example.com"))
+                .unwrap_err(),
+            NetError::Unavailable
+        );
     }
 
     #[test]

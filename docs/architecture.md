@@ -104,6 +104,7 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 |-------|------|
 | `forge-core` | Domain types, validation, property tests |
 | `forge-storage` | `SnapshotStore` trait, JSON implementation |
-| `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). Used by `forge-ffi`'s Weather API |
+| `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally. Used by `forge-ffi`'s Weather API and `chat-core` |
+| `chat-core` (`examples/`) | The Chat demo's domain, no FFI yet: `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
 | `forge-ffi` | UniFFI exports; app instance with a serial command thread, events, cancellable operations |
 | `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

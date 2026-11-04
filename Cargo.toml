@@ -4,6 +4,7 @@ members = [
     "crates/forge-core",
     "crates/forge-storage",
     "crates/forge-net",
+    "examples/chat-core",
     "crates/forge-ffi",
     "crates/forge-cli",
     "crates/uniffi-bindgen",

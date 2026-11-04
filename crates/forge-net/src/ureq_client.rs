@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::client::HttpClient;
-use crate::types::{Header, Method, NetError, Request, Response};
+use crate::types::{Header, Method, NetError, Request, Response, StreamingResponse};
 
 /// Timeout applied when a [`Request`] does not set one.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
@@ -65,8 +65,17 @@ impl UreqClient {
     }
 }
 
-impl HttpClient for UreqClient {
-    fn send(&self, request: &Request) -> Result<Response, NetError> {
+impl UreqClient {
+    /// Sends `request` and returns once the status and headers arrived.
+    ///
+    /// Buffered calls bound the whole exchange (body included) by the
+    /// request timeout. Streaming calls bound only connecting and waiting for
+    /// the headers, so a Server-Sent Events body can stay open.
+    fn run(
+        &self,
+        request: &Request,
+        streaming: bool,
+    ) -> Result<ureq::http::Response<ureq::Body>, NetError> {
         request.validate()?;
 
         let mut builder = ureq::http::Request::builder()
@@ -79,39 +88,55 @@ impl HttpClient for UreqClient {
             reason: e.to_string(),
         };
         let timeout = Some(request.timeout.unwrap_or(DEFAULT_TIMEOUT));
+        // A macro, not a fn: ureq's config builder is generic over a sealed
+        // scope trait that cannot be named here.
+        macro_rules! configure {
+            ($config:expr) => {
+                if streaming {
+                    $config
+                        .timeout_global(None)
+                        .timeout_connect(timeout)
+                        .timeout_recv_response(timeout)
+                        .timeout_recv_body(None)
+                } else {
+                    $config.timeout_global(timeout)
+                }
+            };
+        }
 
         let result = if request.body.is_empty()
             && !matches!(request.method, Method::Post | Method::Put | Method::Patch)
         {
             let http_request = builder.body(()).map_err(invalid)?;
-            let http_request = self
-                .agent
-                .configure_request(http_request)
-                .timeout_global(timeout)
-                .build();
+            let http_request = configure!(self.agent.configure_request(http_request)).build();
             self.agent.run(http_request)
         } else {
             let http_request = builder.body(request.body.as_slice()).map_err(invalid)?;
-            let http_request = self
-                .agent
-                .configure_request(http_request)
-                .timeout_global(timeout)
-                .build();
+            let http_request = configure!(self.agent.configure_request(http_request)).build();
             self.agent.run(http_request)
         };
+        result.map_err(map_error)
+    }
+}
 
-        let mut response = result.map_err(map_error)?;
-        let status = response.status().as_u16();
-        let headers = response
-            .headers()
-            .iter()
-            .filter_map(|(name, value)| {
-                Some(Header {
-                    name: name.as_str().to_string(),
-                    value: value.to_str().ok()?.to_string(),
-                })
+fn response_headers(response: &ureq::http::Response<ureq::Body>) -> Vec<Header> {
+    response
+        .headers()
+        .iter()
+        .filter_map(|(name, value)| {
+            Some(Header {
+                name: name.as_str().to_string(),
+                value: value.to_str().ok()?.to_string(),
             })
-            .collect();
+        })
+        .collect()
+}
+
+impl HttpClient for UreqClient {
+    fn send(&self, request: &Request) -> Result<Response, NetError> {
+        let mut response = self.run(request, false)?;
+        let status = response.status().as_u16();
+        let headers = response_headers(&response);
         let body = response
             .body_mut()
             .with_config()
@@ -122,6 +147,22 @@ impl HttpClient for UreqClient {
             status,
             headers,
             body,
+        })
+    }
+
+    /// Streams the body. There is no size limit (the body may be endless) and
+    /// no idle timeout: a reader blocked on a silent connection stays blocked
+    /// until the server writes or closes, so streaming protocols should send
+    /// heartbeats. Read errors surface as `std::io::Error`.
+    fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
+        let response = self.run(request, true)?;
+        let status = response.status().as_u16();
+        let headers = response_headers(&response);
+        let body = response.into_body().into_reader();
+        Ok(StreamingResponse {
+            status,
+            headers,
+            body: Box::new(body),
         })
     }
 }
@@ -268,6 +309,58 @@ mod tests {
             .unwrap_err();
         assert!(matches!(err, NetError::Transport { .. }), "{err:?}");
         server.join().unwrap();
+    }
+
+    #[test]
+    fn open_stream_yields_chunks_before_the_body_ends() {
+        use std::io::{BufRead, BufReader};
+        use std::sync::mpsc;
+        no_proxy();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/stream", listener.local_addr().unwrap());
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let mut raw = Vec::new();
+            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = stream.read(&mut buf).unwrap();
+                raw.extend_from_slice(&buf[..n]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: one\n\n")
+                .unwrap();
+            stream.flush().unwrap();
+            // Hold the connection open until the client has seen the first event.
+            release_rx.recv().unwrap();
+            stream.write_all(b"data: two\n\n").unwrap();
+        });
+
+        let response = UreqClient::new()
+            .open_stream(&Request::get(url).timeout(Duration::from_secs(5)))
+            .unwrap();
+        assert!(response.is_success());
+        assert_eq!(response.header("content-type"), Some("text/event-stream"));
+        let mut lines = BufReader::new(response.body).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "data: one");
+        release_tx.send(()).unwrap();
+        let rest: Vec<String> = lines.map(Result::unwrap).collect();
+        assert_eq!(rest, vec!["", "data: two", ""]);
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn open_stream_refused_is_offline() {
+        no_proxy();
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let err = UreqClient::new()
+            .open_stream(&Request::get(format!("http://127.0.0.1:{port}/stream")))
+            .unwrap_err();
+        assert!(matches!(err, NetError::Offline { .. }), "{err:?}");
     }
 }
 
