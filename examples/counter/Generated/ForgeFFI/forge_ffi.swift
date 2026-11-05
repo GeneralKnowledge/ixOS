@@ -1294,8 +1294,10 @@ open class ForgeChatApp: ForgeChatAppProtocol, @unchecked Sendable {
      * `storage_directory` holds the chat store and is created if missing;
      * an empty string keeps everything in memory.
      *
-     * Fails with `InvalidInput` for a bad URL or timeout, and with `Storage`
-     * when the stored data was written by a newer build (it is left alone).
+     * Fails with `InvalidInput` for a bad URL or timeout, with
+     * `UnsupportedOnHost` for an `https` URL on Android (see
+     * [`check_host_supports`]), and with `Storage` when the stored data was
+     * written by a newer build (it is left alone).
      * A corrupt store does not fail: the app starts empty and
      * `store_problem()` says why.
      */
@@ -5987,7 +5989,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 57232) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_forgechatapp_new() != 607) {
+    if (uniffi_forge_ffi_checksum_constructor_forgechatapp_new() != 19473) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() != 13605) {

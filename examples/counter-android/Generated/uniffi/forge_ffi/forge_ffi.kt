@@ -1211,7 +1211,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() and 0xFFFF) != 57232) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_forge_ffi_checksum_constructor_forgechatapp_new() and 0xFFFF) != 607) {
+    if ((lib.uniffi_forge_ffi_checksum_constructor_forgechatapp_new() and 0xFFFF) != 19473) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() and 0xFFFF) != 13605) {
@@ -2829,8 +2829,10 @@ open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
      * `storage_directory` holds the chat store and is created if missing;
      * an empty string keeps everything in memory.
      *
-     * Fails with `InvalidInput` for a bad URL or timeout, and with `Storage`
-     * when the stored data was written by a newer build (it is left alone).
+     * Fails with `InvalidInput` for a bad URL or timeout, with
+     * `UnsupportedOnHost` for an `https` URL on Android (see
+     * [`check_host_supports`]), and with `Storage` when the stored data was
+     * written by a newer build (it is left alone).
      * A corrupt store does not fail: the app starts empty and
      * `store_problem()` says why.
      */

@@ -45,8 +45,10 @@ impl ForgeChatApp {
     /// `storage_directory` holds the chat store and is created if missing;
     /// an empty string keeps everything in memory.
     ///
-    /// Fails with `InvalidInput` for a bad URL or timeout, and with `Storage`
-    /// when the stored data was written by a newer build (it is left alone).
+    /// Fails with `InvalidInput` for a bad URL or timeout, with
+    /// `UnsupportedOnHost` for an `https` URL on Android (see
+    /// [`check_host_supports`]), and with `Storage` when the stored data was
+    /// written by a newer build (it is left alone).
     /// A corrupt store does not fail: the app starts empty and
     /// `store_problem()` says why.
     #[uniffi::constructor]
@@ -56,6 +58,7 @@ impl ForgeChatApp {
             .map_err(|_| ChatError::InvalidInput {
                 reason: format!("base URL must be http(s): {:?}", config.base_url),
             })?;
+        check_host_supports(&config.base_url, cfg!(target_os = "android"))?;
         let timeout = match config.request_timeout_ms {
             Some(0) => {
                 return Err(ChatError::InvalidInput {
@@ -246,6 +249,27 @@ impl ForgeChatApp {
     }
 }
 
+/// HTTPS on Android is refused up front, as a typed error.
+///
+/// `UreqClient` checks certificates with `rustls-platform-verifier`, which on
+/// Android only works after a JNI init with the app `Context`. No host does
+/// that init yet, so an `https` server would fail every request with a TLS
+/// error that looks like "server down". Plain `http` (the mock server) never
+/// touches the verifier. See "Android and TLS" in `docs/chat-demo.md`.
+pub(crate) fn check_host_supports(base_url: &str, android: bool) -> Result<(), ChatError> {
+    let https = base_url
+        .get(..8)
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case("https://"));
+    if android && https {
+        return Err(ChatError::UnsupportedOnHost {
+            detail: "https on Android needs the platform certificate verifier, which this \
+                     build does not initialise; use an http:// server (the mock server)"
+                .into(),
+        });
+    }
+    Ok(())
+}
+
 /// Runs a blocking core command on a worker thread and awaits its result.
 async fn run<T, F>(name: &str, command: F) -> Result<T, ChatError>
 where
@@ -324,6 +348,18 @@ mod tests {
             ForgeChatApp::new(nested.clone(), config("http://127.0.0.1:8787/", Some(500))).unwrap();
         assert!(std::path::Path::new(&nested).is_dir());
         app.shutdown();
+    }
+
+    #[test]
+    fn https_on_android_is_unsupported_not_a_tls_failure() {
+        for url in ["https://chat.example", "HTTPS://chat.example"] {
+            assert!(matches!(
+                check_host_supports(url, true),
+                Err(ChatError::UnsupportedOnHost { .. })
+            ));
+            assert_eq!(check_host_supports(url, false), Ok(()));
+        }
+        assert_eq!(check_host_supports("http://10.0.2.2:8787", true), Ok(()));
     }
 
     #[test]
