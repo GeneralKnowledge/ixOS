@@ -48,6 +48,7 @@ examples/counter          # SwiftUI + xtool app
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # Compose + Gradle app
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
+examples/chat-android     # The same chat app in Compose
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # `forge init --platform android`
@@ -91,7 +92,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
 - GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter, Weather and template Xcode projects.
-- No App Store distribution in this release. Networking is demonstrated by the iOS Weather example only ([examples/weather](examples/weather/README.md)); the Android host does not initialise the HTTPS client's certificate verifier yet.
+- No App Store distribution in this release. Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example on both hosts ([examples/chat](examples/chat/README.md), [examples/chat-android](examples/chat-android/README.md)). Android does not initialise the HTTPS client's certificate verifier yet, so it supports `http://` servers only (Chat refuses `https://` with a typed `UnsupportedOnHost` error).
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

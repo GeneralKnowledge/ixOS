@@ -19,10 +19,13 @@ done
 
 "$ROOT/scripts/generate-bindings.sh" "$TMP/kotlin" kotlin
 
+# Every Android example carries its own copy of the Kotlin bindings.
 KOTLIN_FILE="uniffi/forge_ffi/forge_ffi.kt"
-if ! diff -u "$ROOT/examples/counter-android/Generated/$KOTLIN_FILE" "$TMP/kotlin/$KOTLIN_FILE"; then
-  echo "error: $KOTLIN_FILE is stale; run scripts/generate-bindings.sh examples/counter-android/Generated kotlin" >&2
-  exit 1
-fi
+for example in counter-android chat-android; do
+  if ! diff -u "$ROOT/examples/$example/Generated/$KOTLIN_FILE" "$TMP/kotlin/$KOTLIN_FILE"; then
+    echo "error: examples/$example/Generated/$KOTLIN_FILE is stale; run scripts/generate-bindings.sh examples/$example/Generated kotlin" >&2
+    exit 1
+  fi
+done
 
 echo "[forge] Generated bindings match committed copies."

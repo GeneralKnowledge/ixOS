@@ -13,8 +13,9 @@ check:
 	cargo run -q -p forge-cli -- check
 
 test-android-host:
-	cargo build -p forge-ffi
+	cargo build -p forge-ffi -p mock-chat-server
 	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
+	cd examples/chat-android && ./gradlew :app:testDebugUnitTest
 
 test-swift-host:
 	./scripts/test-swift-host.sh examples/counter
@@ -34,6 +35,7 @@ bindings:
 
 bindings-kotlin:
 	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
+	./scripts/generate-bindings.sh examples/chat-android/Generated kotlin
 
 check-bindings:
 	./scripts/check-bindings.sh

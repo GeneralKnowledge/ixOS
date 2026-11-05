@@ -20,7 +20,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 | 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
-| 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | Planned |
+| 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
 | 6 | CI matrix, README, roadmap | Planned |
 
 ## Layout
@@ -30,7 +30,7 @@ examples/chat-core        # Rust domain: types, ChatClient, ChatRepo (in-memory 
 crates/forge-ffi/src/chat # ForgeChatApp, the UniFFI surface (like src/weather)
 scripts/mock-chat-server  # In-memory axum server: `make mock-chat`
 examples/chat             # SwiftUI host
-examples/chat-android     # Phase 5: Compose host
+examples/chat-android     # Compose host
 ```
 
 `chat-core` is a workspace member, so `cargo test --workspace` (CI, `make test`, `forge check`) runs its tests.
@@ -218,14 +218,14 @@ The plan was written before the Weather example landed. Checked against the repo
 
 Two separate problems, and the demo as planned only hits one of them:
 
-1. **Cleartext HTTP.** The mock server is plain `http://` (the emulator reaches the host as `10.0.2.2`). Android 9+ blocks cleartext by default, so the debug build needs a `network_security_config` that allows `10.0.2.2` and `localhost`. Without it the failure is a `Network` error that looks like "server down".
-2. **The TLS verifier.** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init call (`rustls_platform_verifier::android::init_hosted` with the app `Context`) and its companion Kotlin library. **Plain HTTP never touches it**, so the killer demo against the local mock server will *not* force this fix. Phase 5 has to decide explicitly: wire the init (and add an `https` smoke check to the Android host), or make `https` on an uninitialised Android host fail with `ChatError::UnsupportedOnHost` and a README note. Either way, not a silent TLS failure.
+1. **Cleartext HTTP: not a problem for Rust.** Android 9+ refuses cleartext by default, but that policy is enforced by the Java HTTP stacks (`HttpURLConnection`, OkHttp); the platform does not apply it to plain sockets. The Rust client opens its own sockets, so `http://10.0.2.2:8787` (the emulator's view of the host) works with only the `INTERNET` permission, and the example has no `network_security_config`.
+2. **The TLS verifier: refused, as a typed error (decided in Phase 5).** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init call (`rustls_platform_verifier::android::init_hosted` with the app `Context`) and its companion Kotlin library. Plain HTTP never touches it, so the demo does not need it, and wiring it would add a JNI entry point and a Gradle dependency that nothing in the demo exercises. So `ForgeChatApp::new` refuses an `https://` base URL on Android builds with `ChatError::UnsupportedOnHost` (`check_host_supports` in `crates/forge-ffi/src/chat/app.rs`), and the app shows "Android supports http:// chat servers only". Never a silent TLS failure. Wiring the verifier is a follow-up that also unblocks Weather on Android.
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| Android TLS verifier not wired | See above: decided explicitly in Phase 5, never silent. |
+| Android TLS verifier not wired | Decided in Phase 5: `https` on Android fails at once with `UnsupportedOnHost` (see above). |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
 | Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
 | A blocked stream read outlives unsubscribe | Heartbeats from the server; no events are emitted after unsubscribe regardless. |

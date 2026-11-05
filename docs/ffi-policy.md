@@ -10,7 +10,7 @@
 ## Generated artifacts
 
 - iOS output: `examples/counter/Generated/` and identical copies in `examples/weather/Generated/` and `examples/chat/Generated/` (one `forge-ffi` library exports every example's API: Counter, Weather and Chat) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
-- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`.
+- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
 - CI runs `./scripts/check-bindings.sh` to detect drift (see below).
@@ -28,7 +28,7 @@
    - `examples/counter/Generated/forge_ffiFFI/forge_ffiFFI.h`
    - `examples/counter/Generated/forge_ffiFFI/module.modulemap`
    - the same three files under `examples/weather/Generated/` and `examples/chat/Generated/`
-   - `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt`
+   - `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and the same file under `examples/chat-android/Generated/`
 4. Prints the diff and exits non-zero on the first mismatch, naming the file and the command that regenerates it.
 
 Templates do not commit bindings: `forge init` generates them into the new app, so a template cannot drift.
@@ -41,6 +41,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 ./scripts/generate-bindings.sh examples/weather/Generated
 ./scripts/generate-bindings.sh examples/chat/Generated
 ./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
+./scripts/generate-bindings.sh examples/chat-android/Generated kotlin
 #    (or: make bindings bindings-kotlin)
 
 # 2. Confirm the check is clean
