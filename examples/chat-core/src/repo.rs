@@ -1,5 +1,7 @@
 //! The server side of chat, as the client sees it.
 
+use forge_net::CancelHandle;
+
 use crate::types::{ChatError, Message};
 
 /// A room as the server describes it. The client adds `unread_count` (see
@@ -62,7 +64,16 @@ pub trait ChatRepo: Send + Sync {
 
     /// Opens the room's live stream. Returns once the server accepted it, so
     /// anything stored after this returns is delivered on the stream.
-    fn open_stream(&self, conversation_id: &str) -> Result<Box<dyn RemoteStream>, ChatError>;
+    ///
+    /// `cancel` ends the stream from another thread: opening fails with
+    /// [`ChatError::Cancelled`], and a [`RemoteStream::next_event`] blocked
+    /// on a quiet connection returns promptly (`Some(Err(Cancelled))` or
+    /// `None`) without waiting for a heartbeat.
+    fn open_stream(
+        &self,
+        conversation_id: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Box<dyn RemoteStream>, ChatError>;
 }
 
 impl<T: ChatRepo + ?Sized> ChatRepo for std::sync::Arc<T> {
@@ -82,7 +93,11 @@ impl<T: ChatRepo + ?Sized> ChatRepo for std::sync::Arc<T> {
         (**self).post_message(message)
     }
 
-    fn open_stream(&self, conversation_id: &str) -> Result<Box<dyn RemoteStream>, ChatError> {
-        (**self).open_stream(conversation_id)
+    fn open_stream(
+        &self,
+        conversation_id: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Box<dyn RemoteStream>, ChatError> {
+        (**self).open_stream(conversation_id, cancel)
     }
 }
