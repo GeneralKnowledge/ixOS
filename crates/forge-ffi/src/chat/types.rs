@@ -1,7 +1,8 @@
 //! Records, enums and the error the Chat example sends across the FFI
 //! boundary. They mirror `chat_core`'s types one to one (see
 //! `docs/chat-demo.md`), with two FFI-only additions: `ChatEvent::EventsDropped`
-//! and `ChatError::Storage` / `ChatError::Internal`.
+//! and `ChatError::Storage` / `ChatError::Internal`. The core's `Protocol`
+//! error is `ChatError::BadResponse` here.
 //!
 //! Names carry a `Chat` prefix because every example's API shares one
 //! generated module (`ForgeFFI` in Swift, `uniffi.forge_ffi` in Kotlin).
@@ -96,9 +97,10 @@ pub enum ChatError {
     Network { reason: String },
     #[error("server returned HTTP {status}: {reason}")]
     Http { status: u16, reason: String },
-    /// The server's answer was not what this build expects.
-    #[error("protocol error: {reason}")]
-    Protocol { reason: String },
+    /// The server's answer was not what this build expects (the core's
+    /// `Protocol` error; renamed because `.Protocol` is a metatype in Swift).
+    #[error("unexpected response: {reason}")]
+    BadResponse { reason: String },
     /// Abandoned before it took effect (the app shut down mid-send).
     #[error("operation was cancelled")]
     Cancelled,
@@ -185,7 +187,7 @@ impl From<chat_core::ChatError> for ChatError {
         match error {
             Core::Network { reason } => Self::Network { reason },
             Core::Http { status, reason } => Self::Http { status, reason },
-            Core::Protocol { reason } => Self::Protocol { reason },
+            Core::Protocol { reason } => Self::BadResponse { reason },
             Core::Cancelled => Self::Cancelled,
             Core::NotFound { conversation_id } => Self::NotFound { conversation_id },
             Core::UnsupportedOnHost { detail } => Self::UnsupportedOnHost { detail },

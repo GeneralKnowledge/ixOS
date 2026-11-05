@@ -29,6 +29,8 @@ jobs:
         run: ./scripts/test-swift-host.sh examples/counter
       - name: Weather example (XCTest)
         run: ./scripts/test-swift-host.sh examples/weather
+      - name: Chat example (XCTest, against the mock chat server)
+        run: ./scripts/test-swift-host.sh examples/chat
       - name: App generated from the iOS template (XCTest)
         run: |
           cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate
@@ -58,6 +60,14 @@ jobs:
         run: |
           xcodebuild build \
             -project examples/weather/Xcode/Weather.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Build Chat.xcodeproj (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project examples/chat/Xcode/Chat.xcodeproj \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -configuration Debug \

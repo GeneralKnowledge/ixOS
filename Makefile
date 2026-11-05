@@ -19,6 +19,7 @@ test-android-host:
 test-swift-host:
 	./scripts/test-swift-host.sh examples/counter
 	./scripts/test-swift-host.sh examples/weather
+	./scripts/test-swift-host.sh examples/chat
 
 fmt:
 	cargo fmt --all
@@ -29,6 +30,7 @@ clippy:
 bindings:
 	./scripts/generate-bindings.sh examples/counter/Generated
 	./scripts/generate-bindings.sh examples/weather/Generated
+	./scripts/generate-bindings.sh examples/chat/Generated
 
 bindings-kotlin:
 	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin

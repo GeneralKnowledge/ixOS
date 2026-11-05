@@ -54,6 +54,9 @@ async fn main() {
             std::process::exit(1);
         }
     };
+    // Print the real address (it differs from `bind` with port 0), so
+    // scripts and tests can start the server on a free port.
+    let bind = listener.local_addr().unwrap_or(bind);
     let rooms: Vec<&str> = ROOMS.iter().map(|(id, _)| *id).collect();
     println!(
         "mock chat server on http://{bind} (rooms: {}; heartbeat {} ms). Ctrl-C to stop.",
