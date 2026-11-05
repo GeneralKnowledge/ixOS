@@ -157,19 +157,39 @@ impl ForgeChatApp {
         .await
     }
 
-    /// Opens the room's live connection and marks it read. Returns at once;
+    /// Opens the room's live connection (or reuses its watch) and marks it
+    /// read; it stays read while open. Returns at once;
     /// `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
     pub fn subscribe(&self, conversation_id: String) -> Result<(), ChatError> {
         self.client.subscribe(&conversation_id).map_err(Into::into)
     }
 
-    /// Closes the room's live connection. On return `StreamDisconnected
-    /// { will_retry: false }` is queued and nothing more from that room's
-    /// stream will be. Idempotent.
+    /// Closes the room. If it is not watched, its live connection ends: on
+    /// return `StreamDisconnected { will_retry: false }` is queued and
+    /// nothing more from that room's stream will be. A watched room stays
+    /// live and counts unread messages again. Idempotent.
     pub fn unsubscribe(&self, conversation_id: String) -> Result<(), ChatError> {
         self.client
             .unsubscribe(&conversation_id)
             .map_err(Into::into)
+    }
+
+    /// Keeps the room live in the background without opening it: new
+    /// messages arrive as `MessageReceived`, and new ones from others count
+    /// towards `unread_count` and raise `Notify`. Returns at once.
+    /// Idempotent.
+    pub fn watch(&self, conversation_id: String) -> Result<(), ChatError> {
+        self.client.watch(&conversation_id).map_err(Into::into)
+    }
+
+    /// Stops watching the room. Its stream ends unless the room is also
+    /// open (`subscribe`). Idempotent.
+    pub fn unwatch(&self, conversation_id: String) -> Result<(), ChatError> {
+        self.client.unwatch(&conversation_id).map_err(Into::into)
+    }
+
+    pub fn is_watched(&self, conversation_id: String) -> bool {
+        self.client.is_watched(&conversation_id)
     }
 
     /// Conversations as stored, for a first render before the network.
@@ -456,6 +476,34 @@ mod tests {
             thread::sleep(Duration::from_millis(5));
         }
         assert_eq!(repo.open_stream_count(), 0);
+    }
+
+    #[test]
+    fn watched_rooms_report_unread_through_the_ffi() {
+        let (repo, app) = app();
+        let events = app.events().unwrap();
+        block_on(app.list_conversations()).unwrap();
+        app.watch("general".into()).unwrap();
+        assert!(app.is_watched("general".into()));
+        assert!(!app.is_subscribed("general".into()));
+        next_matching(&events, |e| matches!(e, ChatEvent::StreamConnected { .. }));
+
+        let ping = repo.inject("general", "curl", "ping");
+        next_matching(
+            &events,
+            |e| matches!(e, ChatEvent::Notify { message } if message.id == ping.id && message.author == "curl"),
+        );
+        next_matching(
+            &events,
+            |e| matches!(e, ChatEvent::ConversationUpdated { conversation } if conversation.unread_count == 1),
+        );
+
+        app.unwatch("general".into()).unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while app.live_streams() > 0 {
+            assert!(Instant::now() < deadline, "room thread did not end");
+            thread::sleep(Duration::from_millis(5));
+        }
     }
 
     #[test]

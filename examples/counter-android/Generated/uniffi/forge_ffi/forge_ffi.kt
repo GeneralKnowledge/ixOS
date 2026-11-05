@@ -726,6 +726,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed(
     ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_is_watched(
+    ): Int
     external fun uniffi_forge_ffi_checksum_method_forgechatapp_last_synced(
     ): Int
     external fun uniffi_forge_ffi_checksum_method_forgechatapp_list_conversations(
@@ -747,6 +749,10 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages(
     ): Int
     external fun uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_unwatch(
+    ): Int
+    external fun uniffi_forge_ffi_checksum_method_forgechatapp_watch(
     ): Int
     external fun uniffi_forge_ffi_checksum_method_chateventsubscription_cancel(
     ): Int
@@ -862,6 +868,8 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_forge_ffi_fn_method_forgechatapp_is_subscribed(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_is_watched(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_forge_ffi_fn_method_forgechatapp_last_synced(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_forge_ffi_fn_method_forgechatapp_list_conversations(`ptr`: Long,
@@ -883,6 +891,10 @@ internal object UniffiLib {
     external fun uniffi_forge_ffi_fn_method_forgechatapp_sync_messages(`ptr`: Long,`conversationId`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_unwatch(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_forge_ffi_fn_method_forgechatapp_watch(`ptr`: Long,`conversationId`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_forge_ffi_fn_clone_chateventsubscription(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
@@ -1127,6 +1139,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed() and 0xFFFF) != 62844) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_is_watched() and 0xFFFF) != 57171) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_last_synced() and 0xFFFF) != 58714) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1151,13 +1166,19 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_store_problem() and 0xFFFF) != 6758) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() and 0xFFFF) != 58798) {
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() and 0xFFFF) != 23654) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages() and 0xFFFF) != 16027) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() and 0xFFFF) != 7728) {
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() and 0xFFFF) != 25787) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_unwatch() and 0xFFFF) != 18700) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_forge_ffi_checksum_method_forgechatapp_watch() and 0xFFFF) != 18119) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_method_chateventsubscription_cancel() and 0xFFFF) != 39977) {
@@ -2730,6 +2751,8 @@ public interface ForgeChatAppInterface {
     
     fun `isSubscribed`(`conversationId`: kotlin.String): kotlin.Boolean
     
+    fun `isWatched`(`conversationId`: kotlin.String): kotlin.Boolean
+    
     /**
      * The room's `since` cursor (server time, Unix ms).
      */
@@ -2777,7 +2800,8 @@ public interface ForgeChatAppInterface {
     fun `storeProblem`(): kotlin.String?
     
     /**
-     * Opens the room's live connection and marks it read. Returns at once;
+     * Opens the room's live connection (or reuses its watch) and marks it
+     * read; it stays read while open. Returns at once;
      * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
      */
     fun `subscribe`(`conversationId`: kotlin.String)
@@ -2788,11 +2812,26 @@ public interface ForgeChatAppInterface {
     suspend fun `syncMessages`(`conversationId`: kotlin.String): List<ChatMessage>
     
     /**
-     * Closes the room's live connection. On return `StreamDisconnected
-     * { will_retry: false }` is queued and nothing more from that room's
-     * stream will be. Idempotent.
+     * Closes the room. If it is not watched, its live connection ends: on
+     * return `StreamDisconnected { will_retry: false }` is queued and
+     * nothing more from that room's stream will be. A watched room stays
+     * live and counts unread messages again. Idempotent.
      */
     fun `unsubscribe`(`conversationId`: kotlin.String)
+    
+    /**
+     * Stops watching the room. Its stream ends unless the room is also
+     * open (`subscribe`). Idempotent.
+     */
+    fun `unwatch`(`conversationId`: kotlin.String)
+    
+    /**
+     * Keeps the room live in the background without opening it: new
+     * messages arrive as `MessageReceived`, and new ones from others count
+     * towards `unread_count` and raise `Notify`. Returns at once.
+     * Idempotent.
+     */
+    fun `watch`(`conversationId`: kotlin.String)
     
     companion object
 }
@@ -3001,6 +3040,20 @@ open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
     }
     
 
+    override fun `isWatched`(`conversationId`: kotlin.String): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_is_watched(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    )
+    }
+    
+
     
     /**
      * The room's `since` cursor (server time, Unix ms).
@@ -3174,7 +3227,8 @@ open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
 
     
     /**
-     * Opens the room's live connection and marks it read. Returns at once;
+     * Opens the room's live connection (or reuses its watch) and marks it
+     * read; it stays read while open. Returns at once;
      * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
      */
     @Throws(ChatException::class)override fun `subscribe`(`conversationId`: kotlin.String)
@@ -3217,15 +3271,54 @@ open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
 
     
     /**
-     * Closes the room's live connection. On return `StreamDisconnected
-     * { will_retry: false }` is queued and nothing more from that room's
-     * stream will be. Idempotent.
+     * Closes the room. If it is not watched, its live connection ends: on
+     * return `StreamDisconnected { will_retry: false }` is queued and
+     * nothing more from that room's stream will be. A watched room stays
+     * live and counts unread messages again. Idempotent.
      */
     @Throws(ChatException::class)override fun `unsubscribe`(`conversationId`: kotlin.String)
         = 
     callWithHandle {
     uniffiRustCallWithError(ChatException) { _status ->
     UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Stops watching the room. Its stream ends unless the room is also
+     * open (`subscribe`). Idempotent.
+     */
+    @Throws(ChatException::class)override fun `unwatch`(`conversationId`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_unwatch(
+        it,
+        
+        FfiConverterString.lower(`conversationId`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Keeps the room live in the background without opening it: new
+     * messages arrive as `MessageReceived`, and new ones from others count
+     * towards `unread_count` and raise `Notify`. Returns at once.
+     * Idempotent.
+     */
+    @Throws(ChatException::class)override fun `watch`(`conversationId`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(ChatException) { _status ->
+    UniffiLib.uniffi_forge_ffi_fn_method_forgechatapp_watch(
         it,
         
         FfiConverterString.lower(`conversationId`),_status)
@@ -5697,6 +5790,20 @@ sealed class ChatEvent {
         companion object
     }
     
+    /**
+     * Someone else's new message in a room that is not open, sent after
+     * this app instance started: show a local notification. Follows its
+     * `MessageReceived`. Catch-up history never notifies.
+     */
+    data class Notify(
+        val `message`: uniffi.forge_ffi.ChatMessage) : ChatEvent()
+        
+    {
+        
+
+        companion object
+    }
+    
     data class MessageStatusChanged(
         val `id`: kotlin.String, 
         val `status`: uniffi.forge_ffi.ChatMessageStatus) : ChatEvent()
@@ -5767,19 +5874,22 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
             2 -> ChatEvent.MessageReceived(
                 FfiConverterTypeChatMessage.read(buf),
                 )
-            3 -> ChatEvent.MessageStatusChanged(
+            3 -> ChatEvent.Notify(
+                FfiConverterTypeChatMessage.read(buf),
+                )
+            4 -> ChatEvent.MessageStatusChanged(
                 FfiConverterString.read(buf),
                 FfiConverterTypeChatMessageStatus.read(buf),
                 )
-            4 -> ChatEvent.StreamConnected(
+            5 -> ChatEvent.StreamConnected(
                 FfiConverterString.read(buf),
                 )
-            5 -> ChatEvent.StreamDisconnected(
+            6 -> ChatEvent.StreamDisconnected(
                 FfiConverterString.read(buf),
                 FfiConverterString.read(buf),
                 FfiConverterBoolean.read(buf),
                 )
-            6 -> ChatEvent.EventsDropped(
+            7 -> ChatEvent.EventsDropped(
                 FfiConverterULong.read(buf),
                 )
             else -> throw RuntimeException("invalid enum value, something is very wrong!!")
@@ -5795,6 +5905,13 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
             )
         }
         is ChatEvent.MessageReceived -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterTypeChatMessage.allocationSize(value.`message`)
+            )
+        }
+        is ChatEvent.Notify -> {
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
@@ -5846,26 +5963,31 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
                 FfiConverterTypeChatMessage.write(value.`message`, buf)
                 Unit
             }
-            is ChatEvent.MessageStatusChanged -> {
+            is ChatEvent.Notify -> {
                 buf.putInt(3)
+                FfiConverterTypeChatMessage.write(value.`message`, buf)
+                Unit
+            }
+            is ChatEvent.MessageStatusChanged -> {
+                buf.putInt(4)
                 FfiConverterString.write(value.`id`, buf)
                 FfiConverterTypeChatMessageStatus.write(value.`status`, buf)
                 Unit
             }
             is ChatEvent.StreamConnected -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 FfiConverterString.write(value.`conversationId`, buf)
                 Unit
             }
             is ChatEvent.StreamDisconnected -> {
-                buf.putInt(5)
+                buf.putInt(6)
                 FfiConverterString.write(value.`conversationId`, buf)
                 FfiConverterString.write(value.`reason`, buf)
                 FfiConverterBoolean.write(value.`willRetry`, buf)
                 Unit
             }
             is ChatEvent.EventsDropped -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterULong.write(value.`count`, buf)
                 Unit
             }

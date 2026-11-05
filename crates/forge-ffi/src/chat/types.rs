@@ -54,6 +54,12 @@ pub enum ChatEvent {
     MessageReceived {
         message: ChatMessage,
     },
+    /// Someone else's new message in a room that is not open, sent after
+    /// this app instance started: show a local notification. Follows its
+    /// `MessageReceived`. Catch-up history never notifies.
+    Notify {
+        message: ChatMessage,
+    },
     MessageStatusChanged {
         id: String,
         status: ChatMessageStatus,
@@ -163,6 +169,7 @@ impl From<chat_core::ChatEvent> for ChatEvent {
                 conversation: c.into(),
             },
             Core::MessageReceived(m) => Self::MessageReceived { message: m.into() },
+            Core::Notify(m) => Self::Notify { message: m.into() },
             Core::MessageStatusChanged { id, status } => Self::MessageStatusChanged {
                 id,
                 status: status.into(),
