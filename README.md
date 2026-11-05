@@ -11,6 +11,13 @@ This repository (`ixOS` on GitHub) ships a working **Counter** example, a networ
 
 The Rust-to-Swift bridge is asynchronous: SwiftUI talks to a thin Swift layer (`CounterBridge`) that exposes Rust commands and queries as `async` calls and Rust events as an `AsyncSequence`, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
 
+<p>
+  <img src="docs/images/chat-ios-list.png" width="270" alt="Chat example on an iPhone: the conversation list">
+  <img src="docs/images/chat-ios-room.png" width="270" alt="Chat example on an iPhone: the General room, with messages sent from the phone and posted from curl">
+</p>
+
+The [Chat example](docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local mock server (the grey bubbles were posted with curl).
+
 ## Why Forge?
 
 Forge is for teams that want **native UI on each platform** (SwiftUI, Jetpack Compose) over **one Rust core**, and want to do most of that work **from Linux**. It is not a cross-platform UI toolkit: you write each app's UI in its own language, and Forge supplies the shared core, the FFI contract (async commands, events, cancellation, typed errors), the packaging scripts, a CLI and templates.

@@ -21,7 +21,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
-| 6 | CI matrix, README, roadmap | **Done**, except a README screenshot/GIF, which needs a capture from a real device |
+| 6 | CI matrix, README (screenshots from an iPhone, built on Linux), roadmap | **Done** |
 
 ## Layout
 
