@@ -97,9 +97,10 @@ fn failed_in(client: &ChatClient, room: &str) -> Message {
     failed.into_iter().next().unwrap()
 }
 
-fn status_event(id: &str, status: MessageStatus) -> ChatEvent {
+fn status_event(message: &Message, status: MessageStatus) -> ChatEvent {
     ChatEvent::MessageStatusChanged {
-        id: id.into(),
+        conversation_id: message.conversation_id.clone(),
+        id: message.id.clone(),
         status,
     }
 }
@@ -119,7 +120,7 @@ fn send_goes_sending_then_sent() {
     };
     assert_eq!(first.status, MessageStatus::Sending);
     assert_eq!(first.id, sent.id);
-    assert_eq!(events[1], status_event(&sent.id, MessageStatus::Sent));
+    assert_eq!(events[1], status_event(&sent, MessageStatus::Sent));
     assert!(
         matches!(&events[2], ChatEvent::ConversationUpdated(c) if c.last_message_at == Some(sent.sent_at))
     );
@@ -160,7 +161,7 @@ fn failed_send_is_typed_and_retry_is_idempotent() {
     let events = h.drain();
     assert_eq!(
         events.last(),
-        Some(&status_event(&failed.id, MessageStatus::Failed))
+        Some(&status_event(&failed, MessageStatus::Failed))
     );
 
     // Still offline: retry fails again, back to Failed.
@@ -168,8 +169,8 @@ fn failed_send_is_typed_and_retry_is_idempotent() {
     assert_eq!(
         h.drain(),
         vec![
-            status_event(&failed.id, MessageStatus::Sending),
-            status_event(&failed.id, MessageStatus::Failed),
+            status_event(&failed, MessageStatus::Sending),
+            status_event(&failed, MessageStatus::Failed),
         ]
     );
 
@@ -282,7 +283,7 @@ fn own_message_echo_is_merged_not_duplicated() {
         .count();
     let sent_changes = events
         .iter()
-        .filter(|e| **e == status_event(&sent.id, MessageStatus::Sent))
+        .filter(|e| **e == status_event(&sent, MessageStatus::Sent))
         .count();
     assert_eq!((received, sent_changes), (1, 1), "{events:#?}");
     assert_eq!(h.client.cached_messages("general").len(), 1);
@@ -524,14 +525,14 @@ fn killer_demo_interaction() {
     assert!(err.is_network());
     let failed = failed_in(&h.client, "general");
     h.wait_for("Failed status", |e| {
-        *e == status_event(&failed.id, MessageStatus::Failed)
+        *e == status_event(&failed, MessageStatus::Failed)
     });
 
     // 5. Restart the server, tap to retry: Sending → Sent.
     h.repo.set_offline(false);
     h.client.retry_message(&failed.id).unwrap();
     h.wait_for("Sent after retry", |e| {
-        *e == status_event(&failed.id, MessageStatus::Sent)
+        *e == status_event(&failed, MessageStatus::Sent)
     });
     h.wait_connected("general");
 

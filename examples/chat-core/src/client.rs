@@ -21,7 +21,8 @@
 //!   other rooms' connections are untouched. [`ChatClient::live_pumps`]
 //!   counts pump threads still running, so tests can prove they end.
 //! * Leaving a room does not cancel a send in flight: the send finishes and
-//!   its `MessageStatusChanged` is still emitted (the host filters by room).
+//!   its `MessageStatusChanged` is still emitted (it names the room, so the
+//!   host can ignore it or update that room's list).
 //! * Every message carries a client-chosen id, so retries are idempotent on
 //!   the server and the stream echo of our own message is matched to the
 //!   local bubble instead of appearing twice.
@@ -340,6 +341,7 @@ impl ChatClient {
                 .expect("message exists");
             self.inner.persist(&mut state);
             self.inner.emit(ChatEvent::MessageStatusChanged {
+                conversation_id: message.conversation_id.clone(),
                 id: message.id.clone(),
                 status: MessageStatus::Sending,
             });
@@ -533,6 +535,7 @@ impl Inner {
                     self.emit(ChatEvent::MessageReceived(message));
                 }
                 Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
+                    conversation_id: message.conversation_id,
                     id: message.id,
                     status: MessageStatus::Sent,
                 }),
@@ -587,6 +590,7 @@ impl Inner {
                 if !shut_down {
                     match outcome {
                         Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
+                            conversation_id: stored.conversation_id.clone(),
                             id: stored.id.clone(),
                             status: MessageStatus::Sent,
                         }),
@@ -623,6 +627,7 @@ impl Inner {
                     return Err(ChatError::Cancelled);
                 }
                 self.emit(ChatEvent::MessageStatusChanged {
+                    conversation_id: message.conversation_id,
                     id: message.id,
                     status: MessageStatus::Failed,
                 });

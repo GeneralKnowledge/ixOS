@@ -49,7 +49,7 @@ pub enum MessageStatus { Sending, Sent, Failed }
 pub enum ChatEvent {
     ConversationUpdated(Conversation),
     MessageReceived(Message),
-    MessageStatusChanged { id, status },
+    MessageStatusChanged { conversation_id, id, status },
     StreamConnected { conversation_id },
     StreamDisconnected { conversation_id, reason, will_retry: bool },
 }
@@ -80,7 +80,7 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 
 These are the guarantees the FFI layer and both hosts build on. Each has a test in `examples/chat-core/src/client/tests.rs`.
 
-1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id` (for `MessageStatusChanged`, by message id).
+1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id`, which every event except the FFI's `EventsDropped` carries.
 2. **Ordered, and after the store.** Every event is emitted under the client's lock, right after the store change it describes. Re-reading the store after an event never shows older data.
 3. **Every new message is announced exactly once.** Stream, catch-up fetch, list prefetch and our own send all merge by message id. The stream echo of our own message turns the local bubble `Sent` instead of adding a second one. A message evicted from the store (see below) is not announced again if it is re-delivered.
 4. **Unsubscribe is a hard stop for events.** When `unsubscribe` returns, `StreamDisconnected { will_retry: false }` has been emitted and no later event comes from that subscription: each pump checks it is still the current subscription, under the same lock, before every change.
