@@ -82,7 +82,7 @@ Or step by step:
 
 ```bash
 ./scripts/package-ios-library.sh examples/counter/Generated
-cd examples/counter && xtool dev
+cd examples/counter && xtool dev run -c release
 ```
 
 ## CI note

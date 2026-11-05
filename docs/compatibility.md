@@ -6,7 +6,7 @@ Versions this repository is built and tested with. If something does not build, 
 - **CI** means a GitHub Actions job exercises it on every pull request.
 - **Installed only** means the tool was installed and its basic commands run, but the full device flow has not been verified with it.
 
-Last updated: 2026-11-04. Update this page in the same PR as any version bump.
+Last updated: 2026-11-05. Update this page in the same PR as any version bump.
 
 ## Rust and FFI
 
@@ -23,9 +23,9 @@ Last updated: 2026-11-04. Update this page in the same PR as any version bump.
 
 | Component | Tested version | Status | Notes |
 |-----------|----------------|--------|-------|
-| Swift (Linux) | 6.2.3 (ubuntu24.04 tarball) | Installed only | `swift-tools-version: 6.0` in `Package.swift`; xtool upstream recommends a newer Swift |
-| xtool | 1.22.2 AppImage | Installed only | Darwin SDK step and device install not yet verified; see [toolchain-validation.md](toolchain-validation.md) |
-| Xcode.xip (for `xtool setup`) | none verified yet | Not verified | Any Xcode 16.x `.xip` is the expected starting point; please report what works |
+| Swift (Linux) | 6.2.3 (ubuntu24.04 tarball) | Manual device run | `swift-tools-version: 6.0` in `Package.swift`; xtool upstream recommends a newer Swift |
+| xtool | 1.24.0 AppImage | Manual device run | Chat installed and run on an iPhone from Ubuntu 24.04 on 2026-11-05 with `xtool dev run -c release`; Counter does not link with this combination, see [troubleshooting.md](troubleshooting.md) |
+| Xcode.xip (for `xtool setup`) | 16.0 | Manual device run | Provides the iOS 18.0 SDK |
 | Xcode (macOS) | `macos-15` runner default (16.x) | CI | The CI log prints the exact version (`xcodebuild -version` step); docs require 16.0+ |
 | iOS deployment target | 17.0 | Pinned | `minimum_ios` in `forge.toml`, Xcode project |
 | macOS host for CI | macOS 15 | CI | `.github/workflows/macos.yml` |

@@ -63,7 +63,9 @@ case "$PROFILE" in
 esac
 
 echo "[forge] Building forge-ffi for ${TARGET} (${CARGO_PROFILE})..."
-cargo build -p forge-ffi --target "$TARGET" --profile "$CARGO_PROFILE"
+# Only the static library is linked into the app. Asking for it alone skips the crate's
+# cdylib, which needs an iOS linker that a Linux host (xtool's Darwin SDK) does not provide.
+cargo rustc -p forge-ffi --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE"
 
 OUT_DIR="$ROOT/build/ios-device/lib"
 mkdir -p "$OUT_DIR"

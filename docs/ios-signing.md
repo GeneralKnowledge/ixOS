@@ -42,8 +42,8 @@ Forge CLI wrappers:
 ```bash
 forge devices
 forge install ios --ipa path/to/app.ipa
-forge build ios --project examples/counter   # build only (xtool dev build)
-forge run ios --project examples/counter     # build, install and launch (xtool dev)
+forge build ios --project examples/counter   # build only (xtool dev build -c release)
+forge run ios --project examples/counter     # build, install and launch (xtool dev run -c release)
 ```
 
 ## Limitations
