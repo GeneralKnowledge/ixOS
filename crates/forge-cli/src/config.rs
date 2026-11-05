@@ -402,4 +402,24 @@ ios_simulator = false
         .unwrap_err();
         assert!(err.contains("ffi_crate"));
     }
+
+    /// Every example's forge.toml must pass the CLI's own validation, so
+    /// `forge build --project examples/<name>` works for each of them.
+    #[test]
+    fn every_example_config_is_valid() {
+        let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let mut checked = 0;
+        for entry in std::fs::read_dir(&examples).unwrap() {
+            let toml = entry.unwrap().path().join("forge.toml");
+            if !toml.is_file() {
+                continue;
+            }
+            let content = std::fs::read_to_string(&toml).unwrap();
+            if let Err(err) = ForgeConfig::parse(&content) {
+                panic!("{}: {err}", toml.display());
+            }
+            checked += 1;
+        }
+        assert!(checked >= 5, "expected every example, found {checked}");
+    }
 }
