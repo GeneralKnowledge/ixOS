@@ -84,10 +84,13 @@ fn connected(e: &ChatEvent) -> bool {
 
 /// What `curl -X POST .../rooms/general/messages` does.
 fn post_external(addr: SocketAddr, body: &str) {
-    use raw_http::post;
-    post(
+    post_external_to(addr, "general", body);
+}
+
+fn post_external_to(addr: SocketAddr, room: &str, body: &str) {
+    raw_http::post(
         addr,
-        "/rooms/general/messages",
+        &format!("/rooms/{room}/messages"),
         &format!(r#"{{"author":"curl","body":"{body}"}}"#),
     );
 }
@@ -250,4 +253,59 @@ fn killer_demo_interaction_over_real_sockets() {
         std::thread::sleep(Duration::from_millis(10));
     }
     client.shutdown();
+}
+
+/// With heartbeats far apart, an idle stream sits in a blocked socket read.
+/// Leaving a room must still end its pump at once (the subscription's
+/// cancel shuts that socket down), leave the other room streaming, and
+/// shutdown must end the rest.
+#[test]
+fn leaving_a_silent_room_closes_its_connection_promptly() {
+    no_proxy();
+    let state = AppState::new(Duration::from_secs(60));
+    let (_server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let (client, rx) = client(addr);
+    client.list_conversations().unwrap();
+
+    let rooms = ["general", "random"];
+    for room in rooms {
+        client.subscribe(room).unwrap();
+    }
+    let mut connected_rooms = Vec::new();
+    while connected_rooms.len() < rooms.len() {
+        if let ChatEvent::StreamConnected { conversation_id } =
+            rx.recv_timeout(WAIT).expect("both rooms connect")
+        {
+            connected_rooms.push(conversation_id);
+        }
+    }
+    // Let both pumps finish catch-up and block reading their stream.
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(client.live_pumps(), 2);
+
+    let wait_pumps = |n: usize| {
+        let started = Instant::now();
+        while client.live_pumps() != n {
+            assert!(
+                started.elapsed() < Duration::from_secs(2),
+                "{} pumps still running, wanted {n}",
+                client.live_pumps()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    };
+
+    client.unsubscribe("general").unwrap();
+    wait_pumps(1);
+
+    // The other room is unaffected.
+    post_external_to(addr, "random", "still streaming");
+    wait_for(
+        &rx,
+        "message in the room still open",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.body == "still streaming"),
+    );
+
+    client.shutdown();
+    wait_pumps(0);
 }

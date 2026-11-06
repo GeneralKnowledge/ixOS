@@ -69,8 +69,13 @@ pub enum ChatEvent {
     /// arrived while the app was not running, never notify.
     Notify(Message),
     /// A known message changed status (`Sending` → `Sent` / `Failed`, or
-    /// `Failed` → `Sending` on retry).
-    MessageStatusChanged { id: String, status: MessageStatus },
+    /// `Failed` → `Sending` on retry). `conversation_id` is the message's
+    /// room, so a host can update that room without searching the others.
+    MessageStatusChanged {
+        conversation_id: String,
+        id: String,
+        status: MessageStatus,
+    },
     /// The live stream for a conversation is open. Emitted again after every
     /// reconnect.
     StreamConnected { conversation_id: String },

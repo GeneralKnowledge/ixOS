@@ -50,7 +50,7 @@ pub enum ChatEvent {
     ConversationUpdated(Conversation),
     MessageReceived(Message),
     Notify(Message),
-    MessageStatusChanged { id, status },
+    MessageStatusChanged { conversation_id, id, status },
     StreamConnected { conversation_id },
     StreamDisconnected { conversation_id, reason, will_retry: bool },
 }
@@ -82,11 +82,11 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 
 These are the guarantees the FFI layer and both hosts build on. Each has a test in `examples/chat-core/src/client/tests.rs`.
 
-1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id` (for `MessageStatusChanged`, by message id).
+1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id`, which every event except the FFI's `EventsDropped` carries.
 2. **Ordered, and after the store.** Every event is emitted under the client's lock, right after the store change it describes. Re-reading the store after an event never shows older data.
 3. **Every new message is announced exactly once.** Stream, catch-up fetch, list prefetch and our own send all merge by message id. The stream echo of our own message turns the local bubble `Sent` instead of adding a second one. A message evicted from the store (see below) is not announced again if it is re-delivered.
 4. **Unsubscribe is a hard stop for events.** When `unsubscribe` returns, `StreamDisconnected { will_retry: false }` has been emitted and no later event comes from that subscription: each pump checks it is still the current subscription, under the same lock, before every change.
-5. **And the Rust task really ends.** The pump thread exits at its next wake-up (next stream event or heartbeat, or a 10 ms backoff slice) and drops its connection. A blocked read cannot be interrupted (ureq has no cancel), which is why the server sends heartbeats. `ChatClient::live_pumps()` counts running pumps; the tests assert it reaches zero and that the in-memory server sees the stream closed.
+5. **And the Rust task really ends.** Each subscription owns a `forge_net::CancelHandle`. Unsubscribing cancels it, which shuts down that room's socket (a read blocked on a silent stream fails at once), aborts a connect in progress and wakes a reconnect backoff, so the pump exits promptly without waiting for a heartbeat. Other rooms' connections are untouched. `ChatClient::live_pumps()` counts running pumps; the tests assert it reaches zero and that the in-memory server sees the stream closed.
 6. **Leaving a room does not cancel a send.** The send finishes and its status event is still emitted; the list screen can ignore it, the store has it.
 7. **One `StreamDisconnected` per outage.** With `will_retry: true` the pump reconnects with backoff (500 ms doubling to 5 s by default) and emits `StreamConnected` when it succeeds. With `will_retry: false` the subscription is over: unsubscribed, shut down, or the room does not exist.
 8. **No gaps after reconnect.** The pump opens the stream first and catches up second, so a message stored in between arrives on one or both (and is merged).
@@ -240,7 +240,7 @@ Two separate problems, and the demo as planned only hits one of them:
 | Android TLS verifier not wired | Decided in Phase 5: `https` on Android fails at once with `UnsupportedOnHost` (see above). |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
 | Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
-| A blocked stream read outlives unsubscribe | Heartbeats from the server; no events are emitted after unsubscribe regardless. |
+| A blocked stream read outlives unsubscribe | Fixed in M13: each room streams on its own connection, which unsubscribe and shutdown close (`HttpClient::open_stream_cancellable`). Tested against the mock server with heartbeats 60 s apart. |
 | Store rewrite per message is slow on a phone | Measured in Phase 4/5; batch writes in the FFI layer if needed. |
 | Scope creep (media, auth, receipts) | Non-goals above. |
 | Mock server grows into a project | Single file, in-memory, no persistence. |

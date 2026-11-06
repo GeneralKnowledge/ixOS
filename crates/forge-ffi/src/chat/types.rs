@@ -43,7 +43,8 @@ pub struct ChatMessage {
 }
 
 /// What the host should render. One stream per app instance, for every
-/// room; filter by `conversation_id` (or, for status changes, message id).
+/// room; filter by `conversation_id`. Every event except `EventsDropped`
+/// names the room it is about.
 #[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
 pub enum ChatEvent {
     ConversationUpdated {
@@ -60,7 +61,10 @@ pub enum ChatEvent {
     Notify {
         message: ChatMessage,
     },
+    /// A known message changed status. Re-read `conversation_id`'s messages
+    /// (a `Sent` message also carries the server's time and may move).
     MessageStatusChanged {
+        conversation_id: String,
         id: String,
         status: ChatMessageStatus,
     },
@@ -170,7 +174,12 @@ impl From<chat_core::ChatEvent> for ChatEvent {
             },
             Core::MessageReceived(m) => Self::MessageReceived { message: m.into() },
             Core::Notify(m) => Self::Notify { message: m.into() },
-            Core::MessageStatusChanged { id, status } => Self::MessageStatusChanged {
+            Core::MessageStatusChanged {
+                conversation_id,
+                id,
+                status,
+            } => Self::MessageStatusChanged {
+                conversation_id,
                 id,
                 status: status.into(),
             },

@@ -61,7 +61,11 @@ final class ChatSessionTests: XCTestCase {
         XCTAssertEqual(session.messages(in: "general").map(\.id), ["a", "b"])
 
         session.apply(.messageReceived(message: message("c", at: 3, .sending)))
-        session.apply(.messageStatusChanged(id: "c", status: .failed))
+        session.apply(.messageStatusChanged(conversationId: "general", id: "c", status: .failed))
+        XCTAssertEqual(session.messages(in: "general").last?.status, .failed)
+
+        // A status change names its room: another room's event leaves this one alone.
+        session.apply(.messageStatusChanged(conversationId: "random", id: "c", status: .sent))
         XCTAssertEqual(session.messages(in: "general").last?.status, .failed)
     }
 

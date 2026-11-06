@@ -8,6 +8,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::cancel::CancelHandle;
 use crate::client::HttpClient;
 use crate::types::{Header, Method, NetError, Request, Response, StreamingResponse};
 
@@ -73,6 +74,7 @@ impl UreqClient {
     /// the headers, so a Server-Sent Events body can stay open.
     fn run(
         &self,
+        agent: &ureq::Agent,
         request: &Request,
         streaming: bool,
     ) -> Result<ureq::http::Response<ureq::Body>, NetError> {
@@ -108,12 +110,12 @@ impl UreqClient {
             && !matches!(request.method, Method::Post | Method::Put | Method::Patch)
         {
             let http_request = builder.body(()).map_err(invalid)?;
-            let http_request = configure!(self.agent.configure_request(http_request)).build();
-            self.agent.run(http_request)
+            let http_request = configure!(agent.configure_request(http_request)).build();
+            agent.run(http_request)
         } else {
             let http_request = builder.body(request.body.as_slice()).map_err(invalid)?;
-            let http_request = configure!(self.agent.configure_request(http_request)).build();
-            self.agent.run(http_request)
+            let http_request = configure!(agent.configure_request(http_request)).build();
+            agent.run(http_request)
         };
         result.map_err(map_error)
     }
@@ -134,7 +136,7 @@ fn response_headers(response: &ureq::http::Response<ureq::Body>) -> Vec<Header> 
 
 impl HttpClient for UreqClient {
     fn send(&self, request: &Request) -> Result<Response, NetError> {
-        let mut response = self.run(request, false)?;
+        let mut response = self.run(&self.agent, request, false)?;
         let status = response.status().as_u16();
         let headers = response_headers(&response);
         let body = response
@@ -155,15 +157,52 @@ impl HttpClient for UreqClient {
     /// until the server writes or closes, so streaming protocols should send
     /// heartbeats. Read errors surface as `std::io::Error`.
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
-        let response = self.run(request, true)?;
-        let status = response.status().as_u16();
-        let headers = response_headers(&response);
-        let body = response.into_body().into_reader();
-        Ok(StreamingResponse {
-            status,
-            headers,
-            body: Box::new(body),
-        })
+        let response = self.run(&self.agent, request, true)?;
+        Ok(streaming_response(response))
+    }
+
+    /// Streams on a connection of its own, so cancelling shuts down exactly
+    /// that socket: a read blocked on a silent server fails at once with
+    /// [`crate::cancelled_io_error`], and a request still connecting or
+    /// waiting for headers fails with [`NetError::Cancelled`]. (Name
+    /// resolution and the TCP connect itself are not interrupted; the
+    /// request timeout bounds them.)
+    ///
+    /// The connection does not come from or go back to the shared pool. Each
+    /// call builds its own TLS state, which costs a little per (re)connect
+    /// and nothing per event.
+    fn open_stream_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<StreamingResponse, NetError> {
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        // A private agent: `Agent::shutdown` closes every connection of the
+        // agent's pool, and this pool only ever holds this stream.
+        let agent = ureq::Agent::new_with_config(self.agent.config().clone());
+        let registration = {
+            let agent = agent.clone();
+            cancel.on_cancel(move || agent.shutdown())
+        };
+        let response = match self.run(&agent, request, true) {
+            Ok(response) => response,
+            Err(_) if cancel.is_cancelled() => return Err(NetError::Cancelled),
+            Err(err) => return Err(err),
+        };
+        Ok(streaming_response(response).cancel_on_with(cancel, Some(registration)))
+    }
+}
+
+fn streaming_response(response: ureq::http::Response<ureq::Body>) -> StreamingResponse {
+    let status = response.status().as_u16();
+    let headers = response_headers(&response);
+    let body = response.into_body().into_reader();
+    StreamingResponse {
+        status,
+        headers,
+        body: Box::new(body),
     }
 }
 
@@ -207,7 +246,9 @@ mod tests {
     use super::*;
     use std::io::{Read, Write};
     use std::net::TcpListener;
+    use std::sync::mpsc;
     use std::thread;
+    use std::time::Instant;
 
     /// Serves exactly one HTTP/1.1 response on a local port and returns the
     /// URL plus a handle yielding the raw request it received.
@@ -347,6 +388,146 @@ mod tests {
         let rest: Vec<String> = lines.map(Result::unwrap).collect();
         assert_eq!(rest, vec!["", "data: two", ""]);
         server.join().unwrap();
+    }
+
+    /// A server that answers the stream's headers, then goes silent with the
+    /// connection held open (no heartbeat) until `release` fires.
+    fn silent_stream_server() -> (String, mpsc::Sender<()>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/stream", listener.local_addr().unwrap());
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let mut raw = Vec::new();
+            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = stream.read(&mut buf).unwrap();
+                raw.extend_from_slice(&buf[..n]);
+            }
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\ndata: one\n\n")
+                .unwrap();
+            stream.flush().unwrap();
+            let _ = release_rx.recv_timeout(Duration::from_secs(30));
+        });
+        (url, release_tx, server)
+    }
+
+    #[test]
+    fn cancel_interrupts_a_read_blocked_on_a_silent_stream() {
+        use std::io::{BufRead, BufReader};
+        no_proxy();
+        let (url, release, server) = silent_stream_server();
+        let cancel = CancelHandle::new();
+        let response = UreqClient::new()
+            .open_stream_cancellable(&Request::get(url).timeout(Duration::from_secs(5)), &cancel)
+            .unwrap();
+        let mut lines = BufReader::new(response.body).lines();
+        assert_eq!(lines.next().unwrap().unwrap(), "data: one");
+        assert_eq!(lines.next().unwrap().unwrap(), "");
+
+        let reader = thread::spawn(move || {
+            let started = Instant::now();
+            let next = lines.next();
+            (next, started.elapsed())
+        });
+        thread::sleep(Duration::from_millis(100)); // let it block in read
+        cancel.cancel();
+        let (next, blocked_for) = reader.join().unwrap();
+        let err = next.expect("an error, not EOF").unwrap_err();
+        assert!(crate::is_cancelled_io_error(&err), "{err:?}");
+        // The server never wrote again: only the cancel can have woken it.
+        assert!(blocked_for < Duration::from_secs(5), "{blocked_for:?}");
+        assert_eq!(cancel.pending_hooks(), 0);
+        release.send(()).ok();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_before_or_while_waiting_for_headers() {
+        no_proxy();
+        let cancelled = CancelHandle::new();
+        cancelled.cancel();
+        assert_eq!(
+            UreqClient::new()
+                .open_stream_cancellable(&Request::get("http://127.0.0.1:9/"), &cancelled)
+                .unwrap_err(),
+            NetError::Cancelled
+        );
+
+        // Accepts, never answers.
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/stream", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (_stream, _) = listener.accept().unwrap();
+            thread::sleep(Duration::from_secs(2));
+        });
+        let cancel = CancelHandle::new();
+        let canceller = {
+            let cancel = cancel.clone();
+            thread::spawn(move || {
+                thread::sleep(Duration::from_millis(150));
+                cancel.cancel();
+            })
+        };
+        let started = Instant::now();
+        let err = UreqClient::new()
+            .open_stream_cancellable(&Request::get(url).timeout(Duration::from_secs(30)), &cancel)
+            .unwrap_err();
+        assert_eq!(err, NetError::Cancelled);
+        assert!(
+            started.elapsed() < Duration::from_secs(2),
+            "{:?}",
+            started.elapsed()
+        );
+        canceller.join().unwrap();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancelling_one_stream_leaves_another_open() {
+        use std::io::{BufRead, BufReader};
+        no_proxy();
+        let client = UreqClient::new();
+        let (url_a, release_a, server_a) = silent_stream_server();
+        let (url_b, release_b, server_b) = silent_stream_server();
+        let (cancel_a, cancel_b) = (CancelHandle::new(), CancelHandle::new());
+        let a = client
+            .open_stream_cancellable(
+                &Request::get(url_a).timeout(Duration::from_secs(5)),
+                &cancel_a,
+            )
+            .unwrap();
+        let b = client
+            .open_stream_cancellable(
+                &Request::get(url_b).timeout(Duration::from_secs(5)),
+                &cancel_b,
+            )
+            .unwrap();
+        cancel_a.cancel();
+        let mut a = BufReader::new(a.body);
+        let mut line = String::new();
+        let err = a.read_line(&mut line).unwrap_err();
+        assert!(crate::is_cancelled_io_error(&err), "{err:?}");
+        // B still has its buffered event, then keeps waiting.
+        let mut b = BufReader::new(b.body).lines();
+        assert_eq!(b.next().unwrap().unwrap(), "data: one");
+        assert!(!cancel_b.is_cancelled());
+        release_a.send(()).ok();
+        release_b.send(()).ok();
+        server_a.join().unwrap();
+        drop(b);
+        server_b.join().unwrap();
+        // The shared pool still works for ordinary requests.
+        let refused = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert!(matches!(
+            client.send(&Request::get(format!("http://127.0.0.1:{refused}/"))),
+            Err(NetError::Offline { .. })
+        ));
     }
 
     #[test]

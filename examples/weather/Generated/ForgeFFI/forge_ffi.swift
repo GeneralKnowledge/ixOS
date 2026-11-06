@@ -3735,7 +3735,8 @@ public func FfiConverterTypeChatError_lower(_ value: ChatError) -> RustBuffer {
 
 /**
  * What the host should render. One stream per app instance, for every
- * room; filter by `conversation_id` (or, for status changes, message id).
+ * room; filter by `conversation_id`. Every event except `EventsDropped`
+ * names the room it is about.
  */
 
 public enum ChatEvent: Equatable, Hashable {
@@ -3755,7 +3756,11 @@ public enum ChatEvent: Equatable, Hashable {
      */
     case notify(message: ChatMessage
     )
-    case messageStatusChanged(id: String, status: ChatMessageStatus
+    /**
+     * A known message changed status. Re-read `conversation_id`'s messages
+     * (a `Sent` message also carries the server's time and may move).
+     */
+    case messageStatusChanged(conversationId: String, id: String, status: ChatMessageStatus
     )
     case streamConnected(conversationId: String
     )
@@ -3802,7 +3807,7 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
         case 3: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 4: return .messageStatusChanged(id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        case 4: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
         )
         
         case 5: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
@@ -3837,8 +3842,9 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .messageStatusChanged(id,status):
+        case let .messageStatusChanged(conversationId,id,status):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(id, into: &buf)
             FfiConverterTypeChatMessageStatus.write(status, into: &buf)
             

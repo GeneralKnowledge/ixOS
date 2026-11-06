@@ -239,10 +239,9 @@ class ChatSession(
                 }
             }
             is ChatEvent.MessageStatusChanged -> {
-                val room =
-                    _state.value.messages.entries
-                        .firstOrNull { (_, list) -> list.any { it.id == event.id } }
-                        ?.key ?: return
+                val room = event.conversationId
+                // Only a room whose messages are loaded needs updating.
+                if (_state.value.messages[room]?.any { it.id == event.id } != true) return
                 // Re-read from the store: a `SENT` message also carries the server's time and
                 // may move.
                 val stored = app.cachedMessages(room)

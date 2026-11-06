@@ -129,6 +129,17 @@ class ChatSessionTest {
     }
 
     @Test
+    fun statusChangesApplyOnlyToTheirRoom() {
+        val chat = session("http://127.0.0.1:1")
+        chat.apply(ChatEvent.MessageReceived(message("c", 30, ChatMessageStatus.SENDING)))
+        chat.apply(ChatEvent.MessageStatusChanged("general", "c", ChatMessageStatus.FAILED))
+        assertEquals(ChatMessageStatus.FAILED, chat.state.value.messages("general").last().status)
+        // Another room's event leaves this one alone.
+        chat.apply(ChatEvent.MessageStatusChanged("random", "c", ChatMessageStatus.SENT))
+        assertEquals(ChatMessageStatus.FAILED, chat.state.value.messages("general").last().status)
+    }
+
+    @Test
     fun connectionStateFollowsStreamEvents() {
         val chat = session("http://127.0.0.1:1")
         chat.apply(ChatEvent.StreamConnected("general"))
