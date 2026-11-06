@@ -4,6 +4,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
+import kotlinx.coroutines.CancellationException
 import uniffi.forge_ffi.AppCore
 import uniffi.forge_ffi.AppEvent
 import uniffi.forge_ffi.AppEvents
@@ -98,16 +99,23 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
         }
     }
 
-    /** Fetches [url] from Rust; HTTPS certificates are checked against Android's trust store. */
+    /**
+     * Fetches [url] from Rust; HTTPS certificates are checked against Android's trust store.
+     * Cancelling the calling coroutine stops the request in Rust at once (UniFFI drops the Rust
+     * future, which cancels it), even while it waits for a slow server.
+     */
     suspend fun checkUrl() {
         val current = core ?: return
         if (isCheckingUrl) return
         isCheckingUrl = true
         urlResult = null
         try {
-            urlResult = "HTTP ${current.checkUrl(url)}"
+            urlResult = "HTTP ${current.checkUrl(url, null)}"
         } catch (e: AppException) {
             urlResult = describe(e)
+        } catch (e: CancellationException) {
+            urlResult = "Cancelled."
+            throw e
         } finally {
             isCheckingUrl = false
         }
@@ -140,6 +148,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
                     "The server's certificate was rejected: ${error.reason}"
                 is AppException.Timeout -> "The request timed out."
                 is AppException.Network -> "Network error: ${error.reason}"
+                is AppException.Cancelled -> "Cancelled."
                 is AppException.ShutDown -> "The app is closing."
             }
     }

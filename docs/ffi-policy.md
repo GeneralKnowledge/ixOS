@@ -98,6 +98,7 @@ Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `Op
 - Short commands (`apply`) are not cancellable once sent: they always complete and are saved. If the task is already cancelled, the bridge sends nothing and throws `CancellationError`.
 - Event iteration: cancelling the iterating task cancels the subscription, which ends the pending `next()`.
 - Dropping a Rust future (Kotlin cancellation) only abandons the result; the command still runs or the operation still finishes. Correctness never depends on futures being polled to the end.
+- Apps from `forge init` can opt a command into real cancellation with `forge_runtime::background_cancellable`. Dropping the future (Kotlin) or an explicit `Cancellation` (Swift, from `withTaskCancellationHandler`) then stops the work, and an HTTP request is interrupted in flight with `HttpClient::send_cancellable` ([app-crate.md](app-crate.md#lifecycle)). Use it only for work with no side effects to undo, such as reads and fetches, never for saves.
 
 **Late completion.** An operation started from a view keeps running in Rust when the view or view model goes away. It commits (or not) as normal, its outcome is delivered to any live subscriber as `OperationFinished`, and the next open sees the saved state. The view model captures itself weakly, so a late result is simply dropped. A host that wants cancel-on-disappear calls `cancelBulkAdd()` from `.onDisappear`.
 

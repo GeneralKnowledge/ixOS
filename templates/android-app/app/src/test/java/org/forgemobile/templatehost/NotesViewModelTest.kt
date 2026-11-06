@@ -2,6 +2,7 @@ package FORGE_JAVA_PACKAGE
 
 import java.io.File
 import java.nio.file.Files
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -97,6 +98,27 @@ class NotesViewModelTest {
         assertNotNull(model.openError)
         assertNull(model.core)
         assertEquals(newer, file.readText())
+    }
+
+    @Test
+    fun cancellingTheCoroutineStopsTheRequestInRust() = runBlocking {
+        // Accepts connections and never answers: only a cancel ends a request to it.
+        java.net.ServerSocket(0, 4, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+            val model = newModel()
+            model.url = "http://127.0.0.1:${server.localPort}/"
+            val started = System.nanoTime()
+            val check = launch { model.checkUrl() }
+            delay(200)
+            check.cancelAndJoin()
+            assertEquals("Cancelled.", model.urlResult)
+            assertTrue(System.nanoTime() - started < 5_000_000_000L)
+            assertTrue(!model.isCheckingUrl)
+            // The core still works afterwards.
+            model.draft = "after"
+            model.addNote()
+            assertEquals(listOf("after"), model.notes.map { it.text })
+            model.close()
+        }
     }
 
     @Test

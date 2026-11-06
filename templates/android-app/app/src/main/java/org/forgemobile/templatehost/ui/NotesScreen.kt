@@ -17,13 +17,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import FORGE_JAVA_PACKAGE.NotesViewModel
 
@@ -35,6 +40,7 @@ import FORGE_JAVA_PACKAGE.NotesViewModel
 fun NotesScreen(context: Context) {
     val model: NotesViewModel = viewModel(factory = NotesViewModelFactory(context))
     val scope = rememberCoroutineScope()
+    var checkJob by remember { mutableStateOf<Job?>(null) }
     // Applies Rust's events while the screen is shown; cancelled when it leaves.
     LaunchedEffect(model) { model.listen() }
 
@@ -90,10 +96,12 @@ fun NotesScreen(context: Context) {
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Button(
-                onClick = { scope.launch { model.checkUrl() } },
-                enabled = !model.isCheckingUrl,
-            ) { Text(if (model.isCheckingUrl) "Checking…" else "Check") }
+            if (model.isCheckingUrl) {
+                // Cancelling the coroutine cancels the request in Rust.
+                TextButton(onClick = { checkJob?.cancel() }) { Text("Cancel") }
+            } else {
+                Button(onClick = { checkJob = scope.launch { model.checkUrl() } }) { Text("Check") }
+            }
             model.urlResult?.let { Text(it) }
         }
     }

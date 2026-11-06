@@ -57,10 +57,11 @@ public struct ContentView: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     #endif
-                Button(model.isCheckingURL ? "Checking…" : "Check") {
-                    Task { await model.checkURL() }
+                if model.isCheckingURL {
+                    Button("Cancel", role: .cancel) { model.cancelURLCheck() }
+                } else {
+                    Button("Check") { Task { await model.checkURL() } }
                 }
-                .disabled(model.isCheckingURL)
                 if let result = model.urlResult {
                     Text(result).font(.footnote)
                 }
