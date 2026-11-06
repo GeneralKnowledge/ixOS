@@ -1,0 +1,398 @@
+//! The app's Rust core. Everything the hosts can call is in this file's
+//! `#[uniffi::export]` blocks; `forge build` turns them into Swift
+//! (`import ForgeFFI`) and Kotlin (`uniffi.forge_ffi`) APIs.
+//!
+//! The starter is a small notes app that shows every pattern a real app
+//! needs, so you can replace it piece by piece:
+//!
+//! - state owned by Rust, persisted to a JSON file that survives restarts
+//!   ([`forge_storage::JsonFile`]);
+//! - `async` commands that do blocking work off the UI thread
+//!   ([`forge_runtime::background`]);
+//! - typed errors ([`AppError`]) that arrive in Swift and Kotlin as thrown
+//!   errors with the same cases;
+//! - events the host subscribes to ([`AppCore::events`]);
+//! - HTTPS with the platform's certificate checks ([`AppCore::check_url`]);
+//! - shutdown that refuses new work.
+
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+use forge_net::{HttpClient, NetError, Request, UreqClient};
+use forge_runtime::{background, Delivery, EventHub, Subscription};
+use forge_storage::{JsonFile, StorageError};
+use serde::{Deserialize, Serialize};
+
+uniffi::setup_scaffolding!("forge_ffi");
+
+/// Schema version of `notes.json`. Bump it (and add a migration) when
+/// [`StoredNotes`] changes shape.
+const STORE_VERSION: u32 = 1;
+
+/// One note.
+#[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct Note {
+    pub id: u64,
+    pub text: String,
+    /// Unix time in milliseconds.
+    pub created_at_ms: i64,
+}
+
+/// Something the host may want to react to.
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+pub enum AppEvent {
+    /// The notes changed (and were saved). Carries the full list, newest first.
+    NotesChanged { notes: Vec<Note> },
+    /// This subscriber fell behind and missed `count` events; re-read `notes()`.
+    EventsDropped { count: u64 },
+}
+
+/// Every error the API returns. `reason` fields are diagnostics, not UI copy.
+/// Field names avoid `message`, which clashes with Kotlin's `Throwable.message`.
+#[derive(uniffi::Error, thiserror::Error, Clone, Debug, PartialEq, Eq)]
+pub enum AppError {
+    #[error("invalid input: {reason}")]
+    InvalidInput { reason: String },
+    #[error("no note with id {id}")]
+    NotFound { id: u64 },
+    /// The notes file could not be read or written.
+    #[error("storage error: {reason}")]
+    Storage { reason: String },
+    /// No connection, DNS failure, or connection refused.
+    #[error("offline: {reason}")]
+    Offline { reason: String },
+    /// The server's TLS certificate was rejected (expired, untrusted, wrong host).
+    #[error("certificate rejected: {reason}")]
+    Certificate { reason: String },
+    #[error("request timed out")]
+    Timeout,
+    /// Any other network failure.
+    #[error("network error: {reason}")]
+    Network { reason: String },
+    /// `shutdown()` was called; the instance accepts no more work.
+    #[error("the app has been shut down")]
+    ShutDown,
+}
+
+impl From<StorageError> for AppError {
+    fn from(err: StorageError) -> Self {
+        Self::Storage {
+            reason: err.to_string(),
+        }
+    }
+}
+
+impl From<NetError> for AppError {
+    fn from(err: NetError) -> Self {
+        match err {
+            NetError::InvalidRequest { reason } => Self::InvalidInput { reason },
+            NetError::Offline { reason } => Self::Offline { reason },
+            NetError::Certificate { reason } => Self::Certificate { reason },
+            NetError::Timeout => Self::Timeout,
+            NetError::Cancelled => Self::ShutDown,
+            other => Self::Network {
+                reason: other.to_string(),
+            },
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Default)]
+struct StoredNotes {
+    next_id: u64,
+    notes: Vec<Note>,
+}
+
+struct State {
+    stored: StoredNotes,
+}
+
+/// The app instance the host creates once and shares. Thread-safe.
+#[derive(uniffi::Object)]
+pub struct AppCore {
+    state: Arc<Mutex<State>>,
+    file: Arc<JsonFile<StoredNotes>>,
+    events: EventHub<AppEvent>,
+    http: UreqClient,
+    shut_down: Arc<AtomicBool>,
+}
+
+#[uniffi::export]
+impl AppCore {
+    /// Opens the app, loading saved notes from `storage_directory` (created
+    /// if missing). Fails with `Storage` if the saved data cannot be used;
+    /// it is left untouched.
+    #[uniffi::constructor]
+    pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
+        if storage_directory.is_empty() {
+            return Err(AppError::InvalidInput {
+                reason: "storage directory must not be empty".into(),
+            });
+        }
+        let file = JsonFile::new(
+            PathBuf::from(storage_directory).join("notes.json"),
+            STORE_VERSION,
+        );
+        let stored = file.load()?.unwrap_or_default();
+        Ok(Arc::new(Self {
+            state: Arc::new(Mutex::new(State { stored })),
+            file: Arc::new(file),
+            events: EventHub::new(),
+            http: UreqClient::new(),
+            shut_down: Arc::new(AtomicBool::new(false)),
+        }))
+    }
+
+    /// All notes, newest first.
+    pub fn notes(&self) -> Vec<Note> {
+        newest_first(&lock(&self.state).stored.notes)
+    }
+
+    /// Adds a note and saves. Emits `NotesChanged` after the save.
+    pub async fn add_note(&self, text: String) -> Result<Note, AppError> {
+        self.ensure_running()?;
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            return Err(AppError::InvalidInput {
+                reason: "a note needs some text".into(),
+            });
+        }
+        let (state, file, events) = self.parts();
+        background("add-note", move || {
+            let mut state = lock(&state);
+            let note = Note {
+                id: state.stored.next_id + 1,
+                text,
+                created_at_ms: now_ms(),
+            };
+            let mut next = StoredNotes {
+                next_id: note.id,
+                notes: state.stored.notes.clone(),
+            };
+            next.notes.push(note.clone());
+            file.save(&next)?; // nothing changes in memory if the save fails
+            state.stored = next;
+            events.publish(AppEvent::NotesChanged {
+                notes: newest_first(&state.stored.notes),
+            });
+            Ok(note)
+        })
+        .await
+    }
+
+    /// Deletes a note and saves. `NotFound` if there is no such note.
+    pub async fn delete_note(&self, id: u64) -> Result<(), AppError> {
+        self.ensure_running()?;
+        let (state, file, events) = self.parts();
+        background("delete-note", move || {
+            let mut state = lock(&state);
+            if !state.stored.notes.iter().any(|n| n.id == id) {
+                return Err(AppError::NotFound { id });
+            }
+            let next = StoredNotes {
+                next_id: state.stored.next_id,
+                notes: state
+                    .stored
+                    .notes
+                    .iter()
+                    .filter(|n| n.id != id)
+                    .cloned()
+                    .collect(),
+            };
+            file.save(&next)?;
+            state.stored = next;
+            events.publish(AppEvent::NotesChanged {
+                notes: newest_first(&state.stored.notes),
+            });
+            Ok(())
+        })
+        .await
+    }
+
+    /// Fetches `url` (HTTPS or HTTP) and returns the HTTP status code. The
+    /// certificate is checked with the platform's trust store; a bad one is
+    /// `Certificate`, no connection is `Offline`.
+    pub async fn check_url(&self, url: String) -> Result<u16, AppError> {
+        self.ensure_running()?;
+        let http = self.http.clone();
+        background("check-url", move || {
+            let response = http.send(&Request::get(url).timeout(Duration::from_secs(15)))?;
+            Ok(response.status)
+        })
+        .await
+    }
+
+    /// A new event stream. Each consumer takes its own.
+    pub fn events(&self) -> Result<Arc<AppEvents>, AppError> {
+        self.events
+            .subscribe()
+            .map(|subscription| Arc::new(AppEvents { subscription }))
+            .ok_or(AppError::ShutDown)
+    }
+
+    /// Refuses new commands with `ShutDown` and ends every event stream.
+    /// Commands already running finish. Idempotent.
+    pub fn shutdown(&self) {
+        self.shut_down.store(true, Ordering::SeqCst);
+        self.events.close();
+    }
+}
+
+impl AppCore {
+    fn ensure_running(&self) -> Result<(), AppError> {
+        if self.shut_down.load(Ordering::SeqCst) {
+            Err(AppError::ShutDown)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn parts(
+        &self,
+    ) -> (
+        Arc<Mutex<State>>,
+        Arc<JsonFile<StoredNotes>>,
+        EventHub<AppEvent>,
+    ) {
+        (
+            Arc::clone(&self.state),
+            Arc::clone(&self.file),
+            self.events.clone(),
+        )
+    }
+}
+
+/// One consumer's events. Await `next()` in a loop; `None` means it ended.
+#[derive(uniffi::Object)]
+pub struct AppEvents {
+    subscription: Subscription<AppEvent>,
+}
+
+#[uniffi::export]
+impl AppEvents {
+    /// The next event, or `None` once this stream has ended.
+    pub async fn next(&self) -> Option<AppEvent> {
+        match self.subscription.next().await? {
+            Delivery::Event(event) => Some(event),
+            Delivery::Dropped(count) => Some(AppEvent::EventsDropped { count }),
+        }
+    }
+
+    /// Ends this stream; a pending `next()` returns `None`.
+    pub fn cancel(&self) {
+        self.subscription.cancel();
+    }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+fn newest_first(notes: &[Note]) -> Vec<Note> {
+    let mut notes = notes.to_vec();
+    notes.sort_by_key(|note| std::cmp::Reverse(note.id));
+    notes
+}
+
+fn now_ms() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_runtime::block_on;
+
+    fn open(dir: &std::path::Path) -> Arc<AppCore> {
+        AppCore::new(dir.to_string_lossy().into_owned()).unwrap()
+    }
+
+    #[test]
+    fn notes_persist_across_instances() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let first = block_on(app.add_note("first".into())).unwrap();
+        let second = block_on(app.add_note("  second  ".into())).unwrap();
+        assert_eq!(second.text, "second");
+        app.shutdown();
+
+        let reopened = open(dir.path());
+        assert_eq!(reopened.notes(), vec![second.clone(), first.clone()]);
+        block_on(reopened.delete_note(first.id)).unwrap();
+        assert_eq!(open(dir.path()).notes(), vec![second]);
+    }
+
+    #[test]
+    fn errors_are_typed() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        assert!(matches!(
+            block_on(app.add_note("   ".into())),
+            Err(AppError::InvalidInput { .. })
+        ));
+        assert_eq!(
+            block_on(app.delete_note(42)),
+            Err(AppError::NotFound { id: 42 })
+        );
+        assert!(matches!(
+            AppCore::new(String::new()),
+            Err(AppError::InvalidInput { .. })
+        ));
+        // A file from a newer build is reported, not overwritten.
+        std::fs::write(
+            dir.path().join("notes.json"),
+            r#"{"schema_version": 99, "data": {}}"#,
+        )
+        .unwrap();
+        assert!(matches!(
+            AppCore::new(dir.path().to_string_lossy().into_owned()),
+            Err(AppError::Storage { .. })
+        ));
+    }
+
+    #[test]
+    fn subscribers_see_changes_and_streams_end_on_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let events = app.events().unwrap();
+        let note = block_on(app.add_note("hello".into())).unwrap();
+        assert_eq!(
+            block_on(events.next()),
+            Some(AppEvent::NotesChanged { notes: vec![note] })
+        );
+        app.shutdown();
+        assert_eq!(block_on(events.next()), None);
+        assert_eq!(
+            block_on(app.add_note("late".into())),
+            Err(AppError::ShutDown)
+        );
+        assert!(app.events().is_err());
+    }
+
+    #[test]
+    fn check_url_reports_typed_network_errors() {
+        std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        assert!(matches!(
+            block_on(app.check_url(format!("http://127.0.0.1:{port}/"))),
+            Err(AppError::Offline { .. })
+        ));
+        assert!(matches!(
+            block_on(app.check_url("not a url".into())),
+            Err(AppError::InvalidInput { .. })
+        ));
+    }
+}

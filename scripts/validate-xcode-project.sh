@@ -31,7 +31,9 @@ SCRIPT="$(grep -o 'shellScript = ".*";' "$PROJECT" | grep 'package-ios-library' 
   sed -e 's/^shellScript = "//' -e 's/";$//' -e 's/\\n/\n/g' -e 's/\\"/"/g')"
 REPO_ROOT=""
 GENERATED=""
-eval "$(printf '%s\n' "$SCRIPT" | grep -E '^(REPO_ROOT|GENERATED)=')"
+# FORGE_APP_DIR is set by apps from `forge init`, whose GENERATED uses it.
+FORGE_APP_DIR=""
+eval "$(printf '%s\n' "$SCRIPT" | grep -E '^(export )?(REPO_ROOT|FORGE_APP_DIR|GENERATED)=' | sed 's/^export //')"
 
 [[ -n "$REPO_ROOT" && -x "$REPO_ROOT/scripts/package-ios-library.sh" ]] || {
   echo "error: Rust FFI build phase REPO_ROOT ('$REPO_ROOT') is not the repository root" >&2

@@ -1,4 +1,7 @@
+mod json_file;
 mod json_store;
+
+pub use json_file::{JsonFile, Migration};
 
 pub use json_store::{
     write_atomic, JsonSnapshotStore, SnapshotEnvelope, StorageError, SCHEMA_VERSION,

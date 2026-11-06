@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=forge-crate.sh
+source "$ROOT/scripts/forge-crate.sh"
 
 OUT="${1:-examples/counter/Generated}"
 LANGUAGE="${2:-swift}"
@@ -17,14 +19,14 @@ esac
 
 mkdir -p "$OUT"
 
-echo "[forge] Building forge-ffi (host) for binding generation..."
-cargo build -p forge-ffi
+echo "[forge] Building ${CRATE_DIR#"$ROOT/"} (host) for binding generation..."
+cargo build "${CARGO_SELECT[@]}"
 
 case "$(uname -s)" in
   Darwin) LIB_EXT="dylib" ;;
   *) LIB_EXT="so" ;;
 esac
-LIB="$ROOT/target/debug/libforge_ffi.${LIB_EXT}"
+LIB="$CARGO_TARGET/debug/libforge_ffi.${LIB_EXT}"
 if [[ ! -f "$LIB" ]]; then
   echo "error: expected host library at $LIB" >&2
   exit 1
@@ -38,9 +40,9 @@ if [[ "$LANGUAGE" == "kotlin" ]]; then
     --out-dir "$OUT"
   # Hand-written Android glue that travels with the bindings (ForgeAndroid.init:
   # the app Context for the HTTPS certificate verifier). Source of truth:
-  # crates/forge-ffi/kotlin/.
+  # crates/forge-runtime/kotlin/.
   mkdir -p "$OUT/org/forgemobile/ffi"
-  cp "$ROOT/crates/forge-ffi/kotlin/org/forgemobile/ffi/ForgeAndroid.kt" "$OUT/org/forgemobile/ffi/ForgeAndroid.kt"
+  cp "$ROOT/crates/forge-runtime/kotlin/org/forgemobile/ffi/ForgeAndroid.kt" "$OUT/org/forgemobile/ffi/ForgeAndroid.kt"
 else
   # SwiftPM needs the Swift source and the C module in separate folders:
   #   Generated/ForgeFFI/forge_ffi.swift                  (Swift target "ForgeFFI")

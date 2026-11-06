@@ -60,7 +60,7 @@ Documented happy path **[stated in docs]**:
 
 Pipeline **[stated in docs]**: host `cargo build` → `uniffi-bindgen` → `Generated/*`; iOS `aarch64-apple-ios` staticlib to `build/ios-device/lib/`; SwiftPM + `xtool dev` (`docs/architecture.md`, `docs/toolchain-validation.md`).
 
-**New app** **[stated in docs]**: `forge init <Name> --bundle-id …` creates `examples/<Name>/` inside the **workspace** (not a standalone repo in v0.1) (`docs/project-generation.md`, `README.md`).
+**New app** **[stated in docs]**: `forge init <Name> --bundle-id … [--path <dir>]` creates the app anywhere, with its **own Rust crate** (`rust/`) that depends on Forge's runtime crates by path; it still needs a Forge checkout for the scripts and `uniffi-bindgen` (`docs/project-generation.md`, `docs/app-crate.md`).
 
 ---
 
@@ -94,7 +94,7 @@ Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app
 
 ### Should touch **[stated in docs + inference]**
 
-- `forge init` output: `forge.toml`, `xtool.yml`, `Package.swift`, `Sources/AppHost/` SwiftUI (sample Counter UI in template) (`docs/project-generation.md`).
+- `forge init` output: `forge.toml`, `xtool.yml`, `Package.swift`, `rust/` (the app's Rust crate, a notes starter), `Sources/AppHost/` SwiftUI over it (`docs/project-generation.md`).
 - Placeholders replaced: package name, bundle id, app support dir name (`docs/project-generation.md`).
 - Workspace-root Rust changes only if extending **shared** `forge-core` / `forge-ffi` for new domain features **[my inference]** from “Rust crates always built from workspace root” (`docs/project-generation.md`).
 
@@ -142,7 +142,7 @@ Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app
 These are **[my inference]** from “integration reference” and Linux-first goals:
 
 - **Single orchestration path**: CLI invokes the same scripts developers can run manually (no divergent logic).
-- **Template parity**: `templates/ios-app` matches what `examples/counter` demonstrates after init substitutions.
+- **Fresh apps work**: an app from `forge init --path` outside the checkout tests, lints and regenerates bindings from its own crate (`scripts/check-fresh-app.sh`, CI).
 - **Per-app bindgen destination**: init generates bindings into the new app’s `Generated/`, not only the Counter example path.
 - **Docs and troubleshooting stay consistent** with persistence contract (e.g. no “save issue” text that contradicts commit-on-save policy).
 

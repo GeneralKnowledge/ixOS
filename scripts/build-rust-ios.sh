@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=forge-crate.sh
+source "$ROOT/scripts/forge-crate.sh"
 
 TARGET="${FORGE_IOS_TARGET:-aarch64-apple-ios}"
 PROFILE="${FORGE_IOS_PROFILE:-release}"
@@ -62,13 +64,13 @@ case "$PROFILE" in
   *) CARGO_PROFILE="$PROFILE" PROFILE_DIR="$PROFILE" ;;
 esac
 
-echo "[forge] Building forge-ffi for ${TARGET} (${CARGO_PROFILE})..."
+echo "[forge] Building ${CRATE_DIR#"$ROOT/"} for ${TARGET} (${CARGO_PROFILE})..."
 # Only the static library is linked into the app. Asking for it alone skips the crate's
 # cdylib, which needs an iOS linker that a Linux host (xtool's Darwin SDK) does not provide.
-cargo rustc -p forge-ffi --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE"
+cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE"
 
-OUT_DIR="$ROOT/build/ios-device/lib"
+OUT_DIR="$NATIVE_OUT/ios-device/lib"
 mkdir -p "$OUT_DIR"
-cp "$ROOT/target/${TARGET}/${PROFILE_DIR}/libforge_ffi.a" "$OUT_DIR/"
+cp "$CARGO_TARGET/${TARGET}/${PROFILE_DIR}/libforge_ffi.a" "$OUT_DIR/"
 "$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
 echo "[forge] Staged $OUT_DIR/libforge_ffi.a"

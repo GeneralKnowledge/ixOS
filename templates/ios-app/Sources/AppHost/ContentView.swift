@@ -1,102 +1,83 @@
-import CounterBridge
+@preconcurrency import ForgeFFI
 import SwiftUI
 
+/// The starter screen: a notes list kept by Rust, and a URL check that runs
+/// an HTTPS request from Rust. Replace it with your own UI.
 public struct ContentView: View {
     public init() {}
-    @StateObject private var model = CounterViewModel()
+    @StateObject private var model = NotesModel()
 
     public var body: some View {
-        Group {
-            if model.isLoading {
-                ProgressView("Opening…")
-            } else if model.isBlocked {
-                blockedView
-            } else {
-                counterView
+        NavigationStack {
+            Group {
+                if model.isLoading {
+                    ProgressView("Opening…")
+                } else if let message = model.openError {
+                    unavailable(message)
+                } else {
+                    notesList
+                }
             }
+            .navigationTitle("FORGE_APP_NAME")
         }
-        .padding()
-        // Opens Rust off the main thread. `open()` is idempotent, so the view
-        // reappearing does not open a second instance or subscription.
+        // Opens Rust off the main thread. `open()` does nothing when already
+        // open, so the view reappearing never opens a second instance.
         .task { await model.open() }
     }
 
-    private var counterView: some View {
-        VStack(spacing: 24) {
-            Text("\(model.count)")
-                .font(.system(size: 72, weight: .bold, design: .rounded))
-                .accessibilityLabel("Count")
-                .accessibilityValue("\(model.count)")
-
-            HStack(spacing: 16) {
-                Button("Decrement") { Task { await model.decrement() } }
-                    .buttonStyle(.bordered)
-                Button("Increment") { Task { await model.increment() } }
-                    .buttonStyle(.borderedProminent)
+    private var notesList: some View {
+        List {
+            Section {
+                HStack {
+                    TextField("New note", text: $model.draft)
+                        .onSubmit { Task { await model.addNote() } }
+                    Button("Add") { Task { await model.addNote() } }
+                        .disabled(model.draft.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if let message = model.errorMessage {
+                    Text(message).font(.footnote).foregroundStyle(.red)
+                }
             }
-
-            Button("Reset", role: .destructive) { Task { await model.reset() } }
-
-            bulkAddSection
-
-            if !model.startupLabel.isEmpty {
-                Text(model.startupLabel)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            Section("Notes") {
+                if model.notes.isEmpty {
+                    Text("No notes yet.").foregroundStyle(.secondary)
+                }
+                ForEach(model.notes, id: \.id) { note in
+                    Text(note.text)
+                }
+                .onDelete { offsets in
+                    let doomed = offsets.map { model.notes[$0] }
+                    Task { for note in doomed { await model.delete(note) } }
+                }
             }
-
-            if let message = model.errorMessage {
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
+            Section("Network check") {
+                TextField("URL", text: $model.url)
+                    .autocorrectionDisabled()
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    #endif
+                Button(model.isCheckingURL ? "Checking…" : "Check") {
+                    Task { await model.checkURL() }
+                }
+                .disabled(model.isCheckingURL)
+                if let result = model.urlResult {
+                    Text(result).font(.footnote)
+                }
             }
-
-            Text(CounterClient.greeting)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
     }
 
-    /// A long-running Rust operation: progress, cancellation, completion.
-    @ViewBuilder
-    private var bulkAddSection: some View {
-        if let progress = model.bulkAddProgress {
-            VStack(spacing: 8) {
-                ProgressView(value: progress) { Text("Adding 100…") }
-                Button("Cancel", role: .cancel) { model.cancelBulkAdd() }
-            }
-            .frame(maxWidth: 240)
-        } else {
-            Button("Add 100 slowly") { model.startBulkAdd() }
-                .buttonStyle(.bordered)
-        }
-        if let message = model.lastOperationMessage {
-            Text(message)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    private var blockedView: some View {
+    private func unavailable(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.largeTitle)
                 .foregroundStyle(.orange)
-            Text("Counter unavailable")
-                .font(.headline)
-            if let message = model.errorMessage {
-                Text(message)
-                    .font(.footnote)
-                    .multilineTextAlignment(.center)
-            }
-            Button("Retry") { Task { await model.retryOpen() } }
+            Text("Could not open your notes").font(.headline)
+            Text(message).font(.footnote).multilineTextAlignment(.center)
+            Button("Retry") { Task { await model.open() } }
                 .buttonStyle(.borderedProminent)
-            if model.canRecoverFromCorruption {
-                Button("Reset storage and start fresh", role: .destructive) {
-                    Task { await model.recoverFromCorruption() }
-                }
-            }
         }
+        .padding()
     }
 }

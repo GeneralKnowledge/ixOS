@@ -4,8 +4,8 @@ bundle_id = "FORGE_BUNDLE_ID"
 minimum_ios = "17.0"
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+# This app's own Rust crate: logic, state, persistence, networking.
+path = "rust"
 
 [build]
 ios_device = true

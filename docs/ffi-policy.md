@@ -10,7 +10,7 @@
 ## Generated artifacts
 
 - iOS output: `examples/counter/Generated/` and identical copies in `examples/weather/Generated/` and `examples/chat/Generated/` (one `forge-ffi` library exports every example's API: Counter, Weather and Chat) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
-- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`. Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-ffi/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
+- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`. Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
 - CI runs `./scripts/check-bindings.sh` to detect drift (see below).
@@ -48,8 +48,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 ./scripts/check-bindings.sh
 
 # 3. Update the hand-written code that wraps the bindings
-#    - Swift bridge: examples/counter/Sources/CounterBridge/, then copy to
-#      templates/ios-app/Sources/CounterBridge/ and run ./scripts/check-template-sync.sh
+#    - Swift bridge: examples/counter/Sources/CounterBridge/
 #    - Android host and its error mapping (messageFor)
 
 # 4. Commit the Generated/ changes in the same commit as the Rust change
@@ -215,8 +214,9 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 ## Testing the integration
 
 - Rust: `cargo test -p forge-ffi` covers async commands, concurrent commands, read-during-write, save failures (no commit, no event), event ordering, overflow, cancellation, shutdown with work in flight, and reopen. Tests use an in-memory store that can fail or pause saves.
-- Swift: `./scripts/test-swift-host.sh` (macOS) runs `CounterClientTests` (the bridge) and `CounterViewModelTests` against the real Rust library and generated bindings; no Rust mocks. CI runs it for the example and for a freshly generated template app.
-- `./scripts/check-template-sync.sh` checks that the template's Swift matches the example.
+- Swift: `./scripts/test-swift-host.sh` (macOS) runs `CounterClientTests` (the bridge) and `CounterViewModelTests` against the real Rust library and generated bindings; no Rust mocks. CI runs it for the example and for an app freshly generated outside the checkout.
+- `./scripts/check-fresh-app.sh` creates iOS and Android apps outside the checkout and checks their own Rust crates and bindings ([project-generation.md](project-generation.md#checked-in-ci)).
+- `./scripts/check-template-sync.sh` checks that the starter crate pins the workspace's UniFFI version and that every Android host uses the verifier version in `Cargo.lock`.
 
 ## Platform data
 

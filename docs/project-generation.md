@@ -1,36 +1,54 @@
 # Project generation (`forge init`)
 
-## Contract (v0.1)
+## Contract
 
-`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>]` creates **`examples/<Name>/`** inside the Forge Mobile **workspace**, or `<dir>` when `--path` is given. Generated apps are **not standalone** in this version: they build against the workspace's Rust crates, scripts and native libraries.
+`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>]` creates an app at `<dir>`, or at `examples/<Name>/` inside the Forge checkout when `--path` is left out.
 
-### Creating an app outside the workspace (`--path`)
+The app **owns its Rust logic**: `rust/` is its own crate, with its own `Cargo.toml`, lock file and target directory, and `forge.toml` names it (`[rust] path = "rust"`). It depends on Forge's runtime crates (`forge-runtime`, `forge-storage`, `forge-net`) by path, and the Forge checkout supplies the build scripts and `uniffi-bindgen`. So an app is not fully standalone yet: it needs a Forge checkout on the same machine, but nothing of the app lives inside that checkout. See [app-crate.md](app-crate.md) for how to work in the crate.
+
+### Quick start (Linux)
 
 ```bash
 forge init MyApp --bundle-id org.example.myapp --path ~/projects/MyApp
-forge build ios --project ~/projects/MyApp
+cd ~/projects/MyApp
+cargo test --manifest-path rust/Cargo.toml   # the starter's Rust tests
+forge run ios --project .                    # xtool: build, install and launch on a connected iPhone
 ```
 
+For Android, add `--platform android` and use `forge build android --project . --install` (needs the Android SDK and NDK; see [android-setup.md](android-setup.md)).
+
+### Finding the Forge checkout
+
+`forge` must find the checkout: run it from inside the checkout, set `FORGE_WORKSPACE`, or use a `forge` installed with `cargo install --path crates/forge-cli` (which remembers its checkout). Relative `--project` paths are resolved against the current directory first, then the checkout, so `--project .` works from inside the app. `forge build` and `forge run` without `--project` use the current directory when it has a `forge.toml`.
+
+### Paths written into the app
+
 - A relative `--path` is resolved against the current directory. Missing parent directories are created.
-- The templates assume `examples/<Name>` (workspace two levels up). `forge init` rewrites those references for the actual location: an app **inside** the checkout keeps a relative path (so the checkout can move as a whole); an app **outside** gets the checkout's **absolute** path. If you later move the checkout, update the path in `Package.swift` and `Xcode/<Name>.xcodeproj/project.pbxproj` (iOS) or `app/build.gradle.kts` (Android).
-- The rewritten references are the native library search paths in `Package.swift`, the "Build Rust FFI" phase in the Xcode project, and the JNA library path for Android JVM unit tests.
-- `forge` must still find the workspace: run it from inside the checkout, set `FORGE_WORKSPACE`, or use a `forge` installed with `cargo install --path crates/forge-cli` (which remembers its checkout). `--project` paths that are relative are resolved against the workspace, so pass the app's absolute path (the one `forge init` prints).
+- `rust/Cargo.toml` points at the Forge crates: by a relative path when the app is inside the checkout (so the checkout can move as a whole), by the checkout's absolute path when it is outside. The iOS Xcode project's "Build Rust FFI" phase points at the checkout's scripts the same way. If you move the checkout, update those paths.
+- Native libraries are the app's own and stay inside it: `rust/target/` (Cargo), `build/ios-device/lib` and `build/macos-host/lib` (iOS), `app/src/main/jniLibs` (Android). The generated `.gitignore` leaves them out of version control.
 
 ### iOS (`--platform ios`, default)
 
-- `forge.toml`, `Package.swift`, `xtool.yml`
-- `Sources/AppHost/` SwiftUI library + `Sources/AppHostXtoolApp/` xtool entry point + `Sources/AppHostLauncher/` entry point for `swift run` and Xcode
-- `Xcode/<Name>.xcodeproj` conventional iOS application host (macOS)
-- `Generated/` Swift UniFFI output at init time
+- `forge.toml`, `Package.swift`, `xtool.yml`, `.gitignore`
+- `rust/`: the app's Rust crate (a notes starter; see [app-crate.md](app-crate.md))
+- `Sources/AppHost/`: SwiftUI screen and `NotesModel`, calling the Rust API in `ForgeFFI` directly
+- `Sources/AppHostXtoolApp/`: xtool entry point; `Sources/AppHostLauncher/`: entry point for `swift run` and Xcode
+- `Tests/AppHostTests/`: XCTest suite against the real Rust library (macOS: `forge test --project .`)
+- `Xcode/<Name>.xcodeproj`: conventional iOS application host (macOS)
+- `Generated/`: Swift UniFFI output
 
 ### Android (`--platform android`)
 
-- `forge.toml` with `[android]` (min SDK, ABIs)
-- Gradle + Compose host under `app/`
-- `Generated/` Kotlin UniFFI output at init time
-- JNI libraries built from repo root (`scripts/build-rust-android.sh`)
+- `forge.toml` with `[android]` (min SDK, ABIs), `.gitignore`
+- `rust/`: the app's Rust crate
+- Gradle + Compose host under `app/`: `NotesScreen`, `NotesViewModel`, and JVM unit tests against the real Rust library
+- `Generated/`: Kotlin UniFFI output, plus `ForgeAndroid.kt` (HTTPS setup)
 
-Both platforms require `core_crate` / `ffi_crate` = `forge-core` / `forge-ffi` in v0.1.
+### Checked in CI
+
+`scripts/check-fresh-app.sh` (CI job "Fresh app outside the checkout", or `make check-fresh-app`) runs `forge init --path` outside the checkout for both platforms, tests, lints and formats each app's crate on its own, checks that nothing was written into the checkout, then adds a Rust export and checks that `forge bindings generate --project` puts it in the Swift and Kotlin bindings. CI also runs, on apps created outside the checkout, the XCTest suite via `forge test` (macOS), an unsigned `xcodebuild` (macOS), and the JVM unit tests plus a debug APK via `forge build android` (Linux).
+
+What CI cannot check is a physical device: see [toolchain-validation.md](toolchain-validation.md) for the manual device checklist and what has been recorded.
 
 ## Placeholders
 
@@ -43,37 +61,24 @@ Template sources use explicit tokens (never substring-replace product names):
 | `FORGE_BUNDLE_ID` | `--bundle-id` argument |
 | `FORGE_APP_SUPPORT_DIR` | Project name (Application Support subfolder, iOS) |
 | `FORGE_JAVA_PACKAGE` | Same as `--bundle-id` (Android Kotlin/Gradle namespace) |
+| `FORGE_WORKSPACE` | Path to the Forge checkout, in `rust/Cargo.toml` (relative or absolute, see above) |
 
 ## Requirements
 
 - The destination (`examples/<Name>` or `--path`) must not already exist.
-- Template must contain required files (see `validate_template` in `forge-cli`).
-- Host workspace must build `forge-ffi` so binding generation succeeds.
+- Templates must contain the required files (see `validate_ios_template` / `validate_android_template` in `forge-cli`), and `templates/app-rust` must exist.
+- `cargo` must be able to build the starter crate on the host, because `forge init` generates the bindings from it.
 
-## Build workflow for generated apps
+## Regenerating bindings
 
-From repository root:
-
-```bash
-./scripts/package-ios-library.sh examples/<Name>/Generated
-cd examples/<Name> && xtool dev run
-```
-
-Or use the CLI (bindings path follows `--project`):
+After changing the exported Rust API:
 
 ```bash
-cargo run -p forge-cli -- build ios --project examples/<Name>
+forge bindings generate --project .
 ```
 
-### Android generated apps
+`forge build`, `forge run` and `forge test --project` regenerate them too. Never edit `Generated/` by hand.
 
-```bash
-./scripts/package-android-library.sh examples/<Name>/Generated
-cd examples/<Name> && ./gradlew :app:assembleDebug
-```
+## Older apps and the bundled examples
 
-```bash
-cargo run -p forge-cli -- build android --project examples/<Name>
-```
-
-Rust crates (`forge-core`, `forge-ffi`) are always built from the workspace root, not duplicated per app.
+`forge.toml` may instead say `core_crate = "forge-core"` and `ffi_crate = "forge-ffi"`. Such apps (and the bundled examples) build the checkout's shared `forge-ffi` and stage its libraries in the checkout's `build/`. The CLI supports both; new apps always get their own crate.

@@ -193,7 +193,11 @@ fn wait_for(rx: &Receiver<ChatEvent>, what: &str, pred: impl Fn(&ChatEvent) -> b
     }
 }
 
+/// Linux only: elsewhere the platform verifier asks the OS trust store
+/// (Security.framework on macOS), which `SSL_CERT_FILE` does not change, so
+/// the test CA cannot be trusted without touching the machine's keychain.
 #[test]
+#[cfg(target_os = "linux")]
 fn chat_commands_and_stream_over_verified_https() {
     let pki = pki();
     let server = Server::start();
@@ -238,7 +242,11 @@ fn untrusted_certificate_is_a_typed_error_not_a_network_blip() {
     let (me, _) = client(&url);
     match me.list_conversations() {
         Err(ChatError::Certificate { reason }) => {
-            assert!(reason.contains("not issued by an authority"), "{reason}")
+            // macOS reports its own trust error code, so only Linux gives
+            // rustls's specific UnknownIssuer reason.
+            if cfg!(target_os = "linux") {
+                assert!(reason.contains("not issued by an authority"), "{reason}")
+            }
         }
         other => panic!("expected a certificate error, got {other:?}"),
     }

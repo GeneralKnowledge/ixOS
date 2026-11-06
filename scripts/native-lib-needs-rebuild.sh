@@ -12,6 +12,8 @@ usage() {
 ARTIFACT="$1"
 MODE="$2"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# shellcheck source=forge-crate.sh
+source "$ROOT/scripts/forge-crate.sh"
 
 if [[ ! -f "$ARTIFACT" ]]; then
   exit 0
@@ -40,12 +42,12 @@ scan_tree() {
     if newer_than_artifact "$f"; then
       return 0
     fi
-  done < <(find "$dir" -type f \( -name '*.rs' -o -name 'Cargo.toml' \) -print0)
+  done < <(find "$dir" -path "$dir/target" -prune -o -type f \( -name '*.rs' -o -name 'Cargo.toml' -o -name 'Cargo.lock' \) -print0)
   return 1
 }
 
-for crate in forge-core forge-storage forge-ffi; do
-  if scan_tree "$ROOT/crates/$crate"; then
+for dir in "${SCAN_DIRS[@]}"; do
+  if scan_tree "$dir"; then
     exit 0
   fi
 done

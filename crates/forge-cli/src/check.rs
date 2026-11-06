@@ -68,7 +68,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             skip: None,
         },
         Step {
-            name: "iOS template matches Counter example",
+            name: "templates pin the workspace's UniFFI and verifier versions",
             cmds: vec![script(root, "check-template-sync.sh")],
             skip: None,
         },

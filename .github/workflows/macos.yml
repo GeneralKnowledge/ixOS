@@ -31,10 +31,13 @@ jobs:
         run: ./scripts/test-swift-host.sh examples/weather
       - name: Chat example (XCTest, against the mock chat server)
         run: ./scripts/test-swift-host.sh examples/chat
-      - name: App generated from the iOS template (XCTest)
+      # A new app outside the checkout, with its own Rust crate: `forge test`
+      # runs its Rust tests, regenerates its bindings and runs its XCTest suite.
+      - name: App generated outside the checkout (forge init --path, forge test)
         run: |
-          cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate
-          ./scripts/test-swift-host.sh examples/CiTemplateApp
+          APP="$RUNNER_TEMP/CiTemplateApp"
+          cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate --path "$APP"
+          cargo run -q -p forge-cli -- test --project "$APP"
 
   xcode-build:
     name: Xcode iOS build
@@ -72,11 +75,12 @@ jobs:
             -destination 'generic/platform=iOS' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
-      - name: Build an Xcode project generated from the iOS template
+      - name: Build an Xcode project generated outside the checkout
         run: |
-          cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode
+          APP="$RUNNER_TEMP/CiXcodeApp"
+          cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode --path "$APP"
           xcodebuild build \
-            -project examples/CiXcodeApp/Xcode/CiXcodeApp.xcodeproj \
+            -project "$APP/Xcode/CiXcodeApp.xcodeproj" \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -configuration Debug \

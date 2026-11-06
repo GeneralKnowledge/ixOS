@@ -3,9 +3,15 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=forge-crate.sh
+source "$ROOT/scripts/forge-crate.sh"
 
 PROFILE="${FORGE_ANDROID_PROFILE:-release}"
-JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
+if [[ -n "${FORGE_APP_DIR:-}" ]]; then
+  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$APP_DIR/app/src/main/jniLibs}"
+else
+  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
+fi
 
 # Space-separated Gradle ABI folder names (arm64-v8a, x86_64, armeabi-v7a).
 ABIS="${FORGE_ANDROID_ABIS:-arm64-v8a x86_64}"
@@ -46,7 +52,7 @@ done
 
 mkdir -p "$JNI_LIBS"
 
-echo "[forge] Building forge-ffi for Android (${PROFILE}) ABIs: ${NDK_TARGETS[*]}..."
+echo "[forge] Building ${CRATE_DIR#"$ROOT/"} for Android (${PROFILE}) ABIs: ${NDK_TARGETS[*]}..."
 
 declare -a NDK_ARGS=()
 for abi in "${NDK_TARGETS[@]}"; do
@@ -77,7 +83,7 @@ export ANDROID_NDK_ROOT="${ANDROID_NDK_ROOT:-$NDK_HOME}"
 cargo ndk \
   "${NDK_ARGS[@]}" \
   -o "$JNI_LIBS" \
-  build -p forge-ffi "${CARGO_PROFILE_ARGS[@]}"
+  build "${CARGO_SELECT[@]}" "${CARGO_PROFILE_ARGS[@]}"
 
 for abi in "${NDK_TARGETS[@]}"; do
   so="$JNI_LIBS/$abi/libforge_ffi.so"
