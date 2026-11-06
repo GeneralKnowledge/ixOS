@@ -65,9 +65,9 @@ Xcode target's `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription`.
 
 ## Limits
 
-- iOS only. On Android, `rustls-platform-verifier` needs a JNI initialisation
-  call and its companion Android library before the first HTTPS request; the
-  Android Counter does not use networking, so neither is wired up.
+- iOS only: there is no Compose host for Weather yet. The Rust side is ready
+  for one; Android HTTPS works once the host calls `ForgeAndroid.init` (see
+  [docs/android-setup.md](../../docs/android-setup.md#https-certificate-verification)).
 - The forecast is fixed at 24 hours and 7 days, in metric units.
 - A search cannot be cancelled once sent; a cancelled caller just never sees
   its results.

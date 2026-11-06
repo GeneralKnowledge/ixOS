@@ -161,9 +161,8 @@ class ChatSessionTest {
     }
 
     @Test
-    fun httpsIsAllowedOnTheJvmHost() {
-        // The UnsupportedOnHost guard applies to Android builds of the Rust library only; the
-        // JVM tests load the host build, so this proves the guard does not leak onto desktops.
+    fun httpsServersAreAccepted() {
+        // https is a normal capability on every host now (Android after ForgeAndroid.init).
         app("https://chat.example").shutdown()
     }
 

@@ -57,6 +57,32 @@ forge build android --project examples/counter-android --install
 
 Create an AVD with an **x86_64** system image so the emulator uses the `x86_64` JNI library. Physical devices need **arm64-v8a** (included in default `forge.toml` ABIs).
 
+## HTTPS (certificate verification)
+
+Networking stays in Rust (`forge-net`'s `UreqClient`), on Android too. It checks server certificates with [`rustls-platform-verifier`](https://github.com/rustls/rustls-platform-verifier), which on Android asks the platform's own trust store through JNI. That needs two things, both already wired into the examples and the `forge init` template:
+
+1. **The verifier's Kotlin library** in the app: `implementation("org.rustls:rustls-platform-verifier:<version>")` in `app/build.gradle.kts`, from the rustls Maven repository declared in `settings.gradle.kts`. The version must equal `rustls-platform-verifier-android` in `Cargo.lock`; `scripts/check-template-sync.sh` (CI, `forge check`) fails when they drift.
+2. **One init call with the app `Context`**, before the first Rust object is created:
+
+   ```kotlin
+   override fun onCreate(savedInstanceState: Bundle?) {
+       ForgeAndroid.init(applicationContext)   // org.forgemobile.ffi.ForgeAndroid
+       super.onCreate(savedInstanceState)
+       ...
+   }
+   ```
+
+   `ForgeAndroid` ships with the generated bindings (`Generated/org/forgemobile/ffi/ForgeAndroid.kt`, source in `crates/forge-ffi/kotlin/`). Calling it again, from any thread, does nothing. If the verifier library is missing it throws `ForgeAndroidInitException` at startup with the fix in the message.
+
+What you get:
+
+- Certificates are always verified against Android's trust store; there is no switch to turn that off and no fallback to unverified TLS.
+- A rejected certificate (expired, untrusted, wrong host) is a typed error: `NetError::Certificate` in Rust, `ChatException.Certificate` / `WeatherError.Certificate` across the FFI.
+- An `https://` request before `ForgeAndroid.init` fails at once with `NetError::TlsNotInitialised` (Chat: `ChatException.UnsupportedOnHost`, saying to call `ForgeAndroid.init`). It never crashes and never connects unverified.
+- `http://` never touches the verifier. Android's cleartext policy applies to the Java HTTP stacks, not to Rust's sockets, so `http://10.0.2.2:8787` (the emulator's view of your machine) keeps working with only the `INTERNET` permission.
+- Android only trusts **system** CAs for apps targeting API 24+. A server with a self-signed or private-CA certificate is rejected, which is correct; use a certificate from a public CA (for example Let's Encrypt) for device testing.
+- If you enable R8/minification, keep the verifier's classes: `-keep, includedescriptorclasses class org.rustls.platformverifier.** { *; }`.
+
 ## Storage
 
 The Kotlin host passes an app-private directory string into `ForgeCounterApp` (typically under `Context.filesDir`). Domain persistence stays in Rust; do not hardcode paths in `forge-storage`.
@@ -67,6 +93,9 @@ The Kotlin host passes an app-private directory string into `ForgeCounterApp` (t
 |---------|----------------|
 | App crashes on emulator, works on phone | Missing `x86_64` in `[android].abis` / jniLibs |
 | `UnsatisfiedLinkError` | `libforge_ffi.so` not built or wrong ABI folder |
+| `ForgeAndroidInitException: ...CertificateVerifier is not in the app` | The `org.rustls:rustls-platform-verifier` dependency (or its Maven repository in `settings.gradle.kts`) is missing, or R8 stripped it |
+| `https://` fails with "TLS is not initialised on this host" | `ForgeAndroid.init(applicationContext)` was not called before the Rust app object was created |
+| `https://` fails with "certificate rejected" | The server's certificate is expired, for another host, or not issued by a CA Android trusts |
 | Bindings compile errors | Regenerate: `forge bindings generate --language kotlin --out examples/counter-android/Generated` |
 | Play 16 KB page warning | Use NDK r28+; run alignment probe in `validate-android-toolchain.sh` |
 

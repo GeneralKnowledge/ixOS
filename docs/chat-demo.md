@@ -57,7 +57,7 @@ pub enum ChatEvent {
 
 pub enum ChatError {
     Network { reason }, Http { status, reason }, Protocol { reason }, Cancelled,
-    NotFound { conversation_id }, UnsupportedOnHost { detail },
+    NotFound { conversation_id }, UnsupportedOnHost { detail }, Certificate { reason },
     InvalidInput { reason }, ShutDown,
 }
 ```
@@ -231,13 +231,13 @@ The plan was written before the Weather example landed. Checked against the repo
 Two separate problems, and the demo as planned only hits one of them:
 
 1. **Cleartext HTTP: not a problem for Rust.** Android 9+ refuses cleartext by default, but that policy is enforced by the Java HTTP stacks (`HttpURLConnection`, OkHttp); the platform does not apply it to plain sockets. The Rust client opens its own sockets, so `http://10.0.2.2:8787` (the emulator's view of the host) works with only the `INTERNET` permission, and the example has no `network_security_config`.
-2. **The TLS verifier: refused, as a typed error (decided in Phase 5).** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init call (`rustls_platform_verifier::android::init_hosted` with the app `Context`) and its companion Kotlin library. Plain HTTP never touches it, so the demo does not need it, and wiring it would add a JNI entry point and a Gradle dependency that nothing in the demo exercises. So `ForgeChatApp::new` refuses an `https://` base URL on Android builds with `ChatError::UnsupportedOnHost` (`check_host_supports` in `crates/forge-ffi/src/chat/app.rs`), and the app shows "Android supports http:// chat servers only". Never a silent TLS failure. Wiring the verifier is a follow-up that also unblocks Weather on Android.
+2. **The TLS verifier: wired (2026-11).** `UreqClient` uses `rustls-platform-verifier`, which on Android needs a JNI init with the app `Context` and its companion Kotlin library. Phase 5 refused `https://` on Android with `UnsupportedOnHost` until that existed. Now `MainActivity` calls `ForgeAndroid.init(applicationContext)` (shipped with the generated bindings), the app depends on `org.rustls:rustls-platform-verifier`, and `https://` servers work with Android's trust store. A rejected certificate is `ChatError::Certificate`; an `https` request before the init is `UnsupportedOnHost` with a message that says so. See [android-setup.md](android-setup.md#https-certificate-verification).
 
 ## Risks
 
 | Risk | Mitigation |
 |---|---|
-| Android TLS verifier not wired | Decided in Phase 5: `https` on Android fails at once with `UnsupportedOnHost` (see above). |
+| Android TLS verifier not wired | Wired: `ForgeAndroid.init` + the verifier's Kotlin library. Until init, `https` fails at once with a typed error, never unverified (see above). |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
 | Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
 | A blocked stream read outlives unsubscribe | Fixed in M13: each room streams on its own connection, which unsubscribe and shutdown close (`HttpClient::open_stream_cancellable`). Tested against the mock server with heartbeats 60 s apart. |

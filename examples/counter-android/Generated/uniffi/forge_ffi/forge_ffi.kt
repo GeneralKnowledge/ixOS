@@ -1232,7 +1232,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() and 0xFFFF) != 57232) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_forge_ffi_checksum_constructor_forgechatapp_new() and 0xFFFF) != 19473) {
+    if ((lib.uniffi_forge_ffi_checksum_constructor_forgechatapp_new() and 0xFFFF) != 3103) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() and 0xFFFF) != 13605) {
@@ -2868,10 +2868,11 @@ open class ForgeChatApp: Disposable, AutoCloseable, ForgeChatAppInterface
      * `storage_directory` holds the chat store and is created if missing;
      * an empty string keeps everything in memory.
      *
-     * Fails with `InvalidInput` for a bad URL or timeout, with
-     * `UnsupportedOnHost` for an `https` URL on Android (see
-     * [`check_host_supports`]), and with `Storage` when the stored data was
-     * written by a newer build (it is left alone).
+     * Fails with `InvalidInput` for a bad URL or timeout, and with
+     * `Storage` when the stored data was written by a newer build (it is
+     * left alone). `https` servers work on every host; on Android the host
+     * must have called `ForgeAndroid.init(context)` first, or each request
+     * fails with `UnsupportedOnHost` saying so.
      * A corrupt store does not fail: the app starts empty and
      * `store_problem()` says why.
      */
@@ -5514,6 +5515,18 @@ sealed class ChatException: kotlin.Exception() {
             get() = "reason=${ `reason` }"
     }
     
+    /**
+     * The server's TLS certificate was rejected: expired, not trusted by
+     * this device, or issued for another host. Retrying will not help.
+     */
+    class Certificate(
+        
+        val `reason`: kotlin.String
+        ) : ChatException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
     class Http(
         
         val `status`: kotlin.UShort, 
@@ -5622,28 +5635,31 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
             1 -> ChatException.Network(
                 FfiConverterString.read(buf),
                 )
-            2 -> ChatException.Http(
+            2 -> ChatException.Certificate(
+                FfiConverterString.read(buf),
+                )
+            3 -> ChatException.Http(
                 FfiConverterUShort.read(buf),
                 FfiConverterString.read(buf),
                 )
-            3 -> ChatException.BadResponse(
+            4 -> ChatException.BadResponse(
                 FfiConverterString.read(buf),
                 )
-            4 -> ChatException.Cancelled()
-            5 -> ChatException.NotFound(
+            5 -> ChatException.Cancelled()
+            6 -> ChatException.NotFound(
                 FfiConverterString.read(buf),
                 )
-            6 -> ChatException.UnsupportedOnHost(
+            7 -> ChatException.UnsupportedOnHost(
                 FfiConverterString.read(buf),
                 )
-            7 -> ChatException.InvalidInput(
+            8 -> ChatException.InvalidInput(
                 FfiConverterString.read(buf),
                 )
-            8 -> ChatException.Storage(
+            9 -> ChatException.Storage(
                 FfiConverterString.read(buf),
                 )
-            9 -> ChatException.ShutDown()
-            10 -> ChatException.Internal(
+            10 -> ChatException.ShutDown()
+            11 -> ChatException.Internal(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -5653,6 +5669,11 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
     override fun allocationSize(value: ChatException): ULong {
         return when(value) {
             is ChatException.Network -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is ChatException.Certificate -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`reason`)
@@ -5711,47 +5732,52 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.Http -> {
+            is ChatException.Certificate -> {
                 buf.putInt(2)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.Http -> {
+                buf.putInt(3)
                 FfiConverterUShort.write(value.`status`, buf)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
             is ChatException.BadResponse -> {
-                buf.putInt(3)
+                buf.putInt(4)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
             is ChatException.Cancelled -> {
-                buf.putInt(4)
+                buf.putInt(5)
                 Unit
             }
             is ChatException.NotFound -> {
-                buf.putInt(5)
+                buf.putInt(6)
                 FfiConverterString.write(value.`conversationId`, buf)
                 Unit
             }
             is ChatException.UnsupportedOnHost -> {
-                buf.putInt(6)
+                buf.putInt(7)
                 FfiConverterString.write(value.`detail`, buf)
                 Unit
             }
             is ChatException.InvalidInput -> {
-                buf.putInt(7)
-                FfiConverterString.write(value.`reason`, buf)
-                Unit
-            }
-            is ChatException.Storage -> {
                 buf.putInt(8)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is ChatException.ShutDown -> {
+            is ChatException.Storage -> {
                 buf.putInt(9)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is ChatException.ShutDown -> {
+                buf.putInt(10)
                 Unit
             }
             is ChatException.Internal -> {
-                buf.putInt(10)
+                buf.putInt(11)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
@@ -7476,7 +7502,19 @@ sealed class WeatherException: kotlin.Exception() {
     }
     
     /**
-     * TLS and other transport failures that are not "offline".
+     * The service's TLS certificate was rejected (expired, untrusted, or
+     * for another host). A cached report never masks this.
+     */
+    class Certificate(
+        
+        val `reason`: kotlin.String
+        ) : WeatherException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Transport failures that are not "offline" or a certificate problem.
      */
     class Network(
         
@@ -7539,12 +7577,15 @@ public object FfiConverterTypeWeatherError : FfiConverterRustBuffer<WeatherExcep
             5 -> WeatherException.BadResponse(
                 FfiConverterString.read(buf),
                 )
-            6 -> WeatherException.Network(
+            6 -> WeatherException.Certificate(
                 FfiConverterString.read(buf),
                 )
-            7 -> WeatherException.Cancelled()
-            8 -> WeatherException.ShutDown()
-            9 -> WeatherException.Internal(
+            7 -> WeatherException.Network(
+                FfiConverterString.read(buf),
+                )
+            8 -> WeatherException.Cancelled()
+            9 -> WeatherException.ShutDown()
+            10 -> WeatherException.Internal(
                 FfiConverterString.read(buf),
                 )
             else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
@@ -7574,6 +7615,11 @@ public object FfiConverterTypeWeatherError : FfiConverterRustBuffer<WeatherExcep
                 + FfiConverterOptionalString.allocationSize(value.`reason`)
             )
             is WeatherException.BadResponse -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is WeatherException.Certificate -> (
                 // Add the size for the Int that specifies the variant plus the size needed for all fields
                 4UL
                 + FfiConverterString.allocationSize(value.`reason`)
@@ -7626,21 +7672,26 @@ public object FfiConverterTypeWeatherError : FfiConverterRustBuffer<WeatherExcep
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is WeatherException.Network -> {
+            is WeatherException.Certificate -> {
                 buf.putInt(6)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is WeatherException.Cancelled -> {
+            is WeatherException.Network -> {
                 buf.putInt(7)
+                FfiConverterString.write(value.`reason`, buf)
                 Unit
             }
-            is WeatherException.ShutDown -> {
+            is WeatherException.Cancelled -> {
                 buf.putInt(8)
                 Unit
             }
-            is WeatherException.Internal -> {
+            is WeatherException.ShutDown -> {
                 buf.putInt(9)
+                Unit
+            }
+            is WeatherException.Internal -> {
+                buf.putInt(10)
                 FfiConverterString.write(value.`reason`, buf)
                 Unit
             }

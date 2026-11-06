@@ -1312,10 +1312,11 @@ open class ForgeChatApp: ForgeChatAppProtocol, @unchecked Sendable {
      * `storage_directory` holds the chat store and is created if missing;
      * an empty string keeps everything in memory.
      *
-     * Fails with `InvalidInput` for a bad URL or timeout, with
-     * `UnsupportedOnHost` for an `https` URL on Android (see
-     * [`check_host_supports`]), and with `Storage` when the stored data was
-     * written by a newer build (it is left alone).
+     * Fails with `InvalidInput` for a bad URL or timeout, and with
+     * `Storage` when the stored data was written by a newer build (it is
+     * left alone). `https` servers work on every host; on Android the host
+     * must have called `ForgeAndroid.init(context)` first, or each request
+     * fails with `UnsupportedOnHost` saying so.
      * A corrupt store does not fail: the app starts empty and
      * `store_problem()` says why.
      */
@@ -3565,6 +3566,12 @@ enum ChatError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case Network(reason: String
     )
+    /**
+     * The server's TLS certificate was rejected: expired, not trusted by
+     * this device, or issued for another host. Retrying will not help.
+     */
+    case Certificate(reason: String
+    )
     case Http(status: UInt16, reason: String
     )
     /**
@@ -3629,28 +3636,31 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
         case 1: return .Network(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 2: return .Http(
+        case 2: return .Certificate(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Http(
             status: try FfiConverterUInt16.read(from: &buf), 
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 3: return .BadResponse(
+        case 4: return .BadResponse(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .Cancelled
-        case 5: return .NotFound(
+        case 5: return .Cancelled
+        case 6: return .NotFound(
             conversationId: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .UnsupportedOnHost(
+        case 7: return .UnsupportedOnHost(
             detail: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .InvalidInput(
+        case 8: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Storage(
+        case 9: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .ShutDown
-        case 10: return .Internal(
+        case 10: return .ShutDown
+        case 11: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -3670,47 +3680,52 @@ public struct FfiConverterTypeChatError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Http(status,reason):
+        case let .Certificate(reason):
             writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Http(status,reason):
+            writeInt(&buf, Int32(3))
             FfiConverterUInt16.write(status, into: &buf)
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .BadResponse(reason):
-            writeInt(&buf, Int32(3))
+            writeInt(&buf, Int32(4))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .Cancelled:
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
         
         
         case let .NotFound(conversationId):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(conversationId, into: &buf)
             
         
         case let .UnsupportedOnHost(detail):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterString.write(detail, into: &buf)
             
         
         case let .InvalidInput(reason):
-            writeInt(&buf, Int32(7))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case let .Storage(reason):
             writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case let .Storage(reason):
             writeInt(&buf, Int32(9))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(10))
         
         
         case let .Internal(reason):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -5196,7 +5211,13 @@ enum WeatherError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case BadResponse(reason: String
     )
     /**
-     * TLS and other transport failures that are not "offline".
+     * The service's TLS certificate was rejected (expired, untrusted, or
+     * for another host). A cached report never masks this.
+     */
+    case Certificate(reason: String
+    )
+    /**
+     * Transport failures that are not "offline" or a certificate problem.
      */
     case Network(reason: String
     )
@@ -5247,12 +5268,15 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
         case 5: return .BadResponse(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 6: return .Network(
+        case 6: return .Certificate(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 7: return .Cancelled
-        case 8: return .ShutDown
-        case 9: return .Internal(
+        case 7: return .Network(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 8: return .Cancelled
+        case 9: return .ShutDown
+        case 10: return .Internal(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -5292,21 +5316,26 @@ public struct FfiConverterTypeWeatherError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Network(reason):
+        case let .Certificate(reason):
             writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Cancelled:
+        case let .Network(reason):
             writeInt(&buf, Int32(7))
+            FfiConverterString.write(reason, into: &buf)
+            
         
-        
-        case .ShutDown:
+        case .Cancelled:
             writeInt(&buf, Int32(8))
         
         
-        case let .Internal(reason):
+        case .ShutDown:
             writeInt(&buf, Int32(9))
+        
+        
+        case let .Internal(reason):
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -6077,7 +6106,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_constructor_forgecounterapp_new() != 57232) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_forgechatapp_new() != 19473) {
+    if (uniffi_forge_ffi_checksum_constructor_forgechatapp_new() != 3103) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() != 13605) {

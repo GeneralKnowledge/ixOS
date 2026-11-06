@@ -10,6 +10,7 @@ import uniffi.forge_ffi.ChatException
 fun userMessage(error: Throwable): String =
     when (error) {
         is ChatException.Network -> "Can't reach the chat server. Is it running?"
+        is ChatException.Certificate -> "The chat server's security certificate isn't trusted."
         is ChatException.Http ->
             if (error.status >= 500u) {
                 "The chat server is having problems. Try again."
@@ -19,8 +20,7 @@ fun userMessage(error: Throwable): String =
         is ChatException.BadResponse -> "The chat server sent something this app can't read."
         is ChatException.Cancelled -> "Cancelled."
         is ChatException.NotFound -> "That conversation no longer exists."
-        is ChatException.UnsupportedOnHost ->
-            "This device can't do that yet. Android supports http:// chat servers only."
+        is ChatException.UnsupportedOnHost -> "This device can't do that yet."
         is ChatException.InvalidInput -> "That can't be sent."
         is ChatException.Storage -> "Saved chats can't be read by this version of the app."
         is ChatException.ShutDown -> "Chat has been closed. Reopen the app to continue."

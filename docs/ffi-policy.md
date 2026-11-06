@@ -10,7 +10,7 @@
 ## Generated artifacts
 
 - iOS output: `examples/counter/Generated/` and identical copies in `examples/weather/Generated/` and `examples/chat/Generated/` (one `forge-ffi` library exports every example's API: Counter, Weather and Chat) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
-- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`.
+- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`. Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-ffi/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
 - **Do not hand-edit** generated files.
 - Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
 - CI runs `./scripts/check-bindings.sh` to detect drift (see below).

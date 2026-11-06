@@ -36,6 +36,11 @@ if [[ "$LANGUAGE" == "kotlin" ]]; then
     --library "$LIB" \
     --language kotlin \
     --out-dir "$OUT"
+  # Hand-written Android glue that travels with the bindings (ForgeAndroid.init:
+  # the app Context for the HTTPS certificate verifier). Source of truth:
+  # crates/forge-ffi/kotlin/.
+  mkdir -p "$OUT/org/forgemobile/ffi"
+  cp "$ROOT/crates/forge-ffi/kotlin/org/forgemobile/ffi/ForgeAndroid.kt" "$OUT/org/forgemobile/ffi/ForgeAndroid.kt"
 else
   # SwiftPM needs the Swift source and the C module in separate folders:
   #   Generated/ForgeFFI/forge_ffi.swift                  (Swift target "ForgeFFI")

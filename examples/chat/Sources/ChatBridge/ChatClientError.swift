@@ -8,6 +8,9 @@ import Foundation
 public enum ChatClientError: Error, Sendable, Equatable {
     /// The server could not be reached, the connection broke, or it timed out.
     case network(detail: String)
+    /// The server's TLS certificate was rejected (expired, untrusted, or for
+    /// another host). Retrying does not help.
+    case certificate(detail: String)
     /// The server answered with an error status.
     case server(status: UInt16, detail: String)
     /// The server answered with something this build cannot read.
@@ -27,6 +30,7 @@ public enum ChatClientError: Error, Sendable, Equatable {
     public var userMessage: String {
         switch self {
         case .network: return "Can't reach the chat server. Is it running?"
+        case .certificate: return "The chat server's security certificate isn't trusted."
         case let .server(status, _) where status >= 500:
             return "The chat server is having problems. Try again."
         case .server: return "The chat server refused the request."
@@ -43,6 +47,7 @@ public enum ChatClientError: Error, Sendable, Equatable {
     init(_ error: ChatError) {
         switch error {
         case let .Network(reason): self = .network(detail: reason)
+        case let .Certificate(reason): self = .certificate(detail: reason)
         case let .Http(status, reason): self = .server(status: status, detail: reason)
         case let .BadResponse(reason): self = .badResponse(detail: reason)
         // Callers translate `.Cancelled` to `CancellationError` first.

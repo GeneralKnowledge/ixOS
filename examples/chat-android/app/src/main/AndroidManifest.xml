@@ -7,9 +7,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
-      No network_security_config: Android's cleartext policy is enforced by the Java HTTP
-      stacks, and the Rust client uses plain sockets, so http:// to the mock server works
-      as is. https:// fails with ChatException.UnsupportedOnHost (see docs/chat-demo.md).
+      Android's cleartext policy (and the network_security_config that the
+      rustls-platform-verifier library merges in) applies to the Java HTTP stacks only. The
+      Rust client opens its own sockets, so http:// to the mock server works as is, and
+      https:// certificates are checked against Android's trust store once MainActivity has
+      called ForgeAndroid.init (see docs/android-setup.md).
     -->
     <application
         android:allowBackup="true"

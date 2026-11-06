@@ -4,7 +4,9 @@
 //! adapters can be written against it. [`NoopClient`] refuses every request
 //! with [`NetError::Unavailable`], [`StaticClient`] returns canned responses
 //! for tests, and with the `ureq` feature [`UreqClient`] is a real blocking
-//! HTTPS transport (rustls with the platform certificate verifier).
+//! HTTPS transport (rustls with the platform certificate verifier). On
+//! Android that verifier needs a one-time init with the app `Context`; see
+//! [`platform`].
 //!
 //! The design mirrors `forge-storage`'s `SnapshotStore`:
 //!
@@ -21,12 +23,16 @@
 
 mod cancel;
 mod client;
+#[cfg(feature = "ureq")]
+pub mod platform;
 mod types;
 #[cfg(feature = "ureq")]
 mod ureq_client;
 
 pub use cancel::{AbortRegistration, CancelHandle};
 pub use client::{HttpClient, NoopClient, StaticClient};
+#[cfg(feature = "ureq")]
+pub use platform::https_ready;
 pub use types::{
     cancelled_io_error, is_cancelled_io_error, Header, Method, NetError, Request, Response,
     StreamingResponse,

@@ -3,6 +3,8 @@ mod app;
 mod chat;
 mod errors;
 mod events;
+#[cfg(not(target_os = "ios"))]
+mod jni_init;
 mod session;
 mod signal;
 mod weather;

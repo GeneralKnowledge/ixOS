@@ -21,7 +21,11 @@ pub enum WeatherError {
     /// The response was not the JSON this build expects.
     #[error("unexpected response: {reason}")]
     BadResponse { reason: String },
-    /// TLS and other transport failures that are not "offline".
+    /// The service's TLS certificate was rejected (expired, untrusted, or
+    /// for another host). A cached report never masks this.
+    #[error("certificate rejected: {reason}")]
+    Certificate { reason: String },
+    /// Transport failures that are not "offline" or a certificate problem.
     #[error("network error: {reason}")]
     Network { reason: String },
     // Cancellation. Not a failure.
@@ -74,8 +78,31 @@ impl From<NetError> for WeatherError {
             NetError::InvalidRequest { reason } => Self::InvalidInput { reason },
             NetError::Offline { reason } => Self::Offline { reason },
             NetError::Transport { reason } => Self::Network { reason },
+            NetError::Certificate { reason } => Self::Certificate { reason },
+            // The host skipped ForgeAndroid.init: a wiring bug, not the network.
+            NetError::TlsNotInitialised { reason } => Self::Internal { reason },
             NetError::Timeout => Self::Timeout,
             NetError::Cancelled => Self::Cancelled,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn certificate_errors_are_typed_and_never_masked_by_the_cache() {
+        let err = WeatherError::from(NetError::Certificate {
+            reason: "expired".into(),
+        });
+        assert!(matches!(err, WeatherError::Certificate { .. }));
+        assert_eq!(err.as_fetch_problem(), None);
+        assert!(matches!(
+            WeatherError::from(NetError::TlsNotInitialised {
+                reason: "init".into()
+            }),
+            WeatherError::Internal { .. }
+        ));
     }
 }
