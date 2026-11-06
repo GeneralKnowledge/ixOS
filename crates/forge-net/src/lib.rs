@@ -19,12 +19,17 @@
 //! `forge-ffi` uses it for the Weather example (`ForgeWeatherApp`). See
 //! `docs/architecture.md`.
 
+mod cancel;
 mod client;
 mod types;
 #[cfg(feature = "ureq")]
 mod ureq_client;
 
+pub use cancel::{AbortRegistration, CancelHandle};
 pub use client::{HttpClient, NoopClient, StaticClient};
-pub use types::{Header, Method, NetError, Request, Response, StreamingResponse};
+pub use types::{
+    cancelled_io_error, is_cancelled_io_error, Header, Method, NetError, Request, Response,
+    StreamingResponse,
+};
 #[cfg(feature = "ureq")]
 pub use ureq_client::{UreqClient, DEFAULT_MAX_BODY_BYTES, DEFAULT_TIMEOUT};

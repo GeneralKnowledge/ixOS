@@ -20,7 +20,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 use std::time::Duration;
 
-use forge_net::{HttpClient, Request, Response};
+use forge_net::{CancelHandle, HttpClient, Request, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
@@ -223,13 +223,17 @@ impl ChatRepo for HttpRepo {
         Ok(stored)
     }
 
-    fn open_stream(&self, conversation_id: &str) -> Result<Box<dyn RemoteStream>, ChatError> {
+    fn open_stream(
+        &self,
+        conversation_id: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Box<dyn RemoteStream>, ChatError> {
         let url = self.room_url(conversation_id, "/stream");
         let request = Request::get(url)
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-cache")
             .timeout(self.timeout);
-        let mut response = self.client.open_stream(&request)?;
+        let mut response = self.client.open_stream_cancellable(&request, cancel)?;
         if !response.is_success() {
             let mut body = Vec::new();
             let _ = std::io::Read::read_to_end(
@@ -294,6 +298,7 @@ impl RemoteStream for SseStream {
                 self.decode_event(&event.event, &event.data)
                     .unwrap_or(Ok(RemoteEvent::Heartbeat)),
             ),
+            Err(err) if forge_net::is_cancelled_io_error(&err) => Some(Err(ChatError::Cancelled)),
             Err(err) => Some(Err(ChatError::Network {
                 reason: format!("stream broke: {err}"),
             })),
@@ -463,7 +468,7 @@ mod tests {
             format!("{BASE}/rooms/general/stream"),
             sse(body),
         ));
-        let mut stream = repo.open_stream("general").unwrap();
+        let mut stream = repo.open_stream("general", &CancelHandle::new()).unwrap();
         assert_eq!(stream.next_event(), Some(Ok(RemoteEvent::Heartbeat)));
         let Some(Ok(RemoteEvent::Message(m))) = stream.next_event() else {
             panic!("expected a message")
@@ -497,7 +502,7 @@ mod tests {
                     json(200, "[]"),
                 ),
         );
-        let mut stream = repo.open_stream("general").unwrap();
+        let mut stream = repo.open_stream("general", &CancelHandle::new()).unwrap();
         assert!(matches!(
             stream.next_event(),
             Some(Err(ChatError::Protocol { .. }))
@@ -507,11 +512,15 @@ mod tests {
             Some(Err(ChatError::Protocol { .. }))
         ));
         assert!(matches!(
-            repo.open_stream("plain").map(|_| ()).unwrap_err(),
+            repo.open_stream("plain", &CancelHandle::new())
+                .map(|_| ())
+                .unwrap_err(),
             ChatError::Protocol { .. }
         ));
         assert!(matches!(
-            repo.open_stream("missing").map(|_| ()).unwrap_err(),
+            repo.open_stream("missing", &CancelHandle::new())
+                .map(|_| ())
+                .unwrap_err(),
             ChatError::NotFound { .. }
         ));
     }

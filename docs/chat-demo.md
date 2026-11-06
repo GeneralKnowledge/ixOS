@@ -10,7 +10,7 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 | Typed errors for network, HTTP, protocol and host support | Weather has one error enum for one API |
 | The same domain on both hosts | Weather is iOS-only |
 
-It is deliberately **not** a production chat client. Non-goals: real auth, push notifications, media messages, read receipts, typing indicators, encryption. PRs that add them will be declined; if the mock server needs persistence or auth, that is the signal the demo needs a real backend, which is out of scope.
+It is deliberately **not** a production chat client. Non-goals: real auth, push notifications (the apps show *local* notifications while they run; see [Notifications](#notifications)), media messages, read receipts, typing indicators, encryption. PRs that add them will be declined; if the mock server needs persistence or auth, that is the signal the demo needs a real backend, which is out of scope.
 
 ## Status
 
@@ -21,7 +21,7 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
-| 6 | CI matrix, README, roadmap | Planned |
+| 6 | CI matrix, README (screenshots from an iPhone, built on Linux), roadmap | **Done** |
 
 ## Layout
 
@@ -49,7 +49,8 @@ pub enum MessageStatus { Sending, Sent, Failed }
 pub enum ChatEvent {
     ConversationUpdated(Conversation),
     MessageReceived(Message),
-    MessageStatusChanged { id, status },
+    Notify(Message),
+    MessageStatusChanged { conversation_id, id, status },
     StreamConnected { conversation_id },
     StreamDisconnected { conversation_id, reason, will_retry: bool },
 }
@@ -71,8 +72,9 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 | `load_messages(id, since)` / `sync_messages(id)` | Fetches (all, or newer than `since`), merges, returns the room's full stored list including local `Sending`/`Failed` messages. `sync_messages` uses the stored cursor. |
 | `send_message(id, body)` | Stores and announces the message as `Sending` *before* the network call, then `MessageStatusChanged` to `Sent` or `Failed`. Returns the final message or the error. |
 | `retry_message(message_id)` | `Failed` → `Sending` → `Sent`/`Failed`, same id. Retrying a `Sent` message returns it. |
-| `subscribe(id)` | Starts the room's pump, marks the room read. Returns at once; connection state arrives as events. Idempotent. |
-| `unsubscribe(id)` | Ends the subscription. Idempotent, allowed after shutdown. |
+| `subscribe(id)` | Opens the room: starts its pump (or reuses its watch), marks it read and keeps it read. Returns at once; connection state arrives as events. Idempotent. |
+| `unsubscribe(id)` | Closes the room. The pump ends unless the room is watched. Idempotent, allowed after shutdown. |
+| `watch(id)` / `unwatch(id)` | Keeps the room's pump running in the background without opening it, so its news counts as unread and raises `Notify`. The pump ends when the room is neither open nor watched. Idempotent. |
 | `shutdown()` | Ends every subscription; later commands fail with `ShutDown`. |
 | `cached_conversations()`, `cached_messages(id)`, `last_synced(id)` | Local reads for a first render before the network. |
 
@@ -80,11 +82,11 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 
 These are the guarantees the FFI layer and both hosts build on. Each has a test in `examples/chat-core/src/client/tests.rs`.
 
-1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id` (for `MessageStatusChanged`, by message id).
+1. **One sink, filtered by the host.** All events of a `ChatClient` go through one sink; hosts filter by `conversation_id`, which every event except the FFI's `EventsDropped` carries.
 2. **Ordered, and after the store.** Every event is emitted under the client's lock, right after the store change it describes. Re-reading the store after an event never shows older data.
 3. **Every new message is announced exactly once.** Stream, catch-up fetch, list prefetch and our own send all merge by message id. The stream echo of our own message turns the local bubble `Sent` instead of adding a second one. A message evicted from the store (see below) is not announced again if it is re-delivered.
 4. **Unsubscribe is a hard stop for events.** When `unsubscribe` returns, `StreamDisconnected { will_retry: false }` has been emitted and no later event comes from that subscription: each pump checks it is still the current subscription, under the same lock, before every change.
-5. **And the Rust task really ends.** The pump thread exits at its next wake-up (next stream event or heartbeat, or a 10 ms backoff slice) and drops its connection. A blocked read cannot be interrupted (ureq has no cancel), which is why the server sends heartbeats. `ChatClient::live_pumps()` counts running pumps; the tests assert it reaches zero and that the in-memory server sees the stream closed.
+5. **And the Rust task really ends.** Each subscription owns a `forge_net::CancelHandle`. Unsubscribing cancels it, which shuts down that room's socket (a read blocked on a silent stream fails at once), aborts a connect in progress and wakes a reconnect backoff, so the pump exits promptly without waiting for a heartbeat. Other rooms' connections are untouched. `ChatClient::live_pumps()` counts running pumps; the tests assert it reaches zero and that the in-memory server sees the stream closed.
 6. **Leaving a room does not cancel a send.** The send finishes and its status event is still emitted; the list screen can ignore it, the store has it.
 7. **One `StreamDisconnected` per outage.** With `will_retry: true` the pump reconnects with backoff (500 ms doubling to 5 s by default) and emits `StreamConnected` when it succeeds. With `will_retry: false` the subscription is over: unsubscribed, shut down, or the room does not exist.
 8. **No gaps after reconnect.** The pump opens the stream first and catches up second, so a message stored in between arrives on one or both (and is merged).
@@ -104,6 +106,16 @@ Tying the subscription to the lifetime of an `AsyncSequence` / `Flow` would make
 ### Unread counts
 
 Tracked on the device: messages from other people that arrive while a room is not open. `list_conversations` notices rooms with news (server `last_message_at` > cursor) and fetches only those. `subscribe` resets the count. No server state, no read receipts.
+
+### Notifications
+
+Local only, while the app runs: the Rust client holds the room connections, and there is no push server (push stays a non-goal). A host that wants notifications **watches** every room. Rust then emits `Notify(message)`, right after the message's `MessageReceived`, when all of these hold:
+
+- the message is new to the store and from someone else;
+- its room is not open (it arrived on a watched room's stream, or in a refresh's prefetch);
+- it was sent after this `ChatClient` started (server `sent_at` against device time), so the history a room catches up on when first watched, and whatever arrived while the app was closed, never notify. It still counts as unread.
+
+The hosts only display it: `UNUserNotificationCenter` on iOS (with banners in the foreground too), a high-importance `NotificationChannel` on Android (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
 
 ### Store
 
@@ -207,12 +219,12 @@ The plan was written before the Weather example landed. Checked against the repo
 | `events()` → `ChatEventSubscription` (`async next()`, `cancel()`) | One per consumer, queue of 256, then `EventsDropped { count }`: re-read `cached_*`. |
 | `async list_conversations()`, `async load_messages(id, since)`, `async sync_messages(id)` | Each runs on a worker thread. |
 | `async send_message(id, body)`, `async retry_message(message_id)` | Not cancellable from the host, on purpose. |
-| `subscribe(id)`, `unsubscribe(id)` | Synchronous, return at once. |
-| `cached_conversations()`, `cached_messages(id)`, `last_synced(id)`, `is_subscribed(id)` | Local reads. |
+| `subscribe(id)`, `unsubscribe(id)`, `watch(id)`, `unwatch(id)` | Synchronous, return at once. |
+| `cached_conversations()`, `cached_messages(id)`, `last_synced(id)`, `is_subscribed(id)`, `is_watched(id)` | Local reads. |
 | `live_streams()`, `store_problem()` | Diagnostics: room threads still running, last persistence problem. |
 | `shutdown()`, `is_shut_down()` | Closes rooms, then event streams (queued events delivered first). |
 
-`ChatEvent` variants carry named fields (`MessageReceived { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`, and calls the core's `Protocol` error `BadResponse` (`.Protocol` is a metatype in Swift). Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
+`ChatEvent` variants carry named fields (`MessageReceived { message }`, `Notify { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`, and calls the core's `Protocol` error `BadResponse` (`.Protocol` is a metatype in Swift). Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
 
 ## Android and TLS (Phase 5)
 
@@ -228,7 +240,7 @@ Two separate problems, and the demo as planned only hits one of them:
 | Android TLS verifier not wired | Decided in Phase 5: `https` on Android fails at once with `UnsupportedOnHost` (see above). |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
 | Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
-| A blocked stream read outlives unsubscribe | Heartbeats from the server; no events are emitted after unsubscribe regardless. |
+| A blocked stream read outlives unsubscribe | Fixed in M13: each room streams on its own connection, which unsubscribe and shutdown close (`HttpClient::open_stream_cancellable`). Tested against the mock server with heartbeats 60 s apart. |
 | Store rewrite per message is slow on a phone | Measured in Phase 4/5; batch writes in the FFI layer if needed. |
 | Scope creep (media, auth, receipts) | Non-goals above. |
 | Mock server grows into a project | Single file, in-memory, no persistence. |

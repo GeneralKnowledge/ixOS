@@ -37,9 +37,9 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 ### Networking — In progress
 
-`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache.
+`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache. The Chat demo ([docs/chat-demo.md](chat-demo.md)) uses it on **both iOS and Android**: a long-lived Server-Sent Events stream per room, reconnects with catch-up, and idempotent retries, against a local mock server.
 
-Still open: Android (the certificate verifier needs a JNI init call and its companion library), interrupting a request in flight (ureq cannot; cancellation currently discards the late response), and platform reachability.
+Still open: HTTPS on Android (the certificate verifier needs a JNI init call and its companion library; until then Chat refuses `https://` on Android with a typed `UnsupportedOnHost` error, and Weather has no Android host), interrupting a request in flight (ureq cannot; cancellation currently discards the late response), and platform reachability.
 
 ### iOS Simulator support — Open
 

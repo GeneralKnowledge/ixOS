@@ -1,10 +1,12 @@
 //! In-memory [`ChatRepo`]: the test double, and the reference for what the
 //! mock server must do.
 
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
+
+use forge_net::{AbortRegistration, CancelHandle};
 
 use crate::now_ms;
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
@@ -24,6 +26,8 @@ pub const MEMORY_HEARTBEAT: Duration = Duration::from_millis(20);
 pub struct InMemoryRepo {
     state: Mutex<State>,
     open_streams: Arc<AtomicUsize>,
+    /// Set by [`InMemoryRepo::set_heartbeats`]`(false)`.
+    silent: AtomicBool,
 }
 
 #[derive(Default)]
@@ -131,6 +135,14 @@ impl InMemoryRepo {
     /// Streams currently held open by clients. Drops to zero once every
     /// client stream has been dropped, which is how tests prove that an
     /// unsubscribe really ended the Rust-side pump.
+    /// With `false`, idle streams stay silent instead of yielding
+    /// [`RemoteEvent::Heartbeat`] every [`MEMORY_HEARTBEAT`], so tests can
+    /// prove cancellation does not depend on heartbeats. Applies to streams
+    /// opened afterwards.
+    pub fn set_heartbeats(&self, on: bool) {
+        self.silent.store(!on, Ordering::SeqCst);
+    }
+
     pub fn open_stream_count(&self) -> usize {
         self.open_streams.load(Ordering::SeqCst)
     }
@@ -230,7 +242,14 @@ impl ChatRepo for InMemoryRepo {
         Ok(message)
     }
 
-    fn open_stream(&self, conversation_id: &str) -> Result<Box<dyn RemoteStream>, ChatError> {
+    fn open_stream(
+        &self,
+        conversation_id: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Box<dyn RemoteStream>, ChatError> {
+        if cancel.is_cancelled() {
+            return Err(ChatError::Cancelled);
+        }
         let mut state = self.lock();
         state.calls.push(format!("stream {conversation_id}"));
         if state.offline {
@@ -242,12 +261,20 @@ impl ChatRepo for InMemoryRepo {
             });
         }
         let (tx, rx) = mpsc::channel();
-        state.listeners.push((conversation_id.into(), tx));
+        state.listeners.push((conversation_id.into(), tx.clone()));
+        drop(state);
+        // Cancelling wakes a blocked `next_event` the way shutting a socket
+        // down wakes a blocked read.
+        let registration = cancel.on_cancel(move || {
+            let _ = tx.send(Err(ChatError::Cancelled));
+        });
         self.open_streams.fetch_add(1, Ordering::SeqCst);
         Ok(Box::new(MemoryStream {
             rx,
             open_streams: Arc::clone(&self.open_streams),
+            heartbeat: (!self.silent.load(Ordering::SeqCst)).then_some(MEMORY_HEARTBEAT),
             finished: false,
+            _registration: registration,
         }))
     }
 }
@@ -255,7 +282,10 @@ impl ChatRepo for InMemoryRepo {
 struct MemoryStream {
     rx: Receiver<Result<RemoteEvent, ChatError>>,
     open_streams: Arc<AtomicUsize>,
+    /// `None`: block until an event, like a server that never pings.
+    heartbeat: Option<Duration>,
     finished: bool,
+    _registration: AbortRegistration,
 }
 
 impl RemoteStream for MemoryStream {
@@ -263,7 +293,11 @@ impl RemoteStream for MemoryStream {
         if self.finished {
             return None;
         }
-        match self.rx.recv_timeout(MEMORY_HEARTBEAT) {
+        let next = match self.heartbeat {
+            Some(heartbeat) => self.rx.recv_timeout(heartbeat),
+            None => self.rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
+        };
+        match next {
             Ok(Ok(event)) => Some(Ok(event)),
             Ok(Err(err)) => {
                 self.finished = true;
@@ -325,15 +359,32 @@ mod tests {
             Err(ChatError::NotFound { .. })
         ));
         assert!(matches!(
-            repo.open_stream("nope").map(|_| ()),
+            repo.open_stream("nope", &CancelHandle::new()).map(|_| ()),
             Err(ChatError::NotFound { .. })
         ));
     }
 
     #[test]
+    fn cancel_wakes_a_silent_stream() {
+        let repo = InMemoryRepo::with_rooms(&[("general", "General")]);
+        repo.set_heartbeats(false);
+        let cancel = CancelHandle::new();
+        let mut stream = repo.open_stream("general", &cancel).unwrap();
+        let reader = std::thread::spawn(move || stream.next_event());
+        std::thread::sleep(Duration::from_millis(30));
+        cancel.cancel();
+        assert_eq!(reader.join().unwrap(), Some(Err(ChatError::Cancelled)));
+        assert_eq!(repo.open_stream_count(), 0);
+        assert_eq!(
+            repo.open_stream("general", &cancel).map(|_| ()),
+            Err(ChatError::Cancelled)
+        );
+    }
+
+    #[test]
     fn stream_delivers_heartbeats_messages_and_offline_errors() {
         let repo = InMemoryRepo::with_rooms(&[("general", "General")]);
-        let mut stream = repo.open_stream("general").unwrap();
+        let mut stream = repo.open_stream("general", &CancelHandle::new()).unwrap();
         assert_eq!(repo.open_stream_count(), 1);
         assert_eq!(stream.next_event(), Some(Ok(RemoteEvent::Heartbeat)));
         let m = repo.inject("general", "ana", "hi");

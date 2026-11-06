@@ -6,9 +6,11 @@ import Foundation
 /// Contract (see `crates/forge-ffi/src/chat/app.rs` and docs/ffi-policy.md):
 /// - Safe from any task or actor, including the main actor. Nothing here
 ///   blocks: network work runs on Rust worker threads.
-/// - `enter(_:)` / `leave(_:)` open and close a room's live connection and
-///   return at once. After `leave` returns, no more events for that room's
-///   connection arrive.
+/// - `enter(_:)` / `leave(_:)` open and close a room and return at once.
+///   After `leave` returns, no more events for that room's connection
+///   arrive, unless the room is also watched.
+/// - `watch(_:)` keeps a room live in the background: its new messages from
+///   others count as unread and raise `.notify`.
 /// - Commands are not cancelled with the calling task, on purpose: leaving a
 ///   room must not cancel a message that is already being sent. Its outcome
 ///   still arrives on `events()` and in `cachedMessages(in:)`.
@@ -99,9 +101,25 @@ public final class ChatClient: Sendable {
         try bridged { try app.subscribe(conversationId: conversationId) }
     }
 
-    /// Closes the room's live connection. Idempotent; never fails.
+    /// Closes the room. Its live connection ends unless the room is
+    /// watched. Idempotent; never fails.
     public func leave(_ conversationId: String) {
         try? app.unsubscribe(conversationId: conversationId)
+    }
+
+    /// Keeps the room live without opening it: new messages from others
+    /// count as unread and raise `.notify`. Idempotent.
+    public func watch(_ conversationId: String) throws {
+        try bridged { try app.watch(conversationId: conversationId) }
+    }
+
+    /// Stops watching the room. Idempotent; never fails.
+    public func unwatch(_ conversationId: String) {
+        try? app.unwatch(conversationId: conversationId)
+    }
+
+    public func isWatched(_ conversationId: String) -> Bool {
+        app.isWatched(conversationId: conversationId)
     }
 
     // MARK: Lifecycle

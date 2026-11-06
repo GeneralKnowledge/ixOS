@@ -10,6 +10,23 @@ public enum ConnectionState: Equatable, Sendable {
     case reconnecting(reason: String)
 }
 
+/// A local notification for someone else's new message in a room that is
+/// not open.
+public struct ChatNotification: Equatable, Sendable {
+    public var messageId: String
+    public var conversationId: String
+    public var roomTitle: String
+    public var author: String
+    public var body: String
+}
+
+/// Shows `ChatNotification`s. The app uses `LocalChatNotifier`; tests
+/// record them.
+@MainActor
+public protocol ChatNotifier: AnyObject {
+    func post(_ notification: ChatNotification)
+}
+
 /// Presentation state for both screens.
 ///
 /// Holds no chat logic: the store, sync cursor, reconnects, retries and
@@ -28,18 +45,24 @@ public final class ChatSession: ObservableObject {
     @Published public private(set) var sendError: [String: String] = [:]
 
     public let client: ChatClient
+    /// With a notifier, every room is watched while the session runs, and
+    /// Rust's `.notify` events become local notifications. Without one,
+    /// only the open room is live.
+    private let notifier: ChatNotifier?
     private var eventTask: Task<Void, Never>?
     private var started = false
 
-    public init(client: ChatClient) {
+    public init(client: ChatClient, notifier: ChatNotifier? = nil) {
         self.client = client
+        self.notifier = notifier
     }
 
     /// A session for `serverURL`, storing chats under Application Support.
-    public convenience init(serverURL: String) throws {
+    public convenience init(serverURL: String, notifier: ChatNotifier? = nil) throws {
         try self.init(
             client: ChatClient(
-                storageDirectory: Self.storageDirectory(for: serverURL), serverURL: serverURL))
+                storageDirectory: Self.storageDirectory(for: serverURL), serverURL: serverURL),
+            notifier: notifier)
     }
 
     deinit {
@@ -65,6 +88,7 @@ public final class ChatSession: ObservableObject {
         do {
             conversations = try await client.conversations()
             listError = nil
+            conversations.forEach { watchIfNotifying($0.id) }
         } catch {
             listError = Self.message(for: error)
         }
@@ -75,7 +99,11 @@ public final class ChatSession: ObservableObject {
     /// Opens a room: shows stored messages, connects, then catches up.
     public func open(_ conversationId: String) async {
         messages[conversationId] = client.cachedMessages(in: conversationId)
-        connection[conversationId] = .connecting
+        // A watched room's stream is already running (and reported): keep its state.
+        switch connection[conversationId] {
+        case .connected, .reconnecting: break
+        case .closed, .connecting, nil: connection[conversationId] = .connecting
+        }
         do {
             try client.enter(conversationId)
             messages[conversationId] = try await client.syncMessages(in: conversationId)
@@ -120,6 +148,13 @@ public final class ChatSession: ObservableObject {
         conversations.first { $0.id == conversationId }?.title ?? conversationId
     }
 
+    /// Keeps a room live in the background so its news can notify.
+    /// Watching fails only after shutdown, so a failure is ignored.
+    private func watchIfNotifying(_ conversationId: String) {
+        guard notifier != nil else { return }
+        try? client.watch(conversationId)
+    }
+
     // MARK: Events
 
     private func listenForEvents() {
@@ -146,7 +181,16 @@ public final class ChatSession: ObservableObject {
                 conversations[index] = conversation
             } else {
                 conversations.append(conversation)
+                watchIfNotifying(conversation.id)
             }
+        case let .notify(message):
+            // Rust raises this only for others' new messages in rooms that
+            // are not open, so there is nothing to filter here.
+            notifier?.post(
+                ChatNotification(
+                    messageId: message.id, conversationId: message.conversationId,
+                    roomTitle: title(of: message.conversationId), author: message.author,
+                    body: message.body))
         case let .messageReceived(message):
             var list = messages[message.conversationId] ?? []
             if let index = list.firstIndex(where: { $0.id == message.id }) {
@@ -156,20 +200,19 @@ public final class ChatSession: ObservableObject {
             }
             list.sort { ($0.sentAt, $0.id) < ($1.sentAt, $1.id) }
             messages[message.conversationId] = list
-        case let .messageStatusChanged(id, status):
-            for (room, list) in messages {
-                guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
-                // Re-read from the store: a `.sent` message also carries the
-                // server's time and may move.
-                let stored = client.cachedMessages(in: room)
-                if stored.contains(where: { $0.id == id }) {
-                    messages[room] = stored
-                } else {
-                    var updated = list
-                    updated[index].status = status
-                    messages[room] = updated
-                }
-                break
+        case let .messageStatusChanged(room, id, status):
+            // Only a room whose messages are loaded needs updating.
+            guard var list = messages[room],
+                let index = list.firstIndex(where: { $0.id == id })
+            else { break }
+            // Re-read from the store: a `.sent` message also carries the
+            // server's time and may move.
+            let stored = client.cachedMessages(in: room)
+            if stored.contains(where: { $0.id == id }) {
+                messages[room] = stored
+            } else {
+                list[index].status = status
+                messages[room] = list
             }
         case let .streamConnected(conversationId):
             connection[conversationId] = .connected

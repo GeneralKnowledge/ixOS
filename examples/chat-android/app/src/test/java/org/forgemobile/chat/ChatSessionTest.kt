@@ -1,6 +1,7 @@
 package org.forgemobile.chat
 
 import java.io.File
+import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -8,6 +9,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -52,8 +54,17 @@ class ChatSessionTest {
             ChatAppConfig(baseUrl = url, user = null, requestTimeoutMs = timeoutMs),
         )
 
-    private fun session(url: String): ChatSession =
-        ChatSession(app(url), scope).also { sessions += it }
+    private fun session(url: String, notifier: ChatNotifier? = null): ChatSession =
+        ChatSession(app(url), scope, notifier).also { sessions += it }
+
+    /** Records notifications; events are applied on a background dispatcher. */
+    private class RecordingNotifier : ChatNotifier {
+        val posted = CopyOnWriteArrayList<ChatNotification>()
+
+        override fun post(notification: ChatNotification) {
+            posted += notification
+        }
+    }
 
     private fun server(port: Int = 0): MockServer = MockServer.start(port).also { servers += it }
 
@@ -115,6 +126,17 @@ class ChatSessionTest {
         val list = chat.state.value.messages("general")
         assertEquals(listOf("a", "b"), list.map { it.id })
         assertEquals("edited", list[1].body)
+    }
+
+    @Test
+    fun statusChangesApplyOnlyToTheirRoom() {
+        val chat = session("http://127.0.0.1:1")
+        chat.apply(ChatEvent.MessageReceived(message("c", 30, ChatMessageStatus.SENDING)))
+        chat.apply(ChatEvent.MessageStatusChanged("general", "c", ChatMessageStatus.FAILED))
+        assertEquals(ChatMessageStatus.FAILED, chat.state.value.messages("general").last().status)
+        // Another room's event leaves this one alone.
+        chat.apply(ChatEvent.MessageStatusChanged("random", "c", ChatMessageStatus.SENT))
+        assertEquals(ChatMessageStatus.FAILED, chat.state.value.messages("general").last().status)
     }
 
     @Test
@@ -205,5 +227,70 @@ class ChatSessionTest {
         waitUntil("the room shows as closed") {
             chat.state.value.connection["general"] == ConnectionState.Closed
         }
+    }
+
+    @Test
+    fun notifyEventsBecomeNotificationsWithTheRoomTitle() {
+        val notifier = RecordingNotifier()
+        val chat = session("http://127.0.0.1:1", notifier)
+        chat.apply(ChatEvent.ConversationUpdated(ChatConversation("random", "Random", null, 0u)))
+        assertTrue("new rooms are watched", chat.app.isWatched("random"))
+
+        val incoming = message("m1", 1).copy(conversationId = "random", author = "ana", body = "psst")
+        chat.apply(ChatEvent.MessageReceived(incoming))
+        chat.apply(ChatEvent.Notify(incoming))
+        assertEquals(
+            listOf(ChatNotification("m1", "random", "Random", "ana", "psst")),
+            notifier.posted.toList(),
+        )
+    }
+
+    @Test
+    fun withoutANotifierRoomsAreNotWatched() {
+        val chat = session("http://127.0.0.1:1")
+        chat.apply(ChatEvent.ConversationUpdated(ChatConversation("random", "Random", null, 0u)))
+        assertFalse(chat.app.isWatched("random"))
+    }
+
+    @Test
+    fun othersMessagesInRoomsYouAreNotInNotify() = runBlocking {
+        val server = server()
+        val notifier = RecordingNotifier()
+        val chat = session(server.url, notifier)
+        chat.start()
+        assertEquals(listOf("general", "random", "forge"), chat.state.value.conversations.map { it.id })
+        chat.state.value.conversations.forEach {
+            assertTrue("${it.id} is watched", chat.app.isWatched(it.id))
+        }
+        chat.open("general")
+        waitUntil("connected") {
+            chat.state.value.connection["general"] == ConnectionState.Connected
+        }
+
+        // A room you are not in: a notification.
+        server.post("random", "curl", "over here")
+        waitUntil("the notification") { notifier.posted.size == 1 }
+        val first = notifier.posted[0]
+        assertEquals(ChatNotification(first.messageId, "random", "Random", "curl", "over here"), first)
+
+        // The open room, and your own messages: none.
+        server.post("general", "curl", "in the open room")
+        waitUntil("the message shows") {
+            chat.state.value.messages("general").any { it.body == "in the open room" }
+        }
+        chat.send("mine", "random")
+        waitUntil("your message is sent") {
+            chat.app.cachedMessages("random").any {
+                it.body == "mine" && it.status == ChatMessageStatus.SENT
+            }
+        }
+        assertEquals(1, notifier.posted.size)
+
+        // Leave the room: it stays live, and its news notifies again.
+        chat.close("general")
+        assertTrue(chat.app.isWatched("general"))
+        server.post("general", "curl", "after you left")
+        waitUntil("the second notification") { notifier.posted.size == 2 }
+        assertEquals("general", notifier.posted[1].conversationId)
     }
 }

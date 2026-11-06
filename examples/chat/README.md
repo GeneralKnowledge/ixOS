@@ -13,21 +13,30 @@ ConversationListView / ChatView → ChatSession → ChatBridge (ChatClient, Chat
 ```
 
 Not a production chat client. No auth, push, media, read receipts or
-encryption, and PRs adding them will be declined.
+encryption, and PRs adding them will be declined. New messages in rooms you
+are not in do show as local notifications while the app runs.
 
 ## Run it
 
-1. Start the demo server: `make mock-chat` (rooms `general`, `random`, `forge`).
-2. Run the app:
-   - **On the Mac** (quickest): `swift run --package-path examples/chat Chat`
-     after `./scripts/test-swift-host.sh examples/chat` has built the host
-     library once. The default server URL, `http://127.0.0.1:8787`, works.
-   - **On an iPhone** (device only, like the other examples):
-     `make mock-chat ARGS="--bind 0.0.0.0:8787"`, build with
-     `cargo run -p forge-cli -- build ios --project examples/chat` (or open
-     `Xcode/Chat.xcodeproj`), then tap **Server** and enter your Mac's LAN
-     address, e.g. `http://192.168.1.10:8787`. iOS asks for local network
-     access the first time.
+Like every Forge example, this builds and installs from **Linux**: xtool
+supplies the iOS toolchain (see [docs/linux-setup.md](../../docs/linux-setup.md)),
+and the app runs on a physical iPhone. A Mac is optional.
+
+1. Start the demo server so the phone can reach it:
+   `make mock-chat ARGS="--bind 0.0.0.0:8787"` (rooms `general`, `random`, `forge`).
+2. With the iPhone connected over USB, build and install:
+   `cargo run -p forge-cli -- build ios --project examples/chat`.
+3. In the app, tap **Server** and enter your computer's LAN address, e.g.
+   `http://192.168.1.10:8787`. iOS asks for local network access the first
+   time.
+
+On a Mac you can also open `Xcode/Chat.xcodeproj`, or run the app on the
+desktop with `swift run --package-path examples/chat Chat` (after
+`./scripts/test-swift-host.sh examples/chat` has built the host library once;
+the default server, `http://127.0.0.1:8787`, then works with plain
+`make mock-chat`). The Swift tests also need macOS, so CI runs them on a Mac.
+
+The Android version is [examples/chat-android](../chat-android/README.md).
 
 ## The demo interaction
 
@@ -45,6 +54,10 @@ encryption, and PRs adding them will be declined.
      -H 'Content-Type: application/json' -d '{"author":"curl","body":"hello from curl"}'
    ```
 
+7. Post the same way to `random` while General is open, or with the app on
+   the list: a notification banner shows "Random", "curl" and the text, and
+   the room's unread badge goes up. Posts to the open room don't notify.
+
 The mock server keeps everything in memory, so a restart empties it; the app
 keeps its own copy.
 
@@ -55,6 +68,7 @@ keeps its own copy.
 | Swift face of the Rust instance; the event stream as an `AsyncSequence` | `Sources/ChatBridge/ChatClient.swift` |
 | Rust `ChatError` → `ChatClientError` (`userMessage` for the UI) | `Sources/ChatBridge/ChatClientError.swift` |
 | Presentation state; applies Rust events, re-reads the store after `eventsDropped` | `Sources/ChatApp/ChatSession.swift` |
+| Local notifications | `Sources/ChatApp/LocalChatNotifier.swift` |
 | Screens | `Sources/ChatApp/ConversationListView.swift`, `ChatView.swift`, `ChatRootView.swift` |
 | Tests, including the demo against the real mock server | `Tests/ChatAppTests/` (`scripts/test-swift-host.sh examples/chat`) |
 
@@ -62,6 +76,11 @@ keeps its own copy.
 
 - **Leaving a room never cancels a send.** `ChatView` sends from a detached
   `Task`, and the bridge does not tie commands to task cancellation.
+- **Local notifications.** `ChatSession` watches every room when it has a
+  notifier, and posts Rust's `.notify` events through `LocalChatNotifier`
+  (banners in the foreground too). iOS asks for permission on first launch.
+  Only while the app runs: there is no push server. Design:
+  [docs/chat-demo.md](../../docs/chat-demo.md#notifications).
 - **Plain HTTP.** The demo server is `http://`. The Rust client opens its own
   sockets, so App Transport Security (a URLSession policy) does not apply;
   iOS local network privacy does, hence `NSLocalNetworkUsageDescription`.

@@ -52,7 +52,10 @@ final class ChatClientTests: XCTestCase {
         }
         XCTAssertEqual(first.status, .sending)
         let second = await iterator.next()
-        XCTAssertEqual(second, ChatEvent.messageStatusChanged(id: first.id, status: .failed))
+        XCTAssertEqual(
+            second,
+            ChatEvent.messageStatusChanged(
+                conversationId: first.conversationId, id: first.id, status: .failed))
     }
 
     func testEmptyMessageIsRejected() async throws {

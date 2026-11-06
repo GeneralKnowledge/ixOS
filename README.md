@@ -7,9 +7,16 @@
 
 Linux-first, Rust-first framework for building native mobile apps with **Rust** (domain logic), **UniFFI** (FFI), and thin platform hosts: **SwiftUI + xtool** (iOS) and **Jetpack Compose + Gradle** (Android).
 
-This repository (`ixOS` on GitHub) ships a working **Counter** example, developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
+This repository (`ixOS` on GitHub) ships a working **Counter** example, a networked **Weather** example (iOS), a **Chat** demo on both iOS and Android (live event stream, room subscriptions, offline retry; see [docs/chat-demo.md](docs/chat-demo.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 
 The Rust-to-Swift bridge is asynchronous: SwiftUI talks to a thin Swift layer (`CounterBridge`) that exposes Rust commands and queries as `async` calls and Rust events as an `AsyncSequence`, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
+
+<p>
+  <img src="docs/images/chat-ios-list.png" width="270" alt="Chat example on an iPhone: the conversation list">
+  <img src="docs/images/chat-ios-room.png" width="270" alt="Chat example on an iPhone: the General room, with messages sent from the phone and posted from curl">
+</p>
+
+The [Chat example](docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local mock server (the grey bubbles were posted with curl).
 
 ## Why Forge?
 
@@ -91,7 +98,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 - Device-first; simulator off by default in config.
 - iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter, Weather and template Xcode projects.
+- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter, Weather, Chat and template Xcode projects.
 - No App Store distribution in this release. Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example on both hosts ([examples/chat](examples/chat/README.md), [examples/chat-android](examples/chat-android/README.md)). Android does not initialise the HTTPS client's certificate verifier yet, so it supports `http://` servers only (Chat refuses `https://` with a typed `UnsupportedOnHost` error).
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
