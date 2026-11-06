@@ -56,7 +56,7 @@ From repository root:
 
 ```bash
 ./scripts/package-ios-library.sh examples/<Name>/Generated
-cd examples/<Name> && xtool dev run -c release
+cd examples/<Name> && xtool dev run
 ```
 
 Or use the CLI (bindings path follows `--project`):

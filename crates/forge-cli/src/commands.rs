@@ -980,18 +980,12 @@ ios_device = true
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
         build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap();
-        assert_eq!(
-            mock.call_lines().last().unwrap(),
-            "xtool dev build -c release"
-        );
+        assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
 
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
         run_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo")).unwrap();
-        assert_eq!(
-            mock.call_lines().last().unwrap(),
-            "xtool dev run -c release"
-        );
+        assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
             Some(root.join("apps/demo").as_path())

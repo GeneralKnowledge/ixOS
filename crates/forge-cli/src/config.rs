@@ -410,7 +410,15 @@ ios_simulator = false
         let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
         let mut checked = 0;
         for entry in std::fs::read_dir(&examples).unwrap() {
-            let toml = entry.unwrap().path().join("forge.toml");
+            let path = entry.unwrap().path();
+            // Tests that run `forge init` stage a template copy in examples/.<name>.forge-init.
+            if path
+                .file_name()
+                .is_some_and(|name| name.as_encoded_bytes().starts_with(b"."))
+            {
+                continue;
+            }
+            let toml = path.join("forge.toml");
             if !toml.is_file() {
                 continue;
             }

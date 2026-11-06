@@ -41,10 +41,9 @@ pub struct XtoolBuilder;
 
 const XTOOL: &str = "xtool";
 
-// Both commands build in release: with Swift 6.2 and the iOS 18 SDK from Xcode 16,
-// a debug build of any example fails to link with `undefined symbol:
-// swift_coroFrameAlloc`. Release gets Chat and Weather past it, but not Counter
-// (docs/troubleshooting.md).
+// Both commands use xtool's default debug configuration. With Swift 6.2 this needs
+// the Darwin SDK from Xcode 26; the iOS 18 SDK from Xcode 16 fails to link with
+// `undefined symbol: swift_coroFrameAlloc` (docs/troubleshooting.md).
 
 impl IosBuilder for XtoolBuilder {
     fn name(&self) -> &'static str {
@@ -63,9 +62,7 @@ impl IosBuilder for XtoolBuilder {
         self.ensure_available(runner)?;
         run_checked(
             runner,
-            Cmd::new(XTOOL)
-                .args(["dev", "build", "-c", "release"])
-                .cwd(project_dir),
+            Cmd::new(XTOOL).args(["dev", "build"]).cwd(project_dir),
         )
     }
 
@@ -73,9 +70,7 @@ impl IosBuilder for XtoolBuilder {
         self.ensure_available(runner)?;
         run_checked(
             runner,
-            Cmd::new(XTOOL)
-                .args(["dev", "run", "-c", "release"])
-                .cwd(project_dir),
+            Cmd::new(XTOOL).args(["dev", "run"]).cwd(project_dir),
         )
     }
 
