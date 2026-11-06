@@ -47,7 +47,7 @@ fn harness() -> Harness {
 impl Harness {
     /// Waits for the first event matching `pred`, returning it and every
     /// event before it.
-    fn wait_for(&self, what: &str, pred: impl Fn(&ChatEvent) -> bool) -> Vec<ChatEvent> {
+    fn wait_for(&self, what: &str, mut pred: impl FnMut(&ChatEvent) -> bool) -> Vec<ChatEvent> {
         let deadline = Instant::now() + WAIT;
         let mut seen = Vec::new();
         loop {
@@ -97,9 +97,10 @@ fn failed_in(client: &ChatClient, room: &str) -> Message {
     failed.into_iter().next().unwrap()
 }
 
-fn status_event(id: &str, status: MessageStatus) -> ChatEvent {
+fn status_event(message: &Message, status: MessageStatus) -> ChatEvent {
     ChatEvent::MessageStatusChanged {
-        id: id.into(),
+        conversation_id: message.conversation_id.clone(),
+        id: message.id.clone(),
         status,
     }
 }
@@ -119,7 +120,7 @@ fn send_goes_sending_then_sent() {
     };
     assert_eq!(first.status, MessageStatus::Sending);
     assert_eq!(first.id, sent.id);
-    assert_eq!(events[1], status_event(&sent.id, MessageStatus::Sent));
+    assert_eq!(events[1], status_event(&sent, MessageStatus::Sent));
     assert!(
         matches!(&events[2], ChatEvent::ConversationUpdated(c) if c.last_message_at == Some(sent.sent_at))
     );
@@ -160,7 +161,7 @@ fn failed_send_is_typed_and_retry_is_idempotent() {
     let events = h.drain();
     assert_eq!(
         events.last(),
-        Some(&status_event(&failed.id, MessageStatus::Failed))
+        Some(&status_event(&failed, MessageStatus::Failed))
     );
 
     // Still offline: retry fails again, back to Failed.
@@ -168,8 +169,8 @@ fn failed_send_is_typed_and_retry_is_idempotent() {
     assert_eq!(
         h.drain(),
         vec![
-            status_event(&failed.id, MessageStatus::Sending),
-            status_event(&failed.id, MessageStatus::Failed),
+            status_event(&failed, MessageStatus::Sending),
+            status_event(&failed, MessageStatus::Failed),
         ]
     );
 
@@ -282,7 +283,7 @@ fn own_message_echo_is_merged_not_duplicated() {
         .count();
     let sent_changes = events
         .iter()
-        .filter(|e| **e == status_event(&sent.id, MessageStatus::Sent))
+        .filter(|e| **e == status_event(&sent, MessageStatus::Sent))
         .count();
     assert_eq!((received, sent_changes), (1, 1), "{events:#?}");
     assert_eq!(h.client.cached_messages("general").len(), 1);
@@ -524,14 +525,14 @@ fn killer_demo_interaction() {
     assert!(err.is_network());
     let failed = failed_in(&h.client, "general");
     h.wait_for("Failed status", |e| {
-        *e == status_event(&failed.id, MessageStatus::Failed)
+        *e == status_event(&failed, MessageStatus::Failed)
     });
 
     // 5. Restart the server, tap to retry: Sending → Sent.
     h.repo.set_offline(false);
     h.client.retry_message(&failed.id).unwrap();
     h.wait_for("Sent after retry", |e| {
-        *e == status_event(&failed.id, MessageStatus::Sent)
+        *e == status_event(&failed, MessageStatus::Sent)
     });
     h.wait_connected("general");
 
@@ -560,4 +561,145 @@ fn killer_demo_interaction() {
     );
     h.client.shutdown();
     wait_until("pumps exited", || h.client.live_pumps() == 0);
+}
+
+/// Harness whose server never sends heartbeats: an idle stream blocks in
+/// `next_event` until something cancels it.
+fn silent_harness() -> Harness {
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[
+        ("general", "General"),
+        ("random", "Random"),
+    ]));
+    repo.set_heartbeats(false);
+    harness_with(repo, ChatStore::in_memory())
+}
+
+/// Well under any heartbeat interval a real server would use (the mock
+/// server's default is 15 s), so passing means the cancel woke the pump.
+const PROMPT: Duration = Duration::from_secs(2);
+
+fn wait_promptly(what: &str, cond: impl Fn() -> bool) {
+    let started = Instant::now();
+    while !cond() {
+        assert!(started.elapsed() < PROMPT, "not prompt: {what}");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[test]
+fn unsubscribe_ends_a_silent_stream_without_a_heartbeat() {
+    let h = silent_harness();
+    h.client.subscribe("general").unwrap();
+    h.wait_connected("general");
+    // Let the pump finish catch-up and block in next_event.
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(h.repo.open_stream_count(), 1);
+
+    h.client.unsubscribe("general").unwrap();
+    wait_promptly("the pump exits", || h.client.live_pumps() == 0);
+    wait_promptly("the stream closes", || h.repo.open_stream_count() == 0);
+}
+
+#[test]
+fn cancelling_one_room_leaves_the_other_streaming() {
+    let h = silent_harness();
+    h.client.subscribe("general").unwrap();
+    h.client.subscribe("random").unwrap();
+    wait_until("both streams are open", || h.repo.open_stream_count() == 2);
+    // Both pumps are past catch-up once both have connected.
+    let mut connected = 0;
+    h.wait_for("both rooms connected", |e| {
+        if matches!(e, ChatEvent::StreamConnected { .. }) {
+            connected += 1;
+        }
+        connected == 2
+    });
+
+    h.client.unsubscribe("general").unwrap();
+    wait_promptly("general's pump exits", || h.client.live_pumps() == 1);
+    assert_eq!(h.repo.open_stream_count(), 1);
+    assert!(h.client.is_subscribed("random"));
+
+    let incoming = h.repo.inject("random", "ana", "still here");
+    let seen = h.wait_for(
+        "the message in the room still open",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == incoming.id),
+    );
+    // No disconnect or retry for the room that stayed open.
+    assert!(
+        !seen.iter().any(|e| matches!(
+            e,
+            ChatEvent::StreamDisconnected { conversation_id, .. } if conversation_id == "random"
+        )),
+        "{seen:#?}"
+    );
+    h.client.unsubscribe("random").unwrap();
+    wait_promptly("random's pump exits", || h.client.live_pumps() == 0);
+}
+
+#[test]
+fn shutdown_ends_every_silent_stream_promptly() {
+    let h = silent_harness();
+    h.client.subscribe("general").unwrap();
+    h.client.subscribe("random").unwrap();
+    wait_until("both streams are open", || h.repo.open_stream_count() == 2);
+    // Both pumps are past catch-up once both have connected.
+    let mut connected = 0;
+    h.wait_for("both rooms connected", |e| {
+        if matches!(e, ChatEvent::StreamConnected { .. }) {
+            connected += 1;
+        }
+        connected == 2
+    });
+
+    h.client.shutdown();
+    wait_promptly("every pump exits", || h.client.live_pumps() == 0);
+    wait_promptly("every stream closes", || h.repo.open_stream_count() == 0);
+}
+
+#[test]
+fn unsubscribe_wakes_a_pump_in_a_long_backoff() {
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
+    repo.set_offline(true);
+    let (tx, events) = mpsc::channel();
+    let config = ChatConfig {
+        reconnect_initial: Duration::from_secs(60),
+        reconnect_max: Duration::from_secs(60),
+        ..fast_config()
+    };
+    let client = ChatClient::open(repo.clone(), ChatStore::in_memory(), config, move |e| {
+        let _ = tx.send(e);
+    })
+    .unwrap();
+    let h = Harness {
+        repo,
+        client,
+        events,
+    };
+    h.client.subscribe("general").unwrap();
+    h.wait_for("the outage", |e| {
+        matches!(
+            e,
+            ChatEvent::StreamDisconnected {
+                will_retry: true,
+                ..
+            }
+        )
+    });
+    h.client.unsubscribe("general").unwrap();
+    wait_promptly("the pump leaves its 60 s backoff", || {
+        h.client.live_pumps() == 0
+    });
+}
+
+#[test]
+fn repeated_subscribe_cycles_leak_no_threads_or_streams() {
+    let h = silent_harness();
+    for _ in 0..25 {
+        h.client.subscribe("general").unwrap();
+        h.wait_connected("general");
+        h.client.unsubscribe("general").unwrap();
+    }
+    wait_promptly("every pump exits", || h.client.live_pumps() == 0);
+    wait_promptly("every stream closes", || h.repo.open_stream_count() == 0);
 }

@@ -5671,7 +5671,8 @@ public object FfiConverterTypeChatError : FfiConverterRustBuffer<ChatException> 
 
 /**
  * What the host should render. One stream per app instance, for every
- * room; filter by `conversation_id` (or, for status changes, message id).
+ * room; filter by `conversation_id`. Every event except `EventsDropped`
+ * names the room it is about.
  */
 sealed class ChatEvent {
     
@@ -5697,7 +5698,12 @@ sealed class ChatEvent {
         companion object
     }
     
+    /**
+     * A known message changed status. Re-read `conversation_id`'s messages
+     * (a `Sent` message also carries the server's time and may move).
+     */
     data class MessageStatusChanged(
+        val `conversationId`: kotlin.String, 
         val `id`: kotlin.String, 
         val `status`: uniffi.forge_ffi.ChatMessageStatus) : ChatEvent()
         
@@ -5769,6 +5775,7 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
                 )
             3 -> ChatEvent.MessageStatusChanged(
                 FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
                 FfiConverterTypeChatMessageStatus.read(buf),
                 )
             4 -> ChatEvent.StreamConnected(
@@ -5805,6 +5812,7 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
             // Add the size for the Int that specifies the variant plus the size needed for all fields
             (
                 4UL
+                + FfiConverterString.allocationSize(value.`conversationId`)
                 + FfiConverterString.allocationSize(value.`id`)
                 + FfiConverterTypeChatMessageStatus.allocationSize(value.`status`)
             )
@@ -5848,6 +5856,7 @@ public object FfiConverterTypeChatEvent : FfiConverterRustBuffer<ChatEvent>{
             }
             is ChatEvent.MessageStatusChanged -> {
                 buf.putInt(3)
+                FfiConverterString.write(value.`conversationId`, buf)
                 FfiConverterString.write(value.`id`, buf)
                 FfiConverterTypeChatMessageStatus.write(value.`status`, buf)
                 Unit

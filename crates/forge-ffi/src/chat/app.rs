@@ -424,6 +424,7 @@ mod tests {
         assert_eq!(sent.status, ChatMessageStatus::Sent);
         let seen = next_matching(&events, |e| {
             *e == ChatEvent::MessageStatusChanged {
+                conversation_id: "general".into(),
                 id: sent.id.clone(),
                 status: ChatMessageStatus::Sent,
             }

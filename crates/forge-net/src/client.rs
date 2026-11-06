@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+use crate::cancel::CancelHandle;
 use crate::types::{Method, NetError, Request, Response, StreamingResponse};
 
 /// Narrow networking interface. A real transport (Rust HTTP library, or a
@@ -28,6 +29,32 @@ pub trait HttpClient: Send + Sync {
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
         self.send(request).map(StreamingResponse::from)
     }
+
+    /// [`open_stream`](HttpClient::open_stream) that `cancel` can stop at
+    /// any point: while connecting (the call fails with
+    /// [`NetError::Cancelled`]) or while the body is being read (the read
+    /// fails with [`crate::cancelled_io_error`], promptly, even if it was
+    /// blocked waiting for a silent server).
+    ///
+    /// The default implementation checks `cancel` before connecting and
+    /// before every body read, which is enough for test doubles whose bodies
+    /// never block. A transport whose reads can block must override it and
+    /// register an abort hook with [`CancelHandle::on_cancel`] that unblocks
+    /// them (`UreqClient` shuts the socket down).
+    fn open_stream_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<StreamingResponse, NetError> {
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        let response = self.open_stream(request)?;
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        Ok(response.cancel_on(cancel))
+    }
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
@@ -38,6 +65,14 @@ impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
         (**self).open_stream(request)
     }
+
+    fn open_stream_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<StreamingResponse, NetError> {
+        (**self).open_stream_cancellable(request, cancel)
+    }
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
@@ -47,6 +82,14 @@ impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
 
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
         (**self).open_stream(request)
+    }
+
+    fn open_stream_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<StreamingResponse, NetError> {
+        (**self).open_stream_cancellable(request, cancel)
     }
 }
 
@@ -208,6 +251,35 @@ mod tests {
                 .unwrap_err(),
             NetError::Unavailable
         );
+    }
+
+    #[test]
+    fn default_cancellable_stream_honours_cancel() {
+        use std::io::Read;
+        let client = StaticClient::new().route(
+            Method::Get,
+            "https://example.com/stream",
+            Ok(Response::new(200, "data: hi\n\n")),
+        );
+        let request = Request::get("https://example.com/stream");
+
+        let cancelled = CancelHandle::new();
+        cancelled.cancel();
+        assert_eq!(
+            client
+                .open_stream_cancellable(&request, &cancelled)
+                .unwrap_err(),
+            NetError::Cancelled
+        );
+
+        let cancel = CancelHandle::new();
+        let mut stream = client.open_stream_cancellable(&request, &cancel).unwrap();
+        let mut first = [0u8; 4];
+        stream.body.read_exact(&mut first).unwrap();
+        assert_eq!(&first, b"data");
+        cancel.cancel();
+        let err = stream.body.read(&mut first).unwrap_err();
+        assert!(crate::is_cancelled_io_error(&err), "{err:?}");
     }
 
     #[test]

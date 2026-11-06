@@ -156,20 +156,19 @@ public final class ChatSession: ObservableObject {
             }
             list.sort { ($0.sentAt, $0.id) < ($1.sentAt, $1.id) }
             messages[message.conversationId] = list
-        case let .messageStatusChanged(id, status):
-            for (room, list) in messages {
-                guard let index = list.firstIndex(where: { $0.id == id }) else { continue }
-                // Re-read from the store: a `.sent` message also carries the
-                // server's time and may move.
-                let stored = client.cachedMessages(in: room)
-                if stored.contains(where: { $0.id == id }) {
-                    messages[room] = stored
-                } else {
-                    var updated = list
-                    updated[index].status = status
-                    messages[room] = updated
-                }
-                break
+        case let .messageStatusChanged(room, id, status):
+            // Only a room whose messages are loaded needs updating.
+            guard var list = messages[room],
+                let index = list.firstIndex(where: { $0.id == id })
+            else { break }
+            // Re-read from the store: a `.sent` message also carries the
+            // server's time and may move.
+            let stored = client.cachedMessages(in: room)
+            if stored.contains(where: { $0.id == id }) {
+                messages[room] = stored
+            } else {
+                list[index].status = status
+                messages[room] = list
             }
         case let .streamConnected(conversationId):
             connection[conversationId] = .connected

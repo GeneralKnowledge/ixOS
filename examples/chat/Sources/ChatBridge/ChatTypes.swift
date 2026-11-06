@@ -12,14 +12,15 @@ public typealias ChatEvent = ForgeFFI.ChatEvent
 
 extension ChatEvent {
     /// The room this event is about, if it is about one room.
-    /// `messageStatusChanged` and `eventsDropped` carry none.
+    /// Only `eventsDropped` carries none.
     public var conversationId: String? {
         switch self {
         case let .conversationUpdated(conversation): return conversation.id
         case let .messageReceived(message): return message.conversationId
         case let .streamConnected(conversationId): return conversationId
         case let .streamDisconnected(conversationId, _, _): return conversationId
-        case .messageStatusChanged, .eventsDropped: return nil
+        case let .messageStatusChanged(conversationId, _, _): return conversationId
+        case .eventsDropped: return nil
         }
     }
 }

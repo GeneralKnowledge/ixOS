@@ -13,22 +13,27 @@
 //!   subscription and emits `StreamDisconnected { will_retry: false }` under
 //!   the lock; after it returns **no event from that pump is ever emitted**
 //!   (each pump checks it is still the current subscription, under the same
-//!   lock, before every change). The pump thread itself stops at its next
-//!   wake-up: the next stream event or heartbeat, or the end of a backoff
-//!   slice. A blocked read cannot be interrupted (ureq has no cancel), which
-//!   is why the server sends heartbeats. [`ChatClient::live_pumps`] counts
-//!   pump threads still running, so tests can prove they end.
+//!   lock, before every change). Each subscription owns a
+//!   [`forge_net::CancelHandle`]; ending the subscription cancels it, which
+//!   closes the room's connection (a read blocked on a silent stream fails
+//!   at once), aborts a connect in progress and wakes a reconnect backoff.
+//!   So the pump thread exits promptly without waiting for a heartbeat, and
+//!   other rooms' connections are untouched. [`ChatClient::live_pumps`]
+//!   counts pump threads still running, so tests can prove they end.
 //! * Leaving a room does not cancel a send in flight: the send finishes and
-//!   its `MessageStatusChanged` is still emitted (the host filters by room).
+//!   its `MessageStatusChanged` is still emitted (it names the room, so the
+//!   host can ignore it or update that room's list).
 //! * Every message carries a client-chosen id, so retries are idempotent on
 //!   the server and the stream echo of our own message is matched to the
 //!   local bubble instead of appearing twice.
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use forge_net::CancelHandle;
 
 use crate::now_ms;
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent};
@@ -37,9 +42,6 @@ use crate::types::{ChatError, ChatEvent, Conversation, Message, MessageStatus};
 
 /// Longest message body accepted, in characters.
 pub const MAX_BODY_CHARS: usize = 4000;
-
-/// How long a pump sleeps between checks while backing off.
-const BACKOFF_SLICE: Duration = Duration::from_millis(10);
 
 #[derive(Debug, Clone)]
 pub struct ChatConfig {
@@ -99,12 +101,13 @@ struct State {
 
 struct Subscription {
     conversation_id: String,
-    cancelled: AtomicBool,
+    /// Cancelled when the subscription ends; closes its live connection.
+    cancel: CancelHandle,
 }
 
 impl Subscription {
     fn is_cancelled(&self) -> bool {
-        self.cancelled.load(Ordering::SeqCst)
+        self.cancel.is_cancelled()
     }
 }
 
@@ -338,6 +341,7 @@ impl ChatClient {
                 .expect("message exists");
             self.inner.persist(&mut state);
             self.inner.emit(ChatEvent::MessageStatusChanged {
+                conversation_id: message.conversation_id.clone(),
                 id: message.id.clone(),
                 status: MessageStatus::Sending,
             });
@@ -359,7 +363,7 @@ impl ChatClient {
             }
             let subscription = Arc::new(Subscription {
                 conversation_id: conversation_id.into(),
-                cancelled: AtomicBool::new(false),
+                cancel: CancelHandle::new(),
             });
             state
                 .subscriptions
@@ -397,7 +401,7 @@ impl ChatClient {
     pub fn unsubscribe(&self, conversation_id: &str) -> Result<(), ChatError> {
         let mut state = self.inner.lock();
         if let Some(subscription) = state.subscriptions.remove(conversation_id) {
-            subscription.cancelled.store(true, Ordering::SeqCst);
+            subscription.cancel.cancel();
             self.inner.emit(ChatEvent::StreamDisconnected {
                 conversation_id: conversation_id.into(),
                 reason: "unsubscribed".into(),
@@ -418,7 +422,7 @@ impl ChatClient {
         let mut ended: Vec<_> = state.subscriptions.drain().collect();
         ended.sort_by(|a, b| a.0.cmp(&b.0));
         for (conversation_id, subscription) in ended {
-            subscription.cancelled.store(true, Ordering::SeqCst);
+            subscription.cancel.cancel();
             self.inner.emit(ChatEvent::StreamDisconnected {
                 conversation_id,
                 reason: "shut down".into(),
@@ -531,6 +535,7 @@ impl Inner {
                     self.emit(ChatEvent::MessageReceived(message));
                 }
                 Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
+                    conversation_id: message.conversation_id,
                     id: message.id,
                     status: MessageStatus::Sent,
                 }),
@@ -585,6 +590,7 @@ impl Inner {
                 if !shut_down {
                     match outcome {
                         Upsert::StatusChanged => self.emit(ChatEvent::MessageStatusChanged {
+                            conversation_id: stored.conversation_id.clone(),
                             id: stored.id.clone(),
                             status: MessageStatus::Sent,
                         }),
@@ -621,6 +627,7 @@ impl Inner {
                     return Err(ChatError::Cancelled);
                 }
                 self.emit(ChatEvent::MessageStatusChanged {
+                    conversation_id: message.conversation_id,
                     id: message.id,
                     status: MessageStatus::Failed,
                 });
@@ -650,7 +657,7 @@ impl Inner {
     fn end_subscription(&self, subscription: &Arc<Subscription>, reason: String) {
         self.with_current(subscription, |inner, state| {
             state.subscriptions.remove(&subscription.conversation_id);
-            subscription.cancelled.store(true, Ordering::SeqCst);
+            subscription.cancel.cancel();
             inner.emit(ChatEvent::StreamDisconnected {
                 conversation_id: subscription.conversation_id.clone(),
                 reason,
@@ -669,17 +676,10 @@ impl Inner {
         })
     }
 
-    /// Sleeps for `delay`, waking early if the subscription ends. `false`
+    /// Sleeps for `delay`, waking as soon as the subscription ends. `false`
     /// if it ended.
     fn backoff(&self, subscription: &Subscription, delay: Duration) -> bool {
-        let deadline = Instant::now() + delay;
-        while Instant::now() < deadline {
-            if subscription.is_cancelled() {
-                return false;
-            }
-            thread::sleep(BACKOFF_SLICE.min(deadline.saturating_duration_since(Instant::now())));
-        }
-        !subscription.is_cancelled()
+        !subscription.cancel.wait_timeout(delay)
     }
 
     /// The pump: connect, catch up, follow the stream; on failure back off
@@ -692,7 +692,7 @@ impl Inner {
         let mut outage_reported = false;
 
         while !subscription.is_cancelled() {
-            match self.repo.open_stream(&room) {
+            match self.repo.open_stream(&room, &subscription.cancel) {
                 Ok(mut stream) => {
                     let connected = self.with_current(&subscription, |inner, _| {
                         inner.emit(ChatEvent::StreamConnected {
