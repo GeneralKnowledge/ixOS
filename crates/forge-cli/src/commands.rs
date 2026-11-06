@@ -112,32 +112,6 @@ fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
     ForgeConfig::parse(&content)
 }
 
-pub fn doctor(runner: &dyn CommandRunner, root: &Path) -> Result<(), String> {
-    let validate = root.join("scripts/validate-toolchain.sh");
-    if validate.exists() {
-        run_checked(runner, script(root, "validate-toolchain.sh"))?;
-    } else {
-        println!("Forge workspace root: {}", root.display());
-        for (program, args) in [
-            ("rustc", &["--version"][..]),
-            ("cargo", &["--version"]),
-            ("swift", &["--version"]),
-            ("xtool", &["--version"]),
-        ] {
-            try_version(runner, program, args);
-        }
-    }
-    Ok(())
-}
-
-fn try_version(runner: &dyn CommandRunner, program: &str, args: &[&str]) {
-    match runner.capture(&Cmd::new(program).args(args)) {
-        Ok(out) if out.status.success() => print!("{}", String::from_utf8_lossy(&out.stdout)),
-        Ok(out) => println!("{program}: {}", String::from_utf8_lossy(&out.stderr).trim()),
-        Err(e) => println!("{program}: not available ({e})"),
-    }
-}
-
 pub fn init(
     runner: &dyn CommandRunner,
     root: &Path,
@@ -1253,15 +1227,6 @@ ios_device = true
         mock.respond("adb", 0, "List of devices attached\n");
         devices(&mock, &XtoolBuilder).unwrap();
         assert!(mock.call_lines().contains(&"adb devices -l".to_string()));
-    }
-
-    #[test]
-    fn doctor_runs_the_toolchain_script() {
-        let root = workspace_root();
-        let mock = MockRunner::default();
-        mock.respond("bash", 0, "");
-        doctor(&mock, &root).unwrap();
-        assert!(mock.call_lines()[0].ends_with("scripts/validate-toolchain.sh"));
     }
 
     #[test]

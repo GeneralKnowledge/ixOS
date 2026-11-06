@@ -8,11 +8,11 @@ Last reviewed: 2026-11-06.
 
 ## Near term
 
-### Developer CLI polish — In progress
+### Developer CLI polish — Done, follow-ups open
 
-- Done: `forge init --path <dir>` creates apps outside the checkout, and each new app owns its Rust logic in its own crate (`rust/`, built on `forge-runtime`; see [app-crate.md](app-crate.md)). CI creates apps outside the checkout and tests, builds and packages them. Still open: publishing the runtime crates so an app needs no Forge checkout at all (see "Not planned" below).
-- `forge check`: one command that runs the local CI matrix (workspace tests, rustfmt, binding drift, Android JVM unit tests where a JDK and SDK are present). Until it lands, `make validate` plus `make test-android-host` covers the same ground.
-- `forge doctor --json`: machine-readable toolchain report for CI and scripts.
+Done: `forge init --path`, with each app owning its Rust crate ([app-crate.md](app-crate.md)); `forge check` (the local CI matrix); `forge doctor`, which reports what each workflow needs with a fix for each missing piece, and `--json` for CI; `forge bindings generate --project`; and `--project` (for build, run and bindings) defaulting to the current app directory.
+
+Open: `forge doctor` does not check device pairing, signing or SDK licences yet.
 
 ### AGP / Gradle stabilization — Planned
 
@@ -30,7 +30,7 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 - **Pin what is tested.** [compatibility.md](compatibility.md) lists the xtool, Swift and Xcode versions that have been exercised, and which ones have only been installed but not run end to end.
 - **Record real runs.** A version is promoted to "verified" only after the manual device checklist in [toolchain-validation.md](toolchain-validation.md) passes with it.
-- **Isolate xtool.** The iOS build steps are being moved behind an `IosBuilder` trait in `forge-cli` (**In progress**), so an xtool break, or a second backend (plain `xcodebuild` on macOS), touches one module instead of the whole CLI.
+- **Isolate xtool.** The iOS build steps sit behind an `IosBuilder` trait in `forge-cli` (done), so an xtool break, or a second backend (plain `xcodebuild` on macOS), touches one module instead of the whole CLI.
 - **macOS stays a supported path.** CI already builds the Xcode projects on `macos-15`, so a Mac with Xcode is the fallback when an xtool release regresses.
 
 ## Medium term
@@ -56,7 +56,7 @@ Good first project for someone with a Mac.
 
 ### Store distribution (App Store, Google Play) — Open
 
-Not in this release. Today the CLI produces development builds (an xtool release-configuration build signed for your device on iOS, a debug APK for Android). Release distribution needs:
+Not in this release. Today the CLI produces development builds (an xtool debug build signed for your own device on iOS, a debug APK for Android; see [builds.md](builds.md)). Release distribution needs:
 
 - **Android:** release build type, signing config read from the environment (never committed), an `.aab` bundle, and R8/minification rules that keep JNA and the generated bindings.
 - **iOS:** an archive and export path. App Store submission needs a distribution certificate and provisioning profile; whether xtool can produce a submission-ready build on Linux has not been verified, so the first deliverable is a documented macOS `xcodebuild archive` path.

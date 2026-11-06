@@ -127,7 +127,7 @@ Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app
 ### Toolchain validation / `doctor` **[stated in docs]**
 
 - Reports Rust, Swift, xtool, targets, bindgen availability, SDK presence, device/auth blockers (`docs/toolchain-validation.md`, `scripts/validate-toolchain.sh` referenced).
-- `forge doctor` delegates to validation script when present (`docs/architecture.md` implies wrapper).
+- `forge doctor` reports readiness per workflow (Rust; iOS from Linux via xtool; Android) with a fix for each missing piece; `--json` gives the same report for CI (`crates/forge-cli/src/doctor.rs`).
 - CI on hosted Linux: fmt, clippy, tests, binding drift — **not** full iOS link/device (`README.md` Known limitations, `docs/linux-setup.md`).
 
 ### Honesty constraints **[stated in docs]**

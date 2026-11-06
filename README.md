@@ -26,22 +26,27 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
 ## Quick start (Linux)
 
-1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/), and [xtool](https://github.com/xtool-org/xtool) — see [docs/linux-setup.md](docs/linux-setup.md).
-2. Run `xtool setup` with your **Xcode.xip** (Xcode 26) to install the Darwin SDK.
-3. Validate: `./scripts/validate-toolchain.sh`. If anything fails, [docs/toolchain-validation.md](docs/toolchain-validation.md) lists the verified commands and known blockers, and [docs/compatibility.md](docs/compatibility.md) the tested versions.
-4. Test Rust: `cargo test --workspace`
-5. Generate bindings: `./scripts/generate-bindings.sh`
-6. Build Counter for iOS: `cargo run -p forge-cli -- build ios --project examples/counter`
+1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/) and [xtool](https://github.com/xtool-org/xtool), then run `xtool setup` with an **Xcode.xip** (Xcode 26) to install the Darwin SDK. See [docs/linux-setup.md](docs/linux-setup.md). For Android, install the SDK, NDK and `cargo-ndk` ([docs/android-setup.md](docs/android-setup.md)).
+2. Install the CLI and check the machine: `cargo install --path crates/forge-cli --locked`, then `forge doctor`. It reports which workflows are ready (Rust, iOS from Linux with xtool, Android) and how to fix each missing piece.
+3. Create an app outside the checkout. It gets its own Rust crate for your logic:
+
+   ```bash
+   forge init MyApp --bundle-id org.example.myapp --path ~/projects/MyApp   # add --platform android for Android
+   cd ~/projects/MyApp
+   cargo test --manifest-path rust/Cargo.toml   # your Rust, tested on Linux
+   forge run ios --project .                    # build with xtool, install and launch on a connected iPhone
+   forge build android --project . --install    # (Android app) debug APK on a connected phone
+   ```
+
+4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screen. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md).
+
+To try the bundled examples instead: `forge run ios --project examples/chat` (start `make mock-chat` first), or `forge build android --project examples/chat-android --install`.
+
+[docs/builds.md](docs/builds.md) lists what each build produces: xtool or Xcode, device or simulator, debug or release, and what is not supported yet. A Mac with Xcode works too ([docs/ios-xcode.md](docs/ios-xcode.md)) but is never required.
 
 Contributing? [CONTRIBUTING.md](CONTRIBUTING.md) starts with a three-command path to a green local build.
 
-Android (SDK + NDK on Linux) — see [docs/android-setup.md](docs/android-setup.md):
-
-```bash
-cargo run -p forge-cli -- build android --project examples/counter-android
-```
-
-CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, and validates the **Xcode project layout** for the Counter example. Full iOS device builds and Xcode compilation require macOS (see [docs/ios-xcode.md](docs/ios-xcode.md)); Linux iOS builds still use the Darwin SDK via xtool.
+CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app outside the checkout, Android JVM tests and a **debug APK**. On macOS it runs the Swift host tests and unsigned `xcodebuild` builds of every Xcode project. Physical devices are checked by hand ([docs/toolchain-validation.md](docs/toolchain-validation.md)).
 
 ## Repository layout
 
@@ -68,8 +73,8 @@ docs/                  # Architecture, setup, validation
 ## Forge CLI
 
 ```bash
-cargo run -p forge-cli -- doctor
-cargo run -p forge-cli -- doctor --json   # machine-readable report for CI and scripts
+cargo run -p forge-cli -- doctor          # what this machine can build, with a fix for each missing piece
+cargo run -p forge-cli -- doctor --json   # the same report as JSON, for CI and scripts
 cargo run -p forge-cli -- check           # full local CI matrix (or: make check)
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios
 cargo run -p forge-cli -- init MyApp --path ~/projects/MyApp      # create the app outside the workspace
@@ -99,10 +104,11 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 ## Known limitations
 
-- Device-first; simulator off by default in config.
-- iOS Rust linking requires xtool’s Darwin SDK (Xcode.xip).
-- GitHub Actions CI runs Rust + binding checks, Android JVM unit tests and a **debug APK** build, and on macOS the Swift host tests plus an unsigned `xcodebuild` of the Counter, Weather, Chat and template Xcode projects.
-- No App Store distribution in this release. Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example on both hosts ([examples/chat](examples/chat/README.md), [examples/chat-android](examples/chat-android/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
+- iOS builds are device-only: no iOS Simulator support yet. Linux iOS builds need xtool's Darwin SDK (from an Xcode.xip).
+- Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)).
+- Apps need a Forge checkout on the same machine: the runtime crates are not published to crates.io yet.
+- Android has not yet been validated on a physical phone; CI builds the APK and runs the JVM tests.
+- Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example on both hosts ([examples/chat](examples/chat/README.md), [examples/chat-android](examples/chat-android/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

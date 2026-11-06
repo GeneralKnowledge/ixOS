@@ -67,7 +67,8 @@ swift sdk list
 ```bash
 git clone <repo>
 cd ixOS   # repository name; product is Forge Mobile
-./scripts/validate-toolchain.sh
+cargo install --path crates/forge-cli --locked
+forge doctor     # "iOS from Linux (xtool, device builds): ready", or a fix for each missing piece
 cargo test --workspace
 ./scripts/generate-bindings.sh
 ```

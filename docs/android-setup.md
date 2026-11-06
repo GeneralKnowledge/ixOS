@@ -24,9 +24,8 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ## Validate
 
 ```bash
-forge doctor
-# or
-./scripts/validate-toolchain.sh
+forge doctor     # "Android (Gradle, debug APK): ready", or a fix for each missing piece
+# lower-level checks:
 ./scripts/validate-android-toolchain.sh
 ```
 
