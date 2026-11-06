@@ -17,17 +17,25 @@ encryption, and PRs adding them will be declined.
 
 ## Run it
 
-1. Start the demo server: `make mock-chat` (rooms `general`, `random`, `forge`).
-2. Run the app:
-   - **On the Mac** (quickest): `swift run --package-path examples/chat Chat`
-     after `./scripts/test-swift-host.sh examples/chat` has built the host
-     library once. The default server URL, `http://127.0.0.1:8787`, works.
-   - **On an iPhone** (device only, like the other examples):
-     `make mock-chat ARGS="--bind 0.0.0.0:8787"`, build with
-     `cargo run -p forge-cli -- build ios --project examples/chat` (or open
-     `Xcode/Chat.xcodeproj`), then tap **Server** and enter your Mac's LAN
-     address, e.g. `http://192.168.1.10:8787`. iOS asks for local network
-     access the first time.
+Like every Forge example, this builds and installs from **Linux**: xtool
+supplies the iOS toolchain (see [docs/linux-setup.md](../../docs/linux-setup.md)),
+and the app runs on a physical iPhone. A Mac is optional.
+
+1. Start the demo server so the phone can reach it:
+   `make mock-chat ARGS="--bind 0.0.0.0:8787"` (rooms `general`, `random`, `forge`).
+2. With the iPhone connected over USB, build and install:
+   `cargo run -p forge-cli -- build ios --project examples/chat`.
+3. In the app, tap **Server** and enter your computer's LAN address, e.g.
+   `http://192.168.1.10:8787`. iOS asks for local network access the first
+   time.
+
+On a Mac you can also open `Xcode/Chat.xcodeproj`, or run the app on the
+desktop with `swift run --package-path examples/chat Chat` (after
+`./scripts/test-swift-host.sh examples/chat` has built the host library once;
+the default server, `http://127.0.0.1:8787`, then works with plain
+`make mock-chat`). The Swift tests also need macOS, so CI runs them on a Mac.
+
+The Android version is [examples/chat-android](../chat-android/README.md).
 
 ## The demo interaction
 

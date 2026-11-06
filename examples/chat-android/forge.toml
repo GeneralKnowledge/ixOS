@@ -7,7 +7,7 @@ min_sdk = 26
 abis = ["arm64-v8a", "x86_64"]
 
 [rust]
-core_crate = "chat-core"
+core_crate = "forge-core"
 ffi_crate = "forge-ffi"
 
 [build]
