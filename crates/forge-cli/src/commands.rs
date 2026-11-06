@@ -429,6 +429,8 @@ fn validate_ios_template(template: &Path) -> Result<(), String> {
         "forge.toml",
         "xtool.yml",
         "Sources/AppHostLauncher/AppMain.swift",
+        "Sources/AppHostXtoolApp/AppMain.swift",
+        "Info.plist",
         "Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
     ] {
         let p = template.join(rel);
@@ -583,6 +585,7 @@ fn is_text_template(path: &Path) -> bool {
                 | "xml"
                 | "properties"
                 | "xcscheme"
+                | "plist"
         )
     ) || path
         .file_name()
@@ -982,7 +985,7 @@ ios_device = true
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
         run_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo")).unwrap();
-        assert_eq!(mock.call_lines().last().unwrap(), "xtool dev");
+        assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
             Some(root.join("apps/demo").as_path())
@@ -1164,6 +1167,8 @@ ios_device = true
         let pkg = fs::read_to_string(dest.join("Package.swift")).unwrap();
         assert!(pkg.contains("name: \"InitTestApp\""));
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
+        let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
+        assert!(plist.contains("<string>InitTestApp</string>"));
         assert!(dest.join("Generated/ForgeFFI/forge_ffi.swift").is_file());
         assert!(dest
             .join("Generated/forge_ffiFFI/module.modulemap")

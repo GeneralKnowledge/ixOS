@@ -55,7 +55,7 @@ sudo apt-get install -y usbmuxd libimobiledevice-utils
 xtool setup
 ```
 
-You will authenticate with Apple and provide the path to **Xcode.xip**. After success:
+You will authenticate with Apple and provide the path to **Xcode.xip** (use Xcode 26; the iOS 18 SDK from Xcode 16 fails to link with Swift 6.2, see [troubleshooting.md](troubleshooting.md)). After success:
 
 ```bash
 swift sdk list
@@ -82,7 +82,7 @@ Or step by step:
 
 ```bash
 ./scripts/package-ios-library.sh examples/counter/Generated
-cd examples/counter && xtool dev
+cd examples/counter && xtool dev run
 ```
 
 ## CI note

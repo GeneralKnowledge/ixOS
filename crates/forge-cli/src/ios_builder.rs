@@ -41,6 +41,10 @@ pub struct XtoolBuilder;
 
 const XTOOL: &str = "xtool";
 
+// Both commands use xtool's default debug configuration. With Swift 6.2 this needs
+// the Darwin SDK from Xcode 26; the iOS 18 SDK from Xcode 16 fails to link with
+// `undefined symbol: swift_coroFrameAlloc` (docs/troubleshooting.md).
+
 impl IosBuilder for XtoolBuilder {
     fn name(&self) -> &'static str {
         XTOOL
@@ -64,7 +68,10 @@ impl IosBuilder for XtoolBuilder {
 
     fn run(&self, runner: &dyn CommandRunner, project_dir: &Path) -> Result<(), String> {
         self.ensure_available(runner)?;
-        run_checked(runner, Cmd::new(XTOOL).arg("dev").cwd(project_dir))
+        run_checked(
+            runner,
+            Cmd::new(XTOOL).args(["dev", "run"]).cwd(project_dir),
+        )
     }
 
     fn install(&self, runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String> {

@@ -129,7 +129,7 @@ Included from `./scripts/validate-toolchain.sh` / `forge doctor`.
 1. **Host** `cdylib` for UniFFI Swift generation (Linux CI).
 2. **`aarch64-apple-ios` `staticlib`** staged to `build/ios-device/lib/libforge_ffi.a` when `SDKROOT` is set from xtool’s Darwin SDK.
 3. **SwiftPM** links the static library via the `ForgeFFI` target `linkerSettings` in [examples/counter/Package.swift](../examples/counter/Package.swift).
-4. **xtool** builds the SwiftUI app: `cd examples/counter && xtool dev`.
+4. **xtool** builds the SwiftUI app: `cd examples/counter && xtool dev run`.
 
 **Fallback:** SwiftPM `.binaryTarget` artifact bundle (SE-0482) if `-L`/`-l` flags are rejected by a future SwiftPM version — not required for the current manifest.
 
@@ -143,7 +143,7 @@ When Darwin SDK, signing, and a USB iPhone are available:
 2. Confirm `swift sdk list` shows `darwin`.
 3. From repo root: `cargo run -p forge-cli -- build ios --project examples/counter`
 4. `xtool devices` — note device UDID.
-5. After build, install/launch per `xtool` help for your version (typically via `xtool dev` with device attached).
+5. After build, install/launch per `xtool` help for your version (`forge run ios --project examples/counter` with device attached).
 6. Increment/decrement; force decrement at zero (error, no crash).
 7. Kill app, relaunch — count persists under Application Support.
 8. Clean rebuild without editing `Generated/*`.

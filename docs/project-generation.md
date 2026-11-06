@@ -19,7 +19,7 @@ forge build ios --project ~/projects/MyApp
 ### iOS (`--platform ios`, default)
 
 - `forge.toml`, `Package.swift`, `xtool.yml`
-- `Sources/AppHost/` SwiftUI library + `Sources/AppHostLauncher/` xtool entry point
+- `Sources/AppHost/` SwiftUI library + `Sources/AppHostXtoolApp/` xtool entry point + `Sources/AppHostLauncher/` entry point for `swift run` and Xcode
 - `Xcode/<Name>.xcodeproj` conventional iOS application host (macOS)
 - `Generated/` Swift UniFFI output at init time
 
@@ -56,7 +56,7 @@ From repository root:
 
 ```bash
 ./scripts/package-ios-library.sh examples/<Name>/Generated
-cd examples/<Name> && xtool dev
+cd examples/<Name> && xtool dev run
 ```
 
 Or use the CLI (bindings path follows `--project`):

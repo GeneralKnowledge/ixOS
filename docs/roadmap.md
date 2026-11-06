@@ -54,7 +54,7 @@ Good first project for someone with a Mac.
 
 ### Store distribution (App Store, Google Play) — Open
 
-Not in this release. Today the CLI produces debug builds (an xtool dev build for iOS, a debug APK for Android). Release distribution needs:
+Not in this release. Today the CLI produces development builds (an xtool release-configuration build signed for your device on iOS, a debug APK for Android). Release distribution needs:
 
 - **Android:** release build type, signing config read from the environment (never committed), an `.aab` bundle, and R8/minification rules that keep JNA and the generated bindings.
 - **iOS:** an archive and export path. App Store submission needs a distribution certificate and provisioning profile; whether xtool can produce a submission-ready build on Linux has not been verified, so the first deliverable is a documented macOS `xcodebuild archive` path.

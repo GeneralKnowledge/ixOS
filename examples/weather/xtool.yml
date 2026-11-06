@@ -2,3 +2,5 @@ version: 1
 bundleID: org.forgemobile.weather
 # Merged into the generated Info.plist: the location permission prompt text.
 infoPath: Info.plist
+# The library product holding the app's @main; xtool names the built app after it.
+product: WeatherXtool

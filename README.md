@@ -27,7 +27,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 ## Quick start (Linux)
 
 1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/), and [xtool](https://github.com/xtool-org/xtool) — see [docs/linux-setup.md](docs/linux-setup.md).
-2. Run `xtool setup` with your **Xcode.xip** to install the Darwin SDK.
+2. Run `xtool setup` with your **Xcode.xip** (Xcode 26) to install the Darwin SDK.
 3. Validate: `./scripts/validate-toolchain.sh`. If anything fails, [docs/toolchain-validation.md](docs/toolchain-validation.md) lists the verified commands and known blockers, and [docs/compatibility.md](docs/compatibility.md) the tested versions.
 4. Test Rust: `cargo test --workspace`
 5. Generate bindings: `./scripts/generate-bindings.sh`
@@ -76,7 +76,7 @@ cargo run -p forge-cli -- test --project examples/counter-android  # ...plus tha
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
-cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev)
+cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev run)
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices

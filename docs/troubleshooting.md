@@ -22,9 +22,24 @@ Install Swift for your distro — see [linux-setup.md](linux-setup.md).
 ./scripts/check-bindings.sh
 ```
 
-## `xtool devices` hangs
+## `undefined symbol: swift_coroFrameAlloc` from `xtool dev build`
 
-Ensure usbmuxd is running and the device is trusted. Forge’s `validate-toolchain.sh` uses `timeout 5` on this command.
+Swift 6.2 emits calls to this runtime function, and the iOS 18 SDK from Xcode 16 does not export it (`libswiftCore.tbd` has no such symbol), so the compiler and SDK versions do not match. Run `xtool setup` again with `Xcode.xip` from Xcode 26, whose iOS 26.0 SDK exports it.
+
+Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
+
+| App | Xcode 16.0 (iOS 18.0 SDK), debug | Xcode 16.0, release | Xcode 26 (iOS 26.0 SDK), debug | Xcode 26, release |
+|-----|------|------|------|------|
+| Counter | Fails | Fails | Links | Links |
+| Weather | Fails | Links | Links | Links |
+| Chat | Fails | Links | Links | Links |
+| App from `forge init` | Not tested | Fails | Links | Links |
+
+On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter and Weather were installed and opened the same way. Apps from `forge init` have only been built, not installed.
+
+## `xtool devices` hangs or says `Resource temporarily unavailable`
+
+Ensure usbmuxd is running and the device is trusted. `Resource temporarily unavailable` has been seen when usbmuxd stopped accepting connections; `sudo systemctl restart usbmuxd` and replugging the iPhone cleared it. Forge’s `validate-toolchain.sh` uses `timeout 5` on this command.
 
 ## SwiftPM link errors for `forge_ffi`
 
