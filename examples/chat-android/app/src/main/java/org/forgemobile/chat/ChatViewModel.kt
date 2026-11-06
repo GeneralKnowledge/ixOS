@@ -29,7 +29,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         private set
     var session by mutableStateOf<ChatSession?>(null)
         private set
-    /** Why the app could not be opened for [serverUrl] (bad URL, https on Android, ...). */
+    /** Why the app could not be opened for [serverUrl] (bad URL, unreadable store, ...). */
     var openError by mutableStateOf<String?>(null)
         private set
 

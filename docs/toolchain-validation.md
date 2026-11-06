@@ -154,6 +154,25 @@ When Darwin SDK, signing, and a USB iPhone are available:
 
 Running `xtool dev` without Darwin SDK may fail immediately. In Cloud Agent sandboxes, xtool 1.22.2 can also abort with `epoll_ctl: Operation not permitted` from SwiftNIO — an environment restriction, not an application bug. Use a full Linux workstation with USB, SDK, and normal epoll permissions for app builds.
 
+## Manual acceptance: Android HTTPS on a device
+
+Automated coverage stops at the JVM: Rust tests run real TLS handshakes against local servers (`cargo test -p forge-net --features ureq`, `cargo test -p mock-chat-server --test https_end_to_end`), and the Chat JVM tests call the real `ForgeAndroid.nativeInit` JNI export. Android's own trust store is only exercised on a device or emulator. Record the phone model, Android version, NDK and the commit for every run.
+
+1. Build and install Chat: `forge build android --project examples/chat-android --install` (USB debugging on; `adb devices` lists the phone).
+2. In the app, change the server URL to each of these in turn. None of them is a chat server, so the result to look for is *which* error the app shows:
+
+   | Server URL | Expected message | Proves |
+   |---|---|---|
+   | `https://example.com` | "The chat server refused the request." (an HTTP 404) | A valid public certificate passes Android's verifier |
+   | `https://expired.badssl.com` | "The chat server's security certificate isn't trusted." | Expired certificate rejected |
+   | `https://wrong.host.badssl.com` | same | Host name checked |
+   | `https://untrusted-root.badssl.com` | same | Unknown CA rejected |
+   | `https://self-signed.badssl.com` | same | Self-signed rejected |
+   | `https://localhost:1` | "Can't reach the chat server." | Connection failure is a network error, not a certificate one |
+
+3. Full chat over HTTPS (optional, needs a public certificate in front of the mock server): run `make mock-chat` on the laptop and a tunnel with a real certificate, for example `cloudflared tunnel --url http://localhost:8787`. Use the `https://….trycloudflare.com` URL in the app: rooms load, sending works, a message posted with curl to the tunnel appears live, and leaving a room stops its stream.
+4. `adb logcat | grep -i -E "forge|rustls|platformverifier"` shows no `ForgeAndroidInitException` or JNI errors.
+
 ## Counter checklist
 
 | Test | Linux automated | Device manual |

@@ -43,7 +43,23 @@ for file in "$TEMPLATE"/Sources/CounterBridge/*.swift "$TEMPLATE"/Tests/AppHostT
   fi
 done
 
+# The Android hosts' Kotlin half of rustls-platform-verifier must be the exact
+# version the Rust half expects (rustls-platform-verifier-android in Cargo.lock),
+# or certificate checks fail at runtime with a JNI error.
+lock_version="$(awk '/^name = "rustls-platform-verifier-android"$/ { getline; gsub(/version = |"/, ""); print; exit }' "$ROOT/Cargo.lock")"
+if [[ -z "$lock_version" ]]; then
+  echo "error: rustls-platform-verifier-android not found in Cargo.lock" >&2
+  status=1
+fi
+for gradle in "$ROOT"/examples/*-android/app/build.gradle.kts "$ROOT"/templates/android-app/app/build.gradle.kts; do
+  if ! grep -q "\"org.rustls:rustls-platform-verifier:${lock_version}\"" "$gradle"; then
+    echo "error: ${gradle#"$ROOT/"} must depend on org.rustls:rustls-platform-verifier:${lock_version} (the version in Cargo.lock)" >&2
+    status=1
+  fi
+done
+
 if [[ $status -eq 0 ]]; then
   echo "[forge] iOS template Swift sources match the Counter example."
+  echo "[forge] Android hosts use rustls-platform-verifier ${lock_version}, matching Cargo.lock."
 fi
 exit $status

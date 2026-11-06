@@ -105,6 +105,10 @@ pub enum ChatError {
     /// The server could not be reached, the connection broke, or it timed out.
     #[error("network error: {reason}")]
     Network { reason: String },
+    /// The server's TLS certificate was rejected: expired, not trusted by
+    /// this device, or issued for another host. Retrying will not help.
+    #[error("certificate rejected: {reason}")]
+    Certificate { reason: String },
     #[error("server returned HTTP {status}: {reason}")]
     Http { status: u16, reason: String },
     /// The server's answer was not what this build expects (the core's
@@ -202,6 +206,7 @@ impl From<chat_core::ChatError> for ChatError {
         use chat_core::ChatError as Core;
         match error {
             Core::Network { reason } => Self::Network { reason },
+            Core::Certificate { reason } => Self::Certificate { reason },
             Core::Http { status, reason } => Self::Http { status, reason },
             Core::Protocol { reason } => Self::BadResponse { reason },
             Core::Cancelled => Self::Cancelled,

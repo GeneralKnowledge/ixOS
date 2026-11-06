@@ -15,7 +15,9 @@ public enum WeatherClientError: Error, Sendable, Equatable {
     case server(status: UInt16, reason: String?)
     /// The service answered with something this build cannot read.
     case badResponse(detail: String)
-    /// TLS or another transport failure.
+    /// The service's TLS certificate was rejected. Retrying does not help.
+    case certificate(detail: String)
+    /// Another transport failure.
     case network(detail: String)
     /// The client has been shut down.
     case closed
@@ -31,6 +33,7 @@ public enum WeatherClientError: Error, Sendable, Equatable {
             return "The weather service is having problems. Try again later."
         case .server: return "The weather service refused the request."
         case .badResponse: return "The weather service sent data this app can't read."
+        case .certificate: return "The weather service's security certificate isn't trusted."
         case .network: return "A secure connection to the weather service failed."
         case .closed: return "Weather has been closed. Reopen the app to continue."
         case .internalFailure: return "Something went wrong in the weather engine."
@@ -44,6 +47,7 @@ public enum WeatherClientError: Error, Sendable, Equatable {
         case .Timeout: self = .timedOut
         case let .Server(status, reason): self = .server(status: status, reason: reason)
         case let .BadResponse(reason): self = .badResponse(detail: reason)
+        case let .Certificate(reason): self = .certificate(detail: reason)
         case let .Network(reason): self = .network(detail: reason)
         // Callers translate `.Cancelled` to `CancellationError` first.
         case .Cancelled: self = .internalFailure(detail: "unexpected cancellation")

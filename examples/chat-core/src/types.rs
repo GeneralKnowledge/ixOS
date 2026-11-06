@@ -99,6 +99,11 @@ pub enum ChatError {
     /// The server could not be reached, the connection broke, or it timed out.
     #[error("network error: {reason}")]
     Network { reason: String },
+    /// The server's TLS certificate was rejected (expired, untrusted, wrong
+    /// host). Not retried as a network blip would be worth: the server or
+    /// the URL has to change.
+    #[error("certificate rejected: {reason}")]
+    Certificate { reason: String },
     /// The server answered with a non-2xx status (other than 404 on a room).
     #[error("server returned HTTP {status}: {reason}")]
     Http { status: u16, reason: String },
@@ -148,6 +153,10 @@ impl From<NetError> for ChatError {
                 detail: "no HTTP transport in this build".into(),
             },
             NetError::InvalidRequest { reason } => ChatError::InvalidInput { reason },
+            NetError::Certificate { reason } => ChatError::Certificate { reason },
+            NetError::TlsNotInitialised { reason } => {
+                ChatError::UnsupportedOnHost { detail: reason }
+            }
             NetError::Offline { reason } | NetError::Transport { reason } => {
                 ChatError::Network { reason }
             }
@@ -176,6 +185,17 @@ mod tests {
         })
         .is_network());
         assert_eq!(ChatError::from(NetError::Cancelled), ChatError::Cancelled);
+        let cert = ChatError::from(NetError::Certificate {
+            reason: "expired".into(),
+        });
+        assert!(matches!(cert, ChatError::Certificate { .. }));
+        assert!(!cert.is_network());
+        assert!(matches!(
+            ChatError::from(NetError::TlsNotInitialised {
+                reason: "call ForgeAndroid.init".into()
+            }),
+            ChatError::UnsupportedOnHost { .. }
+        ));
         assert!(matches!(
             ChatError::from(NetError::InvalidRequest { reason: "u".into() }),
             ChatError::InvalidInput { .. }

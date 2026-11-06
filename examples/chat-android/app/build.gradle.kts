@@ -68,10 +68,10 @@ android {
         unitTests.all {
             // JVM unit tests call the real Rust core through the generated bindings, using the
             // host build of forge-ffi (`cargo build -p forge-ffi` from the workspace root).
-            it.systemProperty(
-                "jna.library.path",
-                rootProject.file("../../target/debug").absolutePath,
-            )
+            val hostLibs = rootProject.file("../../target/debug").absolutePath
+            it.systemProperty("jna.library.path", hostLibs)
+            // ForgeAndroid.init loads the same library through System.loadLibrary (JNI).
+            it.systemProperty("java.library.path", hostLibs)
             // The chat tests run against the real mock server
             // (`cargo build -p mock-chat-server`). CHAT_MOCK_SERVER overrides the path.
             it.systemProperty(
@@ -104,6 +104,9 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     implementation("net.java.dev.jna:jna:5.19.1@aar")
+    // Android's trust store for the Rust HTTPS client (see ForgeAndroid.init). Must equal the
+    // rustls-platform-verifier-android version in Cargo.lock (scripts/check-template-sync.sh).
+    implementation("org.rustls:rustls-platform-verifier:0.2.0")
     // The generated Kotlin bindings expose the Rust async exports as suspend functions.
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")

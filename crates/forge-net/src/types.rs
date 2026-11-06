@@ -252,7 +252,20 @@ pub enum NetError {
     /// connection refused. Apps usually present this as "offline".
     #[error("offline: {reason}")]
     Offline { reason: String },
-    /// Any other transport failure: TLS, protocol, a broken body, and similar.
+    /// The server's TLS certificate was rejected: expired or not yet valid,
+    /// issued by an authority the platform does not trust, issued for a
+    /// different host name, or revoked. Retrying does not help; the server
+    /// (or the URL) has to change.
+    #[error("certificate rejected: {reason}")]
+    Certificate { reason: String },
+    /// `https` cannot be used yet because the platform certificate verifier
+    /// is not set up. On Android the host must call `ForgeAndroid.init` with
+    /// the app `Context` first (see [`crate::https_ready`]). This is a host
+    /// integration bug, not a network condition.
+    #[error("TLS is not initialised on this host: {reason}")]
+    TlsNotInitialised { reason: String },
+    /// Any other transport failure: a TLS protocol error, a broken body,
+    /// and similar.
     #[error("transport error: {reason}")]
     Transport { reason: String },
     #[error("request timed out")]

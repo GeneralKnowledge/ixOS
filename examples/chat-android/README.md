@@ -62,13 +62,13 @@ Without the mock server binary the server tests are skipped; CI always builds it
   so they show as banners in the foreground too. On Android 13+ the app asks for
   `POST_NOTIFICATIONS` at launch; saying no only turns them off. Only while the app runs:
   there is no push server. Design: [docs/chat-demo.md](../../docs/chat-demo.md#notifications).
-- **http only on Android.** The Rust client checks certificates with
-  `rustls-platform-verifier`, which on Android needs a JNI init that this example does not do
-  yet. Rather than fail every request with a TLS error that looks like "server down",
-  `ForgeChatApp` refuses an `https://` URL on Android at once with
-  `ChatException.UnsupportedOnHost`, and the app says so.
-- **No `network_security_config`.** Android's cleartext policy is enforced by the Java HTTP
-  stacks; the Rust client opens its own sockets, so plain `http://` works with just the
+- **https works, verified by Android.** `MainActivity` calls `ForgeAndroid.init` before the
+  view model opens the Rust app, so the Rust client checks `https://` certificates against
+  Android's trust store (`rustls-platform-verifier`). A rejected certificate shows "security
+  certificate isn't trusted" (`ChatException.Certificate`). See
+  [docs/android-setup.md](../../docs/android-setup.md#https-certificate-verification).
+- **Plain `http://` still works.** Android's cleartext policy is enforced by the Java HTTP
+  stacks; the Rust client opens its own sockets, so the mock server needs only the
   `INTERNET` permission.
 - **Leaving a room never cancels a send.** Commands run in `viewModelScope`, not in the
   screen's composition; leaving the chat screen only unsubscribes from the room.

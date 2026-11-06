@@ -16,3 +16,6 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 
 [dev-dependencies]
 chat-core = { workspace = true, features = ["ureq"] }
+# HTTPS end-to-end test: a TLS front for the mock server with a throwaway CA.
+rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

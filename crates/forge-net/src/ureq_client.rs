@@ -2,7 +2,11 @@
 //!
 //! Certificates are checked with `rustls-platform-verifier`, so iOS and macOS
 //! use the system trust store (and any profile-installed roots) rather than a
-//! bundled root list. Proxy settings are read from the standard environment
+//! bundled root list. Android needs a one-time init first (see
+//! [`crate::platform`]); until then `https` requests fail with
+//! [`NetError::TlsNotInitialised`]. Verification is never turned off: there is
+//! no "accept any certificate" switch, and a rejected certificate is reported
+//! as [`NetError::Certificate`]. Proxy settings are read from the standard environment
 //! variables (`HTTPS_PROXY`, `NO_PROXY`, ...).
 
 use std::sync::Arc;
@@ -40,9 +44,27 @@ impl UreqClient {
 
     /// A client that sends `user_agent` on every request.
     pub fn with_user_agent(user_agent: &str) -> Self {
+        Self::with_roots(user_agent, ureq::tls::RootCerts::PlatformVerifier)
+    }
+
+    /// Tests only: trust exactly `roots` (checked by webpki, not the
+    /// platform), so local HTTPS servers with a throwaway CA can be used.
+    #[cfg(test)]
+    fn trusting_only(roots: &[&[u8]]) -> Self {
+        let certs: Vec<_> = roots
+            .iter()
+            .map(|der| ureq::tls::Certificate::from_der(der).to_owned())
+            .collect();
+        Self::with_roots(
+            "forge-net-test",
+            ureq::tls::RootCerts::new_with_certs(&certs),
+        )
+    }
+
+    fn with_roots(user_agent: &str, roots: ureq::tls::RootCerts) -> Self {
         let tls = ureq::tls::TlsConfig::builder()
             .provider(ureq::tls::TlsProvider::Rustls)
-            .root_certs(ureq::tls::RootCerts::PlatformVerifier)
+            .root_certs(roots)
             .unversioned_rustls_crypto_provider(Arc::new(rustls::crypto::ring::default_provider()))
             .build();
         let agent = ureq::Agent::config_builder()
@@ -79,6 +101,7 @@ impl UreqClient {
         streaming: bool,
     ) -> Result<ureq::http::Response<ureq::Body>, NetError> {
         request.validate()?;
+        crate::platform::ensure_ready_for(&request.url)?;
 
         let mut builder = ureq::http::Request::builder()
             .method(request.method.as_str())
@@ -211,6 +234,9 @@ fn streaming_response(response: ureq::http::Response<ureq::Body>) -> StreamingRe
 /// offline state; everything else that is not a timeout is `Transport`.
 fn map_error(error: ureq::Error) -> NetError {
     use std::io::ErrorKind;
+    if let Some(reason) = certificate_problem(&error) {
+        return NetError::Certificate { reason };
+    }
     match error {
         ureq::Error::Timeout(_) => NetError::Timeout,
         ureq::Error::HostNotFound | ureq::Error::ConnectionFailed => NetError::Offline {
@@ -239,6 +265,38 @@ fn map_error(error: ureq::Error) -> NetError {
             reason: other.to_string(),
         },
     }
+}
+
+/// The certificate failure inside `error`, if that is what it is. rustls
+/// reports it as `InvalidCertificate`; ureq passes it on either directly or
+/// wrapped in the `io::Error` of the handshake.
+fn certificate_problem(error: &ureq::Error) -> Option<String> {
+    let tls = match error {
+        ureq::Error::Rustls(tls) => tls,
+        ureq::Error::Io(io) => io.get_ref()?.downcast_ref::<rustls::Error>()?,
+        _ => return None,
+    };
+    match tls {
+        rustls::Error::InvalidCertificate(problem) => Some(describe_certificate(problem)),
+        _ => None,
+    }
+}
+
+fn describe_certificate(problem: &rustls::CertificateError) -> String {
+    use rustls::CertificateError as C;
+    let summary = match problem {
+        C::Expired | C::ExpiredContext { .. } => "the certificate has expired",
+        C::NotValidYet | C::NotValidYetContext { .. } => "the certificate is not valid yet",
+        C::UnknownIssuer => "the certificate is not issued by an authority this device trusts",
+        C::NotValidForName | C::NotValidForNameContext { .. } => {
+            "the certificate is for a different host name"
+        }
+        C::Revoked => "the certificate has been revoked",
+        C::BadEncoding => "the certificate is malformed",
+        C::BadSignature => "the certificate signature is invalid",
+        _ => "the certificate was rejected",
+    };
+    format!("{summary} ({problem:?})")
 }
 
 #[cfg(test)]
@@ -542,6 +600,215 @@ mod tests {
             .open_stream(&Request::get(format!("http://127.0.0.1:{port}/stream")))
             .unwrap_err();
         assert!(matches!(err, NetError::Offline { .. }), "{err:?}");
+    }
+}
+
+/// HTTPS against local servers with throwaway certificates (rcgen), so the
+/// suite needs no network and no public endpoints.
+#[cfg(test)]
+mod tls_tests {
+    use super::*;
+    use rcgen::{BasicConstraints, CertificateParams, IsCa, KeyPair};
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    use std::io::{Read, Write};
+    use std::net::TcpListener;
+    use std::thread;
+
+    struct Ca {
+        params: CertificateParams,
+        key: KeyPair,
+        der: Vec<u8>,
+    }
+
+    fn ca(name: &str) -> Ca {
+        let mut params = CertificateParams::new(Vec::<String>::new()).unwrap();
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params
+            .distinguished_name
+            .push(rcgen::DnType::CommonName, name);
+        let key = KeyPair::generate().unwrap();
+        let der = params.clone().self_signed(&key).unwrap().der().to_vec();
+        Ca { params, key, der }
+    }
+
+    /// A server certificate for `names`, signed by `ca` (or self-signed).
+    fn leaf(
+        names: &[&str],
+        ca: Option<&Ca>,
+        expired: bool,
+    ) -> (Vec<CertificateDer<'static>>, PrivateKeyDer<'static>) {
+        let mut params =
+            CertificateParams::new(names.iter().map(|n| n.to_string()).collect::<Vec<_>>())
+                .unwrap();
+        if expired {
+            params.not_before = rcgen::date_time_ymd(2019, 1, 1);
+            params.not_after = rcgen::date_time_ymd(2020, 1, 1);
+        }
+        let key = KeyPair::generate().unwrap();
+        let mut chain = Vec::new();
+        match ca {
+            Some(ca) => {
+                let issuer = ca.params.clone().self_signed(&ca.key).unwrap();
+                let cert = params.signed_by(&key, &issuer, &ca.key).unwrap();
+                chain.push(cert.der().clone());
+                chain.push(CertificateDer::from(ca.der.clone()));
+            }
+            None => chain.push(params.self_signed(&key).unwrap().der().clone()),
+        }
+        let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der()));
+        (chain, key)
+    }
+
+    /// Serves one HTTPS exchange on 127.0.0.1 and returns `https://localhost:<port>`.
+    /// The handshake may fail (that is what most tests want); the server
+    /// then just ends.
+    fn https_server(
+        chain: Vec<CertificateDer<'static>>,
+        key: PrivateKeyDer<'static>,
+    ) -> (String, thread::JoinHandle<()>) {
+        let config = rustls::ServerConfig::builder_with_provider(Arc::new(
+            rustls::crypto::ring::default_provider(),
+        ))
+        .with_safe_default_protocol_versions()
+        .unwrap()
+        .with_no_client_auth()
+        .with_single_cert(chain, key)
+        .unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let handle = thread::spawn(move || {
+            let (tcp, _) = listener.accept().unwrap();
+            tcp.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+            let conn = rustls::ServerConnection::new(Arc::new(config)).unwrap();
+            let mut tls = rustls::StreamOwned::new(conn, tcp);
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 1024];
+            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                match tls.read(&mut buf) {
+                    Ok(0) | Err(_) => return,
+                    Ok(n) => raw.extend_from_slice(&buf[..n]),
+                }
+            }
+            let _ = tls.write_all(
+                b"HTTP/1.1 200 OK\r\nContent-Length: 6\r\nConnection: close\r\n\r\nsecure",
+            );
+            let _ = tls.flush();
+            tls.conn.send_close_notify();
+            let _ = tls.flush();
+        });
+        (format!("https://localhost:{port}/"), handle)
+    }
+
+    fn no_proxy() {
+        std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+        std::env::set_var("no_proxy", "127.0.0.1,localhost");
+    }
+
+    fn get(client: &UreqClient, url: &str) -> Result<Response, NetError> {
+        client.send(&Request::get(url).timeout(Duration::from_secs(5)))
+    }
+
+    #[test]
+    fn valid_certificate_from_a_trusted_ca_works() {
+        no_proxy();
+        let ca = ca("Forge Test CA");
+        let (chain, key) = leaf(&["localhost"], Some(&ca), false);
+        let (url, server) = https_server(chain, key);
+        let response = get(&UreqClient::trusting_only(&[&ca.der]), &url).unwrap();
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, b"secure");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn expired_certificate_is_a_certificate_error() {
+        no_proxy();
+        let ca = ca("Forge Test CA");
+        let (chain, key) = leaf(&["localhost"], Some(&ca), true);
+        let (url, server) = https_server(chain, key);
+        let err = get(&UreqClient::trusting_only(&[&ca.der]), &url).unwrap_err();
+        match &err {
+            NetError::Certificate { reason } => assert!(reason.contains("expired"), "{reason}"),
+            other => panic!("expected Certificate, got {other:?}"),
+        }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn certificate_for_another_host_is_a_certificate_error() {
+        no_proxy();
+        let ca = ca("Forge Test CA");
+        let (chain, key) = leaf(&["chat.example"], Some(&ca), false);
+        let (url, server) = https_server(chain, key);
+        let err = get(&UreqClient::trusting_only(&[&ca.der]), &url).unwrap_err();
+        match &err {
+            NetError::Certificate { reason } => {
+                assert!(reason.contains("different host"), "{reason}")
+            }
+            other => panic!("expected Certificate, got {other:?}"),
+        }
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn untrusted_ca_is_a_certificate_error() {
+        no_proxy();
+        let trusted = ca("Trusted CA");
+        let other = ca("Some Other CA");
+        let (chain, key) = leaf(&["localhost"], Some(&other), false);
+        let (url, server) = https_server(chain, key);
+        let err = get(&UreqClient::trusting_only(&[&trusted.der]), &url).unwrap_err();
+        match &err {
+            NetError::Certificate { reason } => {
+                assert!(reason.contains("not issued by an authority"), "{reason}")
+            }
+            other => panic!("expected Certificate, got {other:?}"),
+        }
+        server.join().unwrap();
+    }
+
+    /// The default client (the platform verifier, as shipped) rejects a
+    /// self-signed certificate: verification is on by default.
+    #[test]
+    fn default_client_rejects_a_self_signed_certificate() {
+        no_proxy();
+        let (chain, key) = leaf(&["localhost"], None, false);
+        let (url, server) = https_server(chain, key);
+        let err = get(&UreqClient::new(), &url).unwrap_err();
+        assert!(matches!(err, NetError::Certificate { .. }), "{err:?}");
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn refused_https_connection_is_offline_not_a_certificate_error() {
+        no_proxy();
+        let port = TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let err = get(&UreqClient::new(), &format!("https://localhost:{port}/")).unwrap_err();
+        assert!(matches!(err, NetError::Offline { .. }), "{err:?}");
+    }
+
+    /// A server that is not speaking TLS at all is a transport failure.
+    #[test]
+    fn plain_http_server_on_an_https_url_is_a_transport_error() {
+        no_proxy();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let server = thread::spawn(move || {
+            let (mut tcp, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 512];
+            let _ = tcp.read(&mut buf);
+            let _ = tcp.write_all(b"HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
+        });
+        let err = get(&UreqClient::new(), &format!("https://localhost:{port}/")).unwrap_err();
+        assert!(
+            matches!(err, NetError::Transport { .. } | NetError::Offline { .. }),
+            "{err:?}"
+        );
+        server.join().unwrap();
     }
 }
 

@@ -21,5 +21,10 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 uniffi = { workspace = true }
 
+[target.'cfg(not(target_os = "ios"))'.dependencies]
+# Only for the `ForgeAndroid.nativeInit` JNI export (src/jni_init.rs); the
+# version must match the one forge-net's Android verifier init takes.
+jni = { version = "0.22", default-features = false }
+
 [dev-dependencies]
 tempfile = "3.14"
