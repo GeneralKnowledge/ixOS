@@ -35,7 +35,7 @@ Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
 | Chat | Fails | Links | Links | Links |
 | App from `forge init` | Not tested | Fails | Links | Links |
 
-The Xcode 26 builds have not been installed on an iPhone yet.
+On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter, Weather and `forge init` apps have only been built, not installed.
 
 ## `xtool devices` hangs or says `Resource temporarily unavailable`
 
