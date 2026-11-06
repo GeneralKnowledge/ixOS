@@ -3,13 +3,20 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
+# shellcheck source=forge-crate.sh
+source "$ROOT/scripts/forge-crate.sh"
 
 GENERATED="${1:-${FORGE_GENERATED_DIR:-examples/counter-android/Generated}}"
 LANGUAGE="${FORGE_BINDINGS_LANGUAGE:-kotlin}"
 
 "$ROOT/scripts/generate-bindings.sh" "$GENERATED" "$LANGUAGE"
 
-JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
+if [[ -n "${FORGE_APP_DIR:-}" ]]; then
+  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$APP_DIR/app/src/main/jniLibs}"
+else
+  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
+fi
+export FORGE_ANDROID_JNI_LIBS="$JNI_LIBS"
 ABIS="${FORGE_ANDROID_ABIS:-arm64-v8a x86_64}"
 
 # Rebuild if any configured ABI is missing or stale, or an unconfigured one is still staged.

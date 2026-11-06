@@ -72,7 +72,7 @@ Networking stays in Rust (`forge-net`'s `UreqClient`), on Android too. It checks
    }
    ```
 
-   `ForgeAndroid` ships with the generated bindings (`Generated/org/forgemobile/ffi/ForgeAndroid.kt`, source in `crates/forge-ffi/kotlin/`). Calling it again, from any thread, does nothing. If the verifier library is missing it throws `ForgeAndroidInitException` at startup with the fix in the message.
+   `ForgeAndroid` ships with the generated bindings (`Generated/org/forgemobile/ffi/ForgeAndroid.kt`, source in `crates/forge-runtime/kotlin/`). Calling it again, from any thread, does nothing. If the verifier library is missing it throws `ForgeAndroidInitException` at startup with the fix in the message.
 
 What you get:
 

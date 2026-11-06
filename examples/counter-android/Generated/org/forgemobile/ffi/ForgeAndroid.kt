@@ -1,5 +1,5 @@
 // Shipped with the generated Kotlin bindings by scripts/generate-bindings.sh.
-// Source of truth: crates/forge-ffi/kotlin/. Do not edit the copy in Generated/.
+// Source of truth: crates/forge-runtime/kotlin/. Do not edit the copy in Generated/.
 package org.forgemobile.ffi
 
 import android.content.Context

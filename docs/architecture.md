@@ -16,7 +16,7 @@ SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) →
 | `forge-ffi` | Commands, queries, events, lifecycle; the serial command thread | Expose `forge-core`/`forge-storage` types directly |
 | `forge-core` / `forge-storage` | Domain rules / persistence | Know about FFI or threads |
 
-The bridge is per app: it is Counter-specific glue over the generated types. The iOS template carries an identical copy, checked by `scripts/check-template-sync.sh` in CI. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
+The bridge is per app: it is Counter-specific glue over the generated types. Apps from `forge init` start smaller: their own Rust crate (`rust/`, see [app-crate.md](app-crate.md)) exports a Swift-friendly API (async commands, an event stream object, typed errors), and the view model calls the generated `ForgeFFI` types directly. Add a bridge layer like Counter's when an app needs `AsyncSequence` events or extra Swift-side cancellation. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
 
 The Weather example ([examples/weather](../examples/weather/README.md)) has the same layering with `WeatherBridge` (`WeatherClient`, `LocationProvider`) over `ForgeWeatherApp`, which uses `forge-net` for HTTP. It re-exports the generated record and enum types instead of wrapping them, because exercising UniFFI's mapping of nested types is its purpose.
 

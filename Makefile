@@ -1,4 +1,4 @@
-.PHONY: mock-chat test check check-template test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: mock-chat test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
@@ -42,6 +42,10 @@ check-bindings:
 
 check-template:
 	./scripts/check-template-sync.sh
+
+# forge init --path outside the checkout, then the app's own crate and bindings.
+check-fresh-app:
+	./scripts/check-fresh-app.sh
 
 doctor:
 	./scripts/validate-toolchain.sh

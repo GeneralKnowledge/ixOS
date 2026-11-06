@@ -5,7 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import org.forgemobile.ffi.ForgeAndroid
-import FORGE_JAVA_PACKAGE.ui.CounterScreen
+import FORGE_JAVA_PACKAGE.ui.NotesScreen
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -14,7 +14,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            CounterScreen(applicationContext)
+            NotesScreen(applicationContext)
         }
     }
 }

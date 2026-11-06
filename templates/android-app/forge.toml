@@ -7,8 +7,8 @@ min_sdk = 26
 abis = ["arm64-v8a", "x86_64"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+# The app's own Rust crate: your logic, exported to Kotlin with UniFFI.
+path = "rust"
 
 [build]
 ios_device = false

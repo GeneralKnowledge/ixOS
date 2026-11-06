@@ -39,12 +39,12 @@ Same steps with `--project examples/weather` and `examples/weather/Xcode/Weather
 
 ## Generated apps (`forge init`)
 
-After `forge init MyApp --bundle-id org.example.myapp --platform ios`:
+After `forge init MyApp --bundle-id org.example.myapp --path ~/projects/MyApp`:
 
-- SwiftPM executable + library: `examples/MyApp/Package.swift` (xtool on Linux)
-- Xcode host: `examples/MyApp/Xcode/MyApp.xcodeproj`
+- SwiftPM executable + library: `~/projects/MyApp/Package.swift` (xtool on Linux)
+- Xcode host: `~/projects/MyApp/Xcode/MyApp.xcodeproj`. Its "Build Rust FFI" phase builds the app's own crate (`rust/`) with the Forge checkout's scripts and stages `libforge_ffi.a` in the app's `build/ios-device/lib`.
 
-Replace `MyApp` with your project name.
+Replace `MyApp` with your project name. See [app-crate.md](app-crate.md) for the Rust side.
 
 ## Simulator vs device
 
@@ -55,7 +55,8 @@ v1 ships a **device-only** `aarch64-apple-ios` static library ([ADR 001](adr/001
 From the repo root:
 
 ```bash
-cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
+forge bindings generate --project ~/projects/MyApp                 # an app from forge init
+cargo run -p forge-cli -- bindings generate --out examples/counter/Generated   # the bundled examples
 ```
 
 Do not edit files under `Generated/`. Rebuild in Xcode afterward.

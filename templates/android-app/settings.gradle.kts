@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "CounterAndroid"
+rootProject.name = "FORGE_PACKAGE_NAME"
 include(":app")

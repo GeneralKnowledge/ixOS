@@ -25,10 +25,20 @@ pub struct AndroidSection {
     pub application_id: Option<String>,
 }
 
+/// Where the app's Rust code lives.
+///
+/// Apps from `forge init` own a crate: `path = "rust"` (relative to the app).
+/// The bundled examples instead share the workspace's `forge-ffi`, written as
+/// `core_crate = "forge-core"` + `ffi_crate = "forge-ffi"`.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct RustSection {
-    pub core_crate: String,
-    pub ffi_crate: String,
+    #[serde(default)]
+    pub path: Option<String>,
+    #[serde(default)]
+    pub core_crate: Option<String>,
+    #[serde(default)]
+    pub ffi_crate: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -52,6 +62,12 @@ impl ForgeConfig {
     /// Only `[build] android = true` enables Android; an `[android]` section alone does not.
     pub fn android_enabled(&self) -> bool {
         self.build.android
+    }
+
+    /// The app's own Rust crate, if it has one (`[rust] path`), as an
+    /// absolute path under `app_dir`.
+    pub fn rust_crate_dir(&self, app_dir: &std::path::Path) -> Option<std::path::PathBuf> {
+        self.rust.path.as_ref().map(|p| app_dir.join(p))
     }
 
     pub fn ios_enabled(&self) -> bool {
@@ -125,17 +141,35 @@ impl ForgeConfig {
             return Err("enable at least one platform in [build] (ios_* or android)".into());
         }
 
-        if self.rust.core_crate != "forge-core" {
-            return Err(format!(
-                "unsupported core_crate '{}': v0.1 only builds forge-core from the workspace root",
-                self.rust.core_crate
-            ));
-        }
-        if self.rust.ffi_crate != "forge-ffi" {
-            return Err(format!(
-                "unsupported ffi_crate '{}': v0.1 only builds forge-ffi from the workspace root",
-                self.rust.ffi_crate
-            ));
+        match (&self.rust.path, &self.rust.core_crate, &self.rust.ffi_crate) {
+            (Some(path), None, None) => {
+                let p = std::path::Path::new(path);
+                if path.trim().is_empty()
+                    || p.is_absolute()
+                    || p.components().any(|c| c == std::path::Component::ParentDir)
+                {
+                    return Err(format!(
+                        "[rust] path = \"{path}\" must be a folder inside the app, such as \"rust\""
+                    ));
+                }
+            }
+            (None, Some(core), Some(ffi)) => {
+                if core != "forge-core" || ffi != "forge-ffi" {
+                    return Err(format!(
+                        "[rust] core_crate = \"{core}\", ffi_crate = \"{ffi}\" is not supported: the shared workspace library is forge-core + forge-ffi. For your own Rust code use [rust] path = \"rust\" (what forge init creates)"
+                    ));
+                }
+            }
+            (Some(_), _, _) => {
+                return Err(
+                    "[rust] has both path and core_crate/ffi_crate; keep only path = \"rust\""
+                        .into(),
+                )
+            }
+            _ => return Err(
+                "[rust] must set path = \"rust\" (the app's own crate, as forge init creates it)"
+                    .into(),
+            ),
         }
         Ok(())
     }
@@ -405,6 +439,28 @@ ios_simulator = false
 
     /// Every example's forge.toml must pass the CLI's own validation, so
     /// `forge build --project examples/<name>` works for each of them.
+    #[test]
+    fn app_owned_crate_path() {
+        let toml = |rust: &str| {
+            format!(
+                "[app]\nname = \"A\"\nbundle_id = \"org.example.a\"\nminimum_ios = \"17.0\"\n[rust]\n{rust}\n[build]\nios_device = true\n"
+            )
+        };
+        let cfg = ForgeConfig::parse(&toml("path = \"rust\"")).unwrap();
+        assert_eq!(
+            cfg.rust_crate_dir(std::path::Path::new("/apps/A")),
+            Some(std::path::PathBuf::from("/apps/A/rust"))
+        );
+        for bad in ["path = \"../shared\"", "path = \"/abs\"", "path = \"\""] {
+            assert!(ForgeConfig::parse(&toml(bad)).is_err(), "{bad}");
+        }
+        let both = "path = \"rust\"\ncore_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"";
+        assert!(ForgeConfig::parse(&toml(both)).is_err());
+        let err = ForgeConfig::parse(&toml("")).unwrap_err();
+        assert!(err.contains("path = \"rust\""), "{err}");
+        assert!(ForgeConfig::parse(&toml("crate = \"rust\"")).is_err());
+    }
+
     #[test]
     fn every_example_config_is_valid() {
         let examples = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");

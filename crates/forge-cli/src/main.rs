@@ -75,7 +75,12 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum BindingsCommands {
+    /// With --project, regenerates that app's Generated/ from its Rust crate
+    /// (Swift or Kotlin, from the app's platform). Otherwise writes the shared
+    /// forge-ffi bindings to --out.
     Generate {
+        #[arg(long, conflicts_with_all = ["out", "language"])]
+        project: Option<PathBuf>,
         #[arg(long, default_value = "examples/counter/Generated")]
         out: PathBuf,
         #[arg(long, default_value = "swift", value_parser = ["swift", "kotlin"])]
@@ -86,8 +91,11 @@ enum BindingsCommands {
 #[derive(Subcommand)]
 enum BuildCommands {
     Ios {
-        #[arg(long, default_value = "examples/counter")]
-        project: PathBuf,
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+        )]
+        project: Option<PathBuf>,
         #[arg(
             long,
             help = "Only build Rust static library and regenerate bindings (skip xtool dev)"
@@ -95,8 +103,11 @@ enum BuildCommands {
         package_only: bool,
     },
     Android {
-        #[arg(long, default_value = "examples/counter-android")]
-        project: PathBuf,
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml, else examples/counter-android)"
+        )]
+        project: Option<PathBuf>,
         #[arg(
             long,
             help = "Install debug APK on a connected device/emulator after build"
@@ -116,8 +127,11 @@ enum InstallCommands {
 #[derive(Subcommand)]
 enum RunCommands {
     Ios {
-        #[arg(long, default_value = "examples/counter")]
-        project: PathBuf,
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+        )]
+        project: Option<PathBuf>,
     },
 }
 
@@ -151,16 +165,26 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         }
         Commands::Test { project } => commands::test(runner, &root, project.as_deref()),
         Commands::Bindings { cmd } => match cmd {
-            BindingsCommands::Generate { out, language } => {
-                commands::bindings_generate(runner, &root, &out, &language)
-            }
+            BindingsCommands::Generate {
+                project: Some(project),
+                ..
+            } => commands::bindings_generate_for_project(runner, &root, &project),
+            BindingsCommands::Generate {
+                project: None,
+                out,
+                language,
+            } => commands::bindings_generate(runner, &root, &out, &language),
         },
         Commands::Build { cmd } => match cmd {
             BuildCommands::Ios {
                 project,
                 package_only,
-            } => commands::build_ios(runner, &ios, &root, &project, package_only),
+            } => {
+                let project = project_or_default(project, "examples/counter");
+                commands::build_ios(runner, &ios, &root, &project, package_only)
+            }
             BuildCommands::Android { project, install } => {
+                let project = project_or_default(project, "examples/counter-android");
                 commands::build_android(runner, &root, &project, install)
             }
         },
@@ -169,9 +193,22 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project } => commands::run_ios(runner, &ios, &root, &project),
+            RunCommands::Ios { project } => {
+                let project = project_or_default(project, "examples/counter");
+                commands::run_ios(runner, &ios, &root, &project)
+            }
         },
     }
+}
+
+/// `--project` when given; otherwise the current directory when it is an app
+/// (has forge.toml), so `forge build android` works from inside an app;
+/// otherwise the bundled example.
+fn project_or_default(project: Option<PathBuf>, example: &str) -> PathBuf {
+    project.unwrap_or_else(|| match std::env::current_dir() {
+        Ok(cwd) if cwd.join("forge.toml").is_file() => cwd,
+        _ => PathBuf::from(example),
+    })
 }
 
 fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {

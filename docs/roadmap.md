@@ -4,13 +4,13 @@ Forge Mobile is an **integration reference**: a working Counter app on iOS and A
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
-Last reviewed: 2026-11-04.
+Last reviewed: 2026-11-06.
 
 ## Near term
 
 ### Developer CLI polish — In progress
 
-- `forge init --path <dir>` so apps can be created outside the workspace's `examples/` (today they always land in `examples/<Name>`; see [project-generation.md](project-generation.md)).
+- Done: `forge init --path <dir>` creates apps outside the checkout, and each new app owns its Rust logic in its own crate (`rust/`, built on `forge-runtime`; see [app-crate.md](app-crate.md)). CI creates apps outside the checkout and tests, builds and packages them. Still open: publishing the runtime crates so an app needs no Forge checkout at all (see "Not planned" below).
 - `forge check`: one command that runs the local CI matrix (workspace tests, rustfmt, binding drift, Android JVM unit tests where a JDK and SDK are present). Until it lands, `make validate` plus `make test-android-host` covers the same ground.
 - `forge doctor --json`: machine-readable toolchain report for CI and scripts.
 

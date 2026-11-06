@@ -29,7 +29,7 @@ jobs:
         run: cargo test --workspace
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
-      - name: iOS template matches the Counter example
+      - name: Templates pin the workspace's UniFFI and verifier versions
         run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
         run: |
@@ -37,6 +37,20 @@ jobs:
           ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj
+
+  fresh-app:
+    name: Fresh app outside the checkout
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      # forge init --path for iOS and Android, the app's own crate tested,
+      # linted and formatted on its own, and a Rust API change reaching the
+      # bindings through `forge bindings generate --project`.
+      - name: check-fresh-app
+        run: ./scripts/check-fresh-app.sh "$RUNNER_TEMP/fresh-app"
 
   msrv:
     name: MSRV (1.88)

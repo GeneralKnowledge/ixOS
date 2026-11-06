@@ -10,13 +10,36 @@ const PLACEHOLDER_APP_NAME: &str = "FORGE_APP_NAME";
 const PLACEHOLDER_BUNDLE: &str = "FORGE_BUNDLE_ID";
 const PLACEHOLDER_SUPPORT_DIR: &str = "FORGE_APP_SUPPORT_DIR";
 const PLACEHOLDER_JAVA_PACKAGE: &str = "FORGE_JAVA_PACKAGE";
+/// The starter Rust crate every new app gets as `rust/`.
+const RUST_TEMPLATE: &str = "templates/app-rust";
 
 /// Absolute path to an app package directory (SwiftPM or Gradle + forge.toml).
+///
+/// A relative path is taken from the current directory when an app is there
+/// (`cd ~/projects && forge build ios --project MyApp`), otherwise from the
+/// workspace root (`--project examples/counter` from anywhere in the checkout).
 pub fn resolve_project_dir(root: &Path, project: &Path) -> PathBuf {
     if project.is_absolute() {
-        project.to_path_buf()
-    } else {
-        root.join(project)
+        return project.to_path_buf();
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        let candidate = cwd.join(project);
+        if candidate.join("forge.toml").is_file() {
+            return candidate;
+        }
+    }
+    root.join(project)
+}
+
+/// Points the build scripts at the app's own Rust crate when it has one
+/// (`[rust] path` in forge.toml); otherwise they build the workspace's
+/// shared forge-ffi.
+fn with_app_crate(cmd: Cmd, cfg: &ForgeConfig, project_dir: &Path) -> Cmd {
+    match cfg.rust_crate_dir(project_dir) {
+        Some(crate_dir) => cmd
+            .env("FORGE_APP_DIR", project_dir)
+            .env("FORGE_RUST_DIR", crate_dir),
+        None => cmd,
     }
 }
 
@@ -146,8 +169,7 @@ name = "{name}"
 bundle_id = "{bundle_id}"
 minimum_ios = "17.0"
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 [build]
 ios_device = true
 ios_simulator = false
@@ -165,8 +187,7 @@ min_sdk = 26
 abis = ["arm64-v8a", "x86_64"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 android = true
@@ -188,6 +209,9 @@ android = true
     let template = root.join(format!("templates/{platform}-app"));
     if !template.is_dir() {
         return Err(format!("template missing at templates/{platform}-app"));
+    }
+    if !root.join(RUST_TEMPLATE).join("Cargo.toml").is_file() {
+        return Err(format!("template missing at {RUST_TEMPLATE}"));
     }
     if platform == "ios" {
         validate_ios_template(&template)?;
@@ -216,7 +240,7 @@ android = true
     match &workspace {
         WorkspaceRef::Relative(_) => {}
         WorkspaceRef::Absolute(ws) => println!(
-            "Note: this app builds against the Forge workspace at {ws}. If that checkout moves, update the path in the app's build files (Package.swift and Xcode/, or app/build.gradle.kts)."
+            "Note: this app's Rust crate uses the Forge crates at {ws}. If that checkout moves, update the paths in rust/Cargo.toml (and REPO_ROOT in the Xcode project's \"Build Rust FFI\" phase on iOS)."
         ),
     }
     let rel = match &workspace {
@@ -227,8 +251,13 @@ android = true
             .into_owned(),
         WorkspaceRef::Absolute(_) => dest.to_string_lossy().into_owned(),
     };
+    println!(
+        "Rust logic: {}/rust/src/lib.rs (cargo test --manifest-path {}/rust/Cargo.toml)",
+        dest.display(),
+        dest.display()
+    );
     if platform == "ios" {
-        println!("Linux/xtool: forge build ios --project {rel}");
+        println!("Linux/xtool: forge run ios --project {rel}");
         println!(
             "macOS/Xcode: open {}/Xcode/{}.xcodeproj (see docs/ios-xcode.md)",
             dest.display(),
@@ -252,6 +281,16 @@ fn populate_app(
     workspace: &WorkspaceRef,
 ) -> Result<(), String> {
     copy_template(template, dir)?;
+    // The app's own Rust crate, with the workspace's lock file and toolchain
+    // pin so it starts on exactly the versions Forge is tested with.
+    let rust = dir.join("rust");
+    copy_template(&root.join(RUST_TEMPLATE), &rust)?;
+    for file in ["Cargo.lock", "rust-toolchain.toml"] {
+        let src = root.join(file);
+        if src.is_file() {
+            fs::copy(&src, rust.join(file)).map_err(|e| e.to_string())?;
+        }
+    }
     substitute_placeholders(dir, name, bundle_id)?;
     rewrite_workspace_paths(dir, platform, workspace)?;
     if platform == "ios" {
@@ -262,7 +301,15 @@ fn populate_app(
     let generated = dir.join("Generated");
     fs::create_dir_all(&generated).map_err(|e| e.to_string())?;
     let language = if platform == "ios" { "swift" } else { "kotlin" };
-    bindings_generate(runner, root, &generated, language)
+    require_workspace(root)?;
+    run_checked(
+        runner,
+        script(root, "generate-bindings.sh")
+            .arg(&generated)
+            .arg(language)
+            .env("FORGE_APP_DIR", dir)
+            .env("FORGE_RUST_DIR", &rust),
+    )
 }
 
 /// Creates the destination's parent directory and returns it with the
@@ -342,14 +389,6 @@ impl WorkspaceRef {
             Self::Absolute(abs) => abs.clone(),
         }
     }
-
-    /// The workspace for Gradle's `rootProject.file(..)`, which resolves a
-    /// relative path against the app directory.
-    fn for_gradle(&self) -> String {
-        match self {
-            Self::Relative(rel) | Self::Absolute(rel) => rel.clone(),
-        }
-    }
 }
 
 /// Points the app's build files at the workspace. The templates assume the
@@ -360,39 +399,24 @@ fn rewrite_workspace_paths(
     platform: &str,
     workspace: &WorkspaceRef,
 ) -> Result<(), String> {
-    let edits: Vec<(&str, String, String)> = if platform == "ios" {
-        // Package.swift: `packageDir` is the app directory. The Xcode project:
-        // `SRCROOT` is the app's `Xcode/` directory.
-        vec![
-            (
-                "Package.swift",
-                r#""\(packageDir)/../../build/"#.into(),
-                format!(r#""{}/build/"#, workspace.seen_from(r"\(packageDir)", 0)),
-            ),
-            (
-                "PBXPROJ",
-                r#""$(SRCROOT)/../../../build/"#.into(),
-                format!(r#""{}/build/"#, workspace.seen_from("$(SRCROOT)", 1)),
-            ),
-            (
-                "PBXPROJ",
-                r#"REPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\""#.into(),
-                format!(
-                    r#"REPO_ROOT=\"$(cd \"{}\" && pwd)\""#,
-                    workspace.seen_from("${SRCROOT}", 1)
-                ),
-            ),
-        ]
-    } else {
-        vec![(
-            "app/build.gradle.kts",
-            r#"rootProject.file("../../target/debug")"#.into(),
+    // rust/Cargo.toml: path dependencies on the Forge crates.
+    let mut edits: Vec<(&str, String, String)> = vec![(
+        "rust/Cargo.toml",
+        r#"path = "FORGE_WORKSPACE/"#.into(),
+        format!(r#"path = "{}/"#, workspace.seen_from("..", 0)),
+    )];
+    if platform == "ios" {
+        // The Xcode project's "Build Rust FFI" phase runs the workspace's
+        // scripts. `SRCROOT` is the app's `Xcode/` directory.
+        edits.push((
+            "PBXPROJ",
+            r#"REPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\""#.into(),
             format!(
-                r#"rootProject.file("{}/target/debug")"#,
-                workspace.for_gradle()
+                r#"REPO_ROOT=\"$(cd \"{}\" && pwd)\""#,
+                workspace.seen_from("${SRCROOT}", 1)
             ),
-        )]
-    };
+        ));
+    }
     for (file, old, new) in edits {
         let path = if file == "PBXPROJ" {
             find_pbxproj(dir)?
@@ -499,6 +523,14 @@ fn relocate_android_package(
         fs::create_dir_all(new_dir.parent().ok_or("invalid android package path")?)
             .map_err(|e| e.to_string())?;
         fs::rename(&old_dir, &new_dir).map_err(|e| e.to_string())?;
+        // Remove the template package's now-empty parents (`org/forgemobile`).
+        let mut parent = old_dir.parent();
+        while let Some(dir) = parent.filter(|d| *d != java_root) {
+            if fs::remove_dir(dir).is_err() {
+                break; // not empty: it holds the new package
+            }
+            parent = dir.parent();
+        }
     }
     Ok(())
 }
@@ -523,7 +555,11 @@ fn copy_template(src: &Path, dst: &Path) -> Result<(), String> {
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
         let name = entry.file_name();
-        if name == "Generated" {
+        // Build output left behind by building a template in place.
+        if ["Generated", "target", "build", ".build", ".gradle"]
+            .iter()
+            .any(|skip| name == *skip)
+        {
             continue;
         }
         let ty = entry.file_type().map_err(|e| e.to_string())?;
@@ -620,14 +656,40 @@ pub fn test(runner: &dyn CommandRunner, root: &Path, project: Option<&Path>) -> 
             .cwd(root),
     )?;
 
+    // An app with its own crate: run its Rust tests too, and give the host
+    // tests that crate's library.
+    let app_crate = match &project_dir {
+        Some(dir) if dir.join("forge.toml").is_file() => load_config(dir)?.rust_crate_dir(dir),
+        _ => None,
+    };
+    if let Some(crate_dir) = &app_crate {
+        let manifest = crate_dir.join("Cargo.toml");
+        run_checked(
+            runner,
+            Cmd::new("cargo")
+                .arg("test")
+                .arg("--manifest-path")
+                .arg(&manifest)
+                .cwd(root),
+        )?;
+    }
+
     match project_dir {
         Some(dir) if dir.join("gradlew").is_file() => {
-            run_checked(
-                runner,
-                Cmd::new("cargo")
+            let host_lib = match &app_crate {
+                // Regenerates the Kotlin bindings from the app's current Rust
+                // (building its host library on the way), so the tests never
+                // run stale bindings against a newer library.
+                Some(crate_dir) => script(root, "generate-bindings.sh")
+                    .arg(dir.join("Generated"))
+                    .arg("kotlin")
+                    .env("FORGE_APP_DIR", &dir)
+                    .env("FORGE_RUST_DIR", crate_dir),
+                None => Cmd::new("cargo")
                     .args(["build", "-p", "forge-ffi"])
                     .cwd(root),
-            )?;
+            };
+            run_checked(runner, host_lib)?;
             run_checked(
                 runner,
                 Cmd::new(dir.join("gradlew"))
@@ -657,6 +719,33 @@ pub fn bindings_generate(
     )
 }
 
+/// Regenerates an app's bindings into `<app>/Generated` from its own Rust
+/// crate (or the shared forge-ffi): Swift for an iOS app (`Package.swift`),
+/// Kotlin for an Android app (`gradlew`). Run it after changing the Rust API.
+pub fn bindings_generate_for_project(
+    runner: &dyn CommandRunner,
+    root: &Path,
+    project: &Path,
+) -> Result<(), String> {
+    require_workspace(root)?;
+    let project_dir = resolve_project_dir(root, project);
+    let cfg = load_config(&project_dir)?;
+    let language = if project_dir.join("Package.swift").is_file() {
+        "swift"
+    } else if project_dir.join("gradlew").is_file() {
+        "kotlin"
+    } else {
+        return Err(format!(
+            "{} is not a Forge app (no Package.swift or gradlew)",
+            project_dir.display()
+        ));
+    };
+    let generate = script(root, "generate-bindings.sh")
+        .arg(project_dir.join("Generated"))
+        .arg(language);
+    run_checked(runner, with_app_crate(generate, &cfg, &project_dir))
+}
+
 pub fn build_android(
     runner: &dyn CommandRunner,
     root: &Path,
@@ -682,16 +771,14 @@ pub fn build_android(
     );
 
     let generated = generated_dir_for_project(root, project);
-    run_checked(
-        runner,
-        script(root, "package-android-library.sh")
-            .arg(generated_dir_arg(root, &generated))
-            .env("FORGE_ANDROID_ABIS", android.abis.join(" "))
-            .env(
-                "FORGE_ANDROID_JNI_LIBS",
-                project_dir.join("app/src/main/jniLibs"),
-            ),
-    )?;
+    let package = script(root, "package-android-library.sh")
+        .arg(generated_dir_arg(root, &generated))
+        .env("FORGE_ANDROID_ABIS", android.abis.join(" "))
+        .env(
+            "FORGE_ANDROID_JNI_LIBS",
+            project_dir.join("app/src/main/jniLibs"),
+        );
+    run_checked(runner, with_app_crate(package, &cfg, &project_dir))?;
 
     let gradlew = project_dir.join("gradlew");
     if !gradlew.is_file() {
@@ -714,10 +801,8 @@ fn package_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Resul
         return Err("forge.toml does not enable iOS builds ([build] ios_device = true)".into());
     }
     let generated = generated_dir_for_project(root, project);
-    run_checked(
-        runner,
-        script(root, "package-ios-library.sh").arg(generated_dir_arg(root, &generated)),
-    )?;
+    let package = script(root, "package-ios-library.sh").arg(generated_dir_arg(root, &generated));
+    run_checked(runner, with_app_crate(package, &cfg, &project_dir))?;
     Ok(project_dir)
 }
 
@@ -1083,6 +1168,60 @@ ios_device = true
     }
 
     #[test]
+    fn app_owned_crate_is_tested_and_its_bindings_regenerated() {
+        let toml = ANDROID_TOML.replace(
+            "core_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"",
+            "path = \"rust\"",
+        );
+        let (_tmp, root) = workspace(&toml, &["gradlew"]);
+        let app = root.join("apps/demo");
+        let mock = MockRunner::default();
+        mock.respond("cargo", 0, "").respond("bash", 0, "").respond(
+            &app.join("gradlew").to_string_lossy(),
+            0,
+            "",
+        );
+        test(&mock, &root, Some(Path::new("apps/demo"))).unwrap();
+        let calls = mock.calls();
+        let lines = mock.call_lines();
+        let manifest = app.join("rust/Cargo.toml");
+        assert!(lines.contains(&format!(
+            "cargo test --manifest-path {}",
+            manifest.display()
+        )));
+        // Kotlin bindings come from the app's crate, before the JVM tests.
+        let gen = calls
+            .iter()
+            .position(|c| c.display().contains("generate-bindings.sh"))
+            .expect("bindings regenerated");
+        assert!(calls[gen].display().ends_with("apps/demo/Generated kotlin"));
+        assert_eq!(
+            env_of(&calls[gen], "FORGE_APP_DIR"),
+            Some(app.clone().into())
+        );
+        assert_eq!(
+            env_of(&calls[gen], "FORGE_RUST_DIR"),
+            Some(app.join("rust").into())
+        );
+        assert!(!lines.contains(&"cargo build -p forge-ffi".to_string()));
+        assert!(lines
+            .last()
+            .unwrap()
+            .ends_with("gradlew :app:testDebugUnitTest"));
+
+        // `forge bindings generate --project` does the same on its own.
+        let mock = MockRunner::default();
+        mock.respond("bash", 0, "");
+        bindings_generate_for_project(&mock, &root, Path::new("apps/demo")).unwrap();
+        let call = &mock.calls()[0];
+        assert!(call.display().ends_with("apps/demo/Generated kotlin"));
+        assert_eq!(
+            env_of(call, "FORGE_RUST_DIR"),
+            Some(app.join("rust").into())
+        );
+    }
+
+    #[test]
     fn test_runs_swift_host_tests_for_ios_project() {
         let (_tmp, root) = workspace(IOS_TOML, &["Package.swift"]);
         let mock = MockRunner::default();
@@ -1176,11 +1315,16 @@ ios_device = true
         assert!(dest
             .join("Xcode/InitTestApp.xcodeproj/project.pbxproj")
             .is_file());
-        let vm = fs::read_to_string(dest.join("Sources/AppHost/CounterViewModel.swift")).unwrap();
-        assert!(vm.contains("InitTestApp"));
+        let model = fs::read_to_string(dest.join("Sources/AppHost/NotesModel.swift")).unwrap();
+        assert!(model.contains("InitTestApp"));
         assert!(dest
-            .join("Tests/AppHostTests/CounterViewModelTests.swift")
+            .join("Tests/AppHostTests/NotesModelTests.swift")
             .is_file());
+        // The app owns its Rust crate, with the workspace's lock file and toolchain.
+        assert!(dest.join("rust/src/lib.rs").is_file());
+        assert!(dest.join("rust/Cargo.lock").is_file());
+        let config = crate::config::ForgeConfig::parse(&read(dest.join("forge.toml"))).unwrap();
+        assert_eq!(config.rust_crate_dir(&dest), Some(dest.join("rust")));
         fs::remove_dir_all(dest).unwrap();
     }
 
@@ -1226,21 +1370,23 @@ ios_device = true
         )
         .unwrap();
 
+        // Native libraries are the app's own (built from rust/ into build/).
         let pkg = read(dest.join("Package.swift"));
         assert!(
-            pkg.contains(&format!(
-                r#"let iosLibSearch = "{ws}/build/ios-device/lib""#
-            )),
+            pkg.contains(r#"let iosLibSearch = "\(packageDir)/build/ios-device/lib""#),
             "{pkg}"
         );
-        assert!(pkg.contains(&format!(
-            r#"let macosLibSearch = "{ws}/build/macos-host/lib""#
-        )));
-        assert!(!pkg.contains("../.."));
         let pbx = read(dest.join("Xcode/PathApp.xcodeproj/project.pbxproj"));
-        assert!(pbx.contains(&format!(r#""{ws}/build/ios-device/lib/libforge_ffi.a""#)));
+        assert!(pbx.contains(r#""$(SRCROOT)/../build/ios-device/lib/libforge_ffi.a""#));
+        // The scripts and Forge crates still come from the workspace.
         assert!(pbx.contains(&format!(r#"REPO_ROOT=\"$(cd \"{ws}\" && pwd)\""#)));
         assert!(!pbx.contains("SRCROOT}/../../.."));
+        let cargo = read(dest.join("rust/Cargo.toml"));
+        assert!(
+            cargo.contains(&format!(r#"path = "{ws}/crates/forge-runtime""#)),
+            "{cargo}"
+        );
+        assert!(!cargo.contains("FORGE_WORKSPACE"));
 
         // Bindings went to the app's own Generated/, and staging is gone.
         let gen = mock.call_lines()[0].clone();
@@ -1272,13 +1418,23 @@ ios_device = true
         .unwrap();
         let gradle = read(dest.join("app/build.gradle.kts"));
         assert!(
-            gradle.contains(&format!(
-                r#"rootProject.file("{}/target/debug")"#,
-                ws.display()
-            )),
+            gradle.contains(r#"rootProject.file("rust/target/debug")"#),
             "{gradle}"
         );
-        assert!(dest.join("app/src/main/java/org/example/droid").is_dir());
+        let cargo = read(dest.join("rust/Cargo.toml"));
+        assert!(
+            cargo.contains(&format!(
+                r#"path = "{}/crates/forge-runtime""#,
+                ws.display()
+            )),
+            "{cargo}"
+        );
+        assert!(dest
+            .join("app/src/main/java/org/example/droid/NotesViewModel.kt")
+            .is_file());
+        assert!(!dest.join("app/src/main/java/org/forgemobile").exists());
+        let settings = read(dest.join("settings.gradle.kts"));
+        assert!(settings.contains(r#"rootProject.name = "DroidApp""#));
     }
 
     #[test]
@@ -1299,9 +1455,7 @@ ios_device = true
             None,
         )
         .unwrap();
-        let pkg = read(default_dest.join("Package.swift"));
-        let template_pkg = read(root.join("templates/ios-app/Package.swift"))
-            .replace("FORGE_PACKAGE_NAME", "RelDefaultApp");
+        let cargo = read(default_dest.join("rust/Cargo.toml"));
         let pbx = read(default_dest.join("Xcode/RelDefaultApp.xcodeproj/project.pbxproj"));
         let template_pbx =
             read(root.join("templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj"))
@@ -1309,7 +1463,11 @@ ios_device = true
                 .replace("FORGE_APP_NAME", "RelDefaultApp")
                 .replace("FORGE_BUNDLE_ID", "org.example.rel");
         fs::remove_dir_all(&default_dest).unwrap();
-        assert!(pkg == template_pkg, "Package.swift paths changed");
+        // rust/ is one level below the app, so three levels up to the workspace.
+        assert!(
+            cargo.contains(r#"path = "../../../crates/forge-runtime""#),
+            "{cargo}"
+        );
         assert!(pbx == template_pbx, "project.pbxproj paths changed");
 
         // One level deeper: one more `..`, still relative.
@@ -1325,14 +1483,13 @@ ios_device = true
             Some(&dest),
         )
         .unwrap();
-        let pkg = read(dest.join("Package.swift"));
+        let cargo = read(dest.join("rust/Cargo.toml"));
         let pbx = read(dest.join("Xcode/RelNestedApp.xcodeproj/project.pbxproj"));
         fs::remove_dir_all(&nested).unwrap();
         assert!(
-            pkg.contains(r#""\(packageDir)/../../../build/ios-device/lib""#),
-            "{pkg}"
+            cargo.contains(r#"path = "../../../../crates/forge-runtime""#),
+            "{cargo}"
         );
-        assert!(pbx.contains(r#""$(SRCROOT)/../../../../build/ios-device/lib/libforge_ffi.a""#));
         assert!(pbx.contains(r#"REPO_ROOT=\"$(cd \"${SRCROOT}/../../../..\" && pwd)\""#));
     }
 
@@ -1371,10 +1528,9 @@ ios_device = true
     fn workspace_ref_renders_paths_per_build_system() {
         let rel = WorkspaceRef::Relative("../..".into());
         assert_eq!(rel.seen_from("$(SRCROOT)", 1), "$(SRCROOT)/../../..");
-        assert_eq!(rel.seen_from(r"\(packageDir)", 0), r"\(packageDir)/../..");
-        assert_eq!(rel.for_gradle(), "../..");
+        assert_eq!(rel.seen_from("..", 0), "../../..");
         let abs = WorkspaceRef::Absolute("/src/forge".into());
         assert_eq!(abs.seen_from("$(SRCROOT)", 1), "/src/forge");
-        assert_eq!(abs.for_gradle(), "/src/forge");
+        assert_eq!(abs.seen_from("..", 0), "/src/forge");
     }
 }

@@ -49,6 +49,7 @@ CI assembles a **debug APK** on Ubuntu, runs Rust checks, binding drift tests, a
 crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
+crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, Android HTTPS init
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
@@ -57,6 +58,7 @@ examples/counter-android  # Compose + Gradle app
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
 examples/chat-android     # The same chat app in Compose
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
+templates/app-rust        # Starter Rust crate every new app gets as rust/ (see docs/app-crate.md)
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # `forge init --platform android`
 scripts/               # Toolchain and build scripts; mock-chat-server (`make mock-chat`)
@@ -73,6 +75,7 @@ cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform io
 cargo run -p forge-cli -- init MyApp --path ~/projects/MyApp      # create the app outside the workspace
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- test --project examples/counter-android  # ...plus that app's host tests
+cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an app's own crate -> its Generated/
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
@@ -88,7 +91,7 @@ Install the binary: `cargo install --path crates/forge-cli --locked` (optional).
 
 Example apps include `forge.toml` — see [examples/counter/forge.toml](examples/counter/forge.toml).
 
-New apps: `forge init MyApp --bundle-id org.example.myapp --platform ios|android` — see [docs/project-generation.md](docs/project-generation.md).
+New apps: `forge init MyApp --bundle-id org.example.myapp --platform ios|android --path ~/projects/MyApp`. Each app owns its Rust logic in its own crate (`rust/`), so you never edit Forge's crates to build one. See [docs/project-generation.md](docs/project-generation.md) and [docs/app-crate.md](docs/app-crate.md).
 
 ## License
 
