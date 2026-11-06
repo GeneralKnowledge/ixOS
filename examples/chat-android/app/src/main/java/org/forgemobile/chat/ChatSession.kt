@@ -41,6 +41,20 @@ data class ChatUiState(
         conversations.firstOrNull { it.id == conversationId }?.title ?: conversationId
 }
 
+/** A local notification for someone else's new message in a room that is not open. */
+data class ChatNotification(
+    val messageId: String,
+    val conversationId: String,
+    val roomTitle: String,
+    val author: String,
+    val body: String,
+)
+
+/** Shows [ChatNotification]s. The app uses [AndroidChatNotifier]; tests record them. */
+fun interface ChatNotifier {
+    fun post(notification: ChatNotification)
+}
+
 /**
  * Presentation state for the Chat example, the Kotlin twin of the SwiftUI host's
  * `ChatSession`.
@@ -52,10 +66,13 @@ data class ChatUiState(
  * @param scope runs the event loop and owns no commands: commands are suspend functions that
  *   run in the caller's scope. [ChatViewModel] passes `viewModelScope`, so leaving a room never
  *   cancels a send.
+ * @param notifier with one, every room is watched while the session runs and Rust's `Notify`
+ *   events become notifications. Without one, only the open room is live.
  */
 class ChatSession(
     val app: ForgeChatAppInterface,
     private val scope: CoroutineScope,
+    private val notifier: ChatNotifier? = null,
 ) {
     private val _state = MutableStateFlow(ChatUiState())
     val state: StateFlow<ChatUiState> = _state.asStateFlow()
@@ -77,6 +94,7 @@ class ChatSession(
         try {
             val list = app.listConversations()
             _state.update { it.copy(conversations = list, listError = null) }
+            list.forEach { watchIfNotifying(it.id) }
         } catch (e: ChatException) {
             _state.update { it.copy(listError = userMessage(e)) }
         } finally {
@@ -87,9 +105,15 @@ class ChatSession(
     /** Opens a room: shows stored messages, connects, then catches up. */
     suspend fun open(conversationId: String) {
         _state.update {
+            // A watched room's stream is already running (and reported): keep its state.
+            val connection =
+                when (val current = it.connection[conversationId]) {
+                    ConnectionState.Connected, is ConnectionState.Reconnecting -> current
+                    else -> ConnectionState.Connecting
+                }
             it.copy(
                 messages = it.messages + (conversationId to app.cachedMessages(conversationId)),
-                connection = it.connection + (conversationId to ConnectionState.Connecting),
+                connection = it.connection + (conversationId to connection),
             )
         }
         try {
@@ -140,6 +164,16 @@ class ChatSession(
         eventJob?.cancel()
     }
 
+    /** Keeps a room live in the background so its news can notify. */
+    private fun watchIfNotifying(conversationId: String) {
+        if (notifier == null) return
+        try {
+            app.watch(conversationId)
+        } catch (_: ChatException) {
+            // Only fails after shutdown.
+        }
+    }
+
     private fun listenForEvents() {
         val events =
             try {
@@ -169,6 +203,7 @@ class ChatSession(
         when (event) {
             is ChatEvent.ConversationUpdated -> {
                 val updated = event.conversation
+                val isNew = _state.value.conversations.none { it.id == updated.id }
                 _state.update { state ->
                     val list =
                         if (state.conversations.any { it.id == updated.id }) {
@@ -178,6 +213,20 @@ class ChatSession(
                         }
                     state.copy(conversations = list)
                 }
+                if (isNew) watchIfNotifying(updated.id)
+            }
+            // Rust raises this only for others' new messages in rooms that are not open.
+            is ChatEvent.Notify -> {
+                val message = event.message
+                notifier?.post(
+                    ChatNotification(
+                        messageId = message.id,
+                        conversationId = message.conversationId,
+                        roomTitle = _state.value.title(message.conversationId),
+                        author = message.author,
+                        body = message.body,
+                    ),
+                )
             }
             is ChatEvent.MessageReceived -> {
                 val message = event.message

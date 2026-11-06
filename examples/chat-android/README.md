@@ -11,7 +11,8 @@ ChatRoot (Compose) → ChatViewModel → ChatSession → Generated Kotlin (uniff
 ```
 
 Not a production chat client. No auth, push, media, read receipts or encryption, and PRs
-adding them will be declined.
+adding them will be declined. New messages in rooms you are not in do show as local
+notifications while the app runs.
 
 ## Run it
 
@@ -48,6 +49,7 @@ Without the mock server binary the server tests are skipped; CI always builds it
 | What | Where |
 |------|-------|
 | Presentation state; applies Rust events, re-reads the store after `EventsDropped` | `app/src/main/java/org/forgemobile/chat/ChatSession.kt` |
+| Local notifications (channel, permission check) | `AndroidChatNotifier.kt` |
 | The Rust instance per server URL; commands in `viewModelScope` | `ChatViewModel.kt` |
 | `ChatException` → text for the UI | `ChatErrors.kt` |
 | Screens | `ui/ChatScreens.kt` |
@@ -55,6 +57,11 @@ Without the mock server binary the server tests are skipped; CI always builds it
 
 ## Notes
 
+- **Local notifications.** `ChatSession` watches every room when it has a notifier, and
+  posts Rust's `Notify` events through `AndroidChatNotifier` on a high-importance channel,
+  so they show as banners in the foreground too. On Android 13+ the app asks for
+  `POST_NOTIFICATIONS` at launch; saying no only turns them off. Only while the app runs:
+  there is no push server. Design: [docs/chat-demo.md](../../docs/chat-demo.md#notifications).
 - **http only on Android.** The Rust client checks certificates with
   `rustls-platform-verifier`, which on Android needs a JNI init that this example does not do
   yet. Rather than fail every request with a TLS error that looks like "server down",

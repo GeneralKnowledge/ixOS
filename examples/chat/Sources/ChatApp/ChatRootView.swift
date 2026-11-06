@@ -71,9 +71,18 @@ private final class SessionBox: ObservableObject {
 
     let state: State
 
+    /// New messages in rooms you are not in show as local notifications.
+    private static var notifier: ChatNotifier? {
+        #if canImport(UserNotifications)
+            LocalChatNotifier.shared
+        #else
+            nil
+        #endif
+    }
+
     init(serverURL: String) {
         do {
-            state = .ready(try ChatSession(serverURL: serverURL))
+            state = .ready(try ChatSession(serverURL: serverURL, notifier: Self.notifier))
         } catch {
             state = .failed(ChatSession.message(for: error))
         }

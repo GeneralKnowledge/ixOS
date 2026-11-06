@@ -1182,6 +1182,8 @@ public protocol ForgeChatAppProtocol: AnyObject, Sendable {
     
     func isSubscribed(conversationId: String)  -> Bool
     
+    func isWatched(conversationId: String)  -> Bool
+    
     /**
      * The room's `since` cursor (server time, Unix ms).
      */
@@ -1229,7 +1231,8 @@ public protocol ForgeChatAppProtocol: AnyObject, Sendable {
     func storeProblem()  -> String?
     
     /**
-     * Opens the room's live connection and marks it read. Returns at once;
+     * Opens the room's live connection (or reuses its watch) and marks it
+     * read; it stays read while open. Returns at once;
      * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
      */
     func subscribe(conversationId: String) throws 
@@ -1240,11 +1243,26 @@ public protocol ForgeChatAppProtocol: AnyObject, Sendable {
     func syncMessages(conversationId: String) async throws  -> [ChatMessage]
     
     /**
-     * Closes the room's live connection. On return `StreamDisconnected
-     * { will_retry: false }` is queued and nothing more from that room's
-     * stream will be. Idempotent.
+     * Closes the room. If it is not watched, its live connection ends: on
+     * return `StreamDisconnected { will_retry: false }` is queued and
+     * nothing more from that room's stream will be. A watched room stays
+     * live and counts unread messages again. Idempotent.
      */
     func unsubscribe(conversationId: String) throws 
+    
+    /**
+     * Stops watching the room. Its stream ends unless the room is also
+     * open (`subscribe`). Idempotent.
+     */
+    func unwatch(conversationId: String) throws 
+    
+    /**
+     * Keeps the room live in the background without opening it: new
+     * messages arrive as `MessageReceived`, and new ones from others count
+     * towards `unread_count` and raise `Notify`. Returns at once.
+     * Idempotent.
+     */
+    func watch(conversationId: String) throws 
     
 }
 /**
@@ -1382,6 +1400,16 @@ open func isSubscribed(conversationId: String) -> Bool  {
 })
 }
     
+open func isWatched(conversationId: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_is_watched(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
     /**
      * The room's `since` cursor (server time, Unix ms).
      */
@@ -1513,7 +1541,8 @@ open func storeProblem() -> String?  {
 }
     
     /**
-     * Opens the room's live connection and marks it read. Returns at once;
+     * Opens the room's live connection (or reuses its watch) and marks it
+     * read; it stays read while open. Returns at once;
      * `StreamConnected` / `StreamDisconnected` events follow. Idempotent.
      */
 open func subscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
@@ -1545,13 +1574,42 @@ open func syncMessages(conversationId: String)async throws  -> [ChatMessage]  {
 }
     
     /**
-     * Closes the room's live connection. On return `StreamDisconnected
-     * { will_retry: false }` is queued and nothing more from that room's
-     * stream will be. Idempotent.
+     * Closes the room. If it is not watched, its live connection ends: on
+     * return `StreamDisconnected { will_retry: false }` is queued and
+     * nothing more from that room's stream will be. A watched room stays
+     * live and counts unread messages again. Idempotent.
      */
 open func unsubscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Stops watching the room. Its stream ends unless the room is also
+     * open (`subscribe`). Idempotent.
+     */
+open func unwatch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_unwatch(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Keeps the room live in the background without opening it: new
+     * messages arrive as `MessageReceived`, and new ones from others count
+     * towards `unread_count` and raise `Notify`. Returns at once.
+     * Idempotent.
+     */
+open func watch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgechatapp_watch(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -3692,6 +3750,13 @@ public enum ChatEvent: Equatable, Hashable {
     case messageReceived(message: ChatMessage
     )
     /**
+     * Someone else's new message in a room that is not open, sent after
+     * this app instance started: show a local notification. Follows its
+     * `MessageReceived`. Catch-up history never notifies.
+     */
+    case notify(message: ChatMessage
+    )
+    /**
      * A known message changed status. Re-read `conversation_id`'s messages
      * (a `Sent` message also carries the server's time and may move).
      */
@@ -3739,16 +3804,19 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
         case 2: return .messageReceived(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 3: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        case 3: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 4: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
+        case 4: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
         )
         
-        case 5: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        case 5: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
         )
         
-        case 6: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        case 6: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 7: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -3769,27 +3837,32 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .messageStatusChanged(conversationId,id,status):
+        case let .notify(message):
             writeInt(&buf, Int32(3))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageStatusChanged(conversationId,id,status):
+            writeInt(&buf, Int32(4))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(id, into: &buf)
             FfiConverterTypeChatMessageStatus.write(status, into: &buf)
             
         
         case let .streamConnected(conversationId):
-            writeInt(&buf, Int32(4))
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(conversationId, into: &buf)
             
         
         case let .streamDisconnected(conversationId,reason,willRetry):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(reason, into: &buf)
             FfiConverterBool.write(willRetry, into: &buf)
             
         
         case let .eventsDropped(count):
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
             FfiConverterUInt64.write(count, into: &buf)
             
         }
@@ -5911,6 +5984,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed() != 62844) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_is_watched() != 57171) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_forgechatapp_last_synced() != 58714) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5935,13 +6011,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_forgechatapp_store_problem() != 6758) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() != 58798) {
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_subscribe() != 23654) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages() != 16027) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() != 7728) {
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe() != 25787) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_unwatch() != 18700) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgechatapp_watch() != 18119) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chateventsubscription_cancel() != 39977) {

@@ -378,6 +378,11 @@ int8_t uniffi_forge_ffi_fn_method_forgechatapp_is_shut_down(uint64_t ptr, RustCa
 int8_t uniffi_forge_ffi_fn_method_forgechatapp_is_subscribed(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_IS_WATCHED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_IS_WATCHED
+int8_t uniffi_forge_ffi_fn_method_forgechatapp_is_watched(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_LAST_SYNCED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_LAST_SYNCED
 RustBuffer uniffi_forge_ffi_fn_method_forgechatapp_last_synced(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
@@ -431,6 +436,16 @@ uint64_t uniffi_forge_ffi_fn_method_forgechatapp_sync_messages(uint64_t ptr, Rus
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_UNSUBSCRIBE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_UNSUBSCRIBE
 void uniffi_forge_ffi_fn_method_forgechatapp_unsubscribe(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_UNWATCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_UNWATCH
+void uniffi_forge_ffi_fn_method_forgechatapp_unwatch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_WATCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_FORGECHATAPP_WATCH
+void uniffi_forge_ffi_fn_method_forgechatapp_watch(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_CHATEVENTSUBSCRIPTION
@@ -971,6 +986,12 @@ uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_is_subscribed(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_IS_WATCHED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_IS_WATCHED
+uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_is_watched(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_LAST_SYNCED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_LAST_SYNCED
 uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_last_synced(void
@@ -1034,6 +1055,18 @@ uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_sync_messages(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_UNSUBSCRIBE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_UNSUBSCRIBE
 uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_unsubscribe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_UNWATCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_UNWATCH
+uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_unwatch(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_WATCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_FORGECHATAPP_WATCH
+uint16_t uniffi_forge_ffi_checksum_method_forgechatapp_watch(void
     
 );
 #endif

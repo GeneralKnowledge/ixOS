@@ -3,6 +3,8 @@
 
     <!-- The Rust client opens its own sockets to the chat server. -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Local notifications for new messages in rooms you are not in (Android 13+ asks). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!--
       No network_security_config: Android's cleartext policy is enforced by the Java HTTP

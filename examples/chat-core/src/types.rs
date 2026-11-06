@@ -61,6 +61,13 @@ pub enum ChatEvent {
     /// message from the stream or a catch-up fetch, or the local user's own
     /// message at the moment it is written (status `Sending`).
     MessageReceived(Message),
+    /// Someone else's message just counted towards `unread_count` (its room
+    /// is not open: it arrived on a watched room's stream or in a refresh's
+    /// prefetch), and it was sent after this client started.
+    /// Follows its `MessageReceived`. Hosts show a local notification for
+    /// it; the history a room catches up on when first watched, and what
+    /// arrived while the app was not running, never notify.
+    Notify(Message),
     /// A known message changed status (`Sending` → `Sent` / `Failed`, or
     /// `Failed` → `Sending` on retry). `conversation_id` is the message's
     /// room, so a host can update that room without searching the others.

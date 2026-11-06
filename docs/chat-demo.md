@@ -10,7 +10,7 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 | Typed errors for network, HTTP, protocol and host support | Weather has one error enum for one API |
 | The same domain on both hosts | Weather is iOS-only |
 
-It is deliberately **not** a production chat client. Non-goals: real auth, push notifications, media messages, read receipts, typing indicators, encryption. PRs that add them will be declined; if the mock server needs persistence or auth, that is the signal the demo needs a real backend, which is out of scope.
+It is deliberately **not** a production chat client. Non-goals: real auth, push notifications (the apps show *local* notifications while they run; see [Notifications](#notifications)), media messages, read receipts, typing indicators, encryption. PRs that add them will be declined; if the mock server needs persistence or auth, that is the signal the demo needs a real backend, which is out of scope.
 
 ## Status
 
@@ -49,6 +49,7 @@ pub enum MessageStatus { Sending, Sent, Failed }
 pub enum ChatEvent {
     ConversationUpdated(Conversation),
     MessageReceived(Message),
+    Notify(Message),
     MessageStatusChanged { conversation_id, id, status },
     StreamConnected { conversation_id },
     StreamDisconnected { conversation_id, reason, will_retry: bool },
@@ -71,8 +72,9 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 | `load_messages(id, since)` / `sync_messages(id)` | Fetches (all, or newer than `since`), merges, returns the room's full stored list including local `Sending`/`Failed` messages. `sync_messages` uses the stored cursor. |
 | `send_message(id, body)` | Stores and announces the message as `Sending` *before* the network call, then `MessageStatusChanged` to `Sent` or `Failed`. Returns the final message or the error. |
 | `retry_message(message_id)` | `Failed` → `Sending` → `Sent`/`Failed`, same id. Retrying a `Sent` message returns it. |
-| `subscribe(id)` | Starts the room's pump, marks the room read. Returns at once; connection state arrives as events. Idempotent. |
-| `unsubscribe(id)` | Ends the subscription. Idempotent, allowed after shutdown. |
+| `subscribe(id)` | Opens the room: starts its pump (or reuses its watch), marks it read and keeps it read. Returns at once; connection state arrives as events. Idempotent. |
+| `unsubscribe(id)` | Closes the room. The pump ends unless the room is watched. Idempotent, allowed after shutdown. |
+| `watch(id)` / `unwatch(id)` | Keeps the room's pump running in the background without opening it, so its news counts as unread and raises `Notify`. The pump ends when the room is neither open nor watched. Idempotent. |
 | `shutdown()` | Ends every subscription; later commands fail with `ShutDown`. |
 | `cached_conversations()`, `cached_messages(id)`, `last_synced(id)` | Local reads for a first render before the network. |
 
@@ -104,6 +106,16 @@ Tying the subscription to the lifetime of an `AsyncSequence` / `Flow` would make
 ### Unread counts
 
 Tracked on the device: messages from other people that arrive while a room is not open. `list_conversations` notices rooms with news (server `last_message_at` > cursor) and fetches only those. `subscribe` resets the count. No server state, no read receipts.
+
+### Notifications
+
+Local only, while the app runs: the Rust client holds the room connections, and there is no push server (push stays a non-goal). A host that wants notifications **watches** every room. Rust then emits `Notify(message)`, right after the message's `MessageReceived`, when all of these hold:
+
+- the message is new to the store and from someone else;
+- its room is not open (it arrived on a watched room's stream, or in a refresh's prefetch);
+- it was sent after this `ChatClient` started (server `sent_at` against device time), so the history a room catches up on when first watched, and whatever arrived while the app was closed, never notify. It still counts as unread.
+
+The hosts only display it: `UNUserNotificationCenter` on iOS (with banners in the foreground too), a high-importance `NotificationChannel` on Android (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
 
 ### Store
 
@@ -207,12 +219,12 @@ The plan was written before the Weather example landed. Checked against the repo
 | `events()` → `ChatEventSubscription` (`async next()`, `cancel()`) | One per consumer, queue of 256, then `EventsDropped { count }`: re-read `cached_*`. |
 | `async list_conversations()`, `async load_messages(id, since)`, `async sync_messages(id)` | Each runs on a worker thread. |
 | `async send_message(id, body)`, `async retry_message(message_id)` | Not cancellable from the host, on purpose. |
-| `subscribe(id)`, `unsubscribe(id)` | Synchronous, return at once. |
-| `cached_conversations()`, `cached_messages(id)`, `last_synced(id)`, `is_subscribed(id)` | Local reads. |
+| `subscribe(id)`, `unsubscribe(id)`, `watch(id)`, `unwatch(id)` | Synchronous, return at once. |
+| `cached_conversations()`, `cached_messages(id)`, `last_synced(id)`, `is_subscribed(id)`, `is_watched(id)` | Local reads. |
 | `live_streams()`, `store_problem()` | Diagnostics: room threads still running, last persistence problem. |
 | `shutdown()`, `is_shut_down()` | Closes rooms, then event streams (queued events delivered first). |
 
-`ChatEvent` variants carry named fields (`MessageReceived { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`, and calls the core's `Protocol` error `BadResponse` (`.Protocol` is a metatype in Swift). Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
+`ChatEvent` variants carry named fields (`MessageReceived { message }`, `Notify { message }`, `ConversationUpdated { conversation }`) and add `EventsDropped { count }`. `ChatError` adds `Storage { reason }` and `Internal { reason }`, and calls the core's `Protocol` error `BadResponse` (`.Protocol` is a metatype in Swift). Swift and Kotlin compile is checked by CI (the Swift host tests and the Android APK build compile the regenerated bindings); cloud sessions have no Swift or Kotlin compiler.
 
 ## Android and TLS (Phase 5)
 

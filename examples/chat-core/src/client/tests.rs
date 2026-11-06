@@ -332,6 +332,142 @@ fn unread_counts_messages_that_arrive_while_a_room_is_closed() {
 }
 
 #[test]
+fn watched_rooms_stay_live_and_count_unread() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.client.watch("random").unwrap();
+    h.client.watch("random").unwrap(); // idempotent
+    h.wait_connected("random");
+    assert!(h.client.is_watched("random"));
+    assert!(!h.client.is_subscribed("random"));
+
+    // Someone else's message arrives live, counts as unread and notifies,
+    // right after its MessageReceived.
+    let incoming = h.repo.inject("random", "ana", "while watching");
+    let events = h.wait_for("the unread bump", |e| {
+        matches!(e, ChatEvent::ConversationUpdated(c) if c.id == "random" && c.unread_count == 1)
+    });
+    let received = events
+        .iter()
+        .position(|e| matches!(e, ChatEvent::MessageReceived(m) if m.id == incoming.id))
+        .expect("MessageReceived");
+    assert!(matches!(&events[received + 1], ChatEvent::Notify(m) if m.id == incoming.id));
+
+    // Our own messages never count or notify.
+    h.client.send_message("random", "mine").unwrap();
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!h.drain().iter().any(|e| matches!(e, ChatEvent::Notify(_))));
+    let random = h
+        .client
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == "random")
+        .unwrap();
+    assert_eq!(random.unread_count, 1);
+
+    // Opening a watched room reuses its stream and marks it read.
+    h.client.subscribe("random").unwrap();
+    assert_eq!(h.repo.open_stream_count(), 1);
+    h.repo.inject("random", "ana", "while open");
+    h.wait_for(
+        "the open-room message",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.body == "while open"),
+    );
+    let random = h
+        .client
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == "random")
+        .unwrap();
+    assert_eq!(random.unread_count, 0, "an open room stays read");
+    assert!(
+        !h.drain().iter().any(|e| matches!(e, ChatEvent::Notify(_))),
+        "an open room never notifies"
+    );
+
+    // Closing it keeps the watch: no disconnect, and unread counts again.
+    h.drain();
+    h.client.unsubscribe("random").unwrap();
+    assert!(h.drain().is_empty(), "the stream keeps running");
+    assert_eq!(h.client.live_pumps(), 1);
+    h.repo.inject("random", "ana", "after closing");
+    h.wait_for("unread again", |e| {
+        matches!(e, ChatEvent::ConversationUpdated(c) if c.id == "random" && c.unread_count == 1)
+    });
+
+    // Unwatching ends it for real.
+    h.client.unwatch("random").unwrap();
+    assert_eq!(
+        h.drain().last(),
+        Some(&ChatEvent::StreamDisconnected {
+            conversation_id: "random".into(),
+            reason: "unsubscribed".into(),
+            will_retry: false,
+        })
+    );
+    wait_until("the pump has exited", || h.client.live_pumps() == 0);
+    h.client.unwatch("random").unwrap(); // idempotent
+}
+
+#[test]
+fn only_messages_sent_after_start_notify() {
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("random", "Random")]));
+    repo.inject("random", "ana", "history");
+    std::thread::sleep(Duration::from_millis(5));
+    let h = harness_with(repo, ChatStore::in_memory());
+    // The refresh prefetches the history: unread, but no notification.
+    h.client.list_conversations().unwrap();
+    h.client.watch("random").unwrap();
+    h.wait_connected("random");
+    let fresh = h.repo.inject("random", "bo", "fresh");
+    let events = h.wait_for("the fresh notification", |e| {
+        matches!(e, ChatEvent::Notify(_))
+    });
+    let notified: Vec<_> = events
+        .iter()
+        .filter_map(|e| match e {
+            ChatEvent::Notify(m) => Some(m.id.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notified, [fresh.id], "catch-up history does not notify");
+    let random = &h.client.cached_conversations()[0];
+    assert_eq!(random.unread_count, 2, "but it still counts as unread");
+    h.client.shutdown();
+}
+
+#[test]
+fn watching_many_rooms_and_leaving_one_leaves_the_others_live() {
+    let h = harness();
+    h.client.watch("general").unwrap();
+    h.client.watch("random").unwrap();
+    h.client.subscribe("general").unwrap();
+    // Either room may connect first; wait for both.
+    let connected = std::cell::RefCell::new(std::collections::HashSet::new());
+    h.wait_for("both rooms connected", |e| {
+        if let ChatEvent::StreamConnected { conversation_id } = e {
+            connected.borrow_mut().insert(conversation_id.clone());
+        }
+        connected.borrow().len() == 2
+    });
+    assert_eq!(h.client.live_pumps(), 2);
+
+    h.client.unwatch("random").unwrap();
+    h.client.unsubscribe("general").unwrap(); // still watched
+    wait_until("random's pump has exited", || h.client.live_pumps() == 1);
+    let incoming = h.repo.inject("general", "ana", "still live");
+    h.wait_for(
+        "general still delivers",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == incoming.id),
+    );
+
+    h.client.shutdown();
+    assert!(!h.client.is_watched("general"));
+    assert_eq!(h.client.watch("general"), Err(ChatError::ShutDown));
+    wait_until("every pump has exited", || h.client.live_pumps() == 0);
+}
+
+#[test]
 fn load_messages_merges_and_respects_the_cursor() {
     let h = harness();
     let a = h.repo.inject("general", "ana", "a");

@@ -22,6 +22,8 @@ import uniffi.forge_ffi.ForgeChatApp
  */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private val prefs = application.getSharedPreferences("chat", Context.MODE_PRIVATE)
+    /** New messages in rooms you are not in show as notifications while the app runs. */
+    private val notifier = AndroidChatNotifier(application)
 
     var serverUrl by mutableStateOf(prefs.getString(KEY_SERVER, null) ?: DEFAULT_SERVER)
         private set
@@ -74,7 +76,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 openError = userMessage(e)
                 return
             }
-        val opened = ChatSession(app, viewModelScope)
+        val opened = ChatSession(app, viewModelScope, notifier)
         session = opened
         viewModelScope.launch { opened.start() }
     }

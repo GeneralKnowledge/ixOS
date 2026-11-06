@@ -17,6 +17,7 @@ extension ChatEvent {
         switch self {
         case let .conversationUpdated(conversation): return conversation.id
         case let .messageReceived(message): return message.conversationId
+        case let .notify(message): return message.conversationId
         case let .streamConnected(conversationId): return conversationId
         case let .streamDisconnected(conversationId, _, _): return conversationId
         case let .messageStatusChanged(conversationId, _, _): return conversationId
