@@ -94,7 +94,7 @@ Explicit recovery path for corruption **[stated in docs]** (`recover_counter_app
 
 ### Should touch **[stated in docs + inference]**
 
-- `forge init` output: `forge.toml`, `xtool.yml`, `Package.swift`, `rust/` (the app's Rust crate, a notes starter), `Sources/AppHost/` SwiftUI over it (`docs/project-generation.md`).
+- `forge init` output: `forge.toml` (also the source of the generated `Info.plist`, `App.entitlements` and `xtool.yml`; `docs/app-config.md`), `Package.swift`, `rust/` (the app's Rust crate, a notes starter), `Sources/AppHost/` SwiftUI over it (`docs/project-generation.md`).
 - Placeholders replaced: package name, bundle id, app support dir name (`docs/project-generation.md`).
 - Workspace-root Rust changes only if extending **shared** `forge-core` / `forge-ffi` for new domain features **[my inference]** from “Rust crates always built from workspace root” (`docs/project-generation.md`).
 

@@ -14,6 +14,12 @@ Done: `forge init --path`, with each app owning its Rust crate ([app-crate.md](a
 
 Open: `forge doctor` does not check device pairing, signing or SDK licences yet.
 
+### iOS app configuration — Done, follow-ups open
+
+Done: `forge.toml` is the one place for an iOS app's display name, version and build number, deployment target, icon, orientations, permission prompts, URL schemes, background modes, entitlements and signing team type. Forge generates Info.plist, App.entitlements and xtool.yml from it (and keeps Package.swift's `.iOS(...)` in step) on every build, `forge config check` guards it in CI, and `forge build/run ios --release` builds the release configuration ([app-config.md](app-config.md)).
+
+Open: asset-catalog icons and launch screens (xtool cannot compile asset catalogs on Linux), per-configuration overrides (for example a separate debug bundle ID), app extensions (xtool supports them; Forge has no template), and applying `team_id` / `minimum_ios` to the Xcode project instead of reporting the difference.
+
 ### AGP / Gradle stabilization — Planned
 
 Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
