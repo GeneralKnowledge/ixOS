@@ -17,6 +17,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::evidence;
 use crate::runner::{Cmd, CommandRunner};
 
 /// Modules every Swift toolchain ships, plus the app's own. A file that
@@ -347,6 +348,7 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
     if sel.sources.is_empty() {
         return Err("no Swift file in Sources/AppHost builds without SwiftUI or UIKit; keep the view model in its own file that imports only Foundation and Observation (docs/ios-ui.md)".into());
     }
+    let reqs = evidence::load_requirements(&app)?;
     let st = stage(&app, &sel, &lib)?;
     let rel = |p: &PathBuf| p.strip_prefix(&app).unwrap_or(p).display().to_string();
     println!(
@@ -359,17 +361,13 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
             sel.skipped.iter().map(rel).collect::<Vec<_>>().join(", ")
         }
     );
-    crate::report::set_data(serde_json::json!({
-        "sources": sel.sources.iter().map(rel).collect::<Vec<_>>(),
-        "tests": sel.tests.iter().map(rel).collect::<Vec<_>>(),
-        "skipped": sel.skipped.iter().map(rel).collect::<Vec<_>>(),
-    }));
     let args: &[&str] = if sel.tests.is_empty() {
         &["build"]
     } else {
         &["test"]
     };
     let cmd = swift_cmd(&st, &app, args);
+    let started = std::time::Instant::now();
     let out = runner.capture(&cmd)?;
     let text = unstage_paths(
         &format!(
@@ -381,16 +379,134 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
     );
     crate::report::log_bytes(format!("$ {}\n{text}", cmd.display()).as_bytes());
     print!("{text}");
-    if out.status.success() {
-        println!("[forge] Swift check passed (SwiftUI views still need `forge build ios`).");
-        Ok(())
+
+    // The evidence: which tests ran, and what they prove (docs/evidence.md).
+    let tests = evidence::parse_xctest(&text);
+    let skipped_classes: Vec<String> = sel
+        .skipped
+        .iter()
+        .filter(|p| p.starts_with(app.join("Tests")))
+        .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        .collect();
+    let verdicts = evidence::judge(&reqs, &tests, &skipped_classes);
+    // No test ran (a compile error, or no portable test): nothing to record.
+    let bundle = if tests.is_empty() {
+        None
     } else {
-        Err(crate::diagnose::explain(
+        let run = evidence::Run {
+            command: "check swift",
+            kind: "linux-twin",
+            app: &app,
+            build: build_info(runner, &app),
+            tests: &tests,
+            requirements: &reqs,
+            verdicts: &verdicts,
+            raw_output: ("swift-test.log", &text),
+            duration_ms: started.elapsed().as_millis() as u64,
+        };
+        Some(evidence::write_bundle(&run, &crate::report::timestamp())?)
+    };
+    let failed: Vec<&str> = tests
+        .iter()
+        .filter(|t| !t.passed)
+        .map(|t| t.name.as_str())
+        .collect();
+    crate::report::set_data(serde_json::json!({
+        "sources": sel.sources.iter().map(rel).collect::<Vec<_>>(),
+        "tests": sel.tests.iter().map(rel).collect::<Vec<_>>(),
+        "skipped": sel.skipped.iter().map(rel).collect::<Vec<_>>(),
+        "results": { "passed": tests.len() - failed.len(), "failed": failed },
+        "requirements": reqs.iter().zip(&verdicts).map(|(r, (v, _))| {
+            serde_json::json!({ "id": r.id, "twin": v })
+        }).collect::<Vec<_>>(),
+        "evidence": bundle.as_ref().map(|b| b.join("evidence.json").display().to_string()),
+    }));
+    if !reqs.is_empty() {
+        println!(
+            "[forge] Requirements (headless twin on Linux; the iPhone column needs a device run):"
+        );
+        for (r, (v, notes)) in reqs.iter().zip(&verdicts) {
+            let v = serde_json::to_value(v).unwrap_or_default();
+            let mut line = format!(
+                "  {:<8} {:<9} {}",
+                r.id,
+                v.as_str().unwrap_or(""),
+                r.statement
+            );
+            if !notes.is_empty() {
+                line.push_str(&format!(" ({})", notes.join("; ")));
+            }
+            println!("{line}");
+        }
+    }
+    if let Some(b) = &bundle {
+        println!("[forge] Evidence: {}", b.join("evidence.json").display());
+    }
+
+    if !failed.is_empty() {
+        let msg = format!(
+            "{} Swift test(s) failed: {}",
+            failed.len(),
+            failed.join(", ")
+        );
+        crate::report::record_failure(
+            &format!("swift {}", args[0]),
+            vec![crate::report::JsonHint {
+                stage: "test",
+                problem: msg.clone(),
+                fix: "The test output above shows each failed assertion; the evidence bundle keeps it.".into(),
+            }],
+            &text,
+        );
+        return Err(msg);
+    }
+    if !out.status.success() {
+        return Err(crate::diagnose::explain(
             &format!("swift {}", args[0]),
             out.status,
             &text,
-        ))
+        ));
     }
+    let missing: Vec<String> = reqs
+        .iter()
+        .zip(&verdicts)
+        .filter(|(_, (v, _))| *v == evidence::Verdict::Missing)
+        .map(|(r, (_, notes))| format!("{} ({})", r.id, notes.join("; ")))
+        .collect();
+    if !missing.is_empty() {
+        let msg = format!(
+            "{} names a test that did not run: {}",
+            evidence::REQUIREMENTS_FILE,
+            missing.join(", ")
+        );
+        crate::report::record_failure(
+            "requirements",
+            vec![crate::report::JsonHint {
+                stage: "test",
+                problem: msg.clone(),
+                fix: "Point the requirement at the test's current `Class.method` name.".into(),
+            }],
+            "",
+        );
+        return Err(msg);
+    }
+    println!("[forge] Swift check passed (SwiftUI views still need `forge build ios`).");
+    Ok(())
+}
+
+/// The commit the run was built from, and whether the app had local changes.
+fn build_info(runner: &dyn CommandRunner, app: &Path) -> serde_json::Value {
+    let git = |args: &[&str]| {
+        runner
+            .capture(&Cmd::new("git").arg("-C").arg(app).args(args))
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    serde_json::json!({
+        "commit": git(&["rev-parse", "HEAD"]),
+        "dirty": git(&["status", "--porcelain", "--", "."]).map(|s| !s.is_empty()),
+    })
 }
 
 #[cfg(test)]
