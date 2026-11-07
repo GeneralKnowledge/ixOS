@@ -12,7 +12,9 @@ Last reviewed: 2026-11-06.
 
 Done: `forge init --path`, with each app owning its Rust crate ([app-crate.md](app-crate.md)); `forge check` (the local CI matrix); `forge doctor`, which reports what each workflow needs with a fix for each missing piece, and `--json` for CI; `forge bindings generate --project`; and `--project` (for build, run and bindings) defaulting to the current app directory.
 
-Open: `forge doctor` does not check device pairing, signing or SDK licences yet.
+Done (M5 developer experience): `forge init MyApp` creates `./MyApp` outside the checkout and prints the next steps, and every generated app has a README; `forge doctor` checks the Apple sign-in, connected iPhones and the iOS SDK version; `forge build ios` / `forge run ios` check the toolchain, sign-in and iPhone before building and explain failed Rust, Swift, signing and install steps; `forge test` runs the app's own tests from its directory and skips XCTest on Linux. See [getting-started.md](getting-started.md).
+
+Open: provisioning profiles, Developer Mode and SDK licences are diagnosed from the failure, not checked beforehand; Android installs (`adb`) get no failure diagnosis yet.
 
 ### iOS app configuration — Done, follow-ups open
 
