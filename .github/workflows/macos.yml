@@ -102,6 +102,8 @@ jobs:
       - name: Generate and build the starter for the simulator
         env:
           # The Xcode build phase builds the app's Rust crate for this target.
+          # The project only lists iphoneos (device builds are the supported
+          # path), so the simulator is enabled on the command line.
           FORGE_IOS_TARGET: aarch64-apple-ios-sim
         run: |
           APP="$RUNNER_TEMP/Starter"
@@ -109,9 +111,10 @@ jobs:
           xcodebuild build \
             -project "$APP/Xcode/Starter.xcodeproj" \
             -scheme App \
-            -destination 'generic/platform=iOS Simulator' \
+            -sdk iphonesimulator \
             -configuration Debug \
             -derivedDataPath "$RUNNER_TEMP/dd" \
+            SUPPORTED_PLATFORMS="iphoneos iphonesimulator" \
             ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO
       - name: Screenshots
