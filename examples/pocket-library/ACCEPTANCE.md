@@ -1,6 +1,6 @@
 # Pocket Library acceptance report
 
-What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). Nothing here was tested on the iOS Simulator, which Forge does not support. (macOS CI renders screenshots in the simulator for UI review only, `scripts/pocket-library-screenshots.sh`; they are not acceptance results.)
+What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). The device steps are now part of the framework-wide runbook, [docs/integration/iphone-acceptance.md](../../docs/integration/iphone-acceptance.md) (section E); record results there and in the table below. Nothing here was tested on the iOS Simulator, which Forge does not support. (macOS CI renders screenshots in the simulator for UI review only, `scripts/pocket-library-screenshots.sh`; they are not acceptance results.)
 
 Status as of 2026-11-07. A step is marked done only when it was actually performed.
 
@@ -10,9 +10,9 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 |-----------|---------|-------------------|
 | Rust | 1.97.0 (`rust-toolchain.toml`) | Linux (cloud dev environment); CI |
 | UniFFI / uniffi-bindgen | 0.32.2 | Linux; CI |
-| xtool | *to record from the device run* (`xtool --version`) | — |
-| Swift (Linux) | *to record* (`swift --version`) | — |
-| Darwin SDK | *to record* (Xcode.xip used with `xtool setup`; Forge requires Xcode 26 / iOS 26.0 SDK) | — |
+| xtool | 1.24.0-ixos.1 (patched, GeneralKnowledge/xtool `ixos` branch) | Linux (Reuben's laptop), debug build |
+| Swift (Linux) | 6.2.3 (from xtool's version warning) | Linux (Reuben's laptop) |
+| Darwin SDK | iOS 26.0 (recorded in the built app's `LC_BUILD_VERSION`) | Linux (Reuben's laptop) |
 | Xcode (CI) | `macos-15` runner default, printed in the CI log | CI |
 
 ## The workflow
@@ -24,7 +24,7 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | 2b | Rust crate compiles for `aarch64-apple-ios` | local build (Linux) | Type-checked only | `cargo check --target aarch64-apple-ios` with stub C headers for `ring` (no Darwin SDK in the cloud environment). The real build happens in step 5 |
 | 3 | Generate the Swift bindings | local build + automated | Done | `forge bindings generate --project`; CI fails if the committed `Generated/` drifts from the crate |
 | 4 | Compile the SwiftUI host | automated (macOS CI) | Done | XCTest suite (7 tests against the real Rust library, `test-swift-host.sh`) and an unsigned `xcodebuild` of the iOS app pass on PR #33 (commit 66144a5). The first compile found three host problems, fixed: Rust names clashing with `Foundation.SortOrder` and `SwiftUI.Settings`, `@retroactive` on same-package types, a non-`Sendable` generic result |
-| 5 | Build the iOS app with xtool on Linux (debug and release) | physical device | **Not yet done** | Needs a Linux machine with xtool and the Darwin SDK |
+| 5 | Build the iOS app with xtool on Linux (debug and release) | local build (Linux) | Debug **done**; release not yet | 2026-11-07 on Reuben's laptop with the patched xtool, from this branch before it was integrated with main: clean debug build in 2m11s, iOS SDK 26.0 recorded |
 | 6 | Install and launch on a physical iPhone | physical device | **Not yet done** | |
 | 7 | Add, edit and delete books | physical device | **Not yet done** | Covered on the Mac host by XCTest (step 4) |
 | 8 | Restart the app and check persistence | physical device | **Not yet done** | Covered in Rust (`everything_survives_a_relaunch`) and XCTest |
@@ -45,27 +45,4 @@ Still open:
 
 ## Manual acceptance on an iPhone (Linux)
 
-Run on the Linux machine with xtool and the phone plugged in and unlocked. Record the results in the table above and the versions at the top.
-
-```bash
-git fetch origin && git checkout <this branch>
-cd examples/pocket-library
-xtool --version; swift --version; forge doctor        # record the versions
-cargo test --manifest-path rust/Cargo.toml             # 45 passed
-forge run ios                                          # debug build, installs and launches
-```
-
-On the phone:
-
-1. **First launch.** The Library tab says "Your library is empty".
-2. **Add by hand.** + → Enter Details: a title, author, 300 pages, current page 20. Save. The book opens; status is Reading (Rust started it because the page is past 0).
-3. **Catalogue.** + → Search Online Catalogue → "the hobbit" → tap ⊕ on a result. It opens with a cover and description. Search again: the result shows a green check.
-4. **EPUB.** Put an `.epub` in Files (AirDrop or iCloud Drive), then + → Import EPUB File. Title, author, cover and an estimated page count appear.
-5. **Progress.** On a book, type a page and tap Save Page, or use the stepper. Type the last page: it becomes Finished with a haptic. Activity shows the session and the finish.
-6. **Edit and delete.** Edit a book's title and rating. Swipe left on another in the Library → Delete → confirm.
-7. **Search, filter, sort.** Search by part of an author's name; use the filter menu (three lines in a circle) to show one status and change the order.
-8. **Persistence.** Swipe the app away in the app switcher, open it again: everything is as you left it.
-9. **Offline.** Turn on airplane mode. Browsing, adding, editing and deleting still work. Catalogue search shows "You're offline" with Try Again and Enter Details by Hand; the library is unchanged.
-10. **Settings.** Turn off online search: the + menu's catalogue item is disabled. Export Library → Share Export File → save to Files. (Leave Erase for last, or skip it.)
-11. **Release build.** `forge run ios --release`; repeat 1, 5 and 8 briefly.
-12. **Rust change reaches the phone.** In `rust/src/domain.rs`, change `SESSION_GAP_MS` to `5 * 1000` (five seconds). Run `forge run ios` and check the log says it rebuilt the Rust library. On the phone, update a book's page, wait ten seconds, update it again: Activity now shows two entries instead of one. Revert the change.
+The steps (first launch, adding by hand and from the catalogue, EPUB import, progress, edit and delete, search, persistence, offline, settings and export, the release build, and a Rust change reaching the phone) are in [docs/integration/iphone-acceptance.md](../../docs/integration/iphone-acceptance.md), sections E and F.

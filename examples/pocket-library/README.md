@@ -59,7 +59,7 @@ You need the Forge prerequisites for iOS on Linux: Rust, Swift 6.2, xtool with t
 ```bash
 cd examples/pocket-library
 cargo test --manifest-path rust/Cargo.toml     # Rust tests: no SDK or device needed
-forge run ios                                  # build, install and launch (debug)
+forge run ios                                  # build and install (debug); open it from the home screen
 forge run ios --release                        # the same, Swift release configuration
 ```
 

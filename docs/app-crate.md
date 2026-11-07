@@ -42,6 +42,7 @@ forge build android --install                # debug APK on a connected Android 
 | A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
 | The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase`, `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
 | Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
+| Native iOS services: Keychain, app directories, notifications, permissions, sharing, deep links | `forge_services::native_services!()` adds `crate::native`; the iOS host installs it with `AppServices.install()` | [`forge-services`](../crates/forge-services/src/lib.rs), [native-services.md](native-services.md) |
 
 The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src/main/java/.../NotesViewModel.kt` and `AppLifecycle.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
 
