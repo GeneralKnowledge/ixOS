@@ -37,6 +37,10 @@ public final class NotesModel {
     public private(set) var urlResult: String?
     public private(set) var isCheckingURL = false
 
+    /// The lifecycle phase last reported to Rust (not to be confused with
+    /// `phase`, which is how far opening the core has got).
+    public private(set) var lifecyclePhase: AppPhase = .launching
+
     public private(set) var core: AppCore?
     private let storageDirectory: String?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
@@ -81,6 +85,8 @@ public final class NotesModel {
             self.events = events
             notes = core.notes()
             listen(to: events)
+            // A lifecycle phase reported before Rust was open still counts.
+            if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
             phase = .ready
         } catch {
             phase = .failed(Self.describe(error))
@@ -95,6 +101,19 @@ public final class NotesModel {
         core?.shutdown()
         core = nil
         events = nil
+    }
+
+    /// Tells Rust where the app is in its lifecycle. `ContentView` calls it
+    /// through `.forgeLifecycle`. Rust stops on-screen work in the
+    /// background and sends `.phaseChanged(resumed: true)` on the way back.
+    /// `.terminated` shuts the core down, like `close()`.
+    public func setPhase(_ phase: AppPhase) {
+        lifecyclePhase = phase
+        if phase == .terminated {
+            close()
+        } else {
+            core?.setPhase(phase: phase)
+        }
     }
 
     // MARK: Notes
@@ -186,6 +205,10 @@ public final class NotesModel {
                 case .eventsDropped:
                     // Missed some events: the current list is the truth.
                     if let core = self.core { self.notes = core.notes() }
+                case .phaseChanged(_, let resumed):
+                    // Back from the background: re-read what Rust holds. A
+                    // real app would also restart work the background stopped.
+                    if resumed, let core = self.core { self.notes = core.notes() }
                 }
             }
         }
@@ -204,6 +227,7 @@ public final class NotesModel {
         case .Timeout: return "The request timed out."
         case .Network(let reason): return "Network error: \(reason)"
         case .Cancelled: return "Cancelled."
+        case .Interrupted: return "Stopped when the app went to the background. Try again."
         case .ShutDown: return "The app is closing."
         }
     }
