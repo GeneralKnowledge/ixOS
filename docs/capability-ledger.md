@@ -113,9 +113,6 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Permission interface | Partial: notifications, location, motion, Bluetooth | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
 | Location, motion and Bluetooth permissions | Yes: forge-services | Yes: `NativePermission` | Yes | Yes: Device Lab | No | Partial: native-services.md | Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing |
 | Microphone, camera, local network permissions | No | No | No | No | No | Partial: config only | |
-| Photos picker | No | No | No | No | No | No | No permission needed |
-| Permission interface | Partial: notifications only | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes 20 permission strings the runtime cannot request yet |
-| Microphone, camera, location, motion, local network, Bluetooth permissions | No | No | No | No | No | Partial: config only | |
 | Photos picker | No | n/a | Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO | Partial: Chat M3 | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
