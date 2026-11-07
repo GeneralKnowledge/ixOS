@@ -59,7 +59,7 @@ Record for each run: iPhone model, iOS version, xtool version, commit, and anyth
 
 ## M1: Native messaging experience
 
-Nothing in this section has been run on an iPhone yet. Every device step stays "Not yet done" until Reuben reports it.
+Device results are Reuben's reports; nothing here is marked done until he reported it.
 
 ### Automated and local
 
@@ -69,7 +69,7 @@ Nothing in this section has been run on an iPhone yet. Every device step stays "
 | A9 | chat-server: per-account read cursors (only forward, capped at the newest message), `read` events, previews in `GET /rooms`, `POST /rooms` with title checks, version 1 data loads, cursors survive a restart | automated | Done | `cargo test -p chat-server` (unit + `read_receipts_previews_and_new_rooms_between_two_accounts` end to end) |
 | A10 | The app's Rust crate: read receipts, new rooms and mute through the FFI (`chat_delivery`, `create_conversation`, `mark_read`, `set_muted`, `set_marked_unread`) | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (8 tests) |
 | A11 | chat-cli: `create`, `rooms` newest first with previews and `*` for unread, `read` marks the room read | local build (Linux) | Done | Run by hand against a local server in the cloud dev environment, 2026-11-07 |
-| A12 | SwiftUI: `MessagingTests` (two accounts against the real server: Read receipts, previews, unread, swipes, mute, new conversations) and `TranscriptTests` (grouping, separators, which bubble shows its delivery) | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` in the M1 PR's CI |
+| A12 | SwiftUI: `MessagingTests` (two accounts against the real server: Read receipts, previews, unread, swipes, mute, new conversations) and `TranscriptTests` (grouping, separators, which bubble shows its delivery) | automated (macOS CI) | Done | `scripts/test-swift-host.sh examples/chat`; macOS CI green on PR #46 and on main at 71dfa1e |
 | A13 | Light, dark and largest Dynamic Type screenshots | automated (simulator CI) | Not yet done | Deferred: the screenshot job builds unsigned and has no chat server, so Chat needs a signed-in fixture first |
 
 ### On an iPhone (Linux, xtool)
@@ -78,18 +78,24 @@ Before you start: the M0 setup (server on `0.0.0.0:8787`, the app signed in, `ch
 
 | # | Step | Expected | Status |
 |---|------|----------|--------|
-| E1 | Open the app | Two tabs, Chats and Settings. The M0 chats and messages are still there | Not yet done |
-| E2 | Look at the Chats list | Each row has a title, the time of the last message, and a two-line preview ("You: …" or "Laptop: …"); the most recent conversation is at the top | Not yet done |
-| E3 | Stay on the list; `make chat-cli ARGS="send random hello list"` | Random moves to the top with a blue dot and "Laptop: hello list"; the Chats tab shows a badge of 1 | Not yet done |
-| E4 | Open Random, go back; `make chat-cli ARGS="rooms"` | The dot and badge are gone; the laptop's list shows no `*` for Random on the phone's side (the server stored the phone's read cursor) | Not yet done |
-| E5 | `make chat-cli ARGS="follow general"` on the laptop, then `make chat-cli ARGS="read general"` after the phone sends in General | The phone's bubble shows "Delivered", then "Read" within a second of the laptop reading | Not yet done |
-| E6 | Swipe right on a conversation: Mark as Unread; then swipe right again: Mark as Read | The dot appears and the badge counts it; then both go | Not yet done |
-| E7 | Swipe left on Random: Mute; leave the app in the foreground on the list; `make chat-cli ARGS="send random muted?"` | A bell-slash icon on the row; the dot appears but no banner; Random is listed under Settings → Muted Conversations, where a swipe unmutes it | Not yet done |
-| E8 | Tap the compose button, enter "Weekend", tap Create | The new chat opens at once; `make chat-cli ARGS="rooms"` lists it, and `make chat-cli ARGS="send <id> hi"` appears in it | Not yet done |
-| E9 | In a busy chat, look at the bubbles | Messages from one person within five minutes sit together with one name; a "Today 14:05" separator after an hour's quiet | Not yet done |
-| E10 | Tap the text field and type several lines | The composer grows to six lines, stays above the keyboard, and the newest message stays in view; dragging the transcript down dismisses the keyboard | Not yet done |
-| E11 | Send a message; then stop the server and send another | A light tap on send; an error buzz and a red bubble when it fails; tap it after restarting the server to retry | Not yet done |
-| E12 | Dark mode, then Settings → Accessibility → Larger Text at the largest size | Bubbles, list and composer stay readable; nothing is clipped | Not yet done |
-| E13 | `forge run ios --project examples/chat --release` | Builds, installs, and E2–E5 still work | Not yet done |
+| E1 | Open the app | Two tabs, Chats and Settings. The M0 chats and messages are still there | Done |
+| E2 | Look at the Chats list | Each row has a title, the time of the last message, and a two-line preview ("You: …" or "Laptop: …"); the most recent conversation is at the top | Done (first seen from stored data while the phone could not reach the server, see the note below; the list was right once it connected) |
+| E3 | Stay on the list; `make chat-cli ARGS="send random hello list"` | Random moves to the top with a blue dot and "Laptop: hello list"; the Chats tab shows a badge of 1 | Done |
+| E4 | Open Random, go back | The dot and badge are gone, and stay gone after a pull to refresh (the server stored the phone's read cursor). `chat-cli rooms` shows the laptop's own unread, so it cannot show the phone's | Done |
+| E5 | `make chat-cli ARGS="follow general"` on the laptop, then `make chat-cli ARGS="read general"` after the phone sends in General | The phone's bubble shows "Delivered", then "Read" within a second of the laptop reading | Done |
+| E6 | Swipe right on a conversation: Mark as Unread; then swipe right again: Mark as Read | The dot appears and the badge counts it; then both go | Done |
+| E7 | Swipe left on Random: Mute; leave the app in the foreground on the list; `make chat-cli ARGS="send random muted?"` | A bell-slash icon on the row; the dot appears but no banner; Random is listed under Settings → Muted Conversations, where a swipe unmutes it | Done |
+| E8 | Tap the compose button, enter "Weekend", tap Create | The new chat opens at once; `make chat-cli ARGS="rooms"` lists it, and `make chat-cli ARGS="send <id> hi"` appears in it | Done |
+| E9 | In a busy chat, look at the bubbles | Messages from one person within five minutes sit together with one name; a "Today 14:05" separator after an hour's quiet | Done |
+| E10 | Tap the text field and type several lines | The composer grows to six lines, stays above the keyboard, and the newest message stays in view; dragging the transcript down dismisses the keyboard | Done |
+| E11 | Send a message; then stop the server and send another | A light tap on send; an error buzz and a red bubble when it fails; tap it after restarting the server to retry | Done |
+| E12 | Dark mode, then Settings → Accessibility → Larger Text at the largest size | Bubbles, list and composer stay readable; nothing is clipped | Done |
+| E13 | `forge run ios --project examples/chat --release` | Builds, installs, and E2–E5 still work | Done. Release build installed with no prompts; Random's dot and badge confirmed on the phone. The General message reached the laptop and was marked read; the phone's "Read" was not separately reported on this build |
 
 Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
+
+**Run 1, 2026-11-07 (12:12–12:36 UTC):** E1–E13 passed, reported by Reuben. iPhone 15 Pro Max "Cati", iOS 26.3.1 (a), Linux laptop with xtool 1.24.0, main at 7b69dbd (M1 plus R1, R2 and R4). The laptop side (server, chat-cli, installs) ran through a Claude Code session on the laptop. Notes:
+
+- The server was restarted on the M0 data file, which upgraded it to version 2 with accounts and messages intact (the version 1 file was kept as `server.json.v1-pre-M1.bak`).
+- Right after installing the new build the phone could not reach the server ("Host is down (os error 64)") although the server answered on 192.168.1.169:8787 from the laptop. It worked again after Reuben checked the phone's network settings; the most likely cause is iOS's Local Network permission after the reinstall. If you see this error, check Settings → Privacy & Security → Local Network → Chat first.
+- R4 logging check (`idevicesyslog`, needs `libimobiledevice-utils`): inconclusive. Chat writes no log records in normal use (only two rare warning paths), and Info/Debug records are not shown by the USB syslog relay, so no Forge lines appeared. Proving R4 on a device needs a Warn record the app can be made to emit.
