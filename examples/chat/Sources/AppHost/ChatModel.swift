@@ -329,10 +329,13 @@ public final class ChatModel {
         if let path = core.attachmentFile(attachmentId: attachment.id) {
             return URL(fileURLWithPath: path)
         }
-        guard let path = try? await core.fetchAttachment(attachmentId: attachment.id) else {
+        do {
+            let path = try await core.fetchAttachment(attachmentId: attachment.id)
+            return URL(fileURLWithPath: path)
+        } catch {
+            attachmentLog.warn("fetch of \(attachment.id) failed: \(error)")
             return nil
         }
-        return URL(fileURLWithPath: path)
     }
 
     /// A file for Quick Look and the share sheet: the attachment under its

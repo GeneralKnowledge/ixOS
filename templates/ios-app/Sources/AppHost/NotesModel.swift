@@ -2,6 +2,10 @@
 import Foundation
 import Observation
 
+/// Swift log records go into the same log as Rust's: the system log
+/// (`forge device logs`), recent records and the `forge device` live stream.
+private let log = ForgeLog("Notes")
+
 /// The app's presentation state: what the screens show, and the actions they
 /// can take. It holds no app rules. Every change goes to the Rust `AppCore`
 /// (your code in `rust/src/lib.rs`), and the notes shown come from Rust,
@@ -89,6 +93,7 @@ public final class NotesModel {
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
             phase = .ready
         } catch {
+            log.error("could not open the notes: \(error)")
             phase = .failed(Self.describe(error))
         }
     }
@@ -190,6 +195,7 @@ public final class NotesModel {
             saveCount += 1
             return true
         } catch {
+            log.warn("command failed: \(error)")
             actionError = Self.describe(error)
             return false
         }

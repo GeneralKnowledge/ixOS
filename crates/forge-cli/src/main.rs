@@ -112,7 +112,7 @@ enum DeviceCommands {
         #[arg(long)]
         udid: Option<String>,
         /// Only this process's lines: the app's executable as the log shows
-        /// it (`AppHostXtool` for apps made with `forge init`)
+        /// it (`<App>Xtool` for apps made with `forge init`, `[ios] xtool_product`)
         #[arg(long, value_name = "NAME")]
         process: Option<String>,
         /// Only lines containing this text (case-insensitive)
