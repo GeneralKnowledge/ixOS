@@ -1,6 +1,6 @@
 # Local AI in Chat: design and milestones
 
-Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 is under way.
+Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. Next: L1 after Chat M3.
 
 Goal: a private, offline AI assistant inside the Chat app on the iPhone. It downloads its own model, runs it on the phone and keeps working in airplane mode. It is the flagship's first feature that needs no server. For ixOS it proves a reusable **local model capability**: a native Swift inference adapter behind a stable interface that Rust app code drives, with storage, streaming, cancellation and resource limits handled by the framework.
 
@@ -170,14 +170,14 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 
 | Question | Result on Cati |
 |---|---|
-| Foundation Models on a free-team app | **Available** (K2, 2026-11-07); generation not yet run |
+| Foundation Models on a free-team app | **Available** (K2, 2026-11-07); generation **skipped by Reuben** (2026-11-07: "it works") |
 | CoreML-LLM builds with xtool on Linux | **Yes**: CoreML-LLM 1.9.0 + swift-transformers, debug, 162 s, no errors (Reuben's laptop, xtool 1.24.0) |
 | Available memory at launch / after 0.8B load | **3,350 MB** at launch (footprint 22 MB), 3,158 MB after loading Qwen3.5 0.8B (footprint 217 MB). The Core ML weights mostly do not count against the app's footprint |
-| LFM2.5 350M: load (first, second), tokens/s, stop latency | Download cancelled from the app (`CancellationError`, only thrown by CoreML-LLM's `cancelDownload()`); retry pending |
-| Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | Debug build: first load 23.4 s, about 9 pieces/s. **Release build (7b8eb70): first load 16.6 s (compiles; ~185 MB of available memory), about 36 pieces/s**, 0 late pieces. Time to first text grows with the conversation (4.0 s, 5.3 s, 6.8 s over three character turns) because Qwen3.5 prefills one step per prompt token and every turn re-sends the whole history: L1 should keep the model state between turns instead of re-prefilling. Stop and second load not yet measured |
-| Qwen3.5 2B fits | **Failed on disk, not memory** (release build, 2026-11-07): with both Qwen models installed the phone had 2.7 GB free; compiling the 2B's chunks into `tmp/` used 2 GB and `chunk_d` failed ("Failed to build the model execution plan… error code: -14") at 687 MB free. Memory was fine (3,320 MB available, footprint 55 MB). Retry with about 5 GB free |
-| Characters in character over ten turns (reminder on / off) | Mia, Qwen3.5 0.8B, reminder on: in character for the first three turns ("pretty good", Reuben); ten turns, Leo and reminder off not yet run |
-| Offline after download | Not run |
+| LFM2.5 350M: load (first, second), tokens/s, stop latency | Download cancelled from the app (`CancellationError`, only thrown by CoreML-LLM's `cancelDownload()`); retry **skipped by Reuben** (2026-11-07: "it works") |
+| Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | Debug build: first load 23.4 s, about 9 pieces/s. **Release build (7b8eb70): first load 16.6 s (compiles; ~185 MB of available memory), about 36 pieces/s**, 0 late pieces. Time to first text grows with the conversation (4.0 s, 5.3 s, 6.8 s over three character turns) because Qwen3.5 prefills one step per prompt token and every turn re-sends the whole history: L1 should keep the model state between turns instead of re-prefilling. Stop latency and second load **skipped by Reuben** (2026-11-07: "it works"): real stopping is in the code (patched generator) but unmeasured on the phone |
+| Qwen3.5 2B fits | **Failed on disk, not memory** (release build, 2026-11-07): with both Qwen models installed the phone had 2.7 GB free; compiling the 2B's chunks into `tmp/` used 2 GB and `chunk_d` failed ("Failed to build the model execution plan… error code: -14") at 687 MB free. Memory was fine (3,320 MB available, footprint 55 MB). Retry with about 5 GB free. Retry on the fixed build **skipped by Reuben** (2026-11-07: "it works") |
+| Characters in character over ten turns (reminder on / off) | Mia, Qwen3.5 0.8B, reminder on: in character for the first three turns ("pretty good", Reuben); ten turns, Leo and reminder off **skipped by Reuben** (2026-11-07: "it works") |
+| Offline after download | **skipped by Reuben** (2026-11-07: "it works") |
 | Swift → Rust push cost | **1.6 µs per push** in debug, **0.6 µs** in release (10,000 pushes): negligible against ~28 ms per token |
 
 Each milestone is one PR with a device runbook in `examples/chat/ACCEPTANCE.md`, the same as Chat's others.
