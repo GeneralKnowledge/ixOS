@@ -1646,7 +1646,8 @@ ios_device = true
             xtool.contains("bundleID: org.example.inittest\n"),
             "{xtool}"
         );
-        assert!(xtool.contains("product: AppHostXtool\n"), "{xtool}");
+        assert!(xtool.contains("product: InitTestAppXtool\n"), "{xtool}");
+        assert!(pkg.contains(".library(name: \"InitTestAppXtool\""), "{pkg}");
         assert!(dest.join("App.entitlements").is_file());
         let cfg = crate::config::ForgeConfig::parse(&read(dest.join("forge.toml"))).unwrap();
         crate::app_config::sync(&dest, &cfg, crate::app_config::Mode::Check)
