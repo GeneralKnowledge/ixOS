@@ -31,6 +31,8 @@ jobs:
         run: ./scripts/test-swift-host.sh examples/weather
       - name: Chat example (XCTest, against the mock chat server)
         run: ./scripts/test-swift-host.sh examples/chat
+      - name: Pocket Library (XCTest, app-owned crate)
+        run: ./scripts/test-swift-host.sh examples/pocket-library
       # A new app outside the checkout, with its own Rust crate: `forge test`
       # runs its Rust tests, regenerates its bindings and runs its XCTest suite.
       - name: App generated outside the checkout (forge init --path, forge test)
@@ -71,6 +73,14 @@ jobs:
         run: |
           xcodebuild build \
             -project examples/chat/Xcode/Chat.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Build PocketLibrary.xcodeproj (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project examples/pocket-library/Xcode/PocketLibrary.xcodeproj \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -configuration Debug \

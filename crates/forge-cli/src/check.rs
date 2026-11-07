@@ -82,6 +82,11 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
                     .arg(root.join("examples/chat/Xcode/Chat.xcodeproj/project.pbxproj")),
                 script(root, "validate-xcode-project.sh").arg(
                     root.join(
+                        "examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj",
+                    ),
+                ),
+                script(root, "validate-xcode-project.sh").arg(
+                    root.join(
                         "templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
                     ),
                 ),
@@ -111,6 +116,11 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             skip: None,
         },
         Step {
+            name: "app-owned crates (fmt, clippy, tests, binding drift)",
+            cmds: vec![script(root, "check-app-crates.sh")],
+            skip: None,
+        },
+        Step {
             name: "native rebuild regression",
             cmds: vec![script(root, "test-native-rebuild.sh")],
             skip: None,
@@ -135,6 +145,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
                 script(root, "test-swift-host.sh").arg(root.join("examples/counter")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/weather")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/chat")),
+                script(root, "test-swift-host.sh").arg(root.join("examples/pocket-library")),
             ],
             skip: swift_skip,
         },
@@ -253,10 +264,12 @@ mod tests {
             "validate-xcode-project.sh",
             "Weather.xcodeproj/project.pbxproj",
             "Chat.xcodeproj/project.pbxproj",
+            "PocketLibrary.xcodeproj/project.pbxproj",
             "FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
             "cargo clippy --workspace --all-targets -- -D warnings",
             "cargo test --workspace",
             "check-bindings.sh",
+            "check-app-crates.sh",
             "test-native-rebuild.sh",
             "cargo build -p forge-ffi -p mock-chat-server",
             "counter-android/gradlew :app:testDebugUnitTest --no-daemon",
@@ -264,6 +277,7 @@ mod tests {
             "examples/counter",
             "examples/weather",
             "examples/chat",
+            "examples/pocket-library",
         ];
         assert_eq!(lines.len(), expected.len(), "{lines:#?}");
         for (line, want) in lines.iter().zip(expected) {

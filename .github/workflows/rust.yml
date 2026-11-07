@@ -29,6 +29,10 @@ jobs:
         run: cargo test --workspace
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
+      # Apps made with forge init (examples/pocket-library) have their own
+      # Cargo workspace, so the steps above do not reach them.
+      - name: App-owned crates (fmt, clippy, tests, binding drift)
+        run: ./scripts/check-app-crates.sh
       - name: Templates pin the workspace's UniFFI and verifier versions
         run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
@@ -36,6 +40,7 @@ jobs:
           ./scripts/validate-xcode-project.sh
           ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
+          ./scripts/validate-xcode-project.sh examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj
 
   fresh-app:

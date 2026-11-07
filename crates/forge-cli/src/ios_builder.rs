@@ -14,6 +14,26 @@ use std::path::Path;
 use crate::commands::{run_checked, which_program};
 use crate::runner::{Cmd, CommandRunner};
 
+/// The Swift build configuration. The Rust library is built with Cargo's
+/// release profile either way (`FORGE_IOS_PROFILE` overrides it).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum IosConfiguration {
+    /// Fast to build, debuggable: the everyday loop.
+    #[default]
+    Debug,
+    /// Optimised Swift, as an app would ship.
+    Release,
+}
+
+impl IosConfiguration {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Debug => "debug",
+            Self::Release => "release",
+        }
+    }
+}
+
 pub trait IosBuilder: Send + Sync {
     /// Short name for messages and device listings, e.g. `"xtool"`.
     fn name(&self) -> &'static str;
@@ -22,10 +42,20 @@ pub trait IosBuilder: Send + Sync {
     fn ensure_available(&self, runner: &dyn CommandRunner) -> Result<(), String>;
 
     /// Compiles the Swift app in `project_dir` (Rust library already packaged).
-    fn build(&self, runner: &dyn CommandRunner, project_dir: &Path) -> Result<(), String>;
+    fn build(
+        &self,
+        runner: &dyn CommandRunner,
+        project_dir: &Path,
+        configuration: IosConfiguration,
+    ) -> Result<(), String>;
 
     /// Builds, installs and launches the app in `project_dir` on a device.
-    fn run(&self, runner: &dyn CommandRunner, project_dir: &Path) -> Result<(), String>;
+    fn run(
+        &self,
+        runner: &dyn CommandRunner,
+        project_dir: &Path,
+        configuration: IosConfiguration,
+    ) -> Result<(), String>;
 
     /// Installs an already-built `.ipa` on a device.
     fn install(&self, runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String>;
@@ -41,9 +71,18 @@ pub struct XtoolBuilder;
 
 const XTOOL: &str = "xtool";
 
-// Both commands use xtool's default debug configuration. With Swift 6.2 this needs
-// the Darwin SDK from Xcode 26; the iOS 18 SDK from Xcode 16 fails to link with
-// `undefined symbol: swift_coroFrameAlloc` (docs/troubleshooting.md).
+// Debug builds with Swift 6.2 need the Darwin SDK from Xcode 26; the iOS 18 SDK
+// from Xcode 16 fails to link them with `undefined symbol: swift_coroFrameAlloc`
+// (docs/troubleshooting.md).
+
+/// `xtool dev <verb>`, plus `-c release` for release builds.
+fn xtool_dev(verb: &str, project_dir: &Path, configuration: IosConfiguration) -> Cmd {
+    let mut cmd = Cmd::new(XTOOL).args(["dev", verb]);
+    if configuration == IosConfiguration::Release {
+        cmd = cmd.args(["-c", "release"]);
+    }
+    cmd.cwd(project_dir)
+}
 
 impl IosBuilder for XtoolBuilder {
     fn name(&self) -> &'static str {
@@ -58,20 +97,24 @@ impl IosBuilder for XtoolBuilder {
         }
     }
 
-    fn build(&self, runner: &dyn CommandRunner, project_dir: &Path) -> Result<(), String> {
+    fn build(
+        &self,
+        runner: &dyn CommandRunner,
+        project_dir: &Path,
+        configuration: IosConfiguration,
+    ) -> Result<(), String> {
         self.ensure_available(runner)?;
-        run_checked(
-            runner,
-            Cmd::new(XTOOL).args(["dev", "build"]).cwd(project_dir),
-        )
+        run_checked(runner, xtool_dev("build", project_dir, configuration))
     }
 
-    fn run(&self, runner: &dyn CommandRunner, project_dir: &Path) -> Result<(), String> {
+    fn run(
+        &self,
+        runner: &dyn CommandRunner,
+        project_dir: &Path,
+        configuration: IosConfiguration,
+    ) -> Result<(), String> {
         self.ensure_available(runner)?;
-        run_checked(
-            runner,
-            Cmd::new(XTOOL).args(["dev", "run"]).cwd(project_dir),
-        )
+        run_checked(runner, xtool_dev("run", project_dir, configuration))
     }
 
     fn install(&self, runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String> {
@@ -99,6 +142,35 @@ mod tests {
         assert_eq!(
             mock.call_lines().last().unwrap(),
             "xtool install /tmp/App.ipa"
+        );
+    }
+
+    #[test]
+    fn release_builds_pass_the_configuration_to_xtool() {
+        let mock = MockRunner::default();
+        mock.respond("xtool", 0, "");
+        let dir = Path::new("/apps/demo");
+        XtoolBuilder
+            .build(&mock, dir, IosConfiguration::Release)
+            .unwrap();
+        XtoolBuilder
+            .run(&mock, dir, IosConfiguration::Release)
+            .unwrap();
+        XtoolBuilder
+            .run(&mock, dir, IosConfiguration::Debug)
+            .unwrap();
+        let lines = mock.call_lines();
+        let xtool: Vec<_> = lines
+            .iter()
+            .filter(|l| l.starts_with("xtool dev"))
+            .collect();
+        assert_eq!(
+            xtool,
+            [
+                "xtool dev build -c release",
+                "xtool dev run -c release",
+                "xtool dev run"
+            ]
         );
     }
 
