@@ -106,8 +106,8 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
 | Keychain secrets | Yes | Yes | Yes | Partial: services check app only | No | Yes | Synchronous; call off the UI thread |
-| Local notifications | Yes | Yes | Yes | Partial: services check app only | No | Yes | No push: APNs is a non-goal |
-| Notification actions and grouping | No | No | No | No | No | No | |
+| Local notifications | Yes | Yes | Yes | Yes: Chat messages (`LocalChatNotifier` on `ForgeNotifications`), services check app | No | Yes | No push: APNs is a non-goal |
+| Notification actions and grouping | Partial: grouping (`thread_id`), subtitle, tap opens a deep link; no actions | Yes | Yes | Yes: Chat groups by room and opens the room on tap | No | Partial: native-services.md, chat-demo.md | No action buttons or categories yet |
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
 | Permission interface | Partial: notifications, location, motion, Bluetooth | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
 | Location, motion and Bluetooth permissions | Yes: forge-services | Yes: `NativePermission` | Yes | Yes: Device Lab | No | Partial: native-services.md | Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing |

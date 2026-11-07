@@ -152,7 +152,7 @@ Local only, while the app runs: the Rust client holds the room connections, and 
 - its room is not open (it arrived on a watched room's stream, or in a refresh's prefetch);
 - it was sent after this `ChatClient` started (server `sent_at` against device time), so the history a room catches up on when first watched, and whatever arrived while the app was closed, never notify. It still counts as unread.
 
-The hosts only display it: `UNUserNotificationCenter` on iOS (with banners in the foreground too), a high-importance `NotificationChannel` on Android (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
+The hosts only display it. On iOS that goes through Forge's `LocalNotifier` (`ForgeNotifications`, banners in the foreground too): grouped by room, the author as subtitle, and a `forgechat://conversation/<id>?message=<id>` link that opens the room at that message when tapped. On Android it is a high-importance `NotificationChannel` (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
 
 ### Outbox (M2)
 
