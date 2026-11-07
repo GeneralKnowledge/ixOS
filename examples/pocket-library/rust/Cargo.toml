@@ -1,0 +1,42 @@
+# This app's Rust library: its logic, state, persistence and networking, and the
+# UniFFI API the SwiftUI and Compose hosts call. Edit freely; `forge build`
+# rebuilds it and regenerates the bindings.
+[package]
+name = "pocket-library-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# Forge's runtime crates, from the Forge checkout this app was created with.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+forge-storage = { path = "../../../crates/forge-storage" }
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# EPUB import: an EPUB is a zip of XHTML with an XML package file. Pure Rust,
+# so the crate cross-compiles for iOS without a C toolchain.
+zip = { version = "9.4", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+quick-xml = "0.42"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace: the app builds the same inside or outside the Forge checkout.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

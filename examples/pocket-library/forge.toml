@@ -1,0 +1,12 @@
+[app]
+name = "PocketLibrary"
+bundle_id = "org.forgemobile.pocketlibrary"
+minimum_ios = "17.0"
+
+[rust]
+# This app's own Rust crate: logic, state, persistence, networking.
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
