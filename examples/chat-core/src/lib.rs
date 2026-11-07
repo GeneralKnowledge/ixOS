@@ -17,6 +17,7 @@
 //! - [`store`]: the SQLite store (snapshot in memory, changes written per
 //!   save), its search, and the import of the JSON store from before M2.
 
+mod attachments;
 mod client;
 mod http;
 mod memory;
@@ -25,6 +26,10 @@ pub mod sse;
 pub mod store;
 mod types;
 
+pub use attachments::{
+    is_attachment_id, sha256_file, Attachment, AttachmentStore, OutgoingFile,
+    MAX_ATTACHMENTS_PER_MESSAGE, MAX_ATTACHMENT_BYTES,
+};
 pub use client::{
     ChatClient, ChatConfig, EventSink, MAX_BODY_CHARS, MAX_REACTION_CHARS, OUTBOX_INITIAL_DELAY,
     OUTBOX_MAX_DELAY,

@@ -1397,3 +1397,142 @@ fn drafts_are_kept_until_sent() {
     h.client.set_draft("general", "   ").unwrap();
     assert_eq!(h.client.draft("general"), None);
 }
+
+fn file(dir: &std::path::Path, name: &str, bytes: &[u8], mime: &str) -> OutgoingFile {
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    OutgoingFile {
+        path,
+        name: name.into(),
+        mime: mime.into(),
+    }
+}
+
+#[test]
+fn files_are_uploaded_before_the_message_and_fetched_by_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    let photo = file(
+        dir.path(),
+        "IMG_0001.jpg",
+        &[0xff, 0xd8, 1, 2, 3],
+        "image/jpeg",
+    );
+    let doc = file(dir.path(), "Plan.pdf", b"%PDF-1.7 plan", "application/pdf");
+    let sent = h
+        .client
+        .send_with_files("general", " look ", None, &[photo.clone(), doc])
+        .unwrap();
+    assert_eq!(sent.status, MessageStatus::Sent);
+    assert_eq!(sent.body, "look");
+    assert_eq!(
+        sent.attachments
+            .iter()
+            .map(|a| (a.name.as_str(), a.mime.as_str(), a.size, a.is_image()))
+            .collect::<Vec<_>>(),
+        [
+            ("IMG_0001.jpg", "image/jpeg", 5, true),
+            ("Plan.pdf", "application/pdf", 13, false)
+        ]
+    );
+    // Both files went up before the message.
+    let calls: Vec<String> = h
+        .repo
+        .calls()
+        .into_iter()
+        .filter(|c| c.starts_with("upload") || c.starts_with("post"))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            "upload image/jpeg".to_string(),
+            "upload application/pdf".into(),
+            format!("post general {}", sent.id)
+        ]
+    );
+    // The sender keeps its own copy, even once the original is gone.
+    std::fs::remove_file(&photo.path).unwrap();
+    let mine = h.client.attachment_file(&sent.attachments[0].id).unwrap();
+    assert_eq!(std::fs::read(mine).unwrap(), [0xff, 0xd8, 1, 2, 3]);
+
+    // Someone else sees the message and fetches the file once.
+    let other_dir = tempfile::tempdir().unwrap();
+    let other = harness_with(h.repo.clone(), ChatStore::in_directory(other_dir.path()));
+    other.client.list_conversations().unwrap();
+    let theirs = other.client.sync_messages("general").unwrap();
+    let pdf = theirs[0].attachments[1].clone();
+    assert_eq!(other.client.attachment_file(&pdf.id), None);
+    let path = other.client.fetch_attachment(&pdf.id).unwrap();
+    assert!(path.starts_with(other_dir.path().join("attachments")));
+    assert_eq!(std::fs::read(&path).unwrap(), b"%PDF-1.7 plan");
+    let downloads = || {
+        h.repo
+            .calls()
+            .iter()
+            .filter(|c| c.starts_with("download"))
+            .count()
+    };
+    assert_eq!(downloads(), 1);
+    assert_eq!(other.client.fetch_attachment(&pdf.id).unwrap(), path);
+    assert_eq!(downloads(), 1, "fetched once, then read locally");
+    assert!(matches!(
+        other.client.fetch_attachment("../forge-chat.db"),
+        Err(ChatError::InvalidInput { .. })
+    ));
+
+    // Search finds a message by its files' names.
+    assert_eq!(other.client.search("plan", None).unwrap()[0].id, sent.id);
+    // Deleting it for everyone drops the attachments from the message.
+    let tombstone = h.client.delete_message(&sent.id).unwrap().unwrap();
+    assert!(tombstone.attachments.is_empty());
+    other.client.shutdown();
+}
+
+#[test]
+fn files_sent_offline_wait_in_the_outbox_with_their_own_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.repo.set_offline(true);
+    let doc = file(dir.path(), "notes.txt", b"offline notes", "text/plain");
+    let queued = h
+        .client
+        .send_with_files("general", "", None, std::slice::from_ref(&doc))
+        .unwrap();
+    assert_eq!(queued.status, MessageStatus::Sending);
+    assert_eq!(h.client.outbox().len(), 1);
+    // The picked file may be a temporary copy the system deletes.
+    std::fs::remove_file(&doc.path).unwrap();
+    h.repo.set_offline(false);
+    h.client.flush_outbox();
+    h.wait_for("the queued file is sent", |e| {
+        *e == status_event(&queued, MessageStatus::Sent)
+    });
+    let sent = &h.client.cached_messages("general")[0];
+    assert_eq!(sent.attachments[0].name, "notes.txt");
+    assert!(h.client.outbox().is_empty());
+}
+
+#[test]
+fn bad_files_are_refused_before_the_network() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    let empty = file(dir.path(), "empty.txt", b"", "text/plain");
+    let missing = OutgoingFile {
+        path: dir.path().join("missing.jpg"),
+        name: String::new(),
+        mime: String::new(),
+    };
+    let one = file(dir.path(), "one.txt", b"1", "text/plain");
+    let too_many = vec![one; MAX_ATTACHMENTS_PER_MESSAGE + 1];
+    for files in [vec![empty], vec![missing], too_many] {
+        assert!(matches!(
+            h.client.send_with_files("general", "x", None, &files),
+            Err(ChatError::InvalidInput { .. })
+        ));
+    }
+    assert!(h.client.cached_messages("general").is_empty());
+    assert!(!h.repo.calls().iter().any(|c| c.starts_with("upload")));
+}

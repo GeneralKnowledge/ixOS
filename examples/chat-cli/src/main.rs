@@ -19,8 +19,8 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chat_core::{
-    Account, ChatClient, ChatConfig, ChatError, ChatEvent, ChatRepo, ChatStore, HttpRepo, Message,
-    MessageStatus, OutgoingMessage,
+    Account, Attachment, ChatClient, ChatConfig, ChatError, ChatEvent, ChatRepo, ChatStore,
+    HttpRepo, Message, MessageStatus, OutgoingMessage,
 };
 
 const USAGE: &str = "usage: chat-cli [--server URL] COMMAND
@@ -30,6 +30,8 @@ const USAGE: &str = "usage: chat-cli [--server URL] COMMAND
   create TITLE...      start a new conversation
   read ROOM [--last N] show the last N messages (default 20) and mark them read
   send ROOM TEXT...    send a message
+  send-file ROOM FILE [TEXT...]  send a photo or document, with an optional caption
+  download ROOM MSG [DIR]  save a message's attachments into DIR (default: here)
   reply ROOM MSG TEXT... reply to a message
   edit ROOM MSG TEXT...  replace the text of one of your messages
   delete ROOM MSG      delete one of your messages for everyone
@@ -93,6 +95,13 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         ("send", [room, text @ ..]) if !text.is_empty() => {
             send(&accounts, &server, room, &text.join(" "))
+        }
+        ("send-file", [room, file, text @ ..]) => {
+            send_file(&accounts, &server, room, Path::new(file), &text.join(" "))
+        }
+        ("download", [room, target]) => download(&accounts, &server, room, target, Path::new(".")),
+        ("download", [room, target, dir]) => {
+            download(&accounts, &server, room, target, Path::new(dir))
         }
         ("reply", [room, target, text @ ..]) if !text.is_empty() => {
             reply(&accounts, &server, room, target, &text.join(" "))
@@ -212,7 +221,113 @@ fn read(accounts: &AccountFile, server: &str, room: &str, last: usize) -> Result
 
 fn send(accounts: &AccountFile, server: &str, room: &str, text: &str) -> Result<(), String> {
     let (account, repo) = signed_in(accounts, server)?;
-    post(&account, &repo, server, room, text, None)
+    post(&account, &repo, server, room, text, None, Vec::new())
+}
+
+fn send_file(
+    accounts: &AccountFile,
+    server: &str,
+    room: &str,
+    file: &Path,
+    caption: &str,
+) -> Result<(), String> {
+    let (account, repo) = signed_in(accounts, server)?;
+    let size = std::fs::metadata(file)
+        .map_err(|e| format!("{}: {e}", file.display()))?
+        .len();
+    let mime = mime_for(file);
+    let id = repo
+        .upload_attachment(file, mime)
+        .map_err(|e| explain(e, server))?;
+    let attachment = Attachment {
+        id,
+        name: file
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "file".into()),
+        mime: mime.into(),
+        size,
+    };
+    post(
+        &account,
+        &repo,
+        server,
+        room,
+        caption,
+        None,
+        vec![attachment],
+    )
+}
+
+/// Saves every attachment of one message into `dir`, under its name,
+/// after checking its bytes against its id.
+fn download(
+    accounts: &AccountFile,
+    server: &str,
+    room: &str,
+    target: &str,
+    dir: &Path,
+) -> Result<(), String> {
+    let (_, repo) = signed_in(accounts, server)?;
+    let message = find_message(&repo, server, room, target)?;
+    if message.attachments.is_empty() {
+        return Err("that message has no attachments".into());
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    for attachment in &message.attachments {
+        let name = Path::new(&attachment.name)
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| attachment.id.clone());
+        let destination = dir.join(name);
+        repo.download_attachment(&attachment.id, &destination)
+            .map_err(|e| explain(e, server))?;
+        let actual = chat_core::sha256_file(&destination)
+            .map_err(|e| format!("{}: {e}", destination.display()))?;
+        if actual != attachment.id {
+            let _ = std::fs::remove_file(&destination);
+            return Err(format!("{} arrived damaged; try again", attachment.name));
+        }
+        println!(
+            "{} ({})",
+            destination.display(),
+            human_size(attachment.size)
+        );
+    }
+    Ok(())
+}
+
+/// The media type for a file name, for the few kinds people send.
+fn mime_for(path: &Path) -> &'static str {
+    let extension = path
+        .extension()
+        .map(|e| e.to_string_lossy().to_ascii_lowercase())
+        .unwrap_or_default();
+    match extension.as_str() {
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "gif" => "image/gif",
+        "heic" => "image/heic",
+        "webp" => "image/webp",
+        "pdf" => "application/pdf",
+        "txt" | "md" => "text/plain",
+        "csv" => "text/csv",
+        "json" => "application/json",
+        "zip" => "application/zip",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "mp4" => "video/mp4",
+        "mov" => "video/quicktime",
+        _ => "application/octet-stream",
+    }
+}
+
+fn human_size(bytes: u64) -> String {
+    match bytes {
+        0..=1023 => format!("{bytes} B"),
+        1024..=1_048_575 => format!("{:.0} KB", bytes as f64 / 1024.0),
+        _ => format!("{:.1} MB", bytes as f64 / 1_048_576.0),
+    }
 }
 
 fn reply(
@@ -224,7 +339,7 @@ fn reply(
 ) -> Result<(), String> {
     let (account, repo) = signed_in(accounts, server)?;
     let to = find_message(&repo, server, room, target)?;
-    post(&account, &repo, server, room, text, Some(to.id))
+    post(&account, &repo, server, room, text, Some(to.id), Vec::new())
 }
 
 fn post(
@@ -234,6 +349,7 @@ fn post(
     room: &str,
     text: &str,
     reply_to: Option<String>,
+    attachments: Vec<Attachment>,
 ) -> Result<(), String> {
     let stored = repo
         .post_message(&OutgoingMessage {
@@ -243,6 +359,7 @@ fn post(
             author_id: account.user_id.clone(),
             body: text.trim().into(),
             reply_to,
+            attachments,
         })
         .map_err(|e| explain(e, server))?;
     println!("{}", line(&stored, account));
@@ -374,6 +491,16 @@ fn line(message: &Message, account: &Account) -> String {
         text.push_str(&format!("(reply to {}) ", short(to)));
     }
     text.push_str(&message.body);
+    for attachment in &message.attachments {
+        if !text.ends_with(' ') {
+            text.push(' ');
+        }
+        text.push_str(&format!(
+            "[file: {} ({})]",
+            attachment.name,
+            human_size(attachment.size)
+        ));
+    }
     if message.edited_at.is_some() {
         text.push_str(" (edited)");
     }
@@ -532,6 +659,34 @@ mod tests {
         );
         m.deleted = true;
         assert_eq!(line(&m, &me), "[00:00:00 UTC] Ben: (deleted)");
+    }
+
+    #[test]
+    fn files_get_a_media_type_and_a_readable_size() {
+        assert_eq!(mime_for(Path::new("IMG_1.JPG")), "image/jpeg");
+        assert_eq!(mime_for(Path::new("notes.pdf")), "application/pdf");
+        assert_eq!(mime_for(Path::new("blob")), "application/octet-stream");
+        assert_eq!(human_size(512), "512 B");
+        assert_eq!(human_size(2048), "2 KB");
+        assert_eq!(human_size(3 * 1024 * 1024 / 2), "1.5 MB");
+        let message = Message {
+            author: "Ben".into(),
+            attachments: vec![Attachment {
+                name: "a.pdf".into(),
+                size: 2048,
+                ..Attachment::default()
+            }],
+            ..message("m")
+        };
+        let me = Account {
+            user_id: "u-1".into(),
+            display_name: "Ana".into(),
+            token: String::new(),
+        };
+        assert_eq!(
+            line(&message, &me),
+            "[00:00:00 UTC] Ben: m [file: a.pdf (2 KB)]"
+        );
     }
 
     #[test]

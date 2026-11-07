@@ -13,6 +13,8 @@ futures-util = { version = "0.3", default-features = false }
 # Account tokens and ids come from the OS random generator.
 getrandom = "0.4"
 serde = { workspace = true }
+# Attachments are stored under the SHA-256 of their bytes.
+sha2 = "0.10"
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 

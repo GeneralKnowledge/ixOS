@@ -34,6 +34,9 @@ pub struct OutgoingMessage {
     pub body: String,
     /// The message this one answers.
     pub reply_to: Option<String>,
+    /// Files it carries, already uploaded with
+    /// [`ChatRepo::upload_attachment`].
+    pub attachments: Vec<crate::Attachment>,
 }
 
 /// What a live stream delivers.
@@ -139,6 +142,25 @@ pub trait ChatRepo: Send + Sync {
         let _ = (conversation_id, message_id, emoji, on);
         Err(unsupported("react to messages"))
     }
+
+    /// Uploads the file at `path` (an attachment's bytes) and returns the
+    /// id the server stored it under: the SHA-256 of the bytes, lowercase
+    /// hex. Uploading the same bytes again is harmless.
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let _ = (path, mime);
+        Err(unsupported("upload attachments"))
+    }
+
+    /// Downloads attachment `id` into `destination` (replacing it). The
+    /// caller checks the bytes against the id.
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let _ = (id, destination);
+        Err(unsupported("download attachments"))
+    }
 }
 
 fn unsupported(what: &str) -> ChatError {
@@ -205,5 +227,17 @@ impl<T: ChatRepo + ?Sized> ChatRepo for std::sync::Arc<T> {
         on: bool,
     ) -> Result<Message, ChatError> {
         (**self).react(conversation_id, message_id, emoji, on)
+    }
+
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        (**self).upload_attachment(path, mime)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        (**self).download_attachment(id, destination)
     }
 }
