@@ -2,7 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::config::{self, ForgeConfig};
-use crate::ios_builder::{IosBuilder, IosConfiguration};
+use crate::ios_builder::IosBuilder;
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -786,7 +786,6 @@ pub fn build_ios(
     root: &Path,
     project: &Path,
     package_only: bool,
-    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
     if package_only {
@@ -797,8 +796,7 @@ pub fn build_ios(
         );
         return Ok(());
     }
-    println!("[forge] Building the Swift app ({})", configuration.name());
-    builder.build(runner, &project_dir, configuration)
+    builder.build(runner, &project_dir)
 }
 
 /// Builds, installs and launches on a connected device.
@@ -807,14 +805,9 @@ pub fn run_ios(
     builder: &dyn IosBuilder,
     root: &Path,
     project: &Path,
-    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
-    println!(
-        "[forge] Building, installing and launching ({})",
-        configuration.name()
-    );
-    builder.run(runner, &project_dir, configuration)
+    builder.run(runner, &project_dir)
 }
 
 pub fn devices(runner: &dyn CommandRunner, ios: &dyn IosBuilder) -> Result<(), String> {
@@ -1020,27 +1013,11 @@ ios_device = true
     fn build_ios_requires_forge_toml_with_ios_enabled() {
         let (_tmp, root) = workspace(ANDROID_TOML, &[]);
         let mock = MockRunner::default();
-        let err = build_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            true,
-            IosConfiguration::Debug,
-        )
-        .unwrap_err();
+        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
         assert!(err.contains("does not enable iOS"), "{err}");
 
         fs::remove_file(root.join("apps/demo/forge.toml")).unwrap();
-        let err = build_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            true,
-            IosConfiguration::Debug,
-        )
-        .unwrap_err();
+        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
         assert!(err.contains("forge.toml"), "{err}");
         assert!(mock.calls().is_empty());
     }
@@ -1050,15 +1027,7 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        build_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            true,
-            IosConfiguration::Debug,
-        )
-        .unwrap();
+        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap();
         let lines = mock.call_lines();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("package-ios-library.sh apps/demo/Generated"));
@@ -1069,27 +1038,12 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        build_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            false,
-            IosConfiguration::Debug,
-        )
-        .unwrap();
+        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
 
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        run_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            IosConfiguration::Debug,
-        )
-        .unwrap();
+        run_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo")).unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
@@ -1109,24 +1063,14 @@ ios_device = true
         fn ensure_available(&self, _: &dyn CommandRunner) -> Result<(), String> {
             Ok(())
         }
-        fn build(
-            &self,
-            _: &dyn CommandRunner,
-            dir: &Path,
-            _: IosConfiguration,
-        ) -> Result<(), String> {
+        fn build(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
             self.0
                 .lock()
                 .unwrap()
                 .push(format!("build {}", dir.display()));
             Ok(())
         }
-        fn run(
-            &self,
-            _: &dyn CommandRunner,
-            dir: &Path,
-            _: IosConfiguration,
-        ) -> Result<(), String> {
+        fn run(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
             self.0
                 .lock()
                 .unwrap()
@@ -1151,23 +1095,8 @@ ios_device = true
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
         let fake = RecordingBuilder::default();
-        build_ios(
-            &mock,
-            &fake,
-            &root,
-            Path::new("apps/demo"),
-            false,
-            IosConfiguration::Debug,
-        )
-        .unwrap();
-        run_ios(
-            &mock,
-            &fake,
-            &root,
-            Path::new("apps/demo"),
-            IosConfiguration::Debug,
-        )
-        .unwrap();
+        build_ios(&mock, &fake, &root, Path::new("apps/demo"), false).unwrap();
+        run_ios(&mock, &fake, &root, Path::new("apps/demo")).unwrap();
         install_ios(&mock, &fake, Path::new("App.ipa")).unwrap();
 
         let dir = root.join("apps/demo");
@@ -1188,15 +1117,8 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        let err = build_ios(
-            &mock,
-            &XtoolBuilder,
-            &root,
-            Path::new("apps/demo"),
-            false,
-            IosConfiguration::Debug,
-        )
-        .unwrap_err();
+        let err =
+            build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap_err();
         assert!(err.contains("--package-only"), "{err}");
     }
 

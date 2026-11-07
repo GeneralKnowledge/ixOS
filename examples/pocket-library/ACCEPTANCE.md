@@ -24,7 +24,7 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | 2b | Rust crate compiles for `aarch64-apple-ios` | local build (Linux) | Type-checked only | `cargo check --target aarch64-apple-ios` with stub C headers for `ring` (no Darwin SDK in the cloud environment). The real build happens in step 5 |
 | 3 | Generate the Swift bindings | local build + automated | Done | `forge bindings generate --project`; CI fails if the committed `Generated/` drifts from the crate |
 | 4 | Compile the SwiftUI host | automated (macOS CI) | Pending CI | XCTest suite (`test-swift-host.sh`) and an unsigned `xcodebuild` of the iOS app |
-| 5 | Build the iOS app with xtool on Linux (debug and `--release`) | physical device | **Not yet done** | Needs a Linux machine with xtool and the Darwin SDK |
+| 5 | Build the iOS app with xtool on Linux (debug and release) | physical device | **Not yet done** | Needs a Linux machine with xtool and the Darwin SDK |
 | 6 | Install and launch on a physical iPhone | physical device | **Not yet done** | |
 | 7 | Add, edit and delete books | physical device | **Not yet done** | Covered on the Mac host by XCTest (step 4) |
 | 8 | Restart the app and check persistence | physical device | **Not yet done** | Covered in Rust (`everything_survives_a_relaunch`) and XCTest |
@@ -36,7 +36,6 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | Problem | Layer | Fix | Regression test |
 |---------|-------|-----|-----------------|
 | On Linux every `forge build/run ios` rebuilt the Rust library: the build recorded the SDK path it resolved from xtool, but the next run's staleness check only sees the caller's `SDKROOT`, so they never matched | build scripts | `build-rust-ios.sh` records the SDKROOT it was given | `scripts/test-native-rebuild.sh` (stub cargo/rustup/swift; fails without the fix) |
-| No way to build a release Swift configuration through Forge; Linux users had to drop down to `xtool dev run -c release` | CLI | `forge build ios --release`, `forge run ios --release` | `release_builds_pass_the_configuration_to_xtool` |
 | Apps made with `forge init` inside the checkout have their own Cargo workspace, so CI's `cargo fmt/clippy/test --workspace` and the binding drift check never looked at them | CI / scripts | `scripts/check-app-crates.sh` (fmt, clippy, tests, Swift binding drift for every `examples/*/rust`), in CI, `forge check` and `make check-app-crates` | The script itself; checked to fail on a stale binding |
 
 Found, not fixed here (belongs elsewhere):
@@ -68,5 +67,5 @@ On the phone:
 8. **Persistence.** Swipe the app away in the app switcher, open it again: everything is as you left it.
 9. **Offline.** Turn on airplane mode. Browsing, adding, editing and deleting still work. Catalogue search shows "You're offline" with Try Again and Enter Details by Hand; the library is unchanged.
 10. **Settings.** Turn off online search: the + menu's catalogue item is disabled. Export Library → Share Export File → save to Files. (Leave Erase for last, or skip it.)
-11. **Release build.** `forge run ios --release`; repeat 1, 5 and 8 briefly.
+11. **Release build.** `forge run ios --release` (the flag comes with PR #31; before it merges, `xtool dev run -c release` in this folder after `forge build ios --package-only`); repeat 1, 5 and 8 briefly.
 12. **Rust change reaches the phone.** In `rust/src/domain.rs`, change `SESSION_GAP_MS` to `5 * 1000` (five seconds). Run `forge run ios` and check the log says it rebuilt the Rust library. On the phone, update a book's page, wait ten seconds, update it again: Activity now shows two entries instead of one. Revert the change.

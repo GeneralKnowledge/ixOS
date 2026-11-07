@@ -102,12 +102,6 @@ enum BuildCommands {
             help = "Only build Rust static library and regenerate bindings (skip xtool dev)"
         )]
         package_only: bool,
-        #[arg(
-            long,
-            conflicts_with = "package_only",
-            help = "Build the Swift app in the release configuration (xtool dev build -c release)"
-        )]
-        release: bool,
     },
     Android {
         #[arg(
@@ -139,20 +133,7 @@ enum RunCommands {
             help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
         )]
         project: Option<PathBuf>,
-        #[arg(
-            long,
-            help = "Build the Swift app in the release configuration (xtool dev run -c release)"
-        )]
-        release: bool,
     },
-}
-
-fn configuration(release: bool) -> ios_builder::IosConfiguration {
-    if release {
-        ios_builder::IosConfiguration::Release
-    } else {
-        ios_builder::IosConfiguration::Debug
-    }
 }
 
 fn main() {
@@ -214,17 +195,9 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             BuildCommands::Ios {
                 project,
                 package_only,
-                release,
             } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::build_ios(
-                    runner,
-                    &ios,
-                    &root,
-                    &project,
-                    package_only,
-                    configuration(release),
-                )
+                commands::build_ios(runner, &ios, &root, &project, package_only)
             }
             BuildCommands::Android { project, install } => {
                 let project = project_or_default(project, "examples/counter-android");
@@ -236,9 +209,9 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project, release } => {
+            RunCommands::Ios { project } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(runner, &ios, &root, &project, configuration(release))
+                commands::run_ios(runner, &ios, &root, &project)
             }
         },
     }
