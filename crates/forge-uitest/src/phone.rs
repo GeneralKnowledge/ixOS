@@ -88,14 +88,7 @@ impl Phone {
         limit: Duration,
         work: impl std::future::Future<Output = Result<T>>,
     ) -> Result<T> {
-        self.runtime
-            .block_on(tokio::time::timeout(limit, work))
-            .unwrap_or_else(|_| {
-                Err(UiError::Device(format!(
-                    "{what}: the phone did not answer within {} s (is it unlocked and still plugged in?)",
-                    limit.as_secs()
-                )))
-            })
+        within_on(&self.runtime, what, limit, work)
     }
 
     async fn lockdown(&self) -> Result<LockdownClient> {
@@ -246,6 +239,26 @@ impl Phone {
             port: WDA_PORT,
         }
     }
+}
+
+/// Runs `work` on `runtime` with a deadline. The timeout is created inside
+/// the runtime: `tokio::time::timeout` registers with the timer of the
+/// runtime it is created in, and panics ("no reactor running") when it is
+/// created on a plain thread, which is where the CLI calls from.
+fn within_on<T>(
+    runtime: &tokio::runtime::Runtime,
+    what: &str,
+    limit: Duration,
+    work: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    runtime
+        .block_on(async move { tokio::time::timeout(limit, work).await })
+        .unwrap_or_else(|_| {
+            Err(UiError::Device(format!(
+                "{what}: the phone did not answer within {} s (is it unlocked and still plugged in?)",
+                limit.as_secs()
+            )))
+        })
 }
 
 /// How long idevice waits for WDA's port once the test runs.
@@ -420,6 +433,38 @@ mod tests {
 
     fn ids(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    // Called from a plain thread, as the CLI does; this panicked with "no
+    // reactor running" when the timeout was built outside the runtime.
+    #[test]
+    fn within_runs_from_a_plain_thread() {
+        let rt = runtime();
+        let got = std::thread::spawn(move || {
+            within_on(&rt, "test", Duration::from_secs(5), async { Ok(7) })
+        })
+        .join()
+        .unwrap();
+        assert_eq!(got.unwrap(), 7);
+    }
+
+    #[test]
+    fn within_gives_up_after_the_limit() {
+        let rt = runtime();
+        let got: Result<()> = within_on(&rt, "waiting", Duration::from_millis(50), async {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(())
+        });
+        let err = got.unwrap_err().to_string();
+        assert!(err.contains("waiting: the phone did not answer"), "{err}");
     }
 
     #[test]
