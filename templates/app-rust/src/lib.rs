@@ -12,8 +12,9 @@
 //! - typed errors ([`AppError`]) that arrive in Swift and Kotlin as thrown
 //!   errors with the same cases;
 //! - events the host subscribes to ([`AppCore::events`]);
-//! - HTTPS with the platform's certificate checks ([`AppCore::check_url`]);
-//! - shutdown that refuses new work.
+//! - HTTPS with the platform's certificate checks ([`AppCore::check_url`]),
+//!   cancellable while in flight ([`Cancellation`]);
+//! - shutdown that refuses new work and stops requests in flight.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -21,7 +22,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use forge_net::{HttpClient, NetError, Request, UreqClient};
-use forge_runtime::{background, Delivery, EventHub, Subscription};
+use forge_runtime::{
+    background, background_cancellable, CancelHandle, Delivery, EventHub, Subscription,
+};
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
@@ -71,6 +74,10 @@ pub enum AppError {
     /// Any other network failure.
     #[error("network error: {reason}")]
     Network { reason: String },
+    /// The request was cancelled with its [`Cancellation`] (or, from
+    /// Kotlin, by cancelling the calling coroutine).
+    #[error("cancelled")]
+    Cancelled,
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the app has been shut down")]
     ShutDown,
@@ -91,7 +98,7 @@ impl From<NetError> for AppError {
             NetError::Offline { reason } => Self::Offline { reason },
             NetError::Certificate { reason } => Self::Certificate { reason },
             NetError::Timeout => Self::Timeout,
-            NetError::Cancelled => Self::ShutDown,
+            NetError::Cancelled => Self::Cancelled,
             other => Self::Network {
                 reason: other.to_string(),
             },
@@ -117,6 +124,31 @@ pub struct AppCore {
     events: EventHub<AppEvent>,
     http: UreqClient,
     shut_down: Arc<AtomicBool>,
+    /// Cancelled by `shutdown`; every request runs under a child of it.
+    lifetime: CancelHandle,
+}
+
+/// Lets the host stop one request part way. Swift: create one per call and
+/// cancel it from `withTaskCancellationHandler`, because cancelling a Swift
+/// `Task` does not reach Rust on its own. Kotlin: cancelling the coroutine
+/// is enough; pass `null`.
+#[derive(uniffi::Object, Default)]
+pub struct Cancellation {
+    handle: CancelHandle,
+}
+
+#[uniffi::export]
+impl Cancellation {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Stops the request: it fails with `Cancelled` at once, even while
+    /// waiting for a slow server. Idempotent.
+    pub fn cancel(&self) {
+        self.handle.cancel();
+    }
 }
 
 #[uniffi::export]
@@ -142,6 +174,7 @@ impl AppCore {
             events: EventHub::new(),
             http: UreqClient::new(),
             shut_down: Arc::new(AtomicBool::new(false)),
+            lifetime: CancelHandle::new(),
         }))
     }
 
@@ -213,13 +246,30 @@ impl AppCore {
 
     /// Fetches `url` (HTTPS or HTTP) and returns the HTTP status code. The
     /// certificate is checked with the platform's trust store; a bad one is
-    /// `Certificate`, no connection is `Offline`.
-    pub async fn check_url(&self, url: String) -> Result<u16, AppError> {
+    /// `Certificate`, no connection is `Offline`. `cancellation` (or
+    /// `shutdown`) stops it part way with `Cancelled` (`ShutDown`).
+    pub async fn check_url(
+        &self,
+        url: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<u16, AppError> {
         self.ensure_running()?;
         let http = self.http.clone();
-        background("check-url", move || {
-            let response = http.send(&Request::get(url).timeout(Duration::from_secs(15)))?;
-            Ok(response.status)
+        let lifetime = self.lifetime.clone();
+        // Cancelled by shutdown, by `cancellation`, or by dropping the future.
+        let (cancel, under_lifetime) = self.lifetime.child();
+        let from_host = cancellation.map(|c| {
+            let cancel = cancel.clone();
+            c.handle.on_cancel(move || cancel.cancel())
+        });
+        background_cancellable("check-url", cancel, move |cancel| {
+            let _links = (under_lifetime, from_host); // released when the request ends
+            let request = Request::get(url).timeout(Duration::from_secs(15));
+            match http.send_cancellable(&request, cancel) {
+                Ok(response) => Ok(response.status),
+                Err(NetError::Cancelled) if lifetime.is_cancelled() => Err(AppError::ShutDown),
+                Err(err) => Err(err.into()),
+            }
         })
         .await
     }
@@ -232,10 +282,12 @@ impl AppCore {
             .ok_or(AppError::ShutDown)
     }
 
-    /// Refuses new commands with `ShutDown` and ends every event stream.
-    /// Commands already running finish. Idempotent.
+    /// Refuses new commands with `ShutDown`, stops requests in flight (they
+    /// fail with `ShutDown`) and ends every event stream. Saves already
+    /// running finish, so no write is cut short. Idempotent.
     pub fn shutdown(&self) {
         self.shut_down.store(true, Ordering::SeqCst);
+        self.lifetime.cancel();
         self.events.close();
     }
 }
@@ -387,12 +439,64 @@ mod tests {
             .unwrap()
             .port();
         assert!(matches!(
-            block_on(app.check_url(format!("http://127.0.0.1:{port}/"))),
+            block_on(app.check_url(format!("http://127.0.0.1:{port}/"), None)),
             Err(AppError::Offline { .. })
         ));
         assert!(matches!(
-            block_on(app.check_url("not a url".into())),
+            block_on(app.check_url("not a url".into(), None)),
             Err(AppError::InvalidInput { .. })
         ));
+    }
+
+    /// A local server that accepts and never answers, so a request to it
+    /// only ends when cancelled (its timeout is 15 s).
+    fn silent_server() -> (String, std::net::TcpListener) {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/", listener.local_addr().unwrap());
+        (url, listener)
+    }
+
+    fn cancel_after(ms: u64, what: impl FnOnce() + Send + 'static) {
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(ms));
+            what();
+        });
+    }
+
+    #[test]
+    fn a_request_in_flight_can_be_cancelled_or_stopped_by_shutdown() {
+        std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let (url, _server) = silent_server();
+
+        let cancellation = Cancellation::new();
+        let started = std::time::Instant::now();
+        cancel_after(150, {
+            let cancellation = Arc::clone(&cancellation);
+            move || cancellation.cancel()
+        });
+        let result = block_on(app.check_url(url.clone(), Some(cancellation)));
+        assert_eq!(result, Err(AppError::Cancelled));
+        assert!(started.elapsed() < Duration::from_secs(5));
+
+        // The app still works after a cancelled request; shutdown stops the next.
+        cancel_after(150, {
+            let app = Arc::clone(&app);
+            move || app.shutdown()
+        });
+        assert_eq!(block_on(app.check_url(url, None)), Err(AppError::ShutDown));
+        assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn two_instances_in_different_directories_are_independent() {
+        let (a_dir, b_dir) = (tempfile::tempdir().unwrap(), tempfile::tempdir().unwrap());
+        let (a, b) = (open(a_dir.path()), open(b_dir.path()));
+        block_on(a.add_note("in a".into())).unwrap();
+        assert!(b.notes().is_empty());
+        a.shutdown();
+        block_on(b.add_note("in b".into())).unwrap();
+        assert_eq!(open(a_dir.path()).notes().len(), 1);
     }
 }
