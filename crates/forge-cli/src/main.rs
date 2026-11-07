@@ -5,6 +5,7 @@ mod config;
 mod device;
 mod diagnose;
 mod doctor;
+mod evidence;
 mod ios_builder;
 mod ios_env;
 mod ledger;
@@ -106,6 +107,26 @@ enum Commands {
     Device {
         #[command(subcommand)]
         cmd: DeviceCommands,
+    },
+    /// Serve Forge to a coding agent over MCP (stdio): check, build, install,
+    /// launch, inspect, test and diagnose tools, plus Forge's docs as
+    /// resources (docs/forge-mcp.md). Started by the agent's MCP client
+    Mcp {
+        /// Tools only work inside this folder (default: the current directory)
+        #[arg(long, value_name = "DIR")]
+        root: Option<PathBuf>,
+        /// Let the agent do something that spends a phone resource: `install`
+        /// lets forge_install_device install apps (an app slot and an App ID
+        /// on a free team)
+        #[arg(long, value_name = "WHAT", value_parser = ["install"])]
+        allow: Vec<String>,
+        /// Only these bundle ids may be installed (repeatable), e.g.
+        /// org.forgemobile.agentlab, the agent sandbox id
+        #[arg(long = "bundle-id", value_name = "ID")]
+        bundle_ids: Vec<String>,
+        /// The only phone device tools may touch
+        #[arg(long)]
+        udid: Option<String>,
     },
 }
 
@@ -348,6 +369,20 @@ fn configuration(release: bool) -> ios_builder::IosConfiguration {
 
 fn main() {
     let cli = Cli::parse();
+    // stdout is the MCP transport: nothing else may print there.
+    if let Commands::Mcp {
+        root,
+        allow,
+        bundle_ids,
+        udid,
+    } = cli.command
+    {
+        if let Err(err) = serve_mcp(root, allow, bundle_ids, udid, cli.json) {
+            eprintln!("error: {err}");
+            std::process::exit(1);
+        }
+        return;
+    }
     let runner = runner::RealRunner;
     // doctor --json has its own report shape (it predates the result contract).
     if !cli.json || matches!(cli.command, Commands::Doctor) {
@@ -396,6 +431,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Check { .. } => return "check".into(),
         Commands::Init { .. } => return "init".into(),
         Commands::Test { .. } => return "test".into(),
+        Commands::Mcp { .. } => return "mcp".into(),
         Commands::Devices => return "devices".into(),
         Commands::Config { cmd } => match cmd {
             ConfigCommands::Sync { .. } => "config sync",
@@ -564,6 +600,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Devices => commands::devices(runner, &ios),
+        Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
         Commands::Device { cmd } => device_command(cmd, cli.json),
         Commands::Install { cmd } => match cmd {
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
@@ -586,6 +623,44 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
     }
+}
+
+fn serve_mcp(
+    root: Option<PathBuf>,
+    allow: Vec<String>,
+    bundle_ids: Vec<String>,
+    udid: Option<String>,
+    json: bool,
+) -> Result<(), String> {
+    if json {
+        return Err("forge mcp speaks MCP on stdout; it has no --json result".into());
+    }
+    let root = root
+        .map(|r| absolute_from_cwd(&r))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+    let root = root
+        .canonicalize()
+        .map_err(|e| format!("{}: {e}", root.display()))?;
+    let workspace = commands::workspace_root();
+    commands::require_workspace(&workspace)?;
+    let forge = std::env::current_exe().map_err(|e| e.to_string())?;
+    eprintln!(
+        "forge mcp: serving {} on stdio (install {})",
+        root.display(),
+        if allow.iter().any(|a| a == "install") {
+            "allowed"
+        } else {
+            "refused"
+        }
+    );
+    forge_mcp::serve_stdio(forge_mcp::Options {
+        forge,
+        root,
+        workspace,
+        allow_install: allow.iter().any(|a| a == "install"),
+        bundle_ids,
+        udid,
+    })
 }
 
 /// `--project` when given; otherwise the current directory when it is an app

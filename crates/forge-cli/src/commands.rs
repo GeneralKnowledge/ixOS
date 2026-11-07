@@ -3,8 +3,9 @@ use std::path::{Path, PathBuf};
 
 use crate::app_config;
 use crate::config::{self, ForgeConfig};
-use crate::diagnose;
+use crate::diagnose::{self, Stage};
 use crate::ios_builder::{IosBuilder, IosConfiguration, Purpose, SKIP_PREFLIGHT};
+use crate::ios_env;
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -919,15 +920,24 @@ pub fn run_ios(
 ) -> Result<(), String> {
     let (project_dir, cfg) = ios_project(root, project)?;
     ios_preflight(runner, builder, Purpose::Run)?;
+    // Only xtool signs here; other builders (Xcode) choose their own team.
+    let team = if builder.name() == "xtool" {
+        check_signing_team(runner, &cfg)?
+    } else {
+        None
+    };
     package_ios(runner, root, &project_dir, &cfg, devtools)?;
     println!("[forge] Building and installing ({})", configuration.name());
-    builder.run(runner, &project_dir, configuration)?;
+    builder
+        .run(runner, &project_dir, configuration)
+        .map_err(|err| explain_team_limit(err, team_type(&cfg), team.as_ref()))?;
     // xtool installs but cannot launch on iOS 17+: someone opens the app.
     crate::report::set_data(serde_json::json!({
         "configuration": configuration.name(),
         "devtools": devtools,
         "installed": true,
         "launched": false,
+        "signing_team": team,
     }));
     println!(
         "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
@@ -938,6 +948,66 @@ pub fn run_ios(
         );
     }
     Ok(())
+}
+
+fn team_type(cfg: &ForgeConfig) -> Option<&str> {
+    cfg.ios.as_ref()?.signing.team_type.as_deref()
+}
+
+/// Finds the team xtool will sign with and warns when `forge.toml` says
+/// otherwise. Stops before the build when the team is free and `forge.toml`
+/// asks for paid-only entitlements, which xtool would silently leave out.
+fn check_signing_team(
+    runner: &dyn CommandRunner,
+    cfg: &ForgeConfig,
+) -> Result<Option<ios_env::SigningTeam>, String> {
+    if std::env::var_os(SKIP_PREFLIGHT).is_some_and(|v| v == "1") {
+        return Ok(None);
+    }
+    let Some(team) = ios_env::signing_team(runner) else {
+        return Ok(None);
+    };
+    println!("[forge] Signing with {}", team.describe());
+    if let Some(warning) = ios_env::team_mismatch(team_type(cfg), &team) {
+        eprintln!("[forge] warning: {warning}");
+    }
+    let paid = app_config::paid_only_entitlements(cfg);
+    if team.kind == ios_env::TeamKind::Free && !paid.is_empty() {
+        let problem = format!(
+            "The app asks for {}, which Apple only provisions for paid teams, but xtool signs with {}.",
+            paid.join(", "),
+            team.describe()
+        );
+        let fix = "Sign in with the paid team (`xtool auth logout`, then `xtool auth login` and pick it), or remove the entitlement from forge.toml.";
+        crate::report::record_failure(
+            "forge run ios",
+            vec![crate::report::JsonHint::new(Stage::Signing, &problem, fix)],
+            "",
+        );
+        return Err(format!(
+            "forge run ios cannot start yet:\n  - {problem}\n    Fix: {fix}"
+        ));
+    }
+    Ok(Some(team))
+}
+
+/// A free-team limit (3 apps, 10 App IDs a week) while `forge.toml` or xtool
+/// says the team is paid means xtool is signed in with the wrong team.
+fn explain_team_limit(
+    err: String,
+    configured: Option<&str>,
+    team: Option<&ios_env::SigningTeam>,
+) -> String {
+    let free_limit = err.contains("A free Apple account");
+    let thinks_paid =
+        configured == Some("paid") || team.is_some_and(|t| t.kind == ios_env::TeamKind::Paid);
+    if !free_limit || !thinks_paid {
+        return err;
+    }
+    let problem = "This limit applies only to free teams, but this app is meant to be signed by a paid team: xtool is probably signed in with the Apple ID's free personal team.";
+    let fix = "`xtool ds teams list` shows the teams; `xtool auth logout`, then `xtool auth login` and pick the paid one. `forge doctor` shows which team xtool uses.";
+    crate::report::add_hint(crate::report::JsonHint::new(Stage::Signing, problem, fix));
+    format!("{err}\n\n{problem}\nFix: {fix}")
 }
 
 /// `forge config sync|check|show`: the app's iOS configuration.
@@ -1341,6 +1411,57 @@ ios_device = true
     }
 
     #[test]
+    fn run_ios_stops_when_a_free_team_would_drop_paid_entitlements() {
+        let toml =
+            format!("{IOS_TOML}\n[ios.entitlements]\npush_notifications = \"development\"\n");
+        let (_tmp, root) = workspace(&toml, &[]);
+        let mock = ready_ios_host();
+        mock.respond(
+            "xtool auth status",
+            0,
+            "Logged in.\n- Team ID: ZZZZZ99999\n",
+        )
+        .respond(
+            "xtool ds teams list",
+            0,
+            "Someone [active]: ZZZZZ99999\n- Xcode Free Provisioning Program (ios)\n",
+        );
+        let err = run_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+            false,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("push notifications") || err.contains("Push"),
+            "{err}"
+        );
+        assert!(err.contains("free personal team"), "{err}");
+        assert!(mock
+            .call_lines()
+            .iter()
+            .all(|l| !l.contains("package-ios-library.sh")));
+    }
+
+    #[test]
+    fn free_team_limits_on_a_paid_app_point_at_the_team_choice() {
+        let err = "What went wrong\nA free Apple account can have at most 3 sideloaded apps on a device at once.".to_string();
+        let out = explain_team_limit(err.clone(), Some("paid"), None);
+        assert!(
+            out.contains("free personal team") && out.contains("xtool auth login"),
+            "{out}"
+        );
+        assert_eq!(explain_team_limit(err.clone(), Some("free"), None), err);
+        assert_eq!(
+            explain_team_limit("other".into(), Some("paid"), None),
+            "other"
+        );
+    }
+
+    #[test]
     fn run_ios_stops_before_the_rust_build_when_no_iphone_is_connected() {
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = ready_ios_host();
@@ -1660,7 +1781,9 @@ ios_device = true
         );
         assert!(!agents.contains("FORGE_APP_NAME"));
         assert!(dest.join("CLAUDE.md").is_file());
-        assert!(dest.join(".mcp.json").is_file());
+        assert!(agents.contains("--process InitTestAppXtool"), "{agents}");
+        let mcp = fs::read_to_string(dest.join(".mcp.json")).unwrap();
+        assert!(mcp.contains("\"args\": [\"mcp\"]"), "{mcp}");
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));

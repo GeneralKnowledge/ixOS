@@ -1,55 +1,48 @@
 # iPhone test session, 2026-11-07 (evening)
 
-One ordered plan for every phone check that is queued after today's merges, so threads don't take turns grabbing the phone. Work top to bottom. Each step says **which app slot** it uses, **what Reuben does on the phone**, **what runs on the laptop** (through Remote Control, run by Claude, never typed by Reuben), and **the evidence** that decides pass or fail.
+One ordered plan for every phone check that is queued after today's merges, run as **one coordinated session**: one Remote Control session on the laptop, driven by this plan's thread, so separate threads don't each ask Reuben to test one thing. Work top to bottom.
+
+The order follows Reuben's review of 2026-11-07 18:42. **Part 1 (steps 1–4) settles the tooling questions** that the agent and MCP work depends on: Apple's accessibility service (#79), WebDriverAgent UI testing (#61), which team xtool signs with, and the launch/screenshot/diagnostics loop. **Part 2 (steps 5–8)** is the queued app checks, in the time that's left. Each step says **which app slot** it uses, **what Reuben does on the phone**, **what runs on the laptop** (through Remote Control, run by Claude, never typed by Reuben), and **the evidence** that decides pass or fail.
 
 Nothing here is marked passed until Reuben reports it. Results go back to the runbook each step names (ACCEPTANCE tables, `local-ai.md`, the ledger), not into this file.
 
 ## The phone and the limits
 
 - **Cati**: iPhone 15 Pro Max (iPhone16,2), iOS 26.3.1 (a), Developer Mode on, free Apple account.
-- **Three sideloaded apps at most, on a free account.** The WebDriverAgent runner for UI testing counts as one. Free accounts can also register only 10 new app IDs per 7 days, so tonight's new apps (runner, Chat, Device Lab, Kataster) stay well within that if nothing else is tried. Reuben has not joined the paid Apple Developer Program yet and may decide to tonight; the slot plan below is the default, and [Paid team](#paid-team-install-side-by-side) is the branch to take if he does. Step 0 finds out which applies.
+- **Three sideloaded apps at most, on a free account.** The WebDriverAgent runner for UI testing counts as one. Free accounts can also register only 10 new app IDs per 7 days, so tonight's new apps (runner, Chat, Device Lab, Kataster) stay well within that if nothing else is tried. Reuben has not joined the paid Apple Developer Program yet and may decide to tonight; the slot plan below is the default, and [Paid team](#paid-team-install-side-by-side) is the branch to take if he does. Step 3 finds out which applies.
 - **Storage is the blocker for the AI checks.** 496.79 of 512 GB used; the 2B model failed with 1.3 GB usable. iOS's "free" figure includes purgeable space, so the number that matters is the one the AI check app's `start` line prints (`free disk`).
 - **Laptop**: Linux, xtool 1.24.0 (patched `-ixos.1`), Xcode 26 SDK, the ixOS checkout at `/home/red/ixOS`, Remote Control device "create". Keep that checkout untouched; laptop steps use worktrees.
 
-## Slot plan
+## Slot plan (free account)
 
 Expected now (step 0 confirms): **Pocket Library**, **AICheck** (it replaced ServicesCheck for the L0 run; models already copied in), **Weather**.
 
 | Slot | Now | Session | After |
 |---|---|---|---|
-| A | Pocket Library | Stays. Updated in place twice (UI test identifiers, then reader + read-aloud from main). Data is kept | Pocket Library |
+| A | Pocket Library | Stays. Updated in place once, from #61's branch (identifiers for the probe and UI tests, and the EPUB reader). Data is kept | Pocket Library |
 | B | AICheck | Stays until the L0 run is finished, so the Qwen models already on the phone don't need copying again | Free (Device Lab or Kataster, optional) |
-| C | Weather | Weather deleted → WDA runner (UI testing M0) → runner deleted → Chat | Chat |
+| C | Weather | Weather deleted → WDA runner (steps 2–4) → runner deleted → Chat | Chat |
 
-Why this order: UI testing M0 and the Chat checks feed the MCP and agent work, so they go first. They share slot C, one after the other, and neither touches slot B, so the AI models survive. Weather has nothing left to test (the redesign was confirmed on Cati and #52/#54 are merged); it can be reinstalled any time with `forge run ios --project examples/weather`.
+The accessibility probe (step 1) needs no slot at all. Weather has nothing left to test (the redesign was confirmed on Cati and #52/#54 are merged); it can be reinstalled any time with `forge run ios --project examples/weather`.
 
 ## Paid team: install side by side
 
-Only if Reuben joins the program **and** step 0 showed a fourth app installs. A new membership can take a while to become active, and xtool must be signed in with that Apple ID; until both are true, use the slot plan.
-
-What paying changes, to help decide:
+Reuben hasn't joined the paid program yet and may decide on the spot; step 3 checks. This branch applies only if he pays **and** xtool then signs with the paid team. What paying changes, to help decide:
 
 | | Free Apple ID (now) | Paid Developer Program |
 |---|---|---|
 | Sideloaded apps | 3 at once | No such limit |
-| Signing lasts | 7 days, then reinstall | 1 year |
-| Tonight | Weather deleted, runner deleted after M0, Device Lab or Kataster only if AICheck goes | Everything stays installed; Device Lab and Kataster fit alongside |
+| Signing lasts | 7 days, then reinstall | 1 year (never longer than the membership) |
+| Tonight | Weather deleted, runner deleted after step 4, Device Lab or Kataster only if AICheck goes | Everything stays installed; Device Lab and Kataster fit alongside |
 | UI test runner | Reinstalled every week, takes a slot | Stays installed |
-| Paid-only capabilities (from the [ledger](../capability-ledger.md)) | Not available | Become possible later: push notifications (APNs), universal links, Wi-Fi network name, NFC; multicast also needs Apple's approval |
+| Paid-only capabilities (from the [ledger](../capability-ledger.md) and [ios-signing.md](../ios-signing.md)) | Not available | Become possible later: push notifications (APNs), universal links, Sign in with Apple, Wi-Fi network name, NFC; multicast also needs Apple's approval |
 | Not changed | Developer Disk Image still mounted after each reboot; phone storage is still the limit for the AI models; the check order is the same |
 
-Then:
-
-- **Nothing gets deleted.** Weather stays, AICheck keeps its models, and the WDA runner, Chat and Device Lab go on beside them.
-- **Step 1:** skip "Delete Weather" and "delete the runner". Keep the runner installed for later UI test runs. With a paid team the signing lasts a year instead of seven days, but the Developer Disk Image still has to be mounted after every reboot.
-- **Step 3:** Chat installs straight away; no slot to free.
-- **Step 5:** Device Lab is already installed (step 0), so its checks can run any time. Kataster can be installed too.
-- **The order of steps 1 to 4 stays the same**, because it follows priority (what feeds the MCP and agent work first), not slots.
-- Leave each app's `team_type` in `forge.toml` as it is. Moving apps to `"paid"` (push notifications, associated domains and so on) is a separate change, not part of tonight.
+If the paid team is active: nothing gets deleted (Weather stays, AICheck keeps its models), the runner stays installed after step 4, Chat installs straight away in step 6, and Device Lab (installed in step 3) can be checked any time. Leave each app's `team_type` in `forge.toml` as it is tonight; moving apps to `"paid"` is a separate change.
 
 ## Who drives the laptop
 
-One Remote Control session at a time, so two installs never fight over usbmuxd. Recommended: this plan's thread drives the whole session through one Remote Control card and posts each block's results to the thread that owns it. If Reuben prefers each thread to run its own block, hand over between blocks and close the previous Remote Control session first.
+**One Remote Control session for the whole evening**, started from this plan's thread, so two installs never fight over usbmuxd and Reuben allows one card. The other threads don't start their own sessions tonight: this thread runs their steps exactly as their runbooks say and posts each block's raw output to the thread that owns it (probe → "Speed up the Linux iOS dev loop", UI testing → "Automate testing on a real iPhone", Chat → "Grow Chat into flagship acceptance app" and "Extract shared infrastructure into ixOS", AI → "Plan on-device AI assistant for Chat"). Those threads interpret and record the results.
 
 General rules for every laptop step: run commands yourself, report output verbatim, don't edit code mid-session, and if an install hangs, ask Reuben to replug and unlock (usbmuxd drops) and retry once.
 
@@ -61,62 +54,112 @@ General rules for every laptop step: run commands yourself, report output verbat
 
 - [ ] Settings → General → iPhone Storage → Podcasts → **Remove Older Downloads** (frees up to 18.7 GB).
 - [ ] Optionally delete a few YouTube offline videos for more margin. Target: **at least 10 GB usable**. Leave Offload Unused Apps **off** so iOS doesn't remove a test app.
-- [ ] Settings → Apple Intelligence & Siri: on, and its model fully downloaded (needed for the Foundation Models checks K3, K4, K11).
+- [ ] Settings → Apple Intelligence & Siri: on, and its model fully downloaded (needed for the Foundation Models checks in step 7).
 - [ ] Charge to above 50% or keep it on the cable (Cati was at 45% earlier).
-- [ ] Plug Cati into the laptop, unlock it, keep it unlocked. Allow the Remote Control card.
+- [ ] Plug Cati into the laptop, unlock it, keep it unlocked. Allow the one Remote Control card.
 
 **Laptop (Remote Control):**
 
-- [ ] `cd /home/red/ixOS && git fetch origin` and create a worktree of current `main` at `~/ixos-session` (`git worktree add ~/ixos-session origin/main`). `cargo build -p forge-cli` there.
+- [ ] `cd /home/red/ixOS && git fetch origin`. Two worktrees: current `main` at `~/ixos-session`, and #61's branch (`claude/project-thread-e6ryft`) at `~/ixos-uitest`. `cargo build -p forge-cli` in both; use `~/ixos-uitest/target/debug/forge` for every `forge ui` command and the Pocket Library install.
 - [ ] `forge doctor --json` and `forge device list --json`: record the iPhone, iOS version and **the installed apps**. If the three apps are not Pocket Library, AICheck and Weather, stop and tell Reuben before deleting anything.
-- [ ] **Which team signs?** `xtool auth status` only says logged in or out, so ask Reuben which Apple ID xtool is signed in with, and whether it's the one enrolled in the paid program. If it isn't, he signs in again with `xtool auth login` in a terminal himself (credentials never go through Claude).
-- [ ] **Prove it with a fourth app.** Install Device Lab (`forge run ios --project examples/device-lab`) without removing anything. If it installs and launches, the paid team is active: follow [Paid team](#paid-team-install-side-by-side). If xtool refuses because of the app limit, it's still the free team: carry on with the slot plan, and Device Lab waits for step 5.
-- [ ] Start builds that don't need the phone, in the background, so later steps only install: Chat (`forge build ios --project examples/chat`), and the AICheck release build from the L0 thread (commit 7b8eb70 or later).
+- [ ] Find Xcode's `Contents/Resources/CoreDeviceDDIs` folder on the laptop (needed in step 1; xtool's SDK doesn't keep it); if only an `Xcode*.xip` exists, report its path and stop there (no long extractions).
+- [ ] Download the WebDriverAgent runner zip and check its SHA-256 against the value in the UI-testing thread; stop if it differs.
+- [ ] Start builds that don't need the phone, in the background, so later steps only install: Chat (`forge build ios --project examples/chat` from `~/ixos-session`) and the AICheck release build from the L0 thread (commit 7b8eb70 or later).
 
 **Evidence:** the `doctor` and `device list` JSON; Reuben's storage screenshot after the clean-up.
 
 ---
 
-## Step 1. UI testing M0 (slot C: Weather → runner) — about 30 minutes
+# Part 1: the tooling questions
 
-Owner: "Automate testing on a real iPhone" thread, PR #61 (draft). The exact laptop script is in that thread's Remote Control instructions; summary below.
+## Step 1. Apple's accessibility service probe (#79) — no app slot, about 15 minutes
 
-**Before the session:** #61's branch was cut before #53 merged. **Merge main into #61 first**, otherwise installing Pocket Library from it would replace the reader build with an older one. If that hasn't happened, install Pocket Library from main in step 2 right after M0.
-
-**On the phone (Reuben):**
-
-- [ ] Delete **Weather** (touch and hold → Remove App → Delete App).
-- [ ] If the runner won't start, Settings → General → VPN & Device Management → trust the developer profile.
-- [ ] Keep the phone unlocked and don't touch the screen while the test runs.
+Owner: "Speed up the Linux iOS dev loop" thread. What each result decides: [docs/research/ax-audit.md](../research/ax-audit.md). If it works, Forge can read the screen's accessibility tree, press controls and run Apple's audit **without installing the WebDriverAgent runner**.
 
 **Laptop (Remote Control):**
 
-- [ ] Worktree of #61's branch at `~/ixos-uitest`, `cargo build -p forge-cli`.
-- [ ] Download the WebDriverAgent runner zip and check its SHA-256 against the value in the thread; stop if it differs.
-- [ ] *Optional, accessibility audit probe (PR #79), run 1 of 2:* before the disk image is mounted, with Pocket Library open and the phone unlocked, run from the #79 branch (`claude/project-thread-y2svc9`, or main once it merges):
-  `cargo run -p forge-device --features ax-probe --example ax_probe -- --max 40`, then `-- --press library.add`, then `-- --audit`. Reuben only keeps Pocket Library in front and says whether the Add button visibly reacted to `--press`. The Pocket Library on the phone may not have the identifiers yet at this point, so judge `Identifier=` on run 2.
-- [ ] Find Xcode's `CoreDeviceDDIs` folder; `forge ui setup --ddi <dir>` (mounts the Developer Disk Image, needs internet for Apple's signing server).
-- [ ] `forge ui setup --runner …/WebDriverAgentRunner-Runner.app` (only after `device list` shows Weather gone).
-- [ ] `forge run ios --project examples/pocket-library` (updates in place, keeps the library).
-- [ ] *Optional, probe run 2 of 2:* the same three `ax_probe` commands again, after `forge run ios --project examples/pocket-library` below (so the identifiers are installed) and with the disk image mounted. Comparing the two runs shows whether Apple's accessibility audit service needs it.
-- [ ] `forge ui run examples/pocket-library/uitests/m0.toml --out ~/forge-uitest/out`, then `forge ui tree --app org.forgemobile.pocketlibrary` and `forge ui screenshot ~/forge-uitest/out/manual.png`.
+- [ ] Install Pocket Library with the accessibility identifiers, in place, from `~/ixos-uitest`: `forge run ios --project examples/pocket-library`. (It also has the EPUB reader; the library is kept.)
+- [ ] **Run 1, before the Developer Disk Image is mounted**, from `~/ixos-session`, with Pocket Library open on its library screen:
+  `cargo run -p forge-device --features ax-probe --example ax_probe -- --max 40`
+  `cargo run -p forge-device --features ax-probe --example ax_probe -- --press library.add`
+  `cargo run -p forge-device --features ax-probe --example ax_probe -- --audit`
+- [ ] Mount the image: `forge ui setup --ddi <CoreDeviceDDIs dir>` (needs internet for Apple's signing server). Report its output; it also lists the installed apps.
+- [ ] **Run 2**: the same three commands again, Pocket Library back on its library screen.
 
-**Pass:** the runner launches; the M0 test opens New Book, types a title, sees the form react, cancels; screenshots are valid PNGs; `ui tree` lists Pocket Library's identifiers (`library.add` and so on). The library is unchanged afterwards (Reuben glances at it).
+**On the phone (Reuben):** keep Pocket Library open on the library screen, unlocked. After each `--press`, say whether the Add button visibly reacted (the New Book menu or form opened), then close what opened.
 
-**Evidence:** full output of every `forge ui` command; for the optional probe, the [1]–[4] lines of each run, whether `Identifier=` shows the SwiftUI identifiers, and whether Add reacted to `--press` (send these to the "Speed up the Linux iOS dev loop" thread; [docs/research/ax-audit.md](../research/ax-audit.md) on #79 says what each result decides), `ls -la` and `file` on the output folder, and what Reuben saw on screen.
-
-**Then:**
-
-- [ ] Laptop: `forge device logs --process AppHostXtool --for 30s --json` while Reuben opens Pocket Library. This is the real-device check of #75 (`--json` result object, and `--for` ending on time even if the phone is quiet). Pass: one JSON object on stdout, exit code 0, ends after about 30 s.
-- [ ] Reuben: delete the runner (`XTL-…` app) to free slot C. `forge ui setup --runner` reinstalls it later; it expires after 7 days anyway.
+**Evidence:** the [1]–[4] lines of both runs; whether `Identifier=` shows the SwiftUI identifiers (`library.add` and so on); whether Add reacted; the audit output. Comparing run 1 and run 2 says whether the service needs the disk image. Raw output goes to the dev-loop thread.
 
 ---
 
-## Step 2. Pocket Library reader and read-aloud (slot A, no change) — about 15 minutes
+## Step 2. WebDriverAgent UI testing M0 (#61) — slot C: Weather → runner, about 30 minutes
+
+Owner: "Automate testing on a real iPhone" thread, PR #61 (draft, kept draft until this run; head bab78d4 at 19:00, check the thread for a newer one). The exact commands are in [forge-ui-testing.md](../forge-ui-testing.md) on that branch, under "Running M0" and "What still needs the phone"; this is the summary. Add `--json` to every `forge ui` command.
+
+**On the phone (Reuben):**
+
+- [ ] Delete **Weather** (touch and hold → Remove App → Delete App). If Reuben has already joined the paid program and switched xtool to it before the session, do step 3 first; with a paid team, Weather stays.
+- [ ] If the runner won't start: Settings → General → VPN & Device Management → trust the developer profile.
+- [ ] Keep the phone unlocked and don't touch the screen while the test runs.
+
+**Laptop (Remote Control), all from `~/ixos-uitest`:**
+
+- [ ] `forge device list` shows Weather gone, then `forge ui setup --runner ~/forge-uitest/WebDriverAgentRunner-Runner.app` (add `--team paid` only if step 3 already showed a paid team; it changes only the app-limit wording). If it fails at "starting WebDriverAgent", capture the full error.
+- [ ] `forge ui run examples/pocket-library/uitests/m0.toml --out ~/forge-uitest/out`.
+- [ ] `forge ui tree --app org.forgemobile.pocketlibrary` and `forge ui screenshot ~/forge-uitest/out/manual.png`.
+
+**Pass:** the runner launches; M0 launches Pocket Library, taps `library.add`, types a title, sees the form react, takes screenshots and cancels; the screenshots are valid PNGs; `ui tree` lists the identifiers. The library is unchanged afterwards (Reuben glances at it).
+
+**Evidence:** the `--json` output of every `forge ui` command and the whole output folder (sent to the UI-testing thread), `ls -la` and `file` on it, and what Reuben saw. Also put the WDA tree next to step 1's probe tree: do both show the same identifiers and labels? That comparison decides how much of UI inspection can drop the runner.
+
+---
+
+## Step 3. Which team does xtool sign with? — about 10 minutes, more if Reuben pays now
+
+Owner: this thread; record the result in [ios-signing.md](../ios-signing.md) and the ledger's signing rows. Reuben does the sign-in himself; Apple credentials never go through Claude.
+
+- [ ] **Reuben decides** whether to join the paid program tonight. If not, skip to the fourth-app test, which should be refused.
+- [ ] If he joined: once Apple shows the membership as active, Reuben runs in a terminal on the laptop `xtool ds teams list`, then `xtool auth logout` and `xtool auth login`, picking the paid team. A new membership can take a while to become active; if the paid team isn't listed yet, carry on with the free plan and come back to this at the end.
+- [ ] Laptop: `xtool auth status` and `forge doctor --json`. If the "Complete the development loop improvements" work (branch `claude/project-thread-7r54px`) is in the forge binary, `forge doctor` prints `Signing team: <name> (<id>), free/paid` from `xtool ds teams list`, which replaces asking Reuben.
+- [ ] **Fourth-app test.** With Pocket Library, AICheck and the runner installed, `forge run ios --project examples/device-lab --json`.
+  - **Free team:** expected to be refused with "maximum number of apps for free development profiles". Record the exact message and whether Forge's `--json` result names the app limit as the cause and suggests removing an app.
+  - **Paid team:** Device Lab installs and opens. Then follow [Paid team](#paid-team-install-side-by-side) for the rest of the evening. Reinstalling Pocket Library (`forge run ios`) on the new team also shows whether an app signed by the old team needs reinstalling.
+
+**Evidence:** the team list (team names only, no ids or emails in the thread), `xtool auth status`, the `--json` result of the fourth-app install, and Reuben's word on whether Device Lab opened.
+
+---
+
+## Step 4. The launch, screenshot and diagnostics loop — about 15 minutes
+
+Owner: "Speed up the Linux iOS dev loop" thread ([dev-loop.md](../dev-loop.md)). One measured cycle on Pocket Library with tonight's real commands, to see what an agent would get back. No code changes.
+
+**If `scripts/iphone-acceptance.sh` is available** (from the "Complete the development loop improvements" thread; it needs #61 in the same forge binary and `forge ui setup` done first), run it instead of the commands below: `scripts/iphone-acceptance.sh --app examples/pocket-library --with-ax-probe` (add `--with-mcp` if `forge mcp` is in the build). It removes nothing, only reinstalls Pocket Library over itself, and writes `results.md` (PASS/FAIL/SKIP per step) plus raw JSON. On a free team its S2 "paid team selected" step is expected to FAIL; that's the step 3 result, not a regression. Send `results.md` and the JSON to that thread. Otherwise, run the commands by hand:
+
+**Laptop (Remote Control), with timestamps for each command:**
+
+- [ ] `forge run ios --project examples/pocket-library --json` from `~/ixos-uitest` (rebuild and reinstall, no changes): the `--json` result object, exit code, and the time taken.
+- [ ] Start `forge device logs --process AppHostXtool --for 30s --json` in the background.
+- [ ] `forge ui run examples/pocket-library/uitests/m0.toml --out ~/forge-uitest/loop` (launches the app and takes screenshots), while the logs run.
+- [ ] `forge ui tree --app org.forgemobile.pocketlibrary` and `forge ui screenshot ~/forge-uitest/loop/after.png`.
+- [ ] `forge device crashes --app pocketlibrary --json`.
+
+**On the phone (Reuben):** nothing, beyond keeping it unlocked and not touching it.
+
+**Pass:** each command returns on its own without a hang; `device logs --for 30s` ends after about 30 s with one JSON object (#75); the logs include Pocket Library's Swift and Rust lines (ForgeLog, #66); crashes is empty.
+
+**Evidence:** every command's output and time. The dev-loop thread uses it to say what the loop still lacks for an agent (for example one command that combines the logs, the crash list and a screenshot).
+
+**Then (free team only):** Reuben deletes the runner (`XTL-…` app) to free slot C for Chat. `forge ui setup --runner` reinstalls it when needed; it expires after 7 days anyway.
+
+---
+
+# Part 2: queued app checks
+
+## Step 5. Pocket Library reader and read-aloud (slot A, no change) — about 15 minutes
 
 Owner: "Add EPUB reading to Pocket Library" thread, PR #53 (merged). Steps: [iphone-acceptance.md](../integration/iphone-acceptance.md) section E for the basics; the reader specifics below come from #53.
 
-**Laptop:** if step 1 installed a build without the reader, `forge run ios --project examples/pocket-library` from `~/ixos-session` (main). Get Reuben's manuscript EPUB onto the phone (AirDrop or Files) if it isn't already there.
+**Laptop:** step 1 installed Pocket Library from #61's branch, which already contains the reader (#53). Part 1 is done by now, so the identifiers are no longer needed tonight: if #82 or #83 (the extraction follow-ups) merged before the session, update `~/ixos-session` to main and reinstall Pocket Library from it, in place. Otherwise keep the #61 build. #83's Swift has not been compiled anywhere yet; if the build fails in `ReadAloud.swift`, that's the cause: report the error and keep the #61 build. Get Reuben's manuscript EPUB onto the phone (AirDrop or Files) if it isn't already there.
 
 **On the phone (Reuben):**
 
@@ -126,12 +169,14 @@ Owner: "Add EPUB reading to Pocket Library" thread, PR #53 (merged). Steps: [iph
 - [ ] Read a little, leave the book, reopen it. **Pass:** it opens where you left off, and the page count on the book moved.
 - [ ] Tap the headphones: it reads aloud, highlights each word, scrolls along. Try pause, skip paragraph, speed and voice.
 - [ ] Lock the phone while it reads. **Pass:** it keeps reading; play and pause work on the lock screen.
+- [ ] *Only if #82 (files onto FileStore) is in the build:* books that had covers before the update still show them, and the reader still opens a chapter with pictures. Proves old saved file names still load on the device.
+- [ ] *Only if #83 (read-aloud onto ForgeAudioSession) is in the build:* start some music in another app, then read-aloud in Pocket Library, lock the screen: speech carries on, lock-screen play/pause and skip work, and the other app's music resumes after Stop.
 
-**Evidence:** pass/fail per line, one screenshot of the reader and one of the lock screen player; `forge device crashes --app pocketlibrary` empty.
+**Evidence:** pass/fail per line, one screenshot of the reader and one of the lock screen player; `forge device crashes --app pocketlibrary` empty; which commit was installed. #82/#83 results go to the "Finish the extraction follow-ups" thread.
 
 ---
 
-## Step 3. Chat (slot C: Chat) — 45 to 90 minutes
+## Step 6. Chat (slot C: Chat) — 45 to 90 minutes
 
 Owners: "Grow Chat into flagship acceptance app" thread (M4, #60) and "Extract shared infrastructure into ixOS" thread (#64, #70). Runbook: [examples/chat/ACCEPTANCE.md](../../examples/chat/ACCEPTANCE.md).
 
@@ -156,7 +201,7 @@ Note: #60 merged before its by-hand Mac run finished. If that run found a Swift 
 
 ---
 
-## Step 4. Local AI L0, remaining checks (slot B, AICheck) — about 45 minutes
+## Step 7. Local AI L0, remaining checks (slot B, AICheck) — about 45 minutes
 
 Owner: "Plan on-device AI assistant for Chat" thread, #55 (merged). Runbook: [docs/local-ai-check.md](../local-ai-check.md). Already done: K1, K2, Qwen3.5 0.8B load and debug speed, the Swift→Rust push cost, Mia for three turns.
 
@@ -184,7 +229,7 @@ Owner: "Plan on-device AI assistant for Chat" thread, #55 (merged). Runbook: [do
 
 ---
 
-## Step 5. Optional, only if the evening allows (slot B after L0, or slot C)
+## Step 8. Optional, only if the evening allows (slot B after L0, or slot C)
 
 Free a slot by deleting AICheck **only after Reuben confirms the L0 results are recorded**; the models would have to be copied again.
 
@@ -197,6 +242,6 @@ Pick at most one tonight; Device Lab first, since it exercises framework service
 
 ## End of session
 
-- [ ] Phone ends with: **Pocket Library, Chat, AICheck** (or whichever app step 5 put in its place). With a paid team: everything installed tonight stays.
+- [ ] Phone ends with: **Pocket Library, Chat, AICheck** (or whichever app step 8 put in its place). With a paid team: everything installed tonight stays.
 - [ ] Laptop: stop the chat server, keep the worktrees and logs, end the Remote Control session.
-- [ ] Each owning thread records its results: UI testing in #61, Chat in ACCEPTANCE.md M4 (and M3/M2 if run), the #64/#70 checks in the extraction thread, L0 in `local-ai.md` and the ledger, the reader in Pocket Library's acceptance notes, `--json` on device in `dev-loop.md`.
+- [ ] Each owning thread records its results: the accessibility probe in `docs/research/ax-audit.md`, UI testing in #61, the team result in `ios-signing.md` and the ledger, Chat in ACCEPTANCE.md M4 (and M3/M2 if run), the #64/#70 checks in the extraction thread, L0 in `local-ai.md` and the ledger, the reader in Pocket Library's acceptance notes, `--json` on device in `dev-loop.md`.

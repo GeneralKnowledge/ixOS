@@ -14,14 +14,20 @@
 //!    accessibility identifier (`--press library.add`).
 //!
 //! ```text
-//! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID] [--app PREFIX]
+//! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID]
+//!     [--app PREFIX] [--off] [--json report.json] [--compare-wda wda-tree.json]
+//! ```
 //!
 //! `--off` only turns the phone's inspector off (monitoring, highlight),
 //! for when an earlier run was interrupted. Every run turns it off at the end.
 //!
 //! `--app library.` refuses the audit, and any press outside that prefix,
 //! unless an element with an identifier starting `library.` is on screen.
-//! ```
+//!
+//! `--json` also writes everything it found (stages reached, elements,
+//! timings, audit issues, the error) to a file, even when a stage fails.
+//! `--compare-wda` reads the output of `forge --json ui tree` (#61) and adds
+//! which accessibility identifiers each route saw.
 //!
 //! Put the app under test in the foreground and unlock the phone first.
 //! Findings go in docs/research/ax-audit.md.
@@ -52,6 +58,109 @@ struct Args {
     press: Option<String>,
     app: Option<String>,
     off: bool,
+    json: Option<std::path::PathBuf>,
+    compare_wda: Option<std::path::PathBuf>,
+}
+
+/// What the probe found, for `--json`: filled in stage by stage, so a
+/// failure still records how far it got.
+#[derive(Default)]
+struct Report {
+    udid: Option<String>,
+    ios: Option<String>,
+    /// The last stage that worked (0 = none).
+    stage: u8,
+    service_ms: Option<u128>,
+    capabilities: Option<String>,
+    audit_types: Option<String>,
+    elements: Vec<serde_json::Value>,
+    walk_ms: Option<u128>,
+    walk_end: Option<&'static str>,
+    pressed: Option<bool>,
+    audit: Option<serde_json::Value>,
+}
+
+impl Report {
+    fn to_json(&self, error: Option<&str>, wda: Option<&serde_json::Value>) -> serde_json::Value {
+        let ax_ids: Vec<String> = self
+            .elements
+            .iter()
+            .filter_map(|e| e["identifier"].as_str().map(str::to_string))
+            .collect();
+        let mut out = serde_json::json!({
+            "schema": "forge.ax-probe/1",
+            "device": {"udid": self.udid, "ios": self.ios},
+            "stage_reached": self.stage,
+            "service_ms": self.service_ms,
+            "capabilities": self.capabilities,
+            "audit_types": self.audit_types,
+            "elements": self.elements,
+            "walk": {"ms": self.walk_ms, "ended": self.walk_end},
+            "summary": {
+                "elements": self.elements.len(),
+                "with_identifier": ax_ids.len(),
+                "with_label": self.elements.iter().filter(|e| e["label"].is_string()).count(),
+            },
+            "pressed": self.pressed,
+            "audit": self.audit,
+            "error": error,
+        });
+        if let Some(wda) = wda {
+            out["compare_wda"] = compare(&ax_ids, wda);
+        }
+        out
+    }
+}
+
+/// Identifiers seen by both routes, and by only one, from `forge --json ui
+/// tree` output (`data.tree`: nodes with `identifier` and `children`).
+fn compare(ax_ids: &[String], wda: &serde_json::Value) -> serde_json::Value {
+    fn walk(node: &serde_json::Value, out: &mut Vec<String>) {
+        if let Some(id) = node["identifier"].as_str() {
+            out.push(id.to_string());
+        }
+        if let Some(children) = node["children"].as_array() {
+            for c in children {
+                walk(c, out);
+            }
+        }
+        if let Some(list) = node.as_array() {
+            for c in list {
+                walk(c, out);
+            }
+        }
+    }
+    let tree = wda.pointer("/data/tree").unwrap_or(wda);
+    let mut wda_ids = Vec::new();
+    walk(tree, &mut wda_ids);
+    let only = |a: &[String], b: &[String]| -> Vec<String> {
+        let mut v: Vec<String> = a.iter().filter(|x| !b.contains(x)).cloned().collect();
+        v.sort();
+        v.dedup();
+        v
+    };
+    let mut both: Vec<String> = ax_ids
+        .iter()
+        .filter(|x| wda_ids.contains(x))
+        .cloned()
+        .collect();
+    both.sort();
+    both.dedup();
+    serde_json::json!({
+        "both": both,
+        "only_ax": only(ax_ids, &wda_ids),
+        "only_wda": only(&wda_ids, ax_ids),
+    })
+}
+
+/// An attribute's value as plain text (`None` for empty or missing).
+fn text(v: &Value) -> Option<String> {
+    match v {
+        Value::String(s) if s.is_empty() || s == "<empty>" => None,
+        Value::String(s) => Some(s.clone()),
+        Value::Boolean(false) => None,
+        other => Some(short(other)),
+    }
 }
 
 fn args() -> Args {
@@ -62,6 +171,8 @@ fn args() -> Args {
         press: None,
         app: None,
         off: false,
+        json: None,
+        compare_wda: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -72,6 +183,8 @@ fn args() -> Args {
             "--press" => out.press = it.next(),
             "--app" => out.app = it.next(),
             "--off" => out.off = true,
+            "--json" => out.json = it.next().map(Into::into),
+            "--compare-wda" => out.compare_wda = it.next().map(Into::into),
             other => {
                 eprintln!("unknown argument {other}");
                 std::process::exit(2);
@@ -87,13 +200,34 @@ fn main() {
         .enable_all()
         .build()
         .expect("runtime");
-    if let Err(err) = rt.block_on(run(args)) {
+    let mut report = Report::default();
+    let res = rt.block_on(run(&args, &mut report));
+    let error = res.as_ref().err().map(|e| e.to_string());
+    if let Some(path) = &args.json {
+        let wda = args.compare_wda.as_ref().and_then(|p| {
+            let text = std::fs::read_to_string(p)
+                .map_err(|e| eprintln!("--compare-wda {}: {e}", p.display()))
+                .ok()?;
+            serde_json::from_str(&text)
+                .map_err(|e| eprintln!("--compare-wda {}: {e}", p.display()))
+                .ok()
+        });
+        let json = report.to_json(error.as_deref(), wda.as_ref());
+        match std::fs::write(
+            path,
+            serde_json::to_string_pretty(&json).unwrap_or_default(),
+        ) {
+            Ok(()) => println!("report: {}", path.display()),
+            Err(e) => eprintln!("could not write {}: {e}", path.display()),
+        }
+    }
+    if let Some(err) = error {
         eprintln!("FAILED: {err}");
         std::process::exit(1);
     }
 }
 
-async fn run(args: Args) -> Result<()> {
+async fn run(args: &Args, report: &mut Report) -> Result<()> {
     let mut mux = UsbmuxdConnection::default().await?;
     let devices = mux.get_devices().await?;
     let device = match &args.udid {
@@ -112,9 +246,12 @@ async fn run(args: Args) -> Result<()> {
         .and_then(|v| v.as_string().map(str::to_string))
         .unwrap_or_default();
     println!("device {} iOS {version}", device.udid);
+    report.udid = Some(device.udid.clone());
+    report.ios = Some(version);
     let legacy = lockdown.start_session(&pairing).await?;
 
-    // Stage 1. On Cati the handshake once failed with "InvalidContentType"
+    // Stage 1. Bounded: a lockdown that never answers must not hang the
+    // session. On Cati the handshake once failed with "InvalidContentType"
     // right after a previous run, so a failed handshake starts the service
     // again once.
     let started = Instant::now();
@@ -122,10 +259,11 @@ async fn run(args: Args) -> Result<()> {
     let mut attempt = 0;
     let socket = loop {
         attempt += 1;
-        let (port, ssl) = lockdown
-            .start_service(SERVICE)
-            .await
-            .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
+        let (port, ssl) =
+            tokio::time::timeout(Duration::from_secs(20), lockdown.start_service(SERVICE))
+                .await
+                .map_err(|_| format!("stage 1, start {SERVICE}: no answer within 20 s"))?
+                .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
         println!("[1] service started on port {port} (ssl {ssl})");
         let socket = provider
             .connect(port)
@@ -144,9 +282,10 @@ async fn run(args: Args) -> Result<()> {
             Err(err) => return Err(format!("stage 1, TLS handshake: {err}").into()),
         }
     };
+    report.stage = 1;
+    report.service_ms = Some(started.elapsed().as_millis());
     let mut ax = Ax::new(RemoteServerClient::new(socket));
     ax.hello().await?;
-
     // Messages the daemon sends right after connecting. pymobiledevice3
     // discards two on iOS 15+; left unread, they shift every reply by one
     // (run 2 on Cati sent the capabilities list as the audit types).
@@ -159,18 +298,21 @@ async fn run(args: Args) -> Result<()> {
     }
     // Whatever happens, leave the phone's inspector off: left on, its
     // highlight keeps moving through whatever app is in front.
-    let result = stages(&mut ax, &args, started).await;
+    let result = stages(&mut ax, args, report, started).await;
     ax.cleanup().await;
     result
 }
 
-async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
+async fn stages(ax: &mut Ax, args: &Args, report: &mut Report, started: Instant) -> Result<()> {
     // Stage 2.
     let caps = ax.call("deviceCapabilities", vec![]).await?;
     println!("[2] capabilities: {}", short(&caps));
     let types = ax.call("deviceAllSupportedAuditTypes", vec![]).await?;
     println!("[2] audit types: {}", short(&types));
     println!("    ({} ms so far)", started.elapsed().as_millis());
+    report.stage = 2;
+    report.capabilities = Some(short(&caps));
+    report.audit_types = Some(short(&types));
 
     // Stage 4 runs before the walk, with app monitoring still off, as
     // pymobiledevice3's run_audit does. Every other event seen while waiting
@@ -179,6 +321,7 @@ async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
     if let (true, Some(prefix)) = (audit, &args.app) {
         if !ax.confirm_app(prefix).await? {
             println!("[4] audit refused: no element with an identifier starting {prefix:?} is on screen; bring the app to the front");
+            report.audit = Some(serde_json::json!({"refused": "app_not_in_front"}));
             audit = false;
         }
     }
@@ -211,14 +354,22 @@ async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
                     issues.len(),
                     t.elapsed().as_millis()
                 );
+                report.stage = 4;
+                report.audit = Some(serde_json::json!({
+                    "ms": t.elapsed().as_millis() as u64,
+                    "issues": issues.iter().map(|i| short(&unwrap(i.clone()))).collect::<Vec<_>>(),
+                }));
                 for i in issues.iter().take(20) {
                     println!("    {}", short(&unwrap(i.clone())));
                 }
             }
-            None => println!(
-                "[4] audit: no result within 120 s; other events: {}",
-                ax.other_events()
-            ),
+            None => {
+                let others = ax.other_events();
+                println!("[4] audit: no result within 120 s; other events: {others}");
+                report.audit = Some(
+                    serde_json::json!({"issues": null, "timed_out": true, "other_events": others}),
+                );
+            }
         }
     }
 
@@ -243,6 +394,7 @@ async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
             misses += 1;
             if misses >= 5 {
                 println!("[3] no focus events after 5 tries");
+                report.walk_end = Some("no_focus_events");
                 break;
             }
             ax.move_focus(4).await?;
@@ -253,19 +405,32 @@ async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
         let caption = field(&focus, "CaptionTextValue_v1");
         let element = element_bytes(&focus).ok_or("focus event without an element")?;
         if seen.contains(&element) {
+            report.walk_end = Some("back_to_start");
             break;
         }
         let t = Instant::now();
         let mut attrs = Vec::new();
+        let mut plain = Vec::new();
         for name in ["Label", "Identifier", "Value"] {
-            let v = ax
-                .call(
+            let v = unwrap(
+                ax.call(
                     "deviceElement:valueForAttribute:",
                     vec![arg(element_arg(&element)), arg(attribute_arg(name))],
                 )
-                .await?;
-            attrs.push((name, short(&unwrap(v))));
+                .await?,
+            );
+            plain.push(text(&v));
+            attrs.push((name, short(&v)));
         }
+        report.elements.push(serde_json::json!({
+            "index": seen.len() + 1,
+            "caption": text(&focus.as_dictionary().and_then(|d| d.get("CaptionTextValue_v1")).cloned().unwrap_or(Value::Boolean(false))),
+            "label": plain[0],
+            "identifier": plain[1],
+            "value": plain[2],
+            "ms": t.elapsed().as_millis() as u64,
+        }));
+        report.stage = 3;
         println!(
             "[3] {:>2} caption={} {} ({} ms)",
             seen.len() + 1,
@@ -309,7 +474,12 @@ async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
         seen.len(),
         walk.elapsed().as_millis()
     );
+    report.walk_ms = Some(walk.elapsed().as_millis());
+    if report.walk_end.is_none() {
+        report.walk_end = Some("max_reached");
+    }
     if let Some(target) = &args.press {
+        report.pressed = Some(pressed);
         if !pressed {
             println!("[4] no element with identifier {target} was reached");
         }
@@ -766,6 +936,38 @@ fn short(v: &Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identifiers_are_compared_with_the_wda_tree() {
+        let wda = serde_json::json!({"data": {"tree": {"kind": "Application", "children": [
+            {"kind": "Button", "identifier": "library.add"},
+            {"kind": "Cell", "identifier": "library.book.1", "children": [
+                {"kind": "StaticText", "label": "Dune"}
+            ]}
+        ]}}});
+        let ax = vec!["library.add".to_string(), "library.search".to_string()];
+        assert_eq!(
+            compare(&ax, &wda),
+            serde_json::json!({"both": ["library.add"], "only_ax": ["library.search"], "only_wda": ["library.book.1"]})
+        );
+    }
+
+    #[test]
+    fn report_records_how_far_it_got() {
+        let mut r = Report {
+            stage: 1,
+            ..Report::default()
+        };
+        r.elements
+            .push(serde_json::json!({"identifier": "a", "label": "Add"}));
+        let json = r.to_json(Some("stage 2: no reply"), None);
+        assert_eq!(json["stage_reached"], 1);
+        assert_eq!(json["summary"]["with_identifier"], 1);
+        assert_eq!(json["error"], "stage 2: no reply");
+        assert!(json.get("compare_wda").is_none());
+        assert_eq!(text(&Value::String(String::new())), None);
+        assert_eq!(text(&Value::String("x".into())).as_deref(), Some("x"));
+    }
 
     #[test]
     fn element_argument_survives_the_archive() {

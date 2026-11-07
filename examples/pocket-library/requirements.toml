@@ -1,0 +1,56 @@
+# What Pocket Library must do, and what proves it (docs/evidence.md).
+#
+# `twin`: XCTests (`Class.method`) that drive the real view model against the
+# real Rust core. `forge check swift` runs them on Linux in seconds and writes
+# an evidence bundle to .forge/runs/. A twin pass proves behaviour, not the
+# phone: each requirement's device verdict stays "unverified" until a run on
+# an iPhone records one.
+#
+# `device`: UI scenarios (paths in this app) for `forge ui run` (draft PR #61).
+# None is listed yet; they arrive with #61's first phone run.
+
+[[requirement]]
+id = "PL-1"
+statement = "Books and reading progress survive closing and reopening the app."
+twin = ["LibraryModelTests.testBooksAndProgressSurviveARelaunch"]
+
+[[requirement]]
+id = "PL-2"
+statement = "Recording a page on an unread book marks it as being read and shows its progress."
+twin = ["LibraryModelTests.testBooksAndProgressSurviveARelaunch"]
+
+[[requirement]]
+id = "PL-3"
+statement = "Search, the status filter and the sort order change which books the library shows."
+twin = ["LibraryModelTests.testSearchFilterAndSortComeFromRust"]
+
+[[requirement]]
+id = "PL-4"
+statement = "Invalid details are refused with a plain-language title, and a refused change changes nothing."
+twin = ["LibraryModelTests.testRustErrorsArriveTyped"]
+
+[[requirement]]
+id = "PL-5"
+statement = "An unreadable library can be started fresh, and the unreadable file is kept, not deleted."
+twin = ["LibraryModelTests.testAnUnreadableLibraryCanBeStartedFreshAndIsKept"]
+
+[[requirement]]
+id = "PL-6"
+statement = "A change made elsewhere in the app reaches the library screen."
+twin = ["LibraryModelTests.testEventsFromAnotherInstanceReachTheModel"]
+
+[[requirement]]
+id = "PL-7"
+statement = "With online search switched off, no catalogue request is made and the user is told why."
+twin = ["LibraryModelTests.testCatalogueSwitchedOffFailsWithoutNetwork"]
+
+[[requirement]]
+id = "PL-8"
+statement = "Leaving a catalogue search stops it."
+twin = ["LibraryModelTests.testCancellingTheTaskStopsTheRustSearch"]
+
+[[requirement]]
+id = "PL-9"
+statement = "Read aloud speaks exactly the text shown on the page."
+# Needs AVFoundation, so Linux reports it as not run; macOS CI runs it.
+twin = ["ReadAloudTests.testSpokenTextIsTheShownText"]
