@@ -12,7 +12,9 @@ Last reviewed: 2026-11-06.
 
 Done: `forge init --path`, with each app owning its Rust crate ([app-crate.md](app-crate.md)); `forge check` (the local CI matrix); `forge doctor`, which reports what each workflow needs with a fix for each missing piece, and `--json` for CI; `forge bindings generate --project`; and `--project` (for build, run and bindings) defaulting to the current app directory.
 
-Open: `forge doctor` does not check device pairing, signing or SDK licences yet.
+Done (M5 developer experience): `forge init MyApp` creates `./MyApp` outside the checkout and prints the next steps, and every generated app has a README; `forge doctor` checks the Apple sign-in, connected iPhones and the iOS SDK version; `forge build ios` / `forge run ios` check the toolchain, sign-in and iPhone before building and explain failed Rust, Swift, signing and install steps; `forge test` runs the app's own tests from its directory and skips XCTest on Linux. See [getting-started.md](getting-started.md).
+
+Open: provisioning profiles, Developer Mode and SDK licences are diagnosed from the failure, not checked beforehand; Android installs (`adb`) get no failure diagnosis yet.
 
 ### iOS app configuration — Done, follow-ups open
 
@@ -47,7 +49,7 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 HTTPS works on Android too: hosts call `ForgeAndroid.init(applicationContext)` once, and certificates are checked against Android's trust store, with typed `Certificate` errors ([android-setup.md](android-setup.md#https-certificate-verification)). It is covered by Rust tests against local TLS servers and the JVM test of the JNI entry point; a run on a physical Android phone is still to be recorded.
 
-Ordinary requests can be interrupted in flight: `HttpClient::send_cancellable` closes the connection, and the starter app crate wires it to Swift task cancellation and Kotlin coroutine cancellation ([app-crate.md](app-crate.md#lifecycle)). The Weather example still discards a late response instead of interrupting it. Still open: platform reachability.
+Ordinary requests can be interrupted in flight: `HttpClient::send_cancellable` closes the connection, and the starter app crate wires it to Swift task cancellation and Kotlin coroutine cancellation ([app-crate.md](app-crate.md#lifecycle)). Apps also report the OS lifecycle to Rust (`set_phase`), which stops on-screen requests in the background and announces resume; device runs of it are not yet recorded. The Weather example still discards a late response instead of interrupting it. Still open: platform reachability.
 
 ### iOS Simulator support — Open
 
@@ -59,6 +61,10 @@ Builds are **device-only** today. The Rust library ships as a single `aarch64-ap
 4. A macOS CI job that runs the XCTest suite on a simulator.
 
 Good first project for someone with a Mac.
+
+### Native iOS services (M3) — In progress
+
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: Android implementations of the same interfaces, then camera, photos and location as opt-in permission adapters.
 
 ### Store distribution (App Store, Google Play) — Open
 

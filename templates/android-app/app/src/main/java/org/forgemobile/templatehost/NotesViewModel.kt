@@ -9,6 +9,7 @@ import uniffi.forge_ffi.AppCore
 import uniffi.forge_ffi.AppEvent
 import uniffi.forge_ffi.AppEvents
 import uniffi.forge_ffi.AppException
+import uniffi.forge_ffi.AppPhase
 import uniffi.forge_ffi.Note
 
 /**
@@ -36,6 +37,9 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
     /** Set when the app could not be opened (for example unreadable data). */
     var openError by mutableStateOf<String?>(null)
         private set
+    /** The lifecycle phase last reported to Rust. */
+    var lifecyclePhase by mutableStateOf(AppPhase.LAUNCHING)
+        private set
 
     var core: AppCore? = null
         private set
@@ -55,6 +59,8 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
             events = opened.events()
             core = opened
             notes = opened.notes()
+            // A phase reported before Rust was open (a retry after an error) still counts.
+            if (lifecyclePhase != AppPhase.LAUNCHING) opened.setPhase(lifecyclePhase)
         } catch (e: AppException) {
             openError = describe(e)
         }
@@ -71,8 +77,22 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
                 is AppEvent.NotesChanged -> notes = event.notes
                 // Missed some events: the current list is the truth.
                 is AppEvent.EventsDropped -> core?.let { notes = it.notes() }
+                // Back from the background: re-read what Rust holds. A real app would also
+                // restart work the background stopped.
+                is AppEvent.PhaseChanged -> if (event.resumed) core?.let { notes = it.notes() }
             }
         }
+    }
+
+    /**
+     * Tells Rust where the app is in its lifecycle. [MainActivity] calls it through
+     * `reportLifecycle`. Rust stops on-screen work in the background and sends
+     * `PhaseChanged(resumed = true)` on the way back. `TERMINATED` shuts the core down, like
+     * [close].
+     */
+    fun setPhase(phase: AppPhase) {
+        lifecyclePhase = phase
+        if (phase == AppPhase.TERMINATED) close() else core?.setPhase(phase)
     }
 
     suspend fun addNote() {
@@ -82,7 +102,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
             current.addNote(draft)
             draft = ""
             // The list also updates from the event; reading it here shows the change at once.
-            notes = current.notes()
+            refreshNotes()
         } catch (e: AppException) {
             errorMessage = describe(e)
         }
@@ -93,7 +113,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
         errorMessage = null
         try {
             current.deleteNote(note.id)
-            notes = current.notes()
+            refreshNotes()
         } catch (e: AppException) {
             errorMessage = describe(e)
         }
@@ -121,7 +141,21 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
         }
     }
 
-    /** Ends the event stream and shuts the Rust core down. Saved notes are already on disk. */
+    /**
+     * Re-reads the list after a command. It reads [core] again rather than reusing the instance
+     * the command started with: [close] may have run while the command was suspended (the app
+     * terminating), and a Kotlin call on a closed UniFFI object throws IllegalStateException
+     * instead of reaching Rust.
+     */
+    private fun refreshNotes() {
+        core?.let { notes = it.notes() }
+    }
+
+    /**
+     * Ends the event stream and shuts the Rust core down. Saved notes are already on disk.
+     * It also frees the Kotlin object, so after this any reference to the old [core] throws
+     * IllegalStateException; use `core.shutdown()` to stop Rust while keeping the object.
+     */
     fun close() {
         events?.cancel()
         events?.close()
@@ -149,6 +183,8 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
                 is AppException.Timeout -> "The request timed out."
                 is AppException.Network -> "Network error: ${error.reason}"
                 is AppException.Cancelled -> "Cancelled."
+                is AppException.Interrupted ->
+                    "Stopped when the app went to the background. Try again."
                 is AppException.ShutDown -> "The app is closing."
             }
     }

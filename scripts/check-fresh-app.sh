@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Proves that a brand-new app works outside the Forge checkout, through the
-# public CLI only: `forge init --path` for iOS and Android, the app's own Rust
-# crate tested and linted on its own, a change to its Rust API, and
-# `forge bindings generate --project` picking that change up.
+# public CLI only: `forge init --path` for iOS and Android, `forge init <Name>`
+# into the current directory with `forge test` run from inside the app, the
+# app's own Rust crate tested and linted on its own, a change to its Rust API,
+# and `forge bindings generate --project` picking that change up.
 #
 # Runs on Linux with no Xcode, Android SDK or device. The platform halves run
 # in CI: XCTest on macOS (macos.yml) and Gradle unit tests plus a debug APK
@@ -54,6 +55,21 @@ for app in FreshIos FreshDroid; do
   cargo clippy -q --manifest-path "$manifest" --all-targets -- -D warnings
   cargo fmt --manifest-path "$manifest" --check
 done
+
+step "forge init without --path creates ./<Name>; forge test runs from inside it"
+"$FORGE" init PlainIos --bundle-id org.example.plainios >"$WORK/plain-init.log"
+[[ -f "$WORK/PlainIos/forge.toml" ]] || fail "forge init PlainIos did not create ./PlainIos"
+grep -q 'cd PlainIos' "$WORK/plain-init.log" || fail "forge init did not print the next steps"
+grep -q '^# PlainIos$' "$WORK/PlainIos/README.md" || fail "PlainIos/README.md is missing or not named"
+(cd "$WORK/PlainIos" && "$FORGE" test)
+if ! command -v xtool >/dev/null 2>&1; then
+  # Without xtool, `forge run ios` must stop before the Rust build and say how to fix it.
+  if (cd "$WORK/PlainIos" && "$FORGE" run ios) >"$WORK/plain-run.log" 2>&1; then
+    fail "forge run ios succeeded without xtool"
+  fi
+  grep -q 'cannot start yet' "$WORK/plain-run.log" || fail "forge run ios did not explain the missing toolchain: $(cat "$WORK/plain-run.log")"
+  [[ ! -e "$WORK/PlainIos/build" ]] || fail "forge run ios started building before the preflight"
+fi
 
 step "Nothing was written into the checkout"
 after="$(git -C "$ROOT" status --porcelain)"

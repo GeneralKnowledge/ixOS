@@ -3,7 +3,8 @@ use std::path::{Path, PathBuf};
 
 use crate::app_config;
 use crate::config::{self, ForgeConfig};
-use crate::ios_builder::{IosBuilder, IosConfiguration};
+use crate::diagnose;
+use crate::ios_builder::{IosBuilder, IosConfiguration, Purpose, SKIP_PREFLIGHT};
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -98,6 +99,17 @@ pub(crate) fn run_checked(runner: &dyn CommandRunner, cmd: Cmd) -> Result<(), St
         return Err(format!("`{}` failed ({status})", cmd.display()));
     }
     Ok(())
+}
+
+/// Runs a build step attached to the terminal; if it fails, explains why
+/// from its output ([`diagnose`]): Rust, Swift, signing or device problems.
+pub(crate) fn run_explained(runner: &dyn CommandRunner, cmd: Cmd) -> Result<(), String> {
+    let (status, tail) = runner.stream_tail(&cmd)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(diagnose::explain(&cmd.display(), status, &tail))
+    }
 }
 
 pub(crate) fn script(root: &Path, name: &str) -> Cmd {
@@ -218,30 +230,39 @@ android = true
             "Note: this app's Rust crate uses the Forge crates at {ws}. If that checkout moves, update the paths in rust/Cargo.toml (and REPO_ROOT in the Xcode project's \"Build Rust FFI\" phase on iOS)."
         ),
     }
-    let rel = match &workspace {
-        WorkspaceRef::Relative(_) => dest
-            .strip_prefix(&workspace_canonical(root)?)
-            .unwrap_or(&dest)
-            .to_string_lossy()
-            .into_owned(),
-        WorkspaceRef::Absolute(_) => dest.to_string_lossy().into_owned(),
-    };
-    println!(
-        "Rust logic: {}/rust/src/lib.rs (cargo test --manifest-path {}/rust/Cargo.toml)",
-        dest.display(),
-        dest.display()
+    print!(
+        "{}",
+        next_steps(&dest, platform, std::env::current_dir().ok().as_deref())
     );
+    Ok(())
+}
+
+/// What to type after `forge init`, starting with `cd` into the app (a
+/// relative path when the app is below the current directory).
+fn next_steps(dest: &Path, platform: &str, cwd: Option<&Path>) -> String {
+    let cd = cwd
+        .and_then(|c| c.canonicalize().ok())
+        .and_then(|c| dest.strip_prefix(c).ok().map(Path::to_path_buf))
+        .filter(|p| !p.as_os_str().is_empty())
+        .unwrap_or_else(|| dest.to_path_buf());
+    let mut out = format!("\nNext steps:\n  cd {}\n", cd.display());
     if platform == "ios" {
-        println!("Linux/xtool: forge run ios --project {rel}");
-        println!(
-            "macOS/Xcode: open {}/Xcode/{}.xcodeproj (see docs/ios-xcode.md)",
-            dest.display(),
-            name
+        out.push_str(
+            "  forge doctor     # checks xtool, the Darwin SDK, your Apple sign-in and the iPhone\n\
+             \x20 forge run ios    # builds the Rust and Swift, signs and installs on the iPhone\n\
+             \x20 forge test       # your Rust tests (and the XCTest suite on macOS)\n\
+             \nYour logic is in rust/src/lib.rs, the screens in Sources/AppHost/ (ContentView.swift is the root).\n\
+             README.md in the app explains the layout. On a Mac you can also open Xcode/ (docs/ios-xcode.md).\n",
         );
     } else {
-        println!("Build: forge build android --project {rel}");
+        out.push_str(
+            "  forge doctor               # checks the JDK, Android SDK, NDK and cargo-ndk\n\
+             \x20 forge build android --install   # debug APK on a connected phone or emulator\n\
+             \x20 forge test                 # your Rust tests and the JVM unit tests\n\
+             \nYour logic is in rust/src/lib.rs. README.md in the app explains the layout.\n",
+        );
     }
-    Ok(())
+    out
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -604,9 +625,33 @@ fn is_text_template(path: &Path) -> bool {
         .is_some_and(|n| n == "Package.swift" || n == "project.pbxproj")
 }
 
-/// Runs Rust tests and format checks; with `project`, also the app's host tests
-/// (JVM unit tests for an Android app, XCTest on macOS for an iOS app).
-pub fn test(runner: &dyn CommandRunner, root: &Path, project: Option<&Path>) -> Result<(), String> {
+/// `forge test`.
+///
+/// - No app: the Forge workspace's Rust tests and format check.
+/// - An app with its own crate (every app from `forge init`): that crate's
+///   tests, then the app's host tests. The workspace's own tests run only
+///   with `workspace` (`--workspace`), since they test Forge, not the app.
+/// - A bundled example (shares the workspace's forge-ffi): the workspace
+///   tests, then the host tests.
+///
+/// Host tests are JVM unit tests for an Android app (any host) and XCTest for
+/// an iOS app, which needs macOS; on Linux they are skipped with a note.
+pub fn test(
+    runner: &dyn CommandRunner,
+    root: &Path,
+    project: Option<&Path>,
+    workspace: bool,
+) -> Result<(), String> {
+    test_on(runner, root, project, workspace, cfg!(target_os = "macos"))
+}
+
+fn test_on(
+    runner: &dyn CommandRunner,
+    root: &Path,
+    project: Option<&Path>,
+    workspace: bool,
+    macos: bool,
+) -> Result<(), String> {
     let project_dir = match project {
         Some(p) => {
             let dir = resolve_project_dir(root, p);
@@ -621,26 +666,30 @@ pub fn test(runner: &dyn CommandRunner, root: &Path, project: Option<&Path>) -> 
         None => None,
     };
 
-    run_checked(
-        runner,
-        Cmd::new("cargo").args(["test", "--workspace"]).cwd(root),
-    )?;
-    run_checked(
-        runner,
-        Cmd::new("cargo")
-            .args(["fmt", "--all", "--", "--check"])
-            .cwd(root),
-    )?;
-
-    // An app with its own crate: run its Rust tests too, and give the host
-    // tests that crate's library.
+    // An app with its own crate: run its Rust tests, and give the host tests
+    // that crate's library.
     let app_crate = match &project_dir {
         Some(dir) if dir.join("forge.toml").is_file() => load_config(dir)?.rust_crate_dir(dir),
         _ => None,
     };
+
+    if app_crate.is_none() || workspace {
+        require_workspace(root)?;
+        run_checked(
+            runner,
+            Cmd::new("cargo").args(["test", "--workspace"]).cwd(root),
+        )?;
+        run_checked(
+            runner,
+            Cmd::new("cargo")
+                .args(["fmt", "--all", "--", "--check"])
+                .cwd(root),
+        )?;
+    }
     if let Some(crate_dir) = &app_crate {
         let manifest = crate_dir.join("Cargo.toml");
-        run_checked(
+        println!("[forge] Rust tests: {}", manifest.display());
+        run_explained(
             runner,
             Cmd::new("cargo")
                 .arg("test")
@@ -673,7 +722,13 @@ pub fn test(runner: &dyn CommandRunner, root: &Path, project: Option<&Path>) -> 
                     .cwd(&dir),
             )
         }
-        Some(dir) => run_checked(runner, script(root, "test-swift-host.sh").arg(&dir)),
+        Some(dir) if macos => run_checked(runner, script(root, "test-swift-host.sh").arg(&dir)),
+        Some(_) => {
+            println!(
+                "[forge] Skipped the XCTest suite: SwiftUI host tests need macOS (CI runs them). Your Rust tests above ran on this machine; `forge run ios` tries the app on an iPhone."
+            );
+            Ok(())
+        }
         None => Ok(()),
     }
 }
@@ -784,20 +839,45 @@ fn sync_app_config(project_dir: &Path, cfg: &ForgeConfig) -> Result<(), String> 
     Ok(())
 }
 
-/// Syncs the app's configuration, then builds the Rust static library and
-/// Swift bindings for an iOS app.
-fn package_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Result<PathBuf, String> {
+/// The app directory, once its forge.toml is readable and enables iOS.
+fn ios_project(root: &Path, project: &Path) -> Result<(PathBuf, ForgeConfig), String> {
     require_workspace(root)?;
     let project_dir = resolve_project_dir(root, project);
     let cfg = load_config(&project_dir)?;
     if !cfg.ios_enabled() {
         return Err("forge.toml does not enable iOS builds ([build] ios_device = true)".into());
     }
-    sync_app_config(&project_dir, &cfg)?;
-    let generated = generated_dir_for_project(root, project);
+    Ok((project_dir, cfg))
+}
+
+/// Checks the toolchain, sign-in and iPhone before the (slow) Rust build.
+fn ios_preflight(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    purpose: Purpose,
+) -> Result<(), String> {
+    if std::env::var_os(SKIP_PREFLIGHT).is_some_and(|v| v == "1") {
+        return Ok(());
+    }
+    let what = match purpose {
+        Purpose::Build => "forge build ios",
+        Purpose::Run => "forge run ios",
+    };
+    builder.preflight(runner, purpose).into_result(what)
+}
+
+/// Syncs the app's configuration, then builds the Rust static library and
+/// Swift bindings for an iOS app.
+fn package_ios(
+    runner: &dyn CommandRunner,
+    root: &Path,
+    project_dir: &Path,
+    cfg: &ForgeConfig,
+) -> Result<(), String> {
+    sync_app_config(project_dir, cfg)?;
+    let generated = project_dir.join("Generated");
     let package = script(root, "package-ios-library.sh").arg(generated_dir_arg(root, &generated));
-    run_checked(runner, with_app_crate(package, &cfg, &project_dir))?;
-    Ok(project_dir)
+    run_explained(runner, with_app_crate(package, cfg, project_dir))
 }
 
 pub fn build_ios(
@@ -808,7 +888,11 @@ pub fn build_ios(
     package_only: bool,
     configuration: IosConfiguration,
 ) -> Result<(), String> {
-    let project_dir = package_ios(runner, root, project)?;
+    let (project_dir, cfg) = ios_project(root, project)?;
+    if !package_only {
+        ios_preflight(runner, builder, Purpose::Build)?;
+    }
+    package_ios(runner, root, &project_dir, &cfg)?;
     if package_only {
         println!(
             "Rust static library and Swift bindings are ready for {} (open Xcode/ or build with {}).",
@@ -818,10 +902,16 @@ pub fn build_ios(
         return Ok(());
     }
     println!("[forge] Building the Swift app ({})", configuration.name());
-    builder.build(runner, &project_dir, configuration)
+    builder.build(runner, &project_dir, configuration)?;
+    println!(
+        "[forge] Built {}. Install it on your iPhone with `forge run ios`.",
+        project_dir.display()
+    );
+    Ok(())
 }
 
-/// Builds, installs and launches on a connected device.
+/// Builds and installs on a connected device. xtool does not launch the
+/// app (and `xtool launch` does not work on iOS 17+), so the user opens it.
 pub fn run_ios(
     runner: &dyn CommandRunner,
     builder: &dyn IosBuilder,
@@ -829,12 +919,15 @@ pub fn run_ios(
     project: &Path,
     configuration: IosConfiguration,
 ) -> Result<(), String> {
-    let project_dir = package_ios(runner, root, project)?;
+    let (project_dir, cfg) = ios_project(root, project)?;
+    ios_preflight(runner, builder, Purpose::Run)?;
+    package_ios(runner, root, &project_dir, &cfg)?;
+    println!("[forge] Building and installing ({})", configuration.name());
+    builder.run(runner, &project_dir, configuration)?;
     println!(
-        "[forge] Building, installing and launching ({})",
-        configuration.name()
+        "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
     );
-    builder.run(runner, &project_dir, configuration)
+    Ok(())
 }
 
 /// `forge config sync|check|show`: the app's iOS configuration.
@@ -926,7 +1019,12 @@ pub fn devices(runner: &dyn CommandRunner, ios: &dyn IosBuilder) -> Result<(), S
         println!("--- {label} ---");
         match runner.capture(&cmd) {
             Ok(output) => {
-                print!("{}", String::from_utf8_lossy(&output.stdout));
+                let listing = String::from_utf8_lossy(&output.stdout);
+                print!("{listing}");
+                if output.status.success() && listing.trim().is_empty() && label.starts_with("iOS")
+                {
+                    println!("No iPhone found. Connect it by USB, unlock it and tap Trust. If it still does not show: sudo systemctl restart usbmuxd, then replug.");
+                }
                 if output.status.success() {
                     listed = true;
                 } else {
@@ -1156,8 +1254,7 @@ ios_device = true
     #[test]
     fn build_ios_builds_and_run_ios_launches() {
         let (_tmp, root) = workspace(IOS_TOML, &[]);
-        let mock = MockRunner::default();
-        mock.respond("bash", 0, "").respond("xtool", 0, "");
+        let mock = ready_ios_host();
         build_ios(
             &mock,
             &XtoolBuilder,
@@ -1173,8 +1270,7 @@ ios_device = true
         assert!(xtool.contains("bundleID: org.example.demo\n"), "{xtool}");
         assert!(read(root.join("apps/demo/Info.plist")).contains("<string>Demo</string>"));
 
-        let mock = MockRunner::default();
-        mock.respond("bash", 0, "").respond("xtool", 0, "");
+        let mock = ready_ios_host();
         run_ios(
             &mock,
             &XtoolBuilder,
@@ -1187,6 +1283,64 @@ ios_device = true
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
             Some(root.join("apps/demo").as_path())
+        );
+    }
+
+    /// A Linux host where the xtool preflight passes and every command succeeds.
+    fn ready_ios_host() -> MockRunner {
+        let mock = MockRunner::default();
+        mock.respond("bash", 0, "")
+            .respond("xtool", 0, "")
+            .respond("rustup target list", 0, "aarch64-apple-ios\n")
+            .respond("swift sdk list", 0, "darwin\n")
+            .respond("xtool auth status", 0, "Logged in.\n")
+            .respond("xtool devices --no-wait", 0, "iPhone [usb]: 0000\n");
+        mock
+    }
+
+    #[test]
+    fn run_ios_stops_before_the_rust_build_when_no_iphone_is_connected() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = ready_ios_host();
+        mock.respond("xtool devices --no-wait", 0, "\n");
+        let err = run_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+        )
+        .unwrap_err();
+        assert!(err.contains("No iPhone is connected"), "{err}");
+        assert!(
+            mock.call_lines()
+                .iter()
+                .all(|l| !l.contains("package-ios-library.sh")),
+            "{:?}",
+            mock.call_lines()
+        );
+    }
+
+    #[test]
+    fn failed_rust_build_is_explained() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = ready_ios_host();
+        mock.respond(
+            "bash",
+            101,
+            "error[E0425]: cannot find value `x` in this scope\nerror: could not compile `demo-core` (lib)",
+        );
+        let err = run_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+        )
+        .unwrap_err();
+        assert!(
+            err.contains("[Rust library] Your Rust code does not compile"),
+            "{err}"
         );
     }
 
@@ -1302,7 +1456,7 @@ ios_device = true
             0,
             "",
         );
-        test(&mock, &root, Some(Path::new("apps/demo"))).unwrap();
+        test_on(&mock, &root, Some(Path::new("apps/demo")), false, false).unwrap();
         let lines = mock.call_lines();
         assert_eq!(lines[0], "cargo test --workspace");
         assert!(lines.contains(&"cargo build -p forge-ffi".to_string()));
@@ -1326,10 +1480,15 @@ ios_device = true
             0,
             "",
         );
-        test(&mock, &root, Some(Path::new("apps/demo"))).unwrap();
+        test_on(&mock, &root, Some(Path::new("apps/demo")), false, false).unwrap();
         let calls = mock.calls();
         let lines = mock.call_lines();
         let manifest = app.join("rust/Cargo.toml");
+        // The app's tests, not Forge's own.
+        assert!(
+            !lines.contains(&"cargo test --workspace".to_string()),
+            "{lines:?}"
+        );
         assert!(lines.contains(&format!(
             "cargo test --manifest-path {}",
             manifest.display()
@@ -1371,19 +1530,49 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &["Package.swift"]);
         let mock = MockRunner::default();
         mock.respond("cargo", 0, "").respond("bash", 0, "");
-        test(&mock, &root, Some(Path::new("apps/demo"))).unwrap();
+        test_on(&mock, &root, Some(Path::new("apps/demo")), false, true).unwrap();
         assert!(mock
             .call_lines()
             .last()
             .unwrap()
             .contains("test-swift-host.sh"));
+
+        // On Linux the XCTest suite is skipped, not a failure.
+        let mock = MockRunner::default();
+        mock.respond("cargo", 0, "");
+        test_on(&mock, &root, Some(Path::new("apps/demo")), false, false).unwrap();
+        assert!(mock
+            .call_lines()
+            .iter()
+            .all(|l| !l.contains("test-swift-host.sh")));
+    }
+
+    #[test]
+    fn workspace_flag_adds_forges_own_tests_to_an_apps() {
+        let toml = IOS_TOML.replace(
+            "core_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"",
+            "path = \"rust\"",
+        );
+        let (_tmp, root) = workspace(&toml, &["Package.swift"]);
+        let mock = MockRunner::default();
+        mock.respond("cargo", 0, "");
+        test_on(&mock, &root, Some(Path::new("apps/demo")), true, false).unwrap();
+        let lines = mock.call_lines();
+        assert_eq!(lines[0], "cargo test --workspace");
+        assert!(
+            lines
+                .last()
+                .unwrap()
+                .starts_with("cargo test --manifest-path"),
+            "{lines:?}"
+        );
     }
 
     #[test]
     fn test_rejects_unknown_project_before_running_anything() {
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
-        let err = test(&mock, &root, Some(Path::new("apps/demo"))).unwrap_err();
+        let err = test_on(&mock, &root, Some(Path::new("apps/demo")), false, true).unwrap_err();
         assert!(err.contains("not a Forge app"), "{err}");
         assert!(mock.calls().is_empty());
     }
@@ -1442,6 +1631,8 @@ ios_device = true
         let pkg = fs::read_to_string(dest.join("Package.swift")).unwrap();
         assert!(pkg.contains("name: \"InitTestApp\""));
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
+        let readme = fs::read_to_string(dest.join("README.md")).unwrap();
+        assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));

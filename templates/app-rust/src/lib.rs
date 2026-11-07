@@ -14,6 +14,9 @@
 //! - events the host subscribes to ([`AppCore::events`]);
 //! - HTTPS with the platform's certificate checks ([`AppCore::check_url`]),
 //!   cancellable while in flight ([`Cancellation`]);
+//! - the app lifecycle ([`AppCore::set_phase`]): the host reports the
+//!   phase, Rust stops on-screen work in the background and announces resume
+//!   ([`forge_runtime::Lifecycle`]);
 //! - shutdown that refuses new work and stops requests in flight.
 
 use std::path::PathBuf;
@@ -23,12 +26,19 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use forge_net::{HttpClient, NetError, Request, UreqClient};
 use forge_runtime::{
-    background, background_cancellable, CancelHandle, Delivery, EventHub, Subscription,
+    background, background_cancellable, CancelHandle, Delivery, EventHub, Lifecycle, Phase,
+    Subscription,
 };
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
 uniffi::setup_scaffolding!("forge_ffi");
+
+// Native services the host implements (Keychain, app directories, local
+// notifications, permissions, deep links), as `crate::native`. The iOS host
+// installs them with `ForgeServices.install()`; Rust code uses
+// `native::NativeServices::installed()`. See docs/native-services.md.
+forge_services::native_services!();
 
 /// Schema version of `notes.json`. Bump it (and add a migration) when
 /// [`StoredNotes`] changes shape.
@@ -50,6 +60,53 @@ pub enum AppEvent {
     NotesChanged { notes: Vec<Note> },
     /// This subscriber fell behind and missed `count` events; re-read `notes()`.
     EventsDropped { count: u64 },
+    /// The app changed phase (reported by the host with `set_phase`).
+    /// `resumed` is true on the way back from `Background`: the moment to
+    /// refresh anything that may have changed while the app was away.
+    PhaseChanged { phase: AppPhase, resumed: bool },
+}
+
+/// Where the app is in its lifecycle. The host reports it with
+/// [`AppCore::set_phase`]: iOS from SwiftUI's `scenePhase` (and
+/// `willTerminate`), Android from the activity's `onStart`, `onResume`,
+/// `onPause` and `onStop`.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppPhase {
+    /// Created, not on screen yet. The phase before the first report.
+    Launching,
+    /// On screen and receiving input.
+    Active,
+    /// On screen without input: an alert, the app switcher, a dialog.
+    Inactive,
+    /// Not visible; the OS may suspend or kill the process from here.
+    /// Requests started on screen are stopped with `Interrupted`.
+    Background,
+    /// Going away: same as `shutdown()`. iOS does not always report it.
+    Terminated,
+}
+
+impl From<AppPhase> for Phase {
+    fn from(phase: AppPhase) -> Self {
+        match phase {
+            AppPhase::Launching => Phase::Launching,
+            AppPhase::Active => Phase::Active,
+            AppPhase::Inactive => Phase::Inactive,
+            AppPhase::Background => Phase::Background,
+            AppPhase::Terminated => Phase::Terminated,
+        }
+    }
+}
+
+impl From<Phase> for AppPhase {
+    fn from(phase: Phase) -> Self {
+        match phase {
+            Phase::Launching => AppPhase::Launching,
+            Phase::Active => AppPhase::Active,
+            Phase::Inactive => AppPhase::Inactive,
+            Phase::Background => AppPhase::Background,
+            Phase::Terminated => AppPhase::Terminated,
+        }
+    }
 }
 
 /// Every error the API returns. `reason` fields are diagnostics, not UI copy.
@@ -78,6 +135,10 @@ pub enum AppError {
     /// Kotlin, by cancelling the calling coroutine).
     #[error("cancelled")]
     Cancelled,
+    /// The app went to the background while the request was running, which
+    /// stops it. Safe to retry once the app is back on screen.
+    #[error("interrupted: the app went to the background")]
+    Interrupted,
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the app has been shut down")]
     ShutDown,
@@ -124,8 +185,10 @@ pub struct AppCore {
     events: EventHub<AppEvent>,
     http: UreqClient,
     shut_down: Arc<AtomicBool>,
-    /// Cancelled by `shutdown`; every request runs under a child of it.
-    lifetime: CancelHandle,
+    /// The phase the host reported, and the cancellation scopes that follow
+    /// it: requests run under its foreground scope, which the background and
+    /// `shutdown` cancel.
+    lifecycle: Lifecycle,
 }
 
 /// Lets the host stop one request part way. Swift: create one per call and
@@ -174,7 +237,7 @@ impl AppCore {
             events: EventHub::new(),
             http: UreqClient::new(),
             shut_down: Arc::new(AtomicBool::new(false)),
-            lifetime: CancelHandle::new(),
+            lifecycle: Lifecycle::new(),
         }))
     }
 
@@ -286,8 +349,9 @@ impl AppCore {
 
     /// Fetches `url` (HTTPS or HTTP) and returns the HTTP status code. The
     /// certificate is checked with the platform's trust store; a bad one is
-    /// `Certificate`, no connection is `Offline`. `cancellation` (or
-    /// `shutdown`) stops it part way with `Cancelled` (`ShutDown`).
+    /// `Certificate`, no connection is `Offline`. `cancellation`, the app
+    /// going to the background, or `shutdown` stop it part way with
+    /// `Cancelled`, `Interrupted` or `ShutDown`.
     pub async fn check_url(
         &self,
         url: String,
@@ -295,19 +359,22 @@ impl AppCore {
     ) -> Result<u16, AppError> {
         self.ensure_running()?;
         let http = self.http.clone();
-        let lifetime = self.lifetime.clone();
-        // Cancelled by shutdown, by `cancellation`, or by dropping the future.
-        let (cancel, under_lifetime) = self.lifetime.child();
+        let lifetime = self.lifecycle.lifetime();
+        let foreground = self.lifecycle.foreground();
+        // Cancelled by the background, shutdown, `cancellation`, or by
+        // dropping the future. Started in the background, it stops at once.
+        let (cancel, under_foreground) = foreground.child();
         let from_host = cancellation.map(|c| {
             let cancel = cancel.clone();
             c.handle.on_cancel(move || cancel.cancel())
         });
         background_cancellable("check-url", cancel, move |cancel| {
-            let _links = (under_lifetime, from_host); // released when the request ends
+            let _links = (under_foreground, from_host); // released when the request ends
             let request = Request::get(url).timeout(Duration::from_secs(15));
             match http.send_cancellable(&request, cancel) {
                 Ok(response) => Ok(response.status),
                 Err(NetError::Cancelled) if lifetime.is_cancelled() => Err(AppError::ShutDown),
+                Err(NetError::Cancelled) if foreground.is_cancelled() => Err(AppError::Interrupted),
                 Err(err) => Err(err.into()),
             }
         })
@@ -322,12 +389,40 @@ impl AppCore {
             .ok_or(AppError::ShutDown)
     }
 
+    /// The phase last reported with `set_phase`.
+    pub fn phase(&self) -> AppPhase {
+        self.lifecycle.phase().into()
+    }
+
+    /// The host reports a lifecycle change. Cheap and safe to call from the
+    /// UI thread, and to repeat. Going to `Background` stops requests
+    /// started on screen (`Interrupted`); coming back emits `PhaseChanged`
+    /// with `resumed: true`; `Terminated` is `shutdown()`. Notes need
+    /// nothing here: every change is saved before its command returns.
+    pub fn set_phase(&self, phase: AppPhase) {
+        if phase == AppPhase::Terminated {
+            return self.shutdown();
+        }
+        if let Some(change) = self.lifecycle.enter(phase.into()) {
+            self.events.publish(AppEvent::PhaseChanged {
+                phase,
+                resumed: change.resumed,
+            });
+        }
+    }
+
     /// Refuses new commands with `ShutDown`, stops requests in flight (they
-    /// fail with `ShutDown`) and ends every event stream. Saves already
-    /// running finish, so no write is cut short. Idempotent.
+    /// fail with `ShutDown`) and ends every event stream after a last
+    /// `PhaseChanged(Terminated)`. Saves already running finish, so no write
+    /// is cut short. Idempotent.
     pub fn shutdown(&self) {
         self.shut_down.store(true, Ordering::SeqCst);
-        self.lifetime.cancel();
+        if self.lifecycle.enter(Phase::Terminated).is_some() {
+            self.events.publish(AppEvent::PhaseChanged {
+                phase: AppPhase::Terminated,
+                resumed: false,
+            });
+        }
         self.events.close();
     }
 }
@@ -504,6 +599,13 @@ mod tests {
             Some(AppEvent::NotesChanged { notes: vec![note] })
         );
         app.shutdown();
+        assert_eq!(
+            block_on(events.next()),
+            Some(AppEvent::PhaseChanged {
+                phase: AppPhase::Terminated,
+                resumed: false
+            })
+        );
         assert_eq!(block_on(events.next()), None);
         assert_eq!(
             block_on(app.add_note("late".into())),
@@ -571,6 +673,72 @@ mod tests {
         });
         assert_eq!(block_on(app.check_url(url, None)), Err(AppError::ShutDown));
         assert!(started.elapsed() < Duration::from_secs(10));
+    }
+
+    #[test]
+    fn the_background_interrupts_requests_and_resume_is_announced() {
+        std::env::set_var("NO_PROXY", "127.0.0.1,localhost");
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let events = app.events().unwrap();
+        let (url, _server) = silent_server();
+        assert_eq!(app.phase(), AppPhase::Launching);
+        app.set_phase(AppPhase::Active);
+        app.set_phase(AppPhase::Active); // repeats are ignored
+
+        let started = std::time::Instant::now();
+        cancel_after(150, {
+            let app = Arc::clone(&app);
+            move || app.set_phase(AppPhase::Background)
+        });
+        assert_eq!(
+            block_on(app.check_url(url.clone(), None)),
+            Err(AppError::Interrupted)
+        );
+        assert!(started.elapsed() < Duration::from_secs(5));
+        // Started while in the background, a request stops at once.
+        assert_eq!(
+            block_on(app.check_url(url, None)),
+            Err(AppError::Interrupted)
+        );
+        // Notes still work in the background: saving is not on-screen work.
+        block_on(app.add_note("from the background".into())).unwrap();
+
+        app.set_phase(AppPhase::Inactive);
+        app.set_phase(AppPhase::Active);
+        let phases: Vec<_> = std::iter::from_fn(|| match block_on(events.next()) {
+            Some(AppEvent::PhaseChanged { phase, resumed }) => Some(Some((phase, resumed))),
+            Some(_) => Some(None),
+            None => None,
+        })
+        .take(5)
+        .flatten()
+        .collect();
+        assert_eq!(
+            phases,
+            vec![
+                (AppPhase::Active, false),
+                (AppPhase::Background, false),
+                (AppPhase::Inactive, true),
+                (AppPhase::Active, false),
+            ]
+        );
+    }
+
+    #[test]
+    fn terminated_is_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        app.set_phase(AppPhase::Active);
+        app.set_phase(AppPhase::Terminated);
+        assert_eq!(app.phase(), AppPhase::Terminated);
+        assert_eq!(
+            block_on(app.add_note("late".into())),
+            Err(AppError::ShutDown)
+        );
+        app.set_phase(AppPhase::Active); // ignored once terminated
+        assert_eq!(app.phase(), AppPhase::Terminated);
+        app.shutdown(); // still idempotent
     }
 
     #[test]
