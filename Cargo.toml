@@ -5,6 +5,7 @@ members = [
     "crates/forge-net",
     "crates/forge-runtime",
     "crates/forge-services",
+    "crates/forge-device",
     "examples/chat-core",
     "examples/chat-server",
     "examples/chat-cli",

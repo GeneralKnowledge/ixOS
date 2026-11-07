@@ -130,6 +130,16 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Core ML | No | No | No | No | No | No | `.mlmodel` compiles only on a Mac |
 | NFC | No | No | No | No | No | No | Paid team |
 
+## Forge Device (W12)
+
+Developer tooling on the Linux computer, not app capabilities, so "Rust API" and "iOS native" are n/a. "In an app" means used against an app on the phone.
+
+| Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
+|---|---|---|---|---|---|---|---|
+| Phone details from Linux (`forge device list`, `info`) | Yes: forge-device | n/a | n/a | n/a | No | Partial: forge-device.md | USB only; Wi-Fi-synced phones are listed but untested |
+| Live system log, filtered by app (`forge device logs`) | Yes: forge-device | n/a | n/a | Yes: any app; Rust logs via `forge_runtime::logging` | No | Partial: forge-device.md | The process name must be given; no OS trace (structured `os_log` metadata) yet |
+| Crash reports (`forge device crashes`) | Yes: forge-device | n/a | n/a | Yes: any app | No | Partial: forge-device.md | No symbolication yet |
+
 ## Performance
 
 A capability can work and still give a poor app. Each metric has a proposed target, a way to measure it from Linux with xtool (timestamps the app logs, read from the device log, or a diagnostics screen in the app), and the last recorded figure. Targets are proposals until the first measurement on the test iPhone, then they are revised once and kept.
