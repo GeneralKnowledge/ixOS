@@ -1,0 +1,9 @@
+order = 10
+capability = "Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`)"
+framework = "Yes: forge-uitest"
+rust_api = "n/a"
+ios_native = "n/a: prebuilt WDA, signed by xtool"
+in_app = "n/a"
+iphone = "No"
+documented = "Partial: forge-ui-testing.md"
+limits = "Runner uses one of the 3 free-account app slots and expires after 7 days; DDI comes from `Xcode.xip` and is gone after a reboot"

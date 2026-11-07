@@ -72,6 +72,12 @@ Developer tooling on the Linux computer, not app capabilities, so "Rust API" and
 
 <!-- ledger: capability forge-device -->
 
+## Forge UI Testing (W12)
+
+Driving an app on the phone from Linux through XCTest and WebDriverAgent. Plan and feasibility: [forge-ui-testing.md](forge-ui-testing.md).
+
+<!-- ledger: capability forge-ui-testing -->
+
 ## Performance
 
 A capability can work and still give a poor app. Each metric has a proposed target, a way to measure it from Linux with xtool (timestamps the app logs, read from the device log, or a diagnostics screen in the app), and the last recorded figure. Targets are proposals until the first measurement on the test iPhone, then they are revised once and kept.

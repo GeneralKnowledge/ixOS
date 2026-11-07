@@ -66,6 +66,17 @@ The question was whether the Forge Device connection could carry the automation.
 
 An agent compiled into dev builds (like KIF or EarlGrey) could walk the app's own accessibility tree and call `accessibilityActivate()` without any extra app. That avoids the app slot and the DDI. It can't see or tap system alerts (permissions, share sheets, the keyboard's own UI), can't launch, background or relaunch the app, and touches are not real touches. We keep it in mind as a fallback if a free-account phone has no slot to spare, but it is not M0.
 
+### 6. Apple's accessibility audit service (Accessibility Inspector)
+
+Added after #79 ([research note](research/ax-audit.md)). The service behind Xcode's Accessibility Inspector starts over plain lockdown through usbmuxd, with no tunnel and no extra app. It can walk the foreground app's elements in VoiceOver order (label, identifier, value), press an element, run Apple's own accessibility audit, and change accessibility settings such as text size. It cannot type, it is slower than WDA's one-call `/source` (about four round trips per element), and it is unknown whether it sees system alerts.
+
+How it fits:
+- **WDA stays the M0 route and the only one that can type**, launch, background and relaunch apps, and handle system alerts.
+- **If tonight's probe shows SwiftUI identifiers come back**, a second `Driver` backend (`AxDriver`) can serve `forge ui tree`, element checks and presses with no app slot and no 7-day expiry. A test that only reads and taps could then run without the runner. `forge ui` would choose the backend per command and fall back to WDA for the rest.
+- **If Apple's audit runs from Linux**, it replaces the basic tree audit in M3, and its settings calls give the Dynamic Type runs without launch arguments.
+
+Nothing in M0 changes: its code and steps are the same either way.
+
 ## Free Apple account limits
 
 | Limit | Effect on UI testing | What Forge does |
@@ -178,6 +189,7 @@ The exploratory tester is a separate command (`forge explore ios`). It never tak
 | **M0** | Prove the five basics on Cati | From Linux: launch an installed app, find a SwiftUI button by accessibility identifier, tap it and enter text, read the resulting UI state, and save a screenshot on Linux. Recorded in the ledger by Reuben's run |
 | M1 | `forge test ios` with test files and reports | Pocket Library's add/edit/delete journey passes on the phone. The report has screenshots, the tree on failure, and app logs |
 | M2 | App lifecycle and state | Background and resume, relaunch, alerts (a permission prompt), devtools probes and setup commands. Chat's "send, background, reopen, still there" journey passes |
+| M2.5 | Runner-free inspection, if #79's probe passes | `AxDriver` behind `Driver`: `forge ui tree` and read-and-tap tests without the WDA runner |
 | M3 | Accessibility pass across the demos | Identifiers and labels in the starter, Pocket Library, Weather and Chat; `forge ui audit` clean on their main screens; a Dynamic Type run; conventions in ios-ui.md |
 | M4 | Screenshots and conditions | Screenshot comparison against approved baselines (with masked regions for times and dates); offline and slow-network runs through the instruments condition inducer; performance numbers from the devtools stream |
 | M5 | Exploratory testing | `forge explore ios` with seeded walks, crash and invariant detection, and saved reproductions. Optionally Forge's own Swift XCTest runner if WDA becomes limiting |

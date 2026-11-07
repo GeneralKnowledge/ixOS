@@ -1,0 +1,9 @@
+order = 20
+capability = "Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui run`, `tree`)"
+framework = "Yes: forge-uitest"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes: Pocket Library (`uitests/m0.toml`)"
+iphone = "No"
+documented = "Partial: forge-ui-testing.md"
+limits = "No coordinates by design; no reports until M1. Reading and pressing without the runner (Accessibility Inspector, docs/research/ax-audit.md) is unproven"

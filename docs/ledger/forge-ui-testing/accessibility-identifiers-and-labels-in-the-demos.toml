@@ -1,0 +1,9 @@
+order = 40
+capability = "Accessibility identifiers and labels in the demos"
+framework = "No"
+rust_api = "n/a"
+ios_native = "Partial: labels per ios-ui.md"
+in_app = "Partial: Pocket Library's library screen and book form"
+iphone = "No"
+documented = "Partial: ios-ui.md"
+limits = "Conventions and the full audit come in M3"
