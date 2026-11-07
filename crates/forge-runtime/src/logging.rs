@@ -6,9 +6,10 @@
 //! once per process:
 //!
 //! - **Platform log.** Android: logcat (tag = the record's target). iOS:
-//!   the system log via `syslog(3)`, which the unified log picks up, so
-//!   Console.app and a USB syslog relay show it. Elsewhere (host tests,
-//!   Linux tools): standard error, only when `FORGE_LOG` is set.
+//!   the system log via `syslog(3)`, as `LEVEL [target] message` at notice
+//!   priority or above, so `forge device logs` (the USB syslog relay) shows
+//!   every level. Elsewhere (host tests, Linux tools): standard error, only
+//!   when `FORGE_LOG` is set.
 //! - **Recent records.** The last [`RECENT_CAPACITY`] records stay in
 //!   memory ([`recent`]) for diagnostics: an error report, a support
 //!   bundle, a developer tool.
@@ -230,14 +231,17 @@ mod platform {
     }
 
     pub(super) fn write(record: &LogRecord) {
-        // sys/syslog.h priorities.
+        // sys/syslog.h priorities. The USB syslog relay (what
+        // `forge device logs` and idevicesyslog read) drops LOG_INFO and
+        // LOG_DEBUG, so everything below Warn goes out as LOG_NOTICE and
+        // the level is kept in the text instead.
         let priority = match record.level {
-            Level::Trace | Level::Debug => 7,
-            Level::Info => 6,
+            Level::Trace | Level::Debug | Level::Info => 5,
             Level::Warn => 4,
             Level::Error => 3,
         };
-        let line = format!("[{}] {}", record.target, record.message).replace('\0', "");
+        let line =
+            format!("{} [{}] {}", record.level, record.target, record.message).replace('\0', "");
         let line = CString::new(line).unwrap_or_default();
         // SAFETY: a constant "%s" format with one valid C string argument.
         unsafe {
