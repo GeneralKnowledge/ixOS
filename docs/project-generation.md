@@ -29,7 +29,8 @@ For Android, add `--platform android` and use `forge build android --project . -
 
 ### iOS (`--platform ios`, default)
 
-- `forge.toml`, `Package.swift`, `xtool.yml`, `.gitignore`
+- `forge.toml` (app name, bundle ID, version, permissions, entitlements, signing: [app-config.md](app-config.md)), `Package.swift`, `.gitignore`
+- `Info.plist`, `App.entitlements`, `xtool.yml`: generated from `forge.toml`, rewritten by every `forge build ios` / `forge run ios` (`forge config sync`)
 - `rust/`: the app's Rust crate (a notes starter; see [app-crate.md](app-crate.md))
 - `Sources/AppHost/`: the SwiftUI app (notes list, editor, compose and settings screens) and its `@Observable` `NotesModel`, calling the Rust API in `ForgeFFI` directly. See [ios-ui.md](ios-ui.md) for the conventions it follows
 - `Sources/AppHostXtoolApp/`: xtool entry point; `Sources/AppHostLauncher/`: entry point for `swift run` and Xcode
@@ -46,7 +47,7 @@ For Android, add `--platform android` and use `forge build android --project . -
 
 ### Checked in CI
 
-`scripts/check-fresh-app.sh` (CI job "Fresh app outside the checkout", or `make check-fresh-app`) runs `forge init --path` outside the checkout for both platforms, tests, lints and formats each app's crate on its own, checks that nothing was written into the checkout, then adds a Rust export and checks that `forge bindings generate --project` puts it in the Swift and Kotlin bindings. CI also runs, on apps created outside the checkout, the XCTest suite via `forge test` (macOS), an unsigned `xcodebuild` (macOS), and the JVM unit tests plus a debug APK via `forge build android` (Linux).
+`scripts/check-fresh-app.sh` (CI job "Fresh app outside the checkout", or `make check-fresh-app`) runs `forge init --path` outside the checkout for both platforms, tests, lints and formats each app's crate on its own, checks that nothing was written into the checkout, then adds a Rust export and checks that `forge bindings generate --project` puts it in the Swift and Kotlin bindings. It also checks that the iOS app's Info.plist, App.entitlements and xtool.yml come from `forge.toml`, and that a permission, version, entitlement and `minimum_ios` edited in `forge.toml` reach them (`forge config sync`, `forge config check`). CI also runs, on apps created outside the checkout, the XCTest suite via `forge test` (macOS), an unsigned `xcodebuild` (macOS), and the JVM unit tests plus a debug APK via `forge build android` (Linux).
 
 What CI cannot check is a physical device: see [toolchain-validation.md](toolchain-validation.md) for the manual device checklist and what has been recorded.
 

@@ -10,3 +10,12 @@ ffi_crate = "forge-ffi"
 [build]
 ios_device = true
 ios_simulator = false
+
+# iOS settings; Forge writes Info.plist, App.entitlements and xtool.yml from
+# them (docs/app-config.md).
+[ios]
+xtool_product = "ChatXtool"
+
+[ios.permissions]
+# The demo server runs on your computer, reached over the LAN.
+local_network = "Chat connects to the demo chat server on your local network."

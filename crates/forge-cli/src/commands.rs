@@ -1,8 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::app_config;
 use crate::config::{self, ForgeConfig};
-use crate::ios_builder::IosBuilder;
+use crate::ios_builder::{IosBuilder, IosConfiguration};
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -269,6 +270,9 @@ fn populate_app(
     rewrite_workspace_paths(dir, platform, workspace)?;
     if platform == "ios" {
         relocate_ios_xcode_host(dir, name)?;
+        // Info.plist, App.entitlements and xtool.yml come from forge.toml.
+        let cfg = load_config(dir)?;
+        app_config::sync(dir, &cfg, app_config::Mode::Write { force: false })?;
     } else {
         relocate_android_package(dir, "org.forgemobile.templatehost", bundle_id)?;
     }
@@ -425,10 +429,8 @@ fn validate_ios_template(template: &Path) -> Result<(), String> {
     for rel in [
         "Package.swift",
         "forge.toml",
-        "xtool.yml",
         "Sources/AppHostLauncher/AppMain.swift",
         "Sources/AppHostXtoolApp/AppMain.swift",
-        "Info.plist",
         "Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj",
     ] {
         let p = template.join(rel);
@@ -766,7 +768,24 @@ pub fn build_android(
     run_checked(runner, Cmd::new(gradlew).arg(gradle_task).cwd(&project_dir))
 }
 
-/// Builds the Rust static library and Swift bindings for an iOS app.
+/// Brings the generated iOS files (Info.plist, App.entitlements, xtool.yml,
+/// Package.swift's platform) in line with forge.toml, and says what changed.
+fn sync_app_config(project_dir: &Path, cfg: &ForgeConfig) -> Result<(), String> {
+    let outcome = app_config::sync(project_dir, cfg, app_config::Mode::Write { force: false })?;
+    if !outcome.changed.is_empty() {
+        println!(
+            "[forge] Updated {} from forge.toml",
+            outcome.changed.join(", ")
+        );
+    }
+    for warning in &outcome.warnings {
+        eprintln!("[forge] warning: {warning}");
+    }
+    Ok(())
+}
+
+/// Syncs the app's configuration, then builds the Rust static library and
+/// Swift bindings for an iOS app.
 fn package_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Result<PathBuf, String> {
     require_workspace(root)?;
     let project_dir = resolve_project_dir(root, project);
@@ -774,6 +793,7 @@ fn package_ios(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Resul
     if !cfg.ios_enabled() {
         return Err("forge.toml does not enable iOS builds ([build] ios_device = true)".into());
     }
+    sync_app_config(&project_dir, &cfg)?;
     let generated = generated_dir_for_project(root, project);
     let package = script(root, "package-ios-library.sh").arg(generated_dir_arg(root, &generated));
     run_checked(runner, with_app_crate(package, &cfg, &project_dir))?;
@@ -786,6 +806,7 @@ pub fn build_ios(
     root: &Path,
     project: &Path,
     package_only: bool,
+    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
     if package_only {
@@ -796,7 +817,8 @@ pub fn build_ios(
         );
         return Ok(());
     }
-    builder.build(runner, &project_dir)
+    println!("[forge] Building the Swift app ({})", configuration.name());
+    builder.build(runner, &project_dir, configuration)
 }
 
 /// Builds, installs and launches on a connected device.
@@ -805,9 +827,83 @@ pub fn run_ios(
     builder: &dyn IosBuilder,
     root: &Path,
     project: &Path,
+    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
-    builder.run(runner, &project_dir)
+    println!(
+        "[forge] Building, installing and launching ({})",
+        configuration.name()
+    );
+    builder.run(runner, &project_dir, configuration)
+}
+
+/// `forge config sync|check|show`: the app's iOS configuration.
+pub fn config(root: &Path, project: &Path, action: ConfigAction) -> Result<(), String> {
+    let project_dir = resolve_project_dir(root, project);
+    let cfg = load_config(&project_dir)?;
+    if !cfg.ios_enabled() {
+        println!(
+            "{} does not build for iOS; forge.toml [ios] settings only apply to iOS apps.",
+            project_dir.display()
+        );
+        return Ok(());
+    }
+    match action {
+        ConfigAction::Sync { force } => {
+            let outcome = app_config::sync(&project_dir, &cfg, app_config::Mode::Write { force })?;
+            if outcome.changed.is_empty() {
+                println!("[forge] iOS configuration already matches forge.toml");
+            } else {
+                println!(
+                    "[forge] Updated {} from forge.toml",
+                    outcome.changed.join(", ")
+                );
+            }
+            for warning in &outcome.warnings {
+                eprintln!("[forge] warning: {warning}");
+            }
+        }
+        ConfigAction::Check => {
+            let outcome = app_config::sync(&project_dir, &cfg, app_config::Mode::Check)?;
+            println!(
+                "[forge] {}, {} and {} match forge.toml",
+                app_config::INFO_PLIST,
+                app_config::ENTITLEMENTS,
+                app_config::XTOOL_YML
+            );
+            for warning in outcome
+                .warnings
+                .iter()
+                .chain(&app_config::xcode_differences(&cfg, &project_dir))
+            {
+                eprintln!("[forge] warning: {warning}");
+            }
+        }
+        ConfigAction::Show => {
+            print!("{}", app_config::summary(&cfg)?);
+            let notes: Vec<String> = app_config::warnings(&cfg, &project_dir)
+                .into_iter()
+                .chain(app_config::xcode_differences(&cfg, &project_dir))
+                .collect();
+            if !notes.is_empty() {
+                println!(
+                    "
+Notes:"
+                );
+                for note in notes {
+                    println!("  - {note}");
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ConfigAction {
+    Sync { force: bool },
+    Check,
+    Show,
 }
 
 pub fn devices(runner: &dyn CommandRunner, ios: &dyn IosBuilder) -> Result<(), String> {
@@ -1013,11 +1109,27 @@ ios_device = true
     fn build_ios_requires_forge_toml_with_ios_enabled() {
         let (_tmp, root) = workspace(ANDROID_TOML, &[]);
         let mock = MockRunner::default();
-        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
+        let err = build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            true,
+            IosConfiguration::Debug,
+        )
+        .unwrap_err();
         assert!(err.contains("does not enable iOS"), "{err}");
 
         fs::remove_file(root.join("apps/demo/forge.toml")).unwrap();
-        let err = build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap_err();
+        let err = build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            true,
+            IosConfiguration::Debug,
+        )
+        .unwrap_err();
         assert!(err.contains("forge.toml"), "{err}");
         assert!(mock.calls().is_empty());
     }
@@ -1027,7 +1139,15 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), true).unwrap();
+        build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            true,
+            IosConfiguration::Debug,
+        )
+        .unwrap();
         let lines = mock.call_lines();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("package-ios-library.sh apps/demo/Generated"));
@@ -1038,12 +1158,31 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap();
+        build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            false,
+            IosConfiguration::Debug,
+        )
+        .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
+        // The build wrote the app's iOS configuration from forge.toml first.
+        let xtool = read(root.join("apps/demo/xtool.yml"));
+        assert!(xtool.contains("bundleID: org.example.demo\n"), "{xtool}");
+        assert!(read(root.join("apps/demo/Info.plist")).contains("<string>Demo</string>"));
 
         let mock = MockRunner::default();
         mock.respond("bash", 0, "").respond("xtool", 0, "");
-        run_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo")).unwrap();
+        run_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+        )
+        .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
         assert_eq!(
             mock.calls().last().unwrap().cwd.as_deref(),
@@ -1063,14 +1202,24 @@ ios_device = true
         fn ensure_available(&self, _: &dyn CommandRunner) -> Result<(), String> {
             Ok(())
         }
-        fn build(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
+        fn build(
+            &self,
+            _: &dyn CommandRunner,
+            dir: &Path,
+            _: IosConfiguration,
+        ) -> Result<(), String> {
             self.0
                 .lock()
                 .unwrap()
                 .push(format!("build {}", dir.display()));
             Ok(())
         }
-        fn run(&self, _: &dyn CommandRunner, dir: &Path) -> Result<(), String> {
+        fn run(
+            &self,
+            _: &dyn CommandRunner,
+            dir: &Path,
+            _: IosConfiguration,
+        ) -> Result<(), String> {
             self.0
                 .lock()
                 .unwrap()
@@ -1095,8 +1244,23 @@ ios_device = true
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
         let fake = RecordingBuilder::default();
-        build_ios(&mock, &fake, &root, Path::new("apps/demo"), false).unwrap();
-        run_ios(&mock, &fake, &root, Path::new("apps/demo")).unwrap();
+        build_ios(
+            &mock,
+            &fake,
+            &root,
+            Path::new("apps/demo"),
+            false,
+            IosConfiguration::Debug,
+        )
+        .unwrap();
+        run_ios(
+            &mock,
+            &fake,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+        )
+        .unwrap();
         install_ios(&mock, &fake, Path::new("App.ipa")).unwrap();
 
         let dir = root.join("apps/demo");
@@ -1117,8 +1281,15 @@ ios_device = true
         let (_tmp, root) = workspace(IOS_TOML, &[]);
         let mock = MockRunner::default();
         mock.respond("bash", 0, "");
-        let err =
-            build_ios(&mock, &XtoolBuilder, &root, Path::new("apps/demo"), false).unwrap_err();
+        let err = build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            false,
+            IosConfiguration::Debug,
+        )
+        .unwrap_err();
         assert!(err.contains("--package-only"), "{err}");
     }
 
@@ -1271,8 +1442,20 @@ ios_device = true
         let pkg = fs::read_to_string(dest.join("Package.swift")).unwrap();
         assert!(pkg.contains("name: \"InitTestApp\""));
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
+        // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));
+        assert!(plist.contains("Generated by Forge"));
+        let xtool = fs::read_to_string(dest.join("xtool.yml")).unwrap();
+        assert!(
+            xtool.contains("bundleID: org.example.inittest\n"),
+            "{xtool}"
+        );
+        assert!(xtool.contains("product: AppHostXtool\n"), "{xtool}");
+        assert!(dest.join("App.entitlements").is_file());
+        let cfg = crate::config::ForgeConfig::parse(&read(dest.join("forge.toml"))).unwrap();
+        crate::app_config::sync(&dest, &cfg, crate::app_config::Mode::Check)
+            .expect("a new app starts in sync");
         assert!(dest.join("Generated/ForgeFFI/forge_ffi.swift").is_file());
         assert!(dest
             .join("Generated/forge_ffiFFI/module.modulemap")

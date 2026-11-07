@@ -45,4 +45,20 @@ eval "$(printf '%s\n' "$SCRIPT" | grep -E '^(export )?(REPO_ROOT|FORGE_APP_DIR|G
   exit 1
 }
 
+# The app target reads the Info.plist and entitlements Forge generates from
+# forge.toml (docs/app-config.md), next to Package.swift. The template has no
+# generated files yet (forge init writes them), so only the settings are checked there.
+for setting in INFOPLIST_FILE CODE_SIGN_ENTITLEMENTS; do
+  value="$(grep -oE "[[:space:]]${setting} = [^;]*;" "$PROJECT" | head -1 |
+    sed -E -e "s/^[[:space:]]*${setting} = //" -e 's/;$//' -e 's/"//g')"
+  [[ -n "$value" ]] || {
+    echo "error: project does not set $setting (Forge's generated Info.plist / App.entitlements)" >&2
+    exit 1
+  }
+  if ! grep -q FORGE_PACKAGE_NAME "$SRCROOT/../Package.swift" && [[ ! -f "$SRCROOT/$value" ]]; then
+    echo "error: $setting = $value is missing next to Package.swift (run: forge config sync)" >&2
+    exit 1
+  fi
+done
+
 echo "[forge] Xcode project structure OK: $PROJECT"
