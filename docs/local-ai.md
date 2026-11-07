@@ -161,6 +161,7 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 
 - CoreML-LLM keeps models in `Documents/Models`, which iCloud backs up. The check app marks the folder excluded from backup; the L2 adapter must do the same or move it.
 - `Qwen35MLKVGenerator` compiles each `.mlpackage` chunk into a temporary location on every load (`MLModel.compileModel(at:)` without caching the result), so every launch may pay the compile time. K7 measures it; L2 may need to keep the compiled `.mlmodelc`.
+- Loading needs free disk for the compiled copy too (about 2 GB for the 2B model), and a failed compile leaves it in `tmp/`. L2's model library must compile once into Application Support, reuse it, clean up after failures, and check free space for download plus compile before starting.
 - Qwen3.5's tokenizer comes from Hugging Face at load time (`AutoTokenizer.from(pretrained:)`), not with the model download. K12 tests whether its cache makes it work offline.
 - CoreML-LLM's own sample app drops system messages for Qwen3.5. The check app sends them through the chat template; K9 shows whether that works for characters.
 - Reuben's review (2026-11-07): stopping must be real. The first check app only ignored Qwen3.5's tokens after Stop while the generator kept running; it now builds a patched copy of the generator (CoreML-LLM 1.9.0, MIT, checksum pinned) that stops before the next prefill or decode step. LFM2.5 stops through CoreML-LLM's own `AsyncStream` cancellation, and Foundation Models when its stream is dropped.
@@ -173,7 +174,7 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 | Available memory at launch / after 0.8B load | **3,350 MB** at launch (footprint 22 MB), 3,158 MB after loading Qwen3.5 0.8B (footprint 217 MB). The Core ML weights mostly do not count against the app's footprint |
 | LFM2.5 350M: load (first, second), tokens/s, stop latency | Not run |
 | Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | First load 23.4 s (compiles; used about 1.1 GB of disk while loaded). **About 9 pieces/s** in a debug build, first text after 4.2–5.9 s with the character prompt (Qwen3.5 prefill runs one decode step per prompt token). Far below the published 22–48 tok/s: a release build is the first suspect. Stop not yet tested |
-| Qwen3.5 2B fits | Not run |
+| Qwen3.5 2B fits | **Failed on disk, not memory** (release build, 2026-11-07): with both Qwen models installed the phone had 2.7 GB free; compiling the 2B's chunks into `tmp/` used 2 GB and `chunk_d` failed ("Failed to build the model execution plan… error code: -14") at 687 MB free. Memory was fine (3,320 MB available, footprint 55 MB). Retry with about 5 GB free |
 | Characters in character over ten turns (reminder on / off) | Mia, Qwen3.5 0.8B, reminder on: in character for the first three turns ("pretty good", Reuben); ten turns, Leo and reminder off not yet run |
 | Offline after download | Not run |
 | Swift → Rust push cost | **1.6 µs per push** (10,000 pushes), negligible against 100 ms per token |
