@@ -402,7 +402,7 @@ pub fn workflows(r: &Report) -> Vec<Workflow> {
             fixes: device,
         },
         Workflow {
-            name: "Android (Gradle, debug APK)",
+            name: "Android (Gradle, debug APK; work in progress)",
             ready: r.ready.android,
             fixes: android,
         },
@@ -493,7 +493,7 @@ mod tests {
         assert!(android.fixes.iter().any(|f| f.contains("ANDROID_NDK_HOME")));
         let text = render_text(&r);
         assert!(
-            text.contains("Android (Gradle, debug APK): not ready"),
+            text.contains("Android (Gradle, debug APK; work in progress): not ready"),
             "{text}"
         );
         assert!(text.contains("  xtool      missing"), "{text}");

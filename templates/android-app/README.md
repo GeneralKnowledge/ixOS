@@ -1,5 +1,7 @@
 # FORGE_APP_NAME
 
+> **Work in progress.** Forge is focusing on iOS for now; Android keeps building but gets no new features. See https://github.com/GeneralKnowledge/ixOS/blob/main/docs/roadmap.md#android--work-in-progress
+
 An Android app made with [Forge](https://github.com/GeneralKnowledge/ixOS): the logic is Rust, the screen is Jetpack Compose.
 
 ## Run it

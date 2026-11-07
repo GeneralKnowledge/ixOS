@@ -36,6 +36,8 @@ Linux iOS builds have the least coverage: CI cannot run xtool (no Darwin SDK in 
 
 ## Android
 
+Android is **work in progress** ([roadmap](roadmap.md#android--work-in-progress)). These versions keep the Android CI job green; they are not being moved forward while the project focuses on iOS.
+
 | Component | Tested version | Status | Where it is set |
 |-----------|----------------|--------|-----------------|
 | Android Gradle Plugin | 8.7.3 | Pinned, CI | root `build.gradle.kts` (example and template) |
@@ -54,7 +56,7 @@ Linux iOS builds have the least coverage: CI cannot run xtool (no Darwin SDK in 
 
 | Combination | Problem | Status |
 |-------------|---------|--------|
-| AGP 9.x / Gradle 9.x | Broke the Android CI build; rolled back in the example and template | Migration planned, see [roadmap.md](roadmap.md#agp--gradle-stabilization--planned) |
+| AGP 9.x / Gradle 9.x | Broke the Android CI build; rolled back in the example and template | Migration paused while Android is work in progress, see [roadmap.md](roadmap.md#agp--gradle-stabilization--paused) |
 | `cargo-platform` > 0.3.2 | Raises its MSRV above 1.88 | Held at 0.3.2 in `Cargo.lock` |
 | Windows hosts | Scripts are bash; not tested | Not supported |
 

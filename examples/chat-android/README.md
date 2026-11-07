@@ -3,7 +3,7 @@
 The Compose twin of the SwiftUI [Chat example](../chat/README.md): a conversation list
 and a chat screen over the same Rust core, the same FFI surface and the same chat server.
 
-**Frozen (2026-11-07).** The iOS app ([examples/chat](../chat/README.md)) has grown into the
+**Frozen (2026-11-07), and Android is work in progress** ([roadmap](../../docs/roadmap.md#android--work-in-progress)). The iOS app ([examples/chat](../chat/README.md)) has grown into the
 flagship acceptance app with accounts; this client stays at its original features until it is
 brought onto the same app crate. It talks to the chat server in anonymous mode.
 Design: [docs/chat-demo.md](../../docs/chat-demo.md).

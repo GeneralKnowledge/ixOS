@@ -20,6 +20,8 @@ Draft, 2026-11-07. The plan behind it, with the demo-by-demo map, xtool limits a
 
 Values: **Yes**, **Partial** (with a note), **No**, **n/a**. Workstream ids (W1 to W11) and spike ids (S1 to S6) refer to the plan.
 
+Android is work in progress ([roadmap](roadmap.md#android--work-in-progress)), so this ledger tracks iOS only. An Android column will be added when Android work resumes.
+
 The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Relay, Sketchbook. Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
 
 ## Foundation

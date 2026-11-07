@@ -1,12 +1,25 @@
 # Roadmap
 
-Forge Mobile is an **integration reference**: a working Counter app on iOS and Android, a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
+Forge Mobile is an **integration reference**: a working Counter app on iOS (and on Android, which is work in progress), a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
 Last reviewed: 2026-11-07.
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
+
+## Platform focus
+
+### Android — Work in progress
+
+Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progress:
+
+- The Android code stays: `examples/counter-android`, `examples/chat-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
+- It keeps building. The Android CI job runs when Android or shared Rust code changes, so shared changes that break it are still caught.
+- It gets no new features. New capabilities (native services, Chat milestones, the demo sequence) are built and proven on iOS only, and the [capability ledger](capability-ledger.md) tracks iOS only.
+- It has not been validated on a physical Android phone, and none of the `forge-services` interfaces has an Android implementation.
+
+Rust interfaces stay platform-neutral, so Android implementations can be added when the work resumes. Contributions that keep Android building are welcome; larger Android work should wait until this section changes.
 
 ## Near term
 
@@ -32,9 +45,9 @@ Done: `forge.toml` is the one place for an iOS app's display name, version and b
 
 Open: asset-catalog icons and launch screens (xtool cannot compile asset catalogs on Linux), per-configuration overrides (for example a separate debug bundle ID), app extensions (xtool supports them; Forge has no template), and applying `team_id` / `minimum_ios` to the Xcode project instead of reporting the difference.
 
-### AGP / Gradle stabilization — Planned
+### AGP / Gradle stabilization — Paused
 
-Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
+Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). Paused while Android is work in progress. A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
 
 1. Migrate `examples/counter-android` and `templates/android-app` together, in one PR, with the Android CI job green.
 2. Keep the example and template plugin versions identical (they are the same contract).
@@ -55,9 +68,9 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 ### Networking — In progress
 
-`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache. The Chat demo ([docs/chat-demo.md](chat-demo.md)) uses it on **both iOS and Android**: a long-lived Server-Sent Events stream per room, reconnects with catch-up, and idempotent retries, against a local mock server.
+`forge-net` has a transport trait, test doubles, and a real blocking HTTPS client (`UreqClient`: ureq + rustls with the platform certificate verifier) behind its `ureq` feature. The iOS Weather example ([examples/weather](../examples/weather/README.md)) uses it end to end: Open-Meteo requests from Rust, typed errors, cancellation, and an offline cache. The Chat demo ([docs/chat-demo.md](chat-demo.md)) uses it on iOS (and on its frozen Android twin): a long-lived Server-Sent Events stream per room, reconnects with catch-up, and idempotent retries, against a local mock server.
 
-HTTPS works on Android too: hosts call `ForgeAndroid.init(applicationContext)` once, and certificates are checked against Android's trust store, with typed `Certificate` errors ([android-setup.md](android-setup.md#https-certificate-verification)). It is covered by Rust tests against local TLS servers and the JVM test of the JNI entry point; a run on a physical Android phone is still to be recorded.
+HTTPS works on Android too (work in progress): hosts call `ForgeAndroid.init(applicationContext)` once, and certificates are checked against Android's trust store, with typed `Certificate` errors ([android-setup.md](android-setup.md#https-certificate-verification)). It is covered by Rust tests against local TLS servers and the JVM test of the JNI entry point; a run on a physical Android phone is still to be recorded.
 
 Ordinary requests can be interrupted in flight: `HttpClient::send_cancellable` closes the connection, and the starter app crate wires it to Swift task cancellation and Kotlin coroutine cancellation ([app-crate.md](app-crate.md#lifecycle)). Apps also report the OS lifecycle to Rust (`set_phase`), which stops on-screen requests in the background and announces resume; device runs of it are not yet recorded. The Weather example still discards a late response instead of interrupting it. Still open: platform reachability.
 
@@ -74,7 +87,7 @@ Good first project for someone with a Mac.
 
 ### Native iOS services (M3) — In progress
 
-`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: Android implementations of the same interfaces, then camera, photos and location as opt-in permission adapters.
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: camera, photos and location as opt-in permission adapters. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
 
 ### Store distribution (App Store, Google Play) — Open
 

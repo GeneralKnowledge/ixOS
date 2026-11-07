@@ -105,5 +105,5 @@ If a check before the build is wrong about your setup, `FORGE_SKIP_PREFLIGHT=1 f
 
 - [builds.md](builds.md): every way to build, debug and release, and what is not supported yet.
 - [ios-signing.md](ios-signing.md): Apple accounts, signing and devices in more depth.
-- [android-setup.md](android-setup.md): the same app on Android (`forge init MyApp --platform android`).
+- [android-setup.md](android-setup.md): the same app on Android (`forge init MyApp --platform android`). Android is work in progress.
 - On a Mac, the app's `Xcode/` project gives you the debugger and Instruments ([ios-xcode.md](ios-xcode.md)). It is optional.
