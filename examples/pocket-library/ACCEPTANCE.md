@@ -23,7 +23,7 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | 2 | Build and test its Rust crate on Linux | local build + automated | Done | 45 tests pass; clippy clean; `scripts/check-app-crates.sh` runs them in CI |
 | 2b | Rust crate compiles for `aarch64-apple-ios` | local build (Linux) | Type-checked only | `cargo check --target aarch64-apple-ios` with stub C headers for `ring` (no Darwin SDK in the cloud environment). The real build happens in step 5 |
 | 3 | Generate the Swift bindings | local build + automated | Done | `forge bindings generate --project`; CI fails if the committed `Generated/` drifts from the crate |
-| 4 | Compile the SwiftUI host | automated (macOS CI) | Pending CI | XCTest suite (`test-swift-host.sh`) and an unsigned `xcodebuild` of the iOS app |
+| 4 | Compile the SwiftUI host | automated (macOS CI) | Done | XCTest suite (7 tests against the real Rust library, `test-swift-host.sh`) and an unsigned `xcodebuild` of the iOS app pass on PR #33 (commit 66144a5). The first compile found three host problems, fixed: Rust names clashing with `Foundation.SortOrder` and `SwiftUI.Settings`, `@retroactive` on same-package types, a non-`Sendable` generic result |
 | 5 | Build the iOS app with xtool on Linux (debug and release) | physical device | **Not yet done** | Needs a Linux machine with xtool and the Darwin SDK |
 | 6 | Install and launch on a physical iPhone | physical device | **Not yet done** | |
 | 7 | Add, edit and delete books | physical device | **Not yet done** | Covered on the Mac host by XCTest (step 4) |
