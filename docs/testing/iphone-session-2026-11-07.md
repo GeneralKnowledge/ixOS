@@ -93,14 +93,17 @@ Owner: "Automate testing on a real iPhone" thread, PR #61 (draft). The exact lap
 
 - [ ] Worktree of #61's branch at `~/ixos-uitest`, `cargo build -p forge-cli`.
 - [ ] Download the WebDriverAgent runner zip and check its SHA-256 against the value in the thread; stop if it differs.
+- [ ] *Optional, accessibility audit probe (PR #79), run 1 of 2:* before the disk image is mounted, with Pocket Library open and the phone unlocked, run from the #79 branch (`claude/project-thread-y2svc9`, or main once it merges):
+  `cargo run -p forge-device --features ax-probe --example ax_probe -- --max 40`, then `-- --press library.add`, then `-- --audit`. Reuben only keeps Pocket Library in front and says whether the Add button visibly reacted to `--press`.
 - [ ] Find Xcode's `CoreDeviceDDIs` folder; `forge ui setup --ddi <dir>` (mounts the Developer Disk Image, needs internet for Apple's signing server).
+- [ ] *Optional, probe run 2 of 2:* the same three `ax_probe` commands again, now that the disk image is mounted. Comparing the two runs shows whether Apple's accessibility audit service needs it.
 - [ ] `forge ui setup --runner …/WebDriverAgentRunner-Runner.app` (only after `device list` shows Weather gone).
 - [ ] `forge run ios --project examples/pocket-library` (updates in place, keeps the library).
 - [ ] `forge ui run examples/pocket-library/uitests/m0.toml --out ~/forge-uitest/out`, then `forge ui tree --app org.forgemobile.pocketlibrary` and `forge ui screenshot ~/forge-uitest/out/manual.png`.
 
 **Pass:** the runner launches; the M0 test opens New Book, types a title, sees the form react, cancels; screenshots are valid PNGs; `ui tree` lists Pocket Library's identifiers (`library.add` and so on). The library is unchanged afterwards (Reuben glances at it).
 
-**Evidence:** full output of every `forge ui` command, `ls -la` and `file` on the output folder, and what Reuben saw on screen.
+**Evidence:** full output of every `forge ui` command; for the optional probe, the [1]–[4] lines of each run, whether `Identifier=` shows the SwiftUI identifiers, and whether Add reacted to `--press` (send these to the "Speed up the Linux iOS dev loop" thread; [docs/research/ax-audit.md](../research/ax-audit.md) on #79 says what each result decides), `ls -la` and `file` on the output folder, and what Reuben saw on screen.
 
 **Then:**
 
