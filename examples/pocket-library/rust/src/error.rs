@@ -1,5 +1,5 @@
 use forge_net::NetError;
-use forge_storage::StorageError;
+use forge_storage::{FileStoreError, StorageError};
 
 /// Every error the API returns. `reason` fields are diagnostics for logs and
 /// detail text; the host writes its own headline per case. (Fields avoid the
@@ -91,6 +91,14 @@ impl From<NetError> for LibraryError {
             other => Self::Network {
                 reason: other.to_string(),
             },
+        }
+    }
+}
+
+impl From<FileStoreError> for LibraryError {
+    fn from(err: FileStoreError) -> Self {
+        Self::Storage {
+            reason: err.to_string(),
         }
     }
 }

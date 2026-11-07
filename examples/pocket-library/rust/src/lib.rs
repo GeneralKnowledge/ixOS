@@ -114,13 +114,13 @@ impl Library {
             .data
             .query(&query)
             .into_iter()
-            .map(|b| b.to_book(&covers))
+            .map(|b| b.to_book(covers))
             .collect()
     }
 
     pub fn book(&self, id: u64) -> Result<Book, LibraryError> {
         let state = lock(&self.state);
-        Ok(state.data.book(id)?.to_book(&self.store.covers_dir()))
+        Ok(state.data.book(id)?.to_book(self.store.covers_dir()))
     }
 
     /// Counts and reading totals. `year_start_ms` is the start of the
@@ -465,7 +465,7 @@ impl Library {
                     text: EpubText::open_file(&path)?,
                 });
             }
-            store.reset_reader_dir(id)?;
+            store.reset_reader();
             let book = open.as_ref().expect("opened above");
             let (words, chapters) = (book.text.chapter_words(), book.text.chapters().to_vec());
             // Lock order is state, then open_book (as in delete_book).
@@ -493,11 +493,7 @@ impl Library {
                 .as_mut()
                 .filter(|o| o.id == id)
                 .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
-            let images = store.reader_dir().join(id.to_string());
-            std::fs::create_dir_all(&images).map_err(|e| LibraryError::Storage {
-                reason: format!("create {}: {e}", images.display()),
-            })?;
-            book.text.chapter(index, &images)
+            book.text.chapter(index, &store.reader_images(id))
         })
         .await
     }
@@ -714,7 +710,7 @@ impl Library {
             let id = change(&mut next, &store, now_ms())?;
             store.save(&next)?;
             apply(&mut state, next, &events);
-            Ok(state.data.book(id)?.to_book(&store.covers_dir()))
+            Ok(state.data.book(id)?.to_book(store.covers_dir()))
         })
         .await
     }
@@ -753,7 +749,7 @@ fn add_and_save(
     match result {
         Ok((id, next)) => {
             apply(&mut state, next, events);
-            Ok(state.data.book(id)?.to_book(&store.covers_dir()))
+            Ok(state.data.book(id)?.to_book(store.covers_dir()))
         }
         Err(err) => {
             if let Some(cover) = &cover_file {
@@ -784,7 +780,7 @@ fn attach_and_save(
     match result {
         Ok(()) => {
             apply(&mut state, next, events);
-            Ok(state.data.book(id)?.to_book(&store.covers_dir()))
+            Ok(state.data.book(id)?.to_book(store.covers_dir()))
         }
         Err(err) => {
             store.delete_book_file(&epub_file);
