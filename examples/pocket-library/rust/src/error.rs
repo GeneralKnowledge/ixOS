@@ -47,6 +47,9 @@ pub enum LibraryError {
     /// The file is not an EPUB this app can read.
     #[error("unsupported file: {reason}")]
     UnsupportedFile { reason: String },
+    /// The request was stopped with its `Cancellation`. Nothing changed.
+    #[error("cancelled")]
+    Cancelled,
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the library has been closed")]
     ShutDown,
@@ -80,7 +83,7 @@ impl From<NetError> for LibraryError {
             NetError::Offline { reason } => Self::Offline { reason },
             NetError::Certificate { reason } => Self::Certificate { reason },
             NetError::Timeout => Self::Timeout,
-            NetError::Cancelled => Self::ShutDown,
+            NetError::Cancelled => Self::Cancelled,
             other => Self::Network {
                 reason: other.to_string(),
             },

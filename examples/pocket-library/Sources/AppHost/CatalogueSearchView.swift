@@ -130,9 +130,8 @@ struct CatalogueSearchView: View {
         state = .searching
         do {
             let results = try await model.searchCatalogue(submitted.text)
-            // A newer search replaced this one while it ran: drop the result.
-            // (The Rust request finishes in the background; with PR #30's
-            // cancellable requests it could be stopped instead.)
+            // A newer search replaced this one, or the sheet closed: the
+            // model has already stopped the Rust request.
             guard !Task.isCancelled else { return }
             state = .results(results)
         } catch {

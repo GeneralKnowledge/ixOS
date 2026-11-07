@@ -20,6 +20,7 @@ public enum ErrorText {
         case .Certificate: return "Secure Connection Failed"
         case .Network: return "Network Problem"
         case .UnsupportedFile: return "Can't Read That File"
+        case .Cancelled: return "Search Stopped"
         case .ShutDown: return "Library Closed"
         }
     }
@@ -41,6 +42,7 @@ public enum ErrorText {
         case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
         case .Network(let reason): return reason
         case .UnsupportedFile(let reason): return "Pocket Library imports EPUB books. \(reason)"
+        case .Cancelled: return "Nothing was changed."
         case .ShutDown: return "Restart the app to keep going."
         }
     }

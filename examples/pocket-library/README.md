@@ -50,7 +50,7 @@ examples/pocket-library/
 
 **Networking.** HTTPS through `forge-net` (rustls with the iOS trust store), a 15-second timeout, and a User-Agent naming the app, as Open Library asks. The catalogue sits behind the `BookCatalogue` trait, so another service could replace it; the tests run the Open Library client against canned responses.
 
-**Lifecycle.** The app keeps one `Library` for its whole life. When it returns to the foreground it re-reads its state (so "this year" and "last 7 days" are current). Nothing needs saving when it goes to the background. Switching away from a catalogue search drops its result in Swift; the Rust request runs to its timeout. In-flight request cancellation from Swift arrives with Forge's PR #30, and this app should adopt it then.
+**Lifecycle.** The app keeps one `Library` for its whole life. When it returns to the foreground it re-reads its state (so "this year" and "last 7 days" are current). Nothing needs saving when it goes to the background. Leaving a catalogue search (or starting a new one) cancels its Swift task, and the model passes that on to Rust through a `Cancellation`, so the HTTP request stops at once instead of running to its timeout. `shutdown` stops any request still in flight.
 
 ## Build and run from Linux
 

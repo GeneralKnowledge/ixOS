@@ -243,6 +243,27 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_CANCELLATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_CANCELLATION
+uint64_t uniffi_forge_ffi_fn_clone_cancellation(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_CANCELLATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_CANCELLATION
+void uniffi_forge_ffi_fn_free_cancellation(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_CANCELLATION_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CONSTRUCTOR_CANCELLATION_NEW
+uint64_t uniffi_forge_ffi_fn_constructor_cancellation_new(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CANCELLATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CANCELLATION_CANCEL
+void uniffi_forge_ffi_fn_method_cancellation_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LIBRARY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LIBRARY
 uint64_t uniffi_forge_ffi_fn_clone_library(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -310,7 +331,7 @@ uint64_t uniffi_forge_ffi_fn_method_library_import_epub(uint64_t ptr, RustBuffer
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_IMPORT_FROM_CATALOGUE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_IMPORT_FROM_CATALOGUE
-uint64_t uniffi_forge_ffi_fn_method_library_import_from_catalogue(uint64_t ptr, RustBuffer key
+uint64_t uniffi_forge_ffi_fn_method_library_import_from_catalogue(uint64_t ptr, RustBuffer key, RustBuffer cancellation
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_REVISION
@@ -320,7 +341,7 @@ uint64_t uniffi_forge_ffi_fn_method_library_revision(uint64_t ptr, RustCallStatu
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SEARCH_CATALOGUE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SEARCH_CATALOGUE
-uint64_t uniffi_forge_ffi_fn_method_library_search_catalogue(uint64_t ptr, RustBuffer query
+uint64_t uniffi_forge_ffi_fn_method_library_search_catalogue(uint64_t ptr, RustBuffer query, RustBuffer cancellation
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SET_STATUS
@@ -666,6 +687,12 @@ uint16_t uniffi_forge_ffi_checksum_func_epub_words_per_page(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CANCELLATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CANCELLATION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_cancellation_cancel(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_ADD_BOOK
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_ADD_BOOK
 uint16_t uniffi_forge_ffi_checksum_method_library_add_book(void
@@ -795,6 +822,12 @@ uint16_t uniffi_forge_ffi_checksum_method_libraryevents_cancel(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARYEVENTS_NEXT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARYEVENTS_NEXT
 uint16_t uniffi_forge_ffi_checksum_method_libraryevents_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_CANCELLATION_NEW
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_CONSTRUCTOR_CANCELLATION_NEW
+uint16_t uniffi_forge_ffi_checksum_constructor_cancellation_new(void
     
 );
 #endif

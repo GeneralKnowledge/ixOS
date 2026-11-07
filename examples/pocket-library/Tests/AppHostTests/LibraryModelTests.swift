@@ -138,4 +138,21 @@ final class LibraryModelTests: XCTestCase {
         }
         model.close()
     }
+
+    @MainActor
+    func testCancellingTheTaskStopsTheRustSearch() async throws {
+        let model = await openModel(try makeDirectory())
+        // Cancelled before it starts, so no request goes out: the model's
+        // Cancellation reaches Rust, which refuses to send.
+        let search = Task { @MainActor in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try await model.searchCatalogue("dune")
+        }
+        do {
+            _ = try await search.value
+            XCTFail("expected Cancelled")
+        } catch LibraryError.Cancelled {
+        }
+        model.close()
+    }
 }

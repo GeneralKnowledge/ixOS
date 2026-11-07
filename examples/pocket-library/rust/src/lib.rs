@@ -26,7 +26,9 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use forge_net::UreqClient;
-use forge_runtime::{background, Delivery, EventHub, Subscription};
+use forge_runtime::{
+    background, background_cancellable, CancelHandle, Delivery, EventHub, Subscription,
+};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
 use domain::{fold, validate, LibraryData};
@@ -59,6 +61,30 @@ pub struct Library {
     events: EventHub<LibraryEvent>,
     catalogue: Arc<dyn BookCatalogue>,
     shut_down: Arc<AtomicBool>,
+    /// Cancelled by `shutdown`; every catalogue request runs under a child.
+    lifetime: CancelHandle,
+}
+
+/// Lets the host stop a catalogue request part way. Swift creates one per
+/// call and cancels it from `withTaskCancellationHandler`, because
+/// cancelling a Swift `Task` does not reach Rust on its own.
+#[derive(uniffi::Object, Default)]
+pub struct Cancellation {
+    handle: CancelHandle,
+}
+
+#[uniffi::export]
+impl Cancellation {
+    #[uniffi::constructor]
+    pub fn new() -> Arc<Self> {
+        Arc::new(Self::default())
+    }
+
+    /// Stops the request: it fails with `Cancelled` at once, even while
+    /// waiting for a slow server, and changes nothing. Idempotent.
+    pub fn cancel(&self) {
+        self.handle.cancel();
+    }
 }
 
 #[uniffi::export]
@@ -196,9 +222,11 @@ impl Library {
 
     /// Searches the online catalogue. Nothing in the library changes; on any
     /// failure the library is exactly as it was.
+    /// `cancellation` stops it part way with `Cancelled`.
     pub async fn search_catalogue(
         &self,
         query: String,
+        cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Vec<CatalogueBook>, LibraryError> {
         self.ensure_running()?;
         self.ensure_catalogue_enabled()?;
@@ -210,8 +238,8 @@ impl Library {
         }
         let catalogue = Arc::clone(&self.catalogue);
         let state = Arc::clone(&self.state);
-        background("search-catalogue", move || {
-            let hits = catalogue.search(&query)?;
+        self.cancellable("search-catalogue", cancellation, move |cancel| {
+            let hits = catalogue.search(&query, cancel)?;
             let mut state = lock(&state);
             state.last_search = hits.iter().map(|h| (h.key.clone(), h.clone())).collect();
             Ok(hits
@@ -237,8 +265,13 @@ impl Library {
 
     /// Adds a result of the latest search as a Want to Read book. Its
     /// description and a cover are fetched too; if they fail the book is
-    /// still added, without them, and `warnings` says so.
-    pub async fn import_from_catalogue(&self, key: String) -> Result<ImportedBook, LibraryError> {
+    /// still added, without them, and `warnings` says so. `cancellation`
+    /// stops it part way with `Cancelled`, and then nothing is added.
+    pub async fn import_from_catalogue(
+        &self,
+        key: String,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<ImportedBook, LibraryError> {
         self.ensure_running()?;
         self.ensure_catalogue_enabled()?;
         let source = BookSource::OpenLibrary {
@@ -255,10 +288,11 @@ impl Library {
         };
         let catalogue = Arc::clone(&self.catalogue);
         let (state, store, events) = self.parts();
-        background("import-catalogue", move || {
+        self.cancellable("import-catalogue", cancellation, move |cancel| {
             let mut warnings = Vec::new();
-            let description = match catalogue.description(&hit.key) {
+            let description = match catalogue.description(&hit.key, cancel) {
                 Ok(text) => text.unwrap_or_default(),
+                Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
                 Err(err) => {
                     warnings.push(format!("The description could not be loaded ({err})."));
                     String::new()
@@ -266,10 +300,11 @@ impl Library {
             };
             let cover_file = match &hit.large_cover_url {
                 None => None,
-                Some(url) => match catalogue.cover(url).and_then(|(bytes, ext)| {
+                Some(url) => match catalogue.cover(url, cancel).and_then(|(bytes, ext)| {
                     store.save_cover(&format!("ol-{}", hit.key), ext, &bytes)
                 }) {
                     Ok(name) => Some(name),
+                    Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
                     Err(err) => {
                         warnings.push(format!(
                             "The cover could not be saved for offline use ({err})."
@@ -452,10 +487,12 @@ impl Library {
             .ok_or(LibraryError::ShutDown)
     }
 
-    /// Refuses new commands with `ShutDown` and ends every event stream.
-    /// Commands already running finish and save. Idempotent.
+    /// Refuses new commands with `ShutDown`, stops catalogue requests in
+    /// flight (they fail with `ShutDown`) and ends every event stream. Saves
+    /// already running finish, so no write is cut short. Idempotent.
     pub fn shutdown(&self) {
         self.shut_down.store(true, Ordering::SeqCst);
+        self.lifetime.cancel();
         self.events.close();
     }
 }
@@ -479,7 +516,39 @@ impl Library {
             events: EventHub::new(),
             catalogue,
             shut_down: Arc::new(AtomicBool::new(false)),
+            lifetime: CancelHandle::new(),
         }))
+    }
+
+    /// Runs catalogue work on its own thread under a handle that is
+    /// cancelled by `cancellation`, by `shutdown`, or by dropping the future.
+    /// A request stopped by `shutdown` fails with `ShutDown`.
+    async fn cancellable<T, F>(
+        &self,
+        name: &str,
+        cancellation: Option<Arc<Cancellation>>,
+        work: F,
+    ) -> Result<T, LibraryError>
+    where
+        T: Send + 'static,
+        F: FnOnce(&CancelHandle) -> Result<T, LibraryError> + Send + 'static,
+    {
+        let lifetime = self.lifetime.clone();
+        let (cancel, under_lifetime) = self.lifetime.child();
+        let from_host = cancellation.map(|c| {
+            let cancel = cancel.clone();
+            c.handle.on_cancel(move || cancel.cancel())
+        });
+        background_cancellable(name, cancel, move |cancel| {
+            let _links = (under_lifetime, from_host); // released when the work ends
+            match work(cancel) {
+                Err(LibraryError::Cancelled) if lifetime.is_cancelled() => {
+                    Err(LibraryError::ShutDown)
+                }
+                result => result,
+            }
+        })
+        .await
     }
 
     fn ensure_running(&self) -> Result<(), LibraryError> {

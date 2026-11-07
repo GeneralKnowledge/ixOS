@@ -19,16 +19,16 @@ fn open(dir: &Path) -> Arc<Library> {
 struct OfflineCatalogue;
 
 impl BookCatalogue for OfflineCatalogue {
-    fn search(&self, _: &str) -> Result<Vec<CatalogueHit>, LibraryError> {
+    fn search(&self, _: &str, _: &CancelHandle) -> Result<Vec<CatalogueHit>, LibraryError> {
         Err(NetError::Offline {
             reason: "no route to host".into(),
         }
         .into())
     }
-    fn description(&self, _: &str) -> Result<Option<String>, LibraryError> {
+    fn description(&self, _: &str, _: &CancelHandle) -> Result<Option<String>, LibraryError> {
         Err(LibraryError::Timeout)
     }
-    fn cover(&self, _: &str) -> Result<(Vec<u8>, &'static str), LibraryError> {
+    fn cover(&self, _: &str, _: &CancelHandle) -> Result<(Vec<u8>, &'static str), LibraryError> {
         Err(LibraryError::Timeout)
     }
 }
@@ -114,18 +114,18 @@ fn offline_the_library_works_and_lookups_fail_without_harm() {
     let before = library.books(all());
 
     assert!(matches!(
-        block_on(library.search_catalogue("dune".into())),
+        block_on(library.search_catalogue("dune".into(), None)),
         Err(LibraryError::Offline { .. })
     ));
     assert_eq!(library.books(all()), before);
     assert_eq!(library.revision(), revision);
     // Imports need a result from a search.
     assert!(matches!(
-        block_on(library.import_from_catalogue("/works/OL1W".into())),
+        block_on(library.import_from_catalogue("/works/OL1W".into(), None)),
         Err(LibraryError::InvalidInput { .. })
     ));
     assert!(matches!(
-        block_on(library.search_catalogue(" d ".into())),
+        block_on(library.search_catalogue(" d ".into(), None)),
         Err(LibraryError::InvalidInput { .. })
     ));
 }
@@ -155,11 +155,11 @@ fn search_then_import_saves_description_and_cover() {
         );
     let library = Library::open(dir_string(dir.path()), Arc::new(catalogue(client))).unwrap();
 
-    let results = block_on(library.search_catalogue("hobbit".into())).unwrap();
+    let results = block_on(library.search_catalogue("hobbit".into(), None)).unwrap();
     assert_eq!(results.len(), 3);
     assert_eq!(results[0].library_book_id, None);
 
-    let imported = block_on(library.import_from_catalogue("/works/OL27482W".into())).unwrap();
+    let imported = block_on(library.import_from_catalogue("/works/OL27482W".into(), None)).unwrap();
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let book = imported.book;
     assert_eq!(book.title, "The Hobbit");
@@ -171,10 +171,10 @@ fn search_then_import_saves_description_and_cover() {
     assert_eq!(std::fs::read(&cover).unwrap()[..3], [0xFF, 0xD8, 0xFF]);
 
     // Searching again marks it; importing it twice is refused.
-    let again = block_on(library.search_catalogue("hobbit".into())).unwrap();
+    let again = block_on(library.search_catalogue("hobbit".into(), None)).unwrap();
     assert_eq!(again[0].library_book_id, Some(book.id));
     assert_eq!(
-        block_on(library.import_from_catalogue("/works/OL27482W".into())),
+        block_on(library.import_from_catalogue("/works/OL27482W".into(), None)),
         Err(LibraryError::AlreadyInLibrary { id: book.id })
     );
 
@@ -200,8 +200,8 @@ fn a_partial_import_keeps_the_book_and_says_what_is_missing() {
             Err(NetError::Timeout),
         );
     let library = Library::open(dir_string(dir.path()), Arc::new(catalogue(client))).unwrap();
-    block_on(library.search_catalogue("hobbit".into())).unwrap();
-    let imported = block_on(library.import_from_catalogue("/works/OL27482W".into())).unwrap();
+    block_on(library.search_catalogue("hobbit".into(), None)).unwrap();
+    let imported = block_on(library.import_from_catalogue("/works/OL27482W".into(), None)).unwrap();
     assert_eq!(imported.warnings.len(), 2, "{:?}", imported.warnings);
     assert_eq!(imported.book.description, "");
     assert_eq!(imported.book.cover_file, None);
@@ -222,7 +222,7 @@ fn the_catalogue_can_be_switched_off() {
     }))
     .unwrap();
     assert_eq!(
-        block_on(library.search_catalogue("anything".into())),
+        block_on(library.search_catalogue("anything".into(), None)),
         Err(LibraryError::CatalogueDisabled)
     );
 }
@@ -455,4 +455,137 @@ fn default_query_uses_the_preferred_order() {
     });
     assert_eq!(q.sort, LibrarySort::Title);
     assert!(q.text.is_empty() && q.status.is_none());
+}
+
+/// A catalogue whose requests hang until they are cancelled, like a server
+/// that never answers. Searches after the first `release` answer at once.
+struct HangingCatalogue {
+    started: std::sync::mpsc::SyncSender<()>,
+}
+
+impl HangingCatalogue {
+    fn hang(&self, cancel: &CancelHandle) -> LibraryError {
+        let _ = self.started.try_send(());
+        if cancel.wait_timeout(std::time::Duration::from_secs(30)) {
+            LibraryError::Cancelled
+        } else {
+            LibraryError::Timeout
+        }
+    }
+}
+
+impl BookCatalogue for HangingCatalogue {
+    fn search(&self, _: &str, cancel: &CancelHandle) -> Result<Vec<CatalogueHit>, LibraryError> {
+        Err(self.hang(cancel))
+    }
+    fn description(&self, _: &str, cancel: &CancelHandle) -> Result<Option<String>, LibraryError> {
+        Err(self.hang(cancel))
+    }
+    fn cover(
+        &self,
+        _: &str,
+        cancel: &CancelHandle,
+    ) -> Result<(Vec<u8>, &'static str), LibraryError> {
+        Err(self.hang(cancel))
+    }
+}
+
+fn open_hanging(dir: &Path) -> (Arc<Library>, std::sync::mpsc::Receiver<()>) {
+    let (started, on_start) = std::sync::mpsc::sync_channel(8);
+    let library = Library::open(dir_string(dir), Arc::new(HangingCatalogue { started })).unwrap();
+    (library, on_start)
+}
+
+/// Runs `call` on another thread; returns its result and how long it took
+/// after `trigger` ran (once the request had started).
+fn stop_in_flight<T: Send + 'static>(
+    on_start: &std::sync::mpsc::Receiver<()>,
+    call: impl FnOnce() -> T + Send + 'static,
+    trigger: impl FnOnce(),
+) -> (T, std::time::Duration) {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || tx.send(call()).unwrap());
+    on_start
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the request started");
+    let stopped_at = std::time::Instant::now();
+    trigger();
+    let result = rx
+        .recv_timeout(std::time::Duration::from_secs(5))
+        .expect("the request stopped promptly");
+    (result, stopped_at.elapsed())
+}
+
+#[test]
+fn a_cancelled_search_stops_at_once_and_changes_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (library, on_start) = open_hanging(dir.path());
+    let cancellation = Cancellation::new();
+    let (result, took) = {
+        let library = Arc::clone(&library);
+        let passed = Arc::clone(&cancellation);
+        stop_in_flight(
+            &on_start,
+            move || block_on(library.search_catalogue("dune".into(), Some(passed))),
+            || cancellation.cancel(),
+        )
+    };
+    assert_eq!(result, Err(LibraryError::Cancelled));
+    assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
+    // The library still works, and other requests are not affected.
+    assert_eq!(library.revision(), 0);
+    block_on(library.add_book(input("Dune", None))).unwrap();
+}
+
+#[test]
+fn a_cancelled_import_adds_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (started, on_start) = std::sync::mpsc::sync_channel(8);
+    let probe = catalogue(StaticClient::new());
+    let client = StaticClient::new().route(
+        Method::Get,
+        probe.search_url("hobbit"),
+        Ok(Response::new(200, SEARCH_BODY)),
+    );
+    // Search with a working catalogue, then import through a hanging one,
+    // reusing the first library's results.
+    let library = Library::open(dir_string(dir.path()), Arc::new(catalogue(client))).unwrap();
+    block_on(library.search_catalogue("hobbit".into(), None)).unwrap();
+    let last_search = lock(&library.state).last_search.clone();
+    library.shutdown();
+    let library = Library::open(
+        dir_string(dir.path()),
+        Arc::new(HangingCatalogue { started }),
+    )
+    .unwrap();
+    lock(&library.state).last_search = last_search;
+
+    let cancellation = Cancellation::new();
+    let (result, _) = {
+        let library = Arc::clone(&library);
+        let passed = Arc::clone(&cancellation);
+        stop_in_flight(
+            &on_start,
+            move || block_on(library.import_from_catalogue("/works/OL27482W".into(), Some(passed))),
+            || cancellation.cancel(),
+        )
+    };
+    assert_eq!(result.unwrap_err(), LibraryError::Cancelled);
+    assert_eq!(library.books(all()), vec![]);
+}
+
+#[test]
+fn shutdown_stops_a_request_in_flight() {
+    let dir = tempfile::tempdir().unwrap();
+    let (library, on_start) = open_hanging(dir.path());
+    let (result, took) = {
+        let searching = Arc::clone(&library);
+        stop_in_flight(
+            &on_start,
+            move || block_on(searching.search_catalogue("dune".into(), None)),
+            || library.shutdown(),
+        )
+    };
+    assert_eq!(result, Err(LibraryError::ShutDown));
+    assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
 }

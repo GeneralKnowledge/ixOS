@@ -632,6 +632,148 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 /**
+ * Lets the host stop a catalogue request part way. Swift creates one per
+ * call and cancels it from `withTaskCancellationHandler`, because
+ * cancelling a Swift `Task` does not reach Rust on its own.
+ */
+public protocol CancellationProtocol: AnyObject, Sendable {
+    
+    /**
+     * Stops the request: it fails with `Cancelled` at once, even while
+     * waiting for a slow server, and changes nothing. Idempotent.
+     */
+    func cancel() 
+    
+}
+/**
+ * Lets the host stop a catalogue request part way. Swift creates one per
+ * call and cancels it from `withTaskCancellationHandler`, because
+ * cancelling a Swift `Task` does not reach Rust on its own.
+ */
+open class Cancellation: CancellationProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_cancellation(self.handle, $0) }
+    }
+public convenience init() {
+    let handle =
+        try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_constructor_cancellation_new(uniffiCallStatus
+    )
+}
+    self.init(unsafeFromHandle: handle)
+}
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_cancellation(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Stops the request: it fails with `Cancelled` at once, even while
+     * waiting for a slow server, and changes nothing. Idempotent.
+     */
+open func cancel()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_cancellation_cancel(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCancellation: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = Cancellation
+
+    public static func lift(_ handle: UInt64) throws -> Cancellation {
+        return Cancellation(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: Cancellation) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Cancellation {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: Cancellation, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCancellation_lift(_ handle: UInt64) throws -> Cancellation {
+    return try FfiConverterTypeCancellation.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCancellation_lower(_ value: Cancellation) -> UInt64 {
+    return FfiConverterTypeCancellation.lower(value)
+}
+
+
+
+
+
+
+/**
  * The library the host opens once and shares. Thread-safe.
  */
 public protocol LibraryProtocol: AnyObject, Sendable {
@@ -685,9 +827,10 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     /**
      * Adds a result of the latest search as a Want to Read book. Its
      * description and a cover are fetched too; if they fail the book is
-     * still added, without them, and `warnings` says so.
+     * still added, without them, and `warnings` says so. `cancellation`
+     * stops it part way with `Cancelled`, and then nothing is added.
      */
-    func importFromCatalogue(key: String) async throws  -> ImportedBook
+    func importFromCatalogue(key: String, cancellation: Cancellation?) async throws  -> ImportedBook
     
     /**
      * Increases with every saved change.
@@ -697,8 +840,9 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
      * failure the library is exactly as it was.
+     * `cancellation` stops it part way with `Cancelled`.
      */
-    func searchCatalogue(query: String) async throws  -> [CatalogueBook]
+    func searchCatalogue(query: String, cancellation: Cancellation?) async throws  -> [CatalogueBook]
     
     /**
      * Moves a book to `status`: Want to Read resets the page, Finished
@@ -709,8 +853,9 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func settings()  -> LibrarySettings
     
     /**
-     * Refuses new commands with `ShutDown` and ends every event stream.
-     * Commands already running finish and save. Idempotent.
+     * Refuses new commands with `ShutDown`, stops catalogue requests in
+     * flight (they fail with `ShutDown`) and ends every event stream. Saves
+     * already running finish, so no write is cut short. Idempotent.
      */
     func shutdown() 
     
@@ -971,14 +1116,15 @@ open func importEpub(path: String)async throws  -> Book  {
     /**
      * Adds a result of the latest search as a Want to Read book. Its
      * description and a cover are fetched too; if they fail the book is
-     * still added, without them, and `warnings` says so.
+     * still added, without them, and `warnings` says so. `cancellation`
+     * stops it part way with `Cancelled`, and then nothing is added.
      */
-open func importFromCatalogue(key: String)async throws  -> ImportedBook  {
+open func importFromCatalogue(key: String, cancellation: Cancellation?)async throws  -> ImportedBook  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_forge_ffi_fn_method_library_import_from_catalogue(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(key)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(key),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
             pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
@@ -1004,13 +1150,14 @@ open func revision() -> UInt64  {
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
      * failure the library is exactly as it was.
+     * `cancellation` stops it part way with `Cancelled`.
      */
-open func searchCatalogue(query: String)async throws  -> [CatalogueBook]  {
+open func searchCatalogue(query: String, cancellation: Cancellation?)async throws  -> [CatalogueBook]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_forge_ffi_fn_method_library_search_catalogue(
-                        self.uniffiCloneHandle(),FfiConverterString.lower(query)
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
             pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
@@ -1051,8 +1198,9 @@ open func settings() -> LibrarySettings  {
 }
     
     /**
-     * Refuses new commands with `ShutDown` and ends every event stream.
-     * Commands already running finish and save. Idempotent.
+     * Refuses new commands with `ShutDown`, stops catalogue requests in
+     * flight (they fail with `ShutDown`) and ends every event stream. Saves
+     * already running finish, so no write is cut short. Idempotent.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
@@ -2368,6 +2516,10 @@ enum LibraryError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case UnsupportedFile(reason: String
     )
     /**
+     * The request was stopped with its `Cancellation`. Nothing changed.
+     */
+    case Cancelled
+    /**
      * `shutdown()` was called; the instance accepts no more work.
      */
     case ShutDown
@@ -2436,7 +2588,8 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
         case 13: return .UnsupportedFile(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .ShutDown
+        case 14: return .Cancelled
+        case 15: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2513,8 +2666,12 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .ShutDown:
+        case .Cancelled:
             writeInt(&buf, Int32(14))
+        
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(15))
         
         }
     }
@@ -2971,6 +3128,30 @@ fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeCancellation: FfiConverterRustBuffer {
+    typealias SwiftType = Cancellation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCancellation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCancellation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeLibraryEvent: FfiConverterRustBuffer {
     typealias SwiftType = LibraryEvent?
 
@@ -3208,6 +3389,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_epub_words_per_page() != 4754) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_cancellation_cancel() != 39214) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_library_add_book() != 49896) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -3235,13 +3419,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_import_epub() != 151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_import_from_catalogue() != 26493) {
+    if (uniffi_forge_ffi_checksum_method_library_import_from_catalogue() != 52856) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_revision() != 17488) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_search_catalogue() != 50028) {
+    if (uniffi_forge_ffi_checksum_method_library_search_catalogue() != 56333) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_set_status() != 39346) {
@@ -3250,7 +3434,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_settings() != 54012) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_shutdown() != 61312) {
+    if (uniffi_forge_ffi_checksum_method_library_shutdown() != 4853) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_stats() != 19039) {
@@ -3272,6 +3456,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_libraryevents_next() != 13595) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_constructor_cancellation_new() != 30354) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_library_new() != 36986) {

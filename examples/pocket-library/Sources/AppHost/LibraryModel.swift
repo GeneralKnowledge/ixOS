@@ -177,13 +177,33 @@ public final class LibraryModel {
         try await run { try await $0.deleteBook(id: id) }
     }
 
+    /// Cancelling the calling task stops the Rust request too; it then
+    /// throws `LibraryError.Cancelled`.
     public func searchCatalogue(_ query: String) async throws -> [CatalogueBook] {
         guard let library else { throw LibraryError.ShutDown }
-        return try await library.searchCatalogue(query: query)
+        return try await Self.stoppable { try await library.searchCatalogue(query: query, cancellation: $0) }
     }
 
+    /// Cancelling the calling task stops the import, and nothing is added.
     public func importFromCatalogue(_ key: String) async throws -> ImportedBook {
-        try await run { try await $0.importFromCatalogue(key: key) }
+        try await run { library in
+            try await Self.stoppable { try await library.importFromCatalogue(key: key, cancellation: $0) }
+        }
+    }
+
+    /// Runs a Rust request with a `Cancellation` that the calling task's
+    /// cancellation triggers: cancelling a Swift task does not reach Rust on
+    /// its own (UniFFI 0.32). Runs on the caller's actor.
+    private nonisolated static func stoppable<T: Sendable>(
+        isolation: isolated (any Actor)? = #isolation,
+        _ request: (Cancellation) async throws -> T
+    ) async throws -> T {
+        let cancellation = Cancellation()
+        return try await withTaskCancellationHandler {
+            try await request(cancellation)
+        } onCancel: {
+            cancellation.cancel()
+        }
     }
 
     /// Imports an EPUB chosen in the document picker. The picker's URL is

@@ -7,7 +7,7 @@
 
 use std::time::Duration;
 
-use forge_net::{HttpClient, Request, Response};
+use forge_net::{CancelHandle, HttpClient, Request, Response};
 use serde::Deserialize;
 
 use crate::epub::image_extension;
@@ -28,12 +28,21 @@ pub struct CatalogueHit {
 }
 
 pub trait BookCatalogue: Send + Sync {
+    // Each request stops part way, failing with `Cancelled`, when `cancel` is
+    // cancelled (by the host, or by `shutdown`).
+
     /// Up to 20 works matching `query`.
-    fn search(&self, query: &str) -> Result<Vec<CatalogueHit>, LibraryError>;
+    fn search(&self, query: &str, cancel: &CancelHandle)
+        -> Result<Vec<CatalogueHit>, LibraryError>;
     /// The work's description, if the catalogue has one.
-    fn description(&self, key: &str) -> Result<Option<String>, LibraryError>;
+    fn description(&self, key: &str, cancel: &CancelHandle)
+        -> Result<Option<String>, LibraryError>;
     /// Downloads a cover image. Returns the bytes and a file extension.
-    fn cover(&self, url: &str) -> Result<(Vec<u8>, &'static str), LibraryError>;
+    fn cover(
+        &self,
+        url: &str,
+        cancel: &CancelHandle,
+    ) -> Result<(Vec<u8>, &'static str), LibraryError>;
 }
 
 pub const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
@@ -73,11 +82,16 @@ impl<C: HttpClient> OpenLibrary<C> {
         )
     }
 
-    fn get(&self, url: String, timeout: Duration) -> Result<Response, LibraryError> {
+    fn get(
+        &self,
+        url: String,
+        timeout: Duration,
+        cancel: &CancelHandle,
+    ) -> Result<Response, LibraryError> {
         let request = Request::get(url)
             .header("Accept", "application/json")
             .timeout(timeout);
-        let response = self.http.send(&request)?;
+        let response = self.http.send_cancellable(&request, cancel)?;
         check_status(&response)?;
         Ok(response)
     }
@@ -139,18 +153,30 @@ fn valid_work_key(key: &str) -> bool {
 }
 
 impl<C: HttpClient> BookCatalogue for OpenLibrary<C> {
-    fn search(&self, query: &str) -> Result<Vec<CatalogueHit>, LibraryError> {
-        let response = self.get(self.search_url(query), SEARCH_TIMEOUT)?;
+    fn search(
+        &self,
+        query: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Vec<CatalogueHit>, LibraryError> {
+        let response = self.get(self.search_url(query), SEARCH_TIMEOUT, cancel)?;
         parse_search(&response.body, |id, size| self.cover_url(id, size))
     }
 
-    fn description(&self, key: &str) -> Result<Option<String>, LibraryError> {
+    fn description(
+        &self,
+        key: &str,
+        cancel: &CancelHandle,
+    ) -> Result<Option<String>, LibraryError> {
         if !valid_work_key(key) {
             return Err(LibraryError::invalid(format!(
                 "not an Open Library work key: {key:?}"
             )));
         }
-        let response = self.get(format!("{}{key}.json", self.api_base), SEARCH_TIMEOUT)?;
+        let response = self.get(
+            format!("{}{key}.json", self.api_base),
+            SEARCH_TIMEOUT,
+            cancel,
+        )?;
         let work: Work =
             serde_json::from_slice(&response.body).map_err(|e| LibraryError::BadResponse {
                 reason: format!("work: {e}"),
@@ -164,14 +190,18 @@ impl<C: HttpClient> BookCatalogue for OpenLibrary<C> {
             .filter(|text| !text.is_empty()))
     }
 
-    fn cover(&self, url: &str) -> Result<(Vec<u8>, &'static str), LibraryError> {
+    fn cover(
+        &self,
+        url: &str,
+        cancel: &CancelHandle,
+    ) -> Result<(Vec<u8>, &'static str), LibraryError> {
         if !url.starts_with(&format!("{}/", self.covers_base)) {
             return Err(LibraryError::invalid(format!(
                 "not a catalogue cover: {url}"
             )));
         }
         // `default=false` makes a missing cover a 404 instead of a blank image.
-        let response = self.get(format!("{url}?default=false"), COVER_TIMEOUT)?;
+        let response = self.get(format!("{url}?default=false"), COVER_TIMEOUT, cancel)?;
         if response.body.len() > MAX_COVER_BYTES {
             return Err(LibraryError::BadResponse {
                 reason: "cover image is too large".into(),
@@ -301,7 +331,7 @@ pub(crate) mod tests {
         let ol = catalogue(StaticClient::new());
         let url = ol.search_url("hobbit");
         let ol = catalogue(StaticClient::new().route(Method::Get, url, ok(SEARCH_BODY)));
-        let hits = ol.search("hobbit").unwrap();
+        let hits = ol.search("hobbit", &CancelHandle::new()).unwrap();
         assert_eq!(hits.len(), 3);
         assert_eq!(
             hits[0],
@@ -338,49 +368,56 @@ pub(crate) mod tests {
 
         // A maintenance page instead of JSON.
         let err = with(ok("<html>Down for maintenance</html>"))
-            .search("x")
+            .search("x", &CancelHandle::new())
             .unwrap_err();
         assert!(matches!(err, LibraryError::BadResponse { .. }), "{err:?}");
         // JSON of the wrong shape.
-        let err = with(ok(r#"{"error": "nope"}"#)).search("x").unwrap_err();
+        let err = with(ok(r#"{"error": "nope"}"#))
+            .search("x", &CancelHandle::new())
+            .unwrap_err();
         assert!(matches!(err, LibraryError::BadResponse { .. }), "{err:?}");
         // Every result unusable.
         let err = with(ok(r#"{"docs": [{"title": 3}]}"#))
-            .search("x")
+            .search("x", &CancelHandle::new())
             .unwrap_err();
         assert!(matches!(err, LibraryError::BadResponse { .. }), "{err:?}");
         // No results is fine.
-        assert_eq!(with(ok(r#"{"docs": []}"#)).search("x").unwrap(), vec![]);
+        assert_eq!(
+            with(ok(r#"{"docs": []}"#))
+                .search("x", &CancelHandle::new())
+                .unwrap(),
+            vec![]
+        );
 
         let status = |code| Ok(Response::new(code, Vec::new()));
         assert!(matches!(
-            with(status(503)).search("x"),
+            with(status(503)).search("x", &CancelHandle::new()),
             Err(LibraryError::CatalogueUnavailable { .. })
         ));
         assert!(matches!(
-            with(status(429)).search("x"),
+            with(status(429)).search("x", &CancelHandle::new()),
             Err(LibraryError::CatalogueUnavailable { .. })
         ));
         assert!(matches!(
-            with(status(404)).search("x"),
+            with(status(404)).search("x", &CancelHandle::new()),
             Err(LibraryError::BadResponse { .. })
         ));
         assert_eq!(
-            with(Err(NetError::Timeout)).search("x"),
+            with(Err(NetError::Timeout)).search("x", &CancelHandle::new()),
             Err(LibraryError::Timeout)
         );
         assert!(matches!(
             with(Err(NetError::Offline {
                 reason: "no route".into()
             }))
-            .search("x"),
+            .search("x", &CancelHandle::new()),
             Err(LibraryError::Offline { .. })
         ));
         assert!(matches!(
             with(Err(NetError::Certificate {
                 reason: "expired".into()
             }))
-            .search("x"),
+            .search("x", &CancelHandle::new()),
             Err(LibraryError::Certificate { .. })
         ));
     }
@@ -401,17 +438,24 @@ pub(crate) mod tests {
                 .route(Method::Get, none, ok(r#"{"title": "No description"}"#)),
         );
         assert_eq!(
-            ol.description("/works/OL1W").unwrap().as_deref(),
+            ol.description("/works/OL1W", &CancelHandle::new())
+                .unwrap()
+                .as_deref(),
             Some("Plain text.")
         );
         assert_eq!(
-            ol.description("/works/OL2W").unwrap().as_deref(),
+            ol.description("/works/OL2W", &CancelHandle::new())
+                .unwrap()
+                .as_deref(),
             Some("A hobbit goes on an adventure.")
         );
-        assert_eq!(ol.description("/works/OL3W").unwrap(), None);
+        assert_eq!(
+            ol.description("/works/OL3W", &CancelHandle::new()).unwrap(),
+            None
+        );
         // Keys are never pasted into URLs unchecked.
         assert!(matches!(
-            ol.description("/works/../../admin"),
+            ol.description("/works/../../admin", &CancelHandle::new()),
             Err(LibraryError::InvalidInput { .. })
         ));
     }
@@ -429,18 +473,26 @@ pub(crate) mod tests {
                 )
                 .route(Method::Get, format!("{html}?default=false"), ok("<html/>")),
         );
-        assert_eq!(ol.cover(&jpeg).unwrap().1, "jpg");
+        assert_eq!(ol.cover(&jpeg, &CancelHandle::new()).unwrap().1, "jpg");
         assert!(matches!(
-            ol.cover(&html),
+            ol.cover(&html, &CancelHandle::new()),
             Err(LibraryError::BadResponse { .. })
         ));
         assert!(matches!(
-            ol.cover(&format!("{COVERS}/b/id/3-L.jpg")),
+            ol.cover(&format!("{COVERS}/b/id/3-L.jpg"), &CancelHandle::new()),
             Err(LibraryError::BadResponse { .. }) // 404: no such cover
         ));
         assert!(matches!(
-            ol.cover("https://evil.test/x.jpg"),
+            ol.cover("https://evil.test/x.jpg", &CancelHandle::new()),
             Err(LibraryError::InvalidInput { .. })
         ));
+    }
+
+    #[test]
+    fn a_cancelled_request_is_not_sent() {
+        let ol = catalogue(StaticClient::new());
+        let cancel = CancelHandle::new();
+        cancel.cancel();
+        assert_eq!(ol.search("x", &cancel), Err(LibraryError::Cancelled));
     }
 }

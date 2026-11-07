@@ -20,7 +20,7 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | # | Step | Kind | Status | Evidence |
 |---|------|------|--------|----------|
 | 1 | Generate the app: `forge init PocketLibrary --platform ios --bundle-id org.forgemobile.pocketlibrary --path examples/pocket-library` | local build (Linux) | Done | The starter was generated, then replaced screen by screen; `forge.toml`, `Package.swift`, `xtool.yml` and the Xcode project are the generated ones |
-| 2 | Build and test its Rust crate on Linux | local build + automated | Done | 41 tests pass; clippy clean; `scripts/check-app-crates.sh` runs them in CI |
+| 2 | Build and test its Rust crate on Linux | local build + automated | Done | 45 tests pass; clippy clean; `scripts/check-app-crates.sh` runs them in CI |
 | 2b | Rust crate compiles for `aarch64-apple-ios` | local build (Linux) | Type-checked only | `cargo check --target aarch64-apple-ios` with stub C headers for `ring` (no Darwin SDK in the cloud environment). The real build happens in step 5 |
 | 3 | Generate the Swift bindings | local build + automated | Done | `forge bindings generate --project`; CI fails if the committed `Generated/` drifts from the crate |
 | 4 | Compile the SwiftUI host | automated (macOS CI) | Pending CI | XCTest suite (`test-swift-host.sh`) and an unsigned `xcodebuild` of the iOS app |
@@ -36,12 +36,12 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | Problem | Layer | Fix | Regression test |
 |---------|-------|-----|-----------------|
 | On Linux every `forge build/run ios` rebuilt the Rust library: the build recorded the SDK path it resolved from xtool, but the next run's staleness check only sees the caller's `SDKROOT`, so they never matched | build scripts | `build-rust-ios.sh` records the SDKROOT it was given | `scripts/test-native-rebuild.sh` (stub cargo/rustup/swift; fails without the fix) |
+| Leaving a catalogue search let its Rust request run to the 15 s timeout | app (consumes #30) | One `Cancellation` per catalogue search and import, triggered by Swift task cancellation; `shutdown` stops requests in flight | `a_cancelled_search_stops_at_once_and_changes_nothing`, `a_cancelled_import_adds_nothing`, `shutdown_stops_a_request_in_flight` (Rust); `testCancellingTheTaskStopsTheRustSearch` (XCTest) |
 | Apps made with `forge init` inside the checkout have their own Cargo workspace, so CI's `cargo fmt/clippy/test --workspace` and the binding drift check never looked at them | CI / scripts | `scripts/check-app-crates.sh` (fmt, clippy, tests, Swift binding drift for every `examples/*/rust`), in CI, `forge check` and `make check-app-crates` | The script itself; checked to fail on a stale binding |
 
-Found, not fixed here (belongs elsewhere):
+Still open:
 
-- **Cancelling a Rust request from Swift.** Leaving a catalogue search early drops the result but lets the request run to its timeout. PR #30 adds `Cancellation` and `background_cancellable`; Pocket Library should pass one per search once it merges.
-- **App icon.** The generated app has no icon and Forge has no place to declare one (`forge.toml` / `xtool.yml`). This is part of app configuration (M4).
+- **App icon.** Forge can now declare one (`[ios] icon` in `forge.toml`, from #31), but Pocket Library has no icon artwork yet, so it shows the default.
 
 ## Manual acceptance on an iPhone (Linux)
 
@@ -51,7 +51,7 @@ Run on the Linux machine with xtool and the phone plugged in and unlocked. Recor
 git fetch origin && git checkout <this branch>
 cd examples/pocket-library
 xtool --version; swift --version; forge doctor        # record the versions
-cargo test --manifest-path rust/Cargo.toml             # 41 passed
+cargo test --manifest-path rust/Cargo.toml             # 45 passed
 forge run ios                                          # debug build, installs and launches
 ```
 
