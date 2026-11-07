@@ -15,16 +15,16 @@ This is milestone M0 of Forge Device. Installing builds, a live connection to th
 |---|---|
 | `forge device list` | Every connected phone: UDID, name, model, iOS version, connection |
 | `forge device info` | One phone's name, model, iOS version and build, and whether Developer Mode is on |
-| `forge device logs --process Chat` | Streams the system log, keeping only lines from the `Chat` process. Ctrl-C stops |
+| `forge device logs --process ChatXtool` | Streams the system log, keeping only lines from Chat's process (`ChatXtool`). Ctrl-C stops |
 | `forge device logs --grep "[chat]" --limit 20` | Lines containing some text; stop after 20 |
-| `forge device crashes --app Chat` | Chat's crash reports on the phone, newest first |
-| `forge device crashes --app Chat --pull crashes/` | Copies them into `crashes/` |
+| `forge device crashes --app ChatXtool` | Chat's crash reports on the phone, newest first |
+| `forge device crashes --app ChatXtool --pull crashes/` | Copies them into `crashes/` |
 
 With several phones connected, add `--udid <UDID>` (from `forge device list`). A phone connected by USB and Wi-Fi at once counts once.
 
-The process name is the app's executable as iOS runs it. If `--process` shows nothing, run `forge device logs --grep <some text the app logs>` once and read the name from the lines.
+The process name is the app's executable: the `product` in its `xtool.yml`. That is `AppHostXtool` for every app made with `forge init` (Chat's is `ChatXtool`), so `--process AppHostXtool` cannot tell two starter apps apart. Filter on the log target instead, for example `--grep "[chat]"`. Crash reports are named after the same executable, so `crashes --app` takes the same name.
 
-Rust log lines look like `[target] message`: `forge_runtime::logging::info!(target: "chat", "sent")` appears as `... Chat[512] <Notice>: [chat] sent`.
+Rust log lines look like `LEVEL [target] message`: `forge_runtime::logging::info!(target: "chat", "sent")` appears as `... ChatXtool[512] <Notice>: INFO [chat] sent`. The relay shows them as `<Notice>` whatever their level (it drops lower syslog priorities, so Forge writes Info and below as notice), so read the level from the text.
 
 ## When it fails
 

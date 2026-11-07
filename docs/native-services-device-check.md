@@ -23,6 +23,7 @@ On the iPhone, open **Services check** and tap **Run checks**. Allow notificatio
 
 | Line | Proves |
 |------|--------|
+| `INFO logging: wrote 3 lines tagged [services-check] to the system log` | Rust logged at Info, Warn and Error. On the laptop, `forge device logs --grep services-check` (started before tapping) shows all three: `INFO [services-check] log probe info`, then `WARN` and `ERROR` |
 | `PASS installed: ".../Library/Application Support"` | `ForgeServices.install()` ran at launch and Rust sees the app's directories |
 | `PASS keychain write/read` and `PASS keychain delete` | Rust stored, read and removed a secret through the Swift Keychain adapter |
 | `PASS notification permission: NotDetermined -> Granted` | The system prompt appeared and the answer reached Rust (on later runs: `Granted -> Granted`) |
