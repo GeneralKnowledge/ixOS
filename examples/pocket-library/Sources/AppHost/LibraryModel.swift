@@ -194,7 +194,7 @@ public final class LibraryModel {
     /// Runs a Rust request with a `Cancellation` that the calling task's
     /// cancellation triggers: cancelling a Swift task does not reach Rust on
     /// its own (UniFFI 0.32). Runs on the caller's actor.
-    private nonisolated static func stoppable<T: Sendable>(
+    private static func stoppable<T: Sendable>(
         isolation: isolated (any Actor)? = #isolation,
         _ request: (Cancellation) async throws -> T
     ) async throws -> T {
