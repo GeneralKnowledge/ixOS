@@ -14,7 +14,10 @@
 //!    accessibility identifier (`--press library.add`).
 //!
 //! ```text
-//! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID]
+//! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID] [--app PREFIX]
+//!
+//! `--app library.` refuses the audit, and any press outside that prefix,
+//! unless an element with an identifier starting `library.` is on screen.
 //! ```
 //!
 //! Put the app under test in the foreground and unlock the phone first.
@@ -34,6 +37,7 @@ use plist::{Dictionary, Value};
 
 const SERVICE: &str = "com.apple.accessibility.axAuditDaemon.remoteserver";
 const FOCUS_CHANGED: &str = "hostInspectorCurrentElementChanged:";
+const APP_STATE: &str = "hostAppStateChanged:";
 const AUDIT_DONE: &str = "hostDeviceDidCompleteAuditCategoriesWithAuditIssues:";
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -43,6 +47,7 @@ struct Args {
     max: usize,
     audit: bool,
     press: Option<String>,
+    app: Option<String>,
 }
 
 fn args() -> Args {
@@ -51,6 +56,7 @@ fn args() -> Args {
         max: 40,
         audit: false,
         press: None,
+        app: None,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -59,6 +65,7 @@ fn args() -> Args {
             "--max" => out.max = it.next().and_then(|v| v.parse().ok()).unwrap_or(40),
             "--audit" => out.audit = true,
             "--press" => out.press = it.next(),
+            "--app" => out.app = it.next(),
             other => {
                 eprintln!("unknown argument {other}");
                 std::process::exit(2);
@@ -144,7 +151,14 @@ async fn run(args: Args) -> Result<()> {
     // Stage 4 runs before the walk, with app monitoring still off, as
     // pymobiledevice3's run_audit does. Every other event seen while waiting
     // is listed, to tell "no answer" from "an answer we didn't recognise".
-    if args.audit {
+    let mut audit = args.audit;
+    if let (true, Some(prefix)) = (audit, &args.app) {
+        if !ax.confirm_app(prefix).await? {
+            println!("[4] audit refused: no element with an identifier starting {prefix:?} is on screen; bring the app to the front");
+            audit = false;
+        }
+    }
+    if audit {
         let t = Instant::now();
         let types = match unwrap(types) {
             Value::Array(a) => a,
@@ -230,7 +244,12 @@ async fn run(args: Args) -> Result<()> {
             t.elapsed().as_millis()
         );
         if let Some(target) = &args.press {
+            let in_app = args
+                .app
+                .as_ref()
+                .is_none_or(|p| target.starts_with(p.as_str()));
             if !pressed
+                && in_app
                 && attrs
                     .iter()
                     .any(|(k, v)| *k == "Identifier" && v.trim_matches('"') == target)
@@ -403,7 +422,12 @@ impl Ax {
             };
             match notification(&msg) {
                 Some((n, args)) if n == name => return Ok(Some(payload(args))),
-                Some((n, _)) => self.others.push(n),
+                Some((n, args)) => {
+                    if n == APP_STATE {
+                        println!("    app state changed: {}", short(&payload(args)));
+                    }
+                    self.others.push(n)
+                }
                 None => self.others.push(format!(
                     "reply {}",
                     short(&msg.data.unwrap_or(Value::Boolean(false)))
@@ -411,6 +435,58 @@ impl Ax {
             }
         }
         Ok(None)
+    }
+
+    /// Whether the foreground app is the one under test: walks up to 30
+    /// elements until one has an identifier starting with `prefix` (the
+    /// app's `screen.` convention), then turns app monitoring off again.
+    async fn confirm_app(&mut self, prefix: &str) -> Result<bool> {
+        self.send(
+            "deviceSetAppMonitoringEnabled:",
+            vec![arg(Value::Boolean(true))],
+        )
+        .await?;
+        self.send(
+            "deviceInspectorSetMonitoredEventType:",
+            vec![arg(Value::Integer(0.into()))],
+        )
+        .await?;
+        self.move_focus(5).await?;
+        let mut seen: Vec<Vec<u8>> = Vec::new();
+        let mut found = false;
+        while seen.len() < 30 {
+            let Some(focus) = self
+                .wait_event(FOCUS_CHANGED, Duration::from_secs(1))
+                .await?
+            else {
+                break;
+            };
+            let Some(element) = element_bytes(&first(focus)) else {
+                break;
+            };
+            if seen.contains(&element) {
+                break;
+            }
+            let id = unwrap(
+                self.call(
+                    "deviceElement:valueForAttribute:",
+                    vec![arg(element_arg(&element)), arg(attribute_arg("Identifier"))],
+                )
+                .await?,
+            );
+            if id.as_string().is_some_and(|s| s.starts_with(prefix)) {
+                found = true;
+                break;
+            }
+            seen.push(element);
+            self.move_focus(4).await?;
+        }
+        self.send(
+            "deviceSetAppMonitoringEnabled:",
+            vec![arg(Value::Boolean(false))],
+        )
+        .await?;
+        Ok(found)
     }
 
     /// Distinct names of the events `wait_event` skipped, with counts.

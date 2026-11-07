@@ -91,3 +91,12 @@ The decoding and archiving are unit-tested on Linux (`cargo test -p forge-device
 - **Screenshots** are a separate service: idevice has `screenshotr`, and DVT has `screenshot`.
 - **System alerts and other apps:** the service follows the foreground app. Whether it can see permission alerts is unknown.
 - **The RSD shim** (`….remoteserver.shim.remote`) isn't tried. pymobiledevice3 uses it only when it is already tunnelling.
+
+## Knowing which app is in front
+
+During run 1 the probe sometimes read the Claude app, which Reuben had open on the same phone. The service reads whichever app is in front, so the tooling has to check, and later ensure, that the app under test is the one in front.
+
+- **Check (in the probe now):** `--app library.` first walks the screen until it finds an identifier with the app's `screen.` prefix. If it finds none, it refuses the audit. A press only goes to an identifier inside that prefix. The probe also prints the daemon's `hostAppStateChanged:` events, to find out whether they name the app; if they do, that gives a direct check.
+- **Ensure (needs the DDI, so for #61's driver):** bring the app to the front by bundle id before inspecting it. Candidates in idevice 0.1.68 are CoreDevice `app_service.launch_application` and DVT `process_control.launch_app`; both need the disk image and, on iOS 17+, the userspace tunnel #61 already sets up. WDA can activate apps too.
+
+A future `AxDriver` should do both: launch or activate by bundle id, confirm the foreground app, then act, and refuse otherwise.
