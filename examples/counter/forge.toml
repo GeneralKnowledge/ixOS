@@ -10,3 +10,8 @@ ffi_crate = "forge-ffi"
 [build]
 ios_device = true
 ios_simulator = false
+
+# iOS settings; Forge writes Info.plist, App.entitlements and xtool.yml from
+# them (docs/app-config.md).
+[ios]
+xtool_product = "CounterXtool"

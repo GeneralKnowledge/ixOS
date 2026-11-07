@@ -1,3 +1,4 @@
+mod app_config;
 mod check;
 mod commands;
 mod config;
@@ -41,6 +42,11 @@ enum Commands {
         #[arg(long, value_name = "DIR")]
         path: Option<PathBuf>,
     },
+    /// iOS app configuration from forge.toml: Info.plist, App.entitlements, xtool.yml
+    Config {
+        #[command(subcommand)]
+        cmd: ConfigCommands,
+    },
     /// Run Rust tests and checks; with --project, also that app's host tests
     Test {
         #[arg(
@@ -74,6 +80,39 @@ enum Commands {
 }
 
 #[derive(Subcommand)]
+enum ConfigCommands {
+    /// Regenerate Info.plist, App.entitlements and xtool.yml (and Package.swift's
+    /// iOS platform) from forge.toml. `forge build ios` and `forge run ios` do this too.
+    Sync {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Replace hand-written files even if they hold settings forge.toml lacks
+        #[arg(long)]
+        force: bool,
+    },
+    /// Fail if the generated files are out of date with forge.toml (for CI); also
+    /// reports Xcode project settings that differ
+    Check {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+    },
+    /// Print the effective iOS settings: bundle, version, permissions, entitlements, signing
+    Show {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum BindingsCommands {
     /// Regenerates an app's Generated/ from its Rust crate (Swift or Kotlin,
     /// from the app's platform): the app given by --project, or the current
@@ -102,6 +141,9 @@ enum BuildCommands {
             help = "Only build Rust static library and regenerate bindings (skip xtool dev)"
         )]
         package_only: bool,
+        /// Build the Swift app in the release configuration (xtool dev build -c release)
+        #[arg(long)]
+        release: bool,
     },
     Android {
         #[arg(
@@ -133,7 +175,18 @@ enum RunCommands {
             help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
         )]
         project: Option<PathBuf>,
+        /// Build the Swift app in the release configuration (xtool dev run -c release)
+        #[arg(long)]
+        release: bool,
     },
+}
+
+fn configuration(release: bool) -> ios_builder::BuildConfiguration {
+    if release {
+        ios_builder::BuildConfiguration::Release
+    } else {
+        ios_builder::BuildConfiguration::Debug
+    }
 }
 
 fn main() {
@@ -163,6 +216,23 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         } => {
             let path = path.map(|p| absolute_from_cwd(&p));
             commands::init(runner, &root, &name, &bundle_id, &platform, path.as_deref())
+        }
+        Commands::Config { cmd } => {
+            let (project, action) = match cmd {
+                ConfigCommands::Sync { project, force } => {
+                    (project, commands::ConfigAction::Sync { force })
+                }
+                ConfigCommands::Check { project } => (project, commands::ConfigAction::Check),
+                ConfigCommands::Show { project } => (project, commands::ConfigAction::Show),
+            };
+            let project = project_or_default(project, "");
+            if project.as_os_str().is_empty() {
+                return Err(
+                    "no app here: run inside an app directory (with forge.toml) or pass --project"
+                        .into(),
+                );
+            }
+            commands::config(&root, &project, action)
         }
         Commands::Test { project } => commands::test(runner, &root, project.as_deref()),
         Commands::Bindings { cmd } => match cmd {
@@ -195,9 +265,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             BuildCommands::Ios {
                 project,
                 package_only,
+                release,
             } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::build_ios(runner, &ios, &root, &project, package_only)
+                commands::build_ios(
+                    runner,
+                    &ios,
+                    &root,
+                    &project,
+                    package_only,
+                    configuration(release),
+                )
             }
             BuildCommands::Android { project, install } => {
                 let project = project_or_default(project, "examples/counter-android");
@@ -209,9 +287,9 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project } => {
+            RunCommands::Ios { project, release } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(runner, &ios, &root, &project)
+                commands::run_ios(runner, &ios, &root, &project, configuration(release))
             }
         },
     }
