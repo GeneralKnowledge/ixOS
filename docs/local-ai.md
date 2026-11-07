@@ -172,7 +172,7 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 | LFM2.5 350M: load (first, second), tokens/s, stop latency | Not run |
 | Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | First load 23.4 s (compiles; used about 1.1 GB of disk while loaded). **About 9 pieces/s** in a debug build, first text after 4.2–5.9 s with the character prompt (Qwen3.5 prefill runs one decode step per prompt token). Far below the published 22–48 tok/s: a release build is the first suspect. Stop not yet tested |
 | Qwen3.5 2B fits | Not run |
-| Characters in character over ten turns (reminder on / off) | Not run |
+| Characters in character over ten turns (reminder on / off) | Mia, Qwen3.5 0.8B, reminder on: in character for the first three turns ("pretty good", Reuben); ten turns, Leo and reminder off not yet run |
 | Offline after download | Not run |
 | Swift → Rust push cost | **1.6 µs per push** (10,000 pushes), negligible against 100 ms per token |
 
