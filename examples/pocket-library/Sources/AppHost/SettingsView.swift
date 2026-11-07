@@ -31,6 +31,7 @@ struct SettingsView: View {
                         LabeledContent("Books", value: "\(storage.books)")
                         LabeledContent("History entries", value: "\(storage.activityEntries)")
                         LabeledContent("Saved covers", value: "\(storage.savedCovers)")
+                        LabeledContent("Saved EPUBs", value: "\(storage.savedBooks)")
                         LabeledContent("Space used", value: Int64(storage.bytes).formatted(.byteCount(style: .file)))
                     }
                     if let exportURL {

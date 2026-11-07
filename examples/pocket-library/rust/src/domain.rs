@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::LibraryError;
 use crate::model::{
     ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibrarySettings,
-    LibrarySort, LibraryStats, ReadingStatus,
+    LibrarySort, LibraryStats, ReadingPosition, ReadingStatus,
 };
 
 pub const MAX_TITLE_CHARS: usize = 300;
@@ -44,6 +44,21 @@ pub struct StoredBook {
     pub started_at_ms: Option<i64>,
     pub finished_at_ms: Option<i64>,
     pub updated_at_ms: i64,
+    /// The saved EPUB: a file name inside the library's `books/` folder.
+    #[serde(default)]
+    pub epub_file: Option<String>,
+    #[serde(default)]
+    pub reading_position: Option<SavedPosition>,
+}
+
+/// Where the reader was left, and the page that put the book on. If the
+/// page has changed since (typed in by hand), the reader opens at the new
+/// page instead.
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct SavedPosition {
+    pub chapter: u32,
+    pub fraction: f64,
+    pub page: u32,
 }
 
 /// Everything in `library.json`. Fields added later carry `#[serde(default)]`
@@ -92,6 +107,11 @@ impl StoredBook {
                 .map(|name| covers_dir.join(name).to_string_lossy().into_owned()),
             cover_url: self.cover_url.clone(),
             source: self.source.clone(),
+            can_read: self.epub_file.is_some(),
+            reading_position: self.reading_position.map(|p| ReadingPosition {
+                chapter: p.chapter,
+                fraction: p.fraction,
+            }),
             added_at_ms: self.added_at_ms,
             started_at_ms: self.started_at_ms,
             finished_at_ms: self.finished_at_ms,
@@ -286,6 +306,8 @@ impl LibraryData {
             started_at_ms: (status != ReadingStatus::WantToRead).then_some(now),
             finished_at_ms: (status == ReadingStatus::Finished).then_some(now),
             updated_at_ms: now,
+            epub_file: None,
+            reading_position: None,
         });
         let title = self.book(id)?.title.clone();
         self.record(id, &title, now, ActivityKind::Added);
@@ -355,6 +377,91 @@ impl LibraryData {
             self.record(id, &title, now, kind);
         }
         Ok(())
+    }
+
+    /// Sets the book's saved EPUB (a file name in `books/`). A new file
+    /// starts the reader from the book's current page.
+    pub fn attach_epub(&mut self, id: u64, epub_file: Option<String>) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        book.epub_file = epub_file;
+        book.reading_position = None;
+        Ok(())
+    }
+
+    /// Records where the reader is in a book's EPUB and moves its current
+    /// page to match, so reading in the app counts as reading (history,
+    /// started, pages this week). `chapter_words` are the words in each
+    /// chapter. The page stops one short of the last: finishing is the
+    /// reader's choice. A finished book keeps its page and status.
+    pub fn save_reading_position(
+        &mut self,
+        id: u64,
+        position: ReadingPosition,
+        chapter_words: &[u32],
+        now: i64,
+    ) -> Result<(), LibraryError> {
+        if position.chapter as usize >= chapter_words.len() {
+            return Err(LibraryError::invalid(format!(
+                "the book has no chapter {}",
+                position.chapter
+            )));
+        }
+        let position = ReadingPosition {
+            chapter: position.chapter,
+            fraction: clamp_fraction(position.fraction),
+        };
+        let book = self.book(id)?;
+        if book.status != ReadingStatus::Finished {
+            let page = page_at(
+                book_fraction(chapter_words, position),
+                book.total_pages,
+                chapter_words,
+            );
+            self.set_reading_state(id, book.status, page, now)?;
+        }
+        let book = self.book_mut(id)?;
+        book.reading_position = Some(SavedPosition {
+            chapter: position.chapter,
+            fraction: position.fraction,
+            page: book.current_page,
+        });
+        Ok(())
+    }
+
+    /// Where the reader should open a book: the saved position if the page
+    /// has not changed since, otherwise the place that page is at (the start
+    /// for a book not begun, or finished without the reader).
+    pub fn reader_start(
+        &self,
+        id: u64,
+        chapter_words: &[u32],
+    ) -> Result<ReadingPosition, LibraryError> {
+        let book = self.book(id)?;
+        let start = ReadingPosition {
+            chapter: 0,
+            fraction: 0.0,
+        };
+        if let Some(saved) = book.reading_position {
+            if saved.page == book.current_page && (saved.chapter as usize) < chapter_words.len() {
+                return Ok(ReadingPosition {
+                    chapter: saved.chapter,
+                    fraction: clamp_fraction(saved.fraction),
+                });
+            }
+        }
+        if book.status == ReadingStatus::Finished || book.current_page == 0 {
+            return Ok(start);
+        }
+        let total_words: u64 = chapter_words.iter().map(|&w| u64::from(w)).sum();
+        let fraction = match book.total_pages {
+            Some(total) if total > 0 => f64::from(book.current_page) / f64::from(total),
+            _ if total_words > 0 => {
+                f64::from(book.current_page) * f64::from(crate::epub::WORDS_PER_PAGE)
+                    / total_words as f64
+            }
+            _ => 0.0,
+        };
+        Ok(position_at(chapter_words, fraction))
     }
 
     /// Applies an edit form: details replace the old ones, and the status
@@ -475,6 +582,80 @@ impl LibraryData {
 
 /// Lower-case and without common accents, so "Proust" finds "Prōust" and
 /// "eco" finds "Éco".
+fn clamp_fraction(fraction: f64) -> f64 {
+    if fraction.is_finite() {
+        fraction.clamp(0.0, 1.0)
+    } else {
+        0.0
+    }
+}
+
+/// How far through the whole book `position` is, 0.0–1.0, by words.
+pub fn book_fraction(chapter_words: &[u32], position: ReadingPosition) -> f64 {
+    let total: u64 = chapter_words.iter().map(|&w| u64::from(w)).sum();
+    if total == 0 {
+        // No text at all (a picture book): go by chapters.
+        let chapters = chapter_words.len().max(1) as f64;
+        return clamp_fraction((f64::from(position.chapter) + position.fraction) / chapters);
+    }
+    let before: u64 = chapter_words
+        .iter()
+        .take(position.chapter as usize)
+        .map(|&w| u64::from(w))
+        .sum();
+    let within = chapter_words
+        .get(position.chapter as usize)
+        .map_or(0.0, |&w| f64::from(w) * clamp_fraction(position.fraction));
+    clamp_fraction((before as f64 + within) / total as f64)
+}
+
+/// The position `fraction` of the way through the book, by words.
+pub fn position_at(chapter_words: &[u32], fraction: f64) -> ReadingPosition {
+    let total: u64 = chapter_words.iter().map(|&w| u64::from(w)).sum();
+    let fraction = clamp_fraction(fraction);
+    if total == 0 || chapter_words.is_empty() {
+        return ReadingPosition {
+            chapter: 0,
+            fraction: 0.0,
+        };
+    }
+    let target = fraction * total as f64;
+    let mut before = 0.0;
+    for (index, &words) in chapter_words.iter().enumerate() {
+        let words = f64::from(words);
+        if words > 0.0 && target < before + words {
+            return ReadingPosition {
+                chapter: index as u32,
+                fraction: (target - before) / words,
+            };
+        }
+        before += words;
+    }
+    // The very end: the end of the last chapter with text.
+    let last = chapter_words.iter().rposition(|&w| w > 0).unwrap_or(0);
+    ReadingPosition {
+        chapter: last as u32,
+        fraction: 1.0,
+    }
+}
+
+/// The page `fraction` of the way through, never the last page (see
+/// [`LibraryData::save_reading_position`]). Without a page count, pages are
+/// words read at [`crate::epub::WORDS_PER_PAGE`].
+fn page_at(fraction: f64, total_pages: Option<u32>, chapter_words: &[u32]) -> u32 {
+    match total_pages {
+        Some(total) if total > 0 => {
+            let page = (fraction * f64::from(total)).floor() as u32;
+            page.min(total - 1)
+        }
+        _ => {
+            let words: u64 = chapter_words.iter().map(|&w| u64::from(w)).sum();
+            let read = (fraction * words as f64) as u64;
+            u32::try_from(read / u64::from(crate::epub::WORDS_PER_PAGE)).unwrap_or(MAX_PAGES)
+        }
+    }
+}
+
 pub fn fold(text: &str) -> String {
     text.chars()
         .flat_map(char::to_lowercase)
@@ -885,5 +1066,27 @@ mod tests {
         assert_eq!(sort_title("An Atlas"), "atlas");
         assert_eq!(sort_title("Theory"), "theory");
         assert_eq!(fold("Élan Vital"), "elan vital");
+    }
+
+    #[test]
+    fn positions_map_to_book_fractions_and_back() {
+        let words = [0, 100, 300, 0, 600];
+        let at = |chapter, fraction| ReadingPosition { chapter, fraction };
+        assert_eq!(book_fraction(&words, at(0, 0.7)), 0.0);
+        assert!((book_fraction(&words, at(2, 0.5)) - 0.25).abs() < 1e-9);
+        assert_eq!(book_fraction(&words, at(4, 1.0)), 1.0);
+        assert_eq!(book_fraction(&words, at(1, f64::NAN)), 0.0);
+        assert_eq!(position_at(&words, 0.0), at(1, 0.0));
+        let p = position_at(&words, 0.25);
+        assert_eq!(p.chapter, 2);
+        assert!((p.fraction - 0.5).abs() < 1e-9);
+        assert_eq!(position_at(&words, 1.0), at(4, 1.0));
+        assert_eq!(position_at(&[], 0.5), at(0, 0.0));
+        // Picture books go by chapter.
+        assert_eq!(book_fraction(&[0, 0], at(1, 0.0)), 0.5);
+        // Pages: never the last one; by words without a page count.
+        assert_eq!(page_at(1.0, Some(10), &words), 9);
+        assert_eq!(page_at(0.5, Some(10), &words), 5);
+        assert_eq!(page_at(1.0, None, &[550]), 2);
     }
 }

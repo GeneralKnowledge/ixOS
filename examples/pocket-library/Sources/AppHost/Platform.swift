@@ -35,4 +35,13 @@ extension View {
         self
         #endif
     }
+
+    /// The reader uses the whole screen: no tab bar.
+    func hidesTabBar() -> some View {
+        #if os(iOS)
+        toolbar(.hidden, for: .tabBar)
+        #else
+        self
+        #endif
+    }
 }

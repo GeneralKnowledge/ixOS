@@ -334,9 +334,24 @@ uint64_t uniffi_forge_ffi_fn_method_library_import_epub(uint64_t ptr, RustBuffer
 uint64_t uniffi_forge_ffi_fn_method_library_import_from_catalogue(uint64_t ptr, RustBuffer key, RustBuffer cancellation
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_OPEN_READER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_OPEN_READER
+uint64_t uniffi_forge_ffi_fn_method_library_open_reader(uint64_t ptr, uint64_t id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_READER_CHAPTER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_READER_CHAPTER
+uint64_t uniffi_forge_ffi_fn_method_library_reader_chapter(uint64_t ptr, uint64_t id, uint32_t index
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_REVISION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_REVISION
 uint64_t uniffi_forge_ffi_fn_method_library_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SAVE_READING_POSITION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SAVE_READING_POSITION
+uint64_t uniffi_forge_ffi_fn_method_library_save_reading_position(uint64_t ptr, uint64_t id, RustBuffer position
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LIBRARY_SEARCH_CATALOGUE
@@ -753,9 +768,27 @@ uint16_t uniffi_forge_ffi_checksum_method_library_import_from_catalogue(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_OPEN_READER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_OPEN_READER
+uint16_t uniffi_forge_ffi_checksum_method_library_open_reader(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_READER_CHAPTER
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_READER_CHAPTER
+uint16_t uniffi_forge_ffi_checksum_method_library_reader_chapter(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_REVISION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_REVISION
 uint16_t uniffi_forge_ffi_checksum_method_library_revision(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_SAVE_READING_POSITION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LIBRARY_SAVE_READING_POSITION
+uint16_t uniffi_forge_ffi_checksum_method_library_save_reading_position(void
     
 );
 #endif

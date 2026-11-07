@@ -3,7 +3,8 @@
 //! Everything the SwiftUI host calls is in this file's `#[uniffi::export]`
 //! blocks; `forge build` turns them into Swift (`import ForgeFFI`). The rules
 //! are in [`domain`], the files in [`store`], the online catalogue in
-//! [`catalogue`] and EPUB reading in [`epub`].
+//! [`catalogue`], EPUB import in [`epub`] and the reader's text in
+//! [`reader`].
 //!
 //! Threading: every method that touches the disk or the network is `async`
 //! and runs on its own thread ([`forge_runtime::background`]), so Swift can
@@ -18,6 +19,7 @@ pub mod domain;
 pub mod epub;
 mod error;
 mod model;
+pub mod reader;
 pub mod store;
 
 use std::collections::HashMap;
@@ -31,6 +33,7 @@ pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
 use domain::{fold, validate, LibraryData};
 pub use error::LibraryError;
 pub use model::*;
+use reader::EpubText;
 use store::Store;
 
 uniffi::setup_scaffolding!("forge_ffi");
@@ -67,6 +70,15 @@ pub struct Library {
     shut_down: Arc<AtomicBool>,
     /// Cancelled by `shutdown`; every catalogue request runs under a child.
     lifetime: CancelHandle,
+    /// The book open in the reader, so turning a page reads one chapter
+    /// instead of the whole EPUB again.
+    open_book: Arc<Mutex<Option<OpenBook>>>,
+}
+
+struct OpenBook {
+    id: u64,
+    epub_file: String,
+    text: EpubText,
 }
 
 #[uniffi::export]
@@ -182,10 +194,11 @@ impl Library {
         .await
     }
 
-    /// Deletes a book and its saved cover. Its history stays.
+    /// Deletes a book, its saved cover and its EPUB. Its history stays.
     pub async fn delete_book(&self, id: u64) -> Result<(), LibraryError> {
         self.ensure_running()?;
         let (state, store, events) = self.parts();
+        let open_book = Arc::clone(&self.open_book);
         background("delete-book", move || {
             let mut state = lock(&state);
             let mut next = state.data.clone();
@@ -193,6 +206,13 @@ impl Library {
             store.save(&next)?;
             if let Some(cover) = &removed.cover_file {
                 store.delete_cover(cover);
+            }
+            if let Some(epub) = &removed.epub_file {
+                let mut open = lock(&open_book);
+                if open.as_ref().is_some_and(|o| o.id == id) {
+                    *open = None;
+                }
+                store.delete_book_file(epub);
             }
             apply(&mut state, next, &events);
             Ok(())
@@ -306,7 +326,7 @@ impl Library {
                 notes: String::new(),
                 cover_url: hit.cover_url.clone(),
             })?;
-            let book = add_and_save(&state, &store, &events, input, source, cover_file)?;
+            let book = add_and_save(&state, &store, &events, input, source, cover_file, None)?;
             Ok(ImportedBook { book, warnings })
         })
         .await
@@ -316,8 +336,14 @@ impl Library {
 
     /// Adds the book in the EPUB at `path` as Want to Read: title, authors,
     /// description and cover from the file, and a page count estimated from
-    /// its length. Only the metadata and cover are kept, never the text. The
-    /// host may delete the file afterwards.
+    /// its length. A copy of the file is kept so the book can be read in the
+    /// app (`open_reader`); the host may delete its own copy afterwards.
+    ///
+    /// If the book is already in the library without a saved EPUB (typed
+    /// in, found in the catalogue, or imported before EPUBs were kept), the
+    /// file is attached to that book instead, keeping its progress, and that
+    /// book is returned. Otherwise a second import fails with
+    /// `AlreadyInLibrary`.
     pub async fn import_epub(&self, path: String) -> Result<Book, LibraryError> {
         self.ensure_running()?;
         let (state, store, events) = self.parts();
@@ -340,46 +366,161 @@ impl Library {
             let bytes = std::fs::read(&path).map_err(|e| LibraryError::UnsupportedFile {
                 reason: format!("cannot read {file_name}: {e}"),
             })?;
-            let meta = epub::read_metadata(bytes)?;
-            {
+            let meta = epub::read_metadata(bytes.clone())?;
+            // Check now that the reader can open it, so an import never
+            // promises a book that cannot be read.
+            EpubText::open(std::io::Cursor::new(&bytes))?;
+            let existing = {
                 let state = lock(&state);
                 let (title, author) = (fold(&meta.title), fold(&meta.author));
-                if let Some(existing) = state
+                state
                     .data
                     .books
                     .iter()
                     .find(|b| fold(&b.title) == title && fold(&b.author) == author)
-                {
-                    return Err(LibraryError::AlreadyInLibrary { id: existing.id });
+                    .map(|b| (b.id, b.epub_file.is_some()))
+            };
+            let stem = format!("epub-{}", now_ms());
+            match existing {
+                Some((id, true)) => Err(LibraryError::AlreadyInLibrary { id }),
+                Some((id, false)) => {
+                    let epub_file = store.save_book_file(&stem, &bytes)?;
+                    attach_and_save(&state, &store, &events, id, epub_file)
+                }
+                None => {
+                    let cover_file = match &meta.cover {
+                        Some(cover) => {
+                            Some(store.save_cover(&stem, cover.extension, &cover.bytes)?)
+                        }
+                        None => None,
+                    };
+                    let epub_file = match store.save_book_file(&stem, &bytes) {
+                        Ok(name) => name,
+                        Err(err) => {
+                            if let Some(cover) = &cover_file {
+                                store.delete_cover(cover);
+                            }
+                            return Err(err);
+                        }
+                    };
+                    let input = validate(BookInput {
+                        title: meta.title,
+                        author: meta.author,
+                        description: meta.description,
+                        status: ReadingStatus::WantToRead,
+                        current_page: 0,
+                        total_pages: meta.estimated_pages,
+                        rating: None,
+                        notes: String::new(),
+                        cover_url: None,
+                    })?;
+                    add_and_save(
+                        &state,
+                        &store,
+                        &events,
+                        input,
+                        BookSource::Epub { file_name },
+                        cover_file,
+                        Some(epub_file),
+                    )
                 }
             }
-            let cover_file = match &meta.cover {
-                Some(cover) => Some(store.save_cover(
-                    &format!("epub-{}", now_ms()),
-                    cover.extension,
-                    &cover.bytes,
-                )?),
-                None => None,
+        })
+        .await
+    }
+
+    // MARK: Reading
+
+    /// Opens a book's saved EPUB for reading: its chapters, and where to
+    /// start (see `ReaderContents::start`). Fails with `NotReadable` for a
+    /// book without one. Images of earlier chapters are deleted.
+    pub async fn open_reader(&self, id: u64) -> Result<ReaderContents, LibraryError> {
+        self.ensure_running()?;
+        let (state, store, _) = self.parts();
+        let open_book = Arc::clone(&self.open_book);
+        background("open-reader", move || {
+            let (title, epub_file) = {
+                let state = lock(&state);
+                let book = state.data.book(id)?;
+                (book.title.clone(), book.epub_file.clone())
             };
-            let input = validate(BookInput {
-                title: meta.title,
-                author: meta.author,
-                description: meta.description,
-                status: ReadingStatus::WantToRead,
-                current_page: 0,
-                total_pages: meta.estimated_pages,
-                rating: None,
-                notes: String::new(),
-                cover_url: None,
+            let epub_file = epub_file.ok_or_else(|| LibraryError::NotReadable {
+                reason: "there is no EPUB for this book; import its EPUB file to read it here"
+                    .into(),
             })?;
-            add_and_save(
-                &state,
-                &store,
-                &events,
-                input,
-                BookSource::Epub { file_name },
-                cover_file,
-            )
+            let mut open = lock(&open_book);
+            let reuse = open
+                .as_ref()
+                .is_some_and(|o| o.id == id && o.epub_file == epub_file);
+            if !reuse {
+                let path =
+                    store
+                        .book_file(&epub_file)
+                        .ok_or_else(|| LibraryError::NotReadable {
+                            reason: "the saved EPUB's name is not valid".into(),
+                        })?;
+                *open = Some(OpenBook {
+                    id,
+                    epub_file,
+                    text: EpubText::open_file(&path)?,
+                });
+            }
+            store.reset_reader_dir(id)?;
+            let book = open.as_ref().expect("opened above");
+            let (words, chapters) = (book.text.chapter_words(), book.text.chapters().to_vec());
+            // Lock order is state, then open_book (as in delete_book).
+            drop(open);
+            let start = lock(&state).data.reader_start(id, &words)?;
+            Ok(ReaderContents {
+                book_id: id,
+                title,
+                chapters,
+                total_words: words.iter().map(|&w| u64::from(w)).sum(),
+                start,
+            })
+        })
+        .await
+    }
+
+    /// The text of chapter `index` of a book opened with `open_reader`.
+    pub async fn reader_chapter(&self, id: u64, index: u32) -> Result<ReaderChapter, LibraryError> {
+        self.ensure_running()?;
+        let store = Arc::clone(&self.store);
+        let open_book = Arc::clone(&self.open_book);
+        background("reader-chapter", move || {
+            let mut open = lock(&open_book);
+            let book = open
+                .as_mut()
+                .filter(|o| o.id == id)
+                .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
+            let images = store.reader_dir().join(id.to_string());
+            std::fs::create_dir_all(&images).map_err(|e| LibraryError::Storage {
+                reason: format!("create {}: {e}", images.display()),
+            })?;
+            book.text.chapter(index, &images)
+        })
+        .await
+    }
+
+    /// Saves where the reader is, and moves the book's current page to
+    /// match: reading in the app starts the book and counts as pages read,
+    /// like typing the page in. It never finishes a book; the reader offers
+    /// "Mark as Finished" at the end. A finished book keeps its page.
+    pub async fn save_reading_position(
+        &self,
+        id: u64,
+        position: ReadingPosition,
+    ) -> Result<Book, LibraryError> {
+        let words = {
+            let open = lock(&self.open_book);
+            open.as_ref()
+                .filter(|o| o.id == id)
+                .map(|o| o.text.chapter_words())
+                .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?
+        };
+        self.commit("save-reading-position", move |data, _, now| {
+            data.save_reading_position(id, position, &words, now)?;
+            Ok(id)
         })
         .await
     }
@@ -433,6 +574,7 @@ impl Library {
     pub async fn erase_library(&self) -> Result<(), LibraryError> {
         self.ensure_running()?;
         let (state, store, events) = self.parts();
+        let open_book = Arc::clone(&self.open_book);
         background("erase", move || {
             let mut state = lock(&state);
             let next = LibraryData {
@@ -440,6 +582,7 @@ impl Library {
                 ..LibraryData::default()
             };
             store.save(&next)?;
+            *lock(&open_book) = None;
             store.clear_files();
             apply(&mut state, next, &events);
             Ok(())
@@ -449,12 +592,13 @@ impl Library {
 
     pub fn storage_info(&self) -> StorageInfo {
         let state = lock(&self.state);
-        let (saved_covers, bytes) = self.store.usage();
+        let (saved_covers, saved_books, bytes) = self.store.usage();
         StorageInfo {
             directory: self.store.dir().to_string_lossy().into_owned(),
             books: state.data.books.len() as u32,
             activity_entries: state.data.activity.len() as u32,
             saved_covers,
+            saved_books,
             bytes,
         }
     }
@@ -497,6 +641,7 @@ impl Library {
             catalogue,
             shut_down: Arc::new(AtomicBool::new(false)),
             lifetime: CancelHandle::new(),
+            open_book: Arc::new(Mutex::new(None)),
         }))
     }
 
@@ -592,6 +737,7 @@ fn add_and_save(
     input: domain::ValidInput,
     source: BookSource,
     cover_file: Option<String>,
+    epub_file: Option<String>,
 ) -> Result<Book, LibraryError> {
     let mut state = lock(state);
     let result = (|| {
@@ -600,6 +746,7 @@ fn add_and_save(
         }
         let mut next = state.data.clone();
         let id = next.add(input, source, cover_file.clone(), now_ms())?;
+        next.attach_epub(id, epub_file.clone())?;
         store.save(&next)?;
         Ok((id, next))
     })();
@@ -612,6 +759,35 @@ fn add_and_save(
             if let Some(cover) = &cover_file {
                 store.delete_cover(cover);
             }
+            if let Some(epub) = &epub_file {
+                store.delete_book_file(epub);
+            }
+            Err(err)
+        }
+    }
+}
+
+/// Gives an existing book a saved EPUB, deleting the file again if the
+/// library cannot be saved.
+fn attach_and_save(
+    state: &Mutex<State>,
+    store: &Store,
+    events: &EventHub<LibraryEvent>,
+    id: u64,
+    epub_file: String,
+) -> Result<Book, LibraryError> {
+    let mut state = lock(state);
+    let mut next = state.data.clone();
+    let result = next
+        .attach_epub(id, Some(epub_file.clone()))
+        .and_then(|()| store.save(&next));
+    match result {
+        Ok(()) => {
+            apply(&mut state, next, events);
+            Ok(state.data.book(id)?.to_book(&store.covers_dir()))
+        }
+        Err(err) => {
+            store.delete_book_file(&epub_file);
             Err(err)
         }
     }
