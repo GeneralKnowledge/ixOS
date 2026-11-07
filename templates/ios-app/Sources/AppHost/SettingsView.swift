@@ -23,6 +23,7 @@ struct SettingsView: View {
 
                 Section {
                     TextField("URL", text: $model.url)
+                        .accessibilityIdentifier("settings.url")
                         .autocorrectionDisabled()
                         #if os(iOS)
                             .textContentType(.URL)
@@ -37,9 +38,11 @@ struct SettingsView: View {
                             Text("Checking…").foregroundStyle(.secondary)
                             Spacer()
                             Button("Cancel") { model.cancelURLCheck() }
+                                .accessibilityIdentifier("settings.cancelCheck")
                         }
                     } else {
                         Button("Check Connection", action: startCheck)
+                            .accessibilityIdentifier("settings.check")
                     }
                     if let result = model.urlResult {
                         LabeledContent("Result", value: result)
@@ -57,6 +60,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("settings.done")
                 }
             }
             .task(id: checkRequest) {

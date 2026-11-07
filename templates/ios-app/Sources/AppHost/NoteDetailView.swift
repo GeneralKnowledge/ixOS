@@ -25,6 +25,7 @@ struct NoteDetailView: View {
     private func editor(for note: Note) -> some View {
         TextEditor(text: $text)
             .focused($isEditing)
+            .accessibilityIdentifier("note.text")
             .padding(.horizontal)
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle(Text(note.createdAt, format: .dateTime.day().month().year()))
@@ -38,15 +39,19 @@ struct NoteDetailView: View {
                             isEditing = false
                             save(note)
                         }
+                        .accessibilityIdentifier("note.done")
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu("More", systemImage: "ellipsis.circle") {
                         ShareLink(item: text)
+                            .accessibilityIdentifier("note.share")
                         Button("Delete", systemImage: "trash", role: .destructive) {
                             isConfirmingDelete = true
                         }
+                        .accessibilityIdentifier("note.delete")
                     }
+                    .accessibilityIdentifier("note.more")
                 }
             }
             .confirmationDialog(
@@ -57,6 +62,7 @@ struct NoteDetailView: View {
                     dismiss()
                     Task { await model.delete(note) }
                 }
+                .accessibilityIdentifier("note.confirmDelete")
             } message: {
                 Text("This can't be undone.")
             }

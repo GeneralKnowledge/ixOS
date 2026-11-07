@@ -16,10 +16,12 @@ struct NoteListView: View {
                     NavigationLink(value: note.id) {
                         NoteRow(note: note)
                     }
+                    .accessibilityIdentifier("notes.row")
                     .swipeActions {
                         Button("Delete", systemImage: "trash", role: .destructive) {
                             Task { await model.delete(note) }
                         }
+                        .accessibilityIdentifier("notes.delete")
                     }
                     .contextMenu {
                         ShareLink(item: note.text)
@@ -38,9 +40,11 @@ struct NoteListView: View {
             .toolbar {
                 ToolbarItem(placement: .navigation) {
                     Button("Settings", systemImage: "gearshape") { isShowingSettings = true }
+                        .accessibilityIdentifier("notes.settings")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Note", systemImage: "square.and.pencil") { isComposing = true }
+                        .accessibilityIdentifier("notes.add")
                 }
             }
             .sheet(isPresented: $isComposing) {
@@ -62,6 +66,7 @@ struct NoteListView: View {
                 Text("Notes you write are saved on this device.")
             } actions: {
                 Button("New Note") { isComposing = true }
+                    .accessibilityIdentifier("notes.addFirst")
             }
         } else if model.visibleNotes.isEmpty {
             ContentUnavailableView.search(text: model.searchText)

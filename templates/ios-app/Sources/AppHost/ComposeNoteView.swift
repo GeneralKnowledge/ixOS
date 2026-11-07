@@ -23,6 +23,7 @@ struct ComposeNoteView: View {
                 TextField("Note", text: $text, axis: .vertical)
                     .lineLimit(6...)
                     .focused($isFocused)
+                    .accessibilityIdentifier("compose.text")
             }
             .navigationTitle("New Note")
             #if os(iOS)
@@ -31,6 +32,7 @@ struct ComposeNoteView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("compose.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
@@ -38,6 +40,7 @@ struct ComposeNoteView: View {
                     } else {
                         Button("Add") { Task { await add() } }
                             .disabled(trimmed.isEmpty)
+                            .accessibilityIdentifier("compose.save")
                     }
                 }
             }

@@ -685,4 +685,14 @@ mod example_files {
         assert_eq!(script.app, "org.forgemobile.pocketlibrary");
         assert_eq!(script.steps.len(), 11);
     }
+
+    /// The starter's test, which `forge init` copies with the bundle id filled in.
+    #[test]
+    fn starter_smoke_parses() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../templates/ios-app/uitests/smoke.toml");
+        let script = super::Script::load(&path).unwrap();
+        assert_eq!(script.app, "FORGE_BUNDLE_ID");
+        assert_eq!(script.steps.len(), 8);
+    }
 }
