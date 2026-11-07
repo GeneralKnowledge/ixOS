@@ -14,6 +14,8 @@ public enum AppServices {
     @MainActor
     public static func install() {
         ForgeServices.install()
+        // The microphone for voice messages (M4).
+        ForgeAudio.install()
     }
 }
 

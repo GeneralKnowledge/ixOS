@@ -43,6 +43,20 @@ for app in "${APPS[@]}"; do
         exit 1
       fi
     done
+    # The native services' Swift files: the same set, with the same contents.
+    if ! diff -u \
+        <(cd "$app/Generated/ForgeFFI" && ls ForgeServices*.swift ForgeAudio.swift 2>/dev/null || true) \
+        <(cd "$out/ForgeFFI" && ls ForgeServices*.swift ForgeAudio.swift 2>/dev/null || true); then
+      echo "error: $app/Generated/ForgeFFI has a different set of Forge Swift files; run: forge bindings generate --project $app" >&2
+      exit 1
+    fi
+    for file in "$out"/ForgeFFI/ForgeServices*.swift "$out"/ForgeFFI/ForgeAudio.swift; do
+      [[ -f "$file" ]] || continue
+      if ! diff -u "$app/Generated/ForgeFFI/$(basename "$file")" "$file"; then
+        echo "error: $app/Generated/ForgeFFI/$(basename "$file") is stale; run: forge bindings generate --project $app" >&2
+        exit 1
+      fi
+    done
   fi
 done
 

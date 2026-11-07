@@ -48,7 +48,7 @@ pub use slot::Slot;
 /// Version of the interface between the Rust items and the Swift adapters.
 /// The adapters check it at install time; bump it whenever a trait, record
 /// or enum in [`native_services!`] changes shape.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 2;
 
 /// Longest secure-store key accepted.
 pub const MAX_SECRET_KEY_LEN: usize = 256;
@@ -176,6 +176,12 @@ macro_rules! native_services {
             pub enum NativePermission {
                 /// Alerts, sounds and badges from local notifications.
                 Notifications,
+                /// Recording audio (since interface v2). On iOS the app must
+                /// declare `microphone` under `[ios.permissions]` in
+                /// forge.toml, which also brings Forge's Swift audio module
+                /// (`ForgeAudio`) that answers for it; without it the status
+                /// is `Unsupported`.
+                Microphone,
             }
 
             /// The same states on every platform.

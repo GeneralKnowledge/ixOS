@@ -63,10 +63,20 @@ else
   # Forge's Swift adapters (Keychain, notifications, ...) compile in the same
   # module as the bindings, so they can implement its protocols. Source of
   # truth: crates/forge-services/swift/. Crates without the macro get none.
-  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift
+  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift "$OUT/ForgeFFI/ForgeAudio.swift"
   if grep -q 'public func installNativeServices(' "$OUT/ForgeFFI/forge_ffi.swift"; then
     cp "$ROOT/crates/forge-services/swift/"ForgeServices*.swift "$OUT/ForgeFFI/"
     echo "[forge] Added the native services Swift adapters."
+    # Optional modules come only to apps that declare the permission they
+    # need, so an app never carries (or is reviewed for) an API it does not
+    # use. Audio recording and playback: `microphone` under [ios.permissions].
+    if [[ -f "$APP_DIR/forge.toml" ]] && awk '
+        /^[[:space:]]*\[/ { section = $0; gsub(/[[:space:]]/, "", section) }
+        section == "[ios.permissions]" && /^[[:space:]]*microphone[[:space:]]*=/ { found = 1 }
+        END { exit !found }' "$APP_DIR/forge.toml"; then
+      cp "$ROOT/crates/forge-services/swift/ForgeAudio.swift" "$OUT/ForgeFFI/"
+      echo "[forge] Added the audio module (the app declares the microphone)."
+    fi
   fi
 fi
 

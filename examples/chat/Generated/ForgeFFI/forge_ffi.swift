@@ -4316,6 +4316,14 @@ public enum NativePermission: Equatable, Hashable {
      * Alerts, sounds and badges from local notifications.
      */
     case notifications
+    /**
+     * Recording audio (since interface v2). On iOS the app must
+     * declare `microphone` under `[ios.permissions]` in
+     * forge.toml, which also brings Forge's Swift audio module
+     * (`ForgeAudio`) that answers for it; without it the status
+     * is `Unsupported`.
+     */
+    case microphone
 
 
 
@@ -4339,6 +4347,8 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case 1: return .notifications
         
+        case 2: return .microphone
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4349,6 +4359,10 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case .notifications:
             writeInt(&buf, Int32(1))
+        
+        
+        case .microphone:
+            writeInt(&buf, Int32(2))
         
         }
     }

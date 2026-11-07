@@ -88,8 +88,8 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Local notifications | Yes | Yes | Yes | Partial: services check app only | No | Yes | No push: APNs is a non-goal |
 | Notification actions and grouping | No | No | No | No | No | No | |
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
-| Permission interface | Partial: notifications only | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes 20 permission strings the runtime cannot request yet |
-| Microphone, camera, location, motion, local network, Bluetooth permissions | No | No | No | No | No | Partial: config only | |
+| Permission interface | Partial: notifications and microphone | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes permission strings; the runtime can request notifications and the microphone |
+| Microphone, camera, location, motion, local network, Bluetooth permissions | Partial: microphone (interface v2) | Partial: microphone | Partial: microphone (`ForgeAudio`) | Partial: Chat M4 (microphone) | No | Partial: config only | Others: config only |
 | Photos picker | No | n/a | Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO | Partial: Chat M3 | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
@@ -102,8 +102,8 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Audio session handling | No | No | No | No | No | No | |
-| Record and play audio files | No | No | No | No | No | No | |
+| Audio session handling | Yes: forge-services (optional `ForgeAudio`) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 | No | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
+| Record and play audio files | Yes: forge-services (optional `ForgeAudio`) | Partial: `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that declare the microphone |
 | Waveform summaries | No | No | n/a | No | No | No | |
 | Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
 | Background audio | Partial: config | No | No | No | No | Partial | |

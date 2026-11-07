@@ -39,6 +39,9 @@ struct ChatView: View {
     @State private var pickingFiles = false
     /// The attachment open in Quick Look.
     @State private var previewURL: URL?
+    /// Records voice messages (Forge's audio module).
+    @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
+    @State private var microphoneDenied = false
     @FocusState private var composing: Bool
 
     private var messages: [ChatMessage] { model.messages(in: conversationId) }
@@ -106,10 +109,14 @@ struct ChatView: View {
                 context: composerContext,
                 problem: model.sendError[conversationId],
                 staged: staged,
+                recorder: recorder,
                 cancel: cancelContext,
                 pickPhotos: { pickingPhotos = true },
                 pickFiles: { pickingFiles = true },
                 unstage: { file in staged.removeAll { $0.id == file.id } },
+                startRecording: startRecording,
+                cancelRecording: { recorder.cancel() },
+                sendRecording: { if let recording = recorder.stop() { sendVoice(recording) } },
                 send: send
             )
         }
@@ -167,12 +174,25 @@ struct ChatView: View {
             stageDocuments(result)
         }
         .quickLookPreview($previewURL)
+        .alert("Microphone Access Is Off", isPresented: $microphoneDenied) {
+            #if os(iOS)
+                Button("Open Settings") { ForgePermissions.openSettings() }
+            #endif
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("To record voice messages, allow Chat to use the microphone in Settings.")
+        }
         .sensoryFeedback(.impact(weight: .light), trigger: model.sentCount)
         .sensoryFeedback(.error, trigger: model.failedCount)
         .task {
             if !draftLoaded {
                 draft = model.draft(for: conversationId)
                 draftLoaded = true
+            }
+            // A recording that ends by itself (the 5-minute limit, or a
+            // phone call) is sent rather than lost.
+            recorder.onFinish = { recording in
+                if let recording { sendVoice(recording) }
             }
             await model.enter(conversationId)
             if let focusMessage { jumpTarget = focusMessage }
@@ -185,6 +205,8 @@ struct ChatView: View {
             model.saveDraft(draft, for: conversationId)
         }
         .onDisappear {
+            recorder.cancel()
+            ForgeAudioPlayer.shared.stop()
             model.saveDraft(editing == nil ? draft : stashedDraft, for: conversationId)
             model.leave(conversationId)
         }
@@ -225,8 +247,50 @@ struct ChatView: View {
                 Task {
                     if let url = await model.previewFile(for: attachment) { previewURL = url }
                 }
+            },
+            play: { attachment in
+                Task {
+                    guard let url = await model.localFile(for: attachment) else {
+                        model.actionError = String(localized: "This voice message could not be downloaded.")
+                        return
+                    }
+                    do {
+                        try ForgeAudioPlayer.shared.toggle(url)
+                    } catch {
+                        model.actionError = error.localizedDescription
+                    }
+                }
             }
         )
+    }
+
+    /// Starts a voice message (asking for the microphone the first time).
+    private func startRecording() {
+        ForgeAudioPlayer.shared.stop()
+        composing = false
+        Task {
+            do {
+                try await recorder.start()
+            } catch ForgeAudioError.microphoneDenied {
+                microphoneDenied = true
+            } catch {
+                model.actionError = error.localizedDescription
+            }
+        }
+    }
+
+    /// Sends a recording as a voice message (an `audio/mp4` attachment),
+    /// answering the message being replied to, if any.
+    private func sendVoice(_ recording: ForgeAudioRecorder.Recording) {
+        let file = ChatOutgoingFile(
+            path: recording.url.path, name: AttachmentFiles.voiceMessageName, mime: "audio/mp4")
+        let replyTo = replyingTo?.id
+        replyingTo = nil
+        Task {
+            await model.send(files: [file], text: "", to: conversationId, replyTo: replyTo)
+            // Rust has its own copy now.
+            try? FileManager.default.removeItem(at: recording.url)
+        }
     }
 
     /// Shrinks picked photos to JPEG files and adds them to the next message.
@@ -309,6 +373,8 @@ struct BubbleActions {
     var jump: (String) -> Void
     /// Opens an attachment in Quick Look.
     var open: (ChatAttachment) -> Void
+    /// Plays or pauses a voice message.
+    var play: (ChatAttachment) -> Void
 }
 
 /// The message a reply answers: `original` is nil when it is not loaded.
@@ -436,10 +502,14 @@ private struct Composer: View {
     let context: Context?
     let problem: String?
     let staged: [StagedFile]
+    let recorder: ForgeAudioRecorder
     let cancel: () -> Void
     let pickPhotos: () -> Void
     let pickFiles: () -> Void
     let unstage: (StagedFile) -> Void
+    let startRecording: () -> Void
+    let cancelRecording: () -> Void
+    let sendRecording: () -> Void
     let send: () -> Void
 
     private var empty: Bool {
@@ -459,28 +529,48 @@ private struct Composer: View {
             if !staged.isEmpty && !isEditing {
                 StagedFilesBar(files: staged, remove: unstage)
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                if !isEditing {
-                    Menu {
-                        Button("Photo", systemImage: "photo.on.rectangle", action: pickPhotos)
-                        Button("Document", systemImage: "doc", action: pickFiles)
-                    } label: {
-                        Label("Attach", systemImage: "plus.circle.fill")
-                            .labelStyle(.iconOnly)
-                            .font(.title)
-                            .foregroundStyle(.secondary)
-                    }
-                    .disabled(staged.count >= MAX_ATTACHMENTS_PER_MESSAGE_SWIFT)
+            if recorder.isRecording {
+                RecordingBar(recorder: recorder, cancel: cancelRecording, send: sendRecording)
+            } else {
+                editor
+            }
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+        .background(.bar)
+    }
+
+    /// Nothing to send yet: the send button becomes the microphone.
+    private var offersRecording: Bool { empty && !isEditing && staged.isEmpty }
+
+    private var editor: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            if !isEditing {
+                Menu {
+                    Button("Photo", systemImage: "photo.on.rectangle", action: pickPhotos)
+                    Button("Document", systemImage: "doc", action: pickFiles)
+                } label: {
+                    Label("Attach", systemImage: "plus.circle.fill")
+                        .labelStyle(.iconOnly)
+                        .font(.title)
+                        .foregroundStyle(.secondary)
                 }
-                TextField("Message", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .focused(focused)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .strokeBorder(.quaternary)
-                    }
+                .disabled(staged.count >= MAX_ATTACHMENTS_PER_MESSAGE_SWIFT)
+            }
+            TextField("Message", text: $draft, axis: .vertical)
+                .lineLimit(1...6)
+                .focused(focused)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .strokeBorder(.quaternary)
+                }
+            if offersRecording {
+                Button("Record Voice Message", systemImage: "mic.circle.fill", action: startRecording)
+                    .labelStyle(.iconOnly)
+                    .font(.title)
+            } else {
                 Button(isEditing ? "Save" : "Send", systemImage: isEditing ? "checkmark.circle.fill" : "arrow.up.circle.fill", action: send)
                     .labelStyle(.iconOnly)
                     .font(.title)
@@ -488,9 +578,6 @@ private struct Composer: View {
                     .keyboardShortcut(.return, modifiers: .command)
             }
         }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-        .background(.bar)
     }
 
     private var isEditing: Bool {
@@ -519,6 +606,33 @@ private struct Composer: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxHeight: 36)
+    }
+}
+
+/// Shown instead of the text field while recording: discard, the time so
+/// far with a live level meter, and send.
+private struct RecordingBar: View {
+    let recorder: ForgeAudioRecorder
+    let cancel: () -> Void
+    let send: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button("Discard Recording", systemImage: "trash", role: .destructive, action: cancel)
+                .labelStyle(.iconOnly)
+                .font(.title3)
+            Circle().fill(.red).frame(width: 10, height: 10)
+            Text(AttachmentFiles.timeLabel(recorder.elapsed))
+                .font(.body.monospacedDigit())
+            WaveformView(bars: Array(recorder.levels.suffix(40)), progress: 0, onMine: false)
+                .frame(height: 28)
+            Button("Send Voice Message", systemImage: "arrow.up.circle.fill", action: send)
+                .labelStyle(.iconOnly)
+                .font(.title)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(String(localized: "Recording, \(AttachmentFiles.timeLabel(recorder.elapsed))"))
     }
 }
 
@@ -583,6 +697,12 @@ private struct MessageBubble: View {
             }
             if message.isMine && live { Button("Edit", action: actions.edit) }
             if message.isMine && !message.deleted { Button("Delete", action: actions.delete) }
+            if !message.deleted {
+                ForEach(Array(message.attachments.filter(\.isAudio).enumerated()), id: \.offset) {
+                    _, attachment in
+                    Button("Play Voice Message") { actions.play(attachment) }
+                }
+            }
         }
     }
 
@@ -606,7 +726,7 @@ private struct MessageBubble: View {
                 if !message.attachments.isEmpty {
                     AttachmentsView(
                         model: model, attachments: message.attachments, onMine: message.isMine,
-                        open: actions.open)
+                        open: actions.open, play: actions.play)
                 }
                 if !message.body.isEmpty {
                     Text(message.body)
@@ -635,7 +755,8 @@ private struct MessageBubble: View {
             Button("Copy", systemImage: "doc.on.doc") { copy(message.body) }
         }
         if !message.deleted {
-            ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
+            ForEach(Array(message.attachments.filter { !$0.isAudio }.enumerated()), id: \.offset) {
+                _, attachment in
                 Button(
                     attachment.isImage
                         ? String(localized: "Open Photo")
@@ -674,7 +795,9 @@ private struct MessageBubble: View {
         }
         if !message.body.isEmpty { text += ", \(message.body)" }
         for attachment in message.attachments {
-            text += attachment.isImage ? ", photo" : ", document \(attachment.name)"
+            text +=
+                attachment.isImage
+                ? ", photo" : attachment.isAudio ? ", voice message" : ", document \(attachment.name)"
         }
         text += ", \(time)"
         if message.edited { text += ", edited" }
