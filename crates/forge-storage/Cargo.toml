@@ -7,8 +7,20 @@ license.workspace = true
 rust-version.workspace = true
 publish = false
 
+[features]
+default = []
+# An embedded SQLite database ([`Database`]): migrations, transactions,
+# full-text search (FTS5) and corrupt-file recovery. SQLite is compiled from
+# source (rusqlite's `bundled`), so iOS and Android need no system library.
+sqlite = ["dep:rusqlite"]
+# Content-addressed files in a FileStore: import_hashed names a file by the
+# SHA-256 of its bytes, accept_verified keeps a download only if it matches.
+hash = ["dep:sha2"]
+
 [dependencies]
+rusqlite = { version = "0.40", features = ["bundled"], optional = true }
 serde = { workspace = true }
+sha2 = { version = "0.10", optional = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

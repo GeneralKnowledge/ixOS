@@ -6,9 +6,10 @@
 //! once per process:
 //!
 //! - **Platform log.** Android: logcat (tag = the record's target). iOS:
-//!   the system log via `syslog(3)`, which the unified log picks up, so
-//!   Console.app and a USB syslog relay show it. Elsewhere (host tests,
-//!   Linux tools): standard error, only when `FORGE_LOG` is set.
+//!   the system log via `syslog(3)`, as `LEVEL [target] message` at notice
+//!   priority or above, so `forge device logs` (the USB syslog relay) shows
+//!   every level. Elsewhere (host tests, Linux tools): standard error, only
+//!   when `FORGE_LOG` is set.
 //! - **Recent records.** The last [`RECENT_CAPACITY`] records stay in
 //!   memory ([`recent`]) for diagnostics: an error report, a support
 //!   bundle, a developer tool.
@@ -18,6 +19,11 @@
 //! - **Panics.** A panic is logged (message and location) before the
 //!   previous panic hook runs, so it reaches the platform log even when the
 //!   host only sees a UniFFI error.
+//!
+//! - **Host code.** [`log_export!`](crate::log_export) gives the Swift (or
+//!   Kotlin) host a `forge_log` call that writes into this same pipeline, so
+//!   its records reach the platform log, [`recent`] and the `forge device`
+//!   live stream next to Rust's. On iOS, `ForgeLog` wraps it.
 //!
 //! Records are text written by app code. Never log secrets: tokens,
 //! passwords, Keychain contents, message bodies.
@@ -157,6 +163,25 @@ fn initial_level() -> LevelFilter {
         .unwrap_or(default)
 }
 
+/// Writes one record from host code (Swift, Kotlin) with `category` as its
+/// target ("host" when empty). Installs the pipeline first if the app has not.
+pub fn write_from_host(level: Level, category: &str, message: &str) {
+    init();
+    let category = category.trim();
+    let target = if category.is_empty() {
+        "host"
+    } else {
+        category
+    };
+    log::log!(target: target, level, "{message}");
+}
+
+/// Whether a record at `level` would be kept, so a host can skip building
+/// an expensive message.
+pub fn enabled(level: Level) -> bool {
+    level <= log::max_level()
+}
+
 /// Sets the most detailed level that is recorded.
 pub fn set_level(level: LevelFilter) {
     log::set_max_level(level);
@@ -230,14 +255,17 @@ mod platform {
     }
 
     pub(super) fn write(record: &LogRecord) {
-        // sys/syslog.h priorities.
+        // sys/syslog.h priorities. The USB syslog relay (what
+        // `forge device logs` and idevicesyslog read) drops LOG_INFO and
+        // LOG_DEBUG, so everything below Warn goes out as LOG_NOTICE and
+        // the level is kept in the text instead.
         let priority = match record.level {
-            Level::Trace | Level::Debug => 7,
-            Level::Info => 6,
+            Level::Trace | Level::Debug | Level::Info => 5,
             Level::Warn => 4,
             Level::Error => 3,
         };
-        let line = format!("[{}] {}", record.target, record.message).replace('\0', "");
+        let line =
+            format!("{} [{}] {}", record.level, record.target, record.message).replace('\0', "");
         let line = CString::new(line).unwrap_or_default();
         // SAFETY: a constant "%s" format with one valid C string argument.
         unsafe {
@@ -290,6 +318,21 @@ mod tests {
         remove_sink(id);
         warn!(target: "test-sink", "after removal");
         assert!(!lock(&sink.0).iter().any(|r| r.message == "after removal"));
+
+        let id = add_sink(sink.clone());
+        write_from_host(Level::Warn, "Chat", "picker failed");
+        write_from_host(Level::Info, "  ", "no category");
+        write_from_host(Level::Trace, "Chat", "too detailed");
+        assert!(enabled(Level::Debug) && !enabled(Level::Trace));
+        let seen = lock(&sink.0).clone();
+        assert!(seen
+            .iter()
+            .any(|r| r.target == "Chat" && r.level == Level::Warn && r.message == "picker failed"));
+        assert!(seen
+            .iter()
+            .any(|r| r.target == "host" && r.message == "no category"));
+        assert!(!seen.iter().any(|r| r.message == "too detailed"));
+        remove_sink(id);
 
         let caught = std::panic::catch_unwind(|| panic!("boom in test"));
         assert!(caught.is_err());

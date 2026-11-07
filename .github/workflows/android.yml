@@ -1,7 +1,9 @@
 name: Android
 
-# Android is frozen at its current features, so this runs only when something
-# the Android examples or the generated Android app depend on changes.
+# Android is work in progress and iOS is the focus, so pull requests run this
+# only when Android code itself changes. Pushes to main also run it when the
+# shared Rust it builds on changes, and it can be run by hand (Actions tab ->
+# Android -> Run workflow) on any branch.
 on:
   push:
     branches: [main]
@@ -20,18 +22,11 @@ on:
       - ".github/workflows/android.yml"
   pull_request:
     paths:
-      - "crates/**"
       - "examples/*-android/**"
-      - "examples/counter/rust/**"
-      - "examples/chat-core/**"
-      - "examples/chat-server/**"
       - "templates/android-app/**"
-      - "templates/app-rust/**"
-      - "scripts/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - "rust-toolchain.toml"
+      - "scripts/*android*"
       - ".github/workflows/android.yml"
+  workflow_dispatch:
 
 permissions:
   contents: read

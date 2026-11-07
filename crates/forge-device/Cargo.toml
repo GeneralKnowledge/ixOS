@@ -1,0 +1,28 @@
+[package]
+name = "forge-device"
+version = "0.1.0"
+description = "Developer access to a connected iPhone from Linux: device info, system log, crash reports and the live connection to development builds, over usbmuxd"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Talks to the phone's lockdown services through usbmuxd (no iOS 17 tunnel
+# needed for M0). Exact pin: idevice is pre-1.0 and breaks between releases.
+# `ring` instead of the default aws-lc keeps the build free of cmake and C.
+idevice = { version = "=0.1.68", default-features = false, features = [
+    "ring",
+    "usbmuxd",
+    "syslog_relay",
+    "crashreportcopymobile",
+] }
+tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
+plist = "1"
+thiserror = { workspace = true }
+forge-devproto = { path = "../forge-devproto" }
+
+[dev-dependencies]
+forge-devtools = { path = "../forge-devtools" }
+forge-runtime = { workspace = true }
+tempfile = "3.14"

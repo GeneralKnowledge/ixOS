@@ -1,5 +1,7 @@
 //! The chat domain: what crosses (or will cross) the FFI boundary.
 
+use std::collections::BTreeMap;
+
 use forge_net::NetError;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -55,7 +57,7 @@ impl Conversation {
 }
 
 /// One chat message.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Message {
     /// Chosen by the sender's device and kept by the server, so a retry of
     /// the same message is idempotent and the stream echo of our own message
@@ -76,16 +78,47 @@ pub struct Message {
     /// which is what makes it usable as the `since` cursor.
     pub sent_at: i64,
     pub status: MessageStatus,
+    /// Server time of its last change (an edit, a deletion, a reaction);
+    /// `None` means `sent_at`. Catch-up fetches ask for messages *changed*
+    /// after the cursor, so edits to old messages arrive too.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+    /// The id of the message this one answers, in the same room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    /// When its author last edited it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<i64>,
+    /// Deleted for everyone: the body is empty and it has no reactions.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub deleted: bool,
+    /// Emoji → the account ids that reacted with it, in order.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reactions: BTreeMap<String, Vec<String>>,
+    /// Files it carries (M3), in order. Their bytes are fetched separately.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::Attachment>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+impl Message {
+    /// Server time of the last change: `updated_at`, else `sent_at`.
+    pub fn changed_at(&self) -> i64 {
+        self.updated_at.unwrap_or(self.sent_at)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MessageStatus {
-    /// Written locally; the server has not confirmed it yet.
+    /// Written locally and in the outbox; the server has not confirmed it
+    /// yet. While the server cannot be reached it stays here and is sent
+    /// when it can, also after the app was killed and launched again.
+    #[default]
     Sending,
     /// The server has it.
     Sent,
-    /// The last attempt failed. `ChatClient::retry_message` tries again.
+    /// The server refused it (not a network problem, which keeps it
+    /// `Sending`). `ChatClient::retry_message` tries again.
     Failed,
 }
 
@@ -118,6 +151,11 @@ pub enum ChatEvent {
         id: String,
         status: MessageStatus,
     },
+    /// A known message changed content: edited, deleted, or its reactions.
+    /// Replace it by id. Never counts as unread and never notifies.
+    MessageUpdated(Message),
+    /// One of our unsent messages was deleted on this device: remove it.
+    MessageRemoved { conversation_id: String, id: String },
     /// The live stream for a conversation is open. Emitted again after every
     /// reconnect.
     StreamConnected { conversation_id: String },
@@ -189,6 +227,17 @@ impl ChatError {
     /// Network-class errors are the ones worth retrying later.
     pub fn is_network(&self) -> bool {
         matches!(self, Self::Network { .. })
+    }
+
+    /// Whether a send that failed this way stays in the outbox to be tried
+    /// again later: the server could not be reached, or had a problem of
+    /// its own (5xx).
+    pub fn is_transient(&self) -> bool {
+        match self {
+            Self::Network { .. } => true,
+            Self::Http { status, .. } => *status >= 500,
+            _ => false,
+        }
     }
 }
 

@@ -14,8 +14,10 @@ ureq = ["forge-net/ureq"]
 
 [dependencies]
 forge-net = { workspace = true }
-forge-storage = { workspace = true }
+forge-storage = { workspace = true, features = ["sqlite", "hash"] }
 serde = { workspace = true }
+# Attachments are named by the SHA-256 of their bytes, as on the server.
+sha2 = "0.10"
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 

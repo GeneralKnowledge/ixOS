@@ -1,4 +1,4 @@
-import CoreLocation
+@preconcurrency import CoreLocation
 import Foundation
 @preconcurrency import ForgeFFI
 
@@ -7,10 +7,13 @@ public struct LocationFix: Sendable, Equatable {
     public var coordinate: Coordinate
     /// Radius of uncertainty in metres, when the platform reports one.
     public var horizontalAccuracy: Double?
+    /// The town or city the platform's reverse geocoder found, if any.
+    public var placeName: String?
 
-    public init(coordinate: Coordinate, horizontalAccuracy: Double? = nil) {
+    public init(coordinate: Coordinate, horizontalAccuracy: Double? = nil, placeName: String? = nil) {
         self.coordinate = coordinate
         self.horizontalAccuracy = horizontalAccuracy
+        self.placeName = placeName
     }
 }
 
@@ -57,12 +60,31 @@ public final class DeviceLocationProvider: NSObject, LocationProviding {
     }
 
     public func currentLocation() async throws -> LocationFix {
-        try await withCheckedThrowingContinuation { continuation in
+        var fix = try await withCheckedThrowingContinuation { continuation in
             waiting.append(continuation)
             if waiting.count == 1 {
                 proceed(with: manager.authorizationStatus)
             }
         }
+        fix.placeName = await Self.locality(of: fix.coordinate)
+        return fix
+    }
+
+    /// The town or city at `coordinate` ("Bathgate"), from the platform's
+    /// reverse geocoder. Nil when it is offline, slow or finds nothing: the
+    /// page then says "My Location".
+    private static func locality(of coordinate: Coordinate) async -> String? {
+        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let geocoder = CLGeocoder()
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(5))
+            geocoder.cancelGeocode()
+        }
+        defer { timeout.cancel() }
+        guard let mark = try? await geocoder.reverseGeocodeLocation(location).first else {
+            return nil
+        }
+        return mark.locality ?? mark.subAdministrativeArea ?? mark.administrativeArea
     }
 
     private func proceed(with status: CLAuthorizationStatus) {

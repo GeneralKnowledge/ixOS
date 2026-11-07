@@ -1,0 +1,33 @@
+[app]
+name = "DeviceLab"
+bundle_id = "org.forgemobile.devicelab"
+minimum_ios = "17.0"
+display_name = "Device Lab"         # home-screen name
+version = "1.0.0"                   # CFBundleShortVersionString
+build_number = "1"                  # CFBundleVersion; raise it for every upload
+
+[rust]
+# This app's own Rust crate. It selects Forge's optional native services
+# (connectivity, device status, motion, location, Bluetooth) in src/lib.rs.
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
+
+# iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
+# this section on every `forge build ios` / `forge run ios` (or `forge config
+# sync`), so edit them here, not in those files. All keys: docs/app-config.md.
+[ios]
+orientations = ["portrait"]
+
+# The text iOS shows when the app asks. Each one is asked only when the user
+# taps the matching "Allow" button on the dashboard.
+[ios.permissions]
+location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open. Nothing leaves your phone."
+motion = "Device Lab reads the barometer for air pressure and height changes."
+bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
+
+[ios.signing]
+# Everything here works with a free Apple account: no paid-only entitlements.
+team_type = "free"

@@ -158,20 +158,24 @@ fn bad_input_is_rejected_before_the_network() {
 }
 
 #[test]
-fn failed_send_is_typed_and_retry_is_idempotent() {
+fn refused_send_is_failed_and_retry_is_idempotent() {
     let h = harness();
-    h.repo.set_offline(true);
+    h.repo.set_rejecting(true);
     let err = h.client.send_message("general", "hi").unwrap_err();
-    assert!(err.is_network(), "{err:?}");
+    assert!(
+        matches!(err, ChatError::Http { status: 400, .. }),
+        "{err:?}"
+    );
     let failed = failed_in(&h.client, "general");
     let events = h.drain();
     assert_eq!(
         events.last(),
         Some(&status_event(&failed, MessageStatus::Failed))
     );
+    assert!(h.client.outbox().is_empty(), "a refusal is not queued");
 
-    // Still offline: retry fails again, back to Failed.
-    assert!(h.client.retry_message(&failed.id).unwrap_err().is_network());
+    // Still refused: retry fails again, back to Failed.
+    assert!(h.client.retry_message(&failed.id).is_err());
     assert_eq!(
         h.drain(),
         vec![
@@ -180,13 +184,75 @@ fn failed_send_is_typed_and_retry_is_idempotent() {
         ]
     );
 
-    h.repo.set_offline(false);
+    h.repo.set_rejecting(false);
     let sent = h.client.retry_message(&failed.id).unwrap();
     assert_eq!(sent.id, failed.id);
     assert_eq!(sent.status, MessageStatus::Sent);
     // Retrying a sent message is a no-op that returns it.
     assert_eq!(h.client.retry_message(&failed.id).unwrap(), sent);
     assert_eq!(h.repo.messages("general").len(), 1);
+}
+
+#[test]
+fn offline_sends_wait_in_the_outbox_and_go_out_in_order() {
+    let h = harness();
+    h.repo.set_offline(true);
+    let first = h.client.send_message("general", "one").unwrap();
+    let second = h.client.send_message("general", "two").unwrap();
+    assert_eq!(first.status, MessageStatus::Sending);
+    assert_eq!(second.status, MessageStatus::Sending);
+    let queued: Vec<_> = h.client.outbox().into_iter().map(|m| m.body).collect();
+    assert_eq!(queued, ["one", "two"]);
+    assert!(
+        !h.drain().iter().any(|e| matches!(
+            e,
+            ChatEvent::MessageStatusChanged {
+                status: MessageStatus::Failed,
+                ..
+            }
+        )),
+        "nothing fails while the server is only unreachable"
+    );
+
+    h.repo.set_offline(false);
+    h.client.flush_outbox();
+    h.wait_for("the second message sent", |e| {
+        *e == status_event(&second, MessageStatus::Sent)
+    });
+    assert!(h.client.outbox().is_empty());
+    let on_server: Vec<_> = h
+        .repo
+        .messages("general")
+        .into_iter()
+        .map(|m| m.body)
+        .collect();
+    assert_eq!(on_server, ["one", "two"], "sent once each, in order");
+}
+
+#[test]
+fn a_queued_message_survives_a_relaunch_and_is_sent_then() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
+    let queued = {
+        let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
+        h.client.list_conversations().unwrap();
+        repo.set_offline(true);
+        let queued = h.client.send_message("general", "typed offline").unwrap();
+        assert_eq!(queued.status, MessageStatus::Sending);
+        // The app goes away with the message still queued.
+        h.client.shutdown();
+        queued
+    };
+
+    repo.set_offline(false);
+    let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
+    // The new run sends it by itself, with the same id.
+    h.wait_for("the queued message sent", |e| {
+        *e == status_event(&queued, MessageStatus::Sent)
+    });
+    let on_server = repo.messages("general");
+    assert_eq!(on_server.len(), 1);
+    assert_eq!(on_server[0].id, queued.id);
 }
 
 #[test]
@@ -553,14 +619,14 @@ fn store_survives_restart_and_failed_messages_stay_retryable() {
         h.client.list_conversations().unwrap();
         repo.inject("general", "ana", "hello");
         h.client.sync_messages("general").unwrap();
-        repo.set_offline(true);
+        repo.set_rejecting(true);
         h.client.send_message("general", "lost").unwrap_err();
         let id = failed_in(&h.client, "general").id;
         h.client.shutdown();
         id
     };
 
-    repo.set_offline(false);
+    repo.set_rejecting(false);
     let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
     assert_eq!(h.client.cached_conversations().len(), 1);
     let messages = h.client.cached_messages("general");
@@ -577,18 +643,31 @@ fn store_survives_restart_and_failed_messages_stay_retryable() {
 #[test]
 fn corrupt_store_starts_empty_but_newer_store_is_refused() {
     let dir = tempfile::tempdir().unwrap();
-    let path = dir.path().join(crate::store::STORE_FILENAME);
+    let path = dir.path().join(crate::store::DATABASE_FILENAME);
     let repo = Arc::new(InMemoryRepo::new());
 
-    std::fs::write(&path, b"{garbage").unwrap();
-    let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
-    assert!(matches!(
-        h.client.store_error(),
-        Some(StoreError::Corrupt { .. })
-    ));
-    assert!(h.client.cached_conversations().is_empty());
+    // A damaged database is set aside (kept) and the client starts empty.
+    std::fs::write(&path, b"garbage, not SQLite").unwrap();
+    {
+        let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
+        assert!(matches!(
+            h.client.store_error(),
+            Some(StoreError::Corrupt { .. })
+        ));
+        assert!(h.client.cached_conversations().is_empty());
+        h.client.shutdown();
+    }
+    let kept = std::fs::read_dir(dir.path())
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .any(|e| e.file_name().to_string_lossy().contains(".corrupt-"));
+    assert!(kept, "the damaged file is kept for inspection");
 
-    std::fs::write(&path, br#"{"schema_version": 99}"#).unwrap();
+    // A database from a newer build is refused and left alone.
+    let connection = forge_storage::rusqlite::Connection::open(&path).unwrap();
+    connection.pragma_update(None, "user_version", 99).unwrap();
+    drop(connection);
+    let before = std::fs::read(&path).unwrap();
     let opened = ChatClient::open(
         repo,
         ChatStore::in_directory(dir.path()),
@@ -599,7 +678,36 @@ fn corrupt_store_starts_empty_but_newer_store_is_refused() {
         opened,
         Err(StoreError::UnsupportedVersion { found: 99, .. })
     ));
-    assert_eq!(std::fs::read(&path).unwrap(), br#"{"schema_version": 99}"#);
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+}
+
+#[test]
+fn a_json_store_from_before_m2_is_imported_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let json = serde_json::json!({
+        "schema_version": 1,
+        "conversations": [{"id": "general", "title": "General", "last_message_at": 5, "unread_count": 0}],
+        "messages": {"general": [{"id": "old", "conversation_id": "general", "author": "ana",
+                                  "body": "from the JSON days", "sent_at": 5, "status": "sent"}]},
+        "last_synced": {"general": 5}
+    });
+    let path = dir.path().join(crate::store::STORE_FILENAME);
+    std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
+    {
+        let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
+        assert!(h.client.store_error().is_none());
+        assert_eq!(
+            h.client.cached_messages("general")[0].body,
+            "from the JSON days"
+        );
+        assert_eq!(h.client.last_synced("general"), Some(5));
+        assert_eq!(h.client.search("json", None).unwrap().len(), 1);
+        h.client.shutdown();
+    }
+    assert!(!path.exists(), "imported once, then set aside");
+    let h = harness_with(repo, ChatStore::in_directory(dir.path()));
+    assert_eq!(h.client.cached_messages("general").len(), 1);
 }
 
 #[test]
@@ -662,21 +770,21 @@ fn killer_demo_interaction() {
         )
     });
 
-    // 4. Send again: a typed network error and a Failed bubble.
-    let err = h.client.send_message("general", "second").unwrap_err();
-    assert!(err.is_network());
-    let failed = failed_in(&h.client, "general");
-    h.wait_for("Failed status", |e| {
-        *e == status_event(&failed, MessageStatus::Failed)
-    });
+    // 4. Send again: it waits in the outbox, still Sending.
+    let queued = h.client.send_message("general", "second").unwrap();
+    assert_eq!(queued.status, MessageStatus::Sending);
 
-    // 5. Restart the server, tap to retry: Sending → Sent.
+    // 5. Restart the server: the stream reconnects and the outbox sends it.
     h.repo.set_offline(false);
-    h.client.retry_message(&failed.id).unwrap();
-    h.wait_for("Sent after retry", |e| {
-        *e == status_event(&failed, MessageStatus::Sent)
+    let events = h.wait_for("Sent once the server is back", |e| {
+        *e == status_event(&queued, MessageStatus::Sent)
     });
-    h.wait_connected("general");
+    if !events
+        .iter()
+        .any(|e| matches!(e, ChatEvent::StreamConnected { .. }))
+    {
+        h.wait_connected("general");
+    }
 
     // 6. A message from curl appears via the stream.
     let external = h.repo.inject("general", "curl", "hello from curl");
@@ -1114,9 +1222,317 @@ fn new_conversations_are_created_on_the_server_and_listed() {
 fn a_failed_send_shows_in_the_preview() {
     let h = harness();
     h.client.list_conversations().unwrap();
-    h.repo.set_offline(true);
+    h.repo.set_rejecting(true);
     assert!(h.client.send_message("general", "lost").is_err());
     let preview = conversation(&h.client, "general").last_message.unwrap();
     assert_eq!(preview.body, "lost");
     assert_eq!(preview.status, MessageStatus::Failed);
+}
+
+// ----- M2: replies, edits, deletions, reactions, drafts ------------------
+
+fn updated(events: &[ChatEvent], id: &str) -> Option<Message> {
+    events.iter().rev().find_map(|e| match e {
+        ChatEvent::MessageUpdated(m) if m.id == id => Some(m.clone()),
+        _ => None,
+    })
+}
+
+#[test]
+fn replies_point_at_a_message_in_the_same_room() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    let question = h.repo.inject("general", "ana", "Lake on Saturday?");
+    h.client.sync_messages("general").unwrap();
+    let answer = h
+        .client
+        .send_reply("general", "Yes!", Some(&question.id))
+        .unwrap();
+    assert_eq!(answer.status, MessageStatus::Sent);
+    assert_eq!(answer.reply_to.as_deref(), Some(question.id.as_str()));
+    assert_eq!(
+        h.repo
+            .messages("general")
+            .last()
+            .unwrap()
+            .reply_to
+            .as_deref(),
+        Some(question.id.as_str())
+    );
+    for (room, target) in [("random", question.id.as_str()), ("general", "nope")] {
+        assert!(matches!(
+            h.client.send_reply(room, "x", Some(target)),
+            Err(ChatError::InvalidInput { .. })
+        ));
+    }
+}
+
+#[test]
+fn edits_deletions_and_reactions_reach_the_server_and_the_store() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    let mine = h.client.send_message("general", "Lunch at 12?").unwrap();
+    h.drain();
+
+    let edited = h.client.edit_message(&mine.id, "Lunch at 1?").unwrap();
+    assert_eq!(edited.body, "Lunch at 1?");
+    assert!(edited.edited_at.is_some());
+    assert_eq!(updated(&h.drain(), &mine.id).unwrap().body, "Lunch at 1?");
+    assert_eq!(
+        conversation(&h.client, "general")
+            .last_message
+            .unwrap()
+            .body,
+        "Lunch at 1?"
+    );
+
+    let reacted = h.client.set_reaction(&mine.id, "👍", true).unwrap();
+    assert_eq!(reacted.reactions["👍"], [""]);
+    let cleared = h.client.set_reaction(&mine.id, "👍", false).unwrap();
+    assert!(cleared.reactions.is_empty());
+
+    let gone = h.client.delete_message(&mine.id).unwrap().unwrap();
+    assert!(gone.deleted);
+    assert!(gone.body.is_empty());
+    assert!(h.client.cached_messages("general")[0].deleted);
+    assert!(h.client.search("lunch", None).unwrap().is_empty());
+
+    // A deleted message cannot be changed, and other people's never can.
+    assert!(h.client.edit_message(&mine.id, "again").is_err());
+    let theirs = h.repo.inject("general", "ana", "mine, not yours");
+    h.client.sync_messages("general").unwrap();
+    assert!(matches!(
+        h.client.edit_message(&theirs.id, "hijacked"),
+        Err(ChatError::InvalidInput { .. })
+    ));
+    assert!(h.client.delete_message(&theirs.id).is_err());
+    // Reacting to someone else's message is fine.
+    assert!(h.client.set_reaction(&theirs.id, "❤️", true).is_ok());
+    assert!(h
+        .client
+        .set_reaction(&theirs.id, "not one emoji", true)
+        .is_err());
+}
+
+#[test]
+fn changes_by_others_arrive_live_and_in_catch_up_without_counting_unread() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    let message = h.repo.inject("general", "ana", "draft plan");
+    h.client.subscribe("general").unwrap();
+    h.wait_connected("general");
+    h.wait_for(
+        "the message",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == message.id),
+    );
+
+    // Live, on the open room's stream.
+    h.repo.inject_edit("general", &message.id, "final plan");
+    let events = h.wait_for(
+        "the edit",
+        |e| matches!(e, ChatEvent::MessageUpdated(m) if m.body == "final plan"),
+    );
+    assert!(!events.iter().any(|e| matches!(e, ChatEvent::Notify(_))));
+    h.client.unsubscribe("general").unwrap();
+    h.drain();
+
+    // While nobody watches: picked up by the next catch-up, because the
+    // server returns messages *changed* since the cursor.
+    h.repo.inject_reaction("general", &message.id, "ben", "🎉");
+    h.repo.inject_delete("general", &message.id);
+    h.client.sync_messages("general").unwrap();
+    let stored = &h.client.cached_messages("general")[0];
+    assert!(stored.deleted, "{stored:?}");
+    assert_eq!(
+        conversation(&h.client, "general").unread_count,
+        0,
+        "changes are not unread"
+    );
+    assert!(updated(&h.drain(), &message.id).unwrap().deleted);
+}
+
+#[test]
+fn deleting_an_unsent_message_removes_it_from_the_outbox() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.repo.set_offline(true);
+    let queued = h.client.send_message("general", "never mind").unwrap();
+    assert_eq!(h.client.delete_message(&queued.id).unwrap(), None);
+    assert!(h.drain().contains(&ChatEvent::MessageRemoved {
+        conversation_id: "general".into(),
+        id: queued.id.clone(),
+    }));
+    assert!(h.client.outbox().is_empty());
+    assert!(h.client.cached_messages("general").is_empty());
+    h.repo.set_offline(false);
+    h.client.flush_outbox();
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(h.repo.messages("general").is_empty(), "never sent");
+}
+
+#[test]
+fn drafts_are_kept_until_sent() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
+    {
+        let h = harness_with(repo.clone(), ChatStore::in_directory(dir.path()));
+        h.client.list_conversations().unwrap();
+        h.client.set_draft("general", "Remember to bring").unwrap();
+        assert_eq!(
+            h.client.draft("general").as_deref(),
+            Some("Remember to bring")
+        );
+    }
+    let h = harness_with(repo, ChatStore::in_directory(dir.path()));
+    assert_eq!(
+        h.client.draft("general").as_deref(),
+        Some("Remember to bring"),
+        "kept across a relaunch"
+    );
+    h.client
+        .send_message("general", "Remember to bring snacks")
+        .unwrap();
+    assert_eq!(h.client.draft("general"), None, "sending clears it");
+    h.client.set_draft("general", "x").unwrap();
+    h.client.set_draft("general", "   ").unwrap();
+    assert_eq!(h.client.draft("general"), None);
+}
+
+fn file(dir: &std::path::Path, name: &str, bytes: &[u8], mime: &str) -> OutgoingFile {
+    let path = dir.join(name);
+    std::fs::write(&path, bytes).unwrap();
+    OutgoingFile {
+        path,
+        name: name.into(),
+        mime: mime.into(),
+    }
+}
+
+#[test]
+fn files_are_uploaded_before_the_message_and_fetched_by_others() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    let photo = file(
+        dir.path(),
+        "IMG_0001.jpg",
+        &[0xff, 0xd8, 1, 2, 3],
+        "image/jpeg",
+    );
+    let doc = file(dir.path(), "Plan.pdf", b"%PDF-1.7 plan", "application/pdf");
+    let sent = h
+        .client
+        .send_with_files("general", " look ", None, &[photo.clone(), doc])
+        .unwrap();
+    assert_eq!(sent.status, MessageStatus::Sent);
+    assert_eq!(sent.body, "look");
+    assert_eq!(
+        sent.attachments
+            .iter()
+            .map(|a| (a.name.as_str(), a.mime.as_str(), a.size, a.is_image()))
+            .collect::<Vec<_>>(),
+        [
+            ("IMG_0001.jpg", "image/jpeg", 5, true),
+            ("Plan.pdf", "application/pdf", 13, false)
+        ]
+    );
+    // Both files went up before the message.
+    let calls: Vec<String> = h
+        .repo
+        .calls()
+        .into_iter()
+        .filter(|c| c.starts_with("upload") || c.starts_with("post"))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            "upload image/jpeg".to_string(),
+            "upload application/pdf".into(),
+            format!("post general {}", sent.id)
+        ]
+    );
+    // The sender keeps its own copy, even once the original is gone.
+    std::fs::remove_file(&photo.path).unwrap();
+    let mine = h.client.attachment_file(&sent.attachments[0].id).unwrap();
+    assert_eq!(std::fs::read(mine).unwrap(), [0xff, 0xd8, 1, 2, 3]);
+
+    // Someone else sees the message and fetches the file once.
+    let other_dir = tempfile::tempdir().unwrap();
+    let other = harness_with(h.repo.clone(), ChatStore::in_directory(other_dir.path()));
+    other.client.list_conversations().unwrap();
+    let theirs = other.client.sync_messages("general").unwrap();
+    let pdf = theirs[0].attachments[1].clone();
+    assert_eq!(other.client.attachment_file(&pdf.id), None);
+    let path = other.client.fetch_attachment(&pdf.id).unwrap();
+    assert!(path.starts_with(other_dir.path().join("attachments")));
+    assert_eq!(std::fs::read(&path).unwrap(), b"%PDF-1.7 plan");
+    let downloads = || {
+        h.repo
+            .calls()
+            .iter()
+            .filter(|c| c.starts_with("download"))
+            .count()
+    };
+    assert_eq!(downloads(), 1);
+    assert_eq!(other.client.fetch_attachment(&pdf.id).unwrap(), path);
+    assert_eq!(downloads(), 1, "fetched once, then read locally");
+    assert!(matches!(
+        other.client.fetch_attachment("../forge-chat.db"),
+        Err(ChatError::InvalidInput { .. })
+    ));
+
+    // Search finds a message by its files' names.
+    assert_eq!(other.client.search("plan", None).unwrap()[0].id, sent.id);
+    // Deleting it for everyone drops the attachments from the message.
+    let tombstone = h.client.delete_message(&sent.id).unwrap().unwrap();
+    assert!(tombstone.attachments.is_empty());
+    other.client.shutdown();
+}
+
+#[test]
+fn files_sent_offline_wait_in_the_outbox_with_their_own_copy() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.repo.set_offline(true);
+    let doc = file(dir.path(), "notes.txt", b"offline notes", "text/plain");
+    let queued = h
+        .client
+        .send_with_files("general", "", None, std::slice::from_ref(&doc))
+        .unwrap();
+    assert_eq!(queued.status, MessageStatus::Sending);
+    assert_eq!(h.client.outbox().len(), 1);
+    // The picked file may be a temporary copy the system deletes.
+    std::fs::remove_file(&doc.path).unwrap();
+    h.repo.set_offline(false);
+    h.client.flush_outbox();
+    h.wait_for("the queued file is sent", |e| {
+        *e == status_event(&queued, MessageStatus::Sent)
+    });
+    let sent = &h.client.cached_messages("general")[0];
+    assert_eq!(sent.attachments[0].name, "notes.txt");
+    assert!(h.client.outbox().is_empty());
+}
+
+#[test]
+fn bad_files_are_refused_before_the_network() {
+    let dir = tempfile::tempdir().unwrap();
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    let empty = file(dir.path(), "empty.txt", b"", "text/plain");
+    let missing = OutgoingFile {
+        path: dir.path().join("missing.jpg"),
+        name: String::new(),
+        mime: String::new(),
+    };
+    let one = file(dir.path(), "one.txt", b"1", "text/plain");
+    let too_many = vec![one; MAX_ATTACHMENTS_PER_MESSAGE + 1];
+    for files in [vec![empty], vec![missing], too_many] {
+        assert!(matches!(
+            h.client.send_with_files("general", "x", None, &files),
+            Err(ChatError::InvalidInput { .. })
+        ));
+    }
+    assert!(h.client.cached_messages("general").is_empty());
+    assert!(!h.repo.calls().iter().any(|c| c.starts_with("upload")));
 }

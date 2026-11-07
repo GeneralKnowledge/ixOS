@@ -37,6 +37,16 @@ impl Stage {
             Stage::Device => "iPhone",
         }
     }
+
+    /// The name in `--json` results (`stage`): rust, swift, signing, device.
+    pub fn key(self) -> &'static str {
+        match self {
+            Stage::Rust => "rust",
+            Stage::Swift => "swift",
+            Stage::Signing => "signing",
+            Stage::Device => "device",
+        }
+    }
 }
 
 struct Rule {
@@ -127,7 +137,12 @@ const RULES: &[Rule] = &[
         "Run `xtool auth login` (Apple ID with password, or an App Store Connect API key for paid accounts). Check with `xtool auth status`.",
     ),
     rule(
-        &["maximum number of apps", "maxappsreached"],
+        &[
+            "maximum number of apps",
+            "maxappsreached",
+            "maximum number of installed apps",
+            "using a free developer profile",
+        ],
         Stage::Signing,
         "A free Apple account can have at most 3 sideloaded apps on a device at once.",
         "Delete one of your other development apps from the iPhone (long-press its icon, Remove App), then run again.",
@@ -219,6 +234,14 @@ pub fn diagnose(output: &str) -> Vec<Hint> {
 /// The error message for a failed step: what failed, then each diagnosis.
 pub fn explain(step: &str, status: impl std::fmt::Display, output: &str) -> String {
     let hints = diagnose(output);
+    crate::report::record_failure(
+        step,
+        hints
+            .iter()
+            .map(crate::report::JsonHint::from_hint)
+            .collect(),
+        output,
+    );
     let mut msg = format!("`{step}` failed ({status})");
     if hints.is_empty() {
         msg.push_str(
@@ -263,6 +286,13 @@ mod tests {
         assert_eq!(
             stages(
                 "Error: The maximum number of apps for free development profiles has been reached."
+            ),
+            [Stage::Signing]
+        );
+        // iOS 26 wording, seen through xtool's applicationVerificationFailed.
+        assert_eq!(
+            stages(
+                "This device has reached the maximum number of installed apps using a free developer profile."
             ),
             [Stage::Signing]
         );

@@ -16,8 +16,8 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 |---|---|---|
 | M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | Done (PR #40); passed on an iPhone (PR #42) |
 | M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | Done (PR #46); device run E1–E13 passed on an iPhone 15 Pro Max, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
-| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Planned |
-| M3 | Photos and documents | Planned |
+| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51), CI green; the iPhone run F1–F14 was skipped at Reuben's request, not run, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m2-device-run) |
+| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m3-photos-and-documents) |
 | M4 | Voice messages | Planned |
 | M5 | Notifications through forge-services, deep links, background work | Planned |
 | M6 | Physical iPhone acceptance and framework gap report | Planned |
@@ -55,18 +55,25 @@ examples/chat-android     # Compose host (frozen)
 
 ## The core, in one paragraph
 
-`ChatClient` is the engine the hosts drive. It owns a `ChatRepo` (the server as the client sees it), a `ChatStore` (one JSON snapshot) and one `EventSink`. Commands are blocking and run on the caller's thread, like `forge_net::HttpClient`; the FFI layer runs each on a worker thread, as Weather does. `subscribe` starts one pump thread per room that connects the room's Server-Sent Events stream, catches up with a `since` fetch, follows the stream, and reconnects with backoff when it drops.
+`ChatClient` is the engine the hosts drive. It owns a `ChatRepo` (the server as the client sees it), a `ChatStore` (a SQLite database since M2) and one `EventSink`. Commands are blocking and run on the caller's thread, like `forge_net::HttpClient`; the FFI layer runs each on a worker thread, as Weather does. `subscribe` starts one pump thread per room that connects the room's Server-Sent Events stream, catches up with a `since` fetch, follows the stream, and reconnects with backoff when it drops.
 
 ### Types
 
 ```rust
 pub struct Conversation { id, title, last_message_at: Option<i64>, unread_count: u32 }
-pub struct Message { id, conversation_id, author, body, sent_at: i64, status: MessageStatus }
+pub struct Message {
+    id, conversation_id, author, author_id, body, sent_at: i64, status: MessageStatus,
+    // M2
+    updated_at: Option<i64>, reply_to: Option<String>, edited_at: Option<i64>,
+    deleted: bool, reactions: BTreeMap<String, Vec<String>>, // emoji -> user ids
+}
 pub enum MessageStatus { Sending, Sent, Failed }
 
 pub enum ChatEvent {
     ConversationUpdated(Conversation),
     MessageReceived(Message),
+    MessageUpdated(Message),  // M2: edited, deleted or reacted to; never unread
+    MessageRemoved { conversation_id, id }, // M2: an unsent message deleted here
     Notify(Message),
     MessageStatusChanged { conversation_id, id, status },
     StreamConnected { conversation_id },
@@ -88,8 +95,12 @@ Times are Unix **milliseconds**. Error fields are named `reason`/`detail`, never
 |---|---|
 | `list_conversations()` | Lists rooms. For each room that is not open and has newer messages than the cursor, fetches them too: they count towards `unread_count` and are announced with `MessageReceived`. |
 | `load_messages(id, since)` / `sync_messages(id)` | Fetches (all, or newer than `since`), merges, returns the room's full stored list including local `Sending`/`Failed` messages. `sync_messages` uses the stored cursor. |
-| `send_message(id, body)` | Stores and announces the message as `Sending` *before* the network call, then `MessageStatusChanged` to `Sent` or `Failed`. Returns the final message or the error. |
-| `retry_message(message_id)` | `Failed` → `Sending` → `Sent`/`Failed`, same id. Retrying a `Sent` message returns it. |
+| `send_message(id, body)` / `send_reply(id, body, reply_to)` | Stores and announces the message as `Sending` *before* the network call, then `MessageStatusChanged` to `Sent`. Since M2 a network error or a 5xx leaves it `Sending` in the **outbox** and returns it (see below); only a refusal (4xx) makes it `Failed` and returns the error. Clears the room's draft. |
+| `retry_message(message_id)` | `Failed` (or queued) → `Sending` → `Sent`/`Failed`, same id. Retrying a `Sent` message returns it. |
+| `edit_message(message_id, body)`, `delete_message(message_id)`, `set_reaction(message_id, emoji, on)` | M2. Change a sent message on the server and announce the result as `MessageUpdated`. Only the author edits or deletes; deleting leaves a tombstone (`deleted`, empty body). Deleting a message that never reached the server removes it here (`MessageRemoved`) and it is never sent. |
+| `set_draft(id, text)`, `draft(id)` | M2. The composer's unsent text per room, kept on this device across launches. |
+| `search(query, room?)` | M2. Stored messages containing every word of `query` as a word prefix (case and accents ignored), newest first, at most 100; deleted messages are not found. Runs on the device's SQLite FTS5 index. |
+| `outbox()`, `flush_outbox()` | M2. Messages waiting to be sent, and a nudge to send them now. |
 | `subscribe(id)` | Opens the room: starts its pump (or reuses its watch), marks it read and keeps it read. Returns at once; connection state arrives as events. Idempotent. |
 | `unsubscribe(id)` | Closes the room. The pump ends unless the room is watched. Idempotent, allowed after shutdown. |
 | `watch(id)` / `unwatch(id)` | Keeps the room's pump running in the background without opening it, so its news counts as unread and raises `Notify`. The pump ends when the room is neither open nor watched. Idempotent. |
@@ -106,7 +117,7 @@ These are the guarantees the FFI layer and both hosts build on. Each has a test 
 4. **Unsubscribe is a hard stop for events.** When `unsubscribe` returns, `StreamDisconnected { will_retry: false }` has been emitted and no later event comes from that subscription: each pump checks it is still the current subscription, under the same lock, before every change.
 5. **And the Rust task really ends.** Each subscription owns a `forge_net::CancelHandle`. Unsubscribing cancels it, which shuts down that room's socket (a read blocked on a silent stream fails at once), aborts a connect in progress and wakes a reconnect backoff, so the pump exits promptly without waiting for a heartbeat. Other rooms' connections are untouched. `ChatClient::live_pumps()` counts running pumps; the tests assert it reaches zero and that the in-memory server sees the stream closed.
 6. **Leaving a room does not cancel a send.** The send finishes and its status event is still emitted; the list screen can ignore it, the store has it.
-7. **One `StreamDisconnected` per outage.** With `will_retry: true` the pump reconnects with backoff (500 ms doubling to 5 s by default) and emits `StreamConnected` when it succeeds. With `will_retry: false` the subscription is over: unsubscribed, shut down, or the room does not exist.
+7. **One `StreamDisconnected` per outage.** With `will_retry: true` the pump reconnects with `forge_net::Backoff` (500 ms doubling to 5 s by default, each delay cut by up to 20% at random so clients do not all reconnect at once) and emits `StreamConnected` when it succeeds. With `will_retry: false` the subscription is over: unsubscribed, shut down, or the room does not exist.
 8. **No gaps after reconnect.** The pump opens the stream first and catches up second, so a message stored in between arrives on one or both (and is merged).
 
 ### Why explicit subscribe/unsubscribe
@@ -141,11 +152,34 @@ Local only, while the app runs: the Rust client holds the room connections, and 
 - its room is not open (it arrived on a watched room's stream, or in a refresh's prefetch);
 - it was sent after this `ChatClient` started (server `sent_at` against device time), so the history a room catches up on when first watched, and whatever arrived while the app was closed, never notify. It still counts as unread.
 
-The hosts only display it: `UNUserNotificationCenter` on iOS (with banners in the foreground too), a high-importance `NotificationChannel` on Android (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
+The hosts only display it. On iOS that goes through Forge's `LocalNotifier` (`ForgeNotifications`, banners in the foreground too): grouped by room, the author as subtitle, and a `forgechat://conversation/<id>?message=<id>` link that opens the room at that message when tapped. On Android it is a high-importance `NotificationChannel` (`POST_NOTIFICATIONS` is asked for on Android 13+). Both sessions take the notifier as an optional parameter; without one, nothing is watched. Watching every room means one open stream per room. A `Notify` lost to `EventsDropped` is not replayed: the unread count still shows it.
+
+### Outbox (M2)
+
+A message that cannot reach the server (a network error or a 5xx) stays `Sending` in the store: that is the outbox. A thread (`forge-chat-outbox`) sends queued messages oldest first, with the same id (posts are idempotent), backing off from 1 s to 60 s. It is woken at once when a room's stream connects, when the app resumes, after a successful refresh and by `flush_outbox`. Messages still `Sending` when the app is killed stay queued and go out on the next launch. A refusal by the server (4xx) makes the message `Failed`; the user retries or deletes it. A message is never posted twice at the same time (`in_flight`).
+
+### Message changes (M2)
+
+Edits, deletions and reactions are server events: the server stamps the message with `updated_at` from the room's clock (strictly increasing, shared with `sent_at`) and broadcasts it as a `message` event. `?since=` returns messages *changed* after the cursor, so catch-up after a reconnect brings changes too, and the cursor follows `changed_at() = max(sent_at, updated_at)`. A changed message that is already stored is announced as `MessageUpdated`, never counted unread and never notified. Rooms that are neither open nor watched see changes on their next catch-up (the list prefetch only fetches rooms with new messages).
+
+### Attachments (M3)
+
+A photo or document is a file named by the SHA-256 of its bytes (64 lowercase hex characters), the same id on the server and on every device. `send_with_files` copies each file into the attachment store (`<data dir>/attachments/<id>`, hashing while it copies; empty files and files over 25 MiB are refused before the network, at most 10 per message) and queues the message in the outbox like any other. The outbox uploads each file first (`POST /attachments`, idempotent, so a retry after a dropped connection costs nothing), then posts the message with the ids. Another device stores the message at once and fetches a file only when it is shown or opened (`fetch_attachment`): the body is streamed into a `.part` file and kept only if its SHA-256 matches the id. A message with files may have an empty body.
+
+forge-net gained two pieces for this: `HttpClient::send_file` (the ureq client streams the file with its `Content-Length`; the default reads it into memory) and `download_to_file` (a 2xx body streamed to a `.part` file, flushed and renamed when complete; an error status writes nothing).
+
+The SwiftUI host picks photos with `PhotosPicker` (no photo-library permission: the picker runs out of process), shrinks them to a JPEG of at most 2048 pixels with ImageIO (which also drops their location), copies documents from the Files picker inside their security scope, draws thumbnails off the main thread, and opens files in Quick Look, which also shares them. Rust names stored files by id without an extension, so Swift gives Quick Look a hard-linked copy under the attachment's own name.
 
 ### Store
 
-One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::write_atomic`) after every change:
+**Since M2** the store is a SQLite database, `forge-chat.db`, opened through `forge_storage::Database` (feature `sqlite`: bundled SQLite, WAL mode, migrations by `user_version`). Tables: `conversations`, `messages` (each row the message as JSON plus indexed columns), `cursors`, `drafts`, and `messages_fts`, an FTS5 index kept in step by triggers. Saves are diffs in one transaction, not a rewrite.
+
+- A database from a **newer** build makes `ChatClient::open` fail and is never touched. One that cannot be opened or fails its integrity check is moved aside to `forge-chat.db.corrupt-<ms>`: the client starts empty (the server is the source of truth) and `store_error()` says why.
+- The first launch after M2 imports the M1 JSON store (below) once and renames it to `forge-chat-store.json.imported`. An unreadable JSON store is reported like a corrupt database.
+- Each room keeps at most 500 messages; only `Sent` messages are evicted.
+- Settings shows the engine and version (`storage_engine()`, e.g. "SQLite 3.50.4"), which is the device check that SQLite runs on the iPhone.
+
+**Before M2** it was one JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::write_atomic`) after every change:
 
 ```json
 {
@@ -156,11 +190,7 @@ One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::wr
 }
 ```
 
-- `store::migrate(serde_json::Value)` is where versions are upgraded (only v1 exists).
-- A store from a **newer** build makes `ChatClient::open` fail and is never overwritten. A **corrupt** store is set aside: the client starts empty (the server is the source of truth) and `store_error()` says why.
-- Each room keeps at most 500 messages. Only `Sent` messages are evicted: unsent ones are the user's.
-- Messages left `Sending` by a killed app load as `Failed`, so the user can retry them.
-- Keep it dumb: the whole file is rewritten (with fsync) per change. That is fine for a demo; a real client would batch writes. If the high-frequency demo shows it, batch in the FFI layer rather than making the store clever.
+In M1, messages left `Sending` by a killed app loaded as `Failed`; since M2 they stay queued in the outbox.
 
 ## Wire protocol (what the chat server serves)
 
@@ -171,13 +201,18 @@ One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::wr
 | list | `GET /rooms` | `200` `[Room]`, with the caller's read state |
 | create | `POST /rooms` `{"title"}` | `201` `Room` (needs an account; titles up to 60 characters) |
 | mark read | `POST /rooms/{id}/read` `{"up_to"}` | `200` `{"up_to"}`; the cursor only moves forward, and never past the newest message |
-| load | `GET /rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first, `sent_at > since` |
-| post | `POST /rooms/{id}/messages` `{"id","author","body"}` | `200`/`201` `Message`; **idempotent by `id`** |
+| load | `GET /rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first; with `since`, the messages sent **or changed** after it |
+| post | `POST /rooms/{id}/messages` `{"id","author","body","reply_to"?}` | `200`/`201` `Message`; **idempotent by `id`**; `reply_to` must be a message in the room (`400`) |
+| edit (M2) | `PATCH /rooms/{id}/messages/{mid}` `{"body"}` | `200` `Message` with `edited_at`; author only (`403`), not after deletion (`409`) |
+| delete (M2) | `DELETE /rooms/{id}/messages/{mid}` | `200` the tombstone (`deleted: true`, empty body, no reactions); author only (`403`) |
+| upload (M3) | `POST /attachments`, the raw bytes, `Content-Type` the file's type | `201` (new) or `200` (already stored) `{"id","size"}`; `id` is the SHA-256 hex of the bytes; needs an account; `413` over 25 MiB, `400` when empty |
+| download (M3) | `GET /attachments/{id}` | `200` the bytes; `404` if unknown; `400` for an id that is not 64 hex characters |
+| react (M2) | `POST /rooms/{id}/messages/{mid}/reactions` `{"emoji","on"}` | `200` `Message`; needs an account; one emoji (≤ 8 characters), ≤ 20 different per message; `409` on a deleted message |
 | stream | `GET /rooms/{id}/stream` | `200` `text/event-stream` |
 
 Every call but `register` carries `Authorization: Bearer <token>`. The server takes a message's author from the token (`author` and `author_id`), whatever the body says; an unknown or missing token is `401`, which the client reports as `ChatError::Unauthorized`. Only a server started with `--allow-anonymous` also accepts calls without a token, with the author from the body: that is how the frozen Android example and curl post.
 
-`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers). `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`; the two read fields are only in answers to the caller (a room in the stream goes to everyone). The stream sends `event: message` (a `Message`), `event: room` (a room) and `event: read` (`{"conversation_id","user_id","up_to"}`) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
+`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers), plus since M2 the optional `updated_at`, `reply_to`, `edited_at`, `deleted` and `reactions` (`{"👍": ["user-id", …]}`), each left out when empty, and since M3 `attachments` (`[{"id","name","mime","size"}]`; on a post the server checks each id was uploaded, takes the size from the stored file and cleans the name and type). Edits, deletions and reactions are broadcast as `message` events with the changed message. `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`; the two read fields are only in answers to the caller (a room in the stream goes to everyone). The stream sends `event: message` (a `Message`), `event: room` (a room) and `event: read` (`{"conversation_id","user_id","up_to"}`) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
 
 `HttpRepo` implements this over `forge_net::HttpClient`. Phase 1 added `HttpClient::open_stream` (a response whose body is read incrementally) to forge-net, with a real implementation in `UreqClient` (timeout covers connect + headers only) and a buffering default for test doubles, so `StaticClient` can serve canned SSE bodies.
 
@@ -222,8 +257,8 @@ This goes in the README with a GIF once the hosts exist. `killer_demo_interactio
 1. Open a chat, type a message, tap send. It goes `Sending` → `Sent`.
 2. Navigate back to the list. Nothing is cancelled: a message in flight still completes.
 3. Kill the chat server. The open chat shows "reconnecting" (`StreamDisconnected { will_retry: true }`).
-4. Send again. `ChatError::Network` comes back and the bubble turns red (`MessageStatusChanged { status: Failed }`).
-5. Restart the server, tap the failed message to retry: `Sending` → `Sent`. The stream reconnects on its own and catches up.
+4. Send again. Since M2 the message waits in the outbox: it stays `Sending` and the send returns it without an error. (Before M2 it failed with `ChatError::Network` and turned red.)
+5. Restart the server. The stream reconnects on its own, catches up, and wakes the outbox, which sends the queued message: `Sending` → `Sent`, with no tap.
 6. While in the chat, post a message with curl. It appears within a second via `MessageReceived`:
 
 ```sh
@@ -232,7 +267,7 @@ curl -X POST localhost:8787/rooms/general/messages \
   -d '{"id":"curl-1","author":"curl","body":"hello from curl"}'
 ```
 
-That sequence shows typed errors, status transitions via events, external event delivery, reconnect with catch-up, and idempotent retry in one flow.
+That sequence shows status transitions via events, external event delivery, reconnect with catch-up, and the outbox's idempotent resend in one flow.
 
 ## Changes from the original plan, and why
 

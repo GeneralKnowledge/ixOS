@@ -63,6 +63,75 @@ pub struct ChatMessage {
     /// Unix ms: device time while sending or failed, server time once sent.
     pub sent_at: i64,
     pub status: ChatMessageStatus,
+    /// The message this one answers (same conversation), by id. The host
+    /// finds it among the room's messages to quote it.
+    pub reply_to: Option<String>,
+    /// Its author changed the text after sending.
+    pub edited: bool,
+    /// Deleted for everyone: show a placeholder; `body` is empty.
+    pub deleted: bool,
+    /// Reactions, most popular first (then by emoji).
+    pub reactions: Vec<ChatReaction>,
+    /// Photos and documents it carries, in order (M3). Fetch the bytes with
+    /// `ChatCore::fetch_attachment`.
+    pub attachments: Vec<ChatAttachment>,
+}
+
+/// A file a message carries.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatAttachment {
+    /// The SHA-256 of its bytes (lowercase hex): how to fetch it.
+    pub id: String,
+    /// The file name as the sender had it, e.g. `IMG_0042.jpg`.
+    pub name: String,
+    /// Its media type, e.g. `image/jpeg` or `application/pdf`.
+    pub mime: String,
+    pub size: u64,
+    /// A picture the app can show inline.
+    pub is_image: bool,
+}
+
+/// A file the user picked to send.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatOutgoingFile {
+    /// Where it is now (Rust copies it at once; it may be deleted after
+    /// `send_files` returns).
+    pub path: String,
+    /// The name to show; empty takes the file name.
+    pub name: String,
+    /// Its media type; empty means `application/octet-stream`.
+    pub mime: String,
+}
+
+impl From<ChatOutgoingFile> for chat_core::OutgoingFile {
+    fn from(file: ChatOutgoingFile) -> Self {
+        Self {
+            path: file.path.into(),
+            name: file.name,
+            mime: file.mime,
+        }
+    }
+}
+
+impl From<chat_core::Attachment> for ChatAttachment {
+    fn from(a: chat_core::Attachment) -> Self {
+        Self {
+            is_image: a.is_image(),
+            id: a.id,
+            name: a.name,
+            mime: a.mime,
+            size: a.size,
+        }
+    }
+}
+
+/// One emoji on a message and who put it there.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatReaction {
+    pub emoji: String,
+    pub count: u32,
+    /// The signed-in account is one of them (tapping removes it).
+    pub mine: bool,
 }
 
 /// Where one of our messages is, as its bubble shows it.
@@ -73,6 +142,13 @@ pub enum ChatDelivery {
     /// Someone else in the room has read it (their read cursor passed it).
     Read,
     Failed,
+}
+
+/// The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+/// (shown in Settings).
+#[uniffi::export]
+pub fn storage_engine() -> String {
+    chat_core::storage_engine()
 }
 
 /// The delivery state of `message` in `conversation`: `Read` once another
@@ -117,6 +193,16 @@ pub enum ChatEvent {
     /// upsert by id).
     MessageReceived {
         message: ChatMessage,
+    },
+    /// An existing message was edited, deleted for everyone or reacted to
+    /// (by anyone). Replace it by id; it is never unread news.
+    MessageUpdated {
+        message: ChatMessage,
+    },
+    /// A message that was never sent was deleted on this device: drop it.
+    MessageRemoved {
+        conversation_id: String,
+        id: String,
     },
     /// Someone else's new message in a room that is not open: show a local
     /// notification.
@@ -215,8 +301,25 @@ impl From<chat_core::MessageStatus> for ChatMessageStatus {
 
 /// Converts with the signed-in account's id, which decides `is_mine`.
 pub(crate) fn message(m: chat_core::Message, user_id: &str) -> ChatMessage {
+    let mut reactions: Vec<ChatReaction> = m
+        .reactions
+        .iter()
+        .filter(|(_, people)| !people.is_empty())
+        .map(|(emoji, people)| ChatReaction {
+            emoji: emoji.clone(),
+            count: u32::try_from(people.len()).unwrap_or(u32::MAX),
+            mine: !user_id.is_empty() && people.iter().any(|p| p == user_id),
+        })
+        .collect();
+    // Stable: the BTreeMap order breaks ties.
+    reactions.sort_by_key(|r| std::cmp::Reverse(r.count));
     ChatMessage {
         is_mine: !user_id.is_empty() && m.author_id == user_id,
+        reply_to: m.reply_to,
+        edited: m.edited_at.is_some(),
+        deleted: m.deleted,
+        reactions,
+        attachments: m.attachments.into_iter().map(Into::into).collect(),
         id: m.id,
         conversation_id: m.conversation_id,
         author: m.author,
@@ -238,6 +341,16 @@ pub(crate) fn event(event: chat_core::ChatEvent, user_id: &str) -> ChatEvent {
         },
         Core::Notify(m) => ChatEvent::Notify {
             message: message(m, user_id),
+        },
+        Core::MessageUpdated(m) => ChatEvent::MessageUpdated {
+            message: message(m, user_id),
+        },
+        Core::MessageRemoved {
+            conversation_id,
+            id,
+        } => ChatEvent::MessageRemoved {
+            conversation_id,
+            id,
         },
         Core::MessageStatusChanged {
             conversation_id,

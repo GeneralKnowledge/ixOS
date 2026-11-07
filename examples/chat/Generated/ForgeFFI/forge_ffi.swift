@@ -635,6 +635,13 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func account()  -> ChatAccount?
     
     /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+    func attachmentFile(attachmentId: String)  -> String?
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
     func cachedConversations()  -> [ChatConversation]
@@ -659,10 +666,34 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func createConversation(title: String) async throws  -> ChatConversation
     
     /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+    func deleteMessage(messageId: String) async throws  -> ChatMessage?
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+    func draft(conversationId: String)  -> String?
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+    func editMessage(messageId: String, body: String) async throws  -> ChatMessage
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
     func events() throws  -> ChatEvents
+    
+    /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+    func fetchAttachment(attachmentId: String) async throws  -> String
     
     /**
      * Lists conversations from the server, prefetching new messages for
@@ -684,21 +715,56 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func markRead(conversationId: String) async throws 
     
     /**
+     * How many of our messages are waiting to be sent.
+     */
+    func outboxCount()  -> UInt32
+    
+    /**
      * The phase last reported with `set_phase`.
      */
     func phase()  -> AppPhase
     
     /**
-     * Sends a `Failed` message again with the same id.
+     * Sends a `Failed` (or still queued) message again now, with the same id.
      */
     func retryMessage(messageId: String) async throws  -> ChatMessage
     
     /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+    func search(query: String, conversationId: String?) async throws  -> [ChatMessage]
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+    func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile]) async throws  -> ChatMessage
+    
+    /**
      * Sends a message. It is announced as `Sending` at once, then becomes
-     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
-     * message, or the error that failed it.
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
      */
     func sendMessage(conversationId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+    func sendReply(conversationId: String, body: String, replyTo: String?) async throws  -> ChatMessage
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+    func setDraft(conversationId: String, text: String) throws 
     
     /**
      * Shows the room as unread until it is opened or marked read (`true`),
@@ -718,6 +784,11 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * is `shutdown()`.
      */
     func setPhase(phase: AppPhase) 
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+    func setReaction(messageId: String, emoji: String, on: Bool) async throws  -> ChatMessage
     
     /**
      * Ends every stream and refuses further commands with `ShutDown`.
@@ -870,6 +941,21 @@ open func account() -> ChatAccount?  {
 }
     
     /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+open func attachmentFile(attachmentId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_attachment_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(attachmentId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
 open func cachedConversations() -> [ChatConversation]  {
@@ -937,6 +1023,60 @@ open func createConversation(title: String)async throws  -> ChatConversation  {
 }
     
     /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+open func deleteMessage(messageId: String)async throws  -> ChatMessage?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_delete_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+open func draft(conversationId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+open func editMessage(messageId: String, body: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_edit_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(body)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
@@ -947,6 +1087,26 @@ open func events()throws  -> ChatEvents  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+open func fetchAttachment(attachmentId: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_fetch_attachment(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(attachmentId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
 }
     
     /**
@@ -1004,6 +1164,18 @@ open func markRead(conversationId: String)async throws   {
 }
     
     /**
+     * How many of our messages are waiting to be sent.
+     */
+open func outboxCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_outbox_count(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The phase last reported with `set_phase`.
      */
 open func phase() -> AppPhase  {
@@ -1016,7 +1188,7 @@ open func phase() -> AppPhase  {
 }
     
     /**
-     * Sends a `Failed` message again with the same id.
+     * Sends a `Failed` (or still queued) message again now, with the same id.
      */
 open func retryMessage(messageId: String)async throws  -> ChatMessage  {
     return
@@ -1035,9 +1207,55 @@ open func retryMessage(messageId: String)async throws  -> ChatMessage  {
 }
     
     /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+open func search(query: String, conversationId: String?)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_search(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+open func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile])async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_send_files(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo),FfiConverterSequenceTypeChatOutgoingFile.lower(files)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * Sends a message. It is announced as `Sending` at once, then becomes
-     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
-     * message, or the error that failed it.
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
      */
 open func sendMessage(conversationId: String, body: String)async throws  -> ChatMessage  {
     return
@@ -1053,6 +1271,40 @@ open func sendMessage(conversationId: String, body: String)async throws  -> Chat
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+open func sendReply(conversationId: String, body: String, replyTo: String?)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_send_reply(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+open func setDraft(conversationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_set_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1095,6 +1347,25 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_set_reaction(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(emoji),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
 }
     
     /**
@@ -2540,6 +2811,99 @@ public func FfiConverterTypeChatAccount_lower(_ value: ChatAccount) -> RustBuffe
 
 
 /**
+ * A file a message carries.
+ */
+public struct ChatAttachment: Equatable, Hashable {
+    /**
+     * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+     */
+    public var id: String
+    /**
+     * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+     */
+    public var name: String
+    /**
+     * Its media type, e.g. `image/jpeg` or `application/pdf`.
+     */
+    public var mime: String
+    public var size: UInt64
+    /**
+     * A picture the app can show inline.
+     */
+    public var isImage: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+         */id: String, 
+        /**
+         * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+         */name: String, 
+        /**
+         * Its media type, e.g. `image/jpeg` or `application/pdf`.
+         */mime: String, size: UInt64, 
+        /**
+         * A picture the app can show inline.
+         */isImage: Bool) {
+        self.id = id
+        self.name = name
+        self.mime = mime
+        self.size = size
+        self.isImage = isImage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAttachment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAttachment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAttachment {
+        return
+            try ChatAttachment(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                isImage: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAttachment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterBool.write(value.isImage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lift(_ buf: RustBuffer) throws -> ChatAttachment {
+    return try FfiConverterTypeChatAttachment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lower(_ value: ChatAttachment) -> RustBuffer {
+    return FfiConverterTypeChatAttachment.lower(value)
+}
+
+
+/**
  * One conversation as the list shows it.
  */
 public struct ChatConversation: Equatable, Hashable {
@@ -2696,6 +3060,28 @@ public struct ChatMessage: Equatable, Hashable {
      */
     public var sentAt: Int64
     public var status: ChatMessageStatus
+    /**
+     * The message this one answers (same conversation), by id. The host
+     * finds it among the room's messages to quote it.
+     */
+    public var replyTo: String?
+    /**
+     * Its author changed the text after sending.
+     */
+    public var edited: Bool
+    /**
+     * Deleted for everyone: show a placeholder; `body` is empty.
+     */
+    public var deleted: Bool
+    /**
+     * Reactions, most popular first (then by emoji).
+     */
+    public var reactions: [ChatReaction]
+    /**
+     * Photos and documents it carries, in order (M3). Fetch the bytes with
+     * `ChatCore::fetch_attachment`.
+     */
+    public var attachments: [ChatAttachment]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2716,7 +3102,24 @@ public struct ChatMessage: Equatable, Hashable {
          */isMine: Bool, body: String, 
         /**
          * Unix ms: device time while sending or failed, server time once sent.
-         */sentAt: Int64, status: ChatMessageStatus) {
+         */sentAt: Int64, status: ChatMessageStatus, 
+        /**
+         * The message this one answers (same conversation), by id. The host
+         * finds it among the room's messages to quote it.
+         */replyTo: String?, 
+        /**
+         * Its author changed the text after sending.
+         */edited: Bool, 
+        /**
+         * Deleted for everyone: show a placeholder; `body` is empty.
+         */deleted: Bool, 
+        /**
+         * Reactions, most popular first (then by emoji).
+         */reactions: [ChatReaction], 
+        /**
+         * Photos and documents it carries, in order (M3). Fetch the bytes with
+         * `ChatCore::fetch_attachment`.
+         */attachments: [ChatAttachment]) {
         self.id = id
         self.conversationId = conversationId
         self.author = author
@@ -2725,6 +3128,11 @@ public struct ChatMessage: Equatable, Hashable {
         self.body = body
         self.sentAt = sentAt
         self.status = status
+        self.replyTo = replyTo
+        self.edited = edited
+        self.deleted = deleted
+        self.reactions = reactions
+        self.attachments = attachments
     }
 
     
@@ -2750,7 +3158,12 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
                 isMine: FfiConverterBool.read(from: &buf), 
                 body: FfiConverterString.read(from: &buf), 
                 sentAt: FfiConverterInt64.read(from: &buf), 
-                status: FfiConverterTypeChatMessageStatus.read(from: &buf)
+                status: FfiConverterTypeChatMessageStatus.read(from: &buf), 
+                replyTo: FfiConverterOptionString.read(from: &buf), 
+                edited: FfiConverterBool.read(from: &buf), 
+                deleted: FfiConverterBool.read(from: &buf), 
+                reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf), 
+                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf)
         )
     }
 
@@ -2763,6 +3176,11 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
         FfiConverterString.write(value.body, into: &buf)
         FfiConverterInt64.write(value.sentAt, into: &buf)
         FfiConverterTypeChatMessageStatus.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.replyTo, into: &buf)
+        FfiConverterBool.write(value.edited, into: &buf)
+        FfiConverterBool.write(value.deleted, into: &buf)
+        FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
+        FfiConverterSequenceTypeChatAttachment.write(value.attachments, into: &buf)
     }
 }
 
@@ -2779,6 +3197,154 @@ public func FfiConverterTypeChatMessage_lift(_ buf: RustBuffer) throws -> ChatMe
 #endif
 public func FfiConverterTypeChatMessage_lower(_ value: ChatMessage) -> RustBuffer {
     return FfiConverterTypeChatMessage.lower(value)
+}
+
+
+/**
+ * A file the user picked to send.
+ */
+public struct ChatOutgoingFile: Equatable, Hashable {
+    /**
+     * Where it is now (Rust copies it at once; it may be deleted after
+     * `send_files` returns).
+     */
+    public var path: String
+    /**
+     * The name to show; empty takes the file name.
+     */
+    public var name: String
+    /**
+     * Its media type; empty means `application/octet-stream`.
+     */
+    public var mime: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it is now (Rust copies it at once; it may be deleted after
+         * `send_files` returns).
+         */path: String, 
+        /**
+         * The name to show; empty takes the file name.
+         */name: String, 
+        /**
+         * Its media type; empty means `application/octet-stream`.
+         */mime: String) {
+        self.path = path
+        self.name = name
+        self.mime = mime
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatOutgoingFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatOutgoingFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatOutgoingFile {
+        return
+            try ChatOutgoingFile(
+                path: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatOutgoingFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lift(_ buf: RustBuffer) throws -> ChatOutgoingFile {
+    return try FfiConverterTypeChatOutgoingFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lower(_ value: ChatOutgoingFile) -> RustBuffer {
+    return FfiConverterTypeChatOutgoingFile.lower(value)
+}
+
+
+/**
+ * One emoji on a message and who put it there.
+ */
+public struct ChatReaction: Equatable, Hashable {
+    public var emoji: String
+    public var count: UInt32
+    /**
+     * The signed-in account is one of them (tapping removes it).
+     */
+    public var mine: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(emoji: String, count: UInt32, 
+        /**
+         * The signed-in account is one of them (tapping removes it).
+         */mine: Bool) {
+        self.emoji = emoji
+        self.count = count
+        self.mine = mine
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatReaction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatReaction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatReaction {
+        return
+            try ChatReaction(
+                emoji: FfiConverterString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf), 
+                mine: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatReaction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterBool.write(value.mine, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lift(_ buf: RustBuffer) throws -> ChatReaction {
+    return try FfiConverterTypeChatReaction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lower(_ value: ChatReaction) -> RustBuffer {
+    return FfiConverterTypeChatReaction.lower(value)
 }
 
 
@@ -3467,6 +4033,17 @@ public enum ChatEvent: Equatable, Hashable {
     case messageReceived(message: ChatMessage
     )
     /**
+     * An existing message was edited, deleted for everyone or reacted to
+     * (by anyone). Replace it by id; it is never unread news.
+     */
+    case messageUpdated(message: ChatMessage
+    )
+    /**
+     * A message that was never sent was deleted on this device: drop it.
+     */
+    case messageRemoved(conversationId: String, id: String
+    )
+    /**
      * Someone else's new message in a room that is not open: show a local
      * notification.
      */
@@ -3527,22 +4104,28 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
         case 4: return .messageReceived(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 5: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        case 5: return .messageUpdated(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 6: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        case 6: return .messageRemoved(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
+        case 7: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 8: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        case 8: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
         )
         
-        case 9: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
+        case 9: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
         )
         
-        case 10: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        case 10: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 11: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 12: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -3573,38 +4156,49 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .notify(message):
+        case let .messageUpdated(message):
             writeInt(&buf, Int32(5))
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .messageStatusChanged(conversationId,id,status):
+        case let .messageRemoved(conversationId,id):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .notify(message):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageStatusChanged(conversationId,id,status):
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(id, into: &buf)
             FfiConverterTypeChatMessageStatus.write(status, into: &buf)
             
         
         case let .streamConnected(conversationId):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(conversationId, into: &buf)
             
         
         case let .streamDisconnected(conversationId,reason,willRetry):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(reason, into: &buf)
             FfiConverterBool.write(willRetry, into: &buf)
             
         
         case let .phaseChanged(phase,resumed):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(11))
             FfiConverterTypeAppPhase.write(phase, into: &buf)
             FfiConverterBool.write(resumed, into: &buf)
             
         
         case let .eventsDropped(count):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(12))
             FfiConverterUInt64.write(count, into: &buf)
             
         }
@@ -3711,9 +4305,100 @@ public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) 
 
 
 /**
+ * A log level for [`forge_log`].
+ */
+
+public enum ForgeLogLevel: Equatable, Hashable {
+    
+    case trace
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ForgeLogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = ForgeLogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeLogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trace
+        
+        case 2: return .debug
+        
+        case 3: return .info
+        
+        case 4: return .warn
+        
+        case 5: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ForgeLogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> ForgeLogLevel {
+    return try FfiConverterTypeForgeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
+    return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
  * A permission the app can ask the user for. More cases (camera,
- * photos, location) are added as their adapters are; see
- * docs/native-services.md.
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
  */
 
 public enum NativePermission: Equatable, Hashable {
@@ -3722,6 +4407,19 @@ public enum NativePermission: Equatable, Hashable {
      * Alerts, sounds and badges from local notifications.
      */
     case notifications
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    case location
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    case motion
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    case bluetooth
 
 
 
@@ -3745,6 +4443,12 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case 1: return .notifications
         
+        case 2: return .location
+        
+        case 3: return .motion
+        
+        case 4: return .bluetooth
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -3755,6 +4459,18 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case .notifications:
             writeInt(&buf, Int32(1))
+        
+        
+        case .location:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .motion:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(4))
         
         }
     }
@@ -4409,6 +5125,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeChatAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatAttachment]
+
+    public static func write(_ value: [ChatAttachment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatAttachment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatAttachment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatAttachment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatAttachment.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChatConversation: FfiConverterRustBuffer {
     typealias SwiftType = [ChatConversation]
 
@@ -4451,6 +5192,56 @@ fileprivate struct FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChatMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatOutgoingFile: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatOutgoingFile]
+
+    public static func write(_ value: [ChatOutgoingFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatOutgoingFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatOutgoingFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatOutgoingFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatOutgoingFile.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatReaction: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatReaction]
+
+    public static func write(_ value: [ChatReaction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatReaction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatReaction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatReaction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatReaction.read(from: &buf))
         }
         return seq
     }
@@ -4619,6 +5410,31 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * Writes one record from host code into Forge's log, with
+ * `category` as its target. Never log secrets.
+ */
+public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log(
+        FfiConverterTypeForgeLogLevel_lower(level),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether a record at `level` would be kept, so the host can skip
+ * building a message nobody will see.
+ */
+public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log_enabled(
+        FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -4680,6 +5496,17 @@ public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) 
     )
 })
 }
+/**
+ * The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+ * (shown in Settings).
+ */
+public func storageEngine() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_storage_engine(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4696,6 +5523,12 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_forge_log() != 59998) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_forge_log_enabled() != 61613) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4711,7 +5544,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_storage_engine() != 18473) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_attachment_file() != 40106) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_cached_conversations() != 29095) {
@@ -4726,7 +5565,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_create_conversation() != 30017) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_delete_message() != 29995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_draft() != 49082) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_edit_message() != 14248) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_events() != 19610) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_fetch_attachment() != 52675) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_list_conversations() != 48436) {
@@ -4738,13 +5589,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_mark_read() != 49646) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_outbox_count() != 49599) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 51598) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 28797) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 49202) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 14155) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_search() != 1934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_files() != 20430) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 46048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_reply() != 32953) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_draft() != 19886) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_set_marked_unread() != 12117) {
@@ -4754,6 +5620,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 4202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_reaction() != 64034) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_shutdown() != 5826) {

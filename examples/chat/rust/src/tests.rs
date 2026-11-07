@@ -405,3 +405,156 @@ fn read_receipts_new_rooms_and_mute_through_the_ffi() {
         Err(ChatError::NotFound { .. })
     ));
 }
+
+/// M2 through the FFI: replies, reactions (with `mine`), edits and deletes
+/// arrive live as `MessageUpdated`; drafts and search survive a relaunch.
+#[test]
+fn message_changes_drafts_and_search_through_the_ffi() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let (ana, ana_credentials) = keychain_core(&dir.path().join("ana"));
+    let ben =
+        ChatCore::with_memory_credentials(dir.path().join("ben").to_string_lossy().into()).unwrap();
+    block_on(ana.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    block_on(ben.sign_up(server.url.clone(), "Ben".into())).unwrap();
+    block_on(ana.list_conversations()).unwrap();
+    block_on(ben.list_conversations()).unwrap();
+    let ana_events = ana.events().unwrap();
+    let ben_events = ben.events().unwrap();
+    ana.subscribe("general".into()).unwrap();
+    next_matching(&ana_events, "Ana connected", |e| {
+        matches!(e, ChatEvent::StreamConnected { .. })
+    });
+    ben.subscribe("general".into()).unwrap();
+    next_matching(&ben_events, "Ben connected", |e| {
+        matches!(e, ChatEvent::StreamConnected { .. })
+    });
+
+    let question = block_on(ana.send_message("general".into(), "Café at noon?".into())).unwrap();
+    next_matching(
+        &ben_events,
+        "the question",
+        |e| matches!(e, ChatEvent::MessageReceived { message } if message.id == question.id),
+    );
+    let answer =
+        block_on(ben.send_reply("general".into(), "Sure".into(), Some(question.id.clone())))
+            .unwrap();
+    assert_eq!(answer.reply_to.as_deref(), Some(question.id.as_str()));
+
+    // Both react with the same emoji; each sees `mine` for itself.
+    block_on(ben.set_reaction(question.id.clone(), "👍".into(), true)).unwrap();
+    let mine = block_on(ana.set_reaction(question.id.clone(), "👍".into(), true)).unwrap();
+    assert_eq!(mine.reactions.len(), 1);
+    assert_eq!((mine.reactions[0].count, mine.reactions[0].mine), (2, true));
+    next_matching(&ben_events, "Ben sees two thumbs", |e| {
+        matches!(e, ChatEvent::MessageUpdated { message }
+            if message.id == question.id
+                && message.reactions.first().is_some_and(|r| r.count == 2 && r.mine))
+    });
+
+    // Ana edits; Ben sees it edited. Ben deletes his answer; Ana sees the
+    // placeholder.
+    let edited = block_on(ana.edit_message(question.id.clone(), "Café at one?".into())).unwrap();
+    assert!(edited.edited);
+    next_matching(&ben_events, "Ben sees the edit", |e| {
+        matches!(e, ChatEvent::MessageUpdated { message }
+            if message.id == question.id && message.edited && message.body == "Café at one?")
+    });
+    let tombstone = block_on(ben.delete_message(answer.id.clone()))
+        .unwrap()
+        .unwrap();
+    assert!(tombstone.deleted);
+    next_matching(
+        &ana_events,
+        "Ana sees the deletion",
+        |e| matches!(e, ChatEvent::MessageUpdated { message } if message.id == answer.id && message.deleted),
+    );
+    assert!(block_on(ana.edit_message(answer.id.clone(), "x".into())).is_err());
+
+    // A draft, then a relaunch: the draft and the searchable messages stay.
+    ana.set_draft("general".into(), "see you".into()).unwrap();
+    assert_eq!(ana.draft("general".into()).as_deref(), Some("see you"));
+    ana.shutdown();
+    let ana = ChatCore::open(dir.path().join("ana").join("chats"), ana_credentials).unwrap();
+    assert_eq!(ana.draft("general".into()).as_deref(), Some("see you"));
+    // Accents and case are ignored; words match as prefixes.
+    let found = block_on(ana.search("cafe ON".into(), None)).unwrap();
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0].id, question.id);
+    assert!(block_on(ana.search("sure".into(), Some("general".into())))
+        .unwrap()
+        .is_empty());
+    // Sending clears the draft.
+    block_on(ana.send_message("general".into(), "see you".into())).unwrap();
+    assert_eq!(ana.draft("general".into()), None);
+    assert_eq!(ana.outbox_count(), 0);
+}
+
+/// M3 through the FFI: a photo and a document sent by one account are
+/// listed on the other's message and fetched as files.
+#[test]
+fn photos_and_documents_through_the_ffi() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let ana =
+        ChatCore::with_memory_credentials(dir.path().join("ana").to_string_lossy().into()).unwrap();
+    let ben =
+        ChatCore::with_memory_credentials(dir.path().join("ben").to_string_lossy().into()).unwrap();
+    block_on(ana.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    block_on(ben.sign_up(server.url.clone(), "Ben".into())).unwrap();
+    block_on(ana.list_conversations()).unwrap();
+    block_on(ben.list_conversations()).unwrap();
+
+    let photo = dir.path().join("picked.jpg");
+    std::fs::write(&photo, [0xff, 0xd8, 0xff, 0xe0, 9, 9]).unwrap();
+    let sent = block_on(ana.send_files(
+        "general".into(),
+        String::new(),
+        None,
+        vec![
+            ChatOutgoingFile {
+                path: photo.to_string_lossy().into(),
+                name: "IMG_0042.jpg".into(),
+                mime: "image/jpeg".into(),
+            },
+            ChatOutgoingFile {
+                path: photo.to_string_lossy().into(),
+                name: String::new(),
+                mime: String::new(),
+            },
+        ],
+    ))
+    .unwrap();
+    assert_eq!(sent.status, ChatMessageStatus::Sent);
+    assert_eq!(sent.body, "");
+    let first = &sent.attachments[0];
+    assert_eq!(
+        (first.name.as_str(), first.size, first.is_image),
+        ("IMG_0042.jpg", 6, true)
+    );
+    // Same bytes, same id; the second takes the file's own name.
+    assert_eq!(sent.attachments[1].id, first.id);
+    assert_eq!(sent.attachments[1].name, "picked.jpg");
+    assert!(!sent.attachments[1].is_image);
+    // The temporary original can go: the sender keeps a copy.
+    std::fs::remove_file(&photo).unwrap();
+    assert!(ana.attachment_file(first.id.clone()).is_some());
+
+    let received = block_on(ben.sync_messages("general".into())).unwrap();
+    let theirs = &received[0].attachments[0];
+    assert_eq!(theirs, first);
+    assert_eq!(ben.attachment_file(theirs.id.clone()), None);
+    let path = block_on(ben.fetch_attachment(theirs.id.clone())).unwrap();
+    assert_eq!(
+        std::fs::read(&path).unwrap(),
+        [0xff, 0xd8, 0xff, 0xe0, 9, 9]
+    );
+    assert_eq!(ben.attachment_file(theirs.id.clone()), Some(path));
+
+    // Sign-out removes the account's files with its chats.
+    ben.sign_out().unwrap();
+    assert!(
+        !dir.path().join("ben").join("accounts").exists()
+            || walk(&dir.path().join("ben").join("accounts")).is_empty()
+    );
+}

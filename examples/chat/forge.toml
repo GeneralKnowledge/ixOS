@@ -15,6 +15,8 @@ ios_simulator = false
 # them (docs/app-config.md).
 [ios]
 xtool_product = "ChatXtool"
+# Message notifications open forgechat://conversation/<id> (LocalChatNotifier).
+url_schemes = ["forgechat"]
 
 [ios.permissions]
 # The demo server runs on your computer, reached over the LAN.

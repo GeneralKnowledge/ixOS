@@ -1,7 +1,7 @@
 //! In-memory [`ChatRepo`]: the test double, and the reference for what the
 //! mock server must do.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -34,6 +34,8 @@ pub struct InMemoryRepo {
 #[derive(Default)]
 struct State {
     offline: bool,
+    /// Set by [`InMemoryRepo::set_rejecting`]: posts fail with HTTP 400.
+    rejecting: bool,
     /// Set by [`InMemoryRepo::with_read_cursors`]: the account id this
     /// repo's client reads as. `None`: a server without read cursors.
     reader: Option<String>,
@@ -42,6 +44,8 @@ struct State {
     listeners: Vec<(String, Sender<Result<RemoteEvent, ChatError>>)>,
     /// Calls made, for assertions: `"list"`, `"load <id> <since>"`, ...
     calls: Vec<String>,
+    /// Uploaded attachments by id (their SHA-256).
+    blobs: HashMap<String, Vec<u8>>,
 }
 
 #[derive(Default)]
@@ -51,6 +55,8 @@ struct Room {
     messages: Vec<Message>,
     /// Read cursors by account id.
     reads: BTreeMap<String, i64>,
+    /// The last time handed out for a post or a change.
+    clock: i64,
 }
 
 impl Room {
@@ -81,9 +87,39 @@ impl Room {
         })
     }
 
-    fn next_sent_at(&self) -> i64 {
-        let last = self.messages.last().map_or(i64::MIN, |m| m.sent_at);
-        now_ms().max(last.saturating_add(1))
+    /// A time later than every earlier post or change in the room.
+    fn tick(&mut self) -> i64 {
+        self.clock = now_ms().max(self.clock.saturating_add(1));
+        self.clock
+    }
+
+    /// Changes message `id` and stamps it, as the server does.
+    fn change(
+        &mut self,
+        id: &str,
+        change: impl FnOnce(&mut Message, i64) -> Result<(), ChatError>,
+    ) -> Result<Message, ChatError> {
+        let now = self.tick();
+        let message = self
+            .messages
+            .iter_mut()
+            .find(|m| m.id == id)
+            .ok_or_else(|| ChatError::Http {
+                status: 404,
+                reason: format!("no message {id}"),
+            })?;
+        let mut changed = message.clone();
+        change(&mut changed, now)?;
+        changed.updated_at = Some(now);
+        *message = changed.clone();
+        Ok(changed)
+    }
+}
+
+fn refused(status: u16, reason: &str) -> ChatError {
+    ChatError::Http {
+        status,
+        reason: reason.into(),
     }
 }
 
@@ -167,6 +203,13 @@ impl InMemoryRepo {
         }
     }
 
+    /// Makes the server refuse new posts (`true`, HTTP 400) or accept them
+    /// again. Unlike being offline, a refusal is final: the client marks the
+    /// message `Failed` instead of keeping it in the outbox.
+    pub fn set_rejecting(&self, rejecting: bool) {
+        self.lock().rejecting = rejecting;
+    }
+
     /// Stores a message from someone else, as `curl -X POST` against the mock
     /// server would, and broadcasts it. Works while offline too (the message
     /// is then only seen on the next fetch), so tests can model "it arrived
@@ -185,8 +228,9 @@ impl InMemoryRepo {
             // Injected authors stand for accounts named after them.
             author_id: author.into(),
             body: body.into(),
-            sent_at: room.next_sent_at(),
+            sent_at: room.tick(),
             status: MessageStatus::Sent,
+            ..Message::default()
         };
         room.messages.push(message.clone());
         broadcast(
@@ -195,6 +239,100 @@ impl InMemoryRepo {
             RemoteEvent::Message(message.clone()),
         );
         message
+    }
+
+    /// Someone else (`user_id`) reacts to a message: changes it on the
+    /// server and broadcasts it.
+    pub fn inject_reaction(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        user_id: &str,
+        emoji: &str,
+    ) {
+        self.inject_change(conversation_id, message_id, |m, _| {
+            m.reactions
+                .entry(emoji.into())
+                .or_default()
+                .push(user_id.into());
+            Ok(())
+        });
+    }
+
+    /// The author edits a message elsewhere.
+    pub fn inject_edit(&self, conversation_id: &str, message_id: &str, body: &str) {
+        self.inject_change(conversation_id, message_id, |m, now| {
+            m.body = body.into();
+            m.edited_at = Some(now);
+            Ok(())
+        });
+    }
+
+    /// The author deletes a message elsewhere.
+    pub fn inject_delete(&self, conversation_id: &str, message_id: &str) {
+        self.inject_change(conversation_id, message_id, |m, _| {
+            tombstone(m);
+            Ok(())
+        });
+    }
+
+    fn inject_change(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        change: impl FnOnce(&mut Message, i64) -> Result<(), ChatError>,
+    ) {
+        let mut state = self.lock();
+        let room = state
+            .rooms
+            .iter_mut()
+            .find(|r| r.id == conversation_id)
+            .expect("a room that exists");
+        let message = room
+            .change(message_id, change)
+            .expect("a message that exists");
+        broadcast(&mut state, conversation_id, RemoteEvent::Message(message));
+    }
+
+    /// Applies one of the client's changes: checks the room, the author
+    /// (when this repo knows who the client is) and that it is not deleted.
+    fn client_change(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        call: String,
+        authored: bool,
+        change: impl FnOnce(&mut Message, i64, &str) -> Result<(), ChatError>,
+    ) -> Result<Message, ChatError> {
+        let mut state = self.lock();
+        state.calls.push(call);
+        if state.offline {
+            return Err(offline());
+        }
+        let actor = state.reader.clone().unwrap_or_else(|| "me".into());
+        let check_author = state.reader.is_some();
+        let room = state
+            .rooms
+            .iter_mut()
+            .find(|r| r.id == conversation_id)
+            .ok_or_else(|| ChatError::NotFound {
+                conversation_id: conversation_id.into(),
+            })?;
+        let message = room.change(message_id, |m, now| {
+            if m.deleted {
+                return Err(refused(409, "the message was deleted"));
+            }
+            if authored && check_author && m.author_id != actor {
+                return Err(refused(403, "only its author can change a message"));
+            }
+            change(m, now, &actor)
+        })?;
+        broadcast(
+            &mut state,
+            conversation_id,
+            RemoteEvent::Message(message.clone()),
+        );
+        Ok(message)
     }
 
     /// Streams currently held open by clients. Drops to zero once every
@@ -225,6 +363,29 @@ impl InMemoryRepo {
             .find(|r| r.id == conversation_id)
             .map(|r| r.messages.clone())
             .unwrap_or_default()
+    }
+}
+
+/// A deleted message, as the server keeps it.
+fn tombstone(message: &mut Message) {
+    message.deleted = true;
+    message.body.clear();
+    message.reactions.clear();
+    message.attachments.clear();
+}
+
+/// Adds or removes `user_id`'s `emoji`, dropping an emoji nobody uses.
+pub(crate) fn toggle_reaction(message: &mut Message, emoji: &str, user_id: &str, on: bool) {
+    if on {
+        let users = message.reactions.entry(emoji.into()).or_default();
+        if !users.iter().any(|u| u == user_id) {
+            users.push(user_id.into());
+        }
+    } else if let Some(users) = message.reactions.get_mut(emoji) {
+        users.retain(|u| u != user_id);
+        if users.is_empty() {
+            message.reactions.remove(emoji);
+        }
     }
 }
 
@@ -272,7 +433,7 @@ impl ChatRepo for InMemoryRepo {
         Ok(room
             .messages
             .iter()
-            .filter(|m| since.is_none_or(|since| m.sent_at > since))
+            .filter(|m| since.is_none_or(|since| m.changed_at() > since))
             .cloned()
             .collect())
     }
@@ -285,9 +446,12 @@ impl ChatRepo for InMemoryRepo {
         if state.offline {
             return Err(offline());
         }
+        if state.rejecting {
+            return Err(refused(400, "the server refuses new messages"));
+        }
         let cursors = state.reader.is_some();
-        let room = state
-            .rooms
+        let State { rooms, blobs, .. } = &mut *state;
+        let room = rooms
             .iter_mut()
             .find(|r| r.id == outgoing.conversation_id)
             .ok_or_else(|| ChatError::NotFound {
@@ -302,8 +466,27 @@ impl ChatRepo for InMemoryRepo {
             author: outgoing.author.clone(),
             author_id: outgoing.author_id.clone(),
             body: outgoing.body.clone(),
-            sent_at: room.next_sent_at(),
+            sent_at: 0,
             status: MessageStatus::Sent,
+            reply_to: outgoing.reply_to.clone(),
+            attachments: outgoing.attachments.clone(),
+            ..Message::default()
+        };
+        if message
+            .attachments
+            .iter()
+            .any(|a| !blobs.contains_key(&a.id))
+        {
+            return Err(refused(400, "an attachment was not uploaded first"));
+        }
+        if let Some(target) = &message.reply_to {
+            if !room.messages.iter().any(|m| &m.id == target) {
+                return Err(refused(400, "reply_to is not a message in this room"));
+            }
+        }
+        let message = Message {
+            sent_at: room.tick(),
+            ..message
         };
         room.messages.push(message.clone());
         let read = match cursors && !message.author_id.is_empty() {
@@ -373,6 +556,100 @@ impl ChatRepo for InMemoryRepo {
         let remote = room.remote(state.reader.as_deref());
         state.rooms.push(room);
         Ok(remote)
+    }
+
+    fn edit_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        body: &str,
+    ) -> Result<Message, ChatError> {
+        let body = body.trim().to_string();
+        if body.is_empty() {
+            return Err(ChatError::invalid("message body is empty"));
+        }
+        self.client_change(
+            conversation_id,
+            message_id,
+            format!("edit {conversation_id} {message_id}"),
+            true,
+            |m, now, _| {
+                m.body = body;
+                m.edited_at = Some(now);
+                Ok(())
+            },
+        )
+    }
+
+    fn delete_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message, ChatError> {
+        self.client_change(
+            conversation_id,
+            message_id,
+            format!("delete {conversation_id} {message_id}"),
+            true,
+            |m, _, _| {
+                tombstone(m);
+                Ok(())
+            },
+        )
+    }
+
+    fn react(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        emoji: &str,
+        on: bool,
+    ) -> Result<Message, ChatError> {
+        self.client_change(
+            conversation_id,
+            message_id,
+            format!("react {conversation_id} {message_id} {emoji} {on}"),
+            false,
+            |m, _, actor| {
+                toggle_reaction(m, emoji, actor, on);
+                Ok(())
+            },
+        )
+    }
+
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let mut state = self.lock();
+        state.calls.push(format!("upload {mime}"));
+        if state.offline {
+            return Err(offline());
+        }
+        let bytes = std::fs::read(path).map_err(|e| ChatError::invalid(e.to_string()))?;
+        let id = {
+            use sha2::Digest;
+            sha2::Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        };
+        state.blobs.insert(id.clone(), bytes);
+        Ok(id)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let mut state = self.lock();
+        state.calls.push(format!("download {id}"));
+        if state.offline {
+            return Err(offline());
+        }
+        let bytes = state
+            .blobs
+            .get(id)
+            .ok_or_else(|| refused(404, "no such attachment"))?;
+        std::fs::write(destination, bytes).map_err(|e| ChatError::invalid(e.to_string()))
     }
 
     fn open_stream(
@@ -462,6 +739,8 @@ mod tests {
             author: "me".into(),
             author_id: String::new(),
             body: body.into(),
+            reply_to: None,
+            attachments: Vec::new(),
         }
     }
 

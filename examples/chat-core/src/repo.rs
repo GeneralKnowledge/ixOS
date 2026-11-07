@@ -32,6 +32,11 @@ pub struct OutgoingMessage {
     /// accounts take both from the token instead.
     pub author_id: String,
     pub body: String,
+    /// The message this one answers.
+    pub reply_to: Option<String>,
+    /// Files it carries, already uploaded with
+    /// [`ChatRepo::upload_attachment`].
+    pub attachments: Vec<crate::Attachment>,
 }
 
 /// What a live stream delivers.
@@ -62,9 +67,10 @@ pub trait RemoteStream: Send {
 pub trait ChatRepo: Send + Sync {
     fn list_conversations(&self) -> Result<Vec<RemoteConversation>, ChatError>;
 
-    /// Messages in the room, oldest first. With `since`, only messages whose
-    /// `sent_at` is strictly greater. An unknown room is
-    /// [`ChatError::NotFound`].
+    /// Messages in the room, oldest first. With `since`, only messages that
+    /// changed after it ([`Message::changed_at`] strictly greater): new ones,
+    /// and older ones edited, deleted or reacted to since. An unknown room
+    /// is [`ChatError::NotFound`].
     fn load_messages(
         &self,
         conversation_id: &str,
@@ -102,6 +108,65 @@ pub trait ChatRepo: Send + Sync {
             detail: "this server cannot create conversations".into(),
         })
     }
+
+    /// Replaces the body of one of our messages; returns the edited message.
+    fn edit_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        body: &str,
+    ) -> Result<Message, ChatError> {
+        let _ = (conversation_id, message_id, body);
+        Err(unsupported("edit messages"))
+    }
+
+    /// Deletes one of our messages for everyone; returns the tombstone.
+    fn delete_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message, ChatError> {
+        let _ = (conversation_id, message_id);
+        Err(unsupported("delete messages"))
+    }
+
+    /// Adds (`on`) or removes this account's `emoji` reaction; returns the
+    /// message.
+    fn react(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        emoji: &str,
+        on: bool,
+    ) -> Result<Message, ChatError> {
+        let _ = (conversation_id, message_id, emoji, on);
+        Err(unsupported("react to messages"))
+    }
+
+    /// Uploads the file at `path` (an attachment's bytes) and returns the
+    /// id the server stored it under: the SHA-256 of the bytes, lowercase
+    /// hex. Uploading the same bytes again is harmless.
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let _ = (path, mime);
+        Err(unsupported("upload attachments"))
+    }
+
+    /// Downloads attachment `id` into `destination` (replacing it). The
+    /// caller checks the bytes against the id.
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let _ = (id, destination);
+        Err(unsupported("download attachments"))
+    }
+}
+
+fn unsupported(what: &str) -> ChatError {
+    ChatError::UnsupportedOnHost {
+        detail: format!("this server cannot {what}"),
+    }
 }
 
 impl<T: ChatRepo + ?Sized> ChatRepo for std::sync::Arc<T> {
@@ -135,5 +200,44 @@ impl<T: ChatRepo + ?Sized> ChatRepo for std::sync::Arc<T> {
 
     fn create_conversation(&self, title: &str) -> Result<RemoteConversation, ChatError> {
         (**self).create_conversation(title)
+    }
+
+    fn edit_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        body: &str,
+    ) -> Result<Message, ChatError> {
+        (**self).edit_message(conversation_id, message_id, body)
+    }
+
+    fn delete_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message, ChatError> {
+        (**self).delete_message(conversation_id, message_id)
+    }
+
+    fn react(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        emoji: &str,
+        on: bool,
+    ) -> Result<Message, ChatError> {
+        (**self).react(conversation_id, message_id, emoji, on)
+    }
+
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        (**self).upload_attachment(path, mime)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        (**self).download_attachment(id, destination)
     }
 }

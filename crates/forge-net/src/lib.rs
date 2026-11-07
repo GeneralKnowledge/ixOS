@@ -21,6 +21,7 @@
 //! The Weather example (`examples/weather/rust`) and `chat-core` use it. See
 //! `docs/architecture.md`.
 
+mod backoff;
 mod cancel;
 mod client;
 #[cfg(feature = "ureq")]
@@ -29,8 +30,9 @@ mod types;
 #[cfg(feature = "ureq")]
 mod ureq_client;
 
+pub use backoff::Backoff;
 pub use cancel::{AbortRegistration, CancelHandle};
-pub use client::{HttpClient, NoopClient, StaticClient};
+pub use client::{download_to_file, HttpClient, NoopClient, StaticClient};
 #[cfg(feature = "ureq")]
 pub use platform::https_ready;
 pub use types::{

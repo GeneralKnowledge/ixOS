@@ -138,6 +138,8 @@ fn rooms_messages_and_errors_over_http() {
             conversation_id: "general".into(),
             author: "me".into(),
             author_id: String::new(),
+            reply_to: None,
+            attachments: Vec::new(),
             body: "different".into(),
         },
     )
@@ -203,20 +205,29 @@ fn killer_demo_interaction_over_real_sockets() {
         )
     });
 
-    // 4. Send: typed network error, Failed bubble.
-    let err = client.send_message("general", "second").unwrap_err();
-    assert!(err.is_network(), "{err:?}");
-    let failed = client
-        .cached_messages("general")
-        .into_iter()
-        .find(|m| m.status == MessageStatus::Failed)
-        .unwrap();
+    // 4. Send while the server is down: the message waits in the outbox.
+    let queued = client.send_message("general", "second").unwrap();
+    assert_eq!(queued.status, MessageStatus::Sending);
+    assert_eq!(client.outbox().len(), 1);
 
-    // 5. Restart on the same port (same in-memory state), retry: Sent.
+    // 5. Restart on the same port (same in-memory state): the outbox sends
+    // it when the stream comes back, without the user doing anything.
     let (_server, _) = Server::start(state, addr);
-    let retried = client.retry_message(&failed.id).unwrap();
-    assert_eq!(retried.status, MessageStatus::Sent);
-    wait_for(&rx, "reconnect after restart", connected);
+    // The stream reconnecting and the outbox sending race; wait for both.
+    let (mut sent, mut reconnected) = (false, false);
+    let deadline = Instant::now() + WAIT;
+    while !(sent && reconnected) {
+        let event = rx
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .expect("queued message sent and stream back");
+        sent |= matches!(
+            &event,
+            ChatEvent::MessageStatusChanged { id, status: MessageStatus::Sent, .. }
+                if *id == queued.id
+        );
+        reconnected |= connected(&event);
+    }
+    assert!(client.outbox().is_empty());
 
     // 6. A message from "curl" arrives on the stream within a second.
     let started = Instant::now();
@@ -370,6 +381,8 @@ fn accounts_sign_every_call_and_own_the_author() {
             conversation_id: "general".into(),
             author: "Ben".into(),
             author_id: ben.user_id.clone(),
+            reply_to: None,
+            attachments: Vec::new(),
             body: "hi Ben".into(),
         },
     )
@@ -497,4 +510,222 @@ fn read_receipts_previews_and_new_rooms_between_two_accounts() {
         chat_core::ChatRepo::create_conversation(&anonymous, "Nope"),
         Err(ChatError::Unauthorized { .. })
     ));
+}
+
+/// M2: replies, edits, reactions and deletes between two accounts over
+/// real sockets, live on the other side, and kept across a server restart.
+#[test]
+fn message_changes_between_two_accounts() {
+    no_proxy();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("server.json");
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let base = format!("http://{addr}");
+    let signup = HttpRepo::with_ureq(&base);
+    let ana = signup.register("Ana").unwrap();
+    let ben = signup.register("Ben").unwrap();
+    let (ana_client, ana_events) = account_client(&base, &ana);
+    let (ben_client, ben_events) = account_client(&base, &ben);
+    ana_client.list_conversations().unwrap();
+    ben_client.list_conversations().unwrap();
+    ana_client.subscribe("general").unwrap();
+    wait_for(&ana_events, "Ana connected", connected);
+    ben_client.subscribe("general").unwrap();
+    wait_for(&ben_events, "Ben connected", connected);
+
+    // Ana asks; Ben replies to her message.
+    let question = ana_client.send_message("general", "Pizza?").unwrap();
+    wait_for(
+        &ben_events,
+        "Ben gets the question",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == question.id),
+    );
+    let answer = ben_client
+        .send_reply("general", "Yes!", Some(&question.id))
+        .unwrap();
+    assert_eq!(answer.reply_to.as_deref(), Some(question.id.as_str()));
+    wait_for(&ana_events, "Ana gets the reply", |e| {
+        matches!(e, ChatEvent::MessageReceived(m)
+            if m.id == answer.id && m.reply_to.as_deref() == Some(question.id.as_str()))
+    });
+
+    // Ben reacts to the question; Ana sees it live.
+    ben_client.set_reaction(&question.id, "👍", true).unwrap();
+    wait_for(&ana_events, "Ana sees the reaction", |e| {
+        matches!(e, ChatEvent::MessageUpdated(m)
+            if m.id == question.id && m.reactions.get("👍") == Some(&vec![ben.user_id.clone()]))
+    });
+
+    // Ana edits her question; Ben sees the new text marked edited.
+    ana_client
+        .edit_message(&question.id, "Pizza tonight?")
+        .unwrap();
+    wait_for(&ben_events, "Ben sees the edit", |e| {
+        matches!(e, ChatEvent::MessageUpdated(m)
+            if m.id == question.id && m.body == "Pizza tonight?" && m.edited_at.is_some())
+    });
+
+    // Ben may not edit or delete Ana's message.
+    assert!(ben_client.edit_message(&question.id, "Salad?").is_err());
+    assert!(ben_client.delete_message(&question.id).is_err());
+
+    // Ben deletes his answer for everyone.
+    ben_client.delete_message(&answer.id).unwrap();
+    wait_for(
+        &ana_events,
+        "Ana sees the deletion",
+        |e| matches!(e, ChatEvent::MessageUpdated(m) if m.id == answer.id && m.deleted && m.body.is_empty()),
+    );
+    // A deleted message takes no more changes.
+    assert!(ben_client.set_reaction(&answer.id, "😂", true).is_err());
+    ana_client.shutdown();
+    ben_client.shutdown();
+
+    // All of it is on disk.
+    drop(server);
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (_server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let again = HttpRepo::with_ureq(format!("http://{addr}")).with_token(&ana.token);
+    let messages = chat_core::ChatRepo::load_messages(&again, "general", None).unwrap();
+    let q = messages.iter().find(|m| m.id == question.id).unwrap();
+    assert_eq!(q.body, "Pizza tonight?");
+    assert!(q.edited_at.is_some());
+    assert_eq!(q.reactions.len(), 1);
+    let a = messages.iter().find(|m| m.id == answer.id).unwrap();
+    assert!(a.deleted);
+    assert_eq!(a.reply_to.as_deref(), Some(question.id.as_str()));
+
+    // Catching up with `since` returns changed messages, not only new ones.
+    let before_edit = q.sent_at;
+    let changed = chat_core::ChatRepo::load_messages(&again, "general", Some(before_edit)).unwrap();
+    assert!(changed.iter().any(|m| m.id == question.id));
+}
+
+/// M3: a photo and a document from one account to another over real
+/// sockets: uploaded once by content, carried by a message, downloaded and
+/// checked, and still there after a server restart.
+#[test]
+fn attachments_between_two_accounts() {
+    no_proxy();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("server.json");
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let base = format!("http://{addr}");
+    let signup = HttpRepo::with_ureq(&base);
+    let ana = signup.register("Ana").unwrap();
+    let ben = signup.register("Ben").unwrap();
+    let (ana_client, _ana_events) = account_client(&base, &ana);
+    let (ben_client, ben_events) = account_client(&base, &ben);
+    ana_client.list_conversations().unwrap();
+    ben_client.list_conversations().unwrap();
+    ben_client.subscribe("general").unwrap();
+    wait_for(&ben_events, "Ben connected", connected);
+
+    // A 3 MB "photo" (bigger than one read buffer) and a small document.
+    let photo_bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    std::fs::write(dir.path().join("IMG_0042.jpg"), &photo_bytes).unwrap();
+    std::fs::write(dir.path().join("Plan.pdf"), b"%PDF-1.7 the plan").unwrap();
+    let files = [
+        chat_core::OutgoingFile {
+            path: dir.path().join("IMG_0042.jpg"),
+            name: "IMG_0042.jpg".into(),
+            mime: "image/jpeg".into(),
+        },
+        chat_core::OutgoingFile {
+            path: dir.path().join("Plan.pdf"),
+            name: "Plan.pdf".into(),
+            mime: "application/pdf".into(),
+        },
+    ];
+    let sent = ana_client
+        .send_with_files("general", "the plan", None, &files)
+        .unwrap();
+    assert_eq!(sent.status, MessageStatus::Sent);
+    assert_eq!(sent.attachments[0].size, 3_000_000);
+
+    // Ben's live stream brings the message with its attachments.
+    wait_for(
+        &ben_events,
+        "Ben gets the files",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == sent.id && m.attachments.len() == 2),
+    );
+    let photo = ben_client
+        .fetch_attachment(&sent.attachments[0].id)
+        .unwrap();
+    assert_eq!(std::fs::read(&photo).unwrap(), photo_bytes);
+    let pdf = ben_client
+        .fetch_attachment(&sent.attachments[1].id)
+        .unwrap();
+    assert_eq!(std::fs::read(&pdf).unwrap(), b"%PDF-1.7 the plan");
+
+    // Uploading the same bytes again is harmless and gives the same id.
+    let again = HttpRepo::with_ureq(&base).with_token(&ben.token);
+    assert_eq!(
+        chat_core::ChatRepo::upload_attachment(
+            &again,
+            &dir.path().join("Plan.pdf"),
+            "application/pdf"
+        )
+        .unwrap(),
+        sent.attachments[1].id
+    );
+    // A message may only name uploaded files, and downloads need an id.
+    let bogus = chat_core::ChatRepo::post_message(
+        &again,
+        &chat_core::OutgoingMessage {
+            id: "bogus".into(),
+            conversation_id: "general".into(),
+            author: "Ben".into(),
+            author_id: ben.user_id.clone(),
+            body: String::new(),
+            reply_to: None,
+            attachments: vec![chat_core::Attachment {
+                id: "0".repeat(64),
+                name: "x".into(),
+                mime: "text/plain".into(),
+                size: 1,
+            }],
+        },
+    );
+    assert!(
+        matches!(bogus, Err(ChatError::Http { status: 400, .. })),
+        "{bogus:?}"
+    );
+    let missing = chat_core::ChatRepo::download_attachment(
+        &again,
+        &"0".repeat(64),
+        &dir.path().join("nothing"),
+    );
+    assert!(missing.is_err());
+    assert!(!dir.path().join("nothing").exists());
+    // Without a token: refused.
+    let anonymous = HttpRepo::with_ureq(&base);
+    assert!(matches!(
+        chat_core::ChatRepo::download_attachment(
+            &anonymous,
+            &sent.attachments[1].id,
+            &dir.path().join("x")
+        ),
+        Err(ChatError::Unauthorized { .. })
+    ));
+    ana_client.shutdown();
+    ben_client.shutdown();
+
+    // The files are on disk next to the data file and survive a restart.
+    drop(server);
+    assert!(dir
+        .path()
+        .join("attachments")
+        .join(&sent.attachments[0].id)
+        .is_file());
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (_server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let after = HttpRepo::with_ureq(format!("http://{addr}")).with_token(&ana.token);
+    let target = dir.path().join("after.pdf");
+    chat_core::ChatRepo::download_attachment(&after, &sent.attachments[1].id, &target).unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"%PDF-1.7 the plan");
+    let messages = chat_core::ChatRepo::load_messages(&after, "general", None).unwrap();
+    assert_eq!(messages[0].attachments, sent.attachments);
 }

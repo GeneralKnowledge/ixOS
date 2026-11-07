@@ -100,6 +100,18 @@ impl UreqClient {
         request: &Request,
         streaming: bool,
     ) -> Result<ureq::http::Response<ureq::Body>, NetError> {
+        self.run_with(agent, request, streaming, None)
+    }
+
+    /// [`run`](Self::run), with `file` as the body instead of
+    /// `request.body` when given (streamed, with its length).
+    fn run_with(
+        &self,
+        agent: &ureq::Agent,
+        request: &Request,
+        streaming: bool,
+        file: Option<std::fs::File>,
+    ) -> Result<ureq::http::Response<ureq::Body>, NetError> {
         request.validate()?;
         crate::platform::ensure_ready_for(&request.url)?;
 
@@ -129,7 +141,11 @@ impl UreqClient {
             };
         }
 
-        let result = if request.body.is_empty()
+        let result = if let Some(file) = file {
+            let http_request = builder.body(file).map_err(invalid)?;
+            let http_request = configure!(agent.configure_request(http_request)).build();
+            agent.run(http_request)
+        } else if request.body.is_empty()
             && !matches!(request.method, Method::Post | Method::Put | Method::Patch)
         {
             let http_request = builder.body(()).map_err(invalid)?;
@@ -206,6 +222,34 @@ impl HttpClient for UreqClient {
         };
         let result = self
             .run(&agent, request, false)
+            .and_then(|response| self.read_response(response));
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        result
+    }
+
+    /// Streams the file from disk with its `Content-Length`, on a connection
+    /// of its own that `cancel` shuts down. The whole exchange is bounded by
+    /// the request timeout, so give large uploads a generous one.
+    fn send_file(
+        &self,
+        request: &Request,
+        path: &std::path::Path,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        let file =
+            std::fs::File::open(path).map_err(|err| crate::client::file_error(path, &err))?;
+        let agent = ureq::Agent::new_with_config(self.agent.config().clone());
+        let _registration = {
+            let agent = agent.clone();
+            cancel.on_cancel(move || agent.shutdown())
+        };
+        let result = self
+            .run_with(&agent, request, false, Some(file))
             .and_then(|response| self.read_response(response));
         if cancel.is_cancelled() {
             return Err(NetError::Cancelled);
@@ -389,6 +433,141 @@ mod tests {
         let raw = server.join().unwrap();
         assert!(raw.starts_with("GET /v1/thing?x=1 HTTP/1.1"), "{raw}");
         assert!(raw.to_ascii_lowercase().contains("x-test: yes"), "{raw}");
+    }
+
+    #[test]
+    fn send_file_streams_the_file_with_its_length() {
+        no_proxy();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("photo.jpg");
+        let content: Vec<u8> = (0..300_000u32).map(|i| (i % 251) as u8).collect();
+        std::fs::write(&path, &content).unwrap();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut raw = Vec::new();
+            let mut buf = [0u8; 8192];
+            let header_end = loop {
+                let n = stream.read(&mut buf).unwrap();
+                raw.extend_from_slice(&buf[..n]);
+                if let Some(i) = raw.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break i + 4;
+                }
+            };
+            let head = String::from_utf8_lossy(&raw[..header_end]).to_ascii_lowercase();
+            let length: usize = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length: "))
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
+            while raw.len() < header_end + length {
+                let n = stream.read(&mut buf).unwrap();
+                raw.extend_from_slice(&buf[..n]);
+            }
+            stream
+                .write_all(
+                    b"HTTP/1.1 201 Created\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                )
+                .unwrap();
+            (head, raw[header_end..].to_vec())
+        });
+        let response = UreqClient::new()
+            .send_file(
+                &Request::post(format!("{url}/upload"), Vec::new())
+                    .header("Content-Type", "image/jpeg"),
+                &path,
+                &CancelHandle::new(),
+            )
+            .unwrap();
+        assert_eq!(
+            (response.status, response.body.as_slice()),
+            (201, &b"ok"[..])
+        );
+        let (head, body) = server.join().unwrap();
+        assert!(head.starts_with("post /upload"), "{head}");
+        assert!(head.contains("content-length: 300000"), "{head}");
+        assert!(head.contains("content-type: image/jpeg"), "{head}");
+        assert_eq!(body, content);
+    }
+
+    #[test]
+    fn send_file_reports_a_missing_file() {
+        let err = UreqClient::new()
+            .send_file(
+                &Request::post("http://127.0.0.1:9/upload", Vec::new()),
+                std::path::Path::new("/no/such/file"),
+                &CancelHandle::new(),
+            )
+            .unwrap_err();
+        assert!(matches!(err, NetError::InvalidRequest { .. }), "{err:?}");
+    }
+
+    #[test]
+    fn download_to_file_writes_only_a_complete_success() {
+        no_proxy();
+        let dir = tempfile::tempdir().unwrap();
+        let dest = dir.path().join("files/doc.pdf");
+        let (url, server) = one_shot_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 9\r\nConnection: close\r\n\r\n%PDF-body",
+        );
+        let response = crate::download_to_file(
+            &UreqClient::new(),
+            &Request::get(url),
+            &dest,
+            &CancelHandle::new(),
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(response.status, 200);
+        assert!(response.body.is_empty());
+        assert_eq!(std::fs::read(&dest).unwrap(), b"%PDF-body");
+        assert_eq!(
+            std::fs::read_dir(dest.parent().unwrap()).unwrap().count(),
+            1,
+            "no .part left"
+        );
+
+        // A 404 writes nothing and hands back the error body.
+        let missing = dir.path().join("files/missing.pdf");
+        let (url, server) = one_shot_server(
+            "HTTP/1.1 404 Not Found\r\nContent-Length: 4\r\nConnection: close\r\n\r\ngone",
+        );
+        let response = crate::download_to_file(
+            &UreqClient::new(),
+            &Request::get(url),
+            &missing,
+            &CancelHandle::new(),
+        )
+        .unwrap();
+        server.join().unwrap();
+        assert_eq!(
+            (response.status, response.body.as_slice()),
+            (404, &b"gone"[..])
+        );
+        assert!(!missing.exists());
+
+        // A body cut short leaves no file either.
+        let cut = dir.path().join("files/cut.pdf");
+        let (url, server) = one_shot_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\nshort",
+        );
+        let err = crate::download_to_file(
+            &UreqClient::new(),
+            &Request::get(url),
+            &cut,
+            &CancelHandle::new(),
+        )
+        .unwrap_err();
+        server.join().unwrap();
+        assert!(matches!(err, NetError::Transport { .. }), "{err:?}");
+        assert!(!cut.exists());
+        assert_eq!(
+            std::fs::read_dir(dest.parent().unwrap()).unwrap().count(),
+            1
+        );
     }
 
     #[test]

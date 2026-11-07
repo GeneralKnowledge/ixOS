@@ -2,10 +2,13 @@ mod app_config;
 mod check;
 mod commands;
 mod config;
+mod device;
 mod diagnose;
 mod doctor;
 mod ios_builder;
 mod ios_env;
+mod live;
+mod report;
 mod runner;
 
 use clap::{Parser, Subcommand};
@@ -14,6 +17,12 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "forge", about = "Forge Mobile developer CLI", version)]
 struct Cli {
+    /// Print one JSON result object on stdout (`forge.result/1`, see
+    /// docs/forge-mcp.md); progress goes to stderr and a log file. The exit
+    /// code names the failed stage: 10 Rust, 11 Swift, 12 signing, 13 device,
+    /// 14 tests. `forge doctor --json` keeps its own report format
+    #[arg(long, global = true)]
+    json: bool,
     #[command(subcommand)]
     command: Commands,
 }
@@ -21,11 +30,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Report toolchain and environment readiness
-    Doctor {
-        /// Print one JSON object (tool versions, Rust targets, env, readiness) instead of the text report
-        #[arg(long)]
-        json: bool,
-    },
+    /// (`--json` prints one object: tool versions, Rust targets, env, readiness)
+    Doctor,
     /// Run the full local CI matrix: fmt, clippy, tests, binding drift, template sync, Android JVM and Swift host tests
     Check {
         /// Stop at the first failing step instead of running them all
@@ -85,6 +91,112 @@ enum Commands {
         #[command(subcommand)]
         cmd: RunCommands,
     },
+    /// A connected iPhone over USB, from Linux: its details, system log and
+    /// crash reports, and the live connection to a development build of your
+    /// app (needs usbmuxd and a phone that trusts this computer)
+    Device {
+        #[command(subcommand)]
+        cmd: DeviceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeviceCommands {
+    /// Connected phones: UDID, name, model, iOS version
+    List,
+    /// One phone's name, model, iOS version and whether Developer Mode is on
+    Info {
+        /// Which phone, when several are connected (see `forge device list`)
+        #[arg(long)]
+        udid: Option<String>,
+    },
+    /// Stream the phone's system log; Ctrl-C stops
+    Logs {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Only this process's lines: the app's executable as the log shows
+        /// it (`<App>Xtool` for apps made with `forge init`, `[ios] xtool_product`)
+        #[arg(long, value_name = "NAME")]
+        process: Option<String>,
+        /// Only lines containing this text (case-insensitive)
+        #[arg(long, value_name = "TEXT")]
+        grep: Option<String>,
+        /// Stop after this many matching lines
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+        /// Stop after this long, even if the phone logs nothing: 30s, 2m, 500ms.
+        /// With --json, --for or --limit is required
+        #[arg(long = "for", value_name = "DURATION", value_parser = report::parse_duration)]
+        duration: Option<std::time::Duration>,
+    },
+    /// List crash reports on the phone, or copy them here with --pull
+    Crashes {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Only this app's reports (its executable name), newest first
+        #[arg(long, value_name = "NAME")]
+        app: Option<String>,
+        /// Copy the reports into this folder
+        #[arg(long, value_name = "DIR")]
+        pull: Option<PathBuf>,
+    },
+    /// Pair this computer with the development build on screen (once per app
+    /// and phone; the app must be built with `forge run ios --devtools`)
+    Pair {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// Forget the pairing on the phone and on this computer
+    Unpair {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// The paired app's phase, uptime, probes and commands
+    Status {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// The values of the state probes the app registered
+    Snapshot {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// Run one of the app's own commands; with no name, list them
+    Cmd {
+        #[command(flatten)]
+        live: LiveArgs,
+        /// The command's name
+        name: Option<String>,
+        /// Its arguments
+        args: Vec<String>,
+    },
+    /// The app's own log and lifecycle, live; carries on when the app comes
+    /// back from the background. Ctrl-C stops
+    Connect {
+        #[command(flatten)]
+        live: LiveArgs,
+        /// Show this many buffered records from before connecting
+        #[arg(long, value_name = "N", default_value_t = 50)]
+        tail: u32,
+        /// Stop after this many records
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+        /// Stop when the app goes to the background instead of waiting
+        #[arg(long)]
+        no_follow: bool,
+    },
+}
+
+#[derive(clap::Args)]
+struct LiveArgs {
+    /// Which phone, when several are connected
+    #[arg(long)]
+    udid: Option<String>,
+    /// The port the development build listens on
+    #[arg(long, default_value_t = forge_devproto::DEFAULT_PORT, hide = true)]
+    port: u16,
 }
 
 #[derive(Subcommand)]
@@ -147,6 +259,10 @@ enum BuildCommands {
         /// Build the Swift app in the release configuration (xtool dev build -c release)
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
+        /// Include the live connection to `forge device` (pair, connect,
+        /// status, snapshot, cmd). For development only
+        #[arg(long)]
+        devtools: bool,
     },
     /// Build an Android app (work in progress: no new features while Forge focuses on iOS)
     Android {
@@ -182,6 +298,10 @@ enum RunCommands {
         /// Build the Swift app in the release configuration (xtool dev run -c release)
         #[arg(long)]
         release: bool,
+        /// Include the live connection to `forge device` (pair, connect,
+        /// status, snapshot, cmd). For development only
+        #[arg(long)]
+        devtools: bool,
     },
 }
 
@@ -196,18 +316,121 @@ fn configuration(release: bool) -> ios_builder::IosConfiguration {
 fn main() {
     let cli = Cli::parse();
     let runner = runner::RealRunner;
-    if let Err(err) = dispatch(cli, &runner) {
-        eprintln!("error: {err}");
-        std::process::exit(1);
+    // doctor --json has its own report shape (it predates the result contract).
+    if !cli.json || matches!(cli.command, Commands::Doctor) {
+        if let Err(err) = dispatch(cli, &runner) {
+            eprintln!("error: {err}");
+            std::process::exit(1);
+        }
+        return;
     }
+    report::enter_json_mode();
+    let started = std::time::Instant::now();
+    let command = command_name(&cli.command);
+    let project = result_project(&cli.command);
+    let fallback_stage = match cli.command {
+        Commands::Test { .. } | Commands::Check { .. } => "test",
+        // usbmuxd missing, no phone, not paired, the app not listening.
+        Commands::Device { .. } | Commands::Devices => "device",
+        _ => "forge",
+    };
+    if let (Some(dir), true) = (&project, logs_to_file(&cli.command)) {
+        report::open_log(dir, &command);
+    }
+    let res = dispatch(cli, &runner);
+    if let Err(err) = &res {
+        eprintln!("error: {err}");
+    }
+    let outcome = report::Outcome {
+        command: &command,
+        started,
+        project: project
+            .as_deref()
+            .filter(|p| p.join("forge.toml").is_file()),
+        fallback_stage,
+    };
+    std::process::exit(report::finish(&outcome, res));
+}
+
+/// `run ios`, `device logs`, ...: the command as the result names it.
+fn command_name(command: &Commands) -> String {
+    let sub = match command {
+        Commands::Doctor => return "doctor".into(),
+        Commands::Check { .. } => return "check".into(),
+        Commands::Init { .. } => return "init".into(),
+        Commands::Test { .. } => return "test".into(),
+        Commands::Devices => return "devices".into(),
+        Commands::Config { cmd } => match cmd {
+            ConfigCommands::Sync { .. } => "config sync",
+            ConfigCommands::Check { .. } => "config check",
+            ConfigCommands::Show { .. } => "config show",
+        },
+        Commands::Bindings { .. } => "bindings generate",
+        Commands::Build { cmd } => match cmd {
+            BuildCommands::Ios { .. } => "build ios",
+            BuildCommands::Android { .. } => "build android",
+        },
+        Commands::Install { .. } => "install ios",
+        Commands::Run { .. } => "run ios",
+        Commands::Device { cmd } => match cmd {
+            DeviceCommands::List => "device list",
+            DeviceCommands::Info { .. } => "device info",
+            DeviceCommands::Logs { .. } => "device logs",
+            DeviceCommands::Crashes { .. } => "device crashes",
+            DeviceCommands::Pair { .. } => "device pair",
+            DeviceCommands::Unpair { .. } => "device unpair",
+            DeviceCommands::Status { .. } => "device status",
+            DeviceCommands::Snapshot { .. } => "device snapshot",
+            DeviceCommands::Cmd { .. } => "device cmd",
+            DeviceCommands::Connect { .. } => "device connect",
+        },
+    };
+    sub.into()
+}
+
+/// The app directory a command works on, for the result's `app` and log.
+fn result_project(command: &Commands) -> Option<PathBuf> {
+    let dir = match command {
+        Commands::Init { name, path, .. } => {
+            let root = commands::workspace_root();
+            return Some(
+                path.as_ref()
+                    .map(|p| absolute_from_cwd(p))
+                    .or_else(|| default_init_dest(&root, name))
+                    .unwrap_or_else(|| root.join("examples").join(name)),
+            );
+        }
+        Commands::Build {
+            cmd: BuildCommands::Ios { project, .. },
+        }
+        | Commands::Run {
+            cmd: RunCommands::Ios { project, .. },
+        }
+        | Commands::Test { project, .. } => project.clone().or_else(app_in_cwd),
+        Commands::Config { cmd } => match cmd {
+            ConfigCommands::Sync { project, .. }
+            | ConfigCommands::Check { project }
+            | ConfigCommands::Show { project } => project.clone().or_else(app_in_cwd),
+        },
+        _ => app_in_cwd(),
+    }?;
+    Some(absolute_from_cwd(&dir))
+}
+
+/// Commands that run long build steps keep their output in a log file.
+fn logs_to_file(command: &Commands) -> bool {
+    matches!(
+        command,
+        Commands::Build { .. } | Commands::Run { .. } | Commands::Test { .. }
+    )
 }
 
 fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> {
     let root = commands::workspace_root();
     let ios = ios_builder::XtoolBuilder;
     match cli.command {
-        Commands::Doctor { json: false } => doctor::print_text(runner, &root),
-        Commands::Doctor { json: true } => doctor::print_json(runner, &root),
+        Commands::Doctor if cli.json => doctor::print_json(runner, &root),
+        Commands::Doctor => doctor::print_text(runner, &root),
         Commands::Check { fail_fast } => {
             let host = check::Host::detect(runner, &root);
             check::check(runner, &root, host, fail_fast)
@@ -258,6 +481,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 project,
                 package_only,
                 release,
+                devtools,
             } => {
                 let project = project_or_default(project, "examples/counter");
                 commands::build_ios(
@@ -267,6 +491,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     &project,
                     package_only,
                     configuration(release),
+                    devtools,
                 )
             }
             BuildCommands::Android { project, install } => {
@@ -275,13 +500,25 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Devices => commands::devices(runner, &ios),
+        Commands::Device { cmd } => device_command(cmd, cli.json),
         Commands::Install { cmd } => match cmd {
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project, release } => {
+            RunCommands::Ios {
+                project,
+                release,
+                devtools,
+            } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(runner, &ios, &root, &project, configuration(release))
+                commands::run_ios(
+                    runner,
+                    &ios,
+                    &root,
+                    &project,
+                    configuration(release),
+                    devtools,
+                )
             }
         },
     }
@@ -328,6 +565,113 @@ fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     }
+}
+
+fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
+    let backend = forge_device::UsbBackend::new().map_err(|e| e.to_string())?;
+    if json {
+        let data = match &cmd {
+            DeviceCommands::List => Some(device::list_data(&backend)?),
+            DeviceCommands::Info { udid } => Some(device::info_data(&backend, udid.as_deref())?),
+            DeviceCommands::Crashes { udid, app, pull } => Some(device::crashes_data(
+                &backend,
+                udid.as_deref(),
+                app.as_deref(),
+                pull.as_deref(),
+            )?),
+            DeviceCommands::Logs {
+                limit: None,
+                duration: None,
+                ..
+            } => {
+                return Err(report::usage_error(
+                    "with --json, `forge device logs` needs --for <DURATION> or --limit <N>, so it ends",
+                ))
+            }
+            DeviceCommands::Connect { limit: None, .. } => {
+                return Err(report::usage_error(
+                    "with --json, `forge device connect` needs --limit <N>, so it ends",
+                ))
+            }
+            _ => None,
+        };
+        if let Some(data) = data {
+            report::set_data(data);
+            return Ok(());
+        }
+        // The rest print lines; with --json they become `data.lines`.
+        let mut buf = Vec::new();
+        let res = run_device_command(&backend, cmd, &mut buf);
+        let text = String::from_utf8_lossy(&buf);
+        report::set_data(serde_json::json!({
+            "lines": text.lines().collect::<Vec<_>>(),
+        }));
+        return res;
+    }
+    run_device_command(&backend, cmd, &mut std::io::stdout().lock())
+}
+
+fn run_device_command(
+    backend: &dyn forge_device::DeviceBackend,
+    cmd: DeviceCommands,
+    out: &mut dyn std::io::Write,
+) -> Result<(), String> {
+    match cmd {
+        DeviceCommands::List => device::list(backend, out),
+        DeviceCommands::Info { udid } => device::info(backend, udid.as_deref(), out),
+        DeviceCommands::Logs {
+            udid,
+            process,
+            grep,
+            limit,
+            duration,
+        } => {
+            let filter = forge_device::LogFilter {
+                process,
+                contains: grep,
+            };
+            device::logs(backend, udid.as_deref(), &filter, limit, duration, out)
+        }
+        DeviceCommands::Crashes { udid, app, pull } => device::crashes(
+            backend,
+            udid.as_deref(),
+            app.as_deref(),
+            pull.as_deref(),
+            out,
+        ),
+        DeviceCommands::Pair { live } => with_target(backend, &live, |t| live::pair(t, out)),
+        DeviceCommands::Unpair { live } => with_target(backend, &live, |t| live::unpair(t, out)),
+        DeviceCommands::Status { live } => with_target(backend, &live, |t| live::status(t, out)),
+        DeviceCommands::Snapshot { live } => {
+            with_target(backend, &live, |t| live::snapshot(t, out))
+        }
+        DeviceCommands::Cmd { live, name, args } => with_target(backend, &live, |t| {
+            live::cmd(t, name.as_deref(), &args, out)
+        }),
+        DeviceCommands::Connect {
+            live,
+            tail,
+            limit,
+            no_follow,
+        } => with_target(backend, &live, |t| {
+            live::connect(t, tail, limit, !no_follow, out)
+        }),
+    }
+}
+
+/// Runs a live-connection command against the default pairing store.
+fn with_target(
+    backend: &dyn forge_device::DeviceBackend,
+    args: &LiveArgs,
+    run: impl FnOnce(&live::Target) -> Result<(), String>,
+) -> Result<(), String> {
+    let store = forge_device::PairingStore::default_location().map_err(|e| e.to_string())?;
+    run(&live::Target {
+        backend,
+        udid: args.udid.as_deref(),
+        port: args.port,
+        store: &store,
+    })
 }
 
 #[cfg(test)]

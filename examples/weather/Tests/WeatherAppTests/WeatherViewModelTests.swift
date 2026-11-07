@@ -34,6 +34,8 @@ final class WeatherViewModelTests: XCTestCase {
         XCTAssertFalse(model.isRefreshing)
         XCTAssertNil(model.place)
         XCTAssertNil(model.report)
+        XCTAssertEqual(model.pages.map(\.id), [WeatherPage.myLocationID])
+        XCTAssertEqual(model.selection, WeatherPage.myLocationID)
     }
 
     @MainActor
@@ -43,13 +45,55 @@ final class WeatherViewModelTests: XCTestCase {
         let model = WeatherViewModel(
             client: try offlineClient(), location: FakeLocation(result: .success(fix)))
         await model.start()
-        XCTAssertEqual(model.place?.name, "Current location")
+        XCTAssertEqual(model.place?.name, "My Location", "no locality from the fake provider")
         XCTAssertEqual(model.place?.source, .device(horizontalAccuracyM: 65))
         XCTAssertTrue(model.place?.isDeviceLocation ?? false)
         XCTAssertNil(model.report)
         XCTAssertFalse(model.isRefreshing)
         XCTAssertEqual(
             model.errorMessage, WeatherClientError.offline(detail: "").userMessage)
+    }
+
+    @MainActor
+    func testTheLocalityNamesMyLocation() async throws {
+        let fix = LocationFix(
+            coordinate: Coordinate(latitude: 55.9, longitude: -3.64), placeName: "Bathgate")
+        let model = WeatherViewModel(
+            client: try offlineClient(), location: FakeLocation(result: .success(fix)))
+        await model.start()
+        XCTAssertEqual(model.place?.name, "Bathgate")
+        XCTAssertTrue(model.selectedPage?.isMyLocation ?? false)
+    }
+
+    @MainActor
+    func testAddingRemovingAndReorderingPlaces() async throws {
+        let client = try offlineClient()
+        let model = WeatherViewModel(
+            client: client, location: FakeLocation(result: .failure(.denied)))
+        await model.start()
+        func city(_ name: String, _ lat: Double, _ lon: Double) -> Place {
+            Place(
+                name: name, region: nil, country: nil, countryCode: nil,
+                coordinate: Coordinate(latitude: lat, longitude: lon), timezone: nil,
+                population: nil, source: .search(geocodingId: nil))
+        }
+        model.add(city("Düsseldorf", 51.22, 6.78))
+        model.add(city("Prague", 50.09, 14.42))
+        XCTAssertEqual(model.pages.map { $0.place?.name }, [nil, "Düsseldorf", "Prague"])
+        XCTAssertEqual(model.place?.name, "Prague", "the new page is shown")
+        XCTAssertEqual(client.savedPlaces.count, 2)
+
+        model.add(city("Praha", 50.088, 14.421))
+        XCTAssertEqual(model.pages.count, 3, "already saved")
+
+        model.moveSaved(from: 1, to: 0)
+        XCTAssertEqual(model.pages.map { $0.place?.name }, [nil, "Prague", "Düsseldorf"])
+
+        model.remove([model.pages[1].id, WeatherPage.myLocationID])
+        XCTAssertEqual(model.pages.map { $0.place?.name }, [nil, "Düsseldorf"], "My Location stays")
+        XCTAssertEqual(client.savedPlaces.map(\.name), ["Düsseldorf"])
+        XCTAssertNotNil(model.selectedPage)
+        model.close()
     }
 
     @MainActor
@@ -87,5 +131,11 @@ final class WeatherViewModelTests: XCTestCase {
             "cloud.heavyrain.fill")
         XCTAssertEqual(WeatherFormat.describe(.unknown(code: 4)).text, "Unknown (code 4)")
         XCTAssertEqual(WeatherFormat.describe(.clear, isDay: false).symbol, "moon.stars.fill")
+        XCTAssertEqual(WeatherFormat.describe(.mainlyClear, isDay: true).text, "Mostly sunny")
+        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, unit: .milesPerHour), "20 mph")
+        XCTAssertEqual(WeatherFormat.speed(kmh: 32.2, unit: .kilometresPerHour), "32 km/h")
+        XCTAssertEqual(WeatherFormat.uvLevel(6.4), "High")
+        XCTAssertTrue(WeatherFormat.isWet(.rainShowers(intensity: .light)))
+        XCTAssertFalse(WeatherFormat.isWet(.overcast))
     }
 }

@@ -32,15 +32,25 @@
 //! * Every message carries a client-chosen id, so retries are idempotent on
 //!   the server and the stream echo of our own message is matched to the
 //!   local bubble instead of appearing twice.
+//! * **The outbox.** A message that cannot be sent because the server is
+//!   unreachable (or answered 5xx) stays `Sending` in the store. One outbox
+//!   thread per client sends what is queued, oldest first, when a stream
+//!   reconnects, when streams resume, after a successful refresh, and with
+//!   backoff in between. It also sends what a previous run left queued, so a
+//!   message typed offline goes out after the app was killed and relaunched.
+//!   The server ignores a repeated id, so a send that succeeded but whose
+//!   answer was lost is never duplicated.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::thread;
 use std::time::Duration;
 
-use forge_net::CancelHandle;
+use forge_net::{Backoff, CancelHandle};
 
+use crate::attachments::{AttachmentStore, OutgoingFile, MAX_ATTACHMENTS_PER_MESSAGE};
 use crate::now_ms;
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent};
 use crate::store::{ChatSnapshot, ChatStore, StoreError, Upsert};
@@ -48,6 +58,9 @@ use crate::types::{ChatError, ChatEvent, Conversation, Message, MessageStatus};
 
 /// Longest message body accepted, in characters.
 pub const MAX_BODY_CHARS: usize = 4000;
+
+/// Longest reaction accepted, in characters (one emoji with modifiers).
+pub const MAX_REACTION_CHARS: usize = 8;
 
 #[derive(Debug, Clone)]
 pub struct ChatConfig {
@@ -59,6 +72,7 @@ pub struct ChatConfig {
     pub user_id: String,
     /// First reconnect delay after a stream drops; doubles up to
     /// `reconnect_max`, and resets once a stream connects and catches up.
+    /// Each delay is cut by up to 20% at random (`forge_net::Backoff`).
     pub reconnect_initial: Duration,
     pub reconnect_max: Duration,
 }
@@ -116,7 +130,43 @@ struct Inner {
     /// Unix ms when this client was built: only messages sent after it
     /// raise `Notify`.
     started_at: i64,
+    /// Wakes the outbox thread.
+    outbox: Arc<OutboxSignal>,
+    /// Attachment files on this device.
+    attachments: AttachmentStore,
 }
+
+/// The outbox thread's doorbell.
+#[derive(Default)]
+struct OutboxSignal {
+    rung: Mutex<bool>,
+    bell: Condvar,
+}
+
+impl OutboxSignal {
+    fn ring(&self) {
+        *self.rung.lock().unwrap_or_else(|p| p.into_inner()) = true;
+        self.bell.notify_all();
+    }
+
+    /// Waits until rung or `timeout` passes.
+    fn wait(&self, timeout: Duration) {
+        let rung = self.rung.lock().unwrap_or_else(|p| p.into_inner());
+        let (mut rung, _) = self
+            .bell
+            .wait_timeout_while(rung, timeout, |rung| !*rung)
+            .unwrap_or_else(|p| p.into_inner());
+        *rung = false;
+    }
+}
+
+/// First retry delay of the outbox after the server could not be reached;
+/// it doubles up to [`OUTBOX_MAX_DELAY`].
+pub const OUTBOX_INITIAL_DELAY: Duration = Duration::from_secs(1);
+/// Longest wait between outbox attempts.
+pub const OUTBOX_MAX_DELAY: Duration = Duration::from_secs(60);
+/// How often an idle outbox thread checks that its client still exists.
+const OUTBOX_IDLE: Duration = Duration::from_secs(30);
 
 struct State {
     snapshot: ChatSnapshot,
@@ -131,6 +181,12 @@ struct State {
     paused: bool,
     shut_down: bool,
     store_error: Option<StoreError>,
+    /// Ids of messages being posted right now (by a command or the outbox),
+    /// so one message is never posted twice at once.
+    in_flight: HashSet<String>,
+    /// Attachments this client has uploaded, so a retry does not send the
+    /// bytes again.
+    uploaded: HashSet<String>,
 }
 
 struct Subscription {
@@ -179,9 +235,11 @@ impl ChatClient {
             Err(err @ StoreError::UnsupportedVersion { .. }) => return Err(err),
             Err(err) => (ChatSnapshot::new(), Some(err)),
         };
-        Ok(Self {
+        let attachments = store.attachments();
+        let client = Self {
             inner: Arc::new(Inner {
                 repo,
+                attachments,
                 store,
                 config,
                 sink: Box::new(sink),
@@ -193,12 +251,27 @@ impl ChatClient {
                     paused: false,
                     shut_down: false,
                     store_error,
+                    in_flight: HashSet::new(),
+                    uploaded: HashSet::new(),
                 }),
                 live_pumps: AtomicUsize::new(0),
                 next_id: AtomicU64::new(0),
                 started_at: now_ms(),
+                outbox: Arc::default(),
             }),
-        })
+        };
+        client.start_outbox();
+        Ok(client)
+    }
+
+    /// Starts the outbox thread. It holds only a weak reference, so it ends
+    /// when the client is dropped or shut down.
+    fn start_outbox(&self) {
+        let weak = Arc::downgrade(&self.inner);
+        let signal = Arc::clone(&self.inner.outbox);
+        let _ = thread::Builder::new()
+            .name("forge-chat-outbox".into())
+            .spawn(move || Inner::run_outbox(weak, signal));
     }
 
     pub fn config(&self) -> &ChatConfig {
@@ -219,6 +292,37 @@ impl ChatClient {
             .snapshot
             .messages(conversation_id)
             .to_vec()
+    }
+
+    /// The unsent text saved for a conversation's composer.
+    pub fn draft(&self, conversation_id: &str) -> Option<String> {
+        self.inner
+            .lock()
+            .snapshot
+            .drafts
+            .get(conversation_id)
+            .cloned()
+    }
+
+    /// Stored messages matching every word of `query` (as prefixes,
+    /// ignoring case and accents), newest first: in one conversation, or in
+    /// all of them with `None`. Searches what is on this device.
+    pub fn search(
+        &self,
+        query: &str,
+        conversation_id: Option<&str>,
+    ) -> Result<Vec<Message>, ChatError> {
+        self.inner
+            .store
+            .search(query, conversation_id)
+            .map_err(|e| ChatError::UnsupportedOnHost {
+                detail: format!("search failed: {e}"),
+            })
+    }
+
+    /// Messages waiting in the outbox, oldest first.
+    pub fn outbox(&self) -> Vec<Message> {
+        self.inner.lock().snapshot.outbox()
     }
 
     /// The `since` cursor for a conversation (see [`ChatSnapshot`]).
@@ -291,6 +395,8 @@ impl ChatClient {
                 .apply_server_messages(&mut state, &id, messages, Some(since));
         }
         self.inner.persist(&mut state);
+        // The server answered: anything queued can go now.
+        self.inner.outbox.ring();
         Ok(state.snapshot.conversations.clone())
     }
 
@@ -329,10 +435,40 @@ impl ChatClient {
     /// is in flight and it fails, the error is `Cancelled` and the message
     /// stays `Failed` in the store for the next run.
     pub fn send_message(&self, conversation_id: &str, body: &str) -> Result<Message, ChatError> {
+        self.send_reply(conversation_id, body, None)
+    }
+
+    /// [`send_message`](Self::send_message) as an answer to `reply_to`, a
+    /// message in the same conversation.
+    pub fn send_reply(
+        &self,
+        conversation_id: &str,
+        body: &str,
+        reply_to: Option<&str>,
+    ) -> Result<Message, ChatError> {
+        self.send_with_files(conversation_id, body, reply_to, &[])
+    }
+
+    /// [`send_reply`](Self::send_reply) with files (photos, documents).
+    /// Each file is copied into this device's attachment store at once, so
+    /// the original may go away; the outbox uploads them before the message.
+    /// The body may be empty when there are files.
+    pub fn send_with_files(
+        &self,
+        conversation_id: &str,
+        body: &str,
+        reply_to: Option<&str>,
+        files: &[OutgoingFile],
+    ) -> Result<Message, ChatError> {
         validate_room(conversation_id)?;
         let body = body.trim();
-        if body.is_empty() {
+        if body.is_empty() && files.is_empty() {
             return Err(ChatError::invalid("message body is empty"));
+        }
+        if files.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+            return Err(ChatError::invalid(format!(
+                "a message carries at most {MAX_ATTACHMENTS_PER_MESSAGE} files"
+            )));
         }
         if body.chars().count() > MAX_BODY_CHARS {
             return Err(ChatError::invalid(format!(
@@ -347,10 +483,30 @@ impl ChatClient {
             body: body.into(),
             sent_at: now_ms(),
             status: MessageStatus::Sending,
+            reply_to: reply_to.map(str::to_string),
+            attachments: files
+                .iter()
+                .map(|file| self.inner.attachments.import(file))
+                .collect::<Result<_, _>>()?,
+            ..Message::default()
         };
         {
             let mut state = self.inner.lock();
             self.inner.ensure_running_locked(&state)?;
+            if let Some(target) = reply_to {
+                let found = state
+                    .snapshot
+                    .message(target)
+                    .is_some_and(|m| m.conversation_id == conversation_id && !m.deleted);
+                if !found {
+                    return Err(ChatError::invalid(format!(
+                        "no message {target:?} to reply to in {conversation_id:?}"
+                    )));
+                }
+            }
+            // A sent message clears the composer's draft.
+            state.snapshot.drafts.remove(conversation_id);
+            state.in_flight.insert(message.id.clone());
             state.snapshot.upsert_message(message.clone());
             self.inner.emit(ChatEvent::MessageReceived(message.clone()));
             self.inner
@@ -358,6 +514,39 @@ impl ChatClient {
             self.inner.persist(&mut state);
         }
         self.inner.deliver(message)
+    }
+
+    /// The local file of an attachment, if it is on this device (ours, or
+    /// downloaded before).
+    pub fn attachment_file(&self, attachment_id: &str) -> Option<PathBuf> {
+        self.inner.attachments.local_file(attachment_id)
+    }
+
+    /// The local file of an attachment, downloading it first if needed. The
+    /// bytes are checked against the id before they are kept. Blocks for
+    /// the download: call it from a worker thread.
+    pub fn fetch_attachment(&self, attachment_id: &str) -> Result<PathBuf, ChatError> {
+        self.inner.ensure_running()?;
+        if !crate::is_attachment_id(attachment_id) {
+            return Err(ChatError::invalid(format!(
+                "not an attachment id: {attachment_id:?}"
+            )));
+        }
+        if let Some(path) = self.inner.attachments.local_file(attachment_id) {
+            return Ok(path);
+        }
+        let store = &self.inner.attachments;
+        std::fs::create_dir_all(store.directory()).map_err(|err| ChatError::UnsupportedOnHost {
+            detail: format!("cannot create {}: {err}", store.directory().display()),
+        })?;
+        let partial = store.download_path(attachment_id);
+        self.inner
+            .repo
+            .download_attachment(attachment_id, &partial)
+            .inspect_err(|_| {
+                let _ = std::fs::remove_file(&partial);
+            })?;
+        store.accept_download(attachment_id, &partial)
     }
 
     /// Sends a `Failed` message again, with the same id (the server ignores
@@ -372,10 +561,16 @@ impl ChatClient {
                 })?;
             match message.status {
                 MessageStatus::Sent => return Ok(message),
-                MessageStatus::Sending => {
+                MessageStatus::Sending if state.in_flight.contains(message_id) => {
                     return Err(ChatError::invalid(format!(
                         "message {message_id:?} is already being sent"
                     )))
+                }
+                // Queued in the outbox: try it now.
+                MessageStatus::Sending => {
+                    state.in_flight.insert(message.id.clone());
+                    drop(state);
+                    return self.inner.deliver(message);
                 }
                 MessageStatus::Failed => {}
             }
@@ -383,6 +578,7 @@ impl ChatClient {
                 .snapshot
                 .set_status(message_id, MessageStatus::Sending)
                 .expect("message exists");
+            state.in_flight.insert(message.id.clone());
             self.inner.emit(ChatEvent::MessageStatusChanged {
                 conversation_id: message.conversation_id.clone(),
                 id: message.id.clone(),
@@ -432,6 +628,123 @@ impl ChatClient {
     pub fn set_muted(&self, conversation_id: &str, muted: bool) -> Result<(), ChatError> {
         self.inner
             .update_local(conversation_id, |c| c.muted = muted)
+    }
+
+    /// Saves the composer's unsent text for a conversation (empty clears it).
+    /// Kept on this device, across launches.
+    pub fn set_draft(&self, conversation_id: &str, text: &str) -> Result<(), ChatError> {
+        validate_room(conversation_id)?;
+        let mut state = self.inner.lock();
+        self.inner.ensure_running_locked(&state)?;
+        let changed = if text.trim().is_empty() {
+            state.snapshot.drafts.remove(conversation_id).is_some()
+        } else {
+            state
+                .snapshot
+                .drafts
+                .insert(conversation_id.into(), text.into())
+                != Some(text.into())
+        };
+        if changed {
+            self.inner.persist(&mut state);
+        }
+        Ok(())
+    }
+
+    /// Replaces the text of one of our sent messages, for everyone.
+    /// Returns the edited message (also announced as `MessageUpdated`).
+    pub fn edit_message(&self, message_id: &str, body: &str) -> Result<Message, ChatError> {
+        let body = body.trim();
+        if body.is_empty() {
+            return Err(ChatError::invalid("message body is empty"));
+        }
+        if body.chars().count() > MAX_BODY_CHARS {
+            return Err(ChatError::invalid(format!(
+                "message body is longer than {MAX_BODY_CHARS} characters"
+            )));
+        }
+        let message = self.inner.own_sent_message(message_id)?;
+        let edited = self
+            .inner
+            .repo
+            .edit_message(&message.conversation_id, message_id, body)?;
+        self.inner.apply_changed(edited)
+    }
+
+    /// Deletes one of our messages for everyone. A message still in the
+    /// outbox, or that the server refused, is only on this device: it is
+    /// removed (`MessageRemoved`) and never sent. Returns the tombstone, or
+    /// `None` for a message that was removed.
+    pub fn delete_message(&self, message_id: &str) -> Result<Option<Message>, ChatError> {
+        {
+            let mut state = self.inner.lock();
+            self.inner.ensure_running_locked(&state)?;
+            let message =
+                state.snapshot.message(message_id).cloned().ok_or_else(|| {
+                    ChatError::invalid(format!("no message with id {message_id:?}"))
+                })?;
+            if !self.inner.config.is_own(&message) {
+                return Err(ChatError::invalid("only your own messages can be deleted"));
+            }
+            if message.status != MessageStatus::Sent {
+                if state.in_flight.contains(message_id) {
+                    return Err(ChatError::invalid(
+                        "the message is being sent; try again in a moment",
+                    ));
+                }
+                state.snapshot.remove_message(message_id);
+                self.inner.emit(ChatEvent::MessageRemoved {
+                    conversation_id: message.conversation_id.clone(),
+                    id: message.id.clone(),
+                });
+                self.inner
+                    .refresh_conversation(&mut state, &message.conversation_id, 0, false);
+                self.inner.persist(&mut state);
+                return Ok(None);
+            }
+        }
+        let message = self.inner.own_sent_message(message_id)?;
+        let deleted = self
+            .inner
+            .repo
+            .delete_message(&message.conversation_id, message_id)?;
+        self.inner.apply_changed(deleted).map(Some)
+    }
+
+    /// Adds (`on`) or removes this account's `emoji` reaction to a sent
+    /// message. Returns the message (also announced as `MessageUpdated`).
+    pub fn set_reaction(
+        &self,
+        message_id: &str,
+        emoji: &str,
+        on: bool,
+    ) -> Result<Message, ChatError> {
+        let emoji = emoji.trim();
+        if emoji.is_empty() || emoji.chars().count() > MAX_REACTION_CHARS {
+            return Err(ChatError::invalid("a reaction is one emoji"));
+        }
+        let message =
+            {
+                let state = self.inner.lock();
+                self.inner.ensure_running_locked(&state)?;
+                state.snapshot.message(message_id).cloned().ok_or_else(|| {
+                    ChatError::invalid(format!("no message with id {message_id:?}"))
+                })?
+            };
+        if message.status != MessageStatus::Sent || message.deleted {
+            return Err(ChatError::invalid("only sent messages can have reactions"));
+        }
+        let changed = self
+            .inner
+            .repo
+            .react(&message.conversation_id, message_id, emoji, on)?;
+        self.inner.apply_changed(changed)
+    }
+
+    /// Wakes the outbox: sends whatever is queued now instead of after its
+    /// backoff.
+    pub fn flush_outbox(&self) {
+        self.inner.outbox.ring();
     }
 
     /// Creates a conversation on the server, adds it to the list
@@ -601,6 +914,7 @@ impl ChatClient {
         for room in rooms {
             self.start_stream_locked(&mut state, &room)?;
         }
+        self.inner.outbox.ring();
         Ok(())
     }
 
@@ -617,6 +931,7 @@ impl ChatClient {
             return;
         }
         state.shut_down = true;
+        self.inner.outbox.ring();
         state.open.clear();
         state.watched.clear();
         let mut ended: Vec<_> = state.subscriptions.drain().collect();
@@ -672,6 +987,101 @@ impl Inner {
     fn persist(&self, state: &mut State) {
         if let Err(err) = self.store.save(&state.snapshot) {
             state.store_error = Some(err);
+        }
+    }
+
+    /// One of our messages the server has, for an edit or a delete.
+    fn own_sent_message(&self, message_id: &str) -> Result<Message, ChatError> {
+        let state = self.lock();
+        self.ensure_running_locked(&state)?;
+        let message = state
+            .snapshot
+            .message(message_id)
+            .cloned()
+            .ok_or_else(|| ChatError::invalid(format!("no message with id {message_id:?}")))?;
+        if !self.config.is_own(&message) {
+            return Err(ChatError::invalid("only your own messages can be changed"));
+        }
+        if message.status != MessageStatus::Sent {
+            return Err(ChatError::invalid("the message has not been sent yet"));
+        }
+        if message.deleted {
+            return Err(ChatError::invalid("the message was deleted"));
+        }
+        Ok(message)
+    }
+
+    /// Stores a message the server just changed for us, announces it and
+    /// refreshes its conversation's preview.
+    fn apply_changed(&self, mut message: Message) -> Result<Message, ChatError> {
+        message.status = MessageStatus::Sent;
+        let mut state = self.lock();
+        self.ensure_running_locked(&state)?;
+        if state.snapshot.upsert_message(message.clone()) != Upsert::Unchanged {
+            self.emit(ChatEvent::MessageUpdated(message.clone()));
+            self.refresh_conversation(&mut state, &message.conversation_id, 0, false);
+            self.persist(&mut state);
+        }
+        Ok(message)
+    }
+
+    /// The outbox thread: sends queued messages, oldest first, then waits
+    /// for the doorbell (or the backoff after a failure). Exits when the
+    /// client is shut down or dropped.
+    fn run_outbox(weak: Weak<Inner>, signal: Arc<OutboxSignal>) {
+        let mut backoff = Backoff::new(OUTBOX_INITIAL_DELAY, OUTBOX_MAX_DELAY);
+        loop {
+            let Some(inner) = weak.upgrade() else { return };
+            let queued = {
+                let mut state = inner.lock();
+                if state.shut_down {
+                    return;
+                }
+                if state.paused {
+                    Vec::new()
+                } else {
+                    let queued: Vec<Message> = state
+                        .snapshot
+                        .outbox()
+                        .into_iter()
+                        .filter(|m| !state.in_flight.contains(&m.id))
+                        .collect();
+                    for message in &queued {
+                        state.in_flight.insert(message.id.clone());
+                    }
+                    queued
+                }
+            };
+            let mut blocked = false;
+            let mut queued = queued.into_iter();
+            for message in queued.by_ref() {
+                let id = message.id.clone();
+                let sent = inner.deliver(message);
+                let still_queued = inner
+                    .lock()
+                    .snapshot
+                    .message(&id)
+                    .is_some_and(|m| m.status == MessageStatus::Sending);
+                if sent.is_ok() && still_queued {
+                    // Unreachable: keep the order, try the rest later.
+                    blocked = true;
+                    break;
+                }
+            }
+            {
+                let mut state = inner.lock();
+                for message in queued {
+                    state.in_flight.remove(&message.id);
+                }
+            }
+            drop(inner);
+            let wait = if blocked {
+                backoff.next_delay()
+            } else {
+                backoff.reset();
+                OUTBOX_IDLE
+            };
+            signal.wait(wait);
         }
     }
 
@@ -760,7 +1170,7 @@ impl Inner {
         let mut unread_added = 0u32;
         for mut message in messages {
             message.status = MessageStatus::Sent;
-            newest = newest.max(Some(message.sent_at));
+            newest = newest.max(Some(message.changed_at()));
             match state.snapshot.upsert_message(message.clone()) {
                 Upsert::Inserted => {
                     let unread = !viewing
@@ -780,9 +1190,9 @@ impl Inner {
                     id: message.id,
                     status: MessageStatus::Sent,
                 }),
-                // Same id, same status, different content (e.g. the server
-                // time replaced ours): re-announce; hosts upsert by id.
-                Upsert::Updated => self.emit(ChatEvent::MessageReceived(message)),
+                // Same id, same status, different content: edited, deleted
+                // or reacted to (or the server time replaced ours).
+                Upsert::Updated => self.emit(ChatEvent::MessageUpdated(message)),
                 Upsert::Unchanged => {}
             }
         }
@@ -959,14 +1369,19 @@ impl Inner {
     /// Posts a message that is already stored as `Sending`, then records the
     /// outcome.
     fn deliver(&self, message: Message) -> Result<Message, ChatError> {
-        let result = self.repo.post_message(&OutgoingMessage {
-            id: message.id.clone(),
-            conversation_id: message.conversation_id.clone(),
-            author: message.author.clone(),
-            author_id: message.author_id.clone(),
-            body: message.body.clone(),
+        let result = self.upload_attachments(&message).and_then(|()| {
+            self.repo.post_message(&OutgoingMessage {
+                id: message.id.clone(),
+                conversation_id: message.conversation_id.clone(),
+                author: message.author.clone(),
+                author_id: message.author_id.clone(),
+                body: message.body.clone(),
+                reply_to: message.reply_to.clone(),
+                attachments: message.attachments.clone(),
+            })
         });
         let mut state = self.lock();
+        state.in_flight.remove(&message.id);
         let shut_down = state.shut_down;
         match result {
             Ok(mut stored) => {
@@ -979,9 +1394,8 @@ impl Inner {
                             id: stored.id.clone(),
                             status: MessageStatus::Sent,
                         }),
-                        Upsert::Updated | Upsert::Inserted => {
-                            self.emit(ChatEvent::MessageReceived(stored.clone()))
-                        }
+                        Upsert::Updated => self.emit(ChatEvent::MessageUpdated(stored.clone())),
+                        Upsert::Inserted => self.emit(ChatEvent::MessageReceived(stored.clone())),
                         Upsert::Unchanged => {}
                     }
                     // Our own send does not move the sync cursor: messages
@@ -1002,10 +1416,18 @@ impl Inner {
             Err(err) => {
                 // The stream echo may have confirmed it while the response
                 // was lost; then it was sent after all.
-                if let Some(current) = state.snapshot.message(&message.id) {
-                    if current.status == MessageStatus::Sent {
-                        return Ok(current.clone());
-                    }
+                let Some(current) = state.snapshot.message(&message.id) else {
+                    // Deleted while it was being sent.
+                    return Err(err);
+                };
+                if current.status == MessageStatus::Sent {
+                    return Ok(current.clone());
+                }
+                if err.is_transient() {
+                    // The outbox keeps it and tries again later.
+                    let queued = current.clone();
+                    self.persist(&mut state);
+                    return Ok(queued);
                 }
                 state
                     .snapshot
@@ -1024,6 +1446,28 @@ impl Inner {
                 Err(err)
             }
         }
+    }
+
+    /// Uploads a message's attachments that this client has not uploaded
+    /// yet, checking the server stored each under the id we computed.
+    fn upload_attachments(&self, message: &Message) -> Result<(), ChatError> {
+        for attachment in &message.attachments {
+            if self.lock().uploaded.contains(&attachment.id) {
+                continue;
+            }
+            let path = self.attachments.local_file(&attachment.id).ok_or_else(|| {
+                ChatError::invalid(format!("{} is no longer on this device", attachment.name))
+            })?;
+            let stored = self.repo.upload_attachment(&path, &attachment.mime)?;
+            if stored != attachment.id {
+                return Err(ChatError::protocol(format!(
+                    "uploaded {} as {stored}, expected {}",
+                    attachment.name, attachment.id
+                )));
+            }
+            self.lock().uploaded.insert(stored);
+        }
+        Ok(())
     }
 
     /// Runs `f` under the lock only if `subscription` is still the room's
@@ -1068,18 +1512,14 @@ impl Inner {
         })
     }
 
-    /// Sleeps for `delay`, waking as soon as the subscription ends. `false`
-    /// if it ended.
-    fn backoff(&self, subscription: &Subscription, delay: Duration) -> bool {
-        !subscription.cancel.wait_timeout(delay)
-    }
-
     /// The pump: connect, catch up, follow the stream; on failure back off
     /// and reconnect, until the subscription ends.
     fn pump(self: Arc<Self>, subscription: Arc<Subscription>) {
         let _guard = PumpGuard(&self.live_pumps);
         let room = subscription.conversation_id.clone();
-        let mut delay = self.config.reconnect_initial;
+        // Jitter keeps every client from reconnecting at once after a server restart.
+        let mut backoff =
+            Backoff::new(self.config.reconnect_initial, self.config.reconnect_max).with_jitter(0.2);
         // One `StreamDisconnected` per outage, not one per failed attempt.
         let mut outage_reported = false;
 
@@ -1091,6 +1531,8 @@ impl Inner {
                             conversation_id: room.clone(),
                         })
                     });
+                    // The server is back: send what is queued.
+                    self.outbox.ring();
                     if connected.is_none() {
                         return;
                     }
@@ -1110,7 +1552,7 @@ impl Inner {
                             {
                                 return;
                             }
-                            delay = self.config.reconnect_initial;
+                            backoff.reset();
                             match self.follow(&subscription, stream.as_mut()) {
                                 Some(reason) => reason,
                                 None => return,
@@ -1141,10 +1583,10 @@ impl Inner {
                     }
                 }
             }
-            if !self.backoff(&subscription, delay) {
+            // Sleeps, waking as soon as the subscription ends.
+            if !backoff.wait(&subscription.cancel) {
                 return;
             }
-            delay = (delay * 2).min(self.config.reconnect_max);
         }
     }
 
@@ -1206,14 +1648,17 @@ fn max_opt(a: Option<i64>, b: Option<i64>) -> Option<i64> {
     a.max(b)
 }
 
-/// The later of two messages (by `sent_at`, then id).
+/// The later of two messages (by `sent_at`, then id); of two copies of one
+/// message, the one changed last.
 fn newest_of(a: Option<Message>, b: Option<Message>) -> Option<Message> {
     match (a, b) {
-        (Some(a), Some(b)) => Some(if (b.sent_at, &b.id) > (a.sent_at, &a.id) {
-            b
-        } else {
-            a
-        }),
+        (Some(a), Some(b)) => Some(
+            if (b.sent_at, &b.id, b.changed_at()) > (a.sent_at, &a.id, a.changed_at()) {
+                b
+            } else {
+                a
+            },
+        ),
         (a, b) => a.or(b),
     }
 }

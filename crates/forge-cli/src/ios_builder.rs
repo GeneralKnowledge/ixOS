@@ -12,6 +12,7 @@
 use std::path::Path;
 
 use crate::commands::{run_explained, which_program};
+use crate::diagnose::Stage;
 use crate::ios_env::{self, Auth};
 use crate::runner::{Cmd, CommandRunner};
 
@@ -44,6 +45,8 @@ pub enum Purpose {
 /// Something that would make the build fail, found before it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Problem {
+    /// The layer it belongs to, for `--json` results and exit codes.
+    pub stage: Stage,
     pub problem: String,
     pub fix: String,
 }
@@ -57,8 +60,9 @@ pub struct Preflight {
 }
 
 impl Preflight {
-    fn problem(&mut self, problem: impl Into<String>, fix: impl Into<String>) {
+    fn problem(&mut self, stage: Stage, problem: impl Into<String>, fix: impl Into<String>) {
         self.problems.push(Problem {
+            stage,
             problem: problem.into(),
             fix: fix.into(),
         });
@@ -72,6 +76,14 @@ impl Preflight {
         if self.problems.is_empty() {
             return Ok(());
         }
+        crate::report::record_failure(
+            what,
+            self.problems
+                .iter()
+                .map(|p| crate::report::JsonHint::new(p.stage, &p.problem, &p.fix))
+                .collect(),
+            "",
+        );
         let mut msg = format!("{what} cannot start yet:");
         for p in &self.problems {
             msg.push_str(&format!("\n  - {}\n    Fix: {}", p.problem, p.fix));
@@ -204,6 +216,7 @@ fn xtool_preflight(
 
     if !which_program(runner, XTOOL) {
         pf.problem(
+            Stage::Swift,
             "xtool is not installed (it builds, signs and installs iOS apps from Linux).",
             "Install xtool and run `xtool setup` (docs/linux-setup.md). On macOS you can instead build with --package-only and Xcode (docs/ios-xcode.md).",
         );
@@ -212,6 +225,7 @@ fn xtool_preflight(
     }
     match ios_env::rust_ios_target(runner) {
         Some(false) => pf.problem(
+            Stage::Rust,
             format!("The Rust target {} is not installed.", ios_env::IOS_TARGET),
             format!("rustup target add {}", ios_env::IOS_TARGET),
         ),
@@ -223,11 +237,13 @@ fn xtool_preflight(
     }
     match ios_env::darwin_swift_sdk(runner) {
         Some(false) => pf.problem(
+            Stage::Swift,
             "xtool's Darwin SDK is not installed.",
             "Run `xtool setup` and give it Xcode.xip from Xcode 26 (docs/linux-setup.md).",
         ),
         Some(true) => {}
         None => pf.problem(
+            Stage::Swift,
             "Swift is not installed (or `swift sdk list` fails).",
             "Install Swift 6.2 (docs/linux-setup.md).",
         ),
@@ -238,6 +254,7 @@ fn xtool_preflight(
                 // Swift 6.2 emits swift_coroFrameAlloc, which only the iOS 26
                 // SDK's runtime exports: the link is certain to fail.
                 Some((major, minor)) if (major, minor) >= (6, 2) => pf.problem(
+                    Stage::Swift,
                     format!(
                         "Swift {major}.{minor} does not match xtool's Darwin SDK (iOS {version}): the app will fail to link with `undefined symbol: swift_coroFrameAlloc`."
                     ),
@@ -254,12 +271,14 @@ fn xtool_preflight(
     if purpose == Purpose::Run {
         if ios_env::xtool_auth(runner) == Some(Auth::LoggedOut) {
             pf.problem(
+                Stage::Signing,
                 "xtool is not signed in to an Apple account, so it cannot sign the app for your iPhone.",
                 "xtool auth login   (any Apple ID works; a paid account can use an API key)",
             );
         }
         if ios_env::usbmuxd_running(runner, env) == Some(false) {
             pf.problem(
+                Stage::Device,
                 "usbmuxd is not running, so xtool would wait for the iPhone forever without saying so.",
                 "Plug the iPhone in by USB and unlock it (udev usually starts usbmuxd then), or `sudo systemctl start usbmuxd`. `forge devices` should then list it.",
             );
@@ -267,6 +286,7 @@ fn xtool_preflight(
         }
         match ios_env::ios_devices(runner) {
             Some(devices) if devices.is_empty() => pf.problem(
+                Stage::Device,
                 "No iPhone is connected.",
                 "Connect it by USB, unlock it and tap Trust; `forge devices` should list it. If it does not: `sudo systemctl restart usbmuxd` and replug.",
             ),

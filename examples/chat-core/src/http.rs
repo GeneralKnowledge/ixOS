@@ -29,7 +29,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 use std::time::Duration;
 
-use forge_net::{CancelHandle, HttpClient, Request, Response};
+use forge_net::{CancelHandle, HttpClient, Method, Request, Response};
 use serde::{Deserialize, Serialize};
 
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
@@ -101,6 +101,18 @@ struct WireMessage {
     author_id: String,
     body: String,
     sent_at: i64,
+    #[serde(default)]
+    updated_at: Option<i64>,
+    #[serde(default)]
+    reply_to: Option<String>,
+    #[serde(default)]
+    edited_at: Option<i64>,
+    #[serde(default)]
+    deleted: bool,
+    #[serde(default)]
+    reactions: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    attachments: Vec<crate::Attachment>,
 }
 
 #[derive(Serialize)]
@@ -108,6 +120,29 @@ struct WirePost<'a> {
     id: &'a str,
     author: &'a str,
     body: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reply_to: Option<&'a str>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    attachments: &'a [crate::Attachment],
+}
+
+#[derive(Deserialize)]
+struct WireUpload {
+    id: String,
+}
+
+/// Uploads may take longer than ordinary calls: at least this long.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(300);
+
+#[derive(Serialize)]
+struct WireEdit<'a> {
+    body: &'a str,
+}
+
+#[derive(Serialize)]
+struct WireReact<'a> {
+    emoji: &'a str,
+    on: bool,
 }
 
 /// An account on the chat server. The token is a credential: keep it in the
@@ -176,6 +211,12 @@ impl From<WireMessage> for Message {
             body: m.body,
             sent_at: m.sent_at,
             status: MessageStatus::Sent,
+            updated_at: m.updated_at,
+            reply_to: m.reply_to,
+            edited_at: m.edited_at,
+            deleted: m.deleted,
+            reactions: m.reactions,
+            attachments: m.attachments,
         }
     }
 }
@@ -272,6 +313,34 @@ impl HttpRepo {
         )
     }
 
+    fn message_url(&self, conversation_id: &str, message_id: &str, rest: &str) -> String {
+        self.room_url(
+            conversation_id,
+            &format!("/messages/{}{rest}", encode_path_segment(message_id)),
+        )
+    }
+
+    /// Sends a change to one message and checks the answer is that message.
+    fn changed_message(
+        &self,
+        request: Request,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message, ChatError> {
+        let response = self.send(
+            request.header("Accept", "application/json"),
+            Some(conversation_id),
+        )?;
+        let message: Message = decode::<WireMessage>(&response.body)?.into();
+        if message.id != message_id {
+            return Err(ChatError::protocol(format!(
+                "asked to change {message_id}, the server answered with {}",
+                message.id
+            )));
+        }
+        Ok(message)
+    }
+
     fn send(&self, request: Request, room: Option<&str>) -> Result<Response, ChatError> {
         let response = self
             .client
@@ -366,6 +435,8 @@ impl ChatRepo for HttpRepo {
             id: &message.id,
             author: &message.author,
             body: &message.body,
+            reply_to: message.reply_to.as_deref(),
+            attachments: &message.attachments,
         })
         .map_err(ChatError::protocol)?;
         let response = self.send(
@@ -382,6 +453,42 @@ impl ChatRepo for HttpRepo {
             )));
         }
         Ok(stored)
+    }
+
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let request = self
+            .authorised(
+                Request::post(format!("{}/attachments", self.base_url), Vec::new())
+                    .header("Content-Type", mime)
+                    .header("Accept", "application/json"),
+            )
+            .timeout(self.timeout.max(UPLOAD_TIMEOUT));
+        let response = self
+            .client
+            .send_file(&request, path, &forge_net::CancelHandle::new())?;
+        check_status(response.status, &response.body, None)?;
+        Ok(decode::<WireUpload>(&response.body)?.id)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let request = self
+            .authorised(Request::get(format!(
+                "{}/attachments/{}",
+                self.base_url,
+                encode_path_segment(id)
+            )))
+            .timeout(self.timeout);
+        let response = forge_net::download_to_file(
+            &*self.client,
+            &request,
+            destination,
+            &forge_net::CancelHandle::new(),
+        )?;
+        check_status(response.status, &response.body, None)
     }
 
     fn mark_read(&self, conversation_id: &str, up_to: i64) -> Result<(), ChatError> {
@@ -405,6 +512,50 @@ impl ChatRepo for HttpRepo {
             .header("Accept", "application/json");
         let response = self.send(request, None)?;
         Ok(decode::<WireRoom>(&response.body)?.into())
+    }
+
+    fn edit_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        body: &str,
+    ) -> Result<Message, ChatError> {
+        let body = serde_json::to_vec(&WireEdit { body }).map_err(ChatError::protocol)?;
+        let request = Request::new(
+            Method::Patch,
+            self.message_url(conversation_id, message_id, ""),
+        )
+        .body(body)
+        .header("Content-Type", "application/json");
+        self.changed_message(request, conversation_id, message_id)
+    }
+
+    fn delete_message(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+    ) -> Result<Message, ChatError> {
+        let request = Request::new(
+            Method::Delete,
+            self.message_url(conversation_id, message_id, ""),
+        );
+        self.changed_message(request, conversation_id, message_id)
+    }
+
+    fn react(
+        &self,
+        conversation_id: &str,
+        message_id: &str,
+        emoji: &str,
+        on: bool,
+    ) -> Result<Message, ChatError> {
+        let body = serde_json::to_vec(&WireReact { emoji, on }).map_err(ChatError::protocol)?;
+        let request = Request::post(
+            self.message_url(conversation_id, message_id, "/reactions"),
+            body,
+        )
+        .header("Content-Type", "application/json");
+        self.changed_message(request, conversation_id, message_id)
     }
 
     fn open_stream(
@@ -674,6 +825,8 @@ mod tests {
             author: "me".into(),
             author_id: String::new(),
             body: "hi".into(),
+            reply_to: None,
+            attachments: Vec::new(),
         };
         let stored = repo.post_message(&out).unwrap();
         assert_eq!(stored.sent_at, 42);

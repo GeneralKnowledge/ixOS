@@ -5,29 +5,95 @@ import SwiftUI
 /// as soon as it is created.
 struct ChatsTab: View {
     let model: ChatModel
-    @State private var path: [String] = []
+    @Binding var path: [ChatRoute]
 
     var body: some View {
         NavigationStack(path: $path) {
             ConversationListView(model: model) { path.append($0) }
-                .navigationDestination(for: String.self) { conversationId in
-                    ChatView(model: model, conversationId: conversationId)
+                .navigationDestination(for: ChatRoute.self) { route in
+                    ChatView(
+                        model: model, conversationId: route.conversationId,
+                        focusMessage: route.messageId)
                 }
         }
     }
 }
 
+/// A conversation to open, and optionally a message in it to scroll to.
+struct ChatRoute: Hashable {
+    var conversationId: String
+    var messageId: String? = nil
+}
+
 /// The conversations, most recent first, with a preview of the last message
 /// and an unread dot. Swipe to mark read or unread, or to mute. Pull to
-/// refresh re-lists them.
+/// refresh re-lists them. The search field finds messages in every
+/// conversation stored on this iPhone.
 struct ConversationListView: View {
     let model: ChatModel
-    /// Opens a conversation (after creating one).
-    let open: (String) -> Void
+    /// Opens a conversation (after creating one, or at a search result).
+    let open: (ChatRoute) -> Void
     @State private var creating = false
+    @State private var query = ""
+    @State private var results: [ChatMessage] = []
 
     var body: some View {
+        Group {
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                conversationList
+            } else {
+                searchResults
+            }
+        }
+        .searchable(text: $query, prompt: "Search messages")
+        .task(id: query) {
+            try? await Task.sleep(for: .milliseconds(200))
+            guard !Task.isCancelled else { return }
+            results = await model.search(query)
+        }
+        .navigationTitle("Chats")
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
+            }
+        }
+        .sheet(isPresented: $creating) {
+            NewConversationView(model: model) { id in
+                creating = false
+                open(ChatRoute(conversationId: id))
+            }
+        }
+    }
+
+    private var searchResults: some View {
+        List(results, id: \.id) { message in
+            NavigationLink(
+                value: ChatRoute(conversationId: message.conversationId, messageId: message.id)
+            ) {
+                SearchResultRow(
+                    message: message, roomTitle: model.title(of: message.conversationId),
+                    query: query)
+            }
+        }
+        .overlay {
+            if results.isEmpty {
+                ContentUnavailableView.search(text: query)
+            }
+        }
+    }
+
+    private var conversationList: some View {
         List {
+            if model.waitingCount > 0 {
+                Label(
+                    model.waitingCount == 1
+                        ? "1 message is waiting to be sent. It goes out when the server can be reached."
+                        : "\(model.waitingCount) messages are waiting to be sent. They go out when the server can be reached.",
+                    systemImage: "tray.and.arrow.up"
+                )
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
             if let problem = model.accountProblem {
                 Label(
                     "The server no longer accepts this account (\(problem)). Sign out in Settings.",
@@ -41,7 +107,7 @@ struct ConversationListView: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(model.sortedConversations, id: \.id) { conversation in
-                NavigationLink(value: conversation.id) {
+                NavigationLink(value: ChatRoute(conversationId: conversation.id)) {
                     ConversationRow(conversation: conversation)
                 }
                 .swipeActions(edge: .leading) { readAction(conversation) }
@@ -58,18 +124,6 @@ struct ConversationListView: View {
             }
         }
         .refreshable { await model.refresh() }
-        .navigationTitle("Chats")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
-            }
-        }
-        .sheet(isPresented: $creating) {
-            NewConversationView(model: model) { id in
-                creating = false
-                open(id)
-            }
-        }
     }
 
     @ViewBuilder private func readAction(_ conversation: ChatConversation) -> some View {
@@ -143,9 +197,10 @@ private struct ConversationRow: View {
     private var preview: String {
         guard let last = conversation.lastMessage else { return "No messages yet" }
         let who = last.isMine ? "You" : last.author
+        if last.deleted { return "\(who): Message deleted" }
         switch last.status {
-        case .failed: return "Not sent: \(last.body)"
-        case .sending, .sent: return "\(who): \(last.body)"
+        case .failed: return "Not sent: \(last.summary)"
+        case .sending, .sent: return "\(who): \(last.summary)"
         }
     }
 

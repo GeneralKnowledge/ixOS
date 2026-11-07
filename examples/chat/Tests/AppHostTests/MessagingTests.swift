@@ -1,5 +1,8 @@
 @testable import AppHost
+import CoreGraphics
 @preconcurrency import ForgeFFI
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 
 /// M1 against the real Rust core and the real chat server: read receipts,
@@ -84,6 +87,152 @@ final class MessagingTests: XCTestCase {
         me.close()
         other.close()
     }
+
+    /// M2: replies, reactions, edits and deletes reach the other person
+    /// live; drafts and search come from Rust's SQLite store.
+    func testRepliesReactionsEditsDeletesDraftsAndSearch() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try await signedIn("Reuben", on: server)
+        let other = try await signedIn("Laptop", on: server)
+        await me.enter("general")
+        await other.enter("general")
+        await waitUntil("both connected") {
+            me.connection["general"] == .connected && other.connection["general"] == .connected
+        }
+
+        // I ask; the laptop replies to it.
+        await me.send("Café at noon?", to: "general")
+        await waitUntil("the laptop has it") { other.messages(in: "general").count == 1 }
+        let question = try XCTUnwrap(other.messages(in: "general").first)
+        await other.send("Yes", to: "general", replyTo: question.id)
+        await waitUntil("the reply arrives") { me.messages(in: "general").count == 2 }
+        let reply = try XCTUnwrap(me.messages(in: "general").last)
+        XCTAssertEqual(reply.replyTo, question.id)
+        XCTAssertEqual(me.message(question.id, in: "general")?.body, "Café at noon?")
+
+        // The laptop reacts; I see it, and toggling mine adds then removes it.
+        await other.toggleReaction("👍", on: question)
+        await waitUntil("the reaction shows") {
+            me.message(question.id, in: "general")?.reactions.first?.count == 1
+        }
+        let reacted = try XCTUnwrap(me.message(question.id, in: "general"))
+        XCTAssertEqual(reacted.reactions.first?.mine, false)
+        await me.toggleReaction("👍", on: reacted)
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.count, 2)
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.mine, true)
+        await me.toggleReaction("👍", on: try XCTUnwrap(me.message(question.id, in: "general")))
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.count, 1)
+
+        // I edit my question; the laptop sees it edited.
+        await me.edit(try XCTUnwrap(me.message(question.id, in: "general")), to: "Café at one?")
+        await waitUntil("the edit arrives") {
+            other.message(question.id, in: "general")?.body == "Café at one?"
+        }
+        XCTAssertEqual(other.message(question.id, in: "general")?.edited, true)
+
+        // The laptop deletes its reply; I see the placeholder.
+        await other.delete(try XCTUnwrap(other.message(reply.id, in: "general")))
+        await waitUntil("the deletion arrives") {
+            me.message(reply.id, in: "general")?.deleted == true
+        }
+        XCTAssertEqual(me.message(reply.id, in: "general")?.body, "")
+        XCTAssertNil(me.actionError)
+        XCTAssertNil(other.actionError)
+
+        // Search ignores case and accents; deleted messages are not found.
+        let found = await me.search("cafe ONE")
+        XCTAssertEqual(found.map(\.id), [question.id])
+        let deleted = await me.search("yes", in: "general")
+        XCTAssertEqual(deleted.count, 0)
+
+        // Drafts are kept per room until sent.
+        me.saveDraft("see you there", for: "general")
+        XCTAssertEqual(me.draft(for: "general"), "see you there")
+        XCTAssertEqual(me.draft(for: "random"), "")
+        await me.send("see you there", to: "general")
+        XCTAssertEqual(me.draft(for: "general"), "")
+        XCTAssertEqual(me.waitingCount, 0)
+        me.leave("general")
+        other.leave("general")
+        me.close()
+        other.close()
+    }
+    /// A PNG of `width` × `height` pixels, standing in for a picked photo.
+    private func pngData(width: Int, height: Int) throws -> Data {
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 0.2, green: 0.5, blue: 0.9, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    /// M3: a photo (shrunk to a JPEG) and a document go from one account to
+    /// the other, which fetches them, thumbnails the photo and opens the
+    /// document under its own name.
+    func testPhotosAndDocumentsBetweenTwoPeople() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try await signedIn("Reuben", on: server)
+        let other = try await signedIn("Laptop", on: server)
+
+        let photo = try await AttachmentFiles.preparePhoto(try pngData(width: 4000, height: 3000))
+        XCTAssertEqual(photo.mime, "image/jpeg")
+        XCTAssertTrue(photo.name.hasPrefix("IMG_") && photo.name.hasSuffix(".jpg"))
+        let shrunk = try XCTUnwrap(
+            CGImageSourceCreateWithURL(photo.url as CFURL, nil).flatMap {
+                CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any]
+            })
+        XCTAssertEqual(shrunk[kCGImagePropertyPixelWidth] as? Int, AttachmentFiles.maxPhotoPixels)
+        XCTAssertEqual(shrunk[kCGImagePropertyPixelHeight] as? Int, 1536)
+
+        let picked = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notes-\(UUID().uuidString).txt")
+        try Data("packing list".utf8).write(to: picked)
+        addTeardownBlock { try? FileManager.default.removeItem(at: picked) }
+        let document = try AttachmentFiles.prepareDocument(picked)
+        XCTAssertEqual(document.mime, "text/plain")
+
+        await me.enter("general")
+        await waitUntil("connected") { me.connection["general"] == .connected }
+        await me.send(files: [photo.outgoing, document.outgoing], text: "", to: "general")
+        await waitUntil("sent") { me.messages(in: "general").first?.status == .sent }
+        let sent = try XCTUnwrap(me.messages(in: "general").first)
+        XCTAssertEqual(sent.attachments.map(\.isImage), [true, false])
+        XCTAssertEqual(me.conversation("general")?.lastMessage?.summary, "Photo +1")
+
+        // The laptop gets the message, then the files on demand.
+        await other.enter("general")
+        await waitUntil("the files arrived") {
+            other.messages(in: "general").first?.attachments.count == 2
+        }
+        let received = try XCTUnwrap(other.messages(in: "general").first)
+        let fetched = await other.localFile(for: received.attachments[0])
+        let photoFile = try XCTUnwrap(fetched)
+        let small = await AttachmentFiles.thumbnail(of: photoFile, maxPixels: 440)
+        let thumbnail = try XCTUnwrap(small)
+        XCTAssertEqual(max(thumbnail.width, thumbnail.height), 440)
+
+        let named = await other.previewFile(for: received.attachments[1])
+        let preview = try XCTUnwrap(named)
+        XCTAssertEqual(preview.lastPathComponent, document.name)
+        XCTAssertEqual(try Data(contentsOf: preview), Data("packing list".utf8))
+        XCTAssertNil(other.actionError)
+
+        me.leave("general")
+        other.leave("general")
+        me.close()
+        other.close()
+    }
 }
 
 /// Grouping and separators in the transcript, without a server.
@@ -97,7 +246,8 @@ final class TranscriptTests: XCTestCase {
     ) -> ChatMessage {
         ChatMessage(
             id: id, conversationId: "general", author: author, authorId: "id-\(author)",
-            isMine: mine, body: id, sentAt: base + minutes * minute, status: status)
+            isMine: mine, body: id, sentAt: base + minutes * minute, status: status,
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
     }
 
     private func places(_ rows: [Transcript.Row]) -> [String: Transcript.Place] {

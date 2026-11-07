@@ -40,17 +40,29 @@ public struct ContentView: View {
 /// Chats and Settings, each with its own navigation stack.
 struct MainTabs: View {
     let model: ChatModel
+    @State private var tab = Tab.chats
+    @State private var chatPath: [ChatRoute] = []
+
+    enum Tab: Hashable { case chats, settings }
 
     var body: some View {
-        TabView {
-            ChatsTab(model: model)
+        TabView(selection: $tab) {
+            ChatsTab(model: model, path: $chatPath)
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
                 .badge(model.unreadConversationCount)
+                .tag(Tab.chats)
 
             NavigationStack {
                 SettingsView(model: model)
             }
             .tabItem { Label("Settings", systemImage: "gearshape") }
+            .tag(Tab.settings)
+        }
+        // A tapped message notification opens its room (LocalChatNotifier).
+        .onForgeDeepLink { link in
+            guard let route = ChatLinks.route(link) else { return }
+            tab = .chats
+            chatPath = [route]
         }
         // Failed swipes and menu actions, from either tab.
         .errorAlert("Something Went Wrong", message: Bindable(model).actionError)
