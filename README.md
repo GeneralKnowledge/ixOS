@@ -93,7 +93,6 @@ cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
 cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
-cargo run -p forge-cli -- run ios --project examples/counter --release  # same, Swift release configuration
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
