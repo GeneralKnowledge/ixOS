@@ -5,14 +5,20 @@
 //! into the store first, so the outbox can upload it later even if the
 //! original goes away; receiving downloads it on demand and checks the
 //! bytes against the id before keeping them.
+//!
+//! The file handling is Forge's [`FileStore`] (`forge-storage`, feature
+//! `hash`); this module adds Chat's rules: the size limit, the id format and
+//! how failures read to the user.
 
-use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
+use forge_storage::files::{FileStore, FileStoreError};
 use serde::{Deserialize, Serialize};
 
 use crate::types::ChatError;
+
+pub use forge_storage::files::sha256_file;
 
 /// Largest attachment, in bytes (25 MiB; the server's limit too).
 pub const MAX_ATTACHMENT_BYTES: u64 = 25 * 1024 * 1024;
@@ -53,45 +59,7 @@ pub struct OutgoingFile {
 
 /// An attachment id: 64 lowercase hex characters.
 pub fn is_attachment_id(id: &str) -> bool {
-    id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
-}
-
-/// The SHA-256 of everything `reader` yields, as lowercase hex, and the
-/// number of bytes, copying them to `sink` on the way.
-fn hash_copy(reader: &mut impl Read, sink: &mut impl Write) -> std::io::Result<(String, u64)> {
-    use sha2::Digest;
-    let mut hasher = sha2::Sha256::new();
-    let mut buffer = vec![0u8; 64 * 1024];
-    let mut total = 0u64;
-    loop {
-        let n = match reader.read(&mut buffer) {
-            Ok(0) => break,
-            Ok(n) => n,
-            Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
-            Err(err) => return Err(err),
-        };
-        hasher.update(&buffer[..n]);
-        sink.write_all(&buffer[..n])?;
-        total += n as u64;
-        if total > MAX_ATTACHMENT_BYTES {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::FileTooLarge,
-                "attachment too large",
-            ));
-        }
-    }
-    let hex = hasher
-        .finalize()
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    Ok((hex, total))
-}
-
-/// The SHA-256 of a file, lowercase hex.
-pub fn sha256_file(path: &Path) -> std::io::Result<String> {
-    let mut file = std::fs::File::open(path)?;
-    hash_copy(&mut file, &mut std::io::sink()).map(|(hex, _)| hex)
+    forge_storage::files::is_sha256_hex(id)
 }
 
 static TEMPORARY: AtomicU64 = AtomicU64::new(0);
@@ -99,13 +67,13 @@ static TEMPORARY: AtomicU64 = AtomicU64::new(0);
 /// The folder of attachment files.
 #[derive(Debug, Clone)]
 pub struct AttachmentStore {
-    directory: PathBuf,
+    files: FileStore,
 }
 
 impl AttachmentStore {
     pub fn new(directory: impl Into<PathBuf>) -> Self {
         Self {
-            directory: directory.into(),
+            files: FileStore::new(directory).with_max_bytes(MAX_ATTACHMENT_BYTES),
         }
     }
 
@@ -119,12 +87,12 @@ impl AttachmentStore {
     }
 
     pub fn directory(&self) -> &Path {
-        &self.directory
+        self.files.root()
     }
 
     /// Where attachment `id` is kept (whether or not it is there yet).
     pub fn file_path(&self, id: &str) -> PathBuf {
-        self.directory.join(id)
+        self.directory().join(id)
     }
 
     /// The local file of attachment `id`, if it is on this device.
@@ -132,49 +100,28 @@ impl AttachmentStore {
         if !is_attachment_id(id) {
             return None;
         }
-        let path = self.file_path(id);
-        path.is_file().then_some(path)
+        self.files.get(id)
     }
 
     /// Copies `file` into the store and describes it.
     pub fn import(&self, file: &OutgoingFile) -> Result<Attachment, ChatError> {
-        let failed = |err: std::io::Error| {
-            if err.kind() == std::io::ErrorKind::FileTooLarge {
-                ChatError::invalid(format!(
+        let stored = self
+            .files
+            .import_hashed(&file.path)
+            .map_err(|err| match err {
+                FileStoreError::TooLarge { .. } => ChatError::invalid(format!(
                     "{} is larger than {} MB",
                     file.path.display(),
                     MAX_ATTACHMENT_BYTES / (1024 * 1024)
-                ))
-            } else {
-                ChatError::invalid(format!("cannot read {}: {err}", file.path.display()))
-            }
-        };
-        std::fs::create_dir_all(&self.directory).map_err(|err| ChatError::UnsupportedOnHost {
-            detail: format!("cannot create {}: {err}", self.directory.display()),
-        })?;
-        let mut source = std::fs::File::open(&file.path).map_err(failed)?;
-        let partial = self.directory.join(format!(
-            ".import-{}-{}",
-            std::process::id(),
-            TEMPORARY.fetch_add(1, Ordering::Relaxed)
-        ));
-        let result = (|| {
-            let mut sink = std::fs::File::create(&partial)?;
-            let (id, size) = hash_copy(&mut source, &mut sink)?;
-            sink.sync_all()?;
-            if size == 0 {
-                return Err(std::io::Error::new(
-                    std::io::ErrorKind::InvalidData,
-                    "the file is empty",
-                ));
-            }
-            std::fs::rename(&partial, self.file_path(&id))?;
-            Ok((id, size))
-        })();
-        if result.is_err() {
-            let _ = std::fs::remove_file(&partial);
-        }
-        let (id, size) = result.map_err(failed)?;
+                )),
+                FileStoreError::Empty => ChatError::invalid(format!(
+                    "cannot read {}: the file is empty",
+                    file.path.display()
+                )),
+                other => {
+                    ChatError::invalid(format!("cannot read {}: {other}", file.path.display()))
+                }
+            })?;
         let name = if file.name.trim().is_empty() {
             file.path
                 .file_name()
@@ -189,38 +136,36 @@ impl AttachmentStore {
             file.mime.trim().to_ascii_lowercase()
         };
         Ok(Attachment {
-            id,
+            id: stored.name,
             name,
             mime,
-            size,
+            size: stored.size,
         })
     }
 
     /// Checks a downloaded file against its id and keeps it, or deletes it.
     pub fn accept_download(&self, id: &str, downloaded: &Path) -> Result<PathBuf, ChatError> {
-        let actual = sha256_file(downloaded).map_err(|err| ChatError::UnsupportedOnHost {
-            detail: format!("cannot read {}: {err}", downloaded.display()),
-        })?;
-        if actual != id {
-            let _ = std::fs::remove_file(downloaded);
-            return Err(ChatError::protocol(format!(
+        match self.files.accept_verified(downloaded, id) {
+            Ok(stored) => Ok(stored.path),
+            Err(FileStoreError::Mismatch { actual, .. }) => Err(ChatError::protocol(format!(
                 "attachment {id} arrived with different contents ({actual})"
-            )));
+            ))),
+            Err(FileStoreError::TooLarge { .. }) => Err(ChatError::protocol(format!(
+                "attachment {id} is larger than {} MB",
+                MAX_ATTACHMENT_BYTES / (1024 * 1024)
+            ))),
+            Err(FileStoreError::Empty) => Err(ChatError::protocol(format!(
+                "attachment {id} arrived empty"
+            ))),
+            Err(err) => Err(ChatError::UnsupportedOnHost {
+                detail: format!("cannot keep attachment {id}: {err}"),
+            }),
         }
-        let destination = self.file_path(id);
-        if downloaded != destination {
-            std::fs::rename(downloaded, &destination).map_err(|err| {
-                ChatError::UnsupportedOnHost {
-                    detail: format!("cannot keep {}: {err}", destination.display()),
-                }
-            })?;
-        }
-        Ok(destination)
     }
 
     /// Where a download of `id` goes before it is checked.
     pub fn download_path(&self, id: &str) -> PathBuf {
-        self.directory.join(format!(".download-{id}"))
+        self.directory().join(format!(".download-{id}"))
     }
 }
 
