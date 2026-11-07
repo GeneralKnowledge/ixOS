@@ -92,7 +92,9 @@ final class NotesModelTests: XCTestCase {
     /// A local port that accepts connections and never answers, so a request
     /// to it only ends when cancelled.
     private func silentServerURL() throws -> (String, Int32) {
-        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        // Qualified with `Darwin.` because NSObject has a `bind` method that
+        // would otherwise shadow the socket function inside a test case.
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_addr.s_addr = inet_addr("127.0.0.1")
@@ -100,9 +102,12 @@ final class NotesModelTests: XCTestCase {
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
         try withUnsafeMutablePointer(to: &addr) { ptr in
             try ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                guard bind(fd, sa, len) == 0, listen(fd, 4) == 0,
-                    getsockname(fd, sa, &len) == 0
-                else { throw XCTSkip("cannot open a local socket") }
+                guard Darwin.bind(fd, sa, len) == 0, Darwin.listen(fd, 4) == 0,
+                    Darwin.getsockname(fd, sa, &len) == 0
+                else {
+                    Darwin.close(fd)
+                    throw XCTSkip("cannot open a local socket")
+                }
             }
         }
         return ("http://127.0.0.1:\(UInt16(bigEndian: addr.sin_port))/", fd)
