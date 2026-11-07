@@ -1,0 +1,132 @@
+name: Screenshots
+
+# Simulator screenshots of the starter app and Pocket Library. A review aid,
+# not part of the supported workflow (xtool on Linux, then an iPhone): the
+# iOS Simulator is not a supported target. They run only when the Swift UI
+# they render changes, or by hand from the Actions tab (Run workflow).
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "templates/ios-app/**"
+      - "examples/pocket-library/**"
+      - "crates/forge-services/swift/**"
+      - "scripts/ios-screenshots.sh"
+      - "scripts/pocket-library-screenshots.sh"
+      - ".github/workflows/screenshots.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  starter-screenshots:
+    # A review aid, not part of the supported workflow (xtool on Linux, then
+    # an iPhone): renders a freshly generated app in the iOS Simulator so its
+    # UI can be checked in light and dark mode and at the largest text size.
+    name: Starter app screenshots (iOS Simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and simulator target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Generate and build the starter for the simulator
+        env:
+          # The Xcode build phase builds the app's Rust crate for this target.
+          FORGE_IOS_TARGET: aarch64-apple-ios-sim
+        run: |
+          APP="$RUNNER_TEMP/Starter"
+          cargo run -q -p forge-cli -- init Starter --platform ios --bundle-id org.example.starter --path "$APP"
+          # The template targets devices only (the supported path); allow the
+          # simulator in this throwaway copy so xcodebuild offers it.
+          sed -i '' 's/SUPPORTED_PLATFORMS = iphoneos;/SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/' \
+            "$APP/Xcode/Starter.xcodeproj/project.pbxproj"
+          xcodebuild build \
+            -project "$APP/Xcode/Starter.xcodeproj" \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Screenshots
+        run: |
+          ./scripts/ios-screenshots.sh \
+            "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/Starter.app" \
+            org.example.starter Starter "$RUNNER_TEMP/screenshots"
+      # Reviewers who cannot download artifacts (for example from a sandbox
+      # that blocks the artifact store) can decode these from the job log.
+      - name: Small copies in the log
+        run: |
+          mkdir -p "$RUNNER_TEMP/small"
+          for f in "$RUNNER_TEMP"/screenshots/*.png; do
+            name="$(basename "$f" .png)"
+            sips -Z 900 -s format jpeg -s formatOptions 70 "$f" --out "$RUNNER_TEMP/small/$name.jpg" >/dev/null
+            echo "SCREENSHOT $name $(base64 -i "$RUNNER_TEMP/small/$name.jpg" | tr -d '\n')"
+          done
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: starter-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
+
+  pocket-library-screenshots:
+    # A review aid, not part of the supported workflow (xtool on Linux, then
+    # an iPhone), and not a device result: renders Pocket Library in the iOS
+    # Simulator with a seeded library, each tab in light and dark mode and at
+    # the largest text size.
+    name: Pocket Library screenshots (iOS Simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and simulator target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build Pocket Library for the simulator
+        env:
+          # The Xcode build phase builds the app's Rust crate for this target.
+          FORGE_IOS_TARGET: aarch64-apple-ios-sim
+        run: |
+          # The project targets devices only (the supported path); allow the
+          # simulator in this CI checkout so xcodebuild offers it.
+          sed -i '' 's/SUPPORTED_PLATFORMS = iphoneos;/SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/' \
+            examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
+          xcodebuild build \
+            -project examples/pocket-library/Xcode/PocketLibrary.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Screenshots
+        run: |
+          APP="$(find "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)"
+          ./scripts/pocket-library-screenshots.sh "$APP" "$RUNNER_TEMP/screenshots"
+      # Reviewers who cannot download artifacts (for example from a sandbox
+      # that blocks the artifact store) can decode these from the job log.
+      - name: Small copies in the log
+        run: |
+          mkdir -p "$RUNNER_TEMP/small"
+          for f in "$RUNNER_TEMP"/screenshots/*.png; do
+            name="$(basename "$f" .png)"
+            sips -Z 900 -s format jpeg -s formatOptions 70 "$f" --out "$RUNNER_TEMP/small/$name.jpg" >/dev/null
+            echo "SCREENSHOT $name $(base64 -i "$RUNNER_TEMP/small/$name.jpg" | tr -d '\n')"
+          done
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pocket-library-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn

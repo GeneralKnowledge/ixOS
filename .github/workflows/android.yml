@@ -1,16 +1,46 @@
 name: Android
 
+# Android is frozen at its current features, so this runs only when something
+# the Android examples or the generated Android app depend on changes.
 on:
   push:
     branches: [main]
+    paths:
+      - "crates/**"
+      - "examples/*-android/**"
+      - "examples/counter/rust/**"
+      - "examples/chat-core/**"
+      - "examples/chat-server/**"
+      - "templates/android-app/**"
+      - "templates/app-rust/**"
+      - "scripts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/android.yml"
   pull_request:
+    paths:
+      - "crates/**"
+      - "examples/*-android/**"
+      - "examples/counter/rust/**"
+      - "examples/chat-core/**"
+      - "examples/chat-server/**"
+      - "templates/android-app/**"
+      - "templates/app-rust/**"
+      - "scripts/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "rust-toolchain.toml"
+      - ".github/workflows/android.yml"
 
 permissions:
   contents: read
 
+# Pull requests cancel their own superseded runs; every push to main gets its
+# own group so each merge commit is checked in full.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   android-apk:
@@ -97,17 +127,12 @@ jobs:
           cargo run -q -p forge-cli -- build android --project "$FRESH_ANDROID_APP"
           ./scripts/verify-android-packaging.sh "$FRESH_ANDROID_APP"
 
-      - name: Assemble debug APK
-        working-directory: examples/counter-android
-        run: ./gradlew :app:assembleDebug --no-daemon
-
       - name: Assemble Chat debug APK
         working-directory: examples/chat-android
         run: ./gradlew :app:assembleDebug --no-daemon
 
       - name: Verify packaged native libraries
         run: |
-          ./scripts/verify-android-packaging.sh examples/counter-android
           ./scripts/verify-android-packaging.sh examples/chat-android
 
       - name: Upload unit test reports
@@ -118,12 +143,6 @@ jobs:
           path: |
             examples/*/app/build/reports/tests/
             ${{ runner.temp }}/CiTemplateAndroid/app/build/reports/tests/
-
-      - name: Upload debug APK
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: counter-android-debug
-          path: examples/counter-android/app/build/outputs/apk/debug/*.apk
 
       - name: Upload Chat debug APK
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

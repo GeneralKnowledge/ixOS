@@ -1,7 +1,6 @@
 # Forge Mobile
 
 [![Rust](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml)
-[![Bindings](https://github.com/GeneralKnowledge/ixOS/actions/workflows/bindings.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/bindings.yml)
 [![Android](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml)
 [![macOS](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml)
 
@@ -52,7 +51,7 @@ To try the bundled examples instead: `forge run ios --project examples/chat` (st
 
 Contributing? [CONTRIBUTING.md](CONTRIBUTING.md) starts with a three-command path to a green local build.
 
-CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app outside the checkout, Android JVM tests and a **debug APK**. On macOS it runs the Swift host tests and unsigned `xcodebuild` builds of every Xcode project. Physical devices are checked by hand ([docs/toolchain-validation.md](docs/toolchain-validation.md)).
+CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app outside the checkout, and, when Android or shared Rust code changes, Android JVM tests and a **debug APK**. On macOS it runs the Swift host tests and unsigned `xcodebuild` device builds of Chat, Pocket Library and freshly generated apps. Simulator screenshots of the starter app and Pocket Library run only when their Swift UI changes, or by hand (`.github/workflows/screenshots.yml`). No CI job exercises the xtool build itself: Xcode's Darwin SDK cannot be redistributed, so that path is checked on a device. Physical devices are checked by hand ([docs/toolchain-validation.md](docs/toolchain-validation.md)).
 
 ## Repository layout
 

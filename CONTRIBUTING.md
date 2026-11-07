@@ -42,7 +42,7 @@ The view-model tests call the real Rust core through the generated bindings, so 
 - **Android (any OS with a JDK and Android SDK):** `cargo build --manifest-path examples/counter/rust/Cargo.toml`, then `cd examples/counter-android && ./gradlew :app:testDebugUnitTest` (or `make test-android-host`, or `forge test --project examples/counter-android`).
 - **iOS (macOS only):** `./scripts/test-swift-host.sh examples/counter` (or `make test-swift-host` for every example). It builds the app's Rust crate for the Mac and runs `swift test` in the app.
 
-CI runs both, plus an unsigned `xcodebuild` of the example and of a freshly generated iOS template app, on every pull request (`.github/workflows/macos.yml`, `.github/workflows/android.yml`).
+CI runs both, plus unsigned `xcodebuild` device builds of Chat, Pocket Library and a freshly generated iOS template app (`.github/workflows/macos.yml`, on every pull request; `.github/workflows/android.yml`, when Android or shared Rust code changes).
 
 ## Pull requests
 

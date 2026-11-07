@@ -19,7 +19,7 @@
 
 **What drift means.** The Swift and Kotlin files under `Generated/` are committed, so hosts build without running UniFFI. They are a copy of what UniFFI produces from the current source of the app's Rust crate. *Drift* is when the two disagree: someone changed an exported function, record, enum or error in that crate (or bumped UniFFI) and did not regenerate, or someone hand-edited a generated file. A drifted binding can still compile and then fail at runtime with a checksum or symbol mismatch, which is why it is a CI failure.
 
-**How the check works.** For every example with a `forge.toml`, `./scripts/check-app-crates.sh` (Swift) and `./scripts/check-bindings.sh` (Kotlin, CI: `.github/workflows/bindings.yml`):
+**How the check works.** For every example with a `forge.toml`, `./scripts/check-app-crates.sh` (Swift) and `./scripts/check-bindings.sh` (Kotlin; both run in `.github/workflows/rust.yml`):
 
 1. Build the app crate's host `libforge_ffi` (`.so` on Linux, `.dylib` on macOS) with `cargo build --manifest-path <app>/<rust path>/Cargo.toml`.
 2. Runs `uniffi-bindgen` in library mode into a temporary directory, once for Swift and once for Kotlin.
