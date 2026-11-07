@@ -11,6 +11,9 @@
 //! - `GET  /rooms/{id}/messages?since=ms`   → messages with `sent_at > since`, oldest first
 //! - `POST /rooms/{id}/messages`            ← `{"id"?, "body"}`; `201` new, `200` if the id exists
 //! - `POST /rooms/{id}/read`                ← `{"up_to": ms}` → `200` `{"up_to"}` (the caller's read cursor)
+//! - `PATCH  /rooms/{id}/messages/{mid}`    ← `{"body"}` → `200` the edited message (its author only)
+//! - `DELETE /rooms/{id}/messages/{mid}`    → `200` the message, now a tombstone (its author only)
+//! - `POST /rooms/{id}/messages/{mid}/reactions` ← `{"emoji","on"}` → `200` the message (accounts only)
 //! - `GET  /rooms/{id}/stream`              → `text/event-stream`: `event: message`, `event: room`, `event: read`, `:ping`
 //!
 //! `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`.
@@ -30,7 +33,18 @@
 //! that is how the frozen Android example and `curl` post.
 //!
 //! `sent_at` is server time in Unix ms, strictly increasing per room. A
-//! stream subscriber that falls too far behind is disconnected; the client
+//! message also has `updated_at`, the last time it changed (posted, edited,
+//! deleted, reacted to), on the same per-room clock, so every change has a
+//! later time than every earlier one. `?since=` returns the messages that
+//! *changed* after it, so a client that catches up also sees edits,
+//! deletions and reactions to older messages. Every change is broadcast as
+//! a `message` event with the whole message; clients replace it by id.
+//!
+//! A message may carry `reply_to` (the id of a message in the same room),
+//! `edited_at`, `deleted` (a tombstone: empty body, no reactions) and
+//! `reactions` (`{"👍": ["user id", …]}`).
+//!
+//! A stream subscriber that falls too far behind is disconnected; the client
 //! reconnects and catches up with `since`.
 //!
 //! Storage is one JSON file, rewritten (atomically) after every change. It
@@ -50,7 +64,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post};
+use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use futures_util::stream::{self, Stream};
 use serde::{Deserialize, Serialize};
@@ -74,8 +88,15 @@ pub const MAX_BODY_CHARS: usize = 4000;
 
 /// Version of the data file. Bump it, and migrate in [`load`], when the
 /// stored shape changes. 2 added read cursors (version 1 files load with
-/// none).
-pub const DATA_VERSION: u32 = 2;
+/// none); 3 added replies, edits, deletions and reactions (older files load
+/// with none).
+pub const DATA_VERSION: u32 = 3;
+
+/// Longest reaction, in characters (one emoji, possibly with modifiers).
+pub const MAX_REACTION_CHARS: usize = 8;
+
+/// Most different reactions on one message.
+pub const MAX_REACTIONS_PER_MESSAGE: usize = 20;
 
 /// Longest conversation title, in characters (chat-core checks the same).
 pub const MAX_TITLE_CHARS: usize = 60;
@@ -86,7 +107,7 @@ pub const MAX_ROOMS: usize = 200;
 /// Events buffered per stream subscriber before it is disconnected.
 const STREAM_BUFFER: usize = 1024;
 
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct WireMessage {
     pub id: String,
     pub conversation_id: String,
@@ -96,6 +117,30 @@ pub struct WireMessage {
     pub author_id: String,
     pub body: String,
     pub sent_at: i64,
+    /// When it last changed; absent means `sent_at`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<i64>,
+    /// The message this one answers, in the same room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reply_to: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edited_at: Option<i64>,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub deleted: bool,
+    /// Emoji → the accounts that reacted with it, in order.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub reactions: BTreeMap<String, Vec<String>>,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+impl WireMessage {
+    /// The time of its last change.
+    pub fn changed_at(&self) -> i64 {
+        self.updated_at.unwrap_or(self.sent_at)
+    }
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -139,6 +184,19 @@ struct PostBody {
     #[serde(default)]
     author: Option<String>,
     body: String,
+    #[serde(default)]
+    reply_to: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct EditBody {
+    body: String,
+}
+
+#[derive(Deserialize)]
+struct ReactBody {
+    emoji: String,
+    on: bool,
 }
 
 #[derive(Deserialize)]
@@ -194,17 +252,39 @@ struct Room {
     messages: Vec<WireMessage>,
     /// Read cursors that accounts set, by user id.
     reads: BTreeMap<String, i64>,
+    /// The last time handed out for a post or a change.
+    clock: i64,
     events: broadcast::Sender<StreamEvent>,
 }
 
 impl Room {
     fn new(title: String, messages: Vec<WireMessage>, reads: BTreeMap<String, i64>) -> Self {
+        let clock = messages
+            .iter()
+            .map(WireMessage::changed_at)
+            .max()
+            .unwrap_or(i64::MIN);
         Self {
             title,
             messages,
             reads,
+            clock,
             events: broadcast::channel(STREAM_BUFFER).0,
         }
+    }
+
+    /// A new time, later than every earlier post or change in the room.
+    fn tick(&mut self) -> i64 {
+        self.clock = now_ms().max(self.clock.saturating_add(1));
+        self.clock
+    }
+
+    /// Tells every subscriber about a changed message and the room.
+    fn announce(&self, id: &str, message: &WireMessage) {
+        let _ = self.events.send(StreamEvent::Message(message.clone()));
+        let _ = self
+            .events
+            .send(StreamEvent::Room(self.wire(id, Viewer::Everyone)));
     }
 
     fn wire(&self, id: &str, viewer: Viewer<'_>) -> WireRoom {
@@ -745,7 +825,7 @@ async fn load_messages(
     let messages: Vec<WireMessage> = room
         .messages
         .iter()
-        .filter(|m| query.since.is_none_or(|since| m.sent_at > since))
+        .filter(|m| query.since.is_none_or(|since| m.changed_at() > since))
         .cloned()
         .collect();
     Json(messages).into_response()
@@ -788,7 +868,16 @@ async fn post_message(
     {
         return (StatusCode::OK, Json(existing.clone())).into_response();
     }
-    let last = room.messages.last().map_or(i64::MIN, |m| m.sent_at);
+    if let Some(target) = &post.reply_to {
+        if !room.messages.iter().any(|m| &m.id == target) {
+            return (
+                StatusCode::BAD_REQUEST,
+                "reply_to is not a message in this room",
+            )
+                .into_response();
+        }
+    }
+    let clock_before = room.clock;
     let used_server_id = post.id.is_none();
     let message = WireMessage {
         id: post.id.unwrap_or_else(|| format!("srv-{server_id}")),
@@ -796,7 +885,12 @@ async fn post_message(
         author,
         author_id,
         body,
-        sent_at: now_ms().max(last.saturating_add(1)),
+        sent_at: room.tick(),
+        updated_at: None,
+        reply_to: post.reply_to,
+        edited_at: None,
+        deleted: false,
+        reactions: BTreeMap::new(),
     };
     room.messages.push(message.clone());
     // Writing a message means having read up to it.
@@ -814,6 +908,7 @@ async fn post_message(
     if let Err(err) = inner.save() {
         if let Some(room) = inner.rooms.get_mut(&id) {
             room.messages.pop();
+            room.clock = clock_before;
             if read_moved.is_some() {
                 match read_before {
                     Some(cursor) => room.reads.insert(message.author_id.clone(), cursor),
@@ -828,10 +923,7 @@ async fn post_message(
     }
     let room = &inner.rooms[&id];
     // No subscribers is fine: `send` only fails when nobody listens.
-    let _ = room.events.send(StreamEvent::Message(message.clone()));
-    let _ = room
-        .events
-        .send(StreamEvent::Room(room.wire(&id, Viewer::Everyone)));
+    room.announce(&id, &message);
     if let Some(up_to) = read_moved {
         let _ = room.events.send(StreamEvent::Read(WireRead {
             conversation_id: id.clone(),
@@ -840,6 +932,135 @@ async fn post_message(
         }));
     }
     (StatusCode::CREATED, Json(message)).into_response()
+}
+
+/// Applies `change` to message `mid` in room `id` for the calling account,
+/// stamps it with a new `updated_at`, saves (undoing it if the save fails)
+/// and broadcasts it.
+fn change_message(
+    state: &AppState,
+    headers: &HeaderMap,
+    id: &str,
+    mid: &str,
+    change: impl FnOnce(&str, &mut WireMessage, i64) -> Result<(), Refusal>,
+) -> Response {
+    let user_id = match caller(state, headers) {
+        Ok(Caller::User { id, .. }) => id,
+        Ok(Caller::Anonymous) => return unauthorized("changing a message needs an account"),
+        Err(why) => return unauthorized(why),
+    };
+    let mut inner = state.lock();
+    let Some(room) = inner.rooms.get_mut(id) else {
+        return not_found(id);
+    };
+    let Some(index) = room.messages.iter().position(|m| m.id == mid) else {
+        return not_found(mid);
+    };
+    let before = room.messages[index].clone();
+    let clock_before = room.clock;
+    let now = room.tick();
+    let message = &mut room.messages[index];
+    if let Err(refused) = change(&user_id, message, now) {
+        room.clock = clock_before;
+        room.messages[index] = before;
+        return refused.into_response();
+    }
+    message.updated_at = Some(now);
+    let message = message.clone();
+    if let Err(err) = inner.save() {
+        if let Some(room) = inner.rooms.get_mut(id) {
+            room.messages[index] = before;
+            room.clock = clock_before;
+        }
+        return storage_failed(err);
+    }
+    inner.rooms[id].announce(id, &message);
+    Json(message).into_response()
+}
+
+/// Why a change to a message was refused: the status and a short reason.
+type Refusal = (StatusCode, &'static str);
+
+fn only_the_author(user_id: &str, message: &WireMessage) -> Result<(), Refusal> {
+    if message.author_id != user_id {
+        return Err((
+            StatusCode::FORBIDDEN,
+            "only its author can change a message",
+        ));
+    }
+    if message.deleted {
+        return Err((StatusCode::CONFLICT, "the message was deleted"));
+    }
+    Ok(())
+}
+
+async fn edit_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, mid)): Path<(String, String)>,
+    Json(edit): Json<EditBody>,
+) -> Response {
+    let body = edit.body.trim().to_string();
+    if body.is_empty() {
+        return (StatusCode::BAD_REQUEST, "body must not be empty").into_response();
+    }
+    if body.chars().count() > MAX_BODY_CHARS {
+        return (StatusCode::BAD_REQUEST, "body is too long").into_response();
+    }
+    change_message(&state, &headers, &id, &mid, |user_id, message, now| {
+        only_the_author(user_id, message)?;
+        message.body = body;
+        message.edited_at = Some(now);
+        Ok(())
+    })
+}
+
+async fn delete_message(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, mid)): Path<(String, String)>,
+) -> Response {
+    change_message(&state, &headers, &id, &mid, |user_id, message, _| {
+        only_the_author(user_id, message)?;
+        message.deleted = true;
+        message.body.clear();
+        message.reactions.clear();
+        Ok(())
+    })
+}
+
+async fn react(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path((id, mid)): Path<(String, String)>,
+    Json(reaction): Json<ReactBody>,
+) -> Response {
+    let emoji = reaction.emoji.trim().to_string();
+    if emoji.is_empty() || emoji.chars().count() > MAX_REACTION_CHARS {
+        return (StatusCode::BAD_REQUEST, "a reaction is one emoji").into_response();
+    }
+    change_message(&state, &headers, &id, &mid, |user_id, message, _| {
+        if message.deleted {
+            return Err((StatusCode::CONFLICT, "the message was deleted"));
+        }
+        if reaction.on {
+            if !message.reactions.contains_key(&emoji)
+                && message.reactions.len() >= MAX_REACTIONS_PER_MESSAGE
+            {
+                return Err((StatusCode::BAD_REQUEST, "too many different reactions"));
+            }
+            let users = message.reactions.entry(emoji).or_default();
+            if !users.iter().any(|u| u == user_id) {
+                users.push(user_id.to_string());
+            }
+        } else if let Some(users) = message.reactions.get_mut(&emoji) {
+            users.retain(|u| u != user_id);
+            if users.is_empty() {
+                message.reactions.remove(&emoji);
+            }
+        }
+        Ok(())
+    })
 }
 
 async fn stream_room(
@@ -891,6 +1112,11 @@ pub fn router(state: AppState) -> Router {
             "/rooms/{id}/messages",
             get(load_messages).post(post_message),
         )
+        .route(
+            "/rooms/{id}/messages/{mid}",
+            patch(edit_message).delete(delete_message),
+        )
+        .route("/rooms/{id}/messages/{mid}/reactions", post(react))
         .route("/rooms/{id}/stream", get(stream_room))
         .with_state(state)
 }
@@ -924,6 +1150,7 @@ mod tests {
                     author_id: "u-1".into(),
                     body: "hi".into(),
                     sent_at: 5,
+                    ..WireMessage::default()
                 });
             inner.save().unwrap();
         }
@@ -989,6 +1216,7 @@ mod tests {
                 author_id: "a".into(),
                 body: "x".into(),
                 sent_at,
+                ..WireMessage::default()
             });
         }
         assert_eq!(room.mark_read("u", 100), Some(9));

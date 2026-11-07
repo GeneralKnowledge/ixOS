@@ -41,7 +41,7 @@ struct SkyPalette: Equatable {
             cloudCover = 0.4
             stars = true
         case (.cloudy, true):
-            gradient = [rgb(0.40, 0.50, 0.62), rgb(0.52, 0.61, 0.72), rgb(0.66, 0.73, 0.81)]
+            gradient = [rgb(0.36, 0.46, 0.58), rgb(0.48, 0.57, 0.68), rgb(0.62, 0.69, 0.78)]
             cloudCover = 0.9
         case (.cloudy, false):
             gradient = [rgb(0.11, 0.13, 0.19), rgb(0.18, 0.21, 0.28), rgb(0.27, 0.30, 0.37)]
@@ -61,7 +61,7 @@ struct SkyPalette: Equatable {
             cloudCover = 0.9
             precipitation = .rain
         case (.snow, true):
-            gradient = [rgb(0.45, 0.53, 0.65), rgb(0.57, 0.64, 0.74), rgb(0.70, 0.75, 0.82)]
+            gradient = [rgb(0.36, 0.44, 0.57), rgb(0.47, 0.55, 0.66), rgb(0.60, 0.66, 0.75)]
             cloudCover = 0.9
             precipitation = .snow
         case (.snow, false):

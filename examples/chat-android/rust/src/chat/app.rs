@@ -28,7 +28,7 @@ use chat_core::{ChatClient, ChatConfig, ChatRepo, ChatStore, HttpRepo};
 use forge_net::Request;
 
 use super::events::{ChatEventHub, ChatEventSubscription};
-use super::types::{ChatAppConfig, ChatConversation, ChatError, ChatMessage};
+use super::types::{ChatAppConfig, ChatConversation, ChatError, ChatEvent, ChatMessage};
 use crate::signal::Completion;
 
 /// The Chat example's app instance. Thread-safe; share it freely.
@@ -252,7 +252,9 @@ impl ForgeChatApp {
         let hub = ChatEventHub::new();
         let sink_hub = Arc::clone(&hub);
         let client = ChatClient::open(repo, store, config, move |event: chat_core::ChatEvent| {
-            sink_hub.publish(event.into())
+            if let Some(event) = ChatEvent::from_core(event) {
+                sink_hub.publish(event)
+            }
         })?;
         Ok(Self {
             client,
@@ -404,11 +406,13 @@ mod tests {
             block_on(app.list_conversations()),
             Err(ChatError::Network { .. })
         ));
-        let err = block_on(app.send_message("general".into(), "hi".into())).unwrap_err();
-        assert!(matches!(err, ChatError::Network { .. }), "{err:?}");
-        let failed = app.cached_messages("general".into());
-        assert_eq!(failed[0].author, "ana");
-        assert_eq!(failed[0].status, ChatMessageStatus::Failed);
+        // Since Chat M2 a send that cannot reach the server waits in
+        // chat-core's outbox instead of failing.
+        let queued = block_on(app.send_message("general".into(), "hi".into())).unwrap();
+        assert_eq!(queued.status, ChatMessageStatus::Sending);
+        let cached = app.cached_messages("general".into());
+        assert_eq!(cached[0].author, "ana");
+        assert_eq!(cached[0].status, ChatMessageStatus::Sending);
     }
 
     #[test]
@@ -499,13 +503,13 @@ mod tests {
             block_on(app.send_message("general".into(), " ".into())),
             Err(ChatError::InvalidInput { .. })
         ));
+        // Offline, a send waits in the outbox; a retry once back sends it.
         repo.set_offline(true);
-        let err = block_on(app.send_message("general".into(), "x".into())).unwrap_err();
-        assert!(matches!(err, ChatError::Network { .. }));
+        let queued = block_on(app.send_message("general".into(), "x".into())).unwrap();
+        assert_eq!(queued.status, ChatMessageStatus::Sending);
         repo.set_offline(false);
-        let id = app.cached_messages("general".into())[0].id.clone();
         assert_eq!(
-            block_on(app.retry_message(id)).unwrap().status,
+            block_on(app.retry_message(queued.id)).unwrap().status,
             ChatMessageStatus::Sent
         );
     }

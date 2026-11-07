@@ -20,7 +20,11 @@ struct ForecastPage: View {
                     VStack(spacing: 12) {
                         Header(page: page, report: report, overview: overview)
                         if let message = page.errorMessage ?? page.staleNotice {
-                            Notice(text: message, palette: palette)
+                            Notice(
+                                text: message,
+                                systemImage: page.errorMessage == nil && report.isOfflineFallback == false
+                                    ? "clock" : "wifi.slash",
+                                palette: palette)
                         }
                         if !overview.timeline.isEmpty || !overview.summary.isEmpty {
                             HourlyCard(overview: overview, palette: palette)
@@ -157,11 +161,12 @@ private struct Card<Content: View>: View {
 
 private struct Notice: View {
     let text: String
+    let systemImage: String
     let palette: SkyPalette
 
     var body: some View {
         Card(palette: palette) {
-            Label(text, systemImage: "wifi.slash")
+            Label(text, systemImage: systemImage)
                 .font(.footnote)
                 .padding(12)
         }

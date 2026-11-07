@@ -30,7 +30,14 @@ const USAGE: &str = "usage: chat-cli [--server URL] COMMAND
   create TITLE...      start a new conversation
   read ROOM [--last N] show the last N messages (default 20) and mark them read
   send ROOM TEXT...    send a message
-  follow ROOM          show new messages as they arrive and mark them read (Ctrl-C to stop)
+  reply ROOM MSG TEXT... reply to a message
+  edit ROOM MSG TEXT...  replace the text of one of your messages
+  delete ROOM MSG      delete one of your messages for everyone
+  react ROOM MSG EMOJI [--off]  add (or with --off, remove) your reaction
+  follow ROOM          show new messages and changes as they arrive and mark them read (Ctrl-C to stop)
+
+  MSG is @1 for the newest message in the room, @2 for the one before, and
+  so on (as `read` numbers them), or a message id or the start of one.
 
   --server  the chat server (default $CHAT_SERVER, or http://127.0.0.1:8787)";
 
@@ -86,6 +93,27 @@ fn run(args: Vec<String>) -> Result<(), String> {
         }
         ("send", [room, text @ ..]) if !text.is_empty() => {
             send(&accounts, &server, room, &text.join(" "))
+        }
+        ("reply", [room, target, text @ ..]) if !text.is_empty() => {
+            reply(&accounts, &server, room, target, &text.join(" "))
+        }
+        ("edit", [room, target, text @ ..]) if !text.is_empty() => {
+            change(&accounts, &server, room, target, |repo, room, id| {
+                repo.edit_message(room, id, text.join(" ").trim())
+            })
+        }
+        ("delete", [room, target]) => change(&accounts, &server, room, target, |repo, room, id| {
+            repo.delete_message(room, id)
+        }),
+        ("react", [room, target, emoji]) => {
+            change(&accounts, &server, room, target, |repo, room, id| {
+                repo.react(room, id, emoji, true)
+            })
+        }
+        ("react", [room, target, emoji, off]) if off == "--off" => {
+            change(&accounts, &server, room, target, |repo, room, id| {
+                repo.react(room, id, emoji, false)
+            })
         }
         ("follow", [room]) => follow(&accounts, &server, room),
         _ => Err(format!("usage: unknown command {:?}", rest.join(" "))),
@@ -170,8 +198,9 @@ fn read(accounts: &AccountFile, server: &str, room: &str, last: usize) -> Result
         .load_messages(room, None)
         .map_err(|e| explain(e, server))?;
     let skip = messages.len().saturating_sub(last);
-    for message in &messages[skip..] {
-        println!("{}", line(message, &account));
+    for (i, message) in messages.iter().enumerate().skip(skip) {
+        // `@1` is the newest: the handle `reply`, `edit` and the rest take.
+        println!("@{:<3} {}", messages.len() - i, line(message, &account));
     }
     // Reading them here is reading them: the phone shows them as read.
     if let Some(newest) = messages.last() {
@@ -183,6 +212,29 @@ fn read(accounts: &AccountFile, server: &str, room: &str, last: usize) -> Result
 
 fn send(accounts: &AccountFile, server: &str, room: &str, text: &str) -> Result<(), String> {
     let (account, repo) = signed_in(accounts, server)?;
+    post(&account, &repo, server, room, text, None)
+}
+
+fn reply(
+    accounts: &AccountFile,
+    server: &str,
+    room: &str,
+    target: &str,
+    text: &str,
+) -> Result<(), String> {
+    let (account, repo) = signed_in(accounts, server)?;
+    let to = find_message(&repo, server, room, target)?;
+    post(&account, &repo, server, room, text, Some(to.id))
+}
+
+fn post(
+    account: &Account,
+    repo: &HttpRepo,
+    server: &str,
+    room: &str,
+    text: &str,
+    reply_to: Option<String>,
+) -> Result<(), String> {
     let stored = repo
         .post_message(&OutgoingMessage {
             id: message_id(),
@@ -190,10 +242,69 @@ fn send(accounts: &AccountFile, server: &str, room: &str, text: &str) -> Result<
             author: account.display_name.clone(),
             author_id: account.user_id.clone(),
             body: text.trim().into(),
+            reply_to,
         })
         .map_err(|e| explain(e, server))?;
-    println!("{}", line(&stored, &account));
+    println!("{}", line(&stored, account));
     Ok(())
+}
+
+/// Edits, deletes or reacts to one message and shows what it became.
+fn change(
+    accounts: &AccountFile,
+    server: &str,
+    room: &str,
+    target: &str,
+    apply: impl FnOnce(&HttpRepo, &str, &str) -> Result<Message, ChatError>,
+) -> Result<(), String> {
+    let (account, repo) = signed_in(accounts, server)?;
+    let message = find_message(&repo, server, room, target)?;
+    let changed = apply(&repo, room, &message.id).map_err(|e| explain(e, server))?;
+    println!("{}", line(&changed, &account));
+    Ok(())
+}
+
+/// The message `target` names: `@N` counts back from the newest, anything
+/// else is an id or the unique start of one.
+fn find_message(
+    repo: &HttpRepo,
+    server: &str,
+    room: &str,
+    target: &str,
+) -> Result<Message, String> {
+    let messages = repo
+        .load_messages(room, None)
+        .map_err(|e| explain(e, server))?;
+    pick(messages, target)
+}
+
+fn pick(mut messages: Vec<Message>, target: &str) -> Result<Message, String> {
+    if let Some(n) = target.strip_prefix('@') {
+        let n: usize = n
+            .parse()
+            .ok()
+            .filter(|n| *n > 0)
+            .ok_or_else(|| format!("{target}: use @1 for the newest message"))?;
+        let count = messages.len();
+        return count
+            .checked_sub(n)
+            .map(|i| messages.swap_remove(i))
+            .ok_or_else(|| format!("{target}: the room has only {count} messages"));
+    }
+    if let Some(i) = messages.iter().position(|m| m.id == target) {
+        return Ok(messages.swap_remove(i));
+    }
+    let mut starting: Vec<Message> = messages
+        .into_iter()
+        .filter(|m| m.id.starts_with(target))
+        .collect();
+    match starting.len() {
+        1 => Ok(starting.remove(0)),
+        0 => Err(format!("no message {target:?} in this room")),
+        n => Err(format!(
+            "{n} messages start with {target:?}; give more of the id"
+        )),
+    }
 }
 
 /// Follows a room with chat-core's own client: the same reconnect and
@@ -230,6 +341,9 @@ fn follow(accounts: &AccountFile, server: &str, room: &str) -> Result<(), String
             Ok(ChatEvent::MessageReceived(message)) if message.status == MessageStatus::Sent => {
                 println!("{}", line(&message, &account));
             }
+            Ok(ChatEvent::MessageUpdated(message)) => {
+                println!("changed: {}", line(&message, &account));
+            }
             Ok(ChatEvent::StreamDisconnected {
                 reason, will_retry, ..
             }) => {
@@ -252,7 +366,26 @@ fn line(message: &Message, account: &Account) -> String {
     } else {
         message.author.clone()
     };
-    format!("[{}] {who}: {}", clock(message.sent_at), message.body)
+    if message.deleted {
+        return format!("[{}] {who}: (deleted)", clock(message.sent_at));
+    }
+    let mut text = format!("[{}] {who}: ", clock(message.sent_at));
+    if let Some(to) = &message.reply_to {
+        text.push_str(&format!("(reply to {}) ", short(to)));
+    }
+    text.push_str(&message.body);
+    if message.edited_at.is_some() {
+        text.push_str(" (edited)");
+    }
+    for (emoji, people) in &message.reactions {
+        text.push_str(&format!("  {emoji}{}", people.len()));
+    }
+    text
+}
+
+/// Enough of an id to tell messages apart and to pass back as MSG.
+fn short(id: &str) -> &str {
+    id.char_indices().nth(12).map_or(id, |(i, _)| &id[..i])
 }
 
 /// `HH:MM:SS` UTC. A terminal tool; good enough to tell messages apart.
@@ -354,6 +487,51 @@ mod tests {
         .unwrap();
         assert_eq!(file.load("http://x").unwrap(), Some(account));
         assert_eq!(file.load("http://y").unwrap().unwrap().user_id, "u-2");
+    }
+
+    fn message(id: &str) -> Message {
+        Message {
+            id: id.into(),
+            body: id.into(),
+            ..Message::default()
+        }
+    }
+
+    #[test]
+    fn messages_are_picked_by_position_id_or_prefix() {
+        let all = || vec![message("abc-1"), message("abd-2"), message("x")];
+        assert_eq!(pick(all(), "@1").unwrap().id, "x");
+        assert_eq!(pick(all(), "@3").unwrap().id, "abc-1");
+        assert!(pick(all(), "@4").is_err());
+        assert!(pick(all(), "@0").is_err());
+        assert_eq!(pick(all(), "x").unwrap().id, "x");
+        assert_eq!(pick(all(), "abd").unwrap().id, "abd-2");
+        assert!(pick(all(), "ab").unwrap_err().contains("2 messages"));
+        assert!(pick(all(), "zz").is_err());
+    }
+
+    #[test]
+    fn lines_show_edits_deletions_replies_and_reactions() {
+        let me = Account {
+            user_id: "u-1".into(),
+            display_name: "Ana".into(),
+            token: String::new(),
+        };
+        let mut m = Message {
+            author: "Ben".into(),
+            body: "hi".into(),
+            reply_to: Some("0123456789abcdef".into()),
+            edited_at: Some(1),
+            ..message("m")
+        };
+        m.reactions
+            .insert("👍".into(), vec!["u-1".into(), "u-2".into()]);
+        assert_eq!(
+            line(&m, &me),
+            "[00:00:00 UTC] Ben: (reply to 0123456789ab) hi (edited)  👍2"
+        );
+        m.deleted = true;
+        assert_eq!(line(&m, &me), "[00:00:00 UTC] Ben: (deleted)");
     }
 
     #[test]

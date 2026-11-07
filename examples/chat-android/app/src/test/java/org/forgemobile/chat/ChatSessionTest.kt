@@ -10,7 +10,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -98,15 +97,18 @@ class ChatSessionTest {
         assertTrue(!state.isRefreshing)
     }
 
+    /** Since Chat M2, chat-core keeps a send it cannot deliver in its outbox. */
     @Test
-    fun failedSendShowsAFailedBubbleAndAnError() = runBlocking {
+    fun unreachableSendWaitsInTheOutbox() = runBlocking {
         val chat = session("http://127.0.0.1:${MockServer.unusedPort()}")
         chat.start()
         chat.send("hello", "general")
-        waitUntil("the failed bubble shows") {
-            chat.state.value.messages("general").any { it.status == ChatMessageStatus.FAILED }
+        waitUntil("the waiting bubble shows") {
+            chat.state.value.messages("general").any {
+                it.body == "hello" && it.status == ChatMessageStatus.SENDING
+            }
         }
-        assertNotNull(chat.state.value.sendError["general"])
+        assertNull(chat.state.value.sendError["general"])
     }
 
     @Test
@@ -166,7 +168,7 @@ class ChatSessionTest {
         app("https://chat.example").shutdown()
     }
 
-    /** The README's demo, end to end: send, leave, kill the server, fail, restart, retry. */
+    /** The README's demo, end to end: send, leave, kill the server, queue, restart, sent. */
     @Test
     fun demoInteractionAgainstTheMockServer() = runBlocking {
         val first = server()
@@ -198,22 +200,20 @@ class ChatSessionTest {
             chat.state.value.connection["general"] is ConnectionState.Reconnecting
         }
 
-        // 4. Sending now fails, as a red bubble.
+        // 4. Sending now waits in chat-core's outbox (since Chat M2).
         chat.send("while down", "general")
-        val failed =
-            run {
-                waitUntil("the send fails") {
-                    chat.state.value.messages("general").any { it.status == ChatMessageStatus.FAILED }
-                }
-                chat.state.value.messages("general").first { it.status == ChatMessageStatus.FAILED }
-            }
-
-        // 5. Restart on the same port and tap the bubble: Sent, and the room reconnects.
-        server(first.port)
-        chat.retry(failed)
-        waitUntil("the retry is sent") {
+        waitUntil("the message waits") {
             chat.state.value.messages("general").any {
-                it.id == failed.id && it.status == ChatMessageStatus.SENT
+                it.body == "while down" && it.status == ChatMessageStatus.SENDING
+            }
+        }
+
+        // 5. Restart on the same port: the room reconnects and the outbox
+        // sends the waiting message by itself.
+        server(first.port)
+        waitUntil("the queued message is sent") {
+            chat.state.value.messages("general").any {
+                it.body == "while down" && it.status == ChatMessageStatus.SENT
             }
         }
         waitUntil("reconnected") {

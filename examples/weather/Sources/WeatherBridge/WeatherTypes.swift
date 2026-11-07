@@ -60,6 +60,12 @@ extension WeatherReport {
         max(0, now.timeIntervalSince1970 - TimeInterval(fetchedAtUnix))
     }
 
+    /// True when a refresh failed and fell back to this cached report.
+    public var isOfflineFallback: Bool {
+        if case .cached(_, .some) = freshness { return true }
+        return false
+    }
+
     /// True when this report came from the on-device cache, not the network.
     public var isCached: Bool {
         if case .cached = freshness { return true }
