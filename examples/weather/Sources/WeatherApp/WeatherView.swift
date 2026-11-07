@@ -20,6 +20,14 @@ public struct WeatherView: View {
 
     public var body: some View {
         pager
+            // The pages' own skies stop at the safe area inside the pager;
+            // this fills the status bar and home indicator strips with the
+            // sky of the page on screen.
+            .background {
+                let overview = model.selectedPage?.overview
+                SkyBackground(scene: overview?.scene ?? .cloudy, isDay: overview?.isDay ?? true, animated: false)
+                    .ignoresSafeArea()
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 BottomBar(model: model, showingLocations: $showingLocations)
             }
@@ -95,8 +103,11 @@ private struct BottomBar: View {
             .frame(width: 48, height: 48)
             .background(.ultraThinMaterial, in: Circle())
         }
-        .font(.title3.weight(.medium))
+        .font(.system(size: 19, weight: .medium))
         .foregroundStyle(.white)
+        // The bar keeps its size at large text sizes, like the system's;
+        // VoiceOver labels carry the meaning.
+        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .padding(.horizontal, 20)
         .padding(.top, 6)
         .padding(.bottom, 4)
