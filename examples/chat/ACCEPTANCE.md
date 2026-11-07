@@ -186,7 +186,7 @@ M4 adds voice messages: record from the composer, send as an audio attachment th
 | A26 | forge-services: `NativePermission::Microphone`, interface v2 in Rust and Swift | automated | Done | `cargo test -p forge-services` (`the_microphone_is_its_own_permission`), `scripts/check-template-sync.sh` |
 | A27 | The audio module is copied only into apps that declare the microphone, and committed copies match | automated | Done | `scripts/check-app-crates.sh` (Chat has `ForgeAudio.swift`; the other apps do not) |
 | A28 | chat-cli shows audio attachments as `[voice: …]` | automated | Done | `cargo test -p chat-cli` |
-| A29 | SwiftUI and ForgeAudio: duration and waveform of an AAC file, the microphone registered as a permission, the player (one file at a time, pause, seek), a voice message between two accounts | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` (`AudioTests`, `testVoiceMessagesBetweenTwoPeople`); the player test skips on a machine without audio output |
+| A29 | SwiftUI and ForgeAudio: duration and waveform of an AAC file, the microphone registered as a permission, the player (one file at a time, pause, seek), a voice message between two accounts | automated (macOS CI) | Done | Swift host tests on PR #60 (commit 4055652): all four passed, the player test really played (not skipped) |
 
 ### On an iPhone (Linux, xtool)
 
