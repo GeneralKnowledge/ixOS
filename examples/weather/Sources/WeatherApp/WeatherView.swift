@@ -1,11 +1,14 @@
 import SwiftUI
 import WeatherBridge
 
-/// The whole app: current conditions, the next 24 hours, the week, and
-/// toolbar actions for location, search and refresh/cancel.
+/// The whole app: a page per place ("My Location" first, then saved
+/// places) that you swipe between, each drawn over its own sky, and a list
+/// of places for adding, removing and reordering them.
 public struct WeatherView: View {
     @StateObject private var model: WeatherViewModel
-    @State private var showingSearch = false
+    /// `-WeatherShowPlaces YES` opens the places list at launch (screenshots).
+    @State private var showingLocations = UserDefaults.standard.bool(forKey: "WeatherShowPlaces")
+    @Environment(\.scenePhase) private var scenePhase
 
     public init() {
         _model = StateObject(wrappedValue: WeatherViewModel())
@@ -16,234 +19,118 @@ public struct WeatherView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            content
-                .navigationTitle(model.place?.name ?? "Weather")
-                .toolbar { toolbar }
-                .refreshable { await model.refresh().value }
-                .sheet(isPresented: $showingSearch) {
-                    PlaceSearchView(model: model, isPresented: $showingSearch)
-                }
-        }
-        .task { await model.start() }
+        pager
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                BottomBar(model: model, showingLocations: $showingLocations)
+            }
+            // Pages sit on a drawn sky whatever the system appearance: white
+            // text, and materials that read as frosted glass over it.
+            .environment(\.colorScheme, .dark)
+            .sheet(isPresented: $showingLocations) {
+                LocationsView(model: model, isPresented: $showingLocations)
+            }
+            .task { await model.start() }
+            .onChange(of: model.selection) { _, _ in model.pageDidAppear() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { model.becameActive() }
+            }
     }
 
-    @ViewBuilder private var content: some View {
-        if let report = model.report {
-            List {
-                if let notice = model.staleNotice {
-                    Label(notice, systemImage: "wifi.slash")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+    @ViewBuilder private var pager: some View {
+        #if os(iOS)
+            TabView(selection: $model.selection) {
+                ForEach(model.pages) { page in
+                    ForecastPage(page: page, model: model, showLocations: { showingLocations = true })
+                        .tag(page.id)
                 }
-                if let error = model.errorMessage {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(.orange)
-                }
-                Section { CurrentSection(report: report) }
-                Section("Next 24 hours") { HourlyStrip(points: report.hourly) }
-                Section("7 days") {
-                    ForEach(Array(report.daily.enumerated()), id: \.element.date) { index, day in
-                        DailyRow(day: day, isFirst: index == 0)
-                    }
-                }
-                Section("Details") { DetailsSection(report: report) }
             }
-        } else if model.isRefreshing {
-            ProgressView("Loading weather…")
-        } else {
-            ContentUnavailableView {
-                Label("No weather yet", systemImage: "cloud.sun")
-            } description: {
-                Text(model.errorMessage ?? model.locationMessage ?? "Use your location or search for a city.")
-            } actions: {
-                Button("Use my location") { model.useCurrentLocation() }
-                Button("Search for a city") { showingSearch = true }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+        #else
+            // `swift run` on a Mac: one page at a time, chosen from the bar.
+            if let page = model.selectedPage {
+                ForecastPage(page: page, model: model, showLocations: { showingLocations = true })
             }
-        }
-    }
-
-    @ToolbarContentBuilder private var toolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .primaryAction) {
-            Button {
-                model.useCurrentLocation()
-            } label: {
-                Label("My location", systemImage: "location")
-            }
-            Button {
-                showingSearch = true
-            } label: {
-                Label("Search", systemImage: "magnifyingglass")
-            }
-            if model.isRefreshing {
-                Button {
-                    model.cancelRefresh()
-                } label: {
-                    Label("Cancel", systemImage: "xmark.circle")
-                }
-            } else {
-                Button {
-                    model.refresh()
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .disabled(model.place == nil)
-            }
-        }
+        #endif
     }
 }
 
-private struct CurrentSection: View {
-    let report: WeatherReport
-
-    var body: some View {
-        let now = report.current
-        let described = WeatherFormat.describe(now.condition, isDay: now.isDay)
-        VStack(alignment: .leading, spacing: 6) {
-            if let subtitle = report.place.subtitle {
-                Text(subtitle).font(.subheadline).foregroundStyle(.secondary)
-            }
-            HStack(alignment: .firstTextBaseline) {
-                Image(systemName: described.symbol).symbolRenderingMode(.multicolor).font(.largeTitle)
-                Text(WeatherFormat.temperature(now.temperatureC))
-                    .font(.system(size: 56, weight: .thin))
-            }
-            Text(described.text).font(.headline)
-            HStack(spacing: 12) {
-                if let feels = now.apparentTemperatureC {
-                    Text("Feels like \(WeatherFormat.temperature(feels))")
-                }
-                if let today = report.daily.first {
-                    Text("H \(WeatherFormat.temperature(today.highC))  L \(WeatherFormat.temperature(today.lowC))")
-                }
-            }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
-    }
-}
-
-private struct HourlyStrip: View {
-    let points: [HourlyPoint]
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
-                ForEach(points, id: \.time) { point in
-                    VStack(spacing: 6) {
-                        Text(WeatherFormat.hour(point.time)).font(.caption)
-                        Image(systemName: WeatherFormat.describe(point.condition).symbol)
-                            .symbolRenderingMode(.multicolor)
-                        Text(WeatherFormat.temperature(point.temperatureC)).font(.callout)
-                        Text(point.precipitationProbabilityPct.map { "\($0)%" } ?? " ")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-                }
-            }
-            .padding(.vertical, 4)
-        }
-    }
-}
-
-private struct DailyRow: View {
-    let day: DailyForecast
-    let isFirst: Bool
-
-    var body: some View {
-        HStack {
-            Text(WeatherFormat.weekday(day.date, isFirst: isFirst)).frame(width: 56, alignment: .leading)
-            Image(systemName: WeatherFormat.describe(day.condition).symbol)
-                .symbolRenderingMode(.multicolor)
-                .frame(width: 32)
-            if let chance = day.precipitationProbabilityMaxPct, chance > 0 {
-                Text("\(chance)%").font(.caption).foregroundStyle(.blue)
-            }
-            Spacer()
-            Text(WeatherFormat.temperature(day.lowC)).foregroundStyle(.secondary)
-            Text(WeatherFormat.temperature(day.highC)).frame(width: 40, alignment: .trailing)
-        }
-    }
-}
-
-private struct DetailsSection: View {
-    let report: WeatherReport
-
-    var body: some View {
-        let now = report.current
-        let today = report.daily.first
-        if let wind = now.wind {
-            LabeledContent("Wind") {
-                Text(windText(wind))
-            }
-        }
-        if let humidity = now.relativeHumidityPct {
-            LabeledContent("Humidity", value: "\(humidity)%")
-        }
-        if let precipitation = today?.precipitationSumMm {
-            LabeledContent("Precipitation today", value: String(format: "%.1f mm", precipitation))
-        }
-        if let sunrise = today?.sunrise, let sunset = today?.sunset {
-            LabeledContent("Sunrise / sunset", value: "\(WeatherFormat.hour(sunrise)) / \(WeatherFormat.hour(sunset))")
-        }
-        if let uv = today?.uvIndexMax {
-            LabeledContent("UV index (max)", value: String(format: "%.0f", uv))
-        }
-        if let elevation = report.elevationM {
-            LabeledContent("Elevation", value: "\(Int(elevation)) m")
-        }
-        LabeledContent("Time zone", value: report.timezoneAbbreviation ?? report.timezone)
-    }
-
-    private func windText(_ wind: Wind) -> String {
-        var text = "\(Int(wind.speedKmh.rounded())) km/h"
-        if let direction = wind.directionDeg { text += " \(WeatherFormat.compass(direction))" }
-        if let gusts = wind.gustsKmh { text += ", gusts \(Int(gusts.rounded()))" }
-        return text
-    }
-}
-
-private struct PlaceSearchView: View {
+/// Page dots (an arrow for "My Location"), refresh, and the places list.
+private struct BottomBar: View {
     @ObservedObject var model: WeatherViewModel
-    @Binding var isPresented: Bool
-    @State private var query = ""
+    @Binding var showingLocations: Bool
 
     var body: some View {
-        NavigationStack {
-            List {
-                if model.isSearching {
-                    ProgressView()
-                }
-                if let message = model.searchMessage {
-                    Text(message).foregroundStyle(.secondary)
-                }
-                ForEach(model.searchResults, id: \.self) { place in
+        HStack(spacing: 12) {
+            Group {
+                if model.isRefreshing {
                     Button {
-                        model.select(place)
-                        isPresented = false
+                        model.cancelRefresh()
                     } label: {
-                        VStack(alignment: .leading) {
-                            Text(place.name)
-                            if let subtitle = place.subtitle {
-                                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-                            }
+                        ProgressView().tint(.white)
+                    }
+                    .accessibilityLabel("Cancel refresh")
+                } else {
+                    Button {
+                        model.refresh()
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .accessibilityLabel("Refresh")
+                    .disabled(model.place == nil)
+                }
+            }
+            .frame(width: 48, height: 48)
+            .background(.ultraThinMaterial, in: Circle())
+
+            Spacer(minLength: 0)
+            PageDots(model: model)
+            Spacer(minLength: 0)
+
+            Button {
+                showingLocations = true
+            } label: {
+                Image(systemName: "list.bullet")
+            }
+            .accessibilityLabel("Places")
+            .frame(width: 48, height: 48)
+            .background(.ultraThinMaterial, in: Circle())
+        }
+        .font(.title3.weight(.medium))
+        .foregroundStyle(.white)
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+    }
+}
+
+private struct PageDots: View {
+    @ObservedObject var model: WeatherViewModel
+
+    var body: some View {
+        HStack(spacing: 9) {
+            ForEach(model.pages) { page in
+                let selected = page.id == model.selection
+                Button {
+                    withAnimation { model.selection = page.id }
+                } label: {
+                    Group {
+                        if page.isMyLocation {
+                            Image(systemName: "location.fill").font(.system(size: 10, weight: .bold))
+                        } else {
+                            Circle().frame(width: 7, height: 7)
                         }
                     }
+                    .foregroundStyle(.white.opacity(selected ? 1 : 0.45))
+                    .frame(minWidth: 12, minHeight: 24)
                 }
-            }
-            .navigationTitle("Search")
-            .searchable(text: $query, prompt: "City name")
-            .onSubmit(of: .search) { model.search(query) }
-            .onChange(of: query) { _, newValue in
-                if newValue.count >= 3 { model.search(newValue) }
-            }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { isPresented = false }
-                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(page.place?.name ?? "My Location")
+                .accessibilityAddTraits(selected ? .isSelected : [])
             }
         }
+        .padding(.horizontal, 16)
+        .frame(height: 40)
+        .background(.ultraThinMaterial, in: Capsule())
+        .opacity(model.pages.count > 1 ? 1 : 0)
     }
 }

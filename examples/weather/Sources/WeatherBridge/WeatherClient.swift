@@ -37,6 +37,27 @@ public final class WeatherClient: @unchecked Sendable {
     /// screen at launch.
     public var cachedReport: WeatherReport? { app.cachedReport() }
 
+    /// The cached report for `place` (within 5 km), however old, marked
+    /// `.cached`. Pass it through `overview(of:)`, which drops what is past.
+    public func cachedReport(for place: Place) -> WeatherReport? {
+        app.cachedReportFor(place: place)
+    }
+
+    /// Every cached report, newest first.
+    public var cachedReports: [WeatherReport] { app.cachedReports() }
+
+    /// The saved places, in the user's order (not including the device
+    /// location, which is never saved).
+    public var savedPlaces: [Place] { app.savedPlaces() }
+
+    /// What to show for `report` at `date`: sky, summary sentence, hourly
+    /// strip with sunrise and sunset, and the days ahead. Worked out in Rust.
+    public func overview(
+        of report: WeatherReport, at date: Date = Date(), windUnit: WindUnit = .kilometresPerHour
+    ) -> WeatherOverview {
+        weatherOverview(report: report, nowUnix: Int64(date.timeIntervalSince1970), windUnit: windUnit)
+    }
+
     public var isRefreshing: Bool { app.activeRefresh() != nil }
 
     public var isShutDown: Bool { app.isShutDown() }
@@ -67,6 +88,25 @@ public final class WeatherClient: @unchecked Sendable {
         let places = try await bridgedAsync { try await app.searchPlaces(query: query) }
         try Task.checkCancellation()
         return places
+    }
+
+    /// Adds `place` to the saved places (a place within 2 km of a saved one
+    /// is already saved). Returns the new list.
+    @discardableResult
+    public func save(_ place: Place) throws -> [Place] {
+        try bridged { try app.savePlace(place: place) }
+    }
+
+    /// Removes the saved place at (about) `place`. Returns the new list.
+    @discardableResult
+    public func removeSaved(_ place: Place) throws -> [Place] {
+        try bridged { try app.removeSavedPlace(place: place) }
+    }
+
+    /// Moves a saved place from one index to another. Returns the new list.
+    @discardableResult
+    public func moveSaved(from: Int, to: Int) throws -> [Place] {
+        try bridged { try app.moveSavedPlace(from: UInt32(from), to: UInt32(to)) }
     }
 
     // MARK: Lifecycle

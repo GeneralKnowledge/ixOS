@@ -1,3 +1,4 @@
+import Foundation
 @preconcurrency import ForgeFFI
 
 // The Weather payload is used as UniFFI generates it: records become Swift
@@ -19,13 +20,18 @@ public typealias Intensity = ForgeFFI.Intensity
 public typealias Freshness = ForgeFFI.Freshness
 public typealias FetchProblem = ForgeFFI.FetchProblem
 public typealias WeatherConfig = ForgeFFI.WeatherConfig
+public typealias WeatherOverview = ForgeFFI.WeatherOverview
+public typealias TimelineEntry = ForgeFFI.TimelineEntry
+public typealias SkyScene = ForgeFFI.SkyScene
+public typealias WindUnit = ForgeFFI.WindUnit
 
 extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;
-    /// the name is what the UI shows.
+    /// the name is what the UI shows: the locality the platform found for
+    /// the fix, else "My Location".
     public static func currentLocation(_ fix: LocationFix) -> Place {
         Place(
-            name: "Current location",
+            name: fix.placeName ?? "My Location",
             region: nil,
             country: nil,
             countryCode: nil,
@@ -49,6 +55,11 @@ extension Place {
 }
 
 extension WeatherReport {
+    /// Seconds since this report was fetched.
+    public func age(now: Date = Date()) -> TimeInterval {
+        max(0, now.timeIntervalSince1970 - TimeInterval(fetchedAtUnix))
+    }
+
     /// True when this report came from the on-device cache, not the network.
     public var isCached: Bool {
         if case .cached = freshness { return true }

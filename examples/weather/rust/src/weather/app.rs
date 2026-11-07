@@ -19,9 +19,13 @@
 //!   cache holds a report for (about) the same place that is not too old, the
 //!   refresh *succeeds* with that report marked `Freshness::Cached`, carrying
 //!   the problem. Otherwise it fails with the typed error.
-//! * The cache is one report, written atomically after every live refresh.
-//!   It is disposable: unreadable cache files are ignored, and cache write
-//!   failures never fail a refresh.
+//! * The cache holds the newest report for each of up to
+//!   [`MAX_CACHED_REPORTS`] places, written atomically after every live
+//!   refresh, so every saved place has something to show at launch. It is
+//!   disposable: unreadable cache files are ignored, and cache write failures
+//!   never fail a refresh.
+//! * Saved places (see `places.rs`) are a separate small file; they are
+//!   state the user made, so failing to write them is an error.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
@@ -40,11 +44,14 @@ use super::types::{
 use crate::signal::{lock, Completion};
 
 const CACHE_FILENAME: &str = "forge-weather-cache-v1.json";
-const CACHE_SCHEMA_VERSION: u32 = 1;
+/// 1: one report. 2: a list of reports, newest first. Both are read.
+const CACHE_SCHEMA_VERSION: u32 = 2;
+/// Reports kept in the cache, one per place.
+pub(crate) const MAX_CACHED_REPORTS: usize = 16;
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_MAX_CACHE_AGE_SECONDS: u64 = 24 * 60 * 60;
 /// A cached report is reused for a place within this distance of it.
-const CACHE_MATCH_RADIUS_KM: f64 = 5.0;
+pub(crate) const CACHE_MATCH_RADIUS_KM: f64 = 5.0;
 const USER_AGENT: &str = concat!(
     "forge-weather-example/",
     env!("CARGO_PKG_VERSION"),
@@ -60,11 +67,14 @@ struct Settings {
     max_cache_age_seconds: u64,
 }
 
-struct Shared {
+pub(crate) struct Shared {
     client: Arc<dyn HttpClient>,
     settings: Settings,
     cache_path: Option<PathBuf>,
-    cache: Mutex<Option<WeatherReport>>,
+    /// Newest first, at most one per place.
+    cache: Mutex<Vec<WeatherReport>>,
+    pub(crate) places_path: Option<PathBuf>,
+    pub(crate) places: Mutex<Vec<Place>>,
     active: Mutex<Option<Arc<RefreshState>>>,
     next_id: AtomicU64,
     shut_down: AtomicBool,
@@ -106,7 +116,7 @@ impl RefreshState {
 /// The Weather example's app instance. Thread-safe; share it freely.
 #[derive(uniffi::Object)]
 pub struct ForgeWeatherApp {
-    shared: Arc<Shared>,
+    pub(crate) shared: Arc<Shared>,
 }
 
 /// Handle to one refresh. Releasing it does not cancel the refresh.
@@ -251,8 +261,23 @@ impl ForgeWeatherApp {
     /// The last successfully fetched report, marked `Cached` with its age, or
     /// `None`. Never waits for the network; use it to fill the screen at launch.
     pub fn cached_report(&self) -> Option<WeatherReport> {
-        let cached = lock(&self.shared.cache).clone()?;
+        let cached = lock(&self.shared.cache).first().cloned()?;
         Some(as_cached(cached, None))
+    }
+
+    /// The cached report for `place` (within 5 km), however old, marked
+    /// `Cached`. `weather_overview` drops the hours and days already past.
+    pub fn cached_report_for(&self, place: Place) -> Option<WeatherReport> {
+        let cache = lock(&self.shared.cache);
+        nearest(&cache, place.coordinate).map(|r| as_cached(r.clone(), None))
+    }
+
+    /// Every cached report, newest first, marked `Cached`.
+    pub fn cached_reports(&self) -> Vec<WeatherReport> {
+        lock(&self.shared.cache)
+            .iter()
+            .map(|r| as_cached(r.clone(), None))
+            .collect()
     }
 
     /// Cancels the refresh in flight; later calls fail with `ShutDown`.
@@ -299,14 +324,25 @@ impl ForgeWeatherApp {
                 .max_cache_age_seconds
                 .unwrap_or(DEFAULT_MAX_CACHE_AGE_SECONDS),
         };
-        let cache_path = storage_directory.map(|dir| dir.join(CACHE_FILENAME));
-        let cache = cache_path.as_deref().and_then(load_cache);
+        let cache_path = storage_directory
+            .as_ref()
+            .map(|dir| dir.join(CACHE_FILENAME));
+        let cache = cache_path.as_deref().map(load_cache).unwrap_or_default();
+        let places_path = storage_directory
+            .as_ref()
+            .map(|dir| dir.join(super::places::PLACES_FILENAME));
+        let places = places_path
+            .as_deref()
+            .map(super::places::load_places)
+            .unwrap_or_default();
         Ok(Self {
             shared: Arc::new(Shared {
                 client,
                 settings,
                 cache_path,
                 cache: Mutex::new(cache),
+                places_path,
+                places: Mutex::new(places),
                 active: Mutex::new(None),
                 next_id: AtomicU64::new(0),
                 shut_down: AtomicBool::new(false),
@@ -393,7 +429,7 @@ fn as_cached(mut report: WeatherReport, problem: Option<FetchProblem>) -> Weathe
 }
 
 /// Great-circle distance in kilometres.
-fn distance_km(a: Coordinate, b: Coordinate) -> f64 {
+pub(crate) fn distance_km(a: Coordinate, b: Coordinate) -> f64 {
     let (lat1, lat2) = (a.latitude.to_radians(), b.latitude.to_radians());
     let dlat = lat2 - lat1;
     let dlon = (b.longitude - a.longitude).to_radians();
@@ -401,42 +437,81 @@ fn distance_km(a: Coordinate, b: Coordinate) -> f64 {
     2.0 * 6371.0 * h.sqrt().min(1.0).asin()
 }
 
+/// The cached report closest to `coordinate`, if one is within
+/// [`CACHE_MATCH_RADIUS_KM`].
+fn nearest(cache: &[WeatherReport], coordinate: Coordinate) -> Option<&WeatherReport> {
+    cache
+        .iter()
+        .map(|r| (distance_km(r.place.coordinate, coordinate), r))
+        .filter(|(d, _)| *d <= CACHE_MATCH_RADIUS_KM)
+        .min_by(|a, b| a.0.total_cmp(&b.0))
+        .map(|(_, r)| r)
+}
+
 fn usable_cache(shared: &Shared, coordinate: Coordinate) -> Option<WeatherReport> {
-    let cached = lock(&shared.cache).clone()?;
-    let close = distance_km(cached.place.coordinate, coordinate) <= CACHE_MATCH_RADIUS_KM;
-    let fresh = age_seconds(&cached) <= shared.settings.max_cache_age_seconds;
-    (close && fresh).then_some(cached)
+    let cache = lock(&shared.cache);
+    let cached = nearest(&cache, coordinate)?;
+    (age_seconds(cached) <= shared.settings.max_cache_age_seconds).then(|| cached.clone())
 }
 
 #[derive(Serialize, Deserialize)]
 struct CacheEnvelope {
     schema_version: u32,
-    report: WeatherReport,
+    /// Schema 2.
+    #[serde(default)]
+    reports: Vec<WeatherReport>,
+    /// Schema 1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    report: Option<WeatherReport>,
 }
 
-fn load_cache(path: &Path) -> Option<WeatherReport> {
-    let bytes = std::fs::read(path).ok()?;
+fn load_cache(path: &Path) -> Vec<WeatherReport> {
+    let Ok(bytes) = std::fs::read(path) else {
+        return Vec::new();
+    };
     match serde_json::from_slice::<CacheEnvelope>(&bytes) {
-        Ok(envelope) if envelope.schema_version == CACHE_SCHEMA_VERSION => Some(envelope.report),
+        Ok(CacheEnvelope {
+            schema_version: CACHE_SCHEMA_VERSION,
+            mut reports,
+            ..
+        }) => {
+            reports.truncate(MAX_CACHED_REPORTS);
+            reports
+        }
+        Ok(CacheEnvelope {
+            schema_version: 1,
+            report: Some(report),
+            ..
+        }) => vec![report],
         // Corrupt, or written by another build: the cache is disposable.
-        _ => None,
+        _ => Vec::new(),
     }
 }
 
 fn store_cache(shared: &Shared, mut report: WeatherReport) {
     report.freshness = Freshness::Live;
     let mut cache = lock(&shared.cache);
-    // Two refreshes can finish out of order; keep the newest.
-    if cache
-        .as_ref()
+    // Two refreshes for one place can finish out of order; keep the newest.
+    if nearest(&cache, report.place.coordinate)
         .is_some_and(|c| c.fetched_at_unix > report.fetched_at_unix)
     {
         return;
     }
+    let here = report.place.coordinate;
+    let mut updated: Vec<WeatherReport> = Vec::with_capacity(MAX_CACHED_REPORTS);
+    updated.push(report);
+    updated.extend(
+        cache
+            .iter()
+            .filter(|r| distance_km(r.place.coordinate, here) > CACHE_MATCH_RADIUS_KM)
+            .cloned(),
+    );
+    updated.truncate(MAX_CACHED_REPORTS);
     if let Some(path) = &shared.cache_path {
         let envelope = CacheEnvelope {
             schema_version: CACHE_SCHEMA_VERSION,
-            report: report.clone(),
+            reports: updated.clone(),
+            report: None,
         };
         // Best effort: a failed write leaves the previous file intact.
         if let Ok(json) = serde_json::to_vec(&envelope) {
@@ -446,7 +521,7 @@ fn store_cache(shared: &Shared, mut report: WeatherReport) {
             let _ = forge_storage::write_atomic(path, &json);
         }
     }
-    *cache = Some(report);
+    *cache = updated;
 }
 
 #[cfg(test)]
@@ -683,7 +758,7 @@ mod tests {
         // Age is whole seconds; make sure the cache is at least 1 s old.
         {
             let mut cache = lock(&strict.shared.cache);
-            cache.as_mut().unwrap().fetched_at_unix -= 10;
+            cache[0].fetched_at_unix -= 10;
         }
         let err = block_on(strict.refresh(paris()).unwrap().result()).unwrap_err();
         assert!(matches!(err, WeatherError::Server { status: 503, .. }));
@@ -809,6 +884,67 @@ mod tests {
             block_on(app.search_places("Atlantis".into())),
             Err(WeatherError::Server { status: 404, .. })
         ));
+    }
+
+    #[test]
+    fn the_cache_keeps_one_report_per_place() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = StaticClient::new()
+            .route(
+                Method::Get,
+                forecast_url(&paris()),
+                Ok(Response::new(200, FORECAST)),
+            )
+            .route(
+                Method::Get,
+                forecast_url(&lyon()),
+                Ok(Response::new(200, FORECAST)),
+            );
+        let app = app(client, Some(dir.path()));
+        for place in [paris(), lyon(), paris()] {
+            block_on(app.refresh(place).unwrap().result()).unwrap();
+        }
+        let names: Vec<_> = app
+            .cached_reports()
+            .into_iter()
+            .map(|r| r.place.name)
+            .collect();
+        assert_eq!(names, ["Paris", "Lyon"], "newest first, one each");
+        assert_eq!(app.cached_report().unwrap().place.name, "Paris");
+        let lyon_report = app.cached_report_for(lyon()).unwrap();
+        assert_eq!(lyon_report.place.name, "Lyon");
+        assert!(matches!(lyon_report.freshness, Freshness::Cached { .. }));
+        let mut far = lyon();
+        far.coordinate.latitude += 1.0;
+        assert!(app.cached_report_for(far).is_none());
+
+        let restored = super::load_cache(&dir.path().join(CACHE_FILENAME));
+        assert_eq!(restored.len(), 2);
+    }
+
+    #[test]
+    fn a_schema_1_cache_is_still_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let client = StaticClient::new().route(
+            Method::Get,
+            forecast_url(&paris()),
+            Ok(Response::new(200, FORECAST)),
+        );
+        let report = block_on(app(client, None).refresh(paris()).unwrap().result()).unwrap();
+        // Schema 1 had no is_day or gusts per hour.
+        let mut json = serde_json::to_value(&report).unwrap();
+        for hour in json["hourly"].as_array_mut().unwrap() {
+            let hour = hour.as_object_mut().unwrap();
+            hour.remove("is_day");
+            hour.remove("wind_gusts_kmh");
+        }
+        let v1 = serde_json::json!({"schema_version": 1, "report": json});
+        std::fs::write(dir.path().join(CACHE_FILENAME), v1.to_string()).unwrap();
+        let cached = app(StaticClient::new(), Some(dir.path()))
+            .cached_report()
+            .unwrap();
+        assert_eq!(cached.place.name, "Paris");
+        assert!(cached.hourly[0].is_day);
     }
 
     #[test]
