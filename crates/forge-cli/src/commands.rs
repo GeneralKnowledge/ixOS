@@ -848,15 +848,27 @@ fn ios_preflight(
 
 /// Syncs the app's configuration, then builds the Rust static library and
 /// Swift bindings for an iOS app.
+///
+/// With `devtools`, the app crate is built with its `devtools` feature: the
+/// live connection to `forge device` (docs/forge-device.md). Never on
+/// unless asked, so an ordinary build contains none of it.
 fn package_ios(
     runner: &dyn CommandRunner,
     root: &Path,
     project_dir: &Path,
     cfg: &ForgeConfig,
+    devtools: bool,
 ) -> Result<(), String> {
     sync_app_config(project_dir, cfg)?;
     let generated = project_dir.join("Generated");
-    let package = script(root, "package-ios-library.sh").arg(generated_dir_arg(root, &generated));
+    let package = script(root, "package-ios-library.sh")
+        .arg(generated_dir_arg(root, &generated))
+        // The app's name on the live connection (forge device pair/connect).
+        .env("FORGE_APP_ID", &cfg.app.bundle_id)
+        .env(
+            "FORGE_RUST_FEATURES",
+            if devtools { "devtools" } else { "" },
+        );
     run_explained(runner, with_app_crate(package, cfg, project_dir))
 }
 
@@ -867,12 +879,13 @@ pub fn build_ios(
     project: &Path,
     package_only: bool,
     configuration: IosConfiguration,
+    devtools: bool,
 ) -> Result<(), String> {
     let (project_dir, cfg) = ios_project(root, project)?;
     if !package_only {
         ios_preflight(runner, builder, Purpose::Build)?;
     }
-    package_ios(runner, root, &project_dir, &cfg)?;
+    package_ios(runner, root, &project_dir, &cfg, devtools)?;
     if package_only {
         println!(
             "Rust static library and Swift bindings are ready for {} (open Xcode/ or build with {}).",
@@ -898,15 +911,21 @@ pub fn run_ios(
     root: &Path,
     project: &Path,
     configuration: IosConfiguration,
+    devtools: bool,
 ) -> Result<(), String> {
     let (project_dir, cfg) = ios_project(root, project)?;
     ios_preflight(runner, builder, Purpose::Run)?;
-    package_ios(runner, root, &project_dir, &cfg)?;
+    package_ios(runner, root, &project_dir, &cfg, devtools)?;
     println!("[forge] Building and installing ({})", configuration.name());
     builder.run(runner, &project_dir, configuration)?;
     println!(
         "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
     );
+    if devtools {
+        println!(
+            "[forge] Development build: with the app open, run `forge device pair` once, then `forge device connect`."
+        );
+    }
     Ok(())
 }
 
@@ -1192,6 +1211,7 @@ ios_device = true
             Path::new("apps/demo"),
             true,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap_err();
         assert!(err.contains("does not enable iOS"), "{err}");
@@ -1204,6 +1224,7 @@ ios_device = true
             Path::new("apps/demo"),
             true,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap_err();
         assert!(err.contains("forge.toml"), "{err}");
@@ -1222,11 +1243,37 @@ ios_device = true
             Path::new("apps/demo"),
             true,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap();
         let lines = mock.call_lines();
         assert_eq!(lines.len(), 1);
         assert!(lines[0].contains("package-ios-library.sh apps/demo/Generated"));
+        let calls = mock.calls();
+        assert_eq!(env_of(&calls[0], "FORGE_RUST_FEATURES"), Some("".into()));
+    }
+
+    #[test]
+    fn devtools_builds_turn_on_the_app_crates_feature() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = MockRunner::default();
+        mock.respond("bash", 0, "");
+        build_ios(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            true,
+            IosConfiguration::Debug,
+            true,
+        )
+        .unwrap();
+        let calls = mock.calls();
+        assert_eq!(
+            env_of(&calls[0], "FORGE_RUST_FEATURES"),
+            Some("devtools".into())
+        );
+        assert!(env_of(&calls[0], "FORGE_APP_ID").is_some());
     }
 
     #[test]
@@ -1240,6 +1287,7 @@ ios_device = true
             Path::new("apps/demo"),
             false,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
@@ -1255,6 +1303,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             IosConfiguration::Debug,
+            false,
         )
         .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
@@ -1287,6 +1336,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             IosConfiguration::Debug,
+            false,
         )
         .unwrap_err();
         assert!(err.contains("No iPhone is connected"), "{err}");
@@ -1314,6 +1364,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             IosConfiguration::Debug,
+            false,
         )
         .unwrap_err();
         assert!(
@@ -1383,6 +1434,7 @@ ios_device = true
             Path::new("apps/demo"),
             false,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap();
         run_ios(
@@ -1391,6 +1443,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             IosConfiguration::Debug,
+            false,
         )
         .unwrap();
         install_ios(&mock, &fake, Path::new("App.ipa")).unwrap();
@@ -1420,6 +1473,7 @@ ios_device = true
             Path::new("apps/demo"),
             false,
             IosConfiguration::Debug,
+            false,
         )
         .unwrap_err();
         assert!(err.contains("--package-only"), "{err}");

@@ -1,0 +1,21 @@
+[package]
+name = "forge-devproto"
+version = "0.1.0"
+description = "Wire protocol of the Forge Device live connection: framing, Noise handshake, messages, replay buffer. No I/O."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Noise handshake and transport encryption, pure Rust (no C, builds for iOS).
+snow = { version = "0.10", default-features = false, features = [
+    "use-curve25519",
+    "use-chacha20poly1305",
+    "use-blake2",
+    "use-getrandom",
+] }
+# Compact, self-describing encoding that tolerates added fields.
+ciborium = "0.2"
+serde = { workspace = true }
+thiserror = { workspace = true }
