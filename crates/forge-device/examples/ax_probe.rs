@@ -101,23 +101,35 @@ async fn run(args: Args) -> Result<()> {
     println!("device {} iOS {version}", device.udid);
     let legacy = lockdown.start_session(&pairing).await?;
 
-    // Stage 1.
+    // Stage 1. On Cati the handshake once failed with "InvalidContentType"
+    // right after a previous run, so a failed handshake starts the service
+    // again once.
     let started = Instant::now();
-    let (port, ssl) = lockdown
-        .start_service(SERVICE)
-        .await
-        .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
-    println!("[1] service started on port {port} (ssl {ssl})");
-    let socket = provider
-        .connect(port)
-        .await?
-        .get_socket()
-        .ok_or("no socket")?;
-    let socket = if ssl {
-        let _ = legacy;
-        strip_ssl(socket, &pairing).await?
-    } else {
-        socket
+    let _ = legacy;
+    let mut attempt = 0;
+    let socket = loop {
+        attempt += 1;
+        let (port, ssl) = lockdown
+            .start_service(SERVICE)
+            .await
+            .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
+        println!("[1] service started on port {port} (ssl {ssl})");
+        let socket = provider
+            .connect(port)
+            .await?
+            .get_socket()
+            .ok_or("no socket")?;
+        if !ssl {
+            break socket;
+        }
+        match strip_ssl(socket, &pairing).await {
+            Ok(raw) => break raw,
+            Err(err) if attempt == 1 => {
+                println!("[1] TLS handshake failed ({err}); starting the service again");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(err) => return Err(format!("stage 1, TLS handshake: {err}").into()),
+        }
     };
     let mut ax = Ax::new(RemoteServerClient::new(socket));
     ax.hello().await?;
@@ -128,6 +140,39 @@ async fn run(args: Args) -> Result<()> {
     let types = ax.call("deviceAllSupportedAuditTypes", vec![]).await?;
     println!("[2] audit types: {}", short(&types));
     println!("    ({} ms so far)", started.elapsed().as_millis());
+
+    // Stage 4 runs before the walk, with app monitoring still off, as
+    // pymobiledevice3's run_audit does. Every other event seen while waiting
+    // is listed, to tell "no answer" from "an answer we didn't recognise".
+    if args.audit {
+        let t = Instant::now();
+        let types = match unwrap(types) {
+            Value::Array(a) => a,
+            other => vec![other],
+        };
+        ax.send("deviceBeginAuditTypes:", vec![arg(Value::Array(types))])
+            .await?;
+        match ax.wait_event(AUDIT_DONE, Duration::from_secs(120)).await? {
+            Some(issues) => {
+                let issues = match unwrap(issues) {
+                    Value::Array(a) => a,
+                    other => vec![other],
+                };
+                println!(
+                    "[4] audit: {} issues in {} ms",
+                    issues.len(),
+                    t.elapsed().as_millis()
+                );
+                for i in issues.iter().take(20) {
+                    println!("    {}", short(&unwrap(i.clone())));
+                }
+            }
+            None => println!(
+                "[4] audit: no result within 120 s; other events: {}",
+                ax.other_events()
+            ),
+        }
+    }
 
     // Stage 3.
     ax.send(
@@ -217,33 +262,6 @@ async fn run(args: Args) -> Result<()> {
         }
     }
 
-    // Stage 4.
-    if args.audit {
-        let t = Instant::now();
-        let types = match unwrap(types) {
-            Value::Array(a) => a,
-            other => vec![other],
-        };
-        ax.send("deviceBeginAuditTypes:", vec![arg(Value::Array(types))])
-            .await?;
-        match ax.wait_event(AUDIT_DONE, Duration::from_secs(60)).await? {
-            Some(issues) => {
-                let issues = match unwrap(issues) {
-                    Value::Array(a) => a,
-                    other => vec![other],
-                };
-                println!(
-                    "[4] audit: {} issues in {} ms",
-                    issues.len(),
-                    t.elapsed().as_millis()
-                );
-                for i in issues.iter().take(20) {
-                    println!("    {}", short(&unwrap(i.clone())));
-                }
-            }
-            None => println!("[4] audit: no result within 60 s"),
-        }
-    }
     Ok(())
 }
 
@@ -309,6 +327,7 @@ async fn strip_ssl(
 struct Ax {
     client: RemoteServerClient<Box<dyn ReadWrite>>,
     events: VecDeque<(String, Vec<Value>)>,
+    others: Vec<String>,
 }
 
 impl Ax {
@@ -316,6 +335,7 @@ impl Ax {
         Self {
             client,
             events: VecDeque::new(),
+            others: Vec::new(),
         }
     }
 
@@ -381,13 +401,35 @@ impl Ax {
             let Some(msg) = self.read(left).await? else {
                 break;
             };
-            if let Some((n, args)) = notification(&msg) {
-                if n == name {
-                    return Ok(Some(payload(args)));
-                }
+            match notification(&msg) {
+                Some((n, args)) if n == name => return Ok(Some(payload(args))),
+                Some((n, _)) => self.others.push(n),
+                None => self.others.push(format!(
+                    "reply {}",
+                    short(&msg.data.unwrap_or(Value::Boolean(false)))
+                )),
             }
         }
         Ok(None)
+    }
+
+    /// Distinct names of the events `wait_event` skipped, with counts.
+    fn other_events(&self) -> String {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for n in &self.others {
+            match counts.iter_mut().find(|(k, _)| k == n) {
+                Some((_, c)) => *c += 1,
+                None => counts.push((n.clone(), 1)),
+            }
+        }
+        if counts.is_empty() {
+            return "none".into();
+        }
+        counts
+            .iter()
+            .map(|(k, c)| format!("{k} ×{c}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     async fn read(&mut self, wait: Duration) -> Result<Option<Message>> {

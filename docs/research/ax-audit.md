@@ -1,6 +1,20 @@
 # Spike: Apple's accessibility audit service from Linux
 
-Status: **probe built, not yet run on a phone** (2026-11-07). This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md), taken one step further: there is now a Rust probe that talks to the service, for the next phone session.
+Status: **stages 1–3 work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). The audit is not yet working, and the run with the DDI mounted is still to do. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
+
+## Results so far
+
+Run 1 was on Cati (iPhone 15 Pro Max, iOS 26.3.1) on 2026-11-07, with **no DDI mounted**. Pocket Library was built from #61's branch and in front.
+
+| Stage | Result |
+|---|---|
+| [1] Start the service | Works. Lockdown answered with `ssl true`, and the TLS-then-plaintext handshake worked. One later run failed the handshake (`InvalidContentType`) straight after a previous run, so the probe now retries once |
+| [2] Capabilities, audit types | Works (`hostApiVersion`, list of audit types) |
+| [3] Element walk | **Works.** 10 elements in 514 ms, 12–24 ms per element including three attribute reads. **SwiftUI identifiers come through:** `library.add`, `library.empty.add`, `library.filter`. Labels and values come through too, for example the search field's placeholder. The tab bar buttons have no identifier, which is a gap in the app, not in the service. With the Claude app in front it read that app's identifiers too (`BackButton`, `thread-checklist-pill`), so the service reads any foreground app, not only our builds |
+| [4] Press | Reported as sent (`pressed library.add`, exit 0). Whether the button reacted on screen was not confirmed |
+| [4] Audit | Not working yet. One run hit the TLS failure above. The other timed out after 60 s with the Claude app in front. The probe now runs the audit before the walk, with app monitoring off as pymobiledevice3 does, waits 120 s, and lists every other event it saw, so the next run tells "no answer" apart from "an answer we didn't recognise" |
+
+What this means: for reading the screen, no runner, no app slot and no DDI are needed. Walking a screen is fast enough for `forge ui tree` (well under a second for a typical screen). Text entry still needs WDA.
 
 ## Question
 
@@ -58,7 +72,7 @@ It prints one line per stage, so a failure shows how far it got:
 | `[2] capabilities / audit types` | The DTX connection and the TLS stripping work |
 | `[3] N caption=… Label=… Identifier=… Value=…` | One line per element, with the time per element. **The key check is whether SwiftUI's `.accessibilityIdentifier` shows up as `Identifier`** |
 | `[4] pressed …` | Pressing works. Check on the phone that the button actually reacted |
-| `[4] audit: N issues` | Apple's audit ran |
+| `[4] audit: N issues` | Apple's audit ran. On a timeout it lists the other events it received |
 
 The decoding and archiving are unit-tested on Linux (`cargo test -p forge-device --features ax-probe --example ax_probe`). Nothing here has met a real phone yet.
 
