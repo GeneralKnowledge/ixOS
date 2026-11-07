@@ -13,7 +13,7 @@ pub enum ReadingStatus {
 
 /// How the library list is ordered.
 #[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum SortOrder {
+pub enum LibrarySort {
     /// Newest first.
     #[default]
     RecentlyAdded,
@@ -32,7 +32,7 @@ pub struct LibraryQuery {
     pub text: String,
     /// `None` shows every status.
     pub status: Option<ReadingStatus>,
-    pub sort: SortOrder,
+    pub sort: LibrarySort,
 }
 
 /// Where a book came from. Catalogue books remember their key, so searching
@@ -133,17 +133,17 @@ pub struct LibraryStats {
 }
 
 #[derive(uniffi::Record, Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-pub struct Settings {
+pub struct LibrarySettings {
     /// The order the library opens with.
-    pub default_sort: SortOrder,
+    pub default_sort: LibrarySort,
     /// Off: the app never contacts the online catalogue.
     pub catalogue_enabled: bool,
 }
 
-impl Default for Settings {
+impl Default for LibrarySettings {
     fn default() -> Self {
         Self {
-            default_sort: SortOrder::RecentlyAdded,
+            default_sort: LibrarySort::RecentlyAdded,
             catalogue_enabled: true,
         }
     }
@@ -188,7 +188,7 @@ pub enum LibraryEvent {
     /// The library changed and was saved. Re-run the current query.
     Changed { revision: u64 },
     /// Settings changed.
-    SettingsChanged { settings: Settings },
+    SettingsChanged { settings: LibrarySettings },
     /// This stream fell behind and missed `count` events; re-read everything.
     EventsDropped { count: u64 },
 }

@@ -51,7 +51,7 @@ fn all() -> LibraryQuery {
     LibraryQuery {
         text: String::new(),
         status: None,
-        sort: SortOrder::RecentlyAdded,
+        sort: LibrarySort::RecentlyAdded,
     }
 }
 
@@ -62,8 +62,8 @@ fn everything_survives_a_relaunch() {
     let dune = block_on(library.add_book(input("Dune", Some(400)))).unwrap();
     let emma = block_on(library.add_book(input("Emma", None))).unwrap();
     block_on(library.update_progress(dune.id, 120)).unwrap();
-    block_on(library.update_settings(Settings {
-        default_sort: SortOrder::Title,
+    block_on(library.update_settings(LibrarySettings {
+        default_sort: LibrarySort::Title,
         catalogue_enabled: false,
     }))
     .unwrap();
@@ -89,7 +89,7 @@ fn everything_survives_a_relaunch() {
         (dune.status, dune.current_page),
         (ReadingStatus::Reading, 120)
     );
-    assert_eq!(reopened.settings().default_sort, SortOrder::Title);
+    assert_eq!(reopened.settings().default_sort, LibrarySort::Title);
     assert_eq!(
         reopened.book(emma.id),
         Err(LibraryError::NotFound { id: emma.id })
@@ -216,9 +216,9 @@ fn a_partial_import_keeps_the_book_and_says_what_is_missing() {
 fn the_catalogue_can_be_switched_off() {
     let dir = tempfile::tempdir().unwrap();
     let library = open(dir.path());
-    block_on(library.update_settings(Settings {
+    block_on(library.update_settings(LibrarySettings {
         catalogue_enabled: false,
-        ..Settings::default()
+        ..LibrarySettings::default()
     }))
     .unwrap();
     assert_eq!(
@@ -298,8 +298,8 @@ fn events_announce_saved_changes_and_end_on_shutdown() {
         block_on(events.next()),
         Some(LibraryEvent::Changed { revision: 1 })
     );
-    let settings = Settings {
-        default_sort: SortOrder::Author,
+    let settings = LibrarySettings {
+        default_sort: LibrarySort::Author,
         catalogue_enabled: true,
     };
     block_on(library.update_settings(settings.clone())).unwrap();
@@ -414,8 +414,8 @@ fn export_and_erase() {
     assert_eq!((info.books, info.saved_covers), (2, 1));
     assert!(info.bytes > 0);
 
-    block_on(library.update_settings(Settings {
-        default_sort: SortOrder::Progress,
+    block_on(library.update_settings(LibrarySettings {
+        default_sort: LibrarySort::Progress,
         catalogue_enabled: true,
     }))
     .unwrap();
@@ -425,7 +425,7 @@ fn export_and_erase() {
         (info.books, info.saved_covers, info.activity_entries),
         (0, 0, 0)
     );
-    assert_eq!(library.settings().default_sort, SortOrder::Progress);
+    assert_eq!(library.settings().default_sort, LibrarySort::Progress);
     assert!(open(dir.path()).books(all()).is_empty());
 }
 
@@ -449,10 +449,10 @@ fn concurrent_commands_all_land() {
 
 #[test]
 fn default_query_uses_the_preferred_order() {
-    let q = default_query(Settings {
-        default_sort: SortOrder::Title,
+    let q = default_query(LibrarySettings {
+        default_sort: LibrarySort::Title,
         catalogue_enabled: true,
     });
-    assert_eq!(q.sort, SortOrder::Title);
+    assert_eq!(q.sort, LibrarySort::Title);
     assert!(q.text.is_empty() && q.status.is_none());
 }

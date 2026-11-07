@@ -136,7 +136,7 @@ struct LibraryView: View {
                     }
                 }
                 Picker("Sort By", selection: bindable.sort) {
-                    ForEach(SortOrder.allCases) { order in
+                    ForEach(LibrarySort.allCases) { order in
                         Text(order.label).tag(order)
                     }
                 }

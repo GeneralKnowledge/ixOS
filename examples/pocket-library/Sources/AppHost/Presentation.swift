@@ -85,7 +85,7 @@ extension View {
     }
 }
 
-extension ReadingStatus: @retroactive CaseIterable, @retroactive Identifiable {
+extension ReadingStatus: CaseIterable, Identifiable {
     public static var allCases: [ReadingStatus] { [.wantToRead, .reading, .finished] }
     public var id: Self { self }
 
@@ -114,8 +114,8 @@ extension ReadingStatus: @retroactive CaseIterable, @retroactive Identifiable {
     }
 }
 
-extension SortOrder: @retroactive CaseIterable, @retroactive Identifiable {
-    public static var allCases: [SortOrder] { [.recentlyAdded, .title, .author, .progress] }
+extension LibrarySort: CaseIterable, Identifiable {
+    public static var allCases: [LibrarySort] { [.recentlyAdded, .title, .author, .progress] }
     public var id: Self { self }
 
     public var label: String {
@@ -128,8 +128,8 @@ extension SortOrder: @retroactive CaseIterable, @retroactive Identifiable {
     }
 }
 
-extension Book: @retroactive Identifiable {}
-extension CatalogueBook: @retroactive Identifiable {
+extension Book: Identifiable {}
+extension CatalogueBook: Identifiable {
     public var id: String { key }
 }
 

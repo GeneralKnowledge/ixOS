@@ -114,7 +114,7 @@ impl Library {
         lock(&self.state).data.history(book_id, limit as usize)
     }
 
-    pub fn settings(&self) -> Settings {
+    pub fn settings(&self) -> LibrarySettings {
         lock(&self.state).data.settings.clone()
     }
 
@@ -367,9 +367,12 @@ impl Library {
         .await
     }
 
-    // MARK: Settings and data
+    // MARK: LibrarySettings and data
 
-    pub async fn update_settings(&self, settings: Settings) -> Result<Settings, LibraryError> {
+    pub async fn update_settings(
+        &self,
+        settings: LibrarySettings,
+    ) -> Result<LibrarySettings, LibraryError> {
         self.ensure_running()?;
         let (state, store, events) = self.parts();
         background("update-settings", move || {
@@ -590,7 +593,7 @@ impl LibraryEvents {
 /// The library's default query for a fresh screen: everything, in the
 /// user's preferred order.
 #[uniffi::export]
-pub fn default_query(settings: Settings) -> LibraryQuery {
+pub fn default_query(settings: LibrarySettings) -> LibraryQuery {
     LibraryQuery {
         text: String::new(),
         status: None,

@@ -178,7 +178,7 @@ impl Store {
 mod tests {
     use super::*;
     use crate::domain::validate;
-    use crate::model::{BookInput, BookSource, ReadingStatus, SortOrder};
+    use crate::model::{BookInput, BookSource, LibrarySort, ReadingStatus};
 
     fn sample() -> LibraryData {
         let mut data = LibraryData::default();
@@ -195,7 +195,7 @@ mod tests {
         };
         data.add(validate(input).unwrap(), BookSource::Manual, None, 1)
             .unwrap();
-        data.settings.default_sort = SortOrder::Title;
+        data.settings.default_sort = LibrarySort::Title;
         data
     }
 

@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::LibraryError;
 use crate::model::{
-    ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibraryStats,
-    ReadingStatus, Settings, SortOrder,
+    ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibrarySettings,
+    LibrarySort, LibraryStats, ReadingStatus,
 };
 
 pub const MAX_TITLE_CHARS: usize = 300;
@@ -58,7 +58,7 @@ pub struct LibraryData {
     #[serde(default)]
     pub activity: Vec<ActivityEntry>,
     #[serde(default)]
-    pub settings: Settings,
+    pub settings: LibrarySettings,
 }
 
 impl StoredBook {
@@ -403,11 +403,11 @@ impl LibraryData {
             })
             .collect();
         match query.sort {
-            SortOrder::RecentlyAdded => {
+            LibrarySort::RecentlyAdded => {
                 books.sort_by(|a, b| b.added_at_ms.cmp(&a.added_at_ms).then(b.id.cmp(&a.id)))
             }
-            SortOrder::Title => books.sort_by_cached_key(|b| (sort_title(&b.title), b.id)),
-            SortOrder::Author => books.sort_by_cached_key(|b| {
+            LibrarySort::Title => books.sort_by_cached_key(|b| (sort_title(&b.title), b.id)),
+            LibrarySort::Author => books.sort_by_cached_key(|b| {
                 (
                     b.author.is_empty(),
                     fold(&b.author),
@@ -415,7 +415,7 @@ impl LibraryData {
                     b.id,
                 )
             }),
-            SortOrder::Progress => books.sort_by(|a, b| {
+            LibrarySort::Progress => books.sort_by(|a, b| {
                 let known =
                     |x: &StoredBook| x.total_pages.is_some() || x.status == ReadingStatus::Finished;
                 known(b)
@@ -790,28 +790,32 @@ mod tests {
             .collect::<Vec<_>>()
         };
         assert_eq!(
-            q("", None, SortOrder::RecentlyAdded),
+            q("", None, LibrarySort::RecentlyAdded),
             vec![zen, atlas, rose, hobbit]
         );
         assert_eq!(
-            q("", None, SortOrder::Title),
+            q("", None, LibrarySort::Title),
             vec![atlas, hobbit, rose, zen]
         );
         assert_eq!(
-            q("", None, SortOrder::Author),
+            q("", None, LibrarySort::Author),
             vec![hobbit, atlas, rose, zen],
             "J before T before U; no author last"
         );
         assert_eq!(
-            q("", None, SortOrder::Progress),
+            q("", None, LibrarySort::Progress),
             vec![zen, hobbit, rose, atlas]
         );
-        assert_eq!(q("tolkien", None, SortOrder::Title), vec![atlas, hobbit]);
-        assert_eq!(q("TOLKIEN hob", None, SortOrder::Title), vec![hobbit]);
-        assert_eq!(q("eco", None, SortOrder::Title), vec![rose], "accents fold");
-        assert_eq!(q("", Some(Reading), SortOrder::Title), vec![hobbit, rose]);
-        assert_eq!(q("", Some(Finished), SortOrder::Title), vec![zen]);
-        assert!(q("nothing matches", None, SortOrder::Title).is_empty());
+        assert_eq!(q("tolkien", None, LibrarySort::Title), vec![atlas, hobbit]);
+        assert_eq!(q("TOLKIEN hob", None, LibrarySort::Title), vec![hobbit]);
+        assert_eq!(
+            q("eco", None, LibrarySort::Title),
+            vec![rose],
+            "accents fold"
+        );
+        assert_eq!(q("", Some(Reading), LibrarySort::Title), vec![hobbit, rose]);
+        assert_eq!(q("", Some(Finished), LibrarySort::Title), vec![zen]);
+        assert!(q("nothing matches", None, LibrarySort::Title).is_empty());
     }
 
     #[test]

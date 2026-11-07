@@ -15,7 +15,7 @@ struct SettingsView: View {
             Form {
                 Section {
                     Picker("Sort library by", selection: sortBinding) {
-                        ForEach(SortOrder.allCases) { order in
+                        ForEach(LibrarySort.allCases) { order in
                             Text(order.label).tag(order)
                         }
                     }
@@ -82,7 +82,7 @@ struct SettingsView: View {
         }
     }
 
-    private var sortBinding: Binding<SortOrder> {
+    private var sortBinding: Binding<LibrarySort> {
         Binding(
             get: { model.settings.defaultSort },
             set: { sort in
@@ -108,7 +108,7 @@ struct SettingsView: View {
 
     /// Saves through Rust; a failure is shown and the control snaps back,
     /// because it always shows what Rust has.
-    private func save(_ settings: Settings) {
+    private func save(_ settings: LibrarySettings) {
         Task {
             do {
                 try await model.updateSettings(settings)

@@ -706,7 +706,7 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      */
     func setStatus(id: UInt64, status: ReadingStatus) async throws  -> Book
     
-    func settings()  -> Settings
+    func settings()  -> LibrarySettings
     
     /**
      * Refuses new commands with `ShutDown` and ends every event stream.
@@ -733,7 +733,7 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      */
     func updateProgress(id: UInt64, page: UInt32) async throws  -> Book
     
-    func updateSettings(settings: Settings) async throws  -> Settings
+    func updateSettings(settings: LibrarySettings) async throws  -> LibrarySettings
     
 }
 /**
@@ -1041,8 +1041,8 @@ open func setStatus(id: UInt64, status: ReadingStatus)async throws  -> Book  {
         )
 }
     
-open func settings() -> Settings  {
-    return try!  FfiConverterTypeSettings_lift(try! rustCall() {
+open func settings() -> LibrarySettings  {
+    return try!  FfiConverterTypeLibrarySettings_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_library_settings(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -1124,18 +1124,18 @@ open func updateProgress(id: UInt64, page: UInt32)async throws  -> Book  {
         )
 }
     
-open func updateSettings(settings: Settings)async throws  -> Settings  {
+open func updateSettings(settings: LibrarySettings)async throws  -> LibrarySettings  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_forge_ffi_fn_method_library_update_settings(
-                        self.uniffiCloneHandle(),FfiConverterTypeSettings_lower(settings)
+                        self.uniffiCloneHandle(),FfiConverterTypeLibrarySettings_lower(settings)
                 )
             },
             pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
             completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
             freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterTypeSettings_lift,
+            liftFunc: FfiConverterTypeLibrarySettings_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
 }
@@ -1815,7 +1815,7 @@ public struct LibraryQuery: Equatable, Hashable {
      * `None` shows every status.
      */
     public var status: ReadingStatus?
-    public var sort: SortOrder
+    public var sort: LibrarySort
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -1825,7 +1825,7 @@ public struct LibraryQuery: Equatable, Hashable {
          */text: String, 
         /**
          * `None` shows every status.
-         */status: ReadingStatus?, sort: SortOrder) {
+         */status: ReadingStatus?, sort: LibrarySort) {
         self.text = text
         self.status = status
         self.sort = sort
@@ -1849,14 +1849,14 @@ public struct FfiConverterTypeLibraryQuery: FfiConverterRustBuffer {
             try LibraryQuery(
                 text: FfiConverterString.read(from: &buf), 
                 status: FfiConverterOptionTypeReadingStatus.read(from: &buf), 
-                sort: FfiConverterTypeSortOrder.read(from: &buf)
+                sort: FfiConverterTypeLibrarySort.read(from: &buf)
         )
     }
 
     public static func write(_ value: LibraryQuery, into buf: inout [UInt8]) {
         FfiConverterString.write(value.text, into: &buf)
         FfiConverterOptionTypeReadingStatus.write(value.status, into: &buf)
-        FfiConverterTypeSortOrder.write(value.sort, into: &buf)
+        FfiConverterTypeLibrarySort.write(value.sort, into: &buf)
     }
 }
 
@@ -1873,6 +1873,72 @@ public func FfiConverterTypeLibraryQuery_lift(_ buf: RustBuffer) throws -> Libra
 #endif
 public func FfiConverterTypeLibraryQuery_lower(_ value: LibraryQuery) -> RustBuffer {
     return FfiConverterTypeLibraryQuery.lower(value)
+}
+
+
+public struct LibrarySettings: Equatable, Hashable {
+    /**
+     * The order the library opens with.
+     */
+    public var defaultSort: LibrarySort
+    /**
+     * Off: the app never contacts the online catalogue.
+     */
+    public var catalogueEnabled: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The order the library opens with.
+         */defaultSort: LibrarySort, 
+        /**
+         * Off: the app never contacts the online catalogue.
+         */catalogueEnabled: Bool) {
+        self.defaultSort = defaultSort
+        self.catalogueEnabled = catalogueEnabled
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LibrarySettings: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLibrarySettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibrarySettings {
+        return
+            try LibrarySettings(
+                defaultSort: FfiConverterTypeLibrarySort.read(from: &buf), 
+                catalogueEnabled: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LibrarySettings, into buf: inout [UInt8]) {
+        FfiConverterTypeLibrarySort.write(value.defaultSort, into: &buf)
+        FfiConverterBool.write(value.catalogueEnabled, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibrarySettings_lift(_ buf: RustBuffer) throws -> LibrarySettings {
+    return try FfiConverterTypeLibrarySettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibrarySettings_lower(_ value: LibrarySettings) -> RustBuffer {
+    return FfiConverterTypeLibrarySettings.lower(value)
 }
 
 
@@ -1967,72 +2033,6 @@ public func FfiConverterTypeLibraryStats_lift(_ buf: RustBuffer) throws -> Libra
 #endif
 public func FfiConverterTypeLibraryStats_lower(_ value: LibraryStats) -> RustBuffer {
     return FfiConverterTypeLibraryStats.lower(value)
-}
-
-
-public struct Settings: Equatable, Hashable {
-    /**
-     * The order the library opens with.
-     */
-    public var defaultSort: SortOrder
-    /**
-     * Off: the app never contacts the online catalogue.
-     */
-    public var catalogueEnabled: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * The order the library opens with.
-         */defaultSort: SortOrder, 
-        /**
-         * Off: the app never contacts the online catalogue.
-         */catalogueEnabled: Bool) {
-        self.defaultSort = defaultSort
-        self.catalogueEnabled = catalogueEnabled
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension Settings: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeSettings: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Settings {
-        return
-            try Settings(
-                defaultSort: FfiConverterTypeSortOrder.read(from: &buf), 
-                catalogueEnabled: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: Settings, into buf: inout [UInt8]) {
-        FfiConverterTypeSortOrder.write(value.defaultSort, into: &buf)
-        FfiConverterBool.write(value.catalogueEnabled, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSettings_lift(_ buf: RustBuffer) throws -> Settings {
-    return try FfiConverterTypeSettings.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSettings_lower(_ value: Settings) -> RustBuffer {
-    return FfiConverterTypeSettings.lower(value)
 }
 
 
@@ -2550,7 +2550,7 @@ public enum LibraryEvent: Equatable, Hashable {
     /**
      * Settings changed.
      */
-    case settingsChanged(settings: Settings
+    case settingsChanged(settings: LibrarySettings
     )
     /**
      * This stream fell behind and missed `count` events; re-read everything.
@@ -2581,7 +2581,7 @@ public struct FfiConverterTypeLibraryEvent: FfiConverterRustBuffer {
         case 1: return .changed(revision: try FfiConverterUInt64.read(from: &buf)
         )
         
-        case 2: return .settingsChanged(settings: try FfiConverterTypeSettings.read(from: &buf)
+        case 2: return .settingsChanged(settings: try FfiConverterTypeLibrarySettings.read(from: &buf)
         )
         
         case 3: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
@@ -2602,7 +2602,7 @@ public struct FfiConverterTypeLibraryEvent: FfiConverterRustBuffer {
         
         case let .settingsChanged(settings):
             writeInt(&buf, Int32(2))
-            FfiConverterTypeSettings.write(settings, into: &buf)
+            FfiConverterTypeLibrarySettings.write(settings, into: &buf)
             
         
         case let .eventsDropped(count):
@@ -2626,6 +2626,101 @@ public func FfiConverterTypeLibraryEvent_lift(_ buf: RustBuffer) throws -> Libra
 #endif
 public func FfiConverterTypeLibraryEvent_lower(_ value: LibraryEvent) -> RustBuffer {
     return FfiConverterTypeLibraryEvent.lower(value)
+}
+
+
+
+/**
+ * How the library list is ordered.
+ */
+
+public enum LibrarySort: Equatable, Hashable {
+    
+    /**
+     * Newest first.
+     */
+    case recentlyAdded
+    /**
+     * A–Z, ignoring a leading "The", "A" or "An".
+     */
+    case title
+    /**
+     * A–Z by author, then title.
+     */
+    case author
+    /**
+     * Most read first; books without a page count last.
+     */
+    case progress
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LibrarySort: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLibrarySort: FfiConverterRustBuffer {
+    typealias SwiftType = LibrarySort
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibrarySort {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .recentlyAdded
+        
+        case 2: return .title
+        
+        case 3: return .author
+        
+        case 4: return .progress
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LibrarySort, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .recentlyAdded:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .title:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .author:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .progress:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibrarySort_lift(_ buf: RustBuffer) throws -> LibrarySort {
+    return try FfiConverterTypeLibrarySort.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLibrarySort_lower(_ value: LibrarySort) -> RustBuffer {
+    return FfiConverterTypeLibrarySort.lower(value)
 }
 
 
@@ -2702,101 +2797,6 @@ public func FfiConverterTypeReadingStatus_lift(_ buf: RustBuffer) throws -> Read
 #endif
 public func FfiConverterTypeReadingStatus_lower(_ value: ReadingStatus) -> RustBuffer {
     return FfiConverterTypeReadingStatus.lower(value)
-}
-
-
-
-/**
- * How the library list is ordered.
- */
-
-public enum SortOrder: Equatable, Hashable {
-    
-    /**
-     * Newest first.
-     */
-    case recentlyAdded
-    /**
-     * A–Z, ignoring a leading "The", "A" or "An".
-     */
-    case title
-    /**
-     * A–Z by author, then title.
-     */
-    case author
-    /**
-     * Most read first; books without a page count last.
-     */
-    case progress
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension SortOrder: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeSortOrder: FfiConverterRustBuffer {
-    typealias SwiftType = SortOrder
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SortOrder {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .recentlyAdded
-        
-        case 2: return .title
-        
-        case 3: return .author
-        
-        case 4: return .progress
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: SortOrder, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .recentlyAdded:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .title:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .author:
-            writeInt(&buf, Int32(3))
-        
-        
-        case .progress:
-            writeInt(&buf, Int32(4))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSortOrder_lift(_ buf: RustBuffer) throws -> SortOrder {
-    return try FfiConverterTypeSortOrder.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeSortOrder_lower(_ value: SortOrder) -> RustBuffer {
-    return FfiConverterTypeSortOrder.lower(value)
 }
 
 
@@ -3167,11 +3167,11 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
  * The library's default query for a fresh screen: everything, in the
  * user's preferred order.
  */
-public func defaultQuery(settings: Settings) -> LibraryQuery  {
+public func defaultQuery(settings: LibrarySettings) -> LibraryQuery  {
     return try!  FfiConverterTypeLibraryQuery_lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_func_default_query(
-        FfiConverterTypeSettings_lower(settings),uniffiCallStatus
+        FfiConverterTypeLibrarySettings_lower(settings),uniffiCallStatus
     )
 })
 }
@@ -3202,7 +3202,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_default_query() != 49611) {
+    if (uniffi_forge_ffi_checksum_func_default_query() != 37628) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_epub_words_per_page() != 4754) {
@@ -3247,7 +3247,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_set_status() != 39346) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_settings() != 6236) {
+    if (uniffi_forge_ffi_checksum_method_library_settings() != 54012) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_shutdown() != 61312) {
@@ -3265,7 +3265,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_update_progress() != 42313) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_update_settings() != 55023) {
+    if (uniffi_forge_ffi_checksum_method_library_update_settings() != 47551) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_libraryevents_cancel() != 6579) {

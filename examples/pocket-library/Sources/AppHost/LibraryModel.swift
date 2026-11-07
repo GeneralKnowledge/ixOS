@@ -22,11 +22,11 @@ public final class LibraryModel {
     public private(set) var totalBooks = 0
     public private(set) var stats: LibraryStats?
     public private(set) var history: [ActivityEntry] = []
-    public private(set) var settings = Settings(defaultSort: .recentlyAdded, catalogueEnabled: true)
+    public private(set) var settings = LibrarySettings(defaultSort: .recentlyAdded, catalogueEnabled: true)
 
     public var searchText = "" { didSet { reload() } }
     public var statusFilter: ReadingStatus? { didSet { reload() } }
-    public var sort: SortOrder = .recentlyAdded { didSet { reload() } }
+    public var sort: LibrarySort = .recentlyAdded { didSet { reload() } }
 
     @ObservationIgnored public private(set) var library: Library?
     @ObservationIgnored private let storageDirectory: String?
@@ -145,7 +145,7 @@ public final class LibraryModel {
     // Each throws the Rust `LibraryError`, so the screen that started it can
     // show the problem where the user is (an alert on a sheet, say).
 
-    private func run<T>(_ command: (Library) async throws -> T) async throws -> T {
+    private func run<T: Sendable>(_ command: (Library) async throws -> T) async throws -> T {
         guard let library else { throw LibraryError.ShutDown }
         let result = try await command(library)
         // The event updates the screen too; reading now avoids a flicker.
@@ -194,7 +194,7 @@ public final class LibraryModel {
         return try await run { try await $0.importEpub(path: url.path) }
     }
 
-    public func updateSettings(_ settings: Settings) async throws {
+    public func updateSettings(_ settings: LibrarySettings) async throws {
         self.settings = try await run { try await $0.updateSettings(settings: settings) }
     }
 
