@@ -27,31 +27,59 @@ final class NotesModelTests: XCTestCase {
     func testNotesAreSavedAndSurviveARestart() async throws {
         let dir = try makeDirectory()
         let model = await openModel(dir)
-        XCTAssertNil(model.openError)
+        XCTAssertEqual(model.phase, .ready)
         XCTAssertEqual(model.notes, [])
 
-        model.draft = "first"
-        await model.addNote()
-        model.draft = "second"
-        await model.addNote()
-        XCTAssertEqual(model.notes.map(\.text), ["second", "first"])
-        XCTAssertEqual(model.draft, "")
+        try await model.add(text: "first")
+        try await model.add(text: "second\nwith more")
+        XCTAssertEqual(model.notes.map(\.text), ["second\nwith more", "first"])
+        XCTAssertEqual(model.notes[0].title, "second")
+        XCTAssertEqual(model.notes[0].preview, "with more")
+        XCTAssertEqual(model.saveCount, 2)
         model.close()
 
         let reopened = await openModel(dir)
-        XCTAssertEqual(reopened.notes.map(\.text), ["second", "first"])
+        XCTAssertEqual(reopened.notes.map(\.text), ["second\nwith more", "first"])
         await reopened.delete(reopened.notes[1])
-        XCTAssertEqual(reopened.notes.map(\.text), ["second"])
+        XCTAssertEqual(reopened.notes.map(\.text), ["second\nwith more"])
         reopened.close()
+    }
+
+    @MainActor
+    func testEditingAndSearchGoThroughRust() async throws {
+        let dir = try makeDirectory()
+        let model = await openModel(dir)
+        try await model.add(text: "Buy milk")
+        try await model.add(text: "Call Sam")
+        let milk = try XCTUnwrap(model.notes.last)
+
+        let saved = await model.update(milk, text: "Buy oat milk")
+        XCTAssertTrue(saved)
+        XCTAssertEqual(model.note(id: milk.id)?.text, "Buy oat milk")
+
+        model.searchText = "MILK"
+        XCTAssertEqual(model.visibleNotes.map(\.text), ["Buy oat milk"])
+        model.searchText = "eggs"
+        XCTAssertEqual(model.visibleNotes, [])
+        model.searchText = ""
+        XCTAssertEqual(model.visibleNotes.count, 2)
+
+        // Rust's validation reaches the alert, and nothing changes.
+        let refused = await model.update(milk, text: "   ")
+        XCTAssertFalse(refused)
+        XCTAssertNotNil(model.actionError)
+        XCTAssertEqual(model.note(id: milk.id)?.text, "Buy oat milk")
+        model.close()
     }
 
     @MainActor
     func testRustErrorsArriveTyped() async throws {
         let dir = try makeDirectory()
         let model = await openModel(dir)
-        model.draft = "   "
-        await model.addNote()
-        XCTAssertNotNil(model.errorMessage)
+        do {
+            try await model.add(text: "   ")
+            XCTFail("expected InvalidInput")
+        } catch AppError.InvalidInput {}
         XCTAssertEqual(model.notes, [])
 
         let core = try XCTUnwrap(model.core)
@@ -85,7 +113,9 @@ final class NotesModelTests: XCTestCase {
         let newer = #"{"schema_version": 99, "data": {}}"#
         try newer.write(to: file, atomically: true, encoding: .utf8)
         let model = await openModel(dir)
-        XCTAssertNotNil(model.openError)
+        guard case .failed = model.phase else {
+            return XCTFail("expected the failed phase, got \(model.phase)")
+        }
         XCTAssertNil(model.core)
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), newer)
     }

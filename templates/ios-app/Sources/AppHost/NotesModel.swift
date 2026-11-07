@@ -1,32 +1,51 @@
 @preconcurrency import ForgeFFI
 import Foundation
+import Observation
 
-/// Presentation state for the notes screen.
+/// The app's presentation state: what the screens show, and the actions they
+/// can take. It holds no app rules. Every change goes to the Rust `AppCore`
+/// (your code in `rust/src/lib.rs`), and the notes shown come from Rust,
+/// through a command's result or a `.notesChanged` event.
 ///
-/// Holds no app rules: every change goes to the Rust `AppCore` (your code in
-/// `rust/src/lib.rs`), and the list shown comes from Rust, through a
-/// command's result or a `.notesChanged` event. Every call is awaited, so the
-/// main actor is never blocked; Rust does slow work on its own threads.
+/// Views read its properties directly (`@Observable` tracks what each view
+/// uses) and call its `async` methods from `Task { }` or `.task`. Rust does
+/// slow work on its own threads, so the main actor never blocks.
+@Observable
 @MainActor
-public final class NotesModel: ObservableObject {
-    @Published public private(set) var notes: [Note] = []
-    @Published public var draft = ""
-    @Published public var url = "https://example.com"
-    @Published public private(set) var urlResult: String?
-    @Published public private(set) var isCheckingURL = false
-    @Published public var errorMessage: String?
-    /// True until the first open attempt finishes.
-    @Published public private(set) var isLoading = true
-    /// Set when the app could not be opened (for example unreadable data).
-    @Published public private(set) var openError: String?
-    /// The lifecycle phase last reported to Rust.
-    @Published public private(set) var lifecyclePhase: AppPhase = .launching
+public final class NotesModel {
+    /// Where opening the Rust core has got to. The root view shows a
+    /// spinner, the app, or a recovery screen from this.
+    public enum Phase: Equatable {
+        case loading
+        case ready
+        case failed(String)
+    }
+
+    public private(set) var phase: Phase = .loading
+    /// Every note, newest first, as Rust last reported it.
+    public private(set) var notes: [Note] = []
+    /// The search field's text. `visibleNotes` filters by it.
+    public var searchText = ""
+    /// A failed action, for an alert. The view clears it when dismissed.
+    public var actionError: String?
+    /// Increases after each successful save; views use it as a haptic trigger.
+    public private(set) var saveCount = 0
+
+    // Network check (Settings screen): an async Rust request that the user,
+    // or the screen closing, can cancel part way.
+    public var url = "https://example.com"
+    public private(set) var urlResult: String?
+    public private(set) var isCheckingURL = false
+
+    /// The lifecycle phase last reported to Rust (not to be confused with
+    /// `phase`, which is how far opening the core has got).
+    public private(set) var lifecyclePhase: AppPhase = .launching
 
     public private(set) var core: AppCore?
     private let storageDirectory: String?
-    private var eventTask: Task<Void, Never>?
-    private var urlCheck: Cancellation?
-    private var events: AppEvents?
+    @ObservationIgnored private var eventTask: Task<Void, Never>?
+    @ObservationIgnored private var events: AppEvents?
+    @ObservationIgnored private var urlCheck: Cancellation?
 
     /// - Parameter storageDirectory: where Rust keeps `notes.json`. Defaults
     ///   to the app's Application Support folder; tests pass a temporary one.
@@ -35,14 +54,27 @@ public final class NotesModel: ObservableObject {
         self.storageDirectory = storageDirectory
     }
 
+    /// The notes to list: all of them, or Rust's matches for `searchText`.
+    public var visibleNotes: [Note] {
+        guard let core, !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return notes }
+        // Reading `notes` makes views that show this refresh when it changes.
+        _ = notes
+        return core.searchNotes(query: searchText)
+    }
+
+    /// The current version of a note, or nil once it has been deleted.
+    public func note(id: UInt64) -> Note? {
+        notes.first { $0.id == id }
+    }
+
+    // MARK: Lifecycle
+
     /// Opens the Rust core and starts listening for its events. Call it from
     /// `.task`; calling it again while open does nothing, so a view that
     /// reappears never creates a second instance or subscription.
     public func open() async {
         guard core == nil else { return }
-        isLoading = true
-        defer { isLoading = false }
-        openError = nil
+        phase = .loading
         do {
             let directory = try storageDirectory ?? Self.applicationSupportDirectory()
             // Opening reads a file: do it off the main actor.
@@ -53,15 +85,16 @@ public final class NotesModel: ObservableObject {
             self.events = events
             notes = core.notes()
             listen(to: events)
-            // A phase reported before Rust was open still counts.
+            // A lifecycle phase reported before Rust was open still counts.
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
+            phase = .ready
         } catch {
-            openError = Self.describe(error)
+            phase = .failed(Self.describe(error))
         }
     }
 
-    /// Ends the event stream and shuts the Rust core down. Saved notes are
-    /// already on disk.
+    /// Ends the event stream and shuts the Rust core down, which also stops
+    /// any request in flight. Saved notes are already on disk.
     public func close() {
         events?.cancel()
         eventTask?.cancel()
@@ -83,30 +116,33 @@ public final class NotesModel: ObservableObject {
         }
     }
 
-    public func addNote() async {
-        guard let core else { return }
-        errorMessage = nil
-        do {
-            _ = try await core.addNote(text: draft)
-            draft = ""
-            // The list updates from the `.notesChanged` event; reading it
-            // here as well makes the change visible without waiting for it.
-            notes = core.notes()
-        } catch {
-            errorMessage = Self.describe(error)
+    // MARK: Notes
+
+    /// Adds a note. Throws Rust's `AppError` so the compose sheet can stay
+    /// open with the text intact and present the error itself.
+    public func add(text: String) async throws {
+        guard let core else { throw AppError.ShutDown }
+        _ = try await core.addNote(text: text)
+        notes = core.notes()
+        saveCount += 1
+    }
+
+    /// Saves new text for a note. Returns false (and sets `actionError`) on failure.
+    @discardableResult
+    public func update(_ note: Note, text: String) async -> Bool {
+        guard text != note.text else { return true }
+        return await perform { core in
+            _ = try await core.updateNote(id: note.id, text: text)
         }
     }
 
     public func delete(_ note: Note) async {
-        guard let core else { return }
-        errorMessage = nil
-        do {
+        await perform { core in
             try await core.deleteNote(id: note.id)
-            notes = core.notes()
-        } catch {
-            errorMessage = Self.describe(error)
         }
     }
+
+    // MARK: Network check
 
     /// Fetches `url` from Rust (HTTPS certificates are checked by the OS).
     /// Cancelling the calling task, or `cancelURLCheck()`, stops the request
@@ -142,6 +178,23 @@ public final class NotesModel: ObservableObject {
 
     // MARK: Private
 
+    /// Runs one Rust command, then shows Rust's list straight away (the
+    /// `.notesChanged` event carries the same list moments later). A failure
+    /// goes to `actionError`, which the list presents as an alert.
+    @discardableResult
+    private func perform(_ command: (AppCore) async throws -> Void) async -> Bool {
+        guard let core else { return false }
+        do {
+            try await command(core)
+            notes = core.notes()
+            saveCount += 1
+            return true
+        } catch {
+            actionError = Self.describe(error)
+            return false
+        }
+    }
+
     private func listen(to events: AppEvents) {
         eventTask = Task { [weak self] in
             while let event = await events.next() {
@@ -164,11 +217,11 @@ public final class NotesModel: ObservableObject {
     /// Text for the screen. Replace with your own copy; `reason` fields are
     /// diagnostics from Rust.
     public static func describe(_ error: Error) -> String {
-        guard let error = error as? AppError else { return String(describing: error) }
+        guard let error = error as? AppError else { return error.localizedDescription }
         switch error {
         case .InvalidInput(let reason): return "Check your input: \(reason)"
         case .NotFound: return "That note no longer exists."
-        case .Storage(let reason): return "Could not save: \(reason)"
+        case .Storage(let reason): return "Your notes couldn't be read or saved (\(reason))."
         case .Offline: return "You appear to be offline."
         case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
         case .Timeout: return "The request timed out."
