@@ -1,0 +1,12 @@
+order = 80
+module = "Native services"
+layer = "Core"
+crate = "`forge-services` (`native_services!` and `swift/`)"
+provides = "Keychain, app directories, file import, sharing, local notifications, permissions, deep links"
+native_apis = "Security, UserNotifications, SwiftUI"
+dependencies = "`uniffi`, `async-trait`"
+ios = "Partial: services check app only for most"
+android = "No"
+desktop = "No"
+status = "Experimental"
+exercised_by = "Chat (Keychain), services check app"

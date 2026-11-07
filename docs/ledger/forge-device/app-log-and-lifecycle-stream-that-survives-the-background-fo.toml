@@ -1,0 +1,9 @@
+order = 50
+capability = "App log and lifecycle stream that survives the background (`forge device connect`)"
+framework = "Yes: forge-devtools, forge-device"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: starter app"
+iphone = "No"
+documented = "Yes: forge-device.md"
+limits = "2,000-record buffer, older records reported as a gap; Swift-side logs not included"

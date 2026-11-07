@@ -1,8 +1,12 @@
 # Capability ledger
 
+<!-- Generated from docs/ledger/ by `forge ledger generate`. Edit the records there, not this page. -->
+
 This page records what ixOS can actually do on an iPhone, one row per capability. It exists to stop us confusing "there is an API" with "it works". A capability is only proven when a real app has used it on a physical iPhone and a person recorded the result.
 
-Draft, 2026-11-07. The plan behind it, with the demo-by-demo map, xtool limits and workstreams, is [ixOS capability plan: what the demos need](https://claude.ai/artifact/QA6NRXYy9SVSNfEG7LXZLx). Update this page in the same PR as any change to a capability.
+Draft, 2026-11-07. The plan behind it, with the demo-by-demo map, xtool limits and workstreams, is [ixOS capability plan: what the demos need](https://claude.ai/artifact/QA6NRXYy9SVSNfEG7LXZLx). Update the ledger in the same PR as any change to a capability.
+
+Each table row is one record: a small TOML file under [`docs/ledger/`](ledger/), named after the row, with an `order` number that sets its position. To change a row, edit its file; to add one, add a file. Then run `forge ledger generate` (or `cargo run -p forge-cli -- ledger generate`), which rewrites this page; `cargo test` fails while the page and the records disagree. `forge ledger list <text>` finds a record.
 
 ## Columns
 

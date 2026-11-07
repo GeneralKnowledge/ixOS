@@ -1,0 +1,9 @@
+order = 20
+capability = "Local notifications"
+framework = "Yes"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Yes: Chat messages (`LocalChatNotifier` on `ForgeNotifications`), services check app"
+iphone = "No"
+documented = "Yes"
+limits = "No push: APNs is a non-goal"

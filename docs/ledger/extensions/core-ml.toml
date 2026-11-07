@@ -1,0 +1,9 @@
+order = 60
+capability = "Core ML"
+framework = "No"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "No"
+limits = "`.mlmodel` compiles only on a Mac"

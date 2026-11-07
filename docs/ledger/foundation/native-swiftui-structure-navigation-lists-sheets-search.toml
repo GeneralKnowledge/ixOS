@@ -1,0 +1,9 @@
+order = 20
+capability = "Native SwiftUI structure (navigation, lists, sheets, search)"
+framework = "Yes: starter"
+rust_api = "n/a"
+ios_native = "Yes"
+in_app = "Yes: starter, Pocket Library"
+iphone = "No"
+documented = "Yes: ios-ui.md"
+limits = "Older examples use `ObservableObject`"

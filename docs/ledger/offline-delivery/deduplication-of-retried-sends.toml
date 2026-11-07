@@ -1,0 +1,9 @@
+order = 30
+capability = "Deduplication of retried sends"
+framework = "No: Chat only"
+rust_api = "Yes: client-chosen ids in Chat"
+ios_native = "n/a"
+in_app = "Yes: Chat"
+iphone = "No"
+documented = "Yes: chat-demo.md"
+limits = "Needs the new server to keep honouring ids"

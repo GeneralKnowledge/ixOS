@@ -1,0 +1,9 @@
+order = 50
+capability = "Background audio"
+framework = "Partial: config"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "Partial"
+limits = ""

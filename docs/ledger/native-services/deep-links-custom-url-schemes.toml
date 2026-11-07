@@ -1,0 +1,9 @@
+order = 40
+capability = "Deep links (custom URL schemes)"
+framework = "Yes"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Partial: services check app only"
+iphone = "No"
+documented = "Yes"
+limits = "Universal links need a paid team"

@@ -1,0 +1,9 @@
+order = 50
+capability = "Permission interface"
+framework = "Partial: notifications, location, motion, Bluetooth, microphone"
+rust_api = "Partial"
+ios_native = "Partial"
+in_app = "Yes: Device Lab (location, motion, Bluetooth); Partial: Chat M4 (microphone)"
+iphone = "No"
+documented = "Yes"
+limits = "A permission whose optional service the app did not select reports `Unsupported`"

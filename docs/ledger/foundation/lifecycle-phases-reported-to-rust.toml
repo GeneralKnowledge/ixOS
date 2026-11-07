@@ -1,0 +1,9 @@
+order = 50
+capability = "Lifecycle phases reported to Rust"
+framework = "Yes: forge-runtime"
+rust_api = "Yes"
+ios_native = "Yes: `.forgeLifecycle`"
+in_app = "Yes: starter"
+iphone = "No"
+documented = "Yes"
+limits = ""

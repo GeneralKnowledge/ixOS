@@ -1,0 +1,12 @@
+order = 40
+module = "Managed files"
+layer = "Core"
+crate = "`forge-storage::files` (`FileStore`); SHA-256 naming and verified downloads under `hash`"
+provides = "Copy-in, app or content naming, verified downloads, relative names only, size limit, orphan and crash sweep, usage. Backup exclusion not yet"
+native_apis = "None yet; backup exclusion will need `URLResourceValues` on the Swift side"
+dependencies = "`sha2` with `hash`"
+ios = "Partial: Chat attachments use it; device run pending"
+android = "Partial: plain Rust, Chat Android builds against it"
+desktop = "Planned"
+status = "Experimental"
+exercised_by = "Chat attachments; Pocket Library covers and books after #53; AI models next"

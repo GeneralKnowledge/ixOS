@@ -1,0 +1,12 @@
+order = 20
+module = "Logging"
+layer = "Core"
+crate = "`forge-runtime::logging`; `log_export!` and `ForgeLog.swift` for the host"
+provides = "One log pipeline for Rust and Swift, recent records, extra sinks, panics logged"
+native_apis = "System log (`syslog`), logcat"
+dependencies = "`log`"
+ios = "Partial: Swift writes through `ForgeLog` (`log_export!`) in the starter and Chat; device run pending"
+android = "WIP"
+desktop = "Planned"
+status = "Experimental"
+exercised_by = "Every app"

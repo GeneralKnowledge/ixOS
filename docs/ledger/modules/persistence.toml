@@ -1,0 +1,12 @@
+order = 30
+module = "Persistence"
+layer = "Core"
+crate = "`forge-storage`; SQLite under `sqlite`"
+provides = "Atomic writes, versioned JSON, SQLite with migrations, FTS5, recovery"
+native_apis = "None"
+dependencies = "`rusqlite` (bundled SQLite) with `sqlite`"
+ios = "Yes"
+android = "WIP: JSON only"
+desktop = "Planned"
+status = "Experimental"
+exercised_by = "Chat, Pocket Library, Weather, Counter, starter"

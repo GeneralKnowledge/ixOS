@@ -1,0 +1,12 @@
+order = 50
+module = "Networking"
+layer = "Core"
+crate = "`forge-net`; HTTPS under `ureq`"
+provides = "HTTP requests, streams, cancellation, file upload and download (#56); backoff and connectivity proposed"
+native_apis = "Platform certificate verifier; `NWPathMonitor` for connectivity (proposed)"
+dependencies = "`ureq`, `rustls`"
+ios = "Yes"
+android = "WIP"
+desktop = "Planned"
+status = "Experimental"
+exercised_by = "Weather, Chat, Pocket Library"

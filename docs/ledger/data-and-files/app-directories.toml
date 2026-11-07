@@ -1,0 +1,9 @@
+order = 50
+capability = "App directories"
+framework = "Yes: forge-services"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Partial: services check app only"
+iphone = "No"
+documented = "Yes"
+limits = "Store relative paths only"

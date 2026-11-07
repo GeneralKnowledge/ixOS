@@ -1,0 +1,6 @@
+order = 20
+metric = "Rust-to-Swift call overhead"
+target = "Under 50 µs median for a sync call, under 1 ms for an async round trip"
+how_measured = "Benchmark screen in the services check app"
+first_needed_by = "Chat M0"
+last_recorded = "Not measured"

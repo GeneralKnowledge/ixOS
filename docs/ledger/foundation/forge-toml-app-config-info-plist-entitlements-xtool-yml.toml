@@ -1,0 +1,9 @@
+order = 70
+capability = "`forge.toml` app config (Info.plist, entitlements, xtool.yml)"
+framework = "Yes"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes"
+iphone = "Partial: builds only"
+documented = "Yes: app-config.md"
+limits = "No asset catalogs on Linux"

@@ -1,0 +1,12 @@
+order = 150
+module = "Audio"
+layer = "Optional"
+crate = "`forge-services`: `native_services!(audio)`; adapter `swift/optional/ForgeServices+Audio.swift` (#60). Pocket Library's read-aloud still in its app"
+provides = "Microphone permission, recording (`ForgeAudioRecorder`), one-at-a-time playback (`ForgeAudioPlayer`), audio session (`ForgeAudioSession`), waveforms and lengths; Now Playing, remote commands and speech synthesis later"
+native_apis = "AVFoundation, MediaPlayer"
+dependencies = "None"
+ios = "Partial: compiled and tested in CI (macOS), not yet run on an iPhone"
+android = "No"
+desktop = "No"
+status = "Experimental"
+exercised_by = "Chat M4 voice; Pocket Library read-aloud to move onto its session"

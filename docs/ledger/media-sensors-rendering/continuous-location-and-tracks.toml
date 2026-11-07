@@ -1,0 +1,9 @@
+order = 70
+capability = "Continuous location and tracks"
+framework = "Partial: continuous fixes and `distance_m`; no track storage"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Partial: Device Lab distance travelled"
+iphone = "No"
+documented = "Yes"
+limits = "No GPX or track file yet (FieldKit)"

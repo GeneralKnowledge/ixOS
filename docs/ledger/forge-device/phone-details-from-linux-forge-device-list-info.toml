@@ -1,0 +1,9 @@
+order = 10
+capability = "Phone details from Linux (`forge device list`, `info`)"
+framework = "Yes: forge-device"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a"
+iphone = "Yes: iPhone16,2, iOS 26.3.1, 2026-11-07"
+documented = "Partial: forge-device.md"
+limits = "USB only; Wi-Fi-synced phones are listed but untested"

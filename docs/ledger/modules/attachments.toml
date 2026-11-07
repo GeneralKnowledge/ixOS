@@ -1,0 +1,12 @@
+order = 130
+module = "Attachments"
+layer = "Optional"
+crate = "chat-core today; generic parts to Managed files and Networking"
+provides = "Upload queue and recovery, on top of Managed files"
+native_apis = "Photos picker, Quick Look"
+dependencies = "Managed files, Networking"
+ios = "Partial: Chat M3 (#56)"
+android = "No"
+desktop = "No"
+status = "Planned"
+exercised_by = "Chat"

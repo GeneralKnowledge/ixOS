@@ -1,0 +1,9 @@
+order = 30
+capability = "Waveform summaries"
+framework = "Yes: forge-services `audio` (optional)"
+rust_api = "n/a"
+ios_native = "Yes: `ForgeAudio.waveform(of:bars:)`, off the main actor"
+in_app = "Partial: Chat M4"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Peaks per slice from the decoded file; no precomputed summaries sent with messages"

@@ -1,0 +1,12 @@
+order = 10
+module = "Runtime"
+layer = "Core"
+crate = "`forge-runtime`"
+provides = "Background work, cancellation, event streams, lifecycle, `app_shell!`"
+native_apis = "None"
+dependencies = "`log`; `forge-net` for the Android certificate init"
+ios = "Yes"
+android = "WIP"
+desktop = "Planned"
+status = "Experimental"
+exercised_by = "Every app"

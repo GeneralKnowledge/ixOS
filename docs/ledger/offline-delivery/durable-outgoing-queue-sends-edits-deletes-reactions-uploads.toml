@@ -1,0 +1,9 @@
+order = 10
+capability = "Durable outgoing queue (sends, edits, deletes, reactions, uploads)"
+framework = "No: Chat only"
+rust_api = "Yes: chat-core outbox, stored before the network call"
+ios_native = "n/a"
+in_app = "Yes: Chat M2"
+iphone = "No: Chat M2 device run skipped"
+documented = "Partial: chat-demo.md"
+limits = "Survives a relaunch in Rust tests; not yet checked across a kill on the phone"

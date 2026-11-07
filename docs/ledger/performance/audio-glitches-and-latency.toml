@@ -1,0 +1,6 @@
+order = 70
+metric = "Audio glitches and latency"
+target = "No underruns in 10 minutes; under 20 ms round trip at a 256-frame buffer"
+how_measured = "Underrun counter in the render callback; the audio session's buffer duration"
+first_needed_by = "Spike S4, Soundscape"
+last_recorded = "Not measured"

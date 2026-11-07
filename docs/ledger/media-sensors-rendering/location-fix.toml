@@ -1,0 +1,9 @@
+order = 60
+capability = "Location fix"
+framework = "Yes: forge-services `location`"
+rust_api = "Yes: `LocationService`"
+ios_native = "Yes: `CLLocationManager`"
+in_app = "Yes: Device Lab; Weather still has its own one-shot provider"
+iphone = "Partial: Weather's own provider, 2026-11-06; the service is not yet run on an iPhone"
+documented = "Partial: native-services.md"
+limits = "When in use only"

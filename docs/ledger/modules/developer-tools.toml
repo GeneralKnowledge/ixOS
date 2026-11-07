@@ -1,0 +1,12 @@
+order = 110
+module = "Developer tools"
+layer = "Optional"
+crate = "`forge-devtools` (app, `devtools` feature), `forge-devproto`, `forge-device` (host)"
+provides = "Phone details, logs and crashes from Linux; live paired session with log stream, probes, commands (#57)"
+native_apis = "usbmuxd on the host; nothing native in the app"
+dependencies = "`idevice`, `snow`, `ciborium`"
+ios = "Partial: host tools proven, live session in #57"
+android = "No"
+desktop = "n/a"
+status = "Experimental"
+exercised_by = "Starter app, any app over USB"

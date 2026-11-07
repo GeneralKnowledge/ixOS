@@ -1,0 +1,9 @@
+order = 20
+capability = "Retry with exponential backoff and jitter"
+framework = "Yes: forge-net `Backoff` (initial, cap, jitter, reset, cancellable wait)"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Chat stream reconnect (with jitter) and outbox"
+iphone = "No"
+documented = "Partial: rustdoc, chat-demo.md"
+limits = ""

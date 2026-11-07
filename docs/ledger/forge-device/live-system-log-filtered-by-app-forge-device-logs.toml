@@ -1,0 +1,9 @@
+order = 20
+capability = "Live system log, filtered by app (`forge device logs`)"
+framework = "Yes: forge-device"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes: any app; Rust logs via `forge_runtime::logging`"
+iphone = "Yes: iPhone, iOS 26.3.1, 2026-11-07 (`--grep`, `--process`, `--limit`)"
+documented = "Partial: forge-device.md"
+limits = "Apps from `forge init` run as `<App>Xtool`; older apps (Pocket Library, Device Lab) still share `AppHostXtool`, so filter those on the log target; no OS trace (structured `os_log` metadata) yet"

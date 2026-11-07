@@ -1,0 +1,9 @@
+order = 60
+capability = "Location, motion and Bluetooth permissions"
+framework = "Yes: forge-services"
+rust_api = "Yes: `NativePermission`"
+ios_native = "Yes"
+in_app = "Yes: Device Lab"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing"

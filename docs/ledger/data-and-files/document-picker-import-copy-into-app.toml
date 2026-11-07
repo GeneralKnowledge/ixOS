@@ -1,0 +1,9 @@
+order = 60
+capability = "Document picker import (copy into app)"
+framework = "Yes"
+rust_api = "Partial: path handed to Rust"
+ios_native = "Yes: `forgeFileImporter`"
+in_app = "Partial: services check app only"
+iphone = "No"
+documented = "Yes"
+limits = ""

@@ -1,0 +1,12 @@
+order = 100
+module = "Media"
+layer = "Core"
+crate = "`ForgeImages` (`forge-services/swift/helpers`, copied into every iOS app)"
+provides = "Thumbnails from a file or data, optional memory cache, downscaled metadata-free JPEG, all off the main thread"
+native_apis = "ImageIO"
+dependencies = "None"
+ios = "Partial: Chat and Pocket Library use it; device run pending"
+android = "No"
+desktop = "No"
+status = "Experimental"
+exercised_by = "Chat, Pocket Library"
