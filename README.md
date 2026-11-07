@@ -38,7 +38,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
    forge build android --project . --install    # (Android app) debug APK on a connected phone
    ```
 
-4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screen. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md).
+4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screens. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md) for the Rust side and [docs/ios-ui.md](docs/ios-ui.md) for building a native iOS interface.
 
 To try the bundled examples instead: `forge run ios --project examples/chat` (start `make mock-chat` first), or `forge build android --project examples/chat-android --install`.
 

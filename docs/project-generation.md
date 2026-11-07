@@ -31,7 +31,7 @@ For Android, add `--platform android` and use `forge build android --project . -
 
 - `forge.toml`, `Package.swift`, `xtool.yml`, `.gitignore`
 - `rust/`: the app's Rust crate (a notes starter; see [app-crate.md](app-crate.md))
-- `Sources/AppHost/`: SwiftUI screen and `NotesModel`, calling the Rust API in `ForgeFFI` directly
+- `Sources/AppHost/`: the SwiftUI app (notes list, editor, compose and settings screens) and its `@Observable` `NotesModel`, calling the Rust API in `ForgeFFI` directly. See [ios-ui.md](ios-ui.md) for the conventions it follows
 - `Sources/AppHostXtoolApp/`: xtool entry point; `Sources/AppHostLauncher/`: entry point for `swift run` and Xcode
 - `Tests/AppHostTests/`: XCTest suite against the real Rust library (macOS: `forge test --project .`)
 - `Xcode/<Name>.xcodeproj`: conventional iOS application host (macOS)
