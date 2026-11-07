@@ -169,10 +169,16 @@ impl From<chat_core::Message> for ChatMessage {
     }
 }
 
-impl From<chat_core::ChatEvent> for ChatEvent {
-    fn from(event: chat_core::ChatEvent) -> Self {
+impl ChatEvent {
+    /// The Android form of a core event. Android is frozen at its M1
+    /// features, so an edit, deletion or reaction arrives as an ordinary
+    /// upsert of the message, and a removal (which only a local delete of an
+    /// unsent message can cause, and Android has no delete) is dropped.
+    pub(crate) fn from_core(event: chat_core::ChatEvent) -> Option<Self> {
         use chat_core::ChatEvent as Core;
-        match event {
+        Some(match event {
+            Core::MessageUpdated(m) => Self::MessageReceived { message: m.into() },
+            Core::MessageRemoved { .. } => return None,
             Core::ConversationUpdated(c) => Self::ConversationUpdated {
                 conversation: c.into(),
             },
@@ -197,7 +203,7 @@ impl From<chat_core::ChatEvent> for ChatEvent {
                 reason,
                 will_retry,
             },
-        }
+        })
     }
 }
 
