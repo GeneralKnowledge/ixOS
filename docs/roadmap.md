@@ -14,6 +14,12 @@ Done: `forge init --path`, with each app owning its Rust crate ([app-crate.md](a
 
 Open: `forge doctor` does not check device pairing, signing or SDK licences yet.
 
+### iOS app configuration — Done, follow-ups open
+
+Done: `forge.toml` is the one place for an iOS app's display name, version and build number, deployment target, icon, orientations, permission prompts, URL schemes, background modes, entitlements and signing team type. Forge generates Info.plist, App.entitlements and xtool.yml from it (and keeps Package.swift's `.iOS(...)` in step) on every build, `forge config check` guards it in CI, and `forge build/run ios --release` builds the release configuration ([app-config.md](app-config.md)).
+
+Open: asset-catalog icons and launch screens (xtool cannot compile asset catalogs on Linux), per-configuration overrides (for example a separate debug bundle ID), app extensions (xtool supports them; Forge has no template), and applying `team_id` / `minimum_ios` to the Xcode project instead of reporting the difference.
+
 ### AGP / Gradle stabilization — Planned
 
 Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
@@ -41,7 +47,7 @@ Linux iOS builds depend on [xtool](https://github.com/xtool-org/xtool) and the D
 
 HTTPS works on Android too: hosts call `ForgeAndroid.init(applicationContext)` once, and certificates are checked against Android's trust store, with typed `Certificate` errors ([android-setup.md](android-setup.md#https-certificate-verification)). It is covered by Rust tests against local TLS servers and the JVM test of the JNI entry point; a run on a physical Android phone is still to be recorded.
 
-Still open: interrupting an ordinary request in flight (cancellation currently discards the late response), and platform reachability.
+Ordinary requests can be interrupted in flight: `HttpClient::send_cancellable` closes the connection, and the starter app crate wires it to Swift task cancellation and Kotlin coroutine cancellation ([app-crate.md](app-crate.md#lifecycle)). The Weather example still discards a late response instead of interrupting it. Still open: platform reachability.
 
 ### iOS Simulator support — Open
 

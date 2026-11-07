@@ -60,8 +60,9 @@ cargo run -p forge-cli -- build ios --project examples/weather --package-only
 open examples/weather/Xcode/Weather.xcodeproj                        # macOS, shared "App" scheme
 ```
 
-The location permission text is in `Info.plist` (merged by xtool) and in the
-Xcode target's `INFOPLIST_KEY_NSLocationWhenInUseUsageDescription`.
+The location permission text is set in `forge.toml` (`[ios.permissions]
+location_when_in_use`). Forge writes it into `Info.plist`, which xtool merges
+and the Xcode target reads through `INFOPLIST_FILE` ([docs/app-config.md](../../docs/app-config.md)).
 
 ## Limits
 

@@ -10,6 +10,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{self, Thread};
 
+use forge_net::CancelHandle;
+
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex
         .lock()
@@ -23,9 +25,22 @@ struct Slot<T> {
 }
 
 /// The future [`background`] returns. Dropping it does not stop the work
-/// (threads cannot be killed); the result is then discarded.
+/// (threads cannot be killed); the result is then discarded. For work made
+/// with [`background_cancellable`], dropping it before the work finishes
+/// also cancels the work's [`CancelHandle`].
 pub struct Background<T> {
     slot: Arc<Mutex<Slot<T>>>,
+    cancel_on_drop: Option<CancelHandle>,
+}
+
+impl<T> Drop for Background<T> {
+    fn drop(&mut self) {
+        if let Some(cancel) = &self.cancel_on_drop {
+            if !lock(&self.slot).done {
+                cancel.cancel();
+            }
+        }
+    }
 }
 
 impl<T> Future for Background<T> {
@@ -101,7 +116,38 @@ where
             job();
         }
     }
-    Background { slot }
+    Background {
+        slot,
+        cancel_on_drop: None,
+    }
+}
+
+/// [`background`] for work that can be stopped part way, such as an HTTP
+/// request ([`forge_net::HttpClient::send_cancellable`]). `work` receives
+/// `cancel`; it is cancelled when `cancel` is (an explicit cancel from the
+/// host, or `shutdown`), and when the returned future is dropped before the
+/// work finishes, which is what Kotlin does when the calling coroutine is
+/// cancelled. Swift does not drop the future when its `Task` is cancelled
+/// (UniFFI 0.32), so a Swift host cancels through an exported `cancel()`.
+///
+/// ```
+/// # use forge_runtime::{background_cancellable, block_on, CancelHandle};
+/// let cancel = CancelHandle::new();
+/// cancel.cancel();
+/// let stopped = block_on(background_cancellable("wait", cancel, |cancel| {
+///     cancel.wait_timeout(std::time::Duration::from_secs(60))
+/// }));
+/// assert!(stopped);
+/// ```
+pub fn background_cancellable<T, F>(name: &str, cancel: CancelHandle, work: F) -> Background<T>
+where
+    T: Send + 'static,
+    F: FnOnce(&CancelHandle) -> T + Send + 'static,
+{
+    let for_work = cancel.clone();
+    let mut future = background(name, move || work(&for_work));
+    future.cancel_on_drop = Some(cancel);
+    future
 }
 
 struct ThreadWaker(Thread);
@@ -128,6 +174,31 @@ pub fn block_on<F: Future>(future: F) -> F::Output {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn dropping_a_cancellable_future_cancels_the_work() {
+        let cancel = CancelHandle::new();
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let future = background_cancellable("drop-cancels", cancel.clone(), move |cancel| {
+            let stopped = cancel.wait_timeout(std::time::Duration::from_secs(30));
+            done_tx.send(stopped).unwrap();
+        });
+        drop(future);
+        let stopped = done_rx
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .expect("the work ended promptly");
+        assert!(stopped);
+        assert!(cancel.is_cancelled());
+    }
+
+    #[test]
+    fn a_finished_cancellable_future_does_not_cancel_on_drop() {
+        let cancel = CancelHandle::new();
+        let mut future = Box::pin(background_cancellable("finishes", cancel.clone(), |_| 7));
+        assert_eq!(block_on(future.as_mut()), 7);
+        drop(future);
+        assert!(!cancel.is_cancelled());
+    }
+
     use super::*;
     use std::time::{Duration, Instant};
 

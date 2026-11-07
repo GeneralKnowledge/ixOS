@@ -157,9 +157,11 @@ fn response_headers(response: &ureq::http::Response<ureq::Body>) -> Vec<Header> 
         .collect()
 }
 
-impl HttpClient for UreqClient {
-    fn send(&self, request: &Request) -> Result<Response, NetError> {
-        let mut response = self.run(&self.agent, request, false)?;
+impl UreqClient {
+    fn read_response(
+        &self,
+        mut response: ureq::http::Response<ureq::Body>,
+    ) -> Result<Response, NetError> {
         let status = response.status().as_u16();
         let headers = response_headers(&response);
         let body = response
@@ -173,6 +175,42 @@ impl HttpClient for UreqClient {
             headers,
             body,
         })
+    }
+}
+
+impl HttpClient for UreqClient {
+    fn send(&self, request: &Request) -> Result<Response, NetError> {
+        let response = self.run(&self.agent, request, false)?;
+        self.read_response(response)
+    }
+
+    /// Runs on a connection of its own, so cancelling shuts down exactly
+    /// that socket: a request waiting for its response or reading the body
+    /// fails at once with [`NetError::Cancelled`]. (Name resolution and the
+    /// TCP connect itself are not interrupted; the request timeout bounds
+    /// them, and the result is discarded.)
+    fn send_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        // A private agent: `Agent::shutdown` closes every connection of the
+        // agent's pool, and this pool only ever holds this request.
+        let agent = ureq::Agent::new_with_config(self.agent.config().clone());
+        let _registration = {
+            let agent = agent.clone();
+            cancel.on_cancel(move || agent.shutdown())
+        };
+        let result = self
+            .run(&agent, request, false)
+            .and_then(|response| self.read_response(response));
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        result
     }
 
     /// Streams the body. There is no size limit (the body may be endless) and
@@ -586,6 +624,100 @@ mod tests {
             client.send(&Request::get(format!("http://127.0.0.1:{refused}/"))),
             Err(NetError::Offline { .. })
         ));
+    }
+
+    /// A server that accepts, reads the request, then sends `prefix` and
+    /// goes silent until released.
+    fn stalling_server(
+        prefix: &'static [u8],
+    ) -> (String, mpsc::Sender<()>, thread::JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/slow", listener.local_addr().unwrap());
+        let (release_tx, release_rx) = mpsc::channel::<()>();
+        let server = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0u8; 4096];
+            let mut raw = Vec::new();
+            while !raw.windows(4).any(|w| w == b"\r\n\r\n") {
+                let n = stream.read(&mut buf).unwrap();
+                raw.extend_from_slice(&buf[..n]);
+            }
+            stream.write_all(prefix).unwrap();
+            stream.flush().unwrap();
+            let _ = release_rx.recv_timeout(Duration::from_secs(30));
+        });
+        (url, release_tx, server)
+    }
+
+    /// Sends on another thread, cancels after 150 ms, and returns the result
+    /// and how long the send took.
+    fn send_then_cancel(url: String) -> (Result<Response, NetError>, Duration, CancelHandle) {
+        let cancel = CancelHandle::new();
+        let sender = {
+            let cancel = cancel.clone();
+            thread::spawn(move || {
+                let started = Instant::now();
+                let result = UreqClient::new()
+                    .send_cancellable(&Request::get(url).timeout(Duration::from_secs(30)), &cancel);
+                (result, started.elapsed())
+            })
+        };
+        thread::sleep(Duration::from_millis(150));
+        cancel.cancel();
+        let (result, took) = sender.join().unwrap();
+        (result, took, cancel)
+    }
+
+    #[test]
+    fn cancel_interrupts_a_request_waiting_for_its_response() {
+        no_proxy();
+        let (url, release, server) = stalling_server(b"");
+        let (result, took, cancel) = send_then_cancel(url);
+        assert_eq!(result.unwrap_err(), NetError::Cancelled);
+        // The timeout is 30 s and the server never answered: only the
+        // cancel can have ended it.
+        assert!(took < Duration::from_secs(5), "{took:?}");
+        assert_eq!(cancel.pending_hooks(), 0);
+        release.send(()).ok();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn cancel_interrupts_a_request_reading_a_slow_body() {
+        no_proxy();
+        let (url, release, server) =
+            stalling_server(b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\nonly part");
+        let (result, took, _) = send_then_cancel(url);
+        assert_eq!(result.unwrap_err(), NetError::Cancelled);
+        assert!(took < Duration::from_secs(5), "{took:?}");
+        release.send(()).ok();
+        server.join().unwrap();
+    }
+
+    #[test]
+    fn send_cancellable_without_a_cancel_behaves_like_send() {
+        no_proxy();
+        let (url, server) =
+            one_shot_server("HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
+        let cancel = CancelHandle::new();
+        let response = UreqClient::new()
+            .send_cancellable(&Request::get(url), &cancel)
+            .unwrap();
+        assert_eq!(
+            (response.status, response.body.as_slice()),
+            (200, &b"ok"[..])
+        );
+        assert_eq!(cancel.pending_hooks(), 0);
+        server.join().unwrap();
+
+        let cancelled = CancelHandle::new();
+        cancelled.cancel();
+        assert_eq!(
+            UreqClient::new()
+                .send_cancellable(&Request::get("http://127.0.0.1:9/"), &cancelled)
+                .unwrap_err(),
+            NetError::Cancelled
+        );
     }
 
     #[test]
