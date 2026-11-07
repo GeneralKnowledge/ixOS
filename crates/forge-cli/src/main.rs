@@ -9,6 +9,7 @@ mod ios_builder;
 mod ios_env;
 mod live;
 mod runner;
+mod ui;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -93,6 +94,57 @@ enum Commands {
     Device {
         #[command(subcommand)]
         cmd: DeviceCommands,
+    },
+    /// Drive an app on a connected iPhone from Linux: find elements by
+    /// accessibility identifier, tap, type, read the screen, take screenshots
+    /// (XCTest through WebDriverAgent; docs/forge-ui-testing.md)
+    Ui {
+        #[command(subcommand)]
+        cmd: UiCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum UiCommands {
+    /// Mount the Developer Disk Image, install the WebDriverAgent runner and
+    /// check that it starts. Run after every phone restart
+    Setup {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Folder with the Developer Disk Image: Xcode's
+        /// Contents/Resources/CoreDeviceDDIs (only needed when not mounted)
+        #[arg(long, value_name = "DIR")]
+        ddi: Option<PathBuf>,
+        /// Install this WebDriverAgentRunner-Runner.app with `xtool install`
+        #[arg(long, value_name = "APP")]
+        runner: Option<PathBuf>,
+    },
+    /// Print the accessibility tree of the screen and flag unlabelled controls
+    Tree {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Bring this app (its forge.toml bundle id) to the front first
+        #[arg(long, value_name = "BUNDLE_ID")]
+        app: Option<String>,
+    },
+    /// Save a screenshot of the phone's screen here
+    Screenshot {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Where to save the PNG
+        #[arg(default_value = "screenshot.png")]
+        path: PathBuf,
+    },
+    /// Run a UI test file (TOML steps) against its app
+    Run {
+        #[arg(long)]
+        udid: Option<String>,
+        /// The test file
+        file: PathBuf,
+        /// Where screenshots and failure details go
+        #[arg(long, value_name = "DIR", default_value = "forge-ui-out")]
+        out: PathBuf,
     },
 }
 
@@ -389,6 +441,21 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Devices => commands::devices(runner, &ios),
+        Commands::Ui { cmd } => {
+            let mut out = std::io::stdout().lock();
+            match cmd {
+                UiCommands::Setup { udid, ddi, runner: app } => ui::setup(
+                    runner,
+                    udid.as_deref(),
+                    ddi.as_deref(),
+                    app.as_deref(),
+                    &mut out,
+                ),
+                UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
+                UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
+                UiCommands::Run { udid, file, out: dir } => ui::run(udid.as_deref(), &file, &dir, &mut out),
+            }
+        }
         Commands::Device { cmd } => {
             let backend = forge_device::UsbBackend::new().map_err(|e| e.to_string())?;
             let mut out = std::io::stdout().lock();

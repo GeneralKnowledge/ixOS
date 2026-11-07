@@ -66,7 +66,7 @@ struct LibraryView: View {
             } description: {
                 Text("Add the books you're reading, have read, or want to read.")
             } actions: {
-                addMenu.buttonStyle(.borderedProminent)
+                addMenu(id: "library.empty.add").buttonStyle(.borderedProminent)
             }
         } else if model.books.isEmpty {
             if model.searchText.isEmpty {
@@ -84,6 +84,7 @@ struct LibraryView: View {
                     NavigationLink(value: book.id) {
                         BookRow(book: book)
                     }
+                    .accessibilityIdentifier("library.book.\(book.id)")
                     .swipeActions(edge: .trailing) {
                         Button(role: .destructive) { pendingDelete = book } label: {
                             Label("Delete", systemImage: "trash")
@@ -147,27 +148,34 @@ struct LibraryView: View {
                         : "line.3.horizontal.decrease.circle.fill"
                 )
             }
+            .accessibilityIdentifier("library.filter")
         }
         ToolbarItem(placement: .primaryAction) {
-            addMenu
+            addMenu(id: "library.add")
         }
     }
 
-    private var addMenu: some View {
+    /// The Add menu. It appears both in the toolbar and in the empty
+    /// library, so each copy gets its own identifier.
+    private func addMenu(id: String) -> some View {
         Menu {
             Button { showingCatalogue = true } label: {
                 Label("Search Online Catalogue", systemImage: "magnifyingglass")
             }
             .disabled(!model.settings.catalogueEnabled)
+            .accessibilityIdentifier("library.add.catalogue")
             Button { showingAddForm = true } label: {
                 Label("Enter Details", systemImage: "square.and.pencil")
             }
+            .accessibilityIdentifier("library.add.manual")
             Button { showingImporter = true } label: {
                 Label("Import EPUB File", systemImage: "doc.badge.plus")
             }
+            .accessibilityIdentifier("library.add.epub")
         } label: {
             Label("Add Book", systemImage: "plus")
         }
+        .accessibilityIdentifier(id)
     }
 
     private func setStatus(_ book: Book, _ status: ReadingStatus) {

@@ -149,10 +149,10 @@ Driving an app on the phone from Linux through XCTest and WebDriverAgent. Plan a
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`) | No: M0 in progress | n/a | n/a: prebuilt WDA, signed by xtool | n/a | No | Partial: forge-ui-testing.md | Runner uses one of the 3 free-account app slots and expires after 7 days; DDI comes from `Xcode.xip` and is gone after a reboot |
-| Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui`) | No: M0 in progress | n/a | n/a | No | No | Partial: forge-ui-testing.md | No coordinates by design; no test files or reports until M1 |
-| Screenshot saved on Linux (`forge ui screenshot`) | No: M0 in progress | n/a | n/a | No | No | Partial: forge-ui-testing.md | No baseline comparison until M4 |
-| Accessibility identifiers and labels in the demos | No | n/a | Partial: labels per ios-ui.md, no identifiers anywhere yet | No | No | Partial: ios-ui.md | Conventions and `forge ui audit` come in M3 |
+| Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`) | Yes: forge-uitest | n/a | n/a: prebuilt WDA, signed by xtool | n/a | No | Partial: forge-ui-testing.md | Runner uses one of the 3 free-account app slots and expires after 7 days; DDI comes from `Xcode.xip` and is gone after a reboot |
+| Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui run`, `tree`) | Yes: forge-uitest | n/a | n/a | Yes: Pocket Library (`uitests/m0.toml`) | No | Partial: forge-ui-testing.md | No coordinates by design; no test files or reports until M1 |
+| Screenshot saved on Linux (`forge ui screenshot`) | Yes: forge-uitest | n/a | n/a | Yes: Pocket Library | No | Partial: forge-ui-testing.md | No baseline comparison until M4 |
+| Accessibility identifiers and labels in the demos | No | n/a | Partial: labels per ios-ui.md | Partial: Pocket Library's library screen and book form | No | Partial: ios-ui.md | Conventions and `forge ui audit` come in M3 |
 
 ## Performance
 

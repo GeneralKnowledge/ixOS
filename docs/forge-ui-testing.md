@@ -1,6 +1,6 @@
 # Forge UI Testing: driving a real iPhone from Linux
 
-Status: feasibility study and plan, 2026-11-07. Milestone M0 is in progress; nothing on this page has run on a phone yet unless it says so.
+Status: feasibility study and plan, 2026-11-07. M0 is built (`crates/forge-uitest`, `forge ui`) and waiting for its first iPhone run; nothing on this page has run on a phone yet unless it says so.
 
 Forge UI Testing lets a Linux machine drive an ixOS app on a physical iPhone the way a person would: launch it, find controls by their accessibility identifier, tap, type, read what is on screen, and take screenshots. It is a framework capability, like [Forge Device](forge-device.md), so every demo (Chat, Pocket Library, Weather and the ones that follow) gets it without building its own test harness.
 
@@ -135,13 +135,24 @@ Steps cover: `launch`, `tap`, `type`, `clear`, `swipe`, `scroll_to`, `expect` (e
 
 ### CLI
 
+M0 has these (built):
+
 ```
-forge ui setup  [--xip PATH] [--udid U]    mount the DDI, install or refresh the runner, report free slots
-forge ui tree   --app BUNDLE                print the accessibility tree of the app on screen
-forge ui screenshot out.png                 save a screenshot on Linux
-forge ui audit  --app BUNDLE                accessibility audit of the current screen
-forge test ios  [--suite DIR|FILE] [--report DIR] [--screenshots]
+forge ui setup [--ddi DIR] [--runner APP]   mount the DDI if needed, install the runner with xtool, check it starts
+forge ui tree  [--app BUNDLE]               the accessibility tree of the screen, plus unlabelled controls
+forge ui screenshot [out.png]               save a screenshot on Linux
+forge ui run FILE [--out DIR]               run a test file; screenshots and failure details go to DIR
 ```
+
+Later milestones add:
+
+```
+forge ui setup --xip PATH                   pull the DDI out of Xcode.xip itself, refresh an expiring runner
+forge ui audit --app BUNDLE                 the full accessibility audit (M3)
+forge test ios [--suite DIR|FILE] [--report DIR]
+```
+
+`forge test` already runs an app's Rust and host tests, so M1 decides whether UI suites join it (`forge test ios --device`) or stay under `forge ui`.
 
 `forge test ios` writes a report directory: `report.json`, per-step screenshots, the UI tree at each failure, the app's log lines for the run (from Forge Device), and any new crash reports. A failing step names the locator and shows the nearest matches from the tree ("no element with id `bookForm.save`; nearby buttons: `Save` (no id), `Cancel` (no id)"). The output is readable without the screenshots.
 
@@ -174,9 +185,22 @@ The exploratory tester is a separate command (`forge explore ios`). It never tak
 ### M0 in detail
 
 1. Add `crates/forge-uitest` with `Locator`, `Driver`, `WdaDriver`, the runner launch and DDI mount, plus tests against a fake driver.
-2. Add `forge ui setup`, `forge ui tree`, `forge ui screenshot`, and `forge ui smoke`, which runs the five M0 steps against Pocket Library and prints each result.
+2. Add `forge ui setup`, `forge ui tree`, `forge ui screenshot` and `forge ui run`, plus `examples/pocket-library/uitests/m0.toml`, which runs the five M0 steps against Pocket Library and prints each result.
 3. Give Pocket Library's library screen and book form accessibility identifiers (and fix any missing labels the tree shows). It is updated in place on the phone, so it needs no extra slot.
-4. On Reuben's laptop, over Remote Control: extract the DDI from `Xcode.xip`, mount it, install the runner with `xtool install`, then run `forge ui smoke`. Reuben only frees a slot on the phone, unlocks it, and confirms what he sees.
+4. On Reuben's laptop, over Remote Control: extract the DDI from `Xcode.xip`, mount it, install the runner with `xtool install`, then run `forge ui run examples/pocket-library/uitests/m0.toml`. Reuben only frees a slot on the phone, unlocks it, and confirms what he sees.
+
+## Running M0
+
+On the Linux machine, with the phone plugged in, unlocked and trusting the computer:
+
+1. Get the runner: `WebDriverAgentRunner-Runner.zip` from [Appium's WDA release v16.15.3](https://github.com/appium/WebDriverAgent/releases/tag/v16.15.3). Check its sha256 (above) and unzip it.
+2. Get the Developer Disk Image: the `Contents/Resources/CoreDeviceDDIs` folder of the Xcode you gave `xtool setup` (from `Xcode.xip`).
+3. Make room: a free account allows three sideloaded apps, and the runner is one.
+4. `forge ui setup --ddi <CoreDeviceDDIs folder> --runner WebDriverAgentRunner-Runner.app` mounts the image, has xtool sign and install the runner, and checks it starts. The first time, the phone may ask you to trust the developer profile again: Settings > General > VPN & Device Management.
+5. Install Pocket Library with its identifiers (`forge run ios --project examples/pocket-library`).
+6. `forge ui run examples/pocket-library/uitests/m0.toml` opens the New Book form, types a title, checks the field and the Add button, prints the screen's tree, saves screenshots in `forge-ui-out/`, and cancels.
+
+After the phone restarts, run `forge ui setup --ddi …` again (the image is unmounted at every reboot). After seven days, reinstall the runner with `--runner`.
 
 ## Risks
 

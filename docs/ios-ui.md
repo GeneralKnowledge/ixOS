@@ -182,6 +182,7 @@ Don't show errors as red text inside a list. An alert names what failed and has 
 
 ## Accessibility
 
+- Every control, row and text field has an `.accessibilityIdentifier("screen.element")`, such as `library.add` or `bookForm.title`, so UI tests can find it ([forge-ui-testing.md](forge-ui-testing.md#accessibility-conventions)). Identifiers are never shown or spoken; they don't replace labels.
 - Every control has a text name. Icon-only buttons use `Button("Title", systemImage:)` or a `Label`. Images that carry information have an `accessibilityLabel`; decorative ones are hidden with `.accessibilityHidden(true)`.
 - Combine a row's pieces into one VoiceOver element with `.accessibilityElement(children: .combine)`.
 - Check every screen at the largest accessibility text size. Rows should wrap rather than truncate their primary text. Swap a horizontal layout for a vertical one under `@Environment(\.dynamicTypeSize)` when `isAccessibilitySize` is true.
