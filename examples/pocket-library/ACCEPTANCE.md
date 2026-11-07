@@ -67,5 +67,5 @@ On the phone:
 8. **Persistence.** Swipe the app away in the app switcher, open it again: everything is as you left it.
 9. **Offline.** Turn on airplane mode. Browsing, adding, editing and deleting still work. Catalogue search shows "You're offline" with Try Again and Enter Details by Hand; the library is unchanged.
 10. **Settings.** Turn off online search: the + menu's catalogue item is disabled. Export Library → Share Export File → save to Files. (Leave Erase for last, or skip it.)
-11. **Release build.** `forge run ios --release` (the flag comes with PR #31; before it merges, `xtool dev run -c release` in this folder after `forge build ios --package-only`); repeat 1, 5 and 8 briefly.
+11. **Release build.** `forge run ios --release`; repeat 1, 5 and 8 briefly.
 12. **Rust change reaches the phone.** In `rust/src/domain.rs`, change `SESSION_GAP_MS` to `5 * 1000` (five seconds). Run `forge run ios` and check the log says it rebuilt the Rust library. On the phone, update a book's page, wait ten seconds, update it again: Activity now shows two entries instead of one. Revert the change.

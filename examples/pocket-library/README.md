@@ -44,6 +44,8 @@ examples/pocket-library/
 
 **Threads.** Every Rust method that touches the disk or network is `async` and runs on its own thread (`forge_runtime::background`), so SwiftUI awaits it from the main actor. Reads (`books`, `stats`, `history`) are plain memory reads.
 
+**App configuration.** `forge.toml` holds the bundle id, home-screen name, version and orientations; Forge writes `Info.plist`, `App.entitlements` and `xtool.yml` from it on every build ([docs/app-config.md](../../docs/app-config.md)), so those files are never edited by hand.
+
 **Persistence.** Every change is written (atomically) before the call returns, so the app can be suspended or killed at any time. Covers are saved under `covers/` and stored as file names, never absolute paths: iOS moves an app's container when it is reinstalled. A library written by a newer app version is refused and never overwritten; an unreadable one can be set aside (it is kept as `library.unreadable-<time>.json`) and the app started fresh.
 
 **Networking.** HTTPS through `forge-net` (rustls with the iOS trust store), a 15-second timeout, and a User-Agent naming the app, as Open Library asks. The catalogue sits behind the `BookCatalogue` trait, so another service could replace it; the tests run the Open Library client against canned responses.
@@ -58,7 +60,7 @@ You need the Forge prerequisites for iOS on Linux: Rust, Swift 6.2, xtool with t
 cd examples/pocket-library
 cargo test --manifest-path rust/Cargo.toml     # Rust tests: no SDK or device needed
 forge run ios                                  # build, install and launch (debug)
-forge run ios --release                        # the same, Swift release configuration (PR #31)
+forge run ios --release                        # the same, Swift release configuration
 ```
 
 `forge run ios` rebuilds the Rust library when anything in `rust/` (or the Forge crates it uses) changed, regenerates `Generated/`, then hands over to xtool. To work on the Rust API and see the new Swift API before building:

@@ -39,7 +39,8 @@ forge build android --project . --install          # debug APK on a connected An
 | Typed errors, the same cases on both platforms | `AppError` | `#[derive(uniffi::Error)]` |
 | Events the host subscribes to | `events()` → `AppEvents.next()` | [`forge_runtime::EventHub`](../crates/forge-runtime/src/events.rs) |
 | HTTPS with the OS's certificate checks | `check_url` | [`forge_net::UreqClient`](../crates/forge-net/src/ureq_client.rs) |
-| Shutdown that refuses new work and ends streams | `shutdown()` | `EventHub::close` |
+| A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
+| Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
 
 The hosts (`Sources/AppHost/NotesModel.swift`, `app/src/main/java/.../NotesViewModel.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
 
@@ -51,6 +52,21 @@ The hosts (`Sources/AppHost/NotesModel.swift`, `app/src/main/java/.../NotesViewM
 - **Do blocking work in `background`.** An exported `async fn` runs on whatever thread polls it; file and network calls belong in `background(...)`. Plain (non-async) exports run on the caller's thread, which is the UI thread when the host calls them from a view.
 - **Errors carry `reason`, not `message`.** A field named `message` clashes with Kotlin's `Throwable.message`.
 - The FFI rules for the whole project are in [ffi-policy.md](ffi-policy.md).
+
+## Lifecycle
+
+**Cancelling a request.** Use `background_cancellable` with `HttpClient::send_cancellable` for work that should stop when the user gives up. The request then ends at once with `Cancelled`, even when it is waiting on a slow server, because Forge closes its connection. The two hosts reach it differently:
+
+- **Kotlin:** cancelling the coroutine is enough. UniFFI drops the Rust future, and dropping it cancels the work.
+- **Swift:** cancelling a `Task` does not reach Rust (UniFFI 0.32), so the host passes a `Cancellation` and cancels it from `withTaskCancellationHandler`, as `NotesModel.checkURL` does.
+
+DNS lookup and the TCP connect itself are not interrupted; the request timeout bounds them.
+
+**Shutdown.** `shutdown()` refuses new commands, cancels every request in flight (they fail with `ShutDown`), and ends every event stream. Saves already running finish, so a write is never cut short. Each command saves before it returns, so nothing is lost when the process is killed afterwards. The Android host calls `close()` from `ViewModel.onCleared`. The iOS host keeps one model for the life of the app.
+
+**One instance per storage directory.** Two `AppCore`s on the same folder would each overwrite the other's `notes.json`. The hosts create one instance and share it. Instances on different folders are independent; the starter's tests check this.
+
+**Background and resume.** The starter needs nothing special. Its state is saved on every change, and it holds no connection open between commands. A request that is in flight when the app is suspended may fail with `Offline` or `Timeout` when the app resumes; the user can simply retry. Apps that keep connections open, such as event streams, should expect them to drop while the app is suspended. They should reconnect on resume (SwiftUI `scenePhase`, Android `onStart`), as the Chat example's streams do through their retry loop.
 
 ## Adding dependencies
 

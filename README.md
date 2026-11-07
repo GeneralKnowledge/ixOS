@@ -39,6 +39,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
    ```
 
 4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screen. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md).
+5. Set the app's name, version, icon, permission prompts, URL schemes and entitlements in `forge.toml`; Forge writes Info.plist, App.entitlements and xtool.yml from it ([docs/app-config.md](docs/app-config.md)).
 
 To try the bundled examples instead: `forge run ios --project examples/chat` (start `make mock-chat` first), or `forge build android --project examples/chat-android --install`.
 
@@ -86,6 +87,7 @@ cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
 cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev run)
+cargo run -p forge-cli -- run ios --project examples/counter --release  # same, Swift release configuration
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices

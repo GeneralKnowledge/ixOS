@@ -1,12 +1,16 @@
 use serde::Deserialize;
 
-#[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Deserialize, PartialEq)]
 pub struct ForgeConfig {
     pub app: AppSection,
     pub rust: RustSection,
     pub build: BuildSection,
     #[serde(default)]
     pub android: Option<AndroidSection>,
+    /// iOS app settings Forge turns into Info.plist, App.entitlements and
+    /// xtool.yml (see `app_config.rs` and docs/app-config.md).
+    #[serde(default)]
+    pub ios: Option<crate::app_config::IosSection>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -15,6 +19,15 @@ pub struct AppSection {
     pub bundle_id: String,
     #[serde(default)]
     pub minimum_ios: Option<String>,
+    /// Home-screen name; defaults to `name`.
+    #[serde(default)]
+    pub display_name: Option<String>,
+    /// User-visible version (CFBundleShortVersionString); defaults to 1.0.0.
+    #[serde(default)]
+    pub version: Option<String>,
+    /// Build number (CFBundleVersion); defaults to 1.
+    #[serde(default)]
+    pub build_number: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -136,6 +149,8 @@ impl ForgeConfig {
                 ));
             }
         }
+
+        crate::app_config::validate(self)?;
 
         if !self.ios_enabled() && !self.android_enabled() {
             return Err("enable at least one platform in [build] (ios_* or android)".into());

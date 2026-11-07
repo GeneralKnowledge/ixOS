@@ -89,6 +89,48 @@ final class NotesModelTests: XCTestCase {
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), newer)
     }
 
+    /// A local port that accepts connections and never answers, so a request
+    /// to it only ends when cancelled.
+    private func silentServerURL() throws -> (String, Int32) {
+        // Qualified with `Darwin.` because NSObject has a `bind` method that
+        // would otherwise shadow the socket function inside a test case.
+        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+        addr.sin_port = 0
+        var len = socklen_t(MemoryLayout<sockaddr_in>.size)
+        try withUnsafeMutablePointer(to: &addr) { ptr in
+            try ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
+                guard Darwin.bind(fd, sa, len) == 0, Darwin.listen(fd, 4) == 0,
+                    Darwin.getsockname(fd, sa, &len) == 0
+                else {
+                    Darwin.close(fd)
+                    throw XCTSkip("cannot open a local socket")
+                }
+            }
+        }
+        return ("http://127.0.0.1:\(UInt16(bigEndian: addr.sin_port))/", fd)
+    }
+
+    @MainActor
+    func testCancellingTheTaskStopsTheRequestInRust() async throws {
+        let dir = try makeDirectory()
+        let model = await openModel(dir)
+        let (url, fd) = try silentServerURL()
+        defer { Darwin.close(fd) }
+        model.url = url
+        let started = Date()
+        let check = Task { await model.checkURL() }
+        try await Task.sleep(for: .milliseconds(200))
+        check.cancel()
+        await check.value
+        XCTAssertEqual(model.urlResult, "Cancelled.")
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertFalse(model.isCheckingURL)
+        model.close()
+    }
+
     @MainActor
     func testClosedModelRefusesWork() async throws {
         let dir = try makeDirectory()

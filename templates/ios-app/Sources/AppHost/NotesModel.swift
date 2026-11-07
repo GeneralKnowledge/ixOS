@@ -23,6 +23,7 @@ public final class NotesModel: ObservableObject {
     public private(set) var core: AppCore?
     private let storageDirectory: String?
     private var eventTask: Task<Void, Never>?
+    private var urlCheck: Cancellation?
     private var events: AppEvents?
 
     /// - Parameter storageDirectory: where Rust keeps `notes.json`. Defaults
@@ -91,17 +92,35 @@ public final class NotesModel: ObservableObject {
     }
 
     /// Fetches `url` from Rust (HTTPS certificates are checked by the OS).
+    /// Cancelling the calling task, or `cancelURLCheck()`, stops the request
+    /// in Rust at once, even while it waits for a slow server.
     public func checkURL() async {
         guard let core, !isCheckingURL else { return }
         isCheckingURL = true
-        defer { isCheckingURL = false }
+        defer {
+            isCheckingURL = false
+            urlCheck = nil
+        }
         urlResult = nil
+        // Cancelling a Swift Task does not reach Rust by itself (UniFFI 0.32),
+        // so forward it through a Cancellation.
+        let cancellation = Cancellation()
+        urlCheck = cancellation
         do {
-            let status = try await core.checkUrl(url: url)
+            let status = try await withTaskCancellationHandler {
+                try await core.checkUrl(url: url, cancellation: cancellation)
+            } onCancel: {
+                cancellation.cancel()
+            }
             urlResult = "HTTP \(status)"
         } catch {
             urlResult = Self.describe(error)
         }
+    }
+
+    /// Stops the URL check in flight, if any.
+    public func cancelURLCheck() {
+        urlCheck?.cancel()
     }
 
     // MARK: Private
@@ -133,6 +152,7 @@ public final class NotesModel: ObservableObject {
         case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
         case .Timeout: return "The request timed out."
         case .Network(let reason): return "Network error: \(reason)"
+        case .Cancelled: return "Cancelled."
         case .ShutDown: return "The app is closing."
         }
     }

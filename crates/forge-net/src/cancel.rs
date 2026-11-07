@@ -120,6 +120,20 @@ impl CancelHandle {
         true
     }
 
+    /// A new handle that is cancelled when this one is (or on its own). Use
+    /// it for one piece of work under a longer-lived owner, such as a
+    /// request under an app instance that `shutdown` cancels. The link holds
+    /// a hook on this handle until the returned registration is dropped, so
+    /// keep the registration for as long as the work runs, then drop it.
+    pub fn child(&self) -> (CancelHandle, AbortRegistration) {
+        let child = CancelHandle::new();
+        let registration = {
+            let child = child.clone();
+            self.on_cancel(move || child.cancel())
+        };
+        (child, registration)
+    }
+
     /// Number of hooks waiting to run. For tests that check hooks do not
     /// pile up.
     pub fn pending_hooks(&self) -> usize {
@@ -208,6 +222,24 @@ mod tests {
         assert_eq!(handle.pending_hooks(), 0);
         handle.cancel();
         assert_eq!(runs.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn child_follows_its_parent_but_not_the_other_way() {
+        let parent = CancelHandle::new();
+        let (child, link) = parent.child();
+        child.cancel();
+        assert!(!parent.is_cancelled());
+        drop(link);
+        assert_eq!(parent.pending_hooks(), 0);
+
+        let (child, _link) = parent.child();
+        parent.cancel();
+        assert!(child.is_cancelled());
+
+        // A child of a cancelled parent starts cancelled.
+        let (late, _) = parent.child();
+        assert!(late.is_cancelled());
     }
 
     #[test]

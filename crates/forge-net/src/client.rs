@@ -14,6 +14,30 @@ pub trait HttpClient: Send + Sync {
     /// a worker thread (e.g. `forge-ffi`'s command thread), never the UI.
     fn send(&self, request: &Request) -> Result<Response, NetError>;
 
+    /// [`send`](HttpClient::send) that `cancel` can stop while the request is
+    /// in flight: it then fails with [`NetError::Cancelled`] and its response,
+    /// if one arrives, is discarded.
+    ///
+    /// The default implementation checks `cancel` before sending and after
+    /// the response arrives, which is enough for test doubles that never
+    /// block. A transport that can block must override it and abort the
+    /// request from a [`CancelHandle::on_cancel`] hook (`UreqClient` shuts
+    /// the connection down).
+    fn send_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        let response = self.send(request);
+        if cancel.is_cancelled() {
+            return Err(NetError::Cancelled);
+        }
+        response
+    }
+
     /// Performs `request` and returns once the status and headers have
     /// arrived, leaving the body to be read incrementally. Use it for
     /// long-lived bodies such as Server-Sent Events.
@@ -62,6 +86,14 @@ impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
         (**self).send(request)
     }
 
+    fn send_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        (**self).send_cancellable(request, cancel)
+    }
+
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {
         (**self).open_stream(request)
     }
@@ -78,6 +110,14 @@ impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
 impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
     fn send(&self, request: &Request) -> Result<Response, NetError> {
         (**self).send(request)
+    }
+
+    fn send_cancellable(
+        &self,
+        request: &Request,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        (**self).send_cancellable(request, cancel)
     }
 
     fn open_stream(&self, request: &Request) -> Result<StreamingResponse, NetError> {

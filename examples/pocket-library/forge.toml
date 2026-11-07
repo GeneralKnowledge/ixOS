@@ -1,9 +1,10 @@
 [app]
 name = "PocketLibrary"
-# Home-screen name (read by forge.toml app config from PR #31; Info.plist matches it).
-display_name = "Pocket Library"
 bundle_id = "org.forgemobile.pocketlibrary"
 minimum_ios = "17.0"
+display_name = "Pocket Library"     # home-screen name
+version = "1.0.0"                   # CFBundleShortVersionString
+build_number = "1"                  # CFBundleVersion; raise it for every upload
 
 [rust]
 # This app's own Rust crate: logic, state, persistence, networking.
@@ -12,3 +13,9 @@ path = "rust"
 [build]
 ios_device = true
 ios_simulator = false
+
+# iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
+# this section on every `forge build ios` / `forge run ios` (or `forge config
+# sync`), so edit them here, not in those files. All keys: docs/app-config.md.
+[ios]
+orientations = ["portrait"]
