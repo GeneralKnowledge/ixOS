@@ -62,7 +62,7 @@ General rules for every laptop step: run commands yourself, report output verbat
 
 - [ ] `cd /home/red/ixOS && git fetch origin`. Two worktrees: current `main` at `~/ixos-session`, and #61's branch (`claude/project-thread-e6ryft`) at `~/ixos-uitest`. `cargo build -p forge-cli` in both; use `~/ixos-uitest/target/debug/forge` for every `forge ui` command and the Pocket Library install.
 - [ ] `forge doctor --json` and `forge device list --json`: record the iPhone, iOS version and **the installed apps**. If the three apps are not Pocket Library, AICheck and Weather, stop and tell Reuben before deleting anything.
-- [ ] Find Xcode's `CoreDeviceDDIs` folder on the laptop (needed in step 1); if only an `Xcode*.xip` exists, report its path and stop there (no long extractions).
+- [ ] Find Xcode's `Contents/Resources/CoreDeviceDDIs` folder on the laptop (needed in step 1; xtool's SDK doesn't keep it); if only an `Xcode*.xip` exists, report its path and stop there (no long extractions).
 - [ ] Download the WebDriverAgent runner zip and check its SHA-256 against the value in the UI-testing thread; stop if it differs.
 - [ ] Start builds that don't need the phone, in the background, so later steps only install: Chat (`forge build ios --project examples/chat` from `~/ixos-session`) and the AICheck release build from the L0 thread (commit 7b8eb70 or later).
 
@@ -104,7 +104,7 @@ Owner: "Automate testing on a real iPhone" thread, PR #61 (draft, kept draft unt
 
 **Laptop (Remote Control), all from `~/ixos-uitest`:**
 
-- [ ] `forge device list` shows Weather gone, then `forge ui setup --runner ~/forge-uitest/WebDriverAgentRunner-Runner.app`.
+- [ ] `forge device list` shows Weather gone, then `forge ui setup --runner ~/forge-uitest/WebDriverAgentRunner-Runner.app` (add `--team paid` only if step 3 already showed a paid team; it changes only the app-limit wording). If it fails at "starting WebDriverAgent", capture the full error.
 - [ ] `forge ui run examples/pocket-library/uitests/m0.toml --out ~/forge-uitest/out`.
 - [ ] `forge ui tree --app org.forgemobile.pocketlibrary` and `forge ui screenshot ~/forge-uitest/out/manual.png`.
 
