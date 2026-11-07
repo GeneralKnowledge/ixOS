@@ -12,6 +12,8 @@ name = "forge"
 path = "src/main.rs"
 
 [dependencies]
+# `forge device`: phone info, logs and crash reports over usbmuxd.
+forge-device = { path = "../forge-device" }
 clap = { version = "=4.6.7", features = ["derive"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
