@@ -8,6 +8,7 @@ members = [
     "crates/forge-device",
     "crates/forge-devproto",
     "crates/forge-devtools",
+    "crates/forge-mcp",
     "examples/chat-core",
     "examples/chat-server",
     "examples/chat-cli",

@@ -1,0 +1,24 @@
+[package]
+name = "forge-mcp"
+version = "0.1.0"
+description = "Forge as a local MCP server (stdio): structured check, build, install, inspect and diagnose tools for coding agents, on top of `forge --json`"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# The official Rust MCP SDK (docs/forge-mcp.md, "Rust MCP SDK"). Server and
+# stdio only: no HTTP transport, nothing listens on the network.
+rmcp = { version = "=3.9.0", default-features = false, features = ["server", "transport-io", "base64"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "sync", "io-std", "io-util"] }
+tokio-util = "0.7"
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "1.1"
+base64 = "0.22"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.14"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "process", "time", "sync", "io-util"] }

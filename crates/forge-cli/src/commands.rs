@@ -1781,7 +1781,9 @@ ios_device = true
         );
         assert!(!agents.contains("FORGE_APP_NAME"));
         assert!(dest.join("CLAUDE.md").is_file());
-        assert!(dest.join(".mcp.json").is_file());
+        assert!(agents.contains("--process InitTestAppXtool"), "{agents}");
+        let mcp = fs::read_to_string(dest.join(".mcp.json")).unwrap();
+        assert!(mcp.contains("\"args\": [\"mcp\"]"), "{mcp}");
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));
