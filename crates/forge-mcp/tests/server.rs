@@ -18,7 +18,7 @@ if [ "$1 $2" = "ui --help" ]; then [ -n "$FAKE_UI" ] && exit 0; exit 2; fi
 shift # --json
 case "$1 $2" in
   "doctor ") echo '{"schema_version":1,"ios_device":{"apple_sign_in":"logged_in","usbmuxd_running":true,"signing_team":{"id":"ABCDE12345","name":"Someone","kind":"free","sign_in":"apple_id"}},"ready":{"ios_device":true}}' ;;
-  "device list") echo '{"schema":"forge.result/1","command":"device list","ok":true,"stage":"ok","duration_ms":5,"diagnostics":[],"hints":[],"data":[{"udid":"0000","name":"Cati"}]}' ;;
+  "device list") echo '{"schema":"forge.result/1","command":"device list","ok":true,"stage":"ok","duration_ms":5,"diagnostics":[],"hints":[],"data":{"devices":[{"udid":"0000","name":"Cati"}]}}' ;;
   "device logs") sleep 90 ;;
   "run ios") echo '{"schema":"forge.result/1","command":"run ios","ok":true,"stage":"ok","duration_ms":9,"diagnostics":[],"hints":[],"data":{"installed":true,"launched":false}}' ;;
   "build ios") echo "[forge] building"; echo '{"schema":"forge.result/1","command":"build ios","ok":false,"stage":"swift","duration_ms":7,"error":"xtool dev build failed","diagnostics":[{"severity":"error","source":"swiftc","file":"Sources/AppHost/TipView.swift","line":12,"column":5,"message":"cannot find tipModel in scope"}],"hints":[],"log":null}'; exit 11 ;;
@@ -304,6 +304,7 @@ async fn device_status_is_team_aware_and_hung_reads_are_stopped() {
     let status = c.call("forge_device_status", json!({})).await;
     let data = &status["structuredContent"]["data"];
     assert_eq!(data["signing_team"]["kind"], "free");
+    assert_eq!(data["devices"][0]["name"], "Cati");
     assert!(data["notes"][0]
         .as_str()
         .unwrap()

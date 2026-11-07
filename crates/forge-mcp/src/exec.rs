@@ -67,12 +67,19 @@ impl Invocation {
 
 /// Runs `forge` (the binary at `forge`) with `--json` and returns its
 /// `forge.result/1` object, real or made up for a run that never produced one.
-pub async fn run(forge: &Path, inv: &Invocation, cancel: &CancellationToken) -> Value {
+pub async fn run(
+    forge: &Path,
+    workspace: &Path,
+    inv: &Invocation,
+    cancel: &CancellationToken,
+) -> Value {
     let started = Instant::now();
     let mut cmd = tokio::process::Command::new(forge);
     cmd.arg("--json")
         .args(&inv.args)
         .current_dir(&inv.cwd)
+        // Apps outside the checkout still find Forge's scripts and templates.
+        .env("FORGE_WORKSPACE", workspace)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

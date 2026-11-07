@@ -19,6 +19,27 @@ What an agent (or a person) can do at each step today, from Linux. "Phone-verifi
 | 9. Run UI tests | `forge ui run <file>.toml --json` (#61); `forge_run_ui_test`, `forge_ui_act` | In #61, not phone-verified |
 | 10. Diagnose | `diagnose.rs` hints in every `--json` result, `forge device crashes --pull`, `forge_diagnose` (last failure and its log) | Basic: no correlation of logs, crashes and UI state yet; crashes not symbolicated |
 
+### Proving it on the phone
+
+`scripts/iphone-acceptance.sh` runs every hardware-dependent step above in one go, through the same `forge --json` commands, and writes `results.md` (PASS, FAIL or SKIP per step, with the reason) plus each step's raw JSON. It removes nothing from the phone; its only install is the app under test over its existing copy (`forge run ios`).
+
+```bash
+forge ui setup --ddi <CoreDeviceDDIs> --runner <WebDriverAgentRunner-Runner.app>   # once per phone restart (#61)
+scripts/iphone-acceptance.sh --with-ax-probe --with-mcp      # about 5 minutes, phone unlocked throughout
+```
+
+| Step | Kind | Passes when |
+|---|---|---|
+| S1, S2 | mandatory | `forge doctor` sees xtool signed in, and the selected team is the paid one |
+| D1–D3 | mandatory | The phone is listed over USB, with its details, and Developer Mode is on |
+| I0–I3 | mandatory | Pocket Library builds, signs and installs; the embedded provisioning profile's team, lifetime (7 days free, up to a year paid) and entitlements are recorded and match the team |
+| L1 | mandatory | Launch, background for 3 s, terminate (element gone), relaunch (element back), screenshot |
+| U1–U4 | mandatory | The Pocket Library M0 test (tap, type, expect, screenshot) passes; the WDA tree and a screenshot are saved; a step aimed at a missing element fails with `failed_step`, the tree and a screenshot |
+| R1, R2 | mandatory | The app's own log lines arrive while the tests run; crash reports are listed and copied |
+| X1, X2 | optional | Apple's accessibility service probe (`ax-report.json`, compared with the WDA tree); `forge mcp` answers `forge_device_status` from the phone |
+
+Without `forge ui` (#61 not merged), L1 and U1–U4 are SKIP, which counts against the run: a skipped step is never a pass. Run on Linux without a phone, every device step fails with the CLI's own usbmuxd message, which is how the script was checked.
+
 Remaining gaps in the order that matters for an unattended agent: #61's first phone run (launch, tree, tap, type), then `forge device apps` (slots and profile expiry, fix 6), a runner-free launch (fix 3), and runtime correlation in `forge_diagnose`.
 
 The question (Reuben, 2026-11-07): is it easy to **create an app, change its UI, run it on a real iPhone, inspect what happened, diagnose problems and repeat**, from Linux, with Rust as the logic and SwiftUI as the presentation? This page walks that loop step by step with what Forge has on `main` today, measures what can be measured, ranks the gaps by friction and proposes the smallest fix for each.

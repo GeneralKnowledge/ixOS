@@ -329,7 +329,7 @@ fn rel(root: &Path, path: &Path) -> String {
 
 impl crate::Server {
     async fn forge(&self, inv: Invocation, cancel: &tokio_util::sync::CancellationToken) -> Value {
-        let mut result = exec::run(&self.opts.forge, &inv, cancel).await;
+        let mut result = exec::run(&self.opts.forge, &self.opts.workspace, &inv, cancel).await;
         if let Some(obj) = result.as_object_mut() {
             obj.insert("cli".into(), json!(inv.display()));
         }
@@ -714,7 +714,10 @@ impl crate::Server {
         if ios["usbmuxd_running"] == json!(false) {
             notes.push("usbmuxd is not running: no phone can be reached until it is plugged in and unlocked.");
         }
-        let devices = list["data"].clone();
+        let devices = match &list["data"]["devices"] {
+            Value::Null => list["data"].clone(),
+            devices => devices.clone(),
+        };
         let ok = list["ok"] == json!(true);
         let mut result = list;
         if let Some(obj) = result.as_object_mut() {
