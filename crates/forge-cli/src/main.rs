@@ -5,6 +5,7 @@ mod config;
 mod device;
 mod diagnose;
 mod doctor;
+mod evidence;
 mod ios_builder;
 mod ios_env;
 mod ledger;

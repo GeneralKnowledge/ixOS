@@ -209,8 +209,10 @@ public final class LibraryModel {
     /// Imports an EPUB chosen in the document picker. The picker's URL is
     /// security-scoped: access is held while Rust reads the file.
     public func importEpub(at url: URL) async throws -> Book {
+        #if canImport(Darwin)
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #endif
         return try await run { try await $0.importEpub(path: url.path) }
     }
 

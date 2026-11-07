@@ -459,8 +459,8 @@ pub fn finish(outcome: &Outcome, res: Result<(), String>) -> i32 {
     code
 }
 
-/// `2026-11-07T16-40-12` in UTC, for log file names.
-fn timestamp() -> String {
+/// `2026-11-07T16-40-12` in UTC, for log file names and run ids.
+pub fn timestamp() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
