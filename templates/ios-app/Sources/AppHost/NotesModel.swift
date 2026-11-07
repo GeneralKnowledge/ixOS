@@ -20,7 +20,7 @@ public final class NotesModel: ObservableObject {
     /// Set when the app could not be opened (for example unreadable data).
     @Published public private(set) var openError: String?
     /// The lifecycle phase last reported to Rust.
-    @Published public private(set) var phase: AppPhase = .launching
+    @Published public private(set) var lifecyclePhase: AppPhase = .launching
 
     public private(set) var core: AppCore?
     private let storageDirectory: String?
@@ -54,7 +54,7 @@ public final class NotesModel: ObservableObject {
             notes = core.notes()
             listen(to: events)
             // A phase reported before Rust was open still counts.
-            if phase != .launching { core.setPhase(phase: phase) }
+            if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
         } catch {
             openError = Self.describe(error)
         }
@@ -75,7 +75,7 @@ public final class NotesModel: ObservableObject {
     /// background and sends `.phaseChanged(resumed: true)` on the way back.
     /// `.terminated` shuts the core down, like `close()`.
     public func setPhase(_ phase: AppPhase) {
-        self.phase = phase
+        lifecyclePhase = phase
         if phase == .terminated {
             close()
         } else {

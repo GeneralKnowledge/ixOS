@@ -38,7 +38,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
     var openError by mutableStateOf<String?>(null)
         private set
     /** The lifecycle phase last reported to Rust. */
-    var phase by mutableStateOf(AppPhase.LAUNCHING)
+    var lifecyclePhase by mutableStateOf(AppPhase.LAUNCHING)
         private set
 
     var core: AppCore? = null
@@ -60,7 +60,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
             core = opened
             notes = opened.notes()
             // A phase reported before Rust was open (a retry after an error) still counts.
-            if (phase != AppPhase.LAUNCHING) opened.setPhase(phase)
+            if (lifecyclePhase != AppPhase.LAUNCHING) opened.setPhase(lifecyclePhase)
         } catch (e: AppException) {
             openError = describe(e)
         }
@@ -91,7 +91,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
      * [close].
      */
     fun setPhase(phase: AppPhase) {
-        this.phase = phase
+        lifecyclePhase = phase
         if (phase == AppPhase.TERMINATED) close() else core?.setPhase(phase)
     }
 
