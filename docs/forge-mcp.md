@@ -48,7 +48,7 @@ Enforced by the server: paths stay inside the root (symlinks included); phone to
 Different from the design below, on purpose for M0:
 
 - **Approval is a standing allowance only.** Elicitation is not built: a tier-2 call without `--allow` is refused with the command a person can run. The 2026-07-28 protocol reworked server-to-client requests, and client support varies, so this waits until a client needs it.
-- **Launch goes through the WebDriverAgent runner** (`launch` and `terminate` steps of a UI test file, #61), not a separate `forge device launch` (DL2). Without `forge ui setup`, nothing launches the app. On Cati (2026-11-07) apps could not yet be opened from the laptop; a person switched to the app by hand.
+- **Launch goes through the WebDriverAgent runner** (`launch` and `terminate` steps of a UI test file, #61), not a separate `forge device launch` (DL2). Without `forge ui setup`, nothing launches the app. On Cati (2026-11-07) this works once **Settings > Developer > Enable UI Automation** is on; without it WDA refuses with code 41 and a person has to open the app by hand.
 - **No slot or expiry count yet.** `forge_device_status` reports the team and its limits but cannot list installed apps or profile expiry (`forge device apps`, DL5, not built).
 - **`--udid` instead of a device allowlist** in config. `forge_install_device` cannot pass it on: xtool chooses the phone.
 - **Not built:** `forge_ui_audit`, `forge_set_appearance`, `forge_app_state`, `forge_remove_app`, `forge_add_capability` (M1 and later, as planned); screenshot downscaling; a server-side log capture from the last launch; the "no more than two identical failed installs" rule.
@@ -343,7 +343,7 @@ Allowed beforehand: freeing a slot, the one-time trust steps, `forge ui setup` (
 
 | # | Piece | Where | Size |
 |---|---|---|---|
-| 1 | PR #61 merged and its M0 run done on Cati (tree, screenshot, tap, type, TOML runner) | UI testing thread | Merged 2026-11-07; disk image mounted and runner installed on Cati, M0 run not done yet |
+| 1 | PR #61 merged and its M0 run done on Cati (tree, screenshot, tap, type, TOML runner) | UI testing thread | Merged 2026-11-07. On Cati: setup, launch, tree and screenshot work (with #90); find by identifier and a passing M0 test are not done yet |
 | 2 | `forge device launch` / `terminate`, auto-mount of the disk image (DL2, DL5 fix 2) | Dev-loop order #3 | 1–2 days |
 | 3 | `forge device apps` (read only) and `forge doctor --device` (DL5) | Dev-loop order #6 | 1 day |
 | 4 | `--json` and exit codes on `init`, `build ios`, `run ios`, `device *`, `ui *`, `config show` (DL8, shape above) | Dev-loop order #7, shape from here | Done (`forge --json`, `forge.result/1`) |
@@ -388,6 +388,6 @@ The mock social app in M2 is an acceptance exercise for the agent loop, not a ne
 
 - **Client support varies.** Structured content, elicitation and image results are in the spec but not in every client. Every result also has a text form, and every tier-2 refusal says what to run instead.
 - **The agent's own judgement.** An agent can loop on a failure it can't fix (a signing error, a stuck USB). Results carry `needs_person`, the `fix_build` prompt says to stop on device and signing stages, and the server refuses to retry an install more than twice in a row without a change.
-- **#61 has not run a test on a phone yet** (merged; the runner is installed on Cati but hasn't started through Forge). If `idevice`'s XCTest support doesn't work on iOS 26.3, the tree and UI actions move to a fallback (go-ios `runwda` to start the runner, our WDA client unchanged). Screenshot through the developer screenshot service (DL3 fix 1) doesn't depend on WDA.
+- **#61 hasn't passed a test on a phone yet.** On Cati (iOS 26.3.1, 2026-11-07) `idevice`'s XCTest start works: setup, launch, tree and screenshot all ran. Find by identifier (an attribute WDA 16 rejects) and keeping the runner alive after `forge` exits are open bugs. Screenshot through the developer screenshot service (DL3 fix 1) doesn't depend on WDA.
 - **Liquid Glass and SDK stamping.** Linux builds may run in compatibility mode on iOS 26 ([ios-ui.md](ios-ui.md)). Screenshots an agent compares must come from the same kind of build.
 - **Scope creep.** The point of M0 is one small app built and fixed unattended. Tools beyond the M0 list wait until a run shows the agent needs them.
