@@ -18,7 +18,7 @@ It works from Linux with a free Apple account, and it can go through the connect
 - **The `idevice` crate that Forge Device already uses can run it.** `idevice` 0.1.68 (the exact version `forge-device` pins) has an `xctest` feature that starts an XCTest runner through `testmanagerd`. It has a `wda` feature with a WebDriverAgent client over usbmuxd. On iOS 17 and later it reaches `testmanagerd` through the `CoreDeviceProxy` lockdown service and a userspace TCP stack, so no TUN device and no root are needed. Forge UI Testing is a new crate on top of the same device connection, not a second device stack.
 - **Two costs are specific to iPhone development without a Mac.**
   - The runner is a separate app, so it uses **one of the three free-account app slots**, and it expires with the other apps after **7 days**.
-  - XCTest needs the **Developer Disk Image (DDI)** mounted. On iOS 17 and later it is a personalised image that Apple signs per device, and it is unmounted at every reboot. Xcode mounts it for Mac users. We mount it from Linux with `idevice`, using the image file inside `Xcode.xip`. That is the same download xtool already asks for, but xtool's SDK keeps only `Contents/Developer`, so the DDI has to be pulled out of the xip separately.
+  - XCTest needs the **Developer Disk Image (DDI)** mounted. On iOS 17 and later it is a personalised image that Apple signs per device, and it is unmounted at every reboot. Xcode mounts it for Mac users. We mount it from Linux with `idevice`. The image does not come with xtool's SDK. The Xcode 26.0 `Xcode.xip` we checked on Cati has no `CoreDeviceDDIs` folder at all, so on 2026-11-07 the image came from the [doronz88/DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage) mirror (`PersonalizedImages/Xcode_iOS_DDI_Personalized`, at commit e2aaeac). Apple still signs the image for each phone when it is mounted.
 
 The rest of this page is the evidence for each claim, the design, and the milestones.
 
@@ -86,9 +86,9 @@ Nothing in M0 changes: its code and steps are the same either way.
 | 7-day signing | The runner stops launching after a week, like every free-account app | `forge ui setup` reads the installed profile's expiry and re-installs when it's under a day |
 | Entitlements | The runner needs no capability entitlements. Development signing gives `get-task-allow`, which is all the runner launch needs | Nothing beyond what xtool already signs |
 | Developer Mode | Required, already on for Cati | `forge doctor` already reports it |
-| DDI | Must be mounted for XCTest. Personalised for iOS 17+, signed by Apple per device, and gone after a reboot | `forge ui setup` mounts it from `Xcode.xip` and caches the extracted image |
+| DDI | Must be mounted for XCTest. Personalised for iOS 17+, signed by Apple per device, and gone after a reboot | `forge ui setup --ddi <folder>` mounts it; the folder comes from the DDI mirror (see above) |
 
-The DDI needs one extra input. It sits in `Xcode.app/Contents/Resources/CoreDeviceDDIs/` inside `Xcode.xip`, and xtool's SDK builder keeps only `Contents/Developer` (`Sources/XToolSupport/SDKBuilder.swift`, `SDKEntry.wanted`). So `forge ui setup --xip ~/Downloads/Xcode_26.xip` extracts just that folder, once, into Forge's cache. If the xip is gone, the developer re-downloads it from Apple; Forge does not fetch DDIs from third-party mirrors.
+The DDI needs one extra input. Older Xcodes ship it in `Xcode.app/Contents/Resources/CoreDeviceDDIs/`, but xtool's SDK builder keeps only `Contents/Developer` (`Sources/XToolSupport/SDKBuilder.swift`, `SDKEntry.wanted`), and the Xcode 26.0 xip has no such folder. The developer downloads a personalised DDI folder once (BuildManifest.plist, Image.dmg, Image.dmg.trustcache) and passes it with `--ddi`. Forge does not download it by itself.
 
 ## Design
 
@@ -158,7 +158,7 @@ forge ui run FILE [--out DIR]               run a test file; screenshots and fai
 Later milestones add:
 
 ```
-forge ui setup --xip PATH                   pull the DDI out of Xcode.xip itself, refresh an expiring runner
+forge ui setup --refresh                    re-sign an expiring runner
 forge ui audit --app BUNDLE                 the full accessibility audit (M3)
 forge test ios [--suite DIR|FILE] [--report DIR]
 ```
@@ -199,16 +199,16 @@ The exploratory tester is a separate command (`forge explore ios`). It never tak
 1. Add `crates/forge-uitest` with `Locator`, `Driver`, `WdaDriver`, the runner launch and DDI mount, plus tests against a fake driver.
 2. Add `forge ui setup`, `forge ui tree`, `forge ui screenshot` and `forge ui run`, plus `examples/pocket-library/uitests/m0.toml`, which runs the five M0 steps against Pocket Library and prints each result.
 3. Give Pocket Library's library screen and book form accessibility identifiers (and fix any missing labels the tree shows). It is updated in place on the phone, so it needs no extra slot.
-4. On Reuben's laptop, over Remote Control: extract the DDI from `Xcode.xip`, mount it, install the runner with `xtool install`, then run `forge ui run examples/pocket-library/uitests/m0.toml`. Reuben only frees a slot on the phone, unlocks it, and confirms what he sees.
+4. On Reuben's laptop, over Remote Control: get the DDI, mount it, install the runner with `xtool install`, then run `forge ui run examples/pocket-library/uitests/m0.toml`. Reuben only frees a slot on the phone, unlocks it, and confirms what he sees.
 
 ## Running M0
 
 On the Linux machine, with the phone plugged in, unlocked and trusting the computer:
 
 1. Get the runner: `WebDriverAgentRunner-Runner.zip` from [Appium's WDA release v16.15.3](https://github.com/appium/WebDriverAgent/releases/tag/v16.15.3). Check its sha256 (above) and unzip it.
-2. Get the Developer Disk Image: the `Contents/Resources/CoreDeviceDDIs` folder of the Xcode you gave `xtool setup` (from `Xcode.xip`).
+2. Get a personalised Developer Disk Image: clone [doronz88/DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage) and use its `PersonalizedImages/Xcode_iOS_DDI_Personalized` folder. Xcode 26.0's `Xcode.xip` has no `CoreDeviceDDIs` folder.
 3. Make room: a free account allows three sideloaded apps, and the runner is one.
-4. `forge ui setup --ddi <CoreDeviceDDIs folder> --runner WebDriverAgentRunner-Runner.app` mounts the image, has xtool sign and install the runner, and checks it starts. The first time, the phone may ask you to trust the developer profile again: Settings > General > VPN & Device Management.
+4. `forge ui setup --ddi <DDI folder> --runner WebDriverAgentRunner-Runner.app` mounts the image, has xtool sign and install the runner, and checks it starts. The first time, the phone may ask you to trust the developer profile again: Settings > General > VPN & Device Management. If the runner never starts, `forge ui setup` stops after 120 seconds and says so; it does not hang.
 5. Install Pocket Library with its identifiers (`forge run ios --project examples/pocket-library`).
 6. `forge ui run examples/pocket-library/uitests/m0.toml` opens the New Book form, types a title, checks the field and the Add button, prints the screen's tree, saves screenshots in `forge-ui-out/`, and cancels.
 

@@ -6,7 +6,7 @@ use std::io::Write;
 use std::path::Path;
 use std::time::Duration;
 
-use forge_uitest::phone::{find_ddi, find_runner, resolve_app, Phone, Runner};
+use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
 use forge_uitest::script::{self, Script};
 use forge_uitest::wda::WdaDriver;
 use forge_uitest::{ensure_front, Driver};
@@ -86,9 +86,9 @@ impl Team {
     fn apps_line(self, apps: &[String]) -> String {
         let list = apps.join(", ");
         match self {
-            Team::Free => format!("Apps installed: {} of {FREE_APP_LIMIT} on a free account ({list}). The runner's signature lasts 7 days", apps.len()),
-            Team::Paid => format!("Apps installed: {} ({list}). Paid team: no 3-app limit; the runner's signature lasts as long as its provisioning profile (up to a year)", apps.len()),
-            Team::Unknown => format!("Apps installed: {} ({list}). With a free Apple account the limit is {FREE_APP_LIMIT} and signatures last 7 days; pass --team paid if xtool signs with a paid team", apps.len()),
+            Team::Free => format!("Sideloaded apps: {} of {FREE_APP_LIMIT} on a free account ({list}). The runner's signature lasts 7 days", apps.len()),
+            Team::Paid => format!("Sideloaded apps: {} ({list}). Paid team: no 3-app limit; the runner's signature lasts as long as its provisioning profile (up to a year)", apps.len()),
+            Team::Unknown => format!("Sideloaded apps: {} ({list}). With a free Apple account the limit is {FREE_APP_LIMIT} and signatures last 7 days; pass --team paid if xtool signs with a paid team", apps.len()),
         }
     }
 
@@ -126,7 +126,7 @@ pub fn setup(
     } else {
         let Some(dir) = ddi else {
             return Err("the Developer Disk Image is not mounted (it is unmounted at every reboot): \
-                        pass --ddi <folder> with Xcode's Contents/Resources/CoreDeviceDDIs (docs/forge-ui-testing.md)"
+                        pass --ddi <folder> with a personalised iOS Developer Disk Image, e.g. PersonalizedImages/Xcode_iOS_DDI_Personalized from github.com/doronz88/DeveloperDiskImage (docs/forge-ui-testing.md)"
                 .into());
         };
         let files = find_ddi(dir)?;
@@ -148,7 +148,7 @@ pub fn setup(
     let mut apps = phone.user_apps().map_err(err)?;
     if let Some(app) = wda_app {
         if find_runner(&apps).is_none() {
-            if let Some(note) = team.full_note(&apps) {
+            if let Some(note) = team.full_note(&sideloaded(&apps)) {
                 writeln!(out, "{note}").map_err(err)?;
             }
         }
@@ -175,7 +175,7 @@ pub fn setup(
     }
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
     writeln!(out, "Runner: {runner_id}").map_err(err)?;
-    writeln!(out, "{}", team.apps_line(&apps)).map_err(err)?;
+    writeln!(out, "{}", team.apps_line(&sideloaded(&apps))).map_err(err)?;
 
     writeln!(out, "Starting WebDriverAgent…").map_err(err)?;
     let (_runner, mut driver) = start(&phone, &runner_id, team)?;
@@ -195,7 +195,7 @@ pub fn setup(
     report::set_data(serde_json::json!({
         "runner": runner_id,
         "wda_version": version,
-        "installed_apps": apps,
+        "sideloaded_apps": sideloaded(&apps),
         "team": format!("{team:?}").to_lowercase(),
     }));
     writeln!(out, "WebDriverAgent {version} is ready. `forge ui tree`, `forge ui screenshot` and `forge ui run` will work.")
@@ -377,7 +377,7 @@ mod tests {
         assert!(Team::Paid.apps_line(&apps(4)).contains("no 3-app limit"));
         assert!(Team::Free
             .apps_line(&apps(2))
-            .starts_with("Apps installed: 2 of 3 on a free account"));
+            .starts_with("Sideloaded apps: 2 of 3 on a free account"));
         assert!(Team::Unknown.apps_line(&apps(1)).contains("--team paid"));
         assert!(!Team::Paid.expiry_hint().contains("7 days"));
     }

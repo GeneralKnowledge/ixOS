@@ -43,8 +43,8 @@ pub struct Phone {
     pub udid: String,
 }
 
-/// The parts of a personalised Developer Disk Image, from Xcode's
-/// `Contents/Resources/CoreDeviceDDIs`.
+/// The parts of a personalised Developer Disk Image (Xcode 26.0's xip has
+/// none; the doronz88/DeveloperDiskImage mirror does).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DdiFiles {
     pub image: PathBuf,
@@ -180,18 +180,35 @@ impl Phone {
     /// it answers. It runs until the returned handle is dropped.
     pub fn start_runner(&self, runner_id: &str) -> Result<Runner> {
         let provider: Arc<dyn IdeviceProvider> = self.provider.clone();
-        let handle = self.runtime.block_on(async {
+        let runner_id = runner_id.to_owned();
+        // On its own task, so the deadline below holds even when a step
+        // inside idevice waits on a phone socket that never answers (seen on
+        // iOS 26.3 when the runner's developer profile wasn't trusted yet):
+        // idevice's own limit only covers waiting for WDA's port.
+        let task = self.runtime.spawn(async move {
             let mut proxy = InstallationProxyClient::connect(&*provider)
                 .await
                 .map_err(|e| device_error("installation_proxy", e))?;
-            let config = TestConfig::from_installation_proxy(&mut proxy, runner_id, None)
+            let config = TestConfig::from_installation_proxy(&mut proxy, &runner_id, None)
                 .await
                 .map_err(|e| device_error("reading the runner's install", e))?;
             XCUITestService::new(provider)
-                .run_until_wda_ready(config, Duration::from_secs(90))
+                .run_until_wda_ready(config, WDA_READY)
                 .await
                 .map_err(|e| device_error("starting WebDriverAgent", e))
-        })?;
+        });
+        let abort = task.abort_handle();
+        let handle = self
+            .runtime
+            .block_on(async { tokio::time::timeout(RUNNER_START, task).await })
+            .map_err(|_| {
+                abort.abort();
+                UiError::Device(format!(
+                    "WebDriverAgent did not start within {} s. {RUNNER_HINT}",
+                    RUNNER_START.as_secs()
+                ))
+            })?
+            .map_err(|e| UiError::Device(format!("the runner start task failed: {e}")))??;
         Ok(Runner { handle })
     }
 
@@ -203,6 +220,21 @@ impl Phone {
             port: WDA_PORT,
         }
     }
+}
+
+/// How long idevice waits for WDA's port once the test runs.
+const WDA_READY: Duration = Duration::from_secs(90);
+/// The whole runner start, from asking testmanagerd to WDA answering.
+const RUNNER_START: Duration = Duration::from_secs(120);
+const RUNNER_HINT: &str = "Unlock the phone and keep it on the home screen. If this is the first start, trust the developer in Settings > General > VPN & Device Management (the runner is signed by your Apple ID), then try again";
+
+/// Apps that xtool sideloaded (`XTL-<team>.<id>`): the ones a free Apple
+/// account's 3-app limit counts. App Store apps don't count.
+pub fn sideloaded(apps: &[String]) -> Vec<String> {
+    apps.iter()
+        .filter(|id| id.starts_with("XTL-"))
+        .cloned()
+        .collect()
 }
 
 /// A running WebDriverAgent; stops when dropped.
@@ -350,7 +382,7 @@ pub fn find_ddi(dir: &Path) -> std::result::Result<DdiFiles, String> {
     candidates.into_iter().next().ok_or_else(|| {
         format!(
             "no Developer Disk Image under {} (looking for BuildManifest.plist, a .dmg and its .trustcache; \
-             they are in Xcode.app/Contents/Resources/CoreDeviceDDIs)",
+             e.g. PersonalizedImages/Xcode_iOS_DDI_Personalized from github.com/doronz88/DeveloperDiskImage)",
             dir.display()
         )
     })
@@ -375,6 +407,12 @@ mod tests {
             Some("XTL-AB12.com.facebook.WebDriverAgentRunner.xctrunner")
         );
         assert_eq!(find_runner(&ids(&["a.b"])), None);
+    }
+
+    #[test]
+    fn only_sideloaded_apps_count() {
+        let apps = ids(&["XTL-AB12.a", "com.burbn.instagram", "XTL-AB12.b"]);
+        assert_eq!(sideloaded(&apps), ["XTL-AB12.a", "XTL-AB12.b"]);
     }
 
     #[test]
@@ -417,6 +455,6 @@ mod tests {
         let empty = tempfile::tempdir().unwrap();
         assert!(find_ddi(empty.path())
             .unwrap_err()
-            .contains("CoreDeviceDDIs"));
+            .contains("Xcode_iOS_DDI_Personalized"));
     }
 }
