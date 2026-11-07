@@ -1,6 +1,6 @@
 # Forge UI Testing: driving a real iPhone from Linux
 
-Status: feasibility study and plan, 2026-11-07. M0 is built (`crates/forge-uitest`, `forge ui`) and waiting for its first iPhone run; nothing on this page has run on a phone yet unless it says so.
+Status: 2026-11-07. M0 is built (`crates/forge-uitest`, `forge ui`) but **not yet validated on a phone**. On Cati (iPhone 15 Pro Max, iOS 26.3.1) the Developer Disk Image was mounted and the WDA runner installed; the first `forge ui setup` then hung on a Forge bug (fixed: a stdout deadlock under `--json`), so starting the runner, `forge ui run` (M0), `ui tree` and `ui screenshot` have not run on a phone yet. The accessibility service (route 6) did read Pocket Library's identifiers on Cati. Everything else on this page is tested on Linux only, unless it says so.
 
 Forge UI Testing lets a Linux machine drive an ixOS app on a physical iPhone the way a person would: launch it, find controls by their accessibility identifier, tap, type, read what is on screen, and take screenshots. It is a framework capability, like [Forge Device](forge-device.md), so every demo (Chat, Pocket Library, Weather and the ones that follow) gets it without building its own test harness.
 

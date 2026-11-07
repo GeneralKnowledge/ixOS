@@ -15,8 +15,14 @@
 //!
 //! ```text
 //! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID]
-//!     [--json report.json] [--compare-wda wda-tree.json]
+//!     [--app PREFIX] [--off] [--json report.json] [--compare-wda wda-tree.json]
 //! ```
+//!
+//! `--off` only turns the phone's inspector off (monitoring, highlight),
+//! for when an earlier run was interrupted. Every run turns it off at the end.
+//!
+//! `--app library.` refuses the audit, and any press outside that prefix,
+//! unless an element with an identifier starting `library.` is on screen.
 //!
 //! `--json` also writes everything it found (stages reached, elements,
 //! timings, audit issues, the error) to a file, even when a stage fails.
@@ -40,6 +46,7 @@ use plist::{Dictionary, Value};
 
 const SERVICE: &str = "com.apple.accessibility.axAuditDaemon.remoteserver";
 const FOCUS_CHANGED: &str = "hostInspectorCurrentElementChanged:";
+const APP_STATE: &str = "hostAppStateChanged:";
 const AUDIT_DONE: &str = "hostDeviceDidCompleteAuditCategoriesWithAuditIssues:";
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
@@ -49,6 +56,8 @@ struct Args {
     max: usize,
     audit: bool,
     press: Option<String>,
+    app: Option<String>,
+    off: bool,
     json: Option<std::path::PathBuf>,
     compare_wda: Option<std::path::PathBuf>,
 }
@@ -160,6 +169,8 @@ fn args() -> Args {
         max: 40,
         audit: false,
         press: None,
+        app: None,
+        off: false,
         json: None,
         compare_wda: None,
     };
@@ -170,6 +181,8 @@ fn args() -> Args {
             "--max" => out.max = it.next().and_then(|v| v.parse().ok()).unwrap_or(40),
             "--audit" => out.audit = true,
             "--press" => out.press = it.next(),
+            "--app" => out.app = it.next(),
+            "--off" => out.off = true,
             "--json" => out.json = it.next().map(Into::into),
             "--compare-wda" => out.compare_wda = it.next().map(Into::into),
             other => {
@@ -237,30 +250,60 @@ async fn run(args: &Args, report: &mut Report) -> Result<()> {
     report.ios = Some(version);
     let legacy = lockdown.start_session(&pairing).await?;
 
-    // Stage 1. Bounded: a lockdown that never answers must not hang the session.
+    // Stage 1. Bounded: a lockdown that never answers must not hang the
+    // session. On Cati the handshake once failed with "InvalidContentType"
+    // right after a previous run, so a failed handshake starts the service
+    // again once.
     let started = Instant::now();
-    let (port, ssl) =
-        tokio::time::timeout(Duration::from_secs(20), lockdown.start_service(SERVICE))
-            .await
-            .map_err(|_| format!("stage 1, start {SERVICE}: no answer within 20 s"))?
-            .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
-    println!("[1] service started on port {port} (ssl {ssl})");
+    let _ = legacy;
+    let mut attempt = 0;
+    let socket = loop {
+        attempt += 1;
+        let (port, ssl) =
+            tokio::time::timeout(Duration::from_secs(20), lockdown.start_service(SERVICE))
+                .await
+                .map_err(|_| format!("stage 1, start {SERVICE}: no answer within 20 s"))?
+                .map_err(|e| format!("stage 1, start {SERVICE}: {e}"))?;
+        println!("[1] service started on port {port} (ssl {ssl})");
+        let socket = provider
+            .connect(port)
+            .await?
+            .get_socket()
+            .ok_or("no socket")?;
+        if !ssl {
+            break socket;
+        }
+        match strip_ssl(socket, &pairing).await {
+            Ok(raw) => break raw,
+            Err(err) if attempt == 1 => {
+                println!("[1] TLS handshake failed ({err}); starting the service again");
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            Err(err) => return Err(format!("stage 1, TLS handshake: {err}").into()),
+        }
+    };
     report.stage = 1;
     report.service_ms = Some(started.elapsed().as_millis());
-    let socket = provider
-        .connect(port)
-        .await?
-        .get_socket()
-        .ok_or("no socket")?;
-    let socket = if ssl {
-        let _ = legacy;
-        strip_ssl(socket, &pairing).await?
-    } else {
-        socket
-    };
     let mut ax = Ax::new(RemoteServerClient::new(socket));
     ax.hello().await?;
+    // Messages the daemon sends right after connecting. pymobiledevice3
+    // discards two on iOS 15+; left unread, they shift every reply by one
+    // (run 2 on Cati sent the capabilities list as the audit types).
+    ax.drain(2, Duration::from_millis(500)).await?;
 
+    if args.off {
+        ax.cleanup().await;
+        println!("[off] inspector monitoring, visuals and ignored elements turned off");
+        return Ok(());
+    }
+    // Whatever happens, leave the phone's inspector off: left on, its
+    // highlight keeps moving through whatever app is in front.
+    let result = stages(&mut ax, args, report, started).await;
+    ax.cleanup().await;
+    result
+}
+
+async fn stages(ax: &mut Ax, args: &Args, report: &mut Report, started: Instant) -> Result<()> {
     // Stage 2.
     let caps = ax.call("deviceCapabilities", vec![]).await?;
     println!("[2] capabilities: {}", short(&caps));
@@ -270,6 +313,65 @@ async fn run(args: &Args, report: &mut Report) -> Result<()> {
     report.stage = 2;
     report.capabilities = Some(short(&caps));
     report.audit_types = Some(short(&types));
+
+    // Stage 4 runs before the walk, with app monitoring still off, as
+    // pymobiledevice3's run_audit does. Every other event seen while waiting
+    // is listed, to tell "no answer" from "an answer we didn't recognise".
+    let mut audit = args.audit;
+    if let (true, Some(prefix)) = (audit, &args.app) {
+        if !ax.confirm_app(prefix).await? {
+            println!("[4] audit refused: no element with an identifier starting {prefix:?} is on screen; bring the app to the front");
+            report.audit = Some(serde_json::json!({"refused": "app_not_in_front"}));
+            audit = false;
+        }
+    }
+    if audit {
+        let t = Instant::now();
+        let types = match unwrap(types) {
+            Value::Array(a) => a,
+            other => vec![other],
+        };
+        if !types
+            .iter()
+            .all(|t| t.as_string().is_some_and(|s| s.starts_with("testType")))
+        {
+            return Err(format!(
+                "stage 4: the audit types reply doesn't look like audit types: {}",
+                short(&Value::Array(types))
+            )
+            .into());
+        }
+        ax.send("deviceBeginAuditTypes:", vec![arg(Value::Array(types))])
+            .await?;
+        match ax.wait_event(AUDIT_DONE, Duration::from_secs(120)).await? {
+            Some(issues) => {
+                let issues = match unwrap(issues) {
+                    Value::Array(a) => a,
+                    other => vec![other],
+                };
+                println!(
+                    "[4] audit: {} issues in {} ms",
+                    issues.len(),
+                    t.elapsed().as_millis()
+                );
+                report.stage = 4;
+                report.audit = Some(serde_json::json!({
+                    "ms": t.elapsed().as_millis() as u64,
+                    "issues": issues.iter().map(|i| short(&unwrap(i.clone()))).collect::<Vec<_>>(),
+                }));
+                for i in issues.iter().take(20) {
+                    println!("    {}", short(&unwrap(i.clone())));
+                }
+            }
+            None => {
+                let others = ax.other_events();
+                println!("[4] audit: no result within 120 s; other events: {others}");
+                report.audit = Some(
+                    serde_json::json!({"issues": null, "timed_out": true, "other_events": others}),
+                );
+            }
+        }
+    }
 
     // Stage 3.
     ax.send(
@@ -341,7 +443,12 @@ async fn run(args: &Args, report: &mut Report) -> Result<()> {
             t.elapsed().as_millis()
         );
         if let Some(target) = &args.press {
+            let in_app = args
+                .app
+                .as_ref()
+                .is_none_or(|p| target.starts_with(p.as_str()));
             if !pressed
+                && in_app
                 && attrs
                     .iter()
                     .any(|(k, v)| *k == "Identifier" && v.trim_matches('"') == target)
@@ -378,41 +485,6 @@ async fn run(args: &Args, report: &mut Report) -> Result<()> {
         }
     }
 
-    // Stage 4.
-    if args.audit {
-        let t = Instant::now();
-        let types = match unwrap(types) {
-            Value::Array(a) => a,
-            other => vec![other],
-        };
-        ax.send("deviceBeginAuditTypes:", vec![arg(Value::Array(types))])
-            .await?;
-        match ax.wait_event(AUDIT_DONE, Duration::from_secs(60)).await? {
-            Some(issues) => {
-                let issues = match unwrap(issues) {
-                    Value::Array(a) => a,
-                    other => vec![other],
-                };
-                println!(
-                    "[4] audit: {} issues in {} ms",
-                    issues.len(),
-                    t.elapsed().as_millis()
-                );
-                report.stage = 4;
-                report.audit = Some(serde_json::json!({
-                    "ms": t.elapsed().as_millis() as u64,
-                    "issues": issues.iter().map(|i| short(&unwrap(i.clone()))).collect::<Vec<_>>(),
-                }));
-                for i in issues.iter().take(20) {
-                    println!("    {}", short(&unwrap(i.clone())));
-                }
-            }
-            None => {
-                println!("[4] audit: no result within 60 s");
-                report.audit = Some(serde_json::json!({"issues": null, "timed_out": true}));
-            }
-        }
-    }
     Ok(())
 }
 
@@ -478,6 +550,7 @@ async fn strip_ssl(
 struct Ax {
     client: RemoteServerClient<Box<dyn ReadWrite>>,
     events: VecDeque<(String, Vec<Value>)>,
+    others: Vec<String>,
 }
 
 impl Ax {
@@ -485,6 +558,7 @@ impl Ax {
         Self {
             client,
             events: VecDeque::new(),
+            others: Vec::new(),
         }
     }
 
@@ -550,13 +624,128 @@ impl Ax {
             let Some(msg) = self.read(left).await? else {
                 break;
             };
-            if let Some((n, args)) = notification(&msg) {
-                if n == name {
-                    return Ok(Some(payload(args)));
+            match notification(&msg) {
+                Some((n, args)) if n == name => return Ok(Some(payload(args))),
+                Some((n, args)) => {
+                    if n == APP_STATE {
+                        println!("    app state changed: {}", short(&payload(args)));
+                    }
+                    self.others.push(n)
                 }
+                None => self.others.push(format!(
+                    "reply {}",
+                    short(&msg.data.unwrap_or(Value::Boolean(false)))
+                )),
             }
         }
         Ok(None)
+    }
+
+    /// Reads up to `count` unsolicited messages, `wait` each, and prints them.
+    async fn drain(&mut self, count: usize, wait: Duration) -> Result<()> {
+        for _ in 0..count {
+            let Some(msg) = self.read(wait).await? else {
+                break;
+            };
+            match notification(&msg) {
+                Some((n, _)) => println!("    initial message {n}"),
+                None => println!(
+                    "    initial message {}",
+                    short(&msg.data.map(deserialize).unwrap_or(Value::Boolean(false)))
+                ),
+            }
+        }
+        Ok(())
+    }
+
+    /// Turns the on-screen inspector off. Errors are only printed: this runs
+    /// on the way out, including after a failure.
+    async fn cleanup(&mut self) {
+        for (selector, value) in [
+            ("deviceSetAppMonitoringEnabled:", Value::Boolean(false)),
+            ("deviceInspectorShowVisuals:", Value::Integer(0.into())),
+            (
+                "deviceInspectorShowIgnoredElements:",
+                Value::Integer(0.into()),
+            ),
+        ] {
+            if let Err(err) = self.send(selector, vec![arg(value)]).await {
+                eprintln!("    cleanup {selector} failed: {err}");
+            }
+        }
+        // Give the writes a moment to leave before the socket closes.
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    /// Whether the foreground app is the one under test: walks up to 30
+    /// elements until one has an identifier starting with `prefix` (the
+    /// app's `screen.` convention), then turns app monitoring off again.
+    async fn confirm_app(&mut self, prefix: &str) -> Result<bool> {
+        self.send(
+            "deviceSetAppMonitoringEnabled:",
+            vec![arg(Value::Boolean(true))],
+        )
+        .await?;
+        self.send(
+            "deviceInspectorSetMonitoredEventType:",
+            vec![arg(Value::Integer(0.into()))],
+        )
+        .await?;
+        self.move_focus(5).await?;
+        let mut seen: Vec<Vec<u8>> = Vec::new();
+        let mut found = false;
+        while seen.len() < 30 {
+            let Some(focus) = self
+                .wait_event(FOCUS_CHANGED, Duration::from_secs(1))
+                .await?
+            else {
+                break;
+            };
+            let Some(element) = element_bytes(&first(focus)) else {
+                break;
+            };
+            if seen.contains(&element) {
+                break;
+            }
+            let id = unwrap(
+                self.call(
+                    "deviceElement:valueForAttribute:",
+                    vec![arg(element_arg(&element)), arg(attribute_arg("Identifier"))],
+                )
+                .await?,
+            );
+            if id.as_string().is_some_and(|s| s.starts_with(prefix)) {
+                found = true;
+                break;
+            }
+            seen.push(element);
+            self.move_focus(4).await?;
+        }
+        self.send(
+            "deviceSetAppMonitoringEnabled:",
+            vec![arg(Value::Boolean(false))],
+        )
+        .await?;
+        Ok(found)
+    }
+
+    /// Distinct names of the events `wait_event` skipped, with counts.
+    fn other_events(&self) -> String {
+        let mut counts: Vec<(String, usize)> = Vec::new();
+        for n in &self.others {
+            match counts.iter_mut().find(|(k, _)| k == n) {
+                Some((_, c)) => *c += 1,
+                None => counts.push((n.clone(), 1)),
+            }
+        }
+        if counts.is_empty() {
+            return "none".into();
+        }
+        counts
+            .iter()
+            .map(|(k, c)| format!("{k} ×{c}"))
+            .collect::<Vec<_>>()
+            .join(", ")
     }
 
     async fn read(&mut self, wait: Duration) -> Result<Option<Message>> {

@@ -1,6 +1,20 @@
 # Spike: Apple's accessibility audit service from Linux
 
-Status: **probe built, not yet run on a phone** (2026-11-07). Experimental: it is a cargo example behind a feature flag, not a `forge` command. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md), taken one step further: there is now a Rust probe that talks to the service, for the next phone session.
+Status: **reading the screen and pressing by identifier work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). Experimental: it is a cargo example behind a feature flag, not a `forge` command. The audit is not yet working, and the run with the DDI mounted is still to do. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
+
+## Results so far
+
+Run 1 was on Cati (iPhone 15 Pro Max, iOS 26.3.1) on 2026-11-07, with **no DDI mounted**. Pocket Library was built from #61's branch and in front.
+
+| Stage | Result |
+|---|---|
+| [1] Start the service | Works. Lockdown answered with `ssl true`, and the TLS-then-plaintext handshake worked. One later run failed the handshake (`InvalidContentType`) straight after a previous run, so the probe now retries once |
+| [2] Capabilities, audit types | Works (`hostApiVersion`, list of audit types) |
+| [3] Element walk | **Works.** 10 elements in 514 ms, 12–24 ms per element including three attribute reads. **SwiftUI identifiers come through:** `library.add`, `library.empty.add`, `library.filter`. Labels and values come through too, for example the search field's placeholder. On an empty library the tab bar buttons had no identifier. With a book in the library they reported their SF Symbol names (`books.vertical`, `chart.bar`, `gearshape`), so tabs need explicit identifiers in the app. With the Claude app in front it read that app's identifiers too (`BackButton`, `thread-checklist-pill`), so the service reads any foreground app, not only our builds |
+| [4] Press | **Works.** `--press library.add` opened Pocket Library's Add menu. The next walk showed `library.add.catalogue`, `library.add.manual`, `library.add.epub` and "Dismiss context menu" |
+| [4] Audit | Not working yet, with or without the DDI (run 2 had it mounted). The likely cause is in the probe, not the service. The 120 s wait listed one stray reply: the list of audit types (`testTypeSufficientElementDescription`, `testTypeContrast`, … `testTypeDynamicText`). So replies were shifted by one: the daemon sends two messages on connect, which pymobiledevice3 discards and the probe did not. As a result `deviceBeginAuditTypes:` was sent the capabilities list instead of the audit types. The probe now drains those two messages first, prints them, and refuses to start an audit with anything that isn't a `testType…` list |
+
+What this means: reading the screen and pressing controls need no runner, no app slot and no DDI. Walking a screen is fast enough for `forge ui tree` (well under a second for a typical screen). Text entry still needs WDA.
 
 ## Question
 
@@ -58,9 +72,9 @@ It prints one line per stage, so a failure shows how far it got:
 | `[2] capabilities / audit types` | The DTX connection and the TLS stripping work |
 | `[3] N caption=… Label=… Identifier=… Value=…` | One line per element, with the time per element. **The key check is whether SwiftUI's `.accessibilityIdentifier` shows up as `Identifier`** |
 | `[4] pressed …` | Pressing works. Check on the phone that the button actually reacted |
-| `[4] audit: N issues` | Apple's audit ran |
+| `[4] audit: N issues` | Apple's audit ran. On a timeout it lists the other events it received |
 
-The decoding, archiving, report and WDA comparison are unit-tested on Linux (`cargo test -p forge-device --features ax-probe --example ax_probe`). Nothing here has met a real phone yet.
+The decoding, archiving, report and WDA comparison are unit-tested on Linux (`cargo test -p forge-device --features ax-probe --example ax_probe`). The phone results are under "Results so far" above.
 
 ### Recording a run
 
@@ -75,7 +89,7 @@ cargo run -p forge-device --features ax-probe --example ax_probe -- --max 60 --a
 
 ## Apple's service and WebDriverAgent compared
 
-From the protocol and #61's code; the "Phone" column is what tonight's run must confirm.
+From the protocol and #61's code. The "Phone" column was the list of open questions; "Results so far" answers the first three.
 
 | | Accessibility audit service (this probe) | WebDriverAgent (#61) | Phone |
 |---|---|---|---|
@@ -107,3 +121,17 @@ From the protocol and #61's code; the "Phone" column is what tonight's run must 
 - **Screenshots** are a separate service: idevice has `screenshotr`, and DVT has `screenshot`.
 - **System alerts and other apps:** the service follows the foreground app. Whether it can see permission alerts is unknown.
 - **The RSD shim** (`….remoteserver.shim.remote`) isn't tried. pymobiledevice3 uses it only when it is already tunnelling.
+
+## Knowing which app is in front
+
+During run 1 the probe sometimes read the Claude app, which Reuben had open on the same phone. The service reads whichever app is in front, so the tooling has to check, and later ensure, that the app under test is the one in front.
+
+- **Check (in the probe now):** `--app library.` first walks the screen until it finds an identifier with the app's `screen.` prefix. If it finds none, it refuses the audit. A press only goes to an identifier inside that prefix. The probe also prints the daemon's `hostAppStateChanged:` events, to find out whether they name the app; if they do, that gives a direct check. The guard worked on Cati: with Safari in front it refused. The daemon sent no `hostAppStateChanged:` events in any run. **Drawback:** the check walks the accessibility focus, which shows a highlight on the phone.
+- **Ensure (needs the DDI, so for #61's driver):** bring the app to the front by bundle id before inspecting it. Candidates in idevice 0.1.68 are CoreDevice `app_service.launch_application` and DVT `process_control.launch_app`; both need the disk image and, on iOS 17+, the userspace tunnel #61 already sets up. WDA can activate apps too.
+- **Invisible check (also needs the DDI):** DVT `deviceinfo` running processes mark the foreground app, and WDA has `/wda/activeAppInfo` when the runner is installed. A driver should use one of these rather than the walk, and walk only once the app is in front. Nothing should poll.
+
+## Leaving the phone clean
+
+Run 1 left the inspector on. Each walk enables app monitoring and moves the focus, and the probe never turned monitoring off. Reuben saw the highlight keep moving through whatever app was in front, especially while the session polled the probe every ~11 s. Every run now ends, including after an error, by sending `deviceSetAppMonitoringEnabled:` false, `deviceInspectorShowVisuals:` 0 and `deviceInspectorShowIgnoredElements:` 0. `--off` sends only those, to clear an interrupted run. An interrupted process (Ctrl-C) still can't clean up, so run `--off` afterwards.
+
+A future `AxDriver` should do both: launch or activate by bundle id, confirm the foreground app, then act, and refuse otherwise.
