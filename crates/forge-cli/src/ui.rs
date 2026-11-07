@@ -20,6 +20,76 @@ fn err(e: impl std::fmt::Display) -> String {
 /// Free Apple accounts can have this many sideloaded apps on a phone.
 const FREE_APP_LIMIT: usize = 3;
 
+/// Which Apple team signs the runner: it decides the app limit and how long
+/// the signature lasts. From `--team`, else `[ios.signing] team_type` in the
+/// current directory's forge.toml, else unknown (treated like free, but said
+/// so).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Team {
+    Free,
+    Paid,
+    Unknown,
+}
+
+impl Team {
+    pub fn resolve(flag: Option<&str>, dir: &Path) -> Result<Team, String> {
+        let from = |value: &str| match value {
+            "free" => Ok(Team::Free),
+            "paid" => Ok(Team::Paid),
+            other => Err(format!("team type `{other}`: use \"free\" or \"paid\"")),
+        };
+        if let Some(flag) = flag {
+            return from(flag);
+        }
+        let Ok(text) = std::fs::read_to_string(dir.join("forge.toml")) else {
+            return Ok(Team::Unknown);
+        };
+        let configured = crate::config::ForgeConfig::parse(&text)
+            .ok()
+            .and_then(|cfg| cfg.ios)
+            .and_then(|ios| ios.signing.team_type);
+        match configured {
+            Some(value) => from(&value),
+            None => Ok(Team::Unknown),
+        }
+    }
+
+    /// Said before installing the runner, when the phone may be full.
+    fn full_note(self, apps: &[String]) -> Option<String> {
+        if self == Team::Paid || apps.len() < FREE_APP_LIMIT {
+            return None;
+        }
+        let who = if self == Team::Free {
+            "A free Apple account"
+        } else {
+            "If you sign with a free Apple account, it"
+        };
+        Some(format!(
+            "Note: {} apps are installed ({}). {who} allows {FREE_APP_LIMIT}; if the install fails, delete one on the phone first.",
+            apps.len(),
+            apps.join(", ")
+        ))
+    }
+
+    /// The installed-apps line after setup.
+    fn apps_line(self, apps: &[String]) -> String {
+        let list = apps.join(", ");
+        match self {
+            Team::Free => format!("Apps installed: {} of {FREE_APP_LIMIT} on a free account ({list}). The runner's signature lasts 7 days", apps.len()),
+            Team::Paid => format!("Apps installed: {} ({list}). Paid team: no 3-app limit; the runner's signature lasts as long as its provisioning profile (up to a year)", apps.len()),
+            Team::Unknown => format!("Apps installed: {} ({list}). With a free Apple account the limit is {FREE_APP_LIMIT} and signatures last 7 days; pass --team paid if xtool signs with a paid team", apps.len()),
+        }
+    }
+
+    /// Added to a runner start failure.
+    fn expiry_hint(self) -> &'static str {
+        match self {
+            Team::Paid => "If the runner's provisioning profile has expired, run `forge ui setup --runner …` again.",
+            _ => "If the runner was installed more than 7 days ago with a free Apple account, its signature has expired: run `forge ui setup --runner …` again.",
+        }
+    }
+}
+
 const NO_RUNNER: &str = "the WebDriverAgent runner is not installed: run `forge ui setup --runner <WebDriverAgentRunner-Runner.app>` (see docs/forge-ui-testing.md)";
 
 /// `forge ui setup`: mount the Developer Disk Image, install the runner,
@@ -29,6 +99,7 @@ pub fn setup(
     udid: Option<&str>,
     ddi: Option<&Path>,
     wda_app: Option<&Path>,
+    team: Team,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let phone = Phone::open(udid).map_err(err)?;
@@ -56,14 +127,10 @@ pub fn setup(
 
     let mut apps = phone.user_apps().map_err(err)?;
     if let Some(app) = wda_app {
-        if find_runner(&apps).is_none() && apps.len() >= FREE_APP_LIMIT {
-            writeln!(
-                out,
-                "Note: {} apps are installed ({}). A free Apple account allows {FREE_APP_LIMIT}; if the install fails, delete one on the phone first.",
-                apps.len(),
-                apps.join(", ")
-            )
-            .map_err(err)?;
+        if find_runner(&apps).is_none() {
+            if let Some(note) = team.full_note(&apps) {
+                writeln!(out, "{note}").map_err(err)?;
+            }
         }
         writeln!(
             out,
@@ -82,16 +149,10 @@ pub fn setup(
     }
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
     writeln!(out, "Runner: {runner_id}").map_err(err)?;
-    writeln!(
-        out,
-        "Apps installed: {} of {FREE_APP_LIMIT} on a free account ({})",
-        apps.len(),
-        apps.join(", ")
-    )
-    .map_err(err)?;
+    writeln!(out, "{}", team.apps_line(&apps)).map_err(err)?;
 
     writeln!(out, "Starting WebDriverAgent…").map_err(err)?;
-    let (_runner, mut driver) = start(&phone, &runner_id)?;
+    let (_runner, mut driver) = start(&phone, &runner_id, team)?;
     let status = driver.status().map_err(err)?;
     let version = status
         .pointer("/build/version")
@@ -120,17 +181,19 @@ fn connect(
     let apps = phone.user_apps().map_err(err)?;
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
     report::set_device(&phone.udid, None);
-    let (runner, driver) = start(&phone, &runner_id)?;
+    let team = Team::resolve(None, Path::new(".")).unwrap_or(Team::Unknown);
+    let (runner, driver) = start(&phone, &runner_id, team)?;
     Ok((phone, apps, runner, driver))
 }
 
 fn start(
     phone: &Phone,
     runner_id: &str,
+    team: Team,
 ) -> Result<(Runner, WdaDriver<forge_uitest::phone::UsbHttp>), String> {
-    let runner = phone.start_runner(runner_id).map_err(|e| {
-        format!("{e}\nIf the runner was installed more than 7 days ago its free-account signature has expired: run `forge ui setup --runner …` again.")
-    })?;
+    let runner = phone
+        .start_runner(runner_id)
+        .map_err(|e| format!("{e}\n{}", team.expiry_hint()))?;
     let driver = WdaDriver::connect(phone.transport()).map_err(err)?;
     Ok((runner, driver))
 }
@@ -186,5 +249,48 @@ pub fn run(
     match report.failed {
         None => Ok(()),
         Some((step, why)) => Err(format!("step {step} failed: {why}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn apps(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("XTL-1.app{i}")).collect()
+    }
+
+    #[test]
+    fn team_comes_from_the_flag_then_forge_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(Team::resolve(None, dir.path()), Ok(Team::Unknown));
+        let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/pocket-library/forge.toml");
+        let mut toml = std::fs::read_to_string(example).unwrap();
+        toml.push_str("\n[ios.signing]\nteam_type = \"paid\"\n");
+        std::fs::write(dir.path().join("forge.toml"), toml).unwrap();
+        assert_eq!(Team::resolve(None, dir.path()), Ok(Team::Paid));
+        assert_eq!(Team::resolve(Some("free"), dir.path()), Ok(Team::Free));
+        assert!(Team::resolve(Some("pro"), dir.path()).is_err());
+    }
+
+    #[test]
+    fn only_free_or_unknown_teams_hear_about_the_app_limit() {
+        assert!(Team::Paid.full_note(&apps(5)).is_none());
+        assert!(Team::Free.full_note(&apps(2)).is_none());
+        assert!(Team::Free
+            .full_note(&apps(3))
+            .unwrap()
+            .starts_with("Note: 3 apps are installed"));
+        assert!(Team::Unknown
+            .full_note(&apps(3))
+            .unwrap()
+            .contains("If you sign with a free Apple account"));
+        assert!(Team::Paid.apps_line(&apps(4)).contains("no 3-app limit"));
+        assert!(Team::Free
+            .apps_line(&apps(2))
+            .starts_with("Apps installed: 2 of 3 on a free account"));
+        assert!(Team::Unknown.apps_line(&apps(1)).contains("--team paid"));
+        assert!(!Team::Paid.expiry_hint().contains("7 days"));
     }
 }

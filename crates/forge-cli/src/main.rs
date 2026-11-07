@@ -132,6 +132,11 @@ enum UiCommands {
         /// Install this WebDriverAgentRunner-Runner.app with `xtool install`
         #[arg(long, value_name = "APP")]
         runner: Option<PathBuf>,
+        /// The Apple team xtool signs with, `free` or `paid` (default: the
+        /// current app's `[ios.signing] team_type`). Paid teams have no
+        /// 3-app limit and no 7-day expiry
+        #[arg(long, value_name = "TYPE", value_parser = ["free", "paid"])]
+        team: Option<String>,
     },
     /// Print the accessibility tree of the screen and flag unlabelled controls
     Tree {
@@ -630,13 +635,22 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         Commands::Ui { cmd } => {
             let mut out = std::io::stdout().lock();
             match cmd {
-                UiCommands::Setup { udid, ddi, runner: app } => ui::setup(
-                    runner,
-                    udid.as_deref(),
-                    ddi.as_deref(),
-                    app.as_deref(),
-                    &mut out,
-                ),
+                UiCommands::Setup {
+                    udid,
+                    ddi,
+                    runner: app,
+                    team,
+                } => {
+                    let team = ui::Team::resolve(team.as_deref(), std::path::Path::new("."))?;
+                    ui::setup(
+                        runner,
+                        udid.as_deref(),
+                        ddi.as_deref(),
+                        app.as_deref(),
+                        team,
+                        &mut out,
+                    )
+                }
                 UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
                 UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
                 UiCommands::Run { udid, file, out: dir } => ui::run(udid.as_deref(), &file, &dir, &mut out),

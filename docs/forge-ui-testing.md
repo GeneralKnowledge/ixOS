@@ -214,6 +214,8 @@ On the Linux machine, with the phone plugged in, unlocked and trusting the compu
 
 After the phone restarts, run `forge ui setup --ddi …` again (the image is unmounted at every reboot). After seven days, reinstall the runner with `--runner`.
 
+`forge ui setup` words its app-limit and expiry notes for the team xtool signs with: `--team free|paid`, or `[ios.signing] team_type` in the forge.toml of the directory it runs in. A paid Apple Developer Program team has no 3-app limit and its signatures last as long as the provisioning profile (up to a year), so the runner can stay installed. Without either setting it assumes nothing and says what a free account would hit.
+
 ## Risks
 
 - **`idevice`'s XCTest support is young** (it shipped in 0.1.6x). It may not yet handle iOS 26.3. Fallback: start WDA once with `go-ios runwda` to separate a runner problem from a Forge problem, and keep Forge's WDA client, which only needs the port.
