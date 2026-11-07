@@ -48,7 +48,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::thread;
 use std::time::Duration;
 
-use forge_net::CancelHandle;
+use forge_net::{Backoff, CancelHandle};
 
 use crate::attachments::{AttachmentStore, OutgoingFile, MAX_ATTACHMENTS_PER_MESSAGE};
 use crate::now_ms;
@@ -72,6 +72,7 @@ pub struct ChatConfig {
     pub user_id: String,
     /// First reconnect delay after a stream drops; doubles up to
     /// `reconnect_max`, and resets once a stream connects and catches up.
+    /// Each delay is cut by up to 20% at random (`forge_net::Backoff`).
     pub reconnect_initial: Duration,
     pub reconnect_max: Duration,
 }
@@ -1028,7 +1029,7 @@ impl Inner {
     /// for the doorbell (or the backoff after a failure). Exits when the
     /// client is shut down or dropped.
     fn run_outbox(weak: Weak<Inner>, signal: Arc<OutboxSignal>) {
-        let mut delay = OUTBOX_INITIAL_DELAY;
+        let mut backoff = Backoff::new(OUTBOX_INITIAL_DELAY, OUTBOX_MAX_DELAY);
         loop {
             let Some(inner) = weak.upgrade() else { return };
             let queued = {
@@ -1075,11 +1076,9 @@ impl Inner {
             }
             drop(inner);
             let wait = if blocked {
-                let wait = delay;
-                delay = (delay * 2).min(OUTBOX_MAX_DELAY);
-                wait
+                backoff.next_delay()
             } else {
-                delay = OUTBOX_INITIAL_DELAY;
+                backoff.reset();
                 OUTBOX_IDLE
             };
             signal.wait(wait);
@@ -1513,18 +1512,14 @@ impl Inner {
         })
     }
 
-    /// Sleeps for `delay`, waking as soon as the subscription ends. `false`
-    /// if it ended.
-    fn backoff(&self, subscription: &Subscription, delay: Duration) -> bool {
-        !subscription.cancel.wait_timeout(delay)
-    }
-
     /// The pump: connect, catch up, follow the stream; on failure back off
     /// and reconnect, until the subscription ends.
     fn pump(self: Arc<Self>, subscription: Arc<Subscription>) {
         let _guard = PumpGuard(&self.live_pumps);
         let room = subscription.conversation_id.clone();
-        let mut delay = self.config.reconnect_initial;
+        // Jitter keeps every client from reconnecting at once after a server restart.
+        let mut backoff =
+            Backoff::new(self.config.reconnect_initial, self.config.reconnect_max).with_jitter(0.2);
         // One `StreamDisconnected` per outage, not one per failed attempt.
         let mut outage_reported = false;
 
@@ -1557,7 +1552,7 @@ impl Inner {
                             {
                                 return;
                             }
-                            delay = self.config.reconnect_initial;
+                            backoff.reset();
                             match self.follow(&subscription, stream.as_mut()) {
                                 Some(reason) => reason,
                                 None => return,
@@ -1588,10 +1583,10 @@ impl Inner {
                     }
                 }
             }
-            if !self.backoff(&subscription, delay) {
+            // Sleeps, waking as soon as the subscription ends.
+            if !backoff.wait(&subscription.cancel) {
                 return;
             }
-            delay = (delay * 2).min(self.config.reconnect_max);
         }
     }
 
