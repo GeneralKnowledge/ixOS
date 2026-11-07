@@ -216,6 +216,10 @@ After the phone restarts, run `forge ui setup --ddi …` again (the image is unm
 
 `forge ui setup` words its app-limit and expiry notes for the team xtool signs with: `--team free|paid`, or `[ios.signing] team_type` in the forge.toml of the directory it runs in. A paid Apple Developer Program team has no 3-app limit and its signatures last as long as the provisioning profile (up to a year), so the runner can stay installed. Without either setting it assumes nothing and says what a free account would hit.
 
+### Only the app under test
+
+A test acts only on its own app. Before every tap, typing, expectation and tree read, `forge ui run` asks WebDriverAgent which app is in front (`GET /wda/activeAppInfo`). It waits up to the step timeout for the test's app, then fails with "`<app>` is not in front (`<other>` is); refusing to act on another app". There are two exceptions. `expect = { ..., gone = true }` also passes after the app was terminated, and a screenshot is taken whatever is in front. `forge ui tree --app <bundle id>` activates the app and makes the same check. Without `--app`, `ui tree` and `ui screenshot` say which app was in front, and so does their `--json` (`data.app`). A future runner-free driver (M2.5) must make the same check before it presses or audits anything.
+
 ### What a failing run gives an agent
 
 `forge ui run` exits non-zero on the first failing step and never reports success for a step it could not check. For each failure it prints the step, the error (for a missing element, the locator; for a wrong value, what was expected and what was found), and the elements on screen that a test could target instead. It also saves the screen as `failure-stepN-tree.txt` and `failure-stepN-tree.json`, and a screenshot as `failure-stepN.png`. With `forge --json`, the result's `data` has the same: `failed_step.{step, action, error, on_screen, tree}` and the screenshot paths. `forge --json ui tree` returns the whole tree as JSON nodes (`kind`, `identifier`, `label`, `value`, `enabled`, `visible`, `frame`, `children`) plus the audit findings.
@@ -227,6 +231,7 @@ Everything above is tested on Linux against a fake driver and canned WebDriverAg
 | Part | What the run proves |
 |---|---|
 | `forge ui setup --ddi` | Personalised DDI mounting through `idevice` and Apple's TSS on iOS 26.3 |
+| Front-app check | `/wda/activeAppInfo` names the `XTL-` bundle id of the app in front |
 | `forge ui setup --runner` | `xtool install` signs the unsigned WDA runner, its `XTL-` bundle id is accepted, and it fits in the app slots |
 | Runner start | `idevice`'s XCTest launch through `CoreDeviceProxy` on iOS 26.3, and WDA answering on port 8100 through usbmuxd |
 | `uitests/m0.toml` | SwiftUI identifiers reach WDA (`identifier` predicates), a toolbar `Menu` and its items can be tapped, typing into a vertical `TextField` works, `enabled` reads correctly |

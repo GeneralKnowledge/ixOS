@@ -4,11 +4,12 @@
 
 use std::io::Write;
 use std::path::Path;
+use std::time::Duration;
 
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, Phone, Runner};
 use forge_uitest::script::{self, Script};
 use forge_uitest::wda::WdaDriver;
-use forge_uitest::Driver;
+use forge_uitest::{ensure_front, Driver};
 
 use crate::report;
 use crate::runner::{Cmd, CommandRunner};
@@ -231,12 +232,25 @@ fn start(
 pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Result<(), String> {
     let (_phone, apps, _runner, mut driver) = connect(udid)?;
     if let Some(app) = app {
-        driver.activate(resolve_app(&apps, app)?).map_err(err)?;
+        let app = resolve_app(&apps, app)?;
+        driver.activate(app).map_err(err)?;
+        // Never audit whatever else happens to be open.
+        ensure_front(&mut driver, app, Duration::from_secs(10)).map_err(err)?;
     }
+    let front = driver.foreground().map_err(err)?;
     let tree = driver.tree().map_err(err)?;
+    writeln!(
+        out,
+        "In front: {}",
+        front
+            .as_deref()
+            .unwrap_or("unknown (WebDriverAgent did not say)")
+    )
+    .map_err(err)?;
     write!(out, "{}", tree.render()).map_err(err)?;
     let findings = tree.audit();
     report::set_data(serde_json::json!({
+        "app": front,
         "tree": tree,
         "text": tree.render(),
         "findings": findings,
@@ -253,10 +267,18 @@ pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Resul
 /// `forge ui screenshot`
 pub fn screenshot(udid: Option<&str>, path: &Path, out: &mut dyn Write) -> Result<(), String> {
     let (_phone, _apps, _runner, mut driver) = connect(udid)?;
+    let front = driver.foreground().map_err(err)?;
     let png = driver.screenshot().map_err(err)?;
     std::fs::write(path, &png).map_err(|e| format!("{}: {e}", path.display()))?;
-    report::set_data(serde_json::json!({ "path": path, "bytes": png.len() }));
-    writeln!(out, "Saved {} ({} KB)", path.display(), png.len() / 1024).map_err(err)
+    report::set_data(serde_json::json!({ "path": path, "bytes": png.len(), "app": front }));
+    writeln!(
+        out,
+        "Saved {} ({} KB), {} in front",
+        path.display(),
+        png.len() / 1024,
+        front.as_deref().unwrap_or("unknown app")
+    )
+    .map_err(err)
 }
 
 /// `forge ui run`: a test file's steps; fails if any step fails.

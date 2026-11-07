@@ -4,7 +4,7 @@
 //! `POST /session`, `POST /session/:s/elements` with a predicate,
 //! `.../element/:e/click`, `.../element/:e/value`, `.../element/:e/clear`,
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
-//! `POST .../wda/deactivateApp`, `GET /source?format=json`, `GET /screenshot`.
+//! `POST .../wda/deactivateApp`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
 
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -120,6 +120,15 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
             Value::String(s) => Some(s),
             other => Some(other.to_string()),
         })
+    }
+
+    fn foreground(&mut self) -> Result<Option<String>> {
+        let info = self.get("/wda/activeAppInfo")?;
+        Ok(info
+            .get("bundleId")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned))
     }
 
     fn tree(&mut self) -> Result<UiNode> {

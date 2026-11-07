@@ -36,6 +36,9 @@ pub enum UiError {
     /// screen re-rendered). Worth finding again once.
     #[error("element went stale: {0}")]
     Stale(String),
+    /// Another app is in front, so acting would touch the wrong app.
+    #[error("{expected} is not in front ({found} is); refusing to act on another app")]
+    WrongApp { expected: String, found: String },
     #[error("WebDriverAgent: {0}")]
     Wda(String),
     #[error("{0}")]
@@ -138,6 +141,29 @@ pub trait Driver {
     fn tree(&mut self) -> Result<UiNode>;
     /// A PNG of the whole screen.
     fn screenshot(&mut self) -> Result<Vec<u8>>;
+    /// The bundle id of the app in front, if the phone says.
+    fn foreground(&mut self) -> Result<Option<String>>;
+}
+
+/// Waits up to `timeout` for `bundle_id` to be the app in front, and fails
+/// with [`UiError::WrongApp`] otherwise. Every tap, typing, expectation and
+/// tree read checks this first, so a test never acts on whatever other app
+/// happens to be open.
+pub fn ensure_front(driver: &mut dyn Driver, bundle_id: &str, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        let front = driver.foreground()?;
+        if front.as_deref() == Some(bundle_id) {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(UiError::WrongApp {
+                expected: bundle_id.to_owned(),
+                found: front.unwrap_or_else(|| "no app".into()),
+            });
+        }
+        std::thread::sleep(POLL);
+    }
 }
 
 /// How often [`wait_for`] asks again.
@@ -186,6 +212,9 @@ pub fn wait_gone(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) 
 pub mod fake {
     use super::*;
 
+    /// What is in front once an app is terminated.
+    pub const SPRINGBOARD: &str = "com.apple.springboard";
+
     #[derive(Default)]
     pub struct FakeDriver {
         pub screen: UiNode,
@@ -195,6 +224,9 @@ pub mod fake {
         pub on_tap: Vec<(String, UiNode)>,
         /// The next this-many taps fail as if the element went stale.
         pub stale_taps: usize,
+        /// The app in front: set by launch and activate; terminate goes
+        /// back to SpringBoard.
+        pub front: Option<String>,
     }
 
     impl FakeDriver {
@@ -219,14 +251,17 @@ pub mod fake {
     impl Driver for FakeDriver {
         fn launch(&mut self, bundle_id: &str, args: &[String]) -> Result<()> {
             self.calls.push(format!("launch {bundle_id} {args:?}"));
+            self.front = Some(bundle_id.to_owned());
             Ok(())
         }
         fn activate(&mut self, bundle_id: &str) -> Result<()> {
             self.calls.push(format!("activate {bundle_id}"));
+            self.front = Some(bundle_id.to_owned());
             Ok(())
         }
         fn terminate(&mut self, bundle_id: &str) -> Result<()> {
             self.calls.push(format!("terminate {bundle_id}"));
+            self.front = Some(SPRINGBOARD.to_owned());
             Ok(())
         }
         fn background(&mut self, seconds: f64) -> Result<()> {
@@ -285,6 +320,9 @@ pub mod fake {
         fn screenshot(&mut self) -> Result<Vec<u8>> {
             self.calls.push("screenshot".into());
             Ok(b"\x89PNG fake".to_vec())
+        }
+        fn foreground(&mut self) -> Result<Option<String>> {
+            Ok(self.front.clone())
         }
     }
 }

@@ -26,7 +26,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
-use crate::{wait_for, wait_gone, Driver, Locator, Result, UiError};
+use crate::{ensure_front, wait_for, wait_gone, Driver, Locator, Result, UiError};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -302,6 +302,13 @@ fn run_step(
     if let Some(seconds) = step.background {
         return driver.background(seconds);
     }
+    // Everything below reads or touches the screen: only ever the app under
+    // test. Expecting an element gone is the exception, since it also holds
+    // after the app was terminated; a screenshot is evidence either way.
+    let gone = step.expect.as_ref().is_some_and(|e| e.gone);
+    if step.screenshot.is_none() && !gone {
+        ensure_front(driver, app, timeout)?;
+    }
     if let Some(target) = &step.tap {
         return act(driver, &locate(target)?, timeout, &mut |d, e| d.tap(e));
     }
@@ -498,6 +505,13 @@ mod tests {
         }
     }
 
+    /// A fake phone with app `a` already in front.
+    fn in_front(screen: UiNode) -> FakeDriver {
+        let mut driver = FakeDriver::new(screen);
+        driver.front = Some("a".into());
+        driver
+    }
+
     const M0: &str = r#"
         name = "M0"
         app = "org.forgemobile.pocketlibrary"
@@ -558,7 +572,7 @@ mod tests {
         "#,
         )
         .unwrap();
-        let mut driver = FakeDriver::new(library());
+        let mut driver = in_front(library());
         let dir = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
         let report = run(&script, "a", &mut driver, dir.path(), &mut out).unwrap();
@@ -586,7 +600,7 @@ mod tests {
         let script =
             Script::parse("name='s'\napp='a'\ntimeout=0\n[[step]]\ntap={id='library.add'}\n")
                 .unwrap();
-        let mut driver = FakeDriver::new(library());
+        let mut driver = in_front(library());
         driver.stale_taps = 1;
         let dir = tempfile::tempdir().unwrap();
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
@@ -594,7 +608,7 @@ mod tests {
         assert_eq!(driver.calls, ["tap library.add"]);
 
         // Stale twice in a row is a real failure, not retried forever.
-        let mut driver = FakeDriver::new(library());
+        let mut driver = in_front(library());
         driver.stale_taps = 2;
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
         assert!(report.failed.unwrap().1.starts_with("element went stale"));
@@ -606,13 +620,44 @@ mod tests {
             "name='v'\napp='a'\ntimeout=0\n[[step]]\nexpect={id='bookForm.title', value='Hi'}\n",
         )
         .unwrap();
-        let mut driver = FakeDriver::new(form());
+        let mut driver = in_front(form());
         let dir = tempfile::tempdir().unwrap();
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
         assert_eq!(
             report.failed.unwrap().1,
             "id `bookForm.title`: expected value \"Hi\", found no value"
         );
+    }
+
+    #[test]
+    fn refuses_to_act_when_another_app_is_in_front() {
+        let script =
+            Script::parse("name='w'\napp='a'\ntimeout=0\n[[step]]\ntap={id='library.add'}\n")
+                .unwrap();
+        let mut driver = FakeDriver::new(library());
+        driver.front = Some("com.anthropic.claude".into());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert_eq!(
+            report.failed.unwrap().1,
+            "a is not in front (com.anthropic.claude is); refusing to act on another app"
+        );
+        assert!(driver.calls.iter().all(|c| !c.starts_with("tap")));
+    }
+
+    #[test]
+    fn expecting_gone_after_terminate_needs_no_app_in_front() {
+        let script = Script::parse(
+            "name='l'\napp='a'\ntimeout=0\n[[step]]\nlaunch={}\n[[step]]\nbackground=3\n\
+             [[step]]\nterminate={}\n[[step]]\nexpect={id='nothing.here', gone=true}\n\
+             [[step]]\nlaunch={}\n[[step]]\ntap={id='library.add'}\n",
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(library());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(report.passed, 6);
     }
 
     #[test]
