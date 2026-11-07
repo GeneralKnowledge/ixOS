@@ -59,7 +59,7 @@ forge doctor                                       # every iOS line should be re
 | # | Step | Kind | Status |
 |---|------|------|--------|
 | A1 | `forge init` creates an app outside the checkout with its own Rust crate, bindings and tests | Automated (CI "Fresh app outside the checkout") and Linux local | Pass in CI and in the cloud Linux checks on the integrated branch |
-| A2 | The generated app's XCTest suite and an unsigned Xcode device build | macOS CI | See PR #37's checks |
+| A2 | The generated app's XCTest suite and an unsigned Xcode device build | macOS CI | Pass on the combined branch (PR #37) |
 | A3 | `forge run ios` builds it with xtool on Linux | Linux local | Not run on the integrated branch |
 | A4 | It installs, opens from the home screen, and shows "No Notes" | Physical iPhone | Not run |
 | A5 | The app records iOS SDK 26.0 and has the iOS 26 look (navigation bar and buttons in Liquid Glass) | Linux local (SDK) and Physical iPhone (look) | Not run on the integrated branch |
@@ -119,7 +119,7 @@ Open **Services check** and tap **Run checks**.
 | # | Check | Kind | Status |
 |---|-------|------|--------|
 | D0 | Services check app generated from the integrated templates; its Rust tests pass | Linux local | Pass (cloud Linux, integrated branch) |
-| D0b | It compiles for iOS (unsigned Xcode build) | macOS CI | See PR #37's checks |
+| D0b | It compiles for iOS (unsigned Xcode build) | macOS CI | Pass on the combined branch (PR #37) |
 | D1 | **Keychain.** `PASS keychain write/read`, `PASS keychain delete` | Automated (Rust fakes) + macOS CI (XCTest) + Physical iPhone | Automated pass; phone not run |
 | D2 | **Permissions.** The notification prompt appears; `PASS notification permission: NotDetermined -> Granted`. Then turn notifications off in Settings and run again: `FAIL ... Denied -> Denied` and a typed `PermissionDenied` (expected); **Open Settings** goes to the app's page | Physical iPhone | Not run |
 | D3 | **Notifications.** About five seconds after the run, a "Forge services check" banner appears, app open or phone locked | Physical iPhone | Not run |
@@ -138,7 +138,7 @@ forge run ios
 | # | Check | Kind | Status |
 |---|-------|------|--------|
 | E0 | Rust crate: model, rules, persistence and recovery, catalogue parsing, EPUB extraction, history (45 tests); bindings match the crate | Automated (CI `check-app-crates.sh`) | Pass |
-| E0b | SwiftUI host: 7 XCTests against the real Rust; unsigned device build; screenshots of every tab, light, dark and largest text | macOS CI | Green on #33 before integration; see #37 for the integrated branch |
+| E0b | SwiftUI host: 7 XCTests against the real Rust; unsigned device build; screenshots of every tab, light, dark and largest text | macOS CI | Pass on #33 and on the combined branch (PR #37) |
 | E0c | Builds with xtool on Linux | Linux local | Built on Reuben's laptop from the #33 branch before integration (2m11s, SDK 26.0); not yet from the integrated branch |
 | E1 | **First launch.** The Library tab says "Your library is empty" | Physical iPhone | Not run |
 | E2 | **Create.** + → Enter Details: title, author, 300 pages, current page 20. Save. The book opens with status Reading (Rust starts it because the page is past 0) | Physical iPhone | Not run |

@@ -11,9 +11,9 @@ PRs #30 (cancellable requests) and #31 (`forge.toml` iOS config) were already on
 | #32 | Native iOS UI: `@Observable` starter, UI standard, simulator screenshots | `claude/project-thread-01q1aa` | — | **Merged into main** (502288e) just before integration started | Green at merge |
 | #35 | Developer experience (M5) | `claude/project-thread-o8h671` | b2681d8 | Yes (merge) | Green, 9/9 |
 | #36 | App lifecycle reported to Rust (M2) | `claude/project-thread-qb5xw6` | 444db42 | Yes (merge) + Android fix | Green, 9/9 (was failing: Android) |
-| #34 | Native iOS services (M3) | `claude/project-thread-8yrt2p` | 0a2d3b2 | Yes (merge) | See the PR |
-| #33 | Pocket Library acceptance app (M1) | `claude/project-thread-3rsowe` | fb67db1 | Yes (merge) | See the PR |
-| #37 | All four combined on main, plus these docs | `claude/project-thread-mtlahv` | — | — | See the PR (draft; proof, not for merging) |
+| #34 | Native iOS services (M3) | `claude/project-thread-8yrt2p` | 0a2d3b2 | Yes (merge) | Green, 9/9 |
+| #33 | Pocket Library acceptance app (M1) | `claude/project-thread-3rsowe` | fb67db1 | Yes (merge) | Green, 10/10 |
+| #37 | All four combined on main, plus these docs | `claude/project-thread-mtlahv` | 44a8bce | — | Green, 10/10 (draft; merges last, docs only by then) |
 
 Branches were brought up to date by merging main, not rebasing, because force pushes are blocked for these branches. No PR has review comments; there were no unresolved review threads to carry over.
 
@@ -75,8 +75,8 @@ Android CI on #36 is green after the fix (all 11 view-model tests, the generated
 | Fresh app outside the checkout (`forge init --path`, its crate's tests, bindings) | Linux, every branch, and CI | Pass |
 | Services check app generated from the combined templates (its Rust tests) | Linux, combined | Pass |
 | Generated Android app view-model tests (11) | Linux plain-JVM run (combined), and Android CI on #36 | Pass |
-| Swift host tests (XCTest against the real Rust), unsigned Xcode device builds, simulator screenshots | macOS CI | Green on #35 and #36; see #34, #33 and #37 for theirs |
-| Android: JVM tests and APKs | Android CI | Green on #35 and #36 |
+| Swift host tests (XCTest against the real Rust), unsigned Xcode device builds, simulator screenshots | macOS CI | Green on every PR branch and on the combined branch (#37) |
+| Android: JVM tests and APKs | Android CI | Green on every PR branch and on #37 |
 | xtool builds on Linux with the patched xtool (1.24.0-ixos.1), iOS SDK recorded 26.0 | Reuben's laptop | Built: starter (#32 branch), services check (#34 branch, before integration), Pocket Library (#33 branch, before integration), Counter, Weather, Chat |
 | Install and run on an iPhone | Physical iPhone | **Not yet recorded** for any of these apps (installs were starting when this was written) |
 
