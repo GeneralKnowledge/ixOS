@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use crate::app_config;
 use crate::config::{self, ForgeConfig};
-use crate::ios_builder::{BuildConfiguration, IosBuilder};
+use crate::ios_builder::{IosBuilder, IosConfiguration};
 use crate::runner::{Cmd, CommandRunner};
 
 const PLACEHOLDER_PACKAGE: &str = "FORGE_PACKAGE_NAME";
@@ -806,7 +806,7 @@ pub fn build_ios(
     root: &Path,
     project: &Path,
     package_only: bool,
-    configuration: BuildConfiguration,
+    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
     if package_only {
@@ -827,7 +827,7 @@ pub fn run_ios(
     builder: &dyn IosBuilder,
     root: &Path,
     project: &Path,
-    configuration: BuildConfiguration,
+    configuration: IosConfiguration,
 ) -> Result<(), String> {
     let project_dir = package_ios(runner, root, project)?;
     println!(
@@ -1115,7 +1115,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             true,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap_err();
         assert!(err.contains("does not enable iOS"), "{err}");
@@ -1127,7 +1127,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             true,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap_err();
         assert!(err.contains("forge.toml"), "{err}");
@@ -1145,7 +1145,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             true,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap();
         let lines = mock.call_lines();
@@ -1164,7 +1164,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             false,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev build");
@@ -1180,7 +1180,7 @@ ios_device = true
             &XtoolBuilder,
             &root,
             Path::new("apps/demo"),
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap();
         assert_eq!(mock.call_lines().last().unwrap(), "xtool dev run");
@@ -1206,7 +1206,7 @@ ios_device = true
             &self,
             _: &dyn CommandRunner,
             dir: &Path,
-            _: BuildConfiguration,
+            _: IosConfiguration,
         ) -> Result<(), String> {
             self.0
                 .lock()
@@ -1218,7 +1218,7 @@ ios_device = true
             &self,
             _: &dyn CommandRunner,
             dir: &Path,
-            _: BuildConfiguration,
+            _: IosConfiguration,
         ) -> Result<(), String> {
             self.0
                 .lock()
@@ -1250,7 +1250,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             false,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap();
         run_ios(
@@ -1258,7 +1258,7 @@ ios_device = true
             &fake,
             &root,
             Path::new("apps/demo"),
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap();
         install_ios(&mock, &fake, Path::new("App.ipa")).unwrap();
@@ -1287,7 +1287,7 @@ ios_device = true
             &root,
             Path::new("apps/demo"),
             false,
-            BuildConfiguration::Debug,
+            IosConfiguration::Debug,
         )
         .unwrap_err();
         assert!(err.contains("--package-only"), "{err}");

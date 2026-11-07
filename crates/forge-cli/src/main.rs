@@ -142,7 +142,7 @@ enum BuildCommands {
         )]
         package_only: bool,
         /// Build the Swift app in the release configuration (xtool dev build -c release)
-        #[arg(long)]
+        #[arg(long, conflicts_with = "package_only")]
         release: bool,
     },
     Android {
@@ -181,11 +181,11 @@ enum RunCommands {
     },
 }
 
-fn configuration(release: bool) -> ios_builder::BuildConfiguration {
+fn configuration(release: bool) -> ios_builder::IosConfiguration {
     if release {
-        ios_builder::BuildConfiguration::Release
+        ios_builder::IosConfiguration::Release
     } else {
-        ios_builder::BuildConfiguration::Debug
+        ios_builder::IosConfiguration::Debug
     }
 }
 

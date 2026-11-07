@@ -16,17 +16,17 @@ use crate::runner::{Cmd, CommandRunner};
 
 /// The Swift build configuration (`forge build ios --release`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum BuildConfiguration {
+pub enum IosConfiguration {
     #[default]
     Debug,
     Release,
 }
 
-impl BuildConfiguration {
+impl IosConfiguration {
     pub fn name(self) -> &'static str {
         match self {
-            BuildConfiguration::Debug => "debug",
-            BuildConfiguration::Release => "release",
+            IosConfiguration::Debug => "debug",
+            IosConfiguration::Release => "release",
         }
     }
 }
@@ -43,7 +43,7 @@ pub trait IosBuilder: Send + Sync {
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: BuildConfiguration,
+        configuration: IosConfiguration,
     ) -> Result<(), String>;
 
     /// Builds, installs and launches the app in `project_dir` on a device.
@@ -51,7 +51,7 @@ pub trait IosBuilder: Send + Sync {
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: BuildConfiguration,
+        configuration: IosConfiguration,
     ) -> Result<(), String>;
 
     /// Installs an already-built `.ipa` on a device.
@@ -73,11 +73,11 @@ const XTOOL: &str = "xtool";
 // from Xcode 16 fails to link with `undefined symbol: swift_coroFrameAlloc`
 // (docs/troubleshooting.md).
 
-fn xtool_dev(subcommand: &str, project_dir: &Path, configuration: BuildConfiguration) -> Cmd {
+fn xtool_dev(subcommand: &str, project_dir: &Path, configuration: IosConfiguration) -> Cmd {
     let cmd = Cmd::new(XTOOL).args(["dev", subcommand]);
     let cmd = match configuration {
-        BuildConfiguration::Debug => cmd,
-        BuildConfiguration::Release => cmd.args(["-c", "release"]),
+        IosConfiguration::Debug => cmd,
+        IosConfiguration::Release => cmd.args(["-c", "release"]),
     };
     cmd.cwd(project_dir)
 }
@@ -99,7 +99,7 @@ impl IosBuilder for XtoolBuilder {
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: BuildConfiguration,
+        configuration: IosConfiguration,
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
         run_checked(runner, xtool_dev("build", project_dir, configuration))
@@ -109,7 +109,7 @@ impl IosBuilder for XtoolBuilder {
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: BuildConfiguration,
+        configuration: IosConfiguration,
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
         run_checked(runner, xtool_dev("run", project_dir, configuration))
@@ -147,13 +147,9 @@ mod tests {
     fn release_builds_pass_the_configuration_to_xtool() {
         let dir = Path::new("/apps/Demo");
         for (configuration, build, run) in [
+            (IosConfiguration::Debug, "xtool dev build", "xtool dev run"),
             (
-                BuildConfiguration::Debug,
-                "xtool dev build",
-                "xtool dev run",
-            ),
-            (
-                BuildConfiguration::Release,
+                IosConfiguration::Release,
                 "xtool dev build -c release",
                 "xtool dev run -c release",
             ),
