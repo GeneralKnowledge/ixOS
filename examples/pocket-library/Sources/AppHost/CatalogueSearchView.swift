@@ -9,8 +9,9 @@ struct CatalogueSearchView: View {
     @Environment(LibraryModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var query = ""
-    /// The search being shown. Changing it cancels the previous `.task`.
-    @State private var submitted: String?
+    /// The search being shown. Changing it (a new query, or a retry of the
+    /// same one) cancels the previous `.task`.
+    @State private var submitted: SearchRequest?
     @State private var state: SearchState = .idle
     @State private var importingKey: String?
     @State private var importNotes: ImportNotes?
@@ -18,6 +19,11 @@ struct CatalogueSearchView: View {
     @State private var showingManualForm = false
     /// Starts with the search field active and the keyboard up.
     @State private var searchActive = true
+
+    struct SearchRequest: Equatable {
+        let text: String
+        let attempt: Int
+    }
 
     enum SearchState {
         case idle
@@ -48,7 +54,7 @@ struct CatalogueSearchView: View {
         }
         .errorAlert($error)
         .alert(
-            "Added with some details missing",
+            "Added Without Some Details",
             isPresented: Binding(get: { importNotes != nil }, set: { if !$0 { finish(importNotes?.book) } }),
             presenting: importNotes
         ) { notes in
@@ -87,7 +93,7 @@ struct CatalogueSearchView: View {
             }
         case .results(let results) where results.isEmpty:
             ContentUnavailableView {
-                Label("No matches", systemImage: "book.closed")
+                Label("No Results", systemImage: "book.closed")
             } description: {
                 Text("Try other words, or enter the book's details yourself.")
             } actions: {
@@ -111,21 +117,19 @@ struct CatalogueSearchView: View {
     private func submit() {
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        submitted = trimmed
+        submitted = SearchRequest(text: trimmed, attempt: (submitted?.attempt ?? 0) + 1)
     }
 
     private func retry() {
-        // Same query again: clear and set, so `.task(id:)` runs anew.
-        let again = submitted
-        submitted = nil
-        Task { @MainActor in submitted = again }
+        guard let current = submitted else { return }
+        submitted = SearchRequest(text: current.text, attempt: current.attempt + 1)
     }
 
     private func search() async {
         guard let submitted else { return }
         state = .searching
         do {
-            let results = try await model.searchCatalogue(submitted)
+            let results = try await model.searchCatalogue(submitted.text)
             // A newer search replaced this one while it ran: drop the result.
             // (The Rust request finishes in the background; with PR #30's
             // cancellable requests it could be stopped instead.)

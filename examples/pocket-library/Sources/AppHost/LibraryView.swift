@@ -25,7 +25,6 @@ struct LibraryView: View {
                 }
                 .searchable(text: bindable.searchText, prompt: "Title or author")
                 .toolbar { toolbar }
-                .safeAreaInset(edge: .top) { statusFilter }
         }
         .sheet(isPresented: $showingAddForm) {
             BookFormView(mode: .add) { book in path.append(book.id) }
@@ -54,7 +53,7 @@ struct LibraryView: View {
             if importing {
                 ProgressView("Importing…")
                     .padding()
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12))
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
     }
@@ -63,7 +62,7 @@ struct LibraryView: View {
     private var content: some View {
         if model.totalBooks == 0 {
             ContentUnavailableView {
-                Label("Your library is empty", systemImage: "books.vertical")
+                Label("No Books Yet", systemImage: "books.vertical")
             } description: {
                 Text("Add the books you're reading, have read, or want to read.")
             } actions: {
@@ -72,7 +71,7 @@ struct LibraryView: View {
         } else if model.books.isEmpty {
             if model.searchText.isEmpty {
                 ContentUnavailableView(
-                    "No \(model.statusFilter?.label ?? "") books",
+                    "No \(model.statusFilter?.label ?? "") Books",
                     systemImage: model.statusFilter?.symbol ?? "book",
                     description: Text("Books you mark as \(model.statusFilter?.label ?? "") appear here.")
                 )
@@ -122,29 +121,32 @@ struct LibraryView: View {
         }
     }
 
-    private var statusFilter: some View {
-        Picker("Show", selection: bindable.statusFilter) {
-            Text("All").tag(ReadingStatus?.none)
-            ForEach(ReadingStatus.allCases) { status in
-                Text(status.label).tag(Optional(status))
-            }
-        }
-        .pickerStyle(.segmented)
-        .padding(.horizontal)
-        .padding(.bottom, 6)
-        .background(.bar)
-    }
-
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             addMenu
         }
-        ToolbarItem(placement: .secondaryAction) {
-            Picker("Sort by", selection: bindable.sort) {
-                ForEach(SortOrder.allCases) { order in
-                    Text(order.label).tag(order)
+        ToolbarItem(placement: .primaryAction) {
+            // Filter and sort in one menu, as Mail and Files do.
+            Menu {
+                Picker("Show", selection: bindable.statusFilter) {
+                    Label("All Books", systemImage: "books.vertical").tag(ReadingStatus?.none)
+                    ForEach(ReadingStatus.allCases) { status in
+                        Label(status.label, systemImage: status.symbol).tag(Optional(status))
+                    }
                 }
+                Picker("Sort By", selection: bindable.sort) {
+                    ForEach(SortOrder.allCases) { order in
+                        Text(order.label).tag(order)
+                    }
+                }
+            } label: {
+                Label(
+                    "Filter and Sort",
+                    systemImage: model.statusFilter == nil
+                        ? "line.3.horizontal.decrease.circle"
+                        : "line.3.horizontal.decrease.circle.fill"
+                )
             }
         }
     }

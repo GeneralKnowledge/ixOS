@@ -24,9 +24,10 @@ struct BookDetailView: View {
             if let book {
                 details(book)
             } else {
-                ContentUnavailableView("Book deleted", systemImage: "book.closed")
+                ContentUnavailableView("Book Deleted", systemImage: "book.closed")
             }
         }
+        .navigationTitle(book?.title ?? "")
         .inlineNavigationTitle()
         .errorAlert($error)
         .sensoryFeedback(.success, trigger: finishedCount)
@@ -126,6 +127,11 @@ struct BookDetailView: View {
             Text("Your notes and progress for this book are deleted. Its reading history stays.")
         }
         .onAppear { pageText = String(book.currentPage) }
+        // The number pad has no Return key: save when the field loses focus
+        // (keyboard Done, scrolling the keyboard away, or tapping elsewhere).
+        .onChange(of: pageFieldFocused) { _, focused in
+            if !focused { savePage(book) }
+        }
         .onChange(of: book.currentPage) { _, page in pageText = String(page) }
     }
 
@@ -183,12 +189,6 @@ struct BookDetailView: View {
             ), in: 0...Int(book.totalPages ?? 100_000))
             .labelsHidden()
         }
-        if pageFieldFocused {
-            Button("Save Page") {
-                pageFieldFocused = false
-                savePage(book)
-            }
-        }
         if book.status != .finished {
             Button {
                 run { try await model.setStatus(book.id, .finished) }
@@ -227,7 +227,8 @@ struct BookDetailView: View {
     }
 }
 
-/// 1–5 stars; tapping the current rating clears it.
+/// 1–5 stars; tapping the current rating clears it. VoiceOver reads it as one
+/// adjustable control ("Rating, 3 of 5 stars"; swipe up or down to change).
 struct StarRating: View {
     let rating: UInt8?
     let onChange: (UInt8?) -> Void
@@ -244,11 +245,22 @@ struct StarRating: View {
                         .foregroundStyle(filled ? .yellow : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("\(star) star\(star == 1 ? "" : "s")")
             }
             Spacer()
             if rating == nil {
                 Text("Not rated").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Rating")
+        .accessibilityValue(rating.map { "\($0) of 5 stars" } ?? "Not rated")
+        .accessibilityAdjustableAction { direction in
+            let current = Int(rating ?? 0)
+            switch direction {
+            case .increment where current < 5: onChange(UInt8(current + 1))
+            case .decrement where current > 1: onChange(UInt8(current - 1))
+            case .decrement where current == 1: onChange(nil)
+            default: break
             }
         }
     }

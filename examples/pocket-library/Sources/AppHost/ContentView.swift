@@ -12,7 +12,7 @@ public struct ContentView: View {
         Group {
             switch model.phase {
             case .opening:
-                ProgressView("Opening your library…")
+                ProgressView()
             case .failed(let message, let canStartFresh):
                 OpenFailedView(message: message, canStartFresh: canStartFresh, model: model)
             case .open:
@@ -48,7 +48,7 @@ private struct OpenFailedView: View {
 
     var body: some View {
         ContentUnavailableView {
-            Label("Couldn't open your library", systemImage: "exclamationmark.triangle")
+            Label("Can't Open Library", systemImage: "exclamationmark.triangle")
         } description: {
             Text(message)
         } actions: {

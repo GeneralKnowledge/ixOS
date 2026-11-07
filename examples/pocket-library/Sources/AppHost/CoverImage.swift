@@ -1,26 +1,25 @@
+import ImageIO
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 /// A book cover: the copy saved on the device if there is one (works
 /// offline), else the remote image, else a placeholder with the title.
 struct CoverImage: View {
-    /// Unused for drawing; kept so callers name the book (and for debugging).
+    /// Not drawn; names the book for callers and debugging.
     let title: String
     let file: String?
     let url: String?
     var width: CGFloat = 44
 
+    @Environment(\.displayScale) private var displayScale
+    @State private var local: Image?
+
     private var height: CGFloat { width * 1.5 }
 
     var body: some View {
         Group {
-            if let image = LocalCovers.image(at: file) {
-                image.resizable().scaledToFill()
-            } else if let url, let remote = URL(string: url) {
+            if let local {
+                local.resizable().scaledToFill()
+            } else if file == nil, let url, let remote = URL(string: url) {
                 AsyncImage(url: remote, transaction: Transaction(animation: .easeIn(duration: 0.2))) { phase in
                     switch phase {
                     case .success(let image):
@@ -44,6 +43,11 @@ struct CoverImage: View {
                 .strokeBorder(.quaternary, lineWidth: 0.5)
         }
         .accessibilityHidden(true)
+        // Saved covers are decoded off the main thread, at the size shown.
+        .task(id: file) {
+            guard let file else { local = nil; return }
+            local = await CoverThumbnails.image(at: file, maxPixels: Int(height * displayScale))
+        }
     }
 
     /// No cover: a book symbol on a neutral system fill.
@@ -57,22 +61,36 @@ struct CoverImage: View {
     }
 }
 
-/// Decodes saved cover files once per launch.
-@MainActor
-enum LocalCovers {
-    private static var cache: [String: Image] = [:]
+/// Saved cover files, downsampled with ImageIO to the size they are shown at
+/// and cached (NSCache drops them under memory pressure).
+enum CoverThumbnails {
+    private final class Box: @unchecked Sendable {
+        let image: CGImage
+        init(_ image: CGImage) { self.image = image }
+    }
 
-    static func image(at path: String?) -> Image? {
-        guard let path else { return nil }
-        if let cached = cache[path] { return cached }
-        #if canImport(UIKit)
-        guard let platform = UIImage(contentsOfFile: path) else { return nil }
-        let image = Image(uiImage: platform)
-        #elseif canImport(AppKit)
-        guard let platform = NSImage(contentsOfFile: path) else { return nil }
-        let image = Image(nsImage: platform)
-        #endif
-        cache[path] = image
-        return image
+    nonisolated(unsafe) private static let cache = NSCache<NSString, Box>()
+
+    static func image(at path: String, maxPixels: Int) async -> Image? {
+        let key = "\(path)#\(maxPixels)" as NSString
+        if let hit = cache.object(forKey: key) {
+            return Image(decorative: hit.image, scale: 1)
+        }
+        let decoded = await Task.detached(priority: .userInitiated) { () -> Box? in
+            let options = [kCGImageSourceShouldCache: false] as [CFString: Any] as CFDictionary
+            guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, options) else {
+                return nil
+            }
+            let thumbnail = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceShouldCacheImmediately: true,
+                kCGImageSourceThumbnailMaxPixelSize: max(maxPixels, 1),
+            ] as [CFString: Any] as CFDictionary
+            return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnail).map(Box.init)
+        }.value
+        guard let decoded else { return nil }
+        cache.setObject(decoded, forKey: key)
+        return Image(decorative: decoded.image, scale: 1)
     }
 }

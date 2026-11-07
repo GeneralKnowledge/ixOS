@@ -6,21 +6,21 @@ import SwiftUI
 /// diagnostics, shown as detail.
 public enum ErrorText {
     public static func title(_ error: Error) -> String {
-        guard let error = error as? LibraryError else { return "Something went wrong" }
+        guard let error = error as? LibraryError else { return "Something Went Wrong" }
         switch error {
-        case .InvalidInput: return "Check the details"
-        case .NotFound: return "That book is gone"
-        case .AlreadyInLibrary: return "Already in your library"
-        case .Storage, .NewerLibrary: return "Couldn't save"
-        case .CatalogueDisabled: return "Online search is off"
-        case .Offline: return "You're offline"
-        case .Timeout: return "The catalogue didn't answer"
-        case .CatalogueUnavailable: return "The catalogue is unavailable"
-        case .BadResponse: return "Unexpected answer from the catalogue"
-        case .Certificate: return "Secure connection failed"
-        case .Network: return "Network problem"
-        case .UnsupportedFile: return "Can't read that file"
-        case .ShutDown: return "The library is closed"
+        case .InvalidInput: return "Check the Details"
+        case .NotFound: return "Book Not Found"
+        case .AlreadyInLibrary: return "Already in Your Library"
+        case .Storage, .NewerLibrary: return "Couldn't Save"
+        case .CatalogueDisabled: return "Online Search Is Off"
+        case .Offline: return "You're Offline"
+        case .Timeout: return "Catalogue Didn't Respond"
+        case .CatalogueUnavailable: return "Catalogue Unavailable"
+        case .BadResponse: return "Unexpected Catalogue Response"
+        case .Certificate: return "Secure Connection Failed"
+        case .Network: return "Network Problem"
+        case .UnsupportedFile: return "Can't Read That File"
+        case .ShutDown: return "Library Closed"
         }
     }
 

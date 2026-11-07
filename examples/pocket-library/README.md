@@ -10,7 +10,7 @@ It is also Forge's acceptance test for real apps: it was created with `forge ini
 
 | Screen | What you can do |
 |--------|-----------------|
-| **Library** | Search by title or author, filter by status (Want to Read, Reading, Finished), sort by recently added, title, author or progress. Swipe right to start or finish a book, left to delete it (with confirmation); long-press for share and status. |
+| **Library** | Search by title or author, filter by status (Want to Read, Reading, Finished), sort by recently added, title, author or progress. Filter and sort from the toolbar menu. Swipe right to start or finish a book, left to delete it (with confirmation); long-press for share and status. |
 | **Add a book** | Three ways, from the **+** menu: search the Open Library catalogue and add a result with its cover and description; type the details in yourself; or import an EPUB file from Files (title, author, description, cover and an estimated page count are read from it; the book's text is not kept). |
 | **Book** | Cover, progress bar, current page (type it or step it), status, start and finish dates, a 1–5 star rating, notes, description and the book's own reading history. Edit, share, delete. |
 | **Activity** | What you're reading now, books finished this year, pages read in the last 7 days, average rating, and your reading history by day. |

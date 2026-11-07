@@ -88,7 +88,7 @@ final class LibraryModelTests: XCTestCase {
             try await model.updateProgress(book.id, page: 11)
             XCTFail("expected InvalidInput")
         } catch let error as LibraryError {
-            XCTAssertEqual(ErrorText.title(error), "Check the details")
+            XCTAssertEqual(ErrorText.title(error), "Check the Details")
         }
         XCTAssertEqual(model.book(id: book.id)?.currentPage, 0, "a refused change changes nothing")
         model.close()

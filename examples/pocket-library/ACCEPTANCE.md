@@ -63,7 +63,7 @@ On the phone:
 4. **EPUB.** Put an `.epub` in Files (AirDrop or iCloud Drive), then + → Import EPUB File. Title, author, cover and an estimated page count appear.
 5. **Progress.** On a book, type a page and tap Save Page, or use the stepper. Type the last page: it becomes Finished with a haptic. Activity shows the session and the finish.
 6. **Edit and delete.** Edit a book's title and rating. Swipe left on another in the Library → Delete → confirm.
-7. **Search, filter, sort.** Search by part of an author's name; switch the status filter; change the sort in the ••• menu.
+7. **Search, filter, sort.** Search by part of an author's name; use the filter menu (three lines in a circle) to show one status and change the order.
 8. **Persistence.** Swipe the app away in the app switcher, open it again: everything is as you left it.
 9. **Offline.** Turn on airplane mode. Browsing, adding, editing and deleting still work. Catalogue search shows "You're offline" with Try Again and Enter Details by Hand; the library is unchanged.
 10. **Settings.** Turn off online search: the + menu's catalogue item is disabled. Export Library → Share Export File → save to Files. (Leave Erase for last, or skip it.)
