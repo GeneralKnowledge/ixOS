@@ -1,5 +1,7 @@
 # Android setup (Linux)
 
+> **Work in progress.** ixOS is focusing on iOS for now. Android keeps building in CI but gets no new features, has not been validated on a physical phone, and has none of the `forge-services` native services. See the [roadmap](roadmap.md#android--work-in-progress).
+
 Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the app's own Rust crate (`rust/`, or a crate shared with the iOS app, as `examples/counter-android` does).
 
 ## Prerequisites
@@ -24,7 +26,7 @@ export PATH="$ANDROID_HOME/platform-tools:$PATH"
 ## Validate
 
 ```bash
-forge doctor     # "Android (Gradle, debug APK): ready", or a fix for each missing piece
+forge doctor     # "Android (Gradle, debug APK; work in progress): ready", or a fix for each missing piece
 # lower-level checks:
 ./scripts/validate-android-toolchain.sh
 ```

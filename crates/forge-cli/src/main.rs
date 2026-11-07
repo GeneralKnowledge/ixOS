@@ -37,6 +37,7 @@ enum Commands {
         name: String,
         #[arg(long, default_value = "org.example.myapp")]
         bundle_id: String,
+        /// Target platform. Android is work in progress: it builds, but gets no new features
         #[arg(long, default_value = "ios", value_parser = ["ios", "android"])]
         platform: String,
         /// Directory to create the app in (default: ./<NAME>, or
@@ -147,6 +148,7 @@ enum BuildCommands {
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
     },
+    /// Build an Android app (work in progress: no new features while Forge focuses on iOS)
     Android {
         #[arg(
             long,

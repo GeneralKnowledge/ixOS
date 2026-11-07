@@ -251,7 +251,9 @@ fn next_steps(dest: &Path, platform: &str, cwd: Option<&Path>) -> String {
         );
     } else {
         out.push_str(
-            "  forge doctor               # checks the JDK, Android SDK, NDK and cargo-ndk\n\
+            "\nNote: Android is work in progress. It builds, but gets no new features while Forge\n\
+             focuses on iOS (docs/roadmap.md#android--work-in-progress).\n\n\
+             \x20 forge doctor               # checks the JDK, Android SDK, NDK and cargo-ndk\n\
              \x20 forge build android --install   # debug APK on a connected phone or emulator\n\
              \x20 forge test                 # your Rust tests and the JVM unit tests\n\
              \nYour logic is in rust/src/lib.rs. README.md in the app explains the layout.\n",
@@ -768,6 +770,9 @@ pub fn build_android(
         .android
         .as_ref()
         .ok_or("missing [android] in forge.toml")?;
+    println!(
+        "[forge] Note: Android is work in progress; Forge is focusing on iOS (docs/roadmap.md#android--work-in-progress)"
+    );
     // Gradle reads application_id and min_sdk from forge.toml itself.
     println!(
         "[forge] Android app {} (minSdk {}), ABIs: {}",
