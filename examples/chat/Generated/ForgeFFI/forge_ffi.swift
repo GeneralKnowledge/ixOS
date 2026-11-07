@@ -4305,6 +4305,96 @@ public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) 
 
 
 /**
+ * A log level for [`forge_log`].
+ */
+
+public enum ForgeLogLevel: Equatable, Hashable {
+    
+    case trace
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ForgeLogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = ForgeLogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeLogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trace
+        
+        case 2: return .debug
+        
+        case 3: return .info
+        
+        case 4: return .warn
+        
+        case 5: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ForgeLogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> ForgeLogLevel {
+    return try FfiConverterTypeForgeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
+    return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
  * A permission the app can ask the user for. More cases (camera,
  * photos, microphone) are added as their adapters are; see
  * docs/native-services.md. A permission whose service the app
@@ -5320,6 +5410,31 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * Writes one record from host code into Forge's log, with
+ * `category` as its target. Never log secrets.
+ */
+public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log(
+        FfiConverterTypeForgeLogLevel_lower(level),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether a record at `level` would be kept, so the host can skip
+ * building a message nobody will see.
+ */
+public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log_enabled(
+        FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -5407,6 +5522,12 @@ private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_forge_log() != 59998) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_forge_log_enabled() != 61613) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
         return InitializationResult.apiChecksumMismatch

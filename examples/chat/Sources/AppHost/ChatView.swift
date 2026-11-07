@@ -237,6 +237,7 @@ struct ChatView: View {
                 guard let data = try await item.loadTransferable(type: Data.self) else { continue }
                 staged.append(try await AttachmentFiles.preparePhoto(data))
             } catch {
+                attachmentLog.warn("photo not added: \(error)")
                 model.actionError = String(localized: "That photo couldn't be added (\(error.localizedDescription)).")
             }
         }
@@ -250,10 +251,12 @@ struct ChatView: View {
                 do {
                     staged.append(try AttachmentFiles.prepareDocument(url))
                 } catch {
+                    attachmentLog.warn("document not added: \(error)")
                     model.actionError = String(localized: "\(url.lastPathComponent) couldn't be added (\(error.localizedDescription)).")
                 }
             }
         case .failure(let error):
+            attachmentLog.warn("document picker failed: \(error)")
             model.actionError = error.localizedDescription
         }
     }
