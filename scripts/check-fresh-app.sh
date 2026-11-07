@@ -98,6 +98,25 @@ grep -q 'fun `freshWordCount`(`text`: kotlin.String)' "$WORK/FreshDroid/Generate
 [[ -f "$WORK/FreshDroid/Generated/org/forgemobile/ffi/ForgeAndroid.kt" ]] \
   || fail "Android app is missing ForgeAndroid.kt"
 
+if [[ -n "${FORGE_SWIFT_DOCKER:-}" ]] || command -v swift >/dev/null 2>&1; then
+  step "forge check swift: the view model and bindings compile, and their tests pass, without the iOS SDK"
+  "$FORGE" check swift --project "$WORK/FreshIos"
+  step "forge check swift catches a Swift call that no longer matches the Rust API (exit 11)"
+  model="$WORK/FreshIos/Sources/AppHost/NotesModel.swift"
+  cp "$model" "$model.orig"
+  sed -i.bak '0,/\.addNote(text:/s//.addNote(body:/' "$model" && rm -f "$model.bak"
+  set +e
+  "$FORGE" check swift --project "$WORK/FreshIos" --json >"$WORK/check-swift.json" 2>"$WORK/check-swift.log"
+  code=$?
+  set -e
+  mv "$model.orig" "$model"
+  [[ $code -eq 11 ]] || fail "forge check swift exited $code, not 11: $(cat "$WORK/check-swift.log")"
+  grep -q '"file":"Sources/AppHost/NotesModel.swift"' "$WORK/check-swift.json" \
+    || fail "forge check swift --json did not point at NotesModel.swift: $(cat "$WORK/check-swift.json")"
+else
+  step "Skipping forge check swift: no swift on PATH and FORGE_SWIFT_DOCKER unset"
+fi
+
 step "iOS app configuration comes from forge.toml (forge config sync / check)"
 ios="$WORK/FreshIos"
 for f in Info.plist App.entitlements xtool.yml; do

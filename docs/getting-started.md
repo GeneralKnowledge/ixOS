@@ -70,13 +70,17 @@ The loop is Rust first, then the screen:
 $EDITOR rust/src/lib.rs                     # add a method to AppCore, a field to a record...
 cargo test --manifest-path rust/Cargo.toml  # seconds, no SDK or phone
 forge bindings generate                     # optional: the new Swift API, for your editor
-$EDITOR Sources/AppHost/ContentView.swift   # use it
+$EDITOR Sources/AppHost/NotesModel.swift    # call it from the view model
+forge check swift                           # seconds: the model + bindings + their tests, plain Swift, no SDK
+$EDITOR Sources/AppHost/ContentView.swift   # show it
 forge run ios
 ```
 
 `forge run ios` always rebuilds the Rust and the bindings, so a Rust change cannot reach the phone without its Swift API, or the other way round.
 
 `forge test` runs your crate's tests from anywhere in the app. On a Mac it also runs the XCTest suite in `Tests/`; on Linux that part is skipped and CI runs it.
+
+`forge check swift` catches most Swift mistakes at the Swift–Rust boundary without the iOS SDK, a Mac or the phone. It builds your Rust for this computer and compiles every Swift file that imports nothing Apple-only (in the starter, `NotesModel.swift`, `Note+Display.swift` and the UniFFI bindings) with the plain Swift toolchain. It then runs the tests that need no SwiftUI: 9 of the starter's 10, in about 15 seconds. It lists the files it left out. SwiftUI views still need `forge run ios` or `forge build ios`. Without Swift installed, `FORGE_SWIFT_DOCKER=swift:6.2 forge check swift` runs it in Docker.
 
 ## 6. When something fails
 

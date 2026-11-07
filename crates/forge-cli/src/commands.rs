@@ -824,7 +824,7 @@ fn sync_app_config(project_dir: &Path, cfg: &ForgeConfig) -> Result<(), String> 
 }
 
 /// The app directory, once its forge.toml is readable and enables iOS.
-fn ios_project(root: &Path, project: &Path) -> Result<(PathBuf, ForgeConfig), String> {
+pub(crate) fn ios_project(root: &Path, project: &Path) -> Result<(PathBuf, ForgeConfig), String> {
     require_workspace(root)?;
     let project_dir = resolve_project_dir(root, project);
     let cfg = load_config(&project_dir)?;

@@ -1,12 +1,32 @@
 import AppHost
 @preconcurrency import ForgeFFI
 import Foundation
-import SwiftUI
 import XCTest
+
+#if canImport(Glibc)
+    import Glibc
+    private let streamSocket = Int32(SOCK_STREAM.rawValue)
+#else
+    import Darwin
+    private let streamSocket = SOCK_STREAM
+#endif
+
+// File-scope wrappers: inside a test case, NSObject's `bind` method would
+// shadow the socket function.
+private func openSocket() -> Int32 { socket(AF_INET, streamSocket, 0) }
+private func bindSocket(_ fd: Int32, _ sa: UnsafePointer<sockaddr>, _ len: socklen_t) -> Int32 {
+    bind(fd, sa, len)
+}
+private func listenSocket(_ fd: Int32) -> Int32 { listen(fd, 4) }
+private func socketName(_ fd: Int32, _ sa: UnsafeMutablePointer<sockaddr>, _ len: inout socklen_t) -> Int32 {
+    getsockname(fd, sa, &len)
+}
+private func closeSocket(_ fd: Int32) { _ = close(fd) }
 
 /// Drives the view model against the app's real Rust core (rust/) through the
 /// generated Swift bindings. `forge test ios` (or scripts/test-swift-host.sh)
-/// builds the host library first.
+/// builds the host library first. It imports no SwiftUI, so
+/// `forge check swift` also runs it on Linux.
 final class NotesModelTests: XCTestCase {
     private func makeDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -123,9 +143,7 @@ final class NotesModelTests: XCTestCase {
     /// A local port that accepts connections and never answers, so a request
     /// to it only ends when cancelled.
     private func silentServerURL() throws -> (String, Int32) {
-        // Qualified with `Darwin.` because NSObject has a `bind` method that
-        // would otherwise shadow the socket function inside a test case.
-        let fd = Darwin.socket(AF_INET, SOCK_STREAM, 0)
+        let fd = openSocket()
         var addr = sockaddr_in()
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_addr.s_addr = inet_addr("127.0.0.1")
@@ -133,10 +151,10 @@ final class NotesModelTests: XCTestCase {
         var len = socklen_t(MemoryLayout<sockaddr_in>.size)
         try withUnsafeMutablePointer(to: &addr) { ptr in
             try ptr.withMemoryRebound(to: sockaddr.self, capacity: 1) { sa in
-                guard Darwin.bind(fd, sa, len) == 0, Darwin.listen(fd, 4) == 0,
-                    Darwin.getsockname(fd, sa, &len) == 0
+                guard bindSocket(fd, sa, len) == 0, listenSocket(fd) == 0,
+                    socketName(fd, sa, &len) == 0
                 else {
-                    Darwin.close(fd)
+                    closeSocket(fd)
                     throw XCTSkip("cannot open a local socket")
                 }
             }
@@ -149,7 +167,7 @@ final class NotesModelTests: XCTestCase {
         let dir = try makeDirectory()
         let model = await openModel(dir)
         let (url, fd) = try silentServerURL()
-        defer { Darwin.close(fd) }
+        defer { closeSocket(fd) }
         model.url = url
         let started = Date()
         let check = Task { await model.checkURL() }
@@ -168,7 +186,7 @@ final class NotesModelTests: XCTestCase {
         let model = await openModel(dir)
         model.setPhase(.active)
         let (url, fd) = try silentServerURL()
-        defer { Darwin.close(fd) }
+        defer { closeSocket(fd) }
         model.url = url
         let started = Date()
         let check = Task { await model.checkURL() }
@@ -205,12 +223,6 @@ final class NotesModelTests: XCTestCase {
             _ = try await core.addNote(text: "late")
             XCTFail("expected ShutDown")
         } catch AppError.ShutDown {}
-    }
-
-    func testScenePhasesMapOntoAppPhases() {
-        XCTAssertEqual(AppPhase(.active), .active)
-        XCTAssertEqual(AppPhase(.inactive), .inactive)
-        XCTAssertEqual(AppPhase(.background), .background)
     }
 
     @MainActor

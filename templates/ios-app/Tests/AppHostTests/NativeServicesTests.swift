@@ -1,3 +1,7 @@
+// The adapters wrap Apple frameworks (Security, UserNotifications, SwiftUI),
+// so this suite runs only where they exist: macOS (`forge test`), not
+// `forge check swift` on Linux.
+#if canImport(Security)
 import AppHost
 @preconcurrency import ForgeFFI
 import Foundation
@@ -98,3 +102,4 @@ final class NativeServicesTests: XCTestCase {
         XCTAssertEqual(received.count, 2)
     }
 }
+#endif
