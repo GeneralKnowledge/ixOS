@@ -77,6 +77,9 @@ jobs:
       # linted and formatted on its own, and a Rust API change reaching the
       # bindings through `forge bindings generate --project`.
       - name: check-fresh-app
+        # forge check swift runs the plain Swift toolchain in this image.
+        env:
+          FORGE_SWIFT_DOCKER: swift:6.2
         run: ./scripts/check-fresh-app.sh "$RUNNER_TEMP/fresh-app"
 
   # Cheap policy checks, one job: the minimum supported Rust version still

@@ -10,6 +10,7 @@ mod ios_env;
 mod live;
 mod report;
 mod runner;
+mod swift_check;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -37,6 +38,8 @@ enum Commands {
         /// Stop at the first failing step instead of running them all
         #[arg(long)]
         fail_fast: bool,
+        #[command(subcommand)]
+        what: Option<CheckCommands>,
     },
     /// Create a new Forge Mobile app from template
     Init {
@@ -288,6 +291,17 @@ enum InstallCommands {
 }
 
 #[derive(Subcommand)]
+enum CheckCommands {
+    /// Compile the app's Swift that needs no Apple UI framework (the view
+    /// model, the Rust bindings) and run its tests that need none, with plain
+    /// Swift on Linux: no iOS SDK, Mac or phone. SwiftUI views are left out
+    Swift {
+        #[arg(long, help = "App directory (default: the current directory)")]
+        project: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand)]
 enum RunCommands {
     Ios {
         #[arg(
@@ -356,6 +370,10 @@ fn main() {
 fn command_name(command: &Commands) -> String {
     let sub = match command {
         Commands::Doctor => return "doctor".into(),
+        Commands::Check {
+            what: Some(CheckCommands::Swift { .. }),
+            ..
+        } => return "check swift".into(),
         Commands::Check { .. } => return "check".into(),
         Commands::Init { .. } => return "init".into(),
         Commands::Test { .. } => return "test".into(),
@@ -406,7 +424,11 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         | Commands::Run {
             cmd: RunCommands::Ios { project, .. },
         }
-        | Commands::Test { project, .. } => project.clone().or_else(app_in_cwd),
+        | Commands::Test { project, .. }
+        | Commands::Check {
+            what: Some(CheckCommands::Swift { project }),
+            ..
+        } => project.clone().or_else(app_in_cwd),
         Commands::Config { cmd } => match cmd {
             ConfigCommands::Sync { project, .. }
             | ConfigCommands::Check { project }
@@ -421,7 +443,10 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
 fn logs_to_file(command: &Commands) -> bool {
     matches!(
         command,
-        Commands::Build { .. } | Commands::Run { .. } | Commands::Test { .. }
+        Commands::Build { .. }
+            | Commands::Run { .. }
+            | Commands::Test { .. }
+            | Commands::Check { what: Some(_), .. }
     )
 }
 
@@ -431,7 +456,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     match cli.command {
         Commands::Doctor if cli.json => doctor::print_json(runner, &root),
         Commands::Doctor => doctor::print_text(runner, &root),
-        Commands::Check { fail_fast } => {
+        Commands::Check {
+            what: Some(CheckCommands::Swift { project }),
+            ..
+        } => match project.or_else(app_in_cwd) {
+            Some(app) => swift_check::check_swift(runner, &root, &app),
+            None => Err(
+                "no app here: run inside an app directory (one with forge.toml) or pass --project <app>"
+                    .into(),
+            ),
+        },
+        Commands::Check { fail_fast, .. } => {
             let host = check::Host::detect(runner, &root);
             check::check(runner, &root, host, fail_fast)
         }
