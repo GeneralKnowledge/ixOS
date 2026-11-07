@@ -74,7 +74,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | HTTPS requests with typed errors | Yes: forge-net | Yes | n/a | Yes: Weather, Chat | Yes: 2026-11-05 and 2026-11-06 | Yes | |
 | Long-lived streams (SSE) with reconnect | Yes | Yes | n/a | Yes: Chat | Yes: Chat | Yes: chat-demo.md | |
 | Cancellable requests | Yes | Yes | Yes: task cancellation | Yes: starter | No | Yes | |
-| Reachability | No | No | No | No | No | No | |
+| Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes) | Yes: forge-services `connectivity` | Yes: `ConnectivityService`, `TransferPolicy::Unmetered` | Yes: `NWPathMonitor` | Yes: Device Lab | No | Partial: native-services.md | Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; no signal strength or carrier |
 | Bonjour advertise and browse | No | No | No | No | No | No | Needs `NSBonjourServices` key |
 | Peer-to-peer transfer with resume | No | No | No | No | No | No | |
 | Device identity and encrypted channel | Partial: Keychain only | Partial | Partial | No | No | No | Use a reviewed library |
@@ -88,8 +88,9 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Local notifications | Yes | Yes | Yes | Partial: services check app only | No | Yes | No push: APNs is a non-goal |
 | Notification actions and grouping | No | No | No | No | No | No | |
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
-| Permission interface | Partial: notifications only | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes 20 permission strings the runtime cannot request yet |
-| Microphone, camera, location, motion, local network, Bluetooth permissions | No | No | No | No | No | Partial: config only | |
+| Permission interface | Partial: notifications, location, motion, Bluetooth | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
+| Location, motion and Bluetooth permissions | Yes: forge-services | Yes: `NativePermission` | Yes | Yes: Device Lab | No | Partial: native-services.md | Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing |
+| Microphone, camera, local network permissions | No | No | No | No | No | Partial: config only | |
 | Photos picker | No | No | No | No | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
@@ -107,10 +108,12 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Waveform summaries | No | No | n/a | No | No | No | |
 | Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
 | Background audio | Partial: config | No | No | No | No | Partial | |
-| Location fix | No | No | Partial: app code | Yes: Weather (one-shot) | Yes: Weather, 2026-11-06 | Partial: Weather README | Not a reusable service |
-| Continuous location and tracks | No | No | No | No | No | No | |
+| Location fix | Yes: forge-services `location` | Yes: `LocationService` | Yes: `CLLocationManager` | Yes: Device Lab; Weather still has its own one-shot provider | Partial: Weather's own provider, 2026-11-06; the service is not yet run on an iPhone | Partial: native-services.md | When in use only |
+| Continuous location and tracks | Partial: continuous fixes and `distance_m`; no track storage | Yes | Yes | Partial: Device Lab distance travelled | No | Yes | No GPX or track file yet (FieldKit) |
 | Background location | Partial: config | No | No | No | No | Partial | Needs "always" permission |
-| Heading, altitude, motion | No | No | No | No | No | No | |
+| Heading, altitude, motion | Yes: forge-services `motion` and `location` | Yes: `MotionService` (accelerometer, gyroscope, magnetometer, device motion, barometer) | Yes: Core Motion, Core Location heading | Yes: Device Lab | No | Partial: native-services.md | Foreground only; the barometer needs the Motion & Fitness permission; 10 ms to 10 s intervals |
+| Device status (battery, Low Power Mode, thermal state, storage, memory, model) | Yes: forge-services `device_status` | Yes: `DeviceStatusService`, `defer_heavy_work` | Yes | Yes: Device Lab | No | Partial: native-services.md | Device name is the generic model since iOS 16 (the real name needs an Apple-granted entitlement) |
+| Bluetooth on or off | Yes: forge-services `bluetooth` | Yes: `BluetoothService` | Yes: `CBCentralManager` | Yes: Device Lab | No | Partial: native-services.md | State only: no scanning or connections yet |
 | Maps (MapKit) | n/a | n/a | No | No | No | No | MapKit has no offline tiles |
 | Forms with Rust validation | Partial: compose sheet | Partial | Partial | Yes: starter | No | Partial | |
 | Charts (Swift Charts) | No | n/a | No | No | No | No | |

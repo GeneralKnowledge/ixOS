@@ -1,48 +1,66 @@
-# DeviceLab
+# Device Lab
 
-An iOS app made with [Forge](https://github.com/GeneralKnowledge/ixOS): the logic is Rust, the screen is SwiftUI, and you can build and install it on an iPhone from Linux with xtool.
+A live view of everything an iPhone tells an app about itself: network, Bluetooth, battery and temperature, storage and memory, the motion sensors, a compass, the barometer, location, and what the device is. It also lists what iOS keeps from apps, and why.
 
-## Run it
+It exists to prove Forge's optional native services ([docs/native-services.md](../../docs/native-services.md#optional-services)). The device capabilities are the framework's; this app is their consumer.
 
-From this directory:
+## What it shows
 
-```bash
-forge doctor     # is the toolchain ready? (xtool, Darwin SDK, Apple sign-in, iPhone)
-forge run ios    # build the Rust and Swift, sign and install on the iPhone
-forge test       # Rust tests (and the XCTest suite on macOS)
+| Section | Values | Needs |
+|---------|--------|-------|
+| **Network** | Online or offline and why, Wi-Fi, cellular or wired, metered, Low Data Mode, IPv4/IPv6/DNS, whether a Wi-Fi-only download would start, a log of every change | Nothing |
+| **Bluetooth** | On, off, not allowed, not supported | Bluetooth permission (asked from a button) |
+| **Battery & Power** | Level and charging state, Low Power Mode, thermal state, screen brightness, whether Forge's heavy-work rule would let a big download run | Nothing |
+| **Storage & Memory** | Free and total storage, memory the app uses, memory it has left before iOS ends it, device RAM | Nothing |
+| **Motion** | Accelerometer, gyroscope and magnetometer (each axis, magnitude, peak, measured rate, sparkline), roll, pitch, yaw, tilt, movement without gravity, compass calibration | Nothing |
+| **Compass** | A turning dial. True north from Core Location when location is allowed, magnetic north from device motion otherwise | Nothing (location for true north) |
+| **Barometer** | Air pressure with its range and a sparkline, height change since it started | Motion & Fitness permission |
+| **Location** | Latitude, longitude, accuracy, altitude, speed, course, floor, distance travelled, top speed, Precise Location, a link to Maps | Location permission, while in use |
+| **Device** | Model identifier, iOS version, cores, screen size, uptime | Nothing |
+| **What iOS Keeps from Apps** | Wi-Fi name (paid team), the phone's own name (Apple approval), carrier, signal strength, the light sensor, MAC addresses, background sensors | |
+
+Nothing asks for a permission until you tap its button. Everything stops when the app goes to the background, and nothing leaves the phone. All of it works with a free Apple account: the app has no entitlements.
+
+## How it is built
+
+```
+examples/device-lab/
+  forge.toml               permission strings for location, motion, Bluetooth; team_type = "free"
+  rust/src/lib.rs          native_services!(connectivity, device_status, motion, location, bluetooth);
+                           DeviceLab: what runs when, LabSnapshot for the UI
+  rust/src/stats.rs        rolling histories, measured rates, peaks, tilt, distance, change log
+  Generated/ForgeFFI/      bindings plus the five optional Swift adapters (copied because lib.rs names them)
+  Sources/AppHost/         SwiftUI: LabModel, DashboardView, MotionView, CompassView, LimitsView
 ```
 
-`forge run ios` checks the toolchain, your Apple sign-in and the connected iPhone before it starts building, and when a step fails it says which part failed (Rust, Swift, signing or the iPhone) and how to fix it.
+**Forge owns** reading the platform: `NWPathMonitor`, `UIDevice` and `ProcessInfo`, Core Motion, Core Location and Core Bluetooth, behind Rust traits, with permissions through the one `NativePermission` interface.
 
-The first time you run on an iPhone:
+**Rust (this app) owns** when each source runs (only while on screen, and only once its permission is granted), and what the app makes of the values: sparkline histories, update rates measured from sensor timestamps, peaks and ranges, tilt from gravity, distance travelled over accurate fixes, and the connectivity log. All tested against Forge's fakes with `cargo test` on Linux.
 
-1. Connect it by USB, unlock it and tap **Trust**. `forge devices` should list it.
-2. Turn on **Developer Mode** (Settings > Privacy & Security > Developer Mode), then restart the phone.
-3. Sign xtool in to your Apple account: `xtool auth login`. Any Apple ID works; a free one can have 3 apps installed at a time and needs a re-install every 7 days.
-4. xtool installs the app but does not open it: tap its icon on the home screen. After the first install, trust your developer profile: Settings > General > VPN & Device Management > your Apple ID > Trust.
+**SwiftUI owns** the screens and every word on them. `LabModel` copies `DeviceLab.snapshot()` ten times a second while the app is open; a snapshot is a memory copy.
 
-## Where things are
+## Build and run from Linux
 
-| Path | What it is |
-|------|------------|
-| `rust/src/lib.rs` | Your app's logic, state, persistence and networking. Everything marked `#[uniffi::export]` is callable from Swift. |
-| `rust/Cargo.toml` | Rust dependencies. Add crates here as usual (`cargo add --manifest-path rust/Cargo.toml <crate>`). |
-| `Sources/AppHost/` | The SwiftUI screens (`ContentView.swift` is the root; `NoteListView`, `NoteDetailView`, `ComposeNoteView`, `SettingsView`) and `NotesModel.swift`, the model that calls Rust. |
-| `Tests/AppHostTests/` | XCTest suite against the real Rust library (macOS only). |
-| `Generated/` | Swift bindings generated from `rust/`. Do not edit; `forge run ios` and `forge bindings generate` rewrite them. |
-| `forge.toml` | App name, bundle identifier, version, minimum iOS, permissions, entitlements (`forge config show`). |
-| `Info.plist`, `App.entitlements`, `xtool.yml` | Generated from `forge.toml` by every `forge build ios` / `forge run ios`. Edit `forge.toml` instead. |
-| `Xcode/` | An Xcode project, for when you are on a Mac and want the debugger. Never required. |
-| `build/`, `rust/target/` | Build output. Safe to delete. |
+The same as any Forge app ([docs/linux-setup.md](../../docs/linux-setup.md)):
 
-## The loop
+```bash
+cd examples/device-lab
+forge doctor
+forge run ios
+```
 
-1. Change the Rust in `rust/src/lib.rs`. `cargo test --manifest-path rust/Cargo.toml` tests it in seconds, with no SDK or phone.
-2. If you changed what is exported, `forge bindings generate` updates the Swift API so your editor sees it.
-3. Use it from `Sources/AppHost/`, then `forge run ios`.
+A free Apple account allows three sideloaded apps at a time, so you may need to remove one first.
 
-## Help
+`cargo test --manifest-path rust/Cargo.toml` runs the Rust tests anywhere. On a Mac, `forge test --project .` also runs the XCTest suite, where connectivity and device status are real and the iOS-only sensors report that they are unavailable.
 
-- Something missing: `forge doctor` lists each missing piece and the command that fixes it.
-- A build or install failed: the error ends with "What went wrong" and a fix. The Forge checkout's `docs/troubleshooting.md` has more.
-- Getting started from scratch: `docs/getting-started.md` in the Forge checkout.
+## Checking it on an iPhone
+
+Not yet run on a device. When it is, check:
+
+1. Network: toggle Airplane Mode and Wi-Fi from Control Center; each change appears in Recent Changes, and Large Downloads says "Would wait for Wi-Fi" on cellular.
+2. Bluetooth: tap Allow, then toggle Bluetooth in Control Center.
+3. Motion: shake the phone and watch the peaks; rates read about 20 Hz.
+4. Compass: turn around; allow location and North changes to True.
+5. Barometer: allow Motion & Fitness; lift the phone from floor to ceiling for a height change of about 2 m.
+6. Location: allow, walk 100 m, and check Travelled.
+7. Battery: plug in and out; turn on Low Power Mode.
