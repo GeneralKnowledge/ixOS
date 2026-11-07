@@ -17,6 +17,7 @@ struct SettingsView: View {
                     LabeledContent("Server", value: account.serverUrl)
                     LabeledContent("Account ID", value: account.userId)
                         .textSelection(.enabled)
+                    LabeledContent("Storage", value: storageEngine())
                 }
             }
             if let problem = model.accountProblem {

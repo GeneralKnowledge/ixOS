@@ -99,3 +99,41 @@ Record for each run: iPhone model, iOS version, xtool version, commit, and anyth
 - The server was restarted on the M0 data file, which upgraded it to version 2 with accounts and messages intact (the version 1 file was kept as `server.json.v1-pre-M1.bak`).
 - Right after installing the new build the phone could not reach the server ("Host is down (os error 64)") although the server answered on 192.168.1.169:8787 from the laptop. It worked again after Reuben checked the phone's network settings; the most likely cause is iOS's Local Network permission after the reinstall. If you see this error, check Settings → Privacy & Security → Local Network → Chat first.
 - R4 logging check (`idevicesyslog`, needs `libimobiledevice-utils`): inconclusive. Chat writes no log records in normal use (only two rare warning paths), and Info/Debug records are not shown by the USB syslog relay, so no Forge lines appeared. Proving R4 on a device needs a Warn record the app can be made to emit.
+
+## M2 device run
+
+M2 adds message changes (reactions, replies, edits, delete for everyone), drafts, a durable outbox, search, and moves the phone's store to SQLite. Device results are Reuben's reports; nothing here is marked done until he reported it.
+
+### Automated and local
+
+| # | Check | Kind | Status | Evidence |
+|---|-------|------|--------|----------|
+| A14 | forge-storage `Database`: migrations, WAL, FTS5, damaged files moved aside, newer databases refused | automated | Done | `cargo test -p forge-storage --features sqlite` (6 database tests) |
+| A15 | chat-core: SQLite store round trip, search, drafts, outbox (offline sends wait, go out in order, survive a relaunch), refused sends fail, replies, edits, deletes and reactions live and in catch-up without counting unread, deleting an unsent message, import of the M1 JSON store, corrupt store recovery | automated | Done | `cargo test -p chat-core` (77 tests) |
+| A16 | chat-server: edit, delete and react routes (author checks, 409 after deletion), `since` returns changes, all kept across a restart; the killer demo now goes through the outbox | automated | Done | `cargo test -p chat-server` (`message_changes_between_two_accounts`, `killer_demo_interaction_over_real_sockets`) |
+| A17 | The app's Rust crate: `send_reply`, `set_reaction` (with `mine`), `edit_message`, `delete_message`, drafts across a relaunch, accent-insensitive search | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (`message_changes_drafts_and_search_through_the_ffi`) |
+| A18 | chat-cli: `reply`, `edit`, `delete`, `react`, messages picked as `@1` (newest) or by id | automated | Done | `cargo test -p chat-cli` |
+| A19 | SwiftUI: `testRepliesReactionsEditsDeletesDraftsAndSearch` (two accounts against the real server) | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` on PR #51 |
+
+### On an iPhone (Linux, xtool)
+
+Before you start: the M1 setup (server on `0.0.0.0:8787`, the app signed in, `chat-cli` signed up as "Laptop"). Update first: check out the branch (or `git pull` once merged), restart `make chat-server ARGS="--bind 0.0.0.0:8787"` on the same data file (it upgrades it to version 3), then `forge run ios --project examples/chat`. In the steps, `@1` is the newest message in the room; `make chat-cli ARGS="read general"` lists them numbered.
+
+| # | Step | Expected | Status |
+|---|------|----------|--------|
+| F1 | Open the app, then Settings | The M1 chats and messages are all still there (imported from the old store into SQLite once). Settings shows "Storage: SQLite 3.x" | Not yet run |
+| F2 | In General, touch and hold one of the laptop's messages, tap 👍 | A "👍 1" chip under the bubble, highlighted as yours; `make chat-cli ARGS="read general"` shows `👍1` on it. Tap the chip: it goes away | Not yet run |
+| F3 | `make chat-cli ARGS="react general @1 ❤️"` with the phone's newest message at `@1` | "❤️ 1" appears under that bubble within a second; no unread dot, no banner | Not yet run |
+| F4 | Touch and hold a message, Reply, type "answer", send | A bar "Replying to …" above the composer while typing; the sent bubble quotes the original; tapping the quote scrolls to it. `chat-cli read general` shows `(reply to …)` | Not yet run |
+| F5 | `make chat-cli ARGS="reply general @1 back at you"` | The laptop's bubble quotes the phone's message | Not yet run |
+| F6 | Touch and hold one of your sent messages, Edit, change the text, tap the check mark | The bubble changes and shows "Edited"; `chat-cli follow general` prints `changed: … (edited)` | Not yet run |
+| F7 | `make chat-cli ARGS="send general to delete"`, then `make chat-cli ARGS="delete general @1"` | The bubble appears, then turns into "This message was deleted" | Not yet run |
+| F8 | Touch and hold one of your own messages, Delete, Delete for Everyone | It becomes "This message was deleted" on the phone and in `chat-cli read general` | Not yet run |
+| F9 | Type "half a thought" in Random without sending, go back, force-quit the app, open it again and go to Random | The composer still holds "half a thought" | Not yet run |
+| F10 | Stop the server (Ctrl-C). Send two messages in General | Both stay "Sending…" (not red); the banner says messages wait; the Chats list says 2 messages are waiting | Not yet run |
+| F11 | Force-quit the app with the server still stopped; start the server; open the app and General | Both messages go out by themselves, in order, without tapping; `chat-cli read general` shows them | Not yet run |
+| F12 | Pull down on the Chats list and search for a word from an older message, typed without accents or capitals | Matching messages from every conversation, with the room name and the word in bold; tapping one opens the chat scrolled to it, highlighted | Not yet run |
+| F13 | In a chat: More (…) → Search in Conversation, search for a word | Only that chat's messages; tapping one closes the sheet and scrolls to it | Not yet run |
+| F14 | `forge run ios --project examples/chat --release` | Builds, installs, and F2, F6 and F12 still work | Not yet run |
+
+Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.

@@ -261,17 +261,31 @@ impl ChatCore {
     }
 
     /// Sends a message. It is announced as `Sending` at once, then becomes
-    /// `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
-    /// message, or the error that failed it.
+    /// `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+    /// stays `Sending` in the outbox and goes out by itself later, even
+    /// after a relaunch; only a refusal by the server makes it `Failed`.
+    /// Resolves with the message as it then is, or the error that failed it.
+    /// Clears the conversation's draft.
     pub async fn send_message(
         &self,
         conversation_id: String,
         body: String,
     ) -> Result<ChatMessage, ChatError> {
+        self.send_reply(conversation_id, body, None).await
+    }
+
+    /// `send_message` as an answer to `reply_to`, a message in the same
+    /// conversation.
+    pub async fn send_reply(
+        &self,
+        conversation_id: String,
+        body: String,
+        reply_to: Option<String>,
+    ) -> Result<ChatMessage, ChatError> {
         let (client, user_id) = self.client_and_user()?;
         let result = background("chat-send", move || {
             client
-                .send_message(&conversation_id, &body)
+                .send_reply(&conversation_id, &body, reply_to.as_deref())
                 .map(|m| types::message(m, &user_id))
                 .map_err(ChatError::from)
         })
@@ -279,7 +293,103 @@ impl ChatCore {
         result.map_err(|e| self.rejected(e))
     }
 
-    /// Sends a `Failed` message again with the same id.
+    /// Replaces the text of one of our sent messages, for everyone
+    /// (`MessageUpdated`, here and on other devices).
+    pub async fn edit_message(
+        &self,
+        message_id: String,
+        body: String,
+    ) -> Result<ChatMessage, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        let result = background("chat-edit", move || {
+            client
+                .edit_message(&message_id, &body)
+                .map(|m| types::message(m, &user_id))
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// Deletes one of our messages for everyone; it becomes a "deleted"
+    /// placeholder (`MessageUpdated`). A message that was never sent is
+    /// just removed (`MessageRemoved`) and `None` is returned.
+    pub async fn delete_message(
+        &self,
+        message_id: String,
+    ) -> Result<Option<ChatMessage>, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        let result = background("chat-delete", move || {
+            client
+                .delete_message(&message_id)
+                .map(|m| m.map(|m| types::message(m, &user_id)))
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+    pub async fn set_reaction(
+        &self,
+        message_id: String,
+        emoji: String,
+        on: bool,
+    ) -> Result<ChatMessage, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        let result = background("chat-react", move || {
+            client
+                .set_reaction(&message_id, &emoji, on)
+                .map(|m| types::message(m, &user_id))
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// Saves the composer's unsent text (empty clears it). Kept on this
+    /// device across launches; cheap enough to call as the user types.
+    pub fn set_draft(&self, conversation_id: String, text: String) -> Result<(), ChatError> {
+        self.client()?
+            .set_draft(&conversation_id, &text)
+            .map_err(Into::into)
+    }
+
+    /// The saved draft for a conversation, if any.
+    pub fn draft(&self, conversation_id: String) -> Option<String> {
+        self.client().ok()?.draft(&conversation_id)
+    }
+
+    /// Searches the messages on this device: every word of `query` must
+    /// start a word in the message (case and accents ignored). In one
+    /// conversation, or in all with `None`. Newest first, at most 100.
+    pub async fn search(
+        &self,
+        query: String,
+        conversation_id: Option<String>,
+    ) -> Result<Vec<ChatMessage>, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        background("chat-search", move || {
+            client
+                .search(&query, conversation_id.as_deref())
+                .map(|list| {
+                    list.into_iter()
+                        .map(|m| types::message(m, &user_id))
+                        .collect()
+                })
+                .map_err(ChatError::from)
+        })
+        .await
+    }
+
+    /// How many of our messages are waiting to be sent.
+    pub fn outbox_count(&self) -> u32 {
+        self.client()
+            .map(|c| u32::try_from(c.outbox().len()).unwrap_or(u32::MAX))
+            .unwrap_or(0)
+    }
+
+    /// Sends a `Failed` (or still queued) message again now, with the same id.
     pub async fn retry_message(&self, message_id: String) -> Result<ChatMessage, ChatError> {
         let (client, user_id) = self.client_and_user()?;
         let result = background("chat-retry", move || {

@@ -659,6 +659,24 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func createConversation(title: String) async throws  -> ChatConversation
     
     /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+    func deleteMessage(messageId: String) async throws  -> ChatMessage?
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+    func draft(conversationId: String)  -> String?
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+    func editMessage(messageId: String, body: String) async throws  -> ChatMessage
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
@@ -684,21 +702,48 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func markRead(conversationId: String) async throws 
     
     /**
+     * How many of our messages are waiting to be sent.
+     */
+    func outboxCount()  -> UInt32
+    
+    /**
      * The phase last reported with `set_phase`.
      */
     func phase()  -> AppPhase
     
     /**
-     * Sends a `Failed` message again with the same id.
+     * Sends a `Failed` (or still queued) message again now, with the same id.
      */
     func retryMessage(messageId: String) async throws  -> ChatMessage
     
     /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+    func search(query: String, conversationId: String?) async throws  -> [ChatMessage]
+    
+    /**
      * Sends a message. It is announced as `Sending` at once, then becomes
-     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
-     * message, or the error that failed it.
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
      */
     func sendMessage(conversationId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+    func sendReply(conversationId: String, body: String, replyTo: String?) async throws  -> ChatMessage
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+    func setDraft(conversationId: String, text: String) throws 
     
     /**
      * Shows the room as unread until it is opened or marked read (`true`),
@@ -718,6 +763,11 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * is `shutdown()`.
      */
     func setPhase(phase: AppPhase) 
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+    func setReaction(messageId: String, emoji: String, on: Bool) async throws  -> ChatMessage
     
     /**
      * Ends every stream and refuses further commands with `ShutDown`.
@@ -937,6 +987,60 @@ open func createConversation(title: String)async throws  -> ChatConversation  {
 }
     
     /**
+     * Deletes one of our messages for everyone; it becomes a "deleted"
+     * placeholder (`MessageUpdated`). A message that was never sent is
+     * just removed (`MessageRemoved`) and `None` is returned.
+     */
+open func deleteMessage(messageId: String)async throws  -> ChatMessage?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_delete_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * The saved draft for a conversation, if any.
+     */
+open func draft(conversationId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Replaces the text of one of our sent messages, for everyone
+     * (`MessageUpdated`, here and on other devices).
+     */
+open func editMessage(messageId: String, body: String)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_edit_message(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(body)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
@@ -1004,6 +1108,18 @@ open func markRead(conversationId: String)async throws   {
 }
     
     /**
+     * How many of our messages are waiting to be sent.
+     */
+open func outboxCount() -> UInt32  {
+    return try!  FfiConverterUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_outbox_count(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The phase last reported with `set_phase`.
      */
 open func phase() -> AppPhase  {
@@ -1016,7 +1132,7 @@ open func phase() -> AppPhase  {
 }
     
     /**
-     * Sends a `Failed` message again with the same id.
+     * Sends a `Failed` (or still queued) message again now, with the same id.
      */
 open func retryMessage(messageId: String)async throws  -> ChatMessage  {
     return
@@ -1035,9 +1151,33 @@ open func retryMessage(messageId: String)async throws  -> ChatMessage  {
 }
     
     /**
+     * Searches the messages on this device: every word of `query` must
+     * start a word in the message (case and accents ignored). In one
+     * conversation, or in all with `None`. Newest first, at most 100.
+     */
+open func search(query: String, conversationId: String?)async throws  -> [ChatMessage]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_search(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * Sends a message. It is announced as `Sending` at once, then becomes
-     * `Sent` or `Failed` (`MessageStatusChanged`). Resolves with the final
-     * message, or the error that failed it.
+     * `Sent` (`MessageStatusChanged`). If the server cannot be reached it
+     * stays `Sending` in the outbox and goes out by itself later, even
+     * after a relaunch; only a refusal by the server makes it `Failed`.
+     * Resolves with the message as it then is, or the error that failed it.
+     * Clears the conversation's draft.
      */
 open func sendMessage(conversationId: String, body: String)async throws  -> ChatMessage  {
     return
@@ -1053,6 +1193,40 @@ open func sendMessage(conversationId: String, body: String)async throws  -> Chat
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * `send_message` as an answer to `reply_to`, a message in the same
+     * conversation.
+     */
+open func sendReply(conversationId: String, body: String, replyTo: String?)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_send_reply(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * Saves the composer's unsent text (empty clears it). Kept on this
+     * device across launches; cheap enough to call as the user types.
+     */
+open func setDraft(conversationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_set_draft(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterString.lower(text),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1095,6 +1269,25 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Adds (`on`) or removes our `emoji` reaction (`MessageUpdated`).
+     */
+open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_set_reaction(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(emoji),FfiConverterBool.lower(on)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
 }
     
     /**
@@ -2696,6 +2889,23 @@ public struct ChatMessage: Equatable, Hashable {
      */
     public var sentAt: Int64
     public var status: ChatMessageStatus
+    /**
+     * The message this one answers (same conversation), by id. The host
+     * finds it among the room's messages to quote it.
+     */
+    public var replyTo: String?
+    /**
+     * Its author changed the text after sending.
+     */
+    public var edited: Bool
+    /**
+     * Deleted for everyone: show a placeholder; `body` is empty.
+     */
+    public var deleted: Bool
+    /**
+     * Reactions, most popular first (then by emoji).
+     */
+    public var reactions: [ChatReaction]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2716,7 +2926,20 @@ public struct ChatMessage: Equatable, Hashable {
          */isMine: Bool, body: String, 
         /**
          * Unix ms: device time while sending or failed, server time once sent.
-         */sentAt: Int64, status: ChatMessageStatus) {
+         */sentAt: Int64, status: ChatMessageStatus, 
+        /**
+         * The message this one answers (same conversation), by id. The host
+         * finds it among the room's messages to quote it.
+         */replyTo: String?, 
+        /**
+         * Its author changed the text after sending.
+         */edited: Bool, 
+        /**
+         * Deleted for everyone: show a placeholder; `body` is empty.
+         */deleted: Bool, 
+        /**
+         * Reactions, most popular first (then by emoji).
+         */reactions: [ChatReaction]) {
         self.id = id
         self.conversationId = conversationId
         self.author = author
@@ -2725,6 +2948,10 @@ public struct ChatMessage: Equatable, Hashable {
         self.body = body
         self.sentAt = sentAt
         self.status = status
+        self.replyTo = replyTo
+        self.edited = edited
+        self.deleted = deleted
+        self.reactions = reactions
     }
 
     
@@ -2750,7 +2977,11 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
                 isMine: FfiConverterBool.read(from: &buf), 
                 body: FfiConverterString.read(from: &buf), 
                 sentAt: FfiConverterInt64.read(from: &buf), 
-                status: FfiConverterTypeChatMessageStatus.read(from: &buf)
+                status: FfiConverterTypeChatMessageStatus.read(from: &buf), 
+                replyTo: FfiConverterOptionString.read(from: &buf), 
+                edited: FfiConverterBool.read(from: &buf), 
+                deleted: FfiConverterBool.read(from: &buf), 
+                reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf)
         )
     }
 
@@ -2763,6 +2994,10 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
         FfiConverterString.write(value.body, into: &buf)
         FfiConverterInt64.write(value.sentAt, into: &buf)
         FfiConverterTypeChatMessageStatus.write(value.status, into: &buf)
+        FfiConverterOptionString.write(value.replyTo, into: &buf)
+        FfiConverterBool.write(value.edited, into: &buf)
+        FfiConverterBool.write(value.deleted, into: &buf)
+        FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
     }
 }
 
@@ -2779,6 +3014,73 @@ public func FfiConverterTypeChatMessage_lift(_ buf: RustBuffer) throws -> ChatMe
 #endif
 public func FfiConverterTypeChatMessage_lower(_ value: ChatMessage) -> RustBuffer {
     return FfiConverterTypeChatMessage.lower(value)
+}
+
+
+/**
+ * One emoji on a message and who put it there.
+ */
+public struct ChatReaction: Equatable, Hashable {
+    public var emoji: String
+    public var count: UInt32
+    /**
+     * The signed-in account is one of them (tapping removes it).
+     */
+    public var mine: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(emoji: String, count: UInt32, 
+        /**
+         * The signed-in account is one of them (tapping removes it).
+         */mine: Bool) {
+        self.emoji = emoji
+        self.count = count
+        self.mine = mine
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatReaction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatReaction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatReaction {
+        return
+            try ChatReaction(
+                emoji: FfiConverterString.read(from: &buf), 
+                count: FfiConverterUInt32.read(from: &buf), 
+                mine: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatReaction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.emoji, into: &buf)
+        FfiConverterUInt32.write(value.count, into: &buf)
+        FfiConverterBool.write(value.mine, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lift(_ buf: RustBuffer) throws -> ChatReaction {
+    return try FfiConverterTypeChatReaction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatReaction_lower(_ value: ChatReaction) -> RustBuffer {
+    return FfiConverterTypeChatReaction.lower(value)
 }
 
 
@@ -3467,6 +3769,17 @@ public enum ChatEvent: Equatable, Hashable {
     case messageReceived(message: ChatMessage
     )
     /**
+     * An existing message was edited, deleted for everyone or reacted to
+     * (by anyone). Replace it by id; it is never unread news.
+     */
+    case messageUpdated(message: ChatMessage
+    )
+    /**
+     * A message that was never sent was deleted on this device: drop it.
+     */
+    case messageRemoved(conversationId: String, id: String
+    )
+    /**
      * Someone else's new message in a room that is not open: show a local
      * notification.
      */
@@ -3527,22 +3840,28 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
         case 4: return .messageReceived(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 5: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
+        case 5: return .messageUpdated(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 6: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
+        case 6: return .messageRemoved(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf)
         )
         
-        case 7: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
+        case 7: return .notify(message: try FfiConverterTypeChatMessage.read(from: &buf)
         )
         
-        case 8: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        case 8: return .messageStatusChanged(conversationId: try FfiConverterString.read(from: &buf), id: try FfiConverterString.read(from: &buf), status: try FfiConverterTypeChatMessageStatus.read(from: &buf)
         )
         
-        case 9: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
+        case 9: return .streamConnected(conversationId: try FfiConverterString.read(from: &buf)
         )
         
-        case 10: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
+        case 10: return .streamDisconnected(conversationId: try FfiConverterString.read(from: &buf), reason: try FfiConverterString.read(from: &buf), willRetry: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 11: return .phaseChanged(phase: try FfiConverterTypeAppPhase.read(from: &buf), resumed: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 12: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
         )
         
         default: throw UniffiInternalError.unexpectedEnumCase
@@ -3573,38 +3892,49 @@ public struct FfiConverterTypeChatEvent: FfiConverterRustBuffer {
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .notify(message):
+        case let .messageUpdated(message):
             writeInt(&buf, Int32(5))
             FfiConverterTypeChatMessage.write(message, into: &buf)
             
         
-        case let .messageStatusChanged(conversationId,id,status):
+        case let .messageRemoved(conversationId,id):
             writeInt(&buf, Int32(6))
+            FfiConverterString.write(conversationId, into: &buf)
+            FfiConverterString.write(id, into: &buf)
+            
+        
+        case let .notify(message):
+            writeInt(&buf, Int32(7))
+            FfiConverterTypeChatMessage.write(message, into: &buf)
+            
+        
+        case let .messageStatusChanged(conversationId,id,status):
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(id, into: &buf)
             FfiConverterTypeChatMessageStatus.write(status, into: &buf)
             
         
         case let .streamConnected(conversationId):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(conversationId, into: &buf)
             
         
         case let .streamDisconnected(conversationId,reason,willRetry):
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(10))
             FfiConverterString.write(conversationId, into: &buf)
             FfiConverterString.write(reason, into: &buf)
             FfiConverterBool.write(willRetry, into: &buf)
             
         
         case let .phaseChanged(phase,resumed):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(11))
             FfiConverterTypeAppPhase.write(phase, into: &buf)
             FfiConverterBool.write(resumed, into: &buf)
             
         
         case let .eventsDropped(count):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(12))
             FfiConverterUInt64.write(count, into: &buf)
             
         }
@@ -4459,6 +4789,31 @@ fileprivate struct FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeChatReaction: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatReaction]
+
+    public static func write(_ value: [ChatReaction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatReaction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatReaction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatReaction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatReaction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -4680,6 +5035,17 @@ public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) 
     )
 })
 }
+/**
+ * The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+ * (shown in Settings).
+ */
+public func storageEngine() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_storage_engine(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4711,6 +5077,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_storage_engine() != 18473) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4726,6 +5095,15 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_create_conversation() != 30017) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_delete_message() != 29995) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_draft() != 49082) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_edit_message() != 14248) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_events() != 19610) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4738,13 +5116,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_mark_read() != 49646) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_outbox_count() != 49599) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 51598) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 28797) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 49202) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 14155) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_search() != 1934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 46048) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_reply() != 32953) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_draft() != 19886) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_set_marked_unread() != 12117) {
@@ -4754,6 +5144,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 4202) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_reaction() != 64034) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_shutdown() != 5826) {

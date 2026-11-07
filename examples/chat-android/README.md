@@ -38,7 +38,7 @@ Post from curl with `localhost:8787` from your computer, whichever address the a
 ## Tests
 
 `ChatSessionTest` drives `ChatSession` against the real Rust core through the generated
-bindings, and runs the demo interaction (send, kill the server, failed send, restart, retry,
+bindings, and runs the demo interaction (send, kill the server, the send waits in the outbox, restart, it goes out,
 leave the room and watch its Rust thread end) against the real chat server:
 
 ```sh
