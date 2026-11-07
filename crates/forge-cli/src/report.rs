@@ -191,6 +191,11 @@ pub fn parse_diagnostics(output: &str, project: Option<&Path>) -> Vec<Diagnostic
                 .take(4)
                 .map(|l| strip_ansi(l))
                 .find_map(|l| l.trim_start().strip_prefix("--> ").map(str::to_string));
+            // A bare `error: …` with no code and no location is a tool's
+            // summary (SwiftPM's `error: fatalError`), not a rustc diagnostic.
+            if location.is_none() && !line.starts_with("error[") && !line.starts_with("warning[") {
+                continue;
+            }
             let (file, line_no, column) = match location.as_deref().and_then(split_location) {
                 Some((f, l, c)) => (Some(relative(f)), Some(l), Some(c)),
                 None => (None, None, None),
@@ -510,6 +515,7 @@ error[E0425]: cannot find value `y` in this scope
    |
 error: could not compile `my-app` (lib) due to 1 previous error
 ld.lld: error: undefined symbol: uniffi_forge_ffi_fn_x
+error: fatalError
 ";
         let d = parse_diagnostics(out, Some(Path::new("/home/me/MyApp")));
         assert_eq!(d.len(), 4, "{d:#?}");
