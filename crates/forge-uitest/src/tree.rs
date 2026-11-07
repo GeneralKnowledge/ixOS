@@ -55,6 +55,12 @@ const INTERACTIVE: &[&str] = &[
     "Tab",
 ];
 
+/// Whether an element type (with or without Apple's `XCUIElementType`
+/// prefix) is one a person acts on.
+pub fn is_interactive_kind(kind: &str) -> bool {
+    INTERACTIVE.contains(&kind.strip_prefix("XCUIElementType").unwrap_or(kind))
+}
+
 impl UiNode {
     /// Parses WebDriverAgent's JSON source.
     pub fn from_wda(value: &Value) -> UiNode {
@@ -136,7 +142,7 @@ impl UiNode {
     }
 
     pub fn is_interactive(&self) -> bool {
-        INTERACTIVE.contains(&self.kind.as_str())
+        is_interactive_kind(&self.kind)
     }
 
     /// The tree as indented text, one element per line. Containers without
@@ -206,6 +212,25 @@ impl UiNode {
     /// the part every screen needs.
     pub fn audit(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
+        // One identifier on two visible elements: a test that finds it may
+        // get the wrong one (seen with a toolbar wrapper and its Button).
+        let mut seen = std::collections::HashSet::new();
+        for node in self.walk().filter(|n| n.visible) {
+            if let Some(id) = &node.identifier {
+                if !seen.insert(id.as_str()) {
+                    findings.push(Finding {
+                        issue: "duplicate_identifier",
+                        severity: "warning",
+                        element: ElementSummary {
+                            kind: node.kind.clone(),
+                            identifier: node.identifier.clone(),
+                            label: node.label.clone(),
+                            summary: node.summary(),
+                        },
+                    });
+                }
+            }
+        }
         for node in self.walk().filter(|n| n.visible && n.is_interactive()) {
             let element = || ElementSummary {
                 kind: node.kind.clone(),
@@ -258,6 +283,7 @@ impl std::fmt::Display for Finding {
         let what = match self.issue {
             "no_label" => "no accessibility label",
             "no_identifier" => "no identifier (tests fall back to the label)",
+            "duplicate_identifier" => "identifier used by more than one element",
             other => other,
         };
         write!(f, "{what}: {}", self.element.summary)
@@ -344,6 +370,23 @@ mod tests {
             "library.add"
         );
         assert!(json["children"][0].get("identifier").is_none());
+    }
+
+    #[test]
+    fn audit_flags_duplicate_identifiers() {
+        let root = UiNode::from_wda(&json!({
+            "type": "XCUIElementTypeApplication",
+            "children": [{"type": "XCUIElementTypeOther", "rawIdentifier": "tip.done", "children": [
+                {"type": "XCUIElementTypeButton", "rawIdentifier": "tip.done", "label": "Done"}
+            ]}]
+        }));
+        let findings = root.audit();
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].issue, "duplicate_identifier");
+        assert_eq!(
+            findings[0].to_string(),
+            "identifier used by more than one element: Button id=tip.done \"Done\""
+        );
     }
 
     #[test]

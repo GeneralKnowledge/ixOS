@@ -142,7 +142,7 @@ expect = { id = "library.row", label_contains = "Hello from Forge" }
 screenshot = "after-add"
 ```
 
-Steps cover: `launch`, `tap`, `type`, `clear`, `swipe`, `scroll_to`, `expect` (exists, gone, label, value, enabled), `alert` (accept or dismiss), `background` (seconds), `relaunch`, `screenshot`, `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
+Built steps: `launch`, `activate`, `terminate`, `background` (seconds), `tap`, `type`, `clear`, `scroll`, `expect` (exists, gone, `has_label`, `value`, `enabled`), `screenshot` and `tree`. `scroll = { id = "…" }` scrolls until that element is on screen; `scroll = { id = "list", direction = "down" }` scrolls the scroll view `list` (`up`, `down`, `left`, `right`). When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Planned: `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 
 ### CLI
 

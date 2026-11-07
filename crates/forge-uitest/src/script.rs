@@ -58,6 +58,7 @@ pub struct Step {
     #[serde(rename = "type")]
     pub type_text: Option<TypeText>,
     pub clear: Option<Target>,
+    pub scroll: Option<Scroll>,
     pub expect: Option<Expect>,
     pub screenshot: Option<String>,
     pub tree: Option<bool>,
@@ -90,6 +91,23 @@ pub struct TypeText {
     #[serde(default)]
     pub clear: bool,
 }
+
+/// `scroll = { id = "list", direction = "down" }` scrolls a scroll view;
+/// `direction = "visible"` (the default) scrolls until the target itself is
+/// on screen.
+#[derive(Debug, Deserialize)]
+pub struct Scroll {
+    #[serde(flatten)]
+    pub target: Target,
+    #[serde(default = "default_direction")]
+    pub direction: String,
+}
+
+fn default_direction() -> String {
+    "visible".into()
+}
+
+const DIRECTIONS: &[&str] = &["visible", "up", "down", "left", "right"];
 
 #[derive(Debug, Deserialize)]
 pub struct Expect {
@@ -141,6 +159,7 @@ impl Step {
             self.tap.is_some(),
             self.type_text.is_some(),
             self.clear.is_some(),
+            self.scroll.is_some(),
             self.expect.is_some(),
             self.screenshot.is_some(),
             self.tree.is_some(),
@@ -162,6 +181,16 @@ impl Step {
         }
         if let Some(e) = &self.expect {
             e.target.locator()?;
+        }
+        if let Some(s) = &self.scroll {
+            s.target.locator()?;
+            if !DIRECTIONS.contains(&s.direction.as_str()) {
+                return Err(format!(
+                    "scroll direction `{}`: use one of {}",
+                    s.direction,
+                    DIRECTIONS.join(", ")
+                ));
+            }
         }
         Ok(())
     }
@@ -193,6 +222,13 @@ impl Step {
         }
         if let Some(t) = &self.clear {
             return format!("clear {}", loc(t));
+        }
+        if let Some(s) = &self.scroll {
+            return if s.direction == "visible" {
+                format!("scroll until {} is on screen", loc(&s.target))
+            } else {
+                format!("scroll {} {}", loc(&s.target), s.direction)
+            };
         }
         if let Some(e) = &self.expect {
             let mut what = vec![];
@@ -322,6 +358,11 @@ fn run_step(
     }
     if let Some(target) = &step.clear {
         return act(driver, &locate(target)?, timeout, &mut |d, e| d.clear(e));
+    }
+    if let Some(scroll) = &step.scroll {
+        return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
+            d.scroll(e, &scroll.direction)
+        });
     }
     if let Some(expect) = &step.expect {
         return check(driver, expect, &locate(&expect.target)?, timeout);
@@ -658,6 +699,47 @@ mod tests {
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
         assert!(report.failed.is_none(), "{:?}", report.failed);
         assert_eq!(report.passed, 6);
+    }
+
+    #[test]
+    fn taps_the_control_when_a_wrapper_shares_its_identifier() {
+        // SwiftUI put tip.keyboardDone on a toolbar wrapper and its Button.
+        let mut wrapper = node("Other", "tip.keyboardDone", "");
+        wrapper.children = vec![node("Button", "tip.keyboardDone", "Done")];
+        let screen = UiNode {
+            kind: "Application".into(),
+            children: vec![wrapper],
+            ..UiNode::default()
+        };
+        let script = Script::parse(
+            "name='d'\napp='a'\ntimeout=0\n[[step]]\ntap={id='tip.keyboardDone'}\n\
+             [[step]]\nscroll={id='tip.keyboardDone'}\n[[step]]\nscroll={id='tip.keyboardDone', direction='down'}\n",
+        )
+        .unwrap();
+        let mut driver = in_front(screen);
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(
+            driver.calls,
+            [
+                "tap tip.keyboardDone",
+                "scroll tip.keyboardDone visible",
+                "scroll tip.keyboardDone down"
+            ]
+        );
+        // The Button (walk index 2) is picked, not the wrapper (1).
+        let picked = crate::wait_for(
+            &mut driver,
+            &Locator::Id("tip.keyboardDone".into()),
+            Duration::ZERO,
+        )
+        .unwrap();
+        assert_eq!(picked, crate::ElementRef("2".into()));
+        assert!(Script::parse(
+            "name='x'\napp='a'\n[[step]]\nscroll={id='a', direction='sideways'}\n"
+        )
+        .is_err());
     }
 
     #[test]

@@ -132,6 +132,10 @@ pub trait Driver {
     fn terminate(&mut self, bundle_id: &str) -> Result<()>;
     /// Send the app on screen to the background for `seconds`, then bring it back.
     fn background(&mut self, seconds: f64) -> Result<()>;
+    /// Scroll: `direction` is `up`, `down`, `left` or `right` to scroll the
+    /// scroll view `element`, or `visible` to scroll until `element` itself
+    /// is on screen.
+    fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()>;
     /// Every element matching the locator, visible or not, in tree order.
     fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>>;
     /// A real tap on the element's centre, as a finger would.
@@ -183,14 +187,30 @@ pub fn wait_for(
 ) -> Result<ElementRef> {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(first) = driver.find_all(locator)?.into_iter().next() {
-            return Ok(first);
+        let found = driver.find_all(locator)?;
+        if !found.is_empty() {
+            return pick(driver, found);
         }
         if Instant::now() >= deadline {
             return Err(UiError::NotFound(locator.clone()));
         }
         std::thread::sleep(POLL);
     }
+}
+
+/// Of several matches, the first a person can act on (a Button, a field…)
+/// rather than a container that carries the same identifier: SwiftUI can
+/// put a modifier's identifier on a wrapper as well as on the control.
+fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
+    if found.len() > 1 {
+        for element in &found {
+            let kind = driver.attribute(element, "type")?.unwrap_or_default();
+            if tree::is_interactive_kind(&kind) {
+                return Ok(element.clone());
+            }
+        }
+    }
+    Ok(found.into_iter().next().expect("not empty"))
 }
 
 /// Waits up to `timeout` until nothing matches `locator`.
@@ -273,6 +293,14 @@ pub mod fake {
             self.calls.push(format!("background {seconds}"));
             Ok(())
         }
+        fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+            let id = self.node(element)?.identifier.clone();
+            self.calls.push(format!(
+                "scroll {} {direction}",
+                id.as_deref().unwrap_or("?")
+            ));
+            Ok(())
+        }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
             Ok(self
                 .screen
@@ -316,6 +344,7 @@ pub mod fake {
                 "value" => node.value.clone(),
                 "identifier" | "name" => node.identifier.clone(),
                 "enabled" => Some(node.enabled.to_string()),
+                "type" => Some(format!("XCUIElementType{}", node.kind)),
                 _ => None,
             })
         }
