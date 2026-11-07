@@ -7,6 +7,10 @@ import UniformTypeIdentifiers
 /// Photos and documents (M3). Rust keeps, uploads, downloads and checks the
 /// files; Swift picks them, shrinks photos, draws thumbnails and previews.
 
+/// Swift-side attachment failures, in the same log as Rust's
+/// (`forge device logs`, the live stream).
+let attachmentLog = ForgeLog("Attachments")
+
 /// A file picked in the composer, waiting to be sent with the next message.
 /// `url` is a private copy in the temporary directory: Rust copies it again
 /// into its attachment store when it is sent.
