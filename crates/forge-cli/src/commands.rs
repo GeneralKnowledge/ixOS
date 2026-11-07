@@ -33,16 +33,11 @@ pub fn resolve_project_dir(root: &Path, project: &Path) -> PathBuf {
     root.join(project)
 }
 
-/// Points the build scripts at the app's own Rust crate when it has one
-/// (`[rust] path` in forge.toml); otherwise they build the workspace's
-/// shared forge-ffi.
+/// Points the build scripts at the app and its own Rust crate (`[rust] path`
+/// in forge.toml).
 fn with_app_crate(cmd: Cmd, cfg: &ForgeConfig, project_dir: &Path) -> Cmd {
-    match cfg.rust_crate_dir(project_dir) {
-        Some(crate_dir) => cmd
-            .env("FORGE_APP_DIR", project_dir)
-            .env("FORGE_RUST_DIR", crate_dir),
-        None => cmd,
-    }
+    cmd.env("FORGE_APP_DIR", project_dir)
+        .env("FORGE_RUST_DIR", cfg.rust_crate_dir(project_dir))
 }
 
 pub fn generated_dir_for_project(root: &Path, project: &Path) -> PathBuf {
@@ -58,7 +53,7 @@ fn generated_dir_arg(root: &Path, generated: &Path) -> PathBuf {
 
 pub(crate) fn is_forge_workspace(dir: &Path) -> bool {
     dir.join("scripts/generate-bindings.sh").is_file()
-        && dir.join("crates/forge-ffi/Cargo.toml").is_file()
+        && dir.join("crates/forge-runtime/Cargo.toml").is_file()
 }
 
 /// Finds the Forge workspace: `FORGE_WORKSPACE`, else the nearest ancestor of
@@ -628,11 +623,9 @@ fn is_text_template(path: &Path) -> bool {
 /// `forge test`.
 ///
 /// - No app: the Forge workspace's Rust tests and format check.
-/// - An app with its own crate (every app from `forge init`): that crate's
-///   tests, then the app's host tests. The workspace's own tests run only
-///   with `workspace` (`--workspace`), since they test Forge, not the app.
-/// - A bundled example (shares the workspace's forge-ffi): the workspace
-///   tests, then the host tests.
+/// - An app: its own crate's tests, then the app's host tests. The
+///   workspace's own tests run only with `workspace` (`--workspace`), since
+///   they test Forge, not the app.
 ///
 /// Host tests are JVM unit tests for an Android app (any host) and XCTest for
 /// an iOS app, which needs macOS; on Linux they are skipped with a note.
@@ -655,9 +648,11 @@ fn test_on(
     let project_dir = match project {
         Some(p) => {
             let dir = resolve_project_dir(root, p);
-            if !dir.join("gradlew").is_file() && !dir.join("Package.swift").is_file() {
+            if !dir.join("forge.toml").is_file()
+                || (!dir.join("gradlew").is_file() && !dir.join("Package.swift").is_file())
+            {
                 return Err(format!(
-                    "{} is not a Forge app (no gradlew or Package.swift)",
+                    "{} is not a Forge app (no forge.toml, or no gradlew or Package.swift)",
                     dir.display()
                 ));
             }
@@ -666,11 +661,11 @@ fn test_on(
         None => None,
     };
 
-    // An app with its own crate: run its Rust tests, and give the host tests
-    // that crate's library.
+    // The app's own crate: run its Rust tests, and give the host tests that
+    // crate's library.
     let app_crate = match &project_dir {
-        Some(dir) if dir.join("forge.toml").is_file() => load_config(dir)?.rust_crate_dir(dir),
-        _ => None,
+        Some(dir) => Some(load_config(dir)?.rust_crate_dir(dir)),
+        None => None,
     };
 
     if app_crate.is_none() || workspace {
@@ -701,19 +696,16 @@ fn test_on(
 
     match project_dir {
         Some(dir) if dir.join("gradlew").is_file() => {
-            let host_lib = match &app_crate {
-                // Regenerates the Kotlin bindings from the app's current Rust
-                // (building its host library on the way), so the tests never
-                // run stale bindings against a newer library.
-                Some(crate_dir) => script(root, "generate-bindings.sh")
-                    .arg(dir.join("Generated"))
-                    .arg("kotlin")
-                    .env("FORGE_APP_DIR", &dir)
-                    .env("FORGE_RUST_DIR", crate_dir),
-                None => Cmd::new("cargo")
-                    .args(["build", "-p", "forge-ffi"])
-                    .cwd(root),
-            };
+            // Regenerates the Kotlin bindings from the app's current Rust
+            // (building its host library on the way), so the tests never run
+            // stale bindings against a newer library.
+            let mut host_lib = script(root, "generate-bindings.sh")
+                .arg(dir.join("Generated"))
+                .arg("kotlin")
+                .env("FORGE_APP_DIR", &dir);
+            if let Some(crate_dir) = &app_crate {
+                host_lib = host_lib.env("FORGE_RUST_DIR", crate_dir);
+            }
             run_checked(runner, host_lib)?;
             run_checked(
                 runner,
@@ -733,25 +725,8 @@ fn test_on(
     }
 }
 
-pub fn bindings_generate(
-    runner: &dyn CommandRunner,
-    root: &Path,
-    out: &Path,
-    language: &str,
-) -> Result<(), String> {
-    match language {
-        "swift" | "kotlin" => {}
-        other => return Err(format!("unsupported binding language '{other}'")),
-    }
-    require_workspace(root)?;
-    run_checked(
-        runner,
-        script(root, "generate-bindings.sh").arg(out).arg(language),
-    )
-}
-
 /// Regenerates an app's bindings into `<app>/Generated` from its own Rust
-/// crate (or the shared forge-ffi): Swift for an iOS app (`Package.swift`),
+/// crate: Swift for an iOS app (`Package.swift`),
 /// Kotlin for an Android app (`gradlew`). Run it after changing the Rust API.
 pub fn bindings_generate_for_project(
     runner: &dyn CommandRunner,
@@ -1078,8 +1053,7 @@ min_sdk = 28
 abis = ["x86_64"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 android = true
@@ -1092,8 +1066,7 @@ bundle_id = "org.example.demo"
 minimum_ios = "17.0"
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 ios_device = true
@@ -1105,7 +1078,7 @@ ios_device = true
         let root = dir.path().to_path_buf();
         for f in [
             "scripts/generate-bindings.sh",
-            "crates/forge-ffi/Cargo.toml",
+            "crates/forge-runtime/Cargo.toml",
         ] {
             fs::create_dir_all(root.join(f).parent().unwrap()).unwrap();
             fs::write(root.join(f), "").unwrap();
@@ -1448,31 +1421,8 @@ ios_device = true
     }
 
     #[test]
-    fn test_runs_android_host_tests_for_project() {
-        let (_tmp, root) = workspace(ANDROID_TOML, &["gradlew"]);
-        let mock = MockRunner::default();
-        mock.respond("cargo", 0, "").respond(
-            &root.join("apps/demo/gradlew").to_string_lossy(),
-            0,
-            "",
-        );
-        test_on(&mock, &root, Some(Path::new("apps/demo")), false, false).unwrap();
-        let lines = mock.call_lines();
-        assert_eq!(lines[0], "cargo test --workspace");
-        assert!(lines.contains(&"cargo build -p forge-ffi".to_string()));
-        assert!(lines
-            .last()
-            .unwrap()
-            .ends_with("gradlew :app:testDebugUnitTest"));
-    }
-
-    #[test]
     fn app_owned_crate_is_tested_and_its_bindings_regenerated() {
-        let toml = ANDROID_TOML.replace(
-            "core_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"",
-            "path = \"rust\"",
-        );
-        let (_tmp, root) = workspace(&toml, &["gradlew"]);
+        let (_tmp, root) = workspace(ANDROID_TOML, &["gradlew"]);
         let app = root.join("apps/demo");
         let mock = MockRunner::default();
         mock.respond("cargo", 0, "").respond("bash", 0, "").respond(
@@ -1507,7 +1457,6 @@ ios_device = true
             env_of(&calls[gen], "FORGE_RUST_DIR"),
             Some(app.join("rust").into())
         );
-        assert!(!lines.contains(&"cargo build -p forge-ffi".to_string()));
         assert!(lines
             .last()
             .unwrap()
@@ -1549,11 +1498,7 @@ ios_device = true
 
     #[test]
     fn workspace_flag_adds_forges_own_tests_to_an_apps() {
-        let toml = IOS_TOML.replace(
-            "core_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"",
-            "path = \"rust\"",
-        );
-        let (_tmp, root) = workspace(&toml, &["Package.swift"]);
+        let (_tmp, root) = workspace(IOS_TOML, &["Package.swift"]);
         let mock = MockRunner::default();
         mock.respond("cargo", 0, "");
         test_on(&mock, &root, Some(Path::new("apps/demo")), true, false).unwrap();
@@ -1663,7 +1608,7 @@ ios_device = true
         assert!(dest.join("rust/src/lib.rs").is_file());
         assert!(dest.join("rust/Cargo.lock").is_file());
         let config = crate::config::ForgeConfig::parse(&read(dest.join("forge.toml"))).unwrap();
-        assert_eq!(config.rust_crate_dir(&dest), Some(dest.join("rust")));
+        assert_eq!(config.rust_crate_dir(&dest), dest.join("rust"));
         fs::remove_dir_all(dest).unwrap();
     }
 

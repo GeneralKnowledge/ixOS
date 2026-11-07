@@ -5,7 +5,7 @@ Forge Mobile splits **portable Rust application logic** from **thin platform hos
 **iOS**
 
 ```
-SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) → Generated Swift (ForgeFFI) → forge-ffi → forge-core → forge-storage
+SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) → Generated Swift (ForgeFFI) → counter crate (examples/counter/rust) → forge-runtime, forge-storage
 ```
 
 | Layer | Owns | Must not |
@@ -13,8 +13,8 @@ SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) →
 | SwiftUI view + view model (`CounterApp` / `AppHost`) | Presentation state, user messages, task lifetimes | Implement counter rules; import `ForgeFFI` |
 | `CounterBridge` (thin Swift layer) | The Rust instance's lifetime, async/await adapters, event sequences, cancellation forwarding, Swift error translation, `Sendable` value types | Hold state of its own or duplicate Rust logic |
 | Generated `ForgeFFI` | Marshalling | Be edited by hand |
-| `forge-ffi` | Commands, queries, events, lifecycle; the serial command thread | Expose `forge-core`/`forge-storage` types directly |
-| `forge-core` / `forge-storage` | Domain rules / persistence | Know about FFI or threads |
+| Counter crate, FFI modules (`api`, `app`, `session`, `events`) | Commands, queries, events, lifecycle; the serial command thread | Expose domain or store types directly |
+| Counter crate, `domain` / `store` modules | Domain rules / persistence | Know about FFI or threads |
 
 The bridge is per app: it is Counter-specific glue over the generated types. Apps from `forge init` start smaller: their own Rust crate (`rust/`, see [app-crate.md](app-crate.md)) exports a Swift-friendly API (async commands, an event stream object, typed errors), and the view model calls the generated `ForgeFFI` types directly. Add a bridge layer like Counter's when an app needs `AsyncSequence` events or extra Swift-side cancellation. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
 
@@ -23,12 +23,12 @@ The Weather example ([examples/weather](../examples/weather/README.md)) has the 
 **Android**
 
 ```
-Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_ffi) → libforge_ffi.so → forge-ffi → forge-core → forge-storage
+Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_ffi) → libforge_ffi.so → counter crate (examples/counter/rust) → forge-runtime, forge-storage
 ```
 
 ## Ownership
 
-- **Authoritative counter state** lives in `forge-core` inside `ForgeCounterApp` (Rust).
+- **Authoritative counter state** lives in the counter crate's `domain` module inside `ForgeCounterApp` (Rust).
 - Swift holds a **display snapshot**, updated from each command's result and from `StateChanged` events (so a change made by another component sharing the same client also shows).
 - Swift does **not** implement increment/decrement/reset rules locally.
 
@@ -43,7 +43,7 @@ Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_f
 
 **Policy:** A domain action commits **only if** the required `save` succeeds.
 
-Implementation (`forge-ffi/src/session.rs`, run on the instance's command thread by `forge-ffi/src/app.rs`):
+Implementation (`examples/counter/rust/src/session.rs`, run on the instance's command thread by `src/app.rs`):
 
 1. Clone current engine state into a candidate.
 2. Apply the action on the candidate (domain errors return without touching live state or disk).
@@ -102,9 +102,8 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 
 | Crate | Role |
 |-------|------|
-| `forge-core` | Domain types, validation, property tests |
-| `forge-storage` | `SnapshotStore` trait, JSON implementation |
-| `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by `forge-ffi`'s Weather API and `chat-core` |
-| `chat-core` (`examples/`) | The Chat demo's domain (exposed as `ForgeChatApp` in `forge-ffi`): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
-| `forge-ffi` | UniFFI exports; app instance with a serial command thread, events, cancellable operations; the Weather (`src/weather`) and Chat (`src/chat`) example APIs |
+| `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations |
+| `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by the Weather example and `chat-core` |
+| `chat-core` (`examples/`) | The Chat demo's domain (exposed as `ForgeChatApp` by `examples/chat-android/rust`, and by the iOS Chat app's own crate): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
+| App crates (`examples/*/rust`) | Each app's UniFFI exports, built as `libforge_ffi`: Counter (command thread, events, cancellable operations), Weather, Chat, Pocket Library |
 | `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

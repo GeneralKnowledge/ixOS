@@ -27,7 +27,7 @@ Going further:
 2. `cargo test --workspace`
 3. `cargo fmt --all`
 4. `cargo clippy --workspace --all-targets -- -D warnings`
-5. After changing `forge-ffi` public API, regenerate both Swift and Kotlin bindings (`make bindings bindings-kotlin`), then run `./scripts/check-bindings.sh` and commit the `Generated/` updates. See [Binding drift](docs/ffi-policy.md#binding-drift) for what the check compares and how to regenerate.
+5. After changing an app crate's public API (`examples/*/rust`), regenerate its bindings (`forge bindings generate --project <app>`, or `make bindings bindings-kotlin` for every example), then run `./scripts/check-app-crates.sh` and `./scripts/check-bindings.sh` and commit the `Generated/` updates. See [Binding drift](docs/ffi-policy.md#binding-drift) for what the check compares and how to regenerate.
 
 ## Toolchain and dependencies
 
@@ -39,14 +39,14 @@ Going further:
 
 The view-model tests call the real Rust core through the generated bindings, so they catch binding and error-mapping mistakes that `cargo test` cannot.
 
-- **Android (any OS with a JDK and Android SDK):** `cargo build -p forge-ffi`, then `cd examples/counter-android && ./gradlew :app:testDebugUnitTest` (or `make test-android-host`).
-- **iOS (macOS only):** `./scripts/test-swift-host.sh` (or `make test-swift-host`). It builds `forge-ffi` for the Mac and runs `swift test` in `examples/counter`.
+- **Android (any OS with a JDK and Android SDK):** `cargo build --manifest-path examples/counter/rust/Cargo.toml`, then `cd examples/counter-android && ./gradlew :app:testDebugUnitTest` (or `make test-android-host`, or `forge test --project examples/counter-android`).
+- **iOS (macOS only):** `./scripts/test-swift-host.sh examples/counter` (or `make test-swift-host` for every example). It builds the app's Rust crate for the Mac and runs `swift test` in the app.
 
 CI runs both, plus an unsigned `xcodebuild` of the example and of a freshly generated iOS template app, on every pull request (`.github/workflows/macos.yml`, `.github/workflows/android.yml`).
 
 ## Pull requests
 
-- Keep Rust domain logic free of Swift/iOS dependencies in `forge-core`.
+- Keep Rust domain logic free of Swift/iOS and UniFFI dependencies (the Counter's `examples/counter/rust/src/domain` is the model).
 - Do not edit UniFFI-generated Swift/C files by hand.
 - Document behavioral changes in `docs/` when they affect developers.
 - When you bump a toolchain or build-tool version, update [docs/compatibility.md](docs/compatibility.md) in the same PR.

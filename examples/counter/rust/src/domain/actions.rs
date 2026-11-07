@@ -1,5 +1,5 @@
-use crate::errors::CounterError;
-use crate::state::{CounterSnapshot, COUNTER_MAX, COUNTER_MIN};
+use super::errors::CounterError;
+use super::state::{CounterSnapshot, COUNTER_MAX, COUNTER_MIN};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CounterAction {

@@ -8,7 +8,7 @@
 //! Android that verifier needs a one-time init with the app `Context`; see
 //! [`platform`].
 //!
-//! The design mirrors `forge-storage`'s `SnapshotStore`:
+//! The design:
 //!
 //! - A narrow, synchronous [`HttpClient`] trait. Forge's FFI layer already runs
 //!   commands on a serial worker thread per app instance, so a blocking call
@@ -18,7 +18,7 @@
 //!   Rust, or by `URLSession` / OkHttp in the host through a UniFFI callback.
 //! - Typed errors the FFI layer can map to its own error enum.
 //!
-//! `forge-ffi` uses it for the Weather example (`ForgeWeatherApp`). See
+//! The Weather example (`examples/weather/rust`) and `chat-core` use it. See
 //! `docs/architecture.md`.
 
 mod cancel;

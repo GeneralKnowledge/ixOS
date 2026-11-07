@@ -9,26 +9,23 @@
 
 ## Generated artifacts
 
-- iOS output: `examples/counter/Generated/` and identical copies in `examples/weather/Generated/` and `examples/chat/Generated/` (one `forge-ffi` library exports every example's API: Counter, Weather and Chat) — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
-- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and an identical copy in `examples/chat-android/Generated/`. Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
+- iOS output: each app's own `Generated/` folder (for example `examples/counter/Generated/`), built from that app's Rust crate (`[rust] path` in its `forge.toml`), so it holds only that app's API — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
+- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` (from the Counter crate, `examples/counter/rust`) and `examples/chat-android/Generated/` (from `examples/chat-android/rust`). Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
 - **Do not hand-edit** generated files.
-- Regenerate with `./scripts/generate-bindings.sh [out] [swift|kotlin]` or `forge bindings generate --language …`.
-- CI runs `./scripts/check-bindings.sh` to detect drift (see below).
+- Regenerate with `forge bindings generate [app-dir]` (Swift for an iOS app, Kotlin for an Android one) or `FORGE_APP_DIR=<app> ./scripts/generate-bindings.sh [out] [swift|kotlin]`.
+- CI runs `./scripts/check-app-crates.sh` (Swift) and `./scripts/check-bindings.sh` (Kotlin) to detect drift (see below).
 
 ## Binding drift
 
-**What drift means.** The Swift and Kotlin files under `Generated/` are committed, so hosts build without running UniFFI. They are a copy of what UniFFI produces from the current `forge-ffi` source. *Drift* is when the two disagree: someone changed an exported function, record, enum or error in `forge-ffi` (or bumped UniFFI) and did not regenerate, or someone hand-edited a generated file. A drifted binding can still compile and then fail at runtime with a checksum or symbol mismatch, which is why it is a CI failure.
+**What drift means.** The Swift and Kotlin files under `Generated/` are committed, so hosts build without running UniFFI. They are a copy of what UniFFI produces from the current source of the app's Rust crate. *Drift* is when the two disagree: someone changed an exported function, record, enum or error in that crate (or bumped UniFFI) and did not regenerate, or someone hand-edited a generated file. A drifted binding can still compile and then fail at runtime with a checksum or symbol mismatch, which is why it is a CI failure.
 
-**How the check works.** `./scripts/check-bindings.sh` (CI: `.github/workflows/bindings.yml`):
+**How the check works.** For every example with a `forge.toml`, `./scripts/check-app-crates.sh` (Swift) and `./scripts/check-bindings.sh` (Kotlin, CI: `.github/workflows/bindings.yml`):
 
-1. Builds the host `libforge_ffi` (`.so` on Linux, `.dylib` on macOS) with `cargo build -p forge-ffi`.
+1. Build the app crate's host `libforge_ffi` (`.so` on Linux, `.dylib` on macOS) with `cargo build --manifest-path <app>/<rust path>/Cargo.toml`.
 2. Runs `uniffi-bindgen` in library mode into a temporary directory, once for Swift and once for Kotlin.
 3. Compares byte for byte (`diff -u`) against the committed copies:
-   - `examples/counter/Generated/ForgeFFI/forge_ffi.swift`
-   - `examples/counter/Generated/forge_ffiFFI/forge_ffiFFI.h`
-   - `examples/counter/Generated/forge_ffiFFI/module.modulemap`
-   - the same three files under `examples/weather/Generated/` and `examples/chat/Generated/`
-   - `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` and the same file under `examples/chat-android/Generated/`
+   - iOS apps: `Generated/ForgeFFI/forge_ffi.swift`, `Generated/forge_ffiFFI/forge_ffiFFI.h` and `Generated/forge_ffiFFI/module.modulemap`
+   - Android apps: `Generated/uniffi/forge_ffi/forge_ffi.kt`
 4. Prints the diff and exits non-zero on the first mismatch, naming the file and the command that regenerates it.
 
 Templates do not commit bindings: `forge init` generates them into the new app, so a template cannot drift.
@@ -58,7 +55,7 @@ Review the generated diff before committing: it should only contain the API you 
 
 **Common failures.**
 
-- *Diff in every file, no API change:* UniFFI version differs from the workspace pin. Run `cargo update -p uniffi --precise 0.32.2` or regenerate after `cargo clean -p forge-ffi`.
+- *Diff in every file, no API change:* UniFFI version differs from the workspace pin. Run `cargo update -p uniffi --precise 0.32.2` or regenerate after `cargo clean --manifest-path <app>/rust/Cargo.toml`.
 - *Check passes locally, fails in CI:* the committed files were regenerated but not staged. `git status examples/*/Generated`.
 - *Kotlin differs, Swift does not:* only one language was regenerated. Run both commands in step 1.
 - *Whitespace-only diff:* UniFFI runs `swift-format` / `ktlint` on its output when they are on your `PATH`. The committed copies are unformatted (CI has neither tool), so regenerate with them off your `PATH`.
@@ -66,7 +63,7 @@ Review the generated diff before committing: it should only contain the API you 
 ## Types across the boundary
 
 - Use records/enums/errors supported by UniFFI.
-- Domain errors map to `ForgeAppError` in `forge-ffi`; do not expose internal `thiserror` types directly unless converted.
+- Domain errors map to an FFI error enum in the app crate (Counter: `ForgeAppError`); do not expose internal `thiserror` types directly unless converted.
 - Avoid passing large nested structures; prefer snapshots and explicit actions.
 
 ## Interaction model: commands, queries, events
@@ -104,7 +101,7 @@ Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `Op
 
 ## Long-lived event streams (Chat)
 
-`ForgeChatApp` (crates/forge-ffi/src/chat) is the reference for a stream that outlives any single command. Its contract, which the Swift and Kotlin hosts rely on:
+`ForgeChatApp` (examples/chat-android/rust/src/chat) is the reference for a stream that outlives any single command. Its contract, which the Swift and Kotlin hosts rely on:
 
 - **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like Counter's: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room, and `watch` / `unwatch` keep it live in the background (for `Notify`); the room's server connection runs while it is either. Ending an event stream never ends a connection, or the other way round.
 - **Room connections are explicit commands, not tied to a future's lifetime**, because Swift does not cancel Rust futures (above) and Kotlin does. Both return at once. When the last of `unsubscribe` / `unwatch` returns, `StreamDisconnected { will_retry: false }` is queued and nothing more from that room's connection ever is. The Rust thread behind it ends promptly: ending the stream closes that room's connection, so it does not wait for a server heartbeat. `live_streams()` reports it, and the Rust tests assert it reaches 0.
@@ -127,7 +124,7 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 ## Panics
 
 - Domain code must not panic on expected validation failures (use `Result`).
-- No `.expect()` on locks. `forge-ffi` locks recover the guarded value on poisoning, which is sound because each critical section is a single assignment that a panic cannot leave half-done.
+- No `.expect()` on locks. The example crates' locks recover the guarded value on poisoning, which is sound because each critical section is a single assignment that a panic cannot leave half-done.
 - Unexpected panics may still become fatal Swift errors from UniFFI scaffolding — treat as bugs.
 
 ## Error categories
@@ -147,8 +144,10 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 
 ## Exposing a new operation
 
-1. Add the rule to `forge-core` (and a test).
-2. In `forge-ffi`, add a method to `AppCore` (`app.rs`) that sends a job to the command thread, then an `async` export on `ForgeCounterApp` (`api.rs`):
+Using Counter (`examples/counter/rust`) as the example:
+
+1. Add the rule to the domain module (`src/domain/`, and a test).
+2. Add a method to `AppCore` (`app.rs`) that sends a job to the command thread, then an `async` export on `ForgeCounterApp` (`api.rs`):
 
    ```rust
    // app.rs
@@ -215,7 +214,7 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 
 ## Testing the integration
 
-- Rust: `cargo test -p forge-ffi` covers async commands, concurrent commands, read-during-write, save failures (no commit, no event), event ordering, overflow, cancellation, shutdown with work in flight, and reopen. Tests use an in-memory store that can fail or pause saves.
+- Rust: `cargo test --manifest-path examples/counter/rust/Cargo.toml` covers async commands, concurrent commands, read-during-write, save failures (no commit, no event), event ordering, overflow, cancellation, shutdown with work in flight, and reopen. Tests use an in-memory store that can fail or pause saves.
 - Swift: `./scripts/test-swift-host.sh` (macOS) runs `CounterClientTests` (the bridge) and `CounterViewModelTests` against the real Rust library and generated bindings; no Rust mocks. CI runs it for the example and for an app freshly generated outside the checkout.
 - `./scripts/check-fresh-app.sh` creates iOS and Android apps outside the checkout and checks their own Rust crates and bindings ([project-generation.md](project-generation.md#checked-in-ci)).
 - `./scripts/check-template-sync.sh` checks that the starter crate pins the workspace's UniFFI version and that every Android host uses the verifier version in `Cargo.lock`.

@@ -40,9 +40,11 @@ pub struct AndroidSection {
 
 /// Where the app's Rust code lives.
 ///
-/// Apps from `forge init` own a crate: `path = "rust"` (relative to the app).
-/// The bundled examples instead share the workspace's `forge-ffi`, written as
-/// `core_crate = "forge-core"` + `ffi_crate = "forge-ffi"`.
+/// Every app owns a crate: `path = "rust"` (relative to the app, as `forge
+/// init` creates it). Two host apps may share one crate (`counter-android`
+/// uses `path = "../counter/rust"`). `core_crate` / `ffi_crate`, which named
+/// the workspace's shared `forge-ffi` before it was removed, are still parsed
+/// so the error can say what to write instead.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct RustSection {
@@ -77,10 +79,9 @@ impl ForgeConfig {
         self.build.android
     }
 
-    /// The app's own Rust crate, if it has one (`[rust] path`), as an
-    /// absolute path under `app_dir`.
-    pub fn rust_crate_dir(&self, app_dir: &std::path::Path) -> Option<std::path::PathBuf> {
-        self.rust.path.as_ref().map(|p| app_dir.join(p))
+    /// The app's own Rust crate (`[rust] path`), relative to `app_dir`.
+    pub fn rust_crate_dir(&self, app_dir: &std::path::Path) -> std::path::PathBuf {
+        app_dir.join(self.rust.path.as_deref().unwrap_or("rust"))
     }
 
     pub fn ios_enabled(&self) -> bool {
@@ -156,32 +157,18 @@ impl ForgeConfig {
             return Err("enable at least one platform in [build] (ios_* or android)".into());
         }
 
-        match (&self.rust.path, &self.rust.core_crate, &self.rust.ffi_crate) {
-            (Some(path), None, None) => {
-                let p = std::path::Path::new(path);
-                if path.trim().is_empty()
-                    || p.is_absolute()
-                    || p.components().any(|c| c == std::path::Component::ParentDir)
-                {
+        if self.rust.core_crate.is_some() || self.rust.ffi_crate.is_some() {
+            return Err("[rust] core_crate / ffi_crate named the shared forge-ffi crate, which Forge no longer has: give the app its own crate and write [rust] path = \"rust\" (see docs/app-crate.md)".into());
+        }
+        match &self.rust.path {
+            Some(path) => {
+                if path.trim().is_empty() || std::path::Path::new(path).is_absolute() {
                     return Err(format!(
-                        "[rust] path = \"{path}\" must be a folder inside the app, such as \"rust\""
+                        "[rust] path = \"{path}\" must be relative to the app, such as \"rust\""
                     ));
                 }
             }
-            (None, Some(core), Some(ffi)) => {
-                if core != "forge-core" || ffi != "forge-ffi" {
-                    return Err(format!(
-                        "[rust] core_crate = \"{core}\", ffi_crate = \"{ffi}\" is not supported: the shared workspace library is forge-core + forge-ffi. For your own Rust code use [rust] path = \"rust\" (what forge init creates)"
-                    ));
-                }
-            }
-            (Some(_), _, _) => {
-                return Err(
-                    "[rust] has both path and core_crate/ffi_crate; keep only path = \"rust\""
-                        .into(),
-                )
-            }
-            _ => return Err(
+            None => return Err(
                 "[rust] must set path = \"rust\" (the app's own crate, as forge init creates it)"
                     .into(),
             ),
@@ -316,8 +303,7 @@ name = "Counter"
 bundle_id = "org.example.counter"
 minimum_ios = "17.0"
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 [build]
 ios_device = true
 ios_simulator = false
@@ -340,8 +326,7 @@ min_sdk = 26
 abis = ["arm64-v8a", "x86_64"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 android = true
@@ -360,8 +345,7 @@ android = true
 name = "Counter"
 bundle_id = "org.example.counter"
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 [build]
 android = true
 "#,
@@ -384,8 +368,7 @@ min_sdk = 26
 abis = ["arm64-v8a"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 ios_device = true
@@ -410,8 +393,7 @@ min_sdk = 26
 abis = ["arm64-v8a"]
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 android = true
@@ -449,7 +431,8 @@ ios_simulator = false
 "#,
         )
         .unwrap_err();
-        assert!(err.contains("ffi_crate"));
+        assert!(err.contains("ffi_crate"), "{err}");
+        assert!(err.contains("path = \"rust\""), "{err}");
     }
 
     /// Every example's forge.toml must pass the CLI's own validation, so
@@ -464,9 +447,15 @@ ios_simulator = false
         let cfg = ForgeConfig::parse(&toml("path = \"rust\"")).unwrap();
         assert_eq!(
             cfg.rust_crate_dir(std::path::Path::new("/apps/A")),
-            Some(std::path::PathBuf::from("/apps/A/rust"))
+            std::path::PathBuf::from("/apps/A/rust")
         );
-        for bad in ["path = \"../shared\"", "path = \"/abs\"", "path = \"\""] {
+        // Two host apps may share one crate.
+        let shared = ForgeConfig::parse(&toml("path = \"../counter/rust\"")).unwrap();
+        assert_eq!(
+            shared.rust_crate_dir(std::path::Path::new("/apps/A")),
+            std::path::PathBuf::from("/apps/A/../counter/rust")
+        );
+        for bad in ["path = \"/abs\"", "path = \"\""] {
             assert!(ForgeConfig::parse(&toml(bad)).is_err(), "{bad}");
         }
         let both = "path = \"rust\"\ncore_crate = \"forge-core\"\nffi_crate = \"forge-ffi\"";

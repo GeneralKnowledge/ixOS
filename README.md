@@ -57,18 +57,16 @@ CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app out
 ## Repository layout
 
 ```
-crates/forge-core      # Domain logic (testable on Linux)
-crates/forge-storage   # JSON snapshot persistence
+crates/forge-storage   # Atomic file writes and versioned JSON documents
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, Android HTTPS init
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
-crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
-examples/counter          # SwiftUI + xtool app
+examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
-examples/counter-android  # Compose + Gradle app
+examples/counter-android  # Compose + Gradle app on the same Rust crate as examples/counter
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
-examples/chat-android     # The same chat app in Compose
+examples/chat-android     # The chat app in Compose (frozen at its pre-M0 features, own rust/ crate)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
 templates/app-rust        # Starter Rust crate every new app gets as rust/ (see docs/app-crate.md)
@@ -89,8 +87,7 @@ cargo run -p forge-cli -- init MyApp --path ~/projects/MyApp      # create the a
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- test --project examples/counter-android  # ...plus that app's host tests
 cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an app's own crate -> its Generated/
-cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
-cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
+cargo run -p forge-cli -- bindings generate --project examples/counter-android   # Kotlin, for an Android app
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
 cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
 cargo run -p forge-cli -- run ios --project examples/counter --release  # same, Swift release configuration

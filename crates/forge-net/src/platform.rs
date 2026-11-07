@@ -6,7 +6,7 @@
 //! verifier calls the platform's `X509TrustManager` through JNI, so it needs
 //! the app's `Context` once, before the first `https` request. Forge hosts do
 //! that with `ForgeAndroid.init(context)` (Kotlin, shipped with the generated
-//! bindings), which calls [`android::init`] through `forge-ffi`.
+//! bindings), which calls [`android::init`] through `forge-runtime`'s JNI export.
 //!
 //! Until that has happened an `https` request fails at once with
 //! [`NetError::TlsNotInitialised`]. It never falls back to an unverified

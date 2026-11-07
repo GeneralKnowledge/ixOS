@@ -1,11 +1,24 @@
-use std::fs::{self, File, OpenOptions};
-use std::io::{Read, Write};
-use std::path::{Path, PathBuf};
+//! The Counter's versioned JSON snapshot: `forge-counter-v1.json` in the
+//! storage directory the host gives at launch, written with
+//! [`forge_storage::write_atomic`].
 
-use forge_core::CounterSnapshot;
+use std::fs::{self, File};
+use std::io::Read;
+use std::path::PathBuf;
+
+use forge_storage::{write_atomic, StorageError};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use thiserror::Error;
+
+use crate::domain::CounterSnapshot;
+
+/// Narrow persistence interface the Counter's session is written against.
+pub trait SnapshotStore {
+    type Snapshot: Clone;
+
+    fn load(&self) -> Result<Option<Self::Snapshot>, StorageError>;
+    fn save(&self, snapshot: &Self::Snapshot) -> Result<(), StorageError>;
+}
 
 /// Schema version written by this build.
 ///
@@ -17,40 +30,6 @@ pub const SCHEMA_VERSION: u32 = 1;
 /// The snapshot filename. It must stay the same across schema versions so a
 /// newer build finds (and migrates) data written by an older one.
 const DEFAULT_FILENAME: &str = "forge-counter-v1.json";
-
-#[derive(Debug, Error, PartialEq, Eq)]
-pub enum StorageError {
-    #[error("persistence directory is missing")]
-    MissingDirectory,
-    #[error("stored data is invalid or corrupted: {reason}")]
-    CorruptData { reason: String },
-    #[error("stored data uses schema version {found}, but this build supports up to {supported}")]
-    UnsupportedSchemaVersion { found: u32, supported: u32 },
-    #[error("failed to write persistence data: {reason}")]
-    WriteFailed { reason: String },
-    #[error("failed to read persistence data: {reason}")]
-    ReadFailed { reason: String },
-}
-
-impl StorageError {
-    fn corrupt(reason: impl ToString) -> Self {
-        Self::CorruptData {
-            reason: reason.to_string(),
-        }
-    }
-
-    fn write(context: &str, err: impl std::fmt::Display) -> Self {
-        Self::WriteFailed {
-            reason: format!("{context}: {err}"),
-        }
-    }
-
-    fn read(context: &str, err: impl std::fmt::Display) -> Self {
-        Self::ReadFailed {
-            reason: format!("{context}: {err}"),
-        }
-    }
-}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct SnapshotEnvelope {
@@ -161,49 +140,7 @@ impl JsonSnapshotStore {
     }
 }
 
-/// Replaces the file at `path` with `data` atomically and durably: the bytes
-/// go to a sibling temp file which is synced, renamed over `path`, and then
-/// the directory is synced. Readers see the old file or the new one, never a
-/// torn write. The parent directory must exist.
-pub fn write_atomic(path: &Path, data: &[u8]) -> Result<(), StorageError> {
-    let directory = path.parent().ok_or(StorageError::MissingDirectory)?;
-    let mut tmp_name = path
-        .file_name()
-        .ok_or_else(|| StorageError::write("write file", "path has no file name"))?
-        .to_os_string();
-    tmp_name.push(".tmp");
-    let tmp = directory.join(tmp_name);
-    {
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&tmp)
-            .map_err(|err| StorageError::write("create temp file", err))?;
-        file.write_all(data)
-            .map_err(|err| StorageError::write("write temp file", err))?;
-        file.sync_all()
-            .map_err(|err| StorageError::write("sync temp file", err))?;
-    }
-    fs::rename(&tmp, path).map_err(|err| StorageError::write("replace file", err))?;
-    sync_directory(directory)
-}
-
-/// Makes a completed rename durable by syncing the directory that holds it.
-#[cfg(unix)]
-fn sync_directory(dir: &Path) -> Result<(), StorageError> {
-    File::open(dir)
-        .and_then(|d| d.sync_all())
-        .map_err(|err| StorageError::write("sync directory", err))
-}
-
-#[cfg(not(unix))]
-fn sync_directory(_dir: &Path) -> Result<(), StorageError> {
-    // Directories cannot be opened for syncing on Windows; NTFS journals renames.
-    Ok(())
-}
-
-impl super::SnapshotStore for JsonSnapshotStore {
+impl SnapshotStore for JsonSnapshotStore {
     type Snapshot = CounterSnapshot;
 
     fn load(&self) -> Result<Option<Self::Snapshot>, StorageError> {
@@ -231,8 +168,7 @@ impl super::SnapshotStore for JsonSnapshotStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::SnapshotStore;
-    use forge_core::{CounterSnapshot, COUNTER_MAX};
+    use crate::domain::{CounterSnapshot, COUNTER_MAX};
 
     fn store_with_contents(contents: &str) -> (tempfile::TempDir, JsonSnapshotStore) {
         let dir = tempfile::tempdir().unwrap();

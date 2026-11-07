@@ -57,16 +57,17 @@ jobs:
           echo "NDK_HOME=$SDK/ndk/28.0.13004108" >> "$GITHUB_ENV"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
 
-      - name: Package Rust FFI and Kotlin bindings
+      - name: Package the Counter's Rust library and Kotlin bindings
         run: ./scripts/package-android-library.sh examples/counter-android/Generated
 
-      - name: Stage the same native libraries for the Chat example
-        env:
-          FORGE_ANDROID_JNI_LIBS: ${{ github.workspace }}/examples/chat-android/app/src/main/jniLibs
+      - name: Package the Chat example's Rust library and Kotlin bindings
         run: ./scripts/package-android-library.sh examples/chat-android/Generated
 
-      - name: Build host forge-ffi and the chat server for JVM unit tests
-        run: cargo build -p forge-ffi -p chat-server
+      - name: Build the host libraries and the chat server for JVM unit tests
+        run: |
+          cargo build --manifest-path examples/counter/rust/Cargo.toml
+          cargo build --manifest-path examples/chat-android/rust/Cargo.toml
+          cargo build -p chat-server
 
       - name: JVM unit tests (view model against the Rust core)
         working-directory: examples/counter-android

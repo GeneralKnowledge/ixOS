@@ -56,7 +56,7 @@ From the repo root:
 
 ```bash
 forge bindings generate --project ~/projects/MyApp                 # an app from forge init
-cargo run -p forge-cli -- bindings generate --out examples/counter/Generated   # the bundled examples
+cargo run -p forge-cli -- bindings generate --project examples/counter   # a bundled example
 ```
 
 Do not edit files under `Generated/`. Rebuild in Xcode afterward.

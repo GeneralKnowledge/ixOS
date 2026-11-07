@@ -6,7 +6,7 @@ cd "$ROOT"
 # shellcheck source=forge-crate.sh
 source "$ROOT/scripts/forge-crate.sh"
 
-OUT="${1:-examples/counter/Generated}"
+OUT="${1:-$APP_DIR/Generated}"
 LANGUAGE="${2:-swift}"
 
 case "$LANGUAGE" in

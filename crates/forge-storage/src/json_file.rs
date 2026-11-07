@@ -16,7 +16,7 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::json_store::write_atomic;
+use crate::atomic::write_atomic;
 use crate::StorageError;
 
 /// Upgrades the `data` of an older `schema_version` to the current shape.

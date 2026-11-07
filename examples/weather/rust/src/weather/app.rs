@@ -855,7 +855,7 @@ mod tests {
     }
 
     /// End to end against the real service and the real client:
-    /// `cargo test -p forge-ffi -- --ignored live_open_meteo`.
+    /// `cargo test --manifest-path examples/weather/rust/Cargo.toml -- --ignored live_open_meteo`.
     #[test]
     #[ignore = "needs network access to open-meteo.com"]
     fn live_open_meteo() {

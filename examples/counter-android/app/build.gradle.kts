@@ -67,8 +67,9 @@ android {
         unitTests.isReturnDefaultValues = true
         unitTests.all {
             // JVM unit tests call the real Rust core through the generated bindings, using the
-            // host build of forge-ffi (`cargo build -p forge-ffi` from the workspace root).
-            val hostLibs = rootProject.file("../../target/debug").absolutePath
+            // host build of the Counter crate it shares with the iOS example
+            // (`cargo build --manifest-path ../counter/rust/Cargo.toml`, which `forge test` runs first).
+            val hostLibs = rootProject.file("../counter/rust/target/debug").absolutePath
             it.systemProperty("jna.library.path", hostLibs)
             // ForgeAndroid.init loads the same library through System.loadLibrary (JNI).
             it.systemProperty("java.library.path", hostLibs)

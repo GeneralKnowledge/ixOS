@@ -31,7 +31,7 @@ The Android client ([examples/chat-android](../examples/chat-android/README.md))
 | Phase | What | State |
 |---|---|---|
 | 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
-| 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
+| 2 | FFI boundary (`ForgeChatApp`, now in `examples/chat-android/rust`), Swift + Kotlin bindings | **Done.** `cargo test --manifest-path examples/chat-android/rust/Cargo.toml`; bindings regenerated |
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat`; since M0 `examples/chat-server` | **Done.** End-to-end test: `cargo test -p chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
@@ -47,7 +47,7 @@ examples/chat/rust        # The iOS app's own crate (ChatCore): account + Keycha
 examples/chat-server      # The chat server: accounts, rooms, messages on disk (`make chat-server`)
 examples/chat-cli         # Terminal client on chat-core: be the other person (`make chat-cli`)
 examples/chat             # SwiftUI host
-crates/forge-ffi/src/chat # ForgeChatApp, the frozen Android example's UniFFI surface
+examples/chat-android/rust/src/chat # ForgeChatApp, the frozen Android example's UniFFI surface
 examples/chat-android     # Compose host (frozen)
 ```
 
@@ -231,7 +231,7 @@ The plan was written before the Weather example landed. Checked against the repo
 | Plan | Now | Why |
 |---|---|---|
 | `forge-net` does the HTTP | Added `HttpClient::open_stream` to forge-net | `HttpClient::send` buffers the whole body (with an 8 MiB cap), so it cannot carry an endless SSE stream. |
-| `async fn` commands, `chat_events() -> AsyncSequence<ChatEvent>` | Blocking core; async + `AsyncSequence` at the FFI layer | Matches forge-ffi: UniFFI built-in async without tokio, worker thread per operation (Weather), pull-based event subscription (Counter). UniFFI has no `AsyncSequence` type; the Swift bridge builds one from `next()`. |
+| `async fn` commands, `chat_events() -> AsyncSequence<ChatEvent>` | Blocking core; async + `AsyncSequence` at the FFI layer | Matches the other examples: UniFFI built-in async without tokio, worker thread per operation (Weather), pull-based event subscription (Counter). UniFFI has no `AsyncSequence` type; the Swift bridge builds one from `next()`. |
 | One *global* event stream | One stream per `ChatClient` (per app instance) | Same as Counter's `subscribe()`; still one stream for all rooms, filtered by the host. |
 | `forge-storage` JSON snapshots | `forge_storage::write_atomic` + chat's own snapshot type | `JsonSnapshotStore` is hard-wired to the Counter's envelope; only its atomic write is reusable. |
 | `"version": 1` | `"schema_version": 1` | The key every other Forge store uses. |
@@ -240,12 +240,12 @@ The plan was written before the Weather example landed. Checked against the repo
 | `Cancelled` "if the user navigates away mid-send" | Navigating away never cancels a send; `Cancelled` is what a send reports when the app shuts down while it is in flight | Step 2 of the demo says leaving cancels nothing; both cannot hold. Not cancelling is the better UX (the message is already on the wire). |
 | `StreamDisconnected { conversation_id, reason }` | Added `will_retry` | The UI needs to tell "reconnecting" from "gone". |
 | `ChatError` as listed | Added `InvalidInput` and `ShutDown` | Same grouping as `WeatherError` / `ForgeAppError` (input, lifecycle). |
-| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` | One `forge_ffi` library exports every example's API and every `Generated/` copy is identical (see [ffi-policy.md](ffi-policy.md)); a second UniFFI cdylib would mean a second binding set and a second native library per app. |
+| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` (since moved to `examples/chat-android/rust/src/chat`) | At the time one `forge_ffi` library exported every example's API. Each app now owns its crate (see [app-crate.md](app-crate.md)). |
 | `examples/chat-core` | As planned | It is a workspace member like the crates under `crates/`. |
 
 ## The FFI surface (Phase 2)
 
-`crates/forge-ffi/src/chat` exposes `ForgeChatApp`. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), because every example shares one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
+`examples/chat-android/rust/src/chat` exposes `ForgeChatApp`. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), a leftover from when every example shared one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
 
 | Rust export | Notes |
 |---|---|

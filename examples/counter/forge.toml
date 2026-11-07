@@ -4,8 +4,7 @@ bundle_id = "org.forgemobile.counter"
 minimum_ios = "17.0"
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 
 [build]
 ios_device = true

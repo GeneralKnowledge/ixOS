@@ -3,7 +3,7 @@ import Foundation
 
 /// The Swift face of one Rust weather instance (`ForgeWeatherApp`).
 ///
-/// Concurrency contract (see `crates/forge-ffi/src/weather/app.rs`):
+/// Concurrency contract (see `rust/src/weather/app.rs`):
 /// - Every method is safe from any task or actor, including the main actor.
 ///   Nothing here blocks: HTTP runs on Rust worker threads.
 /// - One refresh at a time: starting a refresh cancels the one in flight,
