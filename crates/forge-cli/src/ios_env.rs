@@ -179,6 +179,40 @@ fn sdk_settings_version(sdk: &Path) -> Option<String> {
     json.get("Version")?.as_str().map(str::to_string)
 }
 
+/// Whether usbmuxd is running on Linux: its socket exists. `None` off Linux,
+/// or when `USBMUXD_SOCKET_ADDRESS` points libusbmuxd somewhere else.
+///
+/// On many distributions udev starts usbmuxd when an iPhone is plugged in
+/// and stops it when the last one is unplugged, so a missing socket also
+/// means no iPhone is connected. Without it xtool waits forever, silently.
+pub fn usbmuxd_running(
+    runner: &dyn CommandRunner,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Option<bool> {
+    if !cfg!(target_os = "linux") || env("USBMUXD_SOCKET_ADDRESS").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    // Through the runner (`test -S`), so tests can answer it.
+    runner
+        .capture(&Cmd::new("test").args(["-S", USBMUXD_SOCKET]))
+        .ok()
+        .map(|out| out.status.success())
+}
+
+/// Where usbmuxd listens on Linux.
+pub const USBMUXD_SOCKET: &str = "/var/run/usbmuxd";
+
+/// The Swift compiler's version, e.g. `(6, 2)` from `Swift version 6.2.3 (...)`.
+pub fn swift_version(runner: &dyn CommandRunner) -> Option<(u32, u32)> {
+    let out = stdout_of(runner, Cmd::new("swift").arg("--version"))?;
+    let rest = &out[out.find("Swift version ")? + "Swift version ".len()..];
+    let mut parts = rest
+        .split(|c: char| !c.is_ascii_digit())
+        .take(2)
+        .map(|p| p.parse::<u32>().ok());
+    Some((parts.next()??, parts.next()??))
+}
+
 /// The major version of an SDK version string (`"26.0"` → 26).
 pub fn sdk_major(version: &str) -> Option<u32> {
     version.split('.').next()?.trim().parse().ok()
@@ -249,6 +283,13 @@ mod tests {
         let env = move |k: &str| (k == "HOME").then(|| h.clone());
         assert_eq!(darwin_ios_sdk_version(&mock, &env).as_deref(), Some("18.0"));
         assert_eq!(sdk_major("18.0"), Some(18));
+        let swift = MockRunner::default();
+        swift.respond(
+            "swift --version",
+            0,
+            "Swift version 6.2.3 (swift-6.2.3-RELEASE)\nTarget: x86_64-unknown-linux-gnu\n",
+        );
+        assert_eq!(swift_version(&swift), Some((6, 2)));
 
         // SwiftPM's configuration of the Darwin SDK wins.
         let sdk = home.path().join("elsewhere/iPhoneOS26.1.sdk");

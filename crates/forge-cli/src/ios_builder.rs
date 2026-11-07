@@ -1,7 +1,7 @@
 //! iOS build backends.
 //!
 //! Everything that is specific to the toolchain that compiles, signs, installs
-//! and launches the Swift app lives behind [`IosBuilder`]. The rest of the CLI
+//! and installs the Swift app lives behind [`IosBuilder`]. The rest of the CLI
 //! (packaging the Rust static library, regenerating bindings, reading
 //! `forge.toml`) is backend-independent and stays in `commands.rs`.
 //!
@@ -37,7 +37,7 @@ impl IosConfiguration {
 pub enum Purpose {
     /// Compile the app (`forge build ios`).
     Build,
-    /// Compile, sign, install and launch on an iPhone (`forge run ios`).
+    /// Compile, sign and install on an iPhone (`forge run ios`).
     Run,
 }
 
@@ -109,7 +109,7 @@ pub trait IosBuilder: Send + Sync {
         configuration: IosConfiguration,
     ) -> Result<(), String>;
 
-    /// Builds, installs and launches the app in `project_dir` on a device.
+    /// Builds and installs the app in `project_dir` on a device (not launched).
     fn run(
         &self,
         runner: &dyn CommandRunner,
@@ -234,9 +234,20 @@ fn xtool_preflight(
     }
     if let Some(version) = ios_env::darwin_ios_sdk_version(runner, env) {
         if ios_env::sdk_major(&version).is_some_and(|m| m < ios_env::MIN_IOS_SDK_MAJOR) {
-            pf.warnings.push(format!(
-                "xtool's Darwin SDK has iOS {version}; with Swift 6.2 debug builds fail to link (swift_coroFrameAlloc). Run `xtool setup` again with Xcode 26's Xcode.xip"
-            ));
+            match ios_env::swift_version(runner) {
+                // Swift 6.2 emits swift_coroFrameAlloc, which only the iOS 26
+                // SDK's runtime exports: the link is certain to fail.
+                Some((major, minor)) if (major, minor) >= (6, 2) => pf.problem(
+                    format!(
+                        "Swift {major}.{minor} does not match xtool's Darwin SDK (iOS {version}): the app will fail to link with `undefined symbol: swift_coroFrameAlloc`."
+                    ),
+                    "Run `xtool setup` again with Xcode.xip from Xcode 26 (docs/troubleshooting.md).",
+                ),
+                Some(_) => {}
+                None => pf.warnings.push(format!(
+                    "xtool's Darwin SDK has iOS {version}; with Swift 6.2 builds fail to link (swift_coroFrameAlloc). Run `xtool setup` again with Xcode 26's Xcode.xip"
+                )),
+            }
         }
     }
 
@@ -247,6 +258,13 @@ fn xtool_preflight(
                 "xtool auth login   (any Apple ID works; a paid account can use an API key)",
             );
         }
+        if ios_env::usbmuxd_running(runner, env) == Some(false) {
+            pf.problem(
+                "usbmuxd is not running, so xtool would wait for the iPhone forever without saying so.",
+                "Plug the iPhone in by USB and unlock it (udev usually starts usbmuxd then), or `sudo systemctl start usbmuxd`. `forge devices` should then list it.",
+            );
+            return pf;
+        }
         match ios_env::ios_devices(runner) {
             Some(devices) if devices.is_empty() => pf.problem(
                 "No iPhone is connected.",
@@ -254,7 +272,7 @@ fn xtool_preflight(
             ),
             Some(_) => {}
             None => pf.warnings.push(
-                "could not list iOS devices (`xtool devices --no-wait` failed or timed out); if the install hangs, restart usbmuxd and replug the iPhone".into(),
+                "could not list iOS devices (`xtool devices --no-wait` failed or timed out): usbmuxd may be stuck, and then xtool waits forever without a message. If the install seems to hang: sudo systemctl restart usbmuxd, replug and unlock the iPhone".into(),
             ),
         }
     }
@@ -315,6 +333,49 @@ mod tests {
         // A build needs neither the sign-in nor the iPhone.
         let pf = xtool_preflight(&mock, Purpose::Build, &|_| None);
         assert_eq!(pf.problems.len(), 2, "{pf:?}");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn run_without_usbmuxd_stops_before_xtool_can_hang() {
+        let mock = ready_host();
+        mock.respond("test -S /var/run/usbmuxd", 1, "");
+        let pf = xtool_preflight(&mock, Purpose::Run, &|_| None);
+        assert_eq!(pf.problems.len(), 1, "{pf:?}");
+        assert!(pf.problems[0].problem.contains("usbmuxd is not running"));
+        assert!(
+            mock.call_lines()
+                .iter()
+                .all(|l| !l.contains("xtool devices")),
+            "xtool devices must not run without usbmuxd"
+        );
+        // A build does not need the iPhone.
+        assert!(xtool_preflight(&mock, Purpose::Build, &|_| None)
+            .problems
+            .is_empty());
+    }
+
+    #[test]
+    fn swift_6_2_with_an_old_sdk_is_a_problem() {
+        let home = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(
+            home.path()
+                .join(".swiftpm/swift-sdks/darwin/iPhoneOS18.0.sdk"),
+        )
+        .unwrap();
+        let h = home.path().to_string_lossy().into_owned();
+        let mock = ready_host();
+        mock.respond(
+            "swift --version",
+            0,
+            "Swift version 6.2.3 (swift-6.2.3-RELEASE)\n",
+        );
+        let pf = xtool_preflight(&mock, Purpose::Build, &move |k| {
+            (k == "HOME").then(|| h.clone())
+        });
+        assert_eq!(pf.problems.len(), 1, "{pf:?}");
+        assert!(pf.problems[0].problem.contains("swift_coroFrameAlloc"));
+        assert!(pf.problems[0].fix.contains("Xcode 26"));
     }
 
     #[test]

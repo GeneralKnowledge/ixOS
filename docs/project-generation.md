@@ -13,7 +13,7 @@ cd ~/projects
 forge init MyApp --bundle-id org.example.myapp
 cd MyApp
 forge test       # the starter's Rust tests
-forge run ios    # xtool: build, install and launch on a connected iPhone
+forge run ios    # xtool: build and install on a connected iPhone
 ```
 
 For Android, add `--platform android` and use `forge build android --install` (needs the Android SDK and NDK; see [android-setup.md](android-setup.md)). Inside an app, every command uses the current directory, so `--project` is only needed to point at another app.

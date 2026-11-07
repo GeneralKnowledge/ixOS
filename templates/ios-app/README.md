@@ -8,7 +8,7 @@ From this directory:
 
 ```bash
 forge doctor     # is the toolchain ready? (xtool, Darwin SDK, Apple sign-in, iPhone)
-forge run ios    # build the Rust and Swift, sign, install and launch on the iPhone
+forge run ios    # build the Rust and Swift, sign and install on the iPhone
 forge test       # Rust tests (and the XCTest suite on macOS)
 ```
 
@@ -19,7 +19,7 @@ The first time you run on an iPhone:
 1. Connect it by USB, unlock it and tap **Trust**. `forge devices` should list it.
 2. Turn on **Developer Mode** (Settings > Privacy & Security > Developer Mode), then restart the phone.
 3. Sign xtool in to your Apple account: `xtool auth login`. Any Apple ID works; a free one can have 3 apps installed at a time and needs a re-install every 7 days.
-4. After the first install, trust your developer profile: Settings > General > VPN & Device Management > your Apple ID > Trust.
+4. xtool installs the app but does not open it: tap its icon on the home screen. After the first install, trust your developer profile: Settings > General > VPN & Device Management > your Apple ID > Trust.
 
 ## Where things are
 

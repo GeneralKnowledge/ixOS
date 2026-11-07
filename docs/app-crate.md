@@ -21,7 +21,7 @@ cd MyApp
 cargo test --manifest-path rust/Cargo.toml   # Rust tests, no device or SDK needed
 forge bindings generate                      # after changing the exported API
 forge test                                   # your crate's tests + host tests (JVM, or XCTest on macOS)
-forge run ios                                # Linux/xtool: build, install, launch on an iPhone
+forge run ios                                # Linux/xtool: build and install on an iPhone
 forge build android --install                # debug APK on a connected Android phone
 ```
 

@@ -38,7 +38,10 @@ pub struct Report {
 pub struct IosDevice {
     /// `"logged_in"` or `"logged_out"` (`xtool auth status`).
     pub apple_sign_in: Option<&'static str>,
-    /// Connected devices as xtool lists them (`Name [usb]: UDID`).
+    /// Linux: whether usbmuxd's socket exists (`null` elsewhere).
+    pub usbmuxd_running: Option<bool>,
+    /// Connected devices as xtool lists them (`Name [usb]: UDID`). Not listed
+    /// (`null`) when usbmuxd is not running, since xtool would then wait.
     pub devices: Option<Vec<String>>,
     /// iOS version of the SDK in xtool's Darwin SDK, e.g. `"26.0"`.
     pub ios_sdk_version: Option<String>,
@@ -208,7 +211,12 @@ pub fn report(
     let ios_device = if ok("xtool") {
         IosDevice {
             apple_sign_in: ios_env::xtool_auth(runner).map(Auth::as_str),
-            devices: ios_env::ios_devices(runner),
+            usbmuxd_running: ios_env::usbmuxd_running(runner, env_fn),
+            devices: if ios_env::usbmuxd_running(runner, env_fn) == Some(false) {
+                None
+            } else {
+                ios_env::ios_devices(runner)
+            },
             ios_sdk_version: ios_env::darwin_ios_sdk_version(runner, env_fn),
         }
     } else {
@@ -337,7 +345,13 @@ pub fn workflows(r: &Report) -> Vec<Workflow> {
                 .to_string(),
         );
     }
+    if r.ios_device.usbmuxd_running == Some(false) {
+        device.push(
+            "usbmuxd is not running (xtool would wait forever): plug in and unlock the iPhone, or sudo systemctl start usbmuxd".to_string(),
+        );
+    }
     match &r.ios_device.devices {
+        _ if r.ios_device.usbmuxd_running == Some(false) => {}
         Some(d) if d.is_empty() => device.push(
             "connect your iPhone by USB, unlock it and tap Trust (then `forge devices`); enable Developer Mode in Settings > Privacy & Security".to_string(),
         ),

@@ -52,7 +52,7 @@ A paid membership lifts the first two and extends the last to a year.
 
 `usbmuxd` (Linux) must be running. If `forge devices` shows nothing while the phone is plugged in and unlocked: `sudo systemctl restart usbmuxd` and replug.
 
-## Build, install and launch
+## Build and install
 
 ```bash
 forge doctor                  # "Run on an iPhone (Apple sign-in, connected device): ready"

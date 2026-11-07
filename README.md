@@ -34,7 +34,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
    cd ~/projects
    forge init MyApp --bundle-id org.example.myapp   # add --platform android for Android
    cd MyApp
-   forge run ios                  # build with xtool, sign, install and launch on a connected iPhone
+   forge run ios                  # build with xtool, sign and install on a connected iPhone; open it from the home screen
    forge test                     # your Rust tests (plus XCTest on macOS, JVM tests for Android)
    forge build android --install  # (Android app) debug APK on a connected phone
    ```
@@ -90,7 +90,7 @@ cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an ap
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
-cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev run)
+cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices

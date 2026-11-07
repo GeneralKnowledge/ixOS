@@ -56,9 +56,9 @@ The app has its own Rust crate in `rust/`, a SwiftUI screen in `Sources/AppHost/
 forge run ios
 ```
 
-This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it.
+This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it. It does not open the app (xtool cannot launch apps on iOS 17 and later): tap its icon on the home screen.
 
-The first install of each app needs one step on the phone: Settings > General > VPN & Device Management, tap your Apple ID, then **Trust**. After that the app opens from the home screen.
+The first install of each app needs one step on the phone before it opens: Settings > General > VPN & Device Management, tap your Apple ID, then **Trust**.
 
 With a free Apple account the signature lasts 7 days; run `forge run ios` again to renew it. A free account can also have only 3 such apps installed at a time.
 

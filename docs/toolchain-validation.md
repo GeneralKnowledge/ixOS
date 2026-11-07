@@ -207,6 +207,7 @@ The end-to-end check for "create an app, write its logic in Rust, run it on a ph
 | `rust_targets[]`, `swift_sdks[]` | `rustup target list --installed` and `swift sdk list`. |
 | `env[]` | `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `ANDROID_NDK_HOME`, `NDK_HOME`, `FORGE_WORKSPACE` (`value` is `null` when unset). |
 | `ios_device.apple_sign_in` | `"logged_in"` or `"logged_out"` from `xtool auth status`; `null` when xtool is missing or does not say. |
+| `ios_device.usbmuxd_running` | Linux: whether usbmuxd's socket `/var/run/usbmuxd` exists; `null` on other hosts. |
 | `ios_device.devices` | Connected iOS devices from `xtool devices --no-wait` (`Name [usb]: UDID`); `[]` when none, `null` when the listing failed or timed out. |
 | `ios_device.ios_sdk_version` | iOS version of the SDK inside xtool's Darwin SDK (e.g. `"26.0"`); `null` when not found. Below 26, debug builds fail to link with Swift 6.2. |
 | `ready.rust` | rustc and cargo work. |

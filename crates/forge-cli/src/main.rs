@@ -79,7 +79,7 @@ enum Commands {
         #[command(subcommand)]
         cmd: InstallCommands,
     },
-    /// Build, install, and launch on device (iOS via `xtool dev`)
+    /// Build, sign and install on a connected iPhone (`xtool dev run`); open the app from the home screen
     Run {
         #[command(subcommand)]
         cmd: RunCommands,

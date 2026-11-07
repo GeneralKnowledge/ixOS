@@ -249,7 +249,7 @@ fn next_steps(dest: &Path, platform: &str, cwd: Option<&Path>) -> String {
     if platform == "ios" {
         out.push_str(
             "  forge doctor     # checks xtool, the Darwin SDK, your Apple sign-in and the iPhone\n\
-             \x20 forge run ios    # builds the Rust and Swift, installs and launches on the iPhone\n\
+             \x20 forge run ios    # builds the Rust and Swift, signs and installs on the iPhone\n\
              \x20 forge test       # your Rust tests (and the XCTest suite on macOS)\n\
              \nYour logic is in rust/src/lib.rs, the screen in Sources/AppHost/ContentView.swift.\n\
              README.md in the app explains the layout. On a Mac you can also open Xcode/ (docs/ios-xcode.md).\n",
@@ -904,13 +904,14 @@ pub fn build_ios(
     println!("[forge] Building the Swift app ({})", configuration.name());
     builder.build(runner, &project_dir, configuration)?;
     println!(
-        "[forge] Built {}. Install and launch it on your iPhone with `forge run ios`.",
+        "[forge] Built {}. Install it on your iPhone with `forge run ios`.",
         project_dir.display()
     );
     Ok(())
 }
 
-/// Builds, installs and launches on a connected device.
+/// Builds and installs on a connected device. xtool does not launch the
+/// app (and `xtool launch` does not work on iOS 17+), so the user opens it.
 pub fn run_ios(
     runner: &dyn CommandRunner,
     builder: &dyn IosBuilder,
@@ -921,13 +922,10 @@ pub fn run_ios(
     let (project_dir, cfg) = ios_project(root, project)?;
     ios_preflight(runner, builder, Purpose::Run)?;
     package_ios(runner, root, &project_dir, &cfg)?;
-    println!(
-        "[forge] Building, installing and launching ({})",
-        configuration.name()
-    );
+    println!("[forge] Building and installing ({})", configuration.name());
     builder.run(runner, &project_dir, configuration)?;
     println!(
-        "[forge] Installed. If the app does not open, trust your developer profile on the iPhone: Settings > General > VPN & Device Management."
+        "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
     );
     Ok(())
 }

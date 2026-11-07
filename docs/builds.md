@@ -7,7 +7,7 @@ Forge has several ways to build an app. They differ in the host machine, the too
 | Command or tool | Host | Platform tool | Runs on | Swift / Kotlin config | Rust profile | Status |
 |---|---|---|---|---|---|---|
 | `forge build ios` | Linux (or macOS) | xtool (`xtool dev build`) | iPhone (device) | debug | release | Supported. Counter, Weather and Chat installed on an iPhone (2026-11-06) |
-| `forge run ios` | Linux (or macOS) | xtool (`xtool dev run`) | iPhone, installed and launched | debug | release | Supported, same runs as above |
+| `forge run ios` | Linux (or macOS) | xtool (`xtool dev run`) | iPhone, installed (open it from the home screen; xtool does not launch apps) | debug | release | Supported, same runs as above |
 | `forge build ios --release`, `forge run ios --release` | Linux (or macOS) | xtool (`xtool dev build -c release`) | iPhone (device) | release | release | Supported. Counter, Weather and Chat built in release with xtool on Linux (2026-11-06); not yet recorded on a device through this flag |
 | `forge build ios --package-only`, then Xcode | macOS | Xcode (`xcodebuild`) | iPhone (device) | Debug or Release, chosen in Xcode | release | Supported. CI does unsigned Debug builds of every Xcode project |
 | `forge test` in an iOS app | Linux or macOS | Cargo, then SwiftPM (`swift test`) on macOS | the host | debug | debug | Supported, CI. The app's Rust tests run everywhere; the XCTest suite only on macOS (skipped with a note on Linux) |
