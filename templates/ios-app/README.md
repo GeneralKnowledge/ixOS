@@ -27,7 +27,7 @@ The first time you run on an iPhone:
 |------|------------|
 | `rust/src/lib.rs` | Your app's logic, state, persistence and networking. Everything marked `#[uniffi::export]` is callable from Swift. |
 | `rust/Cargo.toml` | Rust dependencies. Add crates here as usual (`cargo add --manifest-path rust/Cargo.toml <crate>`). |
-| `Sources/AppHost/` | The SwiftUI screen (`ContentView.swift`) and the model that calls Rust. |
+| `Sources/AppHost/` | The SwiftUI screens (`ContentView.swift` is the root; `NoteListView`, `NoteDetailView`, `ComposeNoteView`, `SettingsView`) and `NotesModel.swift`, the model that calls Rust. |
 | `Tests/AppHostTests/` | XCTest suite against the real Rust library (macOS only). |
 | `Generated/` | Swift bindings generated from `rust/`. Do not edit; `forge run ios` and `forge bindings generate` rewrite them. |
 | `forge.toml` | App name, bundle identifier, version, minimum iOS, permissions, entitlements (`forge config show`). |

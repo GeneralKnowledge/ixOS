@@ -251,7 +251,7 @@ fn next_steps(dest: &Path, platform: &str, cwd: Option<&Path>) -> String {
             "  forge doctor     # checks xtool, the Darwin SDK, your Apple sign-in and the iPhone\n\
              \x20 forge run ios    # builds the Rust and Swift, signs and installs on the iPhone\n\
              \x20 forge test       # your Rust tests (and the XCTest suite on macOS)\n\
-             \nYour logic is in rust/src/lib.rs, the screen in Sources/AppHost/ContentView.swift.\n\
+             \nYour logic is in rust/src/lib.rs, the screens in Sources/AppHost/ (ContentView.swift is the root).\n\
              README.md in the app explains the layout. On a Mac you can also open Xcode/ (docs/ios-xcode.md).\n",
         );
     } else {

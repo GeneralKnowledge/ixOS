@@ -58,7 +58,7 @@ The hosts (`Sources/AppHost/NotesModel.swift`, `app/src/main/java/.../NotesViewM
 **Cancelling a request.** Use `background_cancellable` with `HttpClient::send_cancellable` for work that should stop when the user gives up. The request then ends at once with `Cancelled`, even when it is waiting on a slow server, because Forge closes its connection. The two hosts reach it differently:
 
 - **Kotlin:** cancelling the coroutine is enough. UniFFI drops the Rust future, and dropping it cancels the work.
-- **Swift:** cancelling a `Task` does not reach Rust (UniFFI 0.32), so the host passes a `Cancellation` and cancels it from `withTaskCancellationHandler`, as `NotesModel.checkURL` does.
+- **Swift:** cancelling a `Task` does not reach Rust (UniFFI 0.32), so the host passes a `Cancellation` and cancels it from `withTaskCancellationHandler`, as `NotesModel.checkURL` does. Start such work from `.task(id:)` and SwiftUI cancels it when the screen closes ([ios-ui.md](ios-ui.md#cancellation)).
 
 DNS lookup and the TCP connect itself are not interrupted; the request timeout bounds them.
 
