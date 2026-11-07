@@ -112,6 +112,14 @@ pub fn record_failure(step: &str, hints: Vec<JsonHint>, output: &str) {
     });
 }
 
+/// Adds a hint to the failure already recorded (a cause found after the
+/// step's own diagnosis).
+pub fn add_hint(hint: JsonHint) {
+    if let Some(failure) = state().failure.as_mut() {
+        failure.hints.push(hint);
+    }
+}
+
 /// An error in how the command was called: stage `usage`, exit code 2.
 pub fn usage_error(message: &str) -> String {
     state().usage = true;

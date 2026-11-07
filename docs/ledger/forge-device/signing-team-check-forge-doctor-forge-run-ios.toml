@@ -1,0 +1,9 @@
+order = 70
+capability = "Which Apple team xtool signs with, free or paid (`forge doctor`, `forge run ios`)"
+framework = "Yes: forge-cli"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a"
+iphone = "No"
+documented = "Yes: ios-signing.md"
+limits = "Reads `xtool auth status` and `xtool ds teams list` (needs network to tell free from paid); paid detection follows xtool's own rule, never checked against a paid team yet"

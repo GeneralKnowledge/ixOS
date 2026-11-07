@@ -749,6 +749,14 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
     Ok(())
 }
 
+/// The paid-only capabilities `forge.toml` asks for (push notifications,
+/// associated domains, ...), by name.
+pub fn paid_only_entitlements(cfg: &ForgeConfig) -> Vec<&'static str> {
+    entitlements(cfg)
+        .map(|ent| paid_entitlements(&ent))
+        .unwrap_or_default()
+}
+
 fn paid_entitlements(ent: &BTreeMap<String, Plist>) -> Vec<&'static str> {
     PAID_ONLY_ENTITLEMENTS
         .iter()
@@ -765,7 +773,7 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
     if ios.signing.team_type.is_none() {
         for what in paid_entitlements(&ent) {
             out.push(format!(
-                "{what} needs a paid Apple Developer Program team; signing with a free Apple ID will fail. Set [ios.signing] team_type = \"paid\" once xtool is signed in with such a team"
+                "{what} needs a paid Apple Developer Program team; with a free Apple ID xtool leaves it out when signing, so it will not work. Set [ios.signing] team_type = \"paid\" once xtool is signed in with such a team (`forge doctor` shows the team)"
             ));
         }
     }
