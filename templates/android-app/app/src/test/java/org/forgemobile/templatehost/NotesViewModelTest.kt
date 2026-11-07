@@ -15,7 +15,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import androidx.lifecycle.Lifecycle
+import uniffi.forge_ffi.AppEvent
 import uniffi.forge_ffi.AppException
+import uniffi.forge_ffi.AppPhase
 
 /**
  * Drives the view model against the app's real Rust core (rust/) through the generated Kotlin
@@ -119,6 +122,56 @@ class NotesViewModelTest {
             assertEquals(listOf("after"), model.notes.map { it.text })
             model.close()
         }
+    }
+
+    @Test
+    fun goingToTheBackgroundInterruptsTheRequestInRust() = runBlocking {
+        java.net.ServerSocket(0, 4, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+            val model = newModel()
+            model.setPhase(AppPhase.ACTIVE)
+            model.url = "http://127.0.0.1:${server.localPort}/"
+            val started = System.nanoTime()
+            val check = launch { model.checkUrl() }
+            delay(200)
+            model.setPhase(AppPhase.BACKGROUND)
+            withTimeout(5_000) { check.join() }
+            assertEquals(NotesViewModel.describe(AppException.Interrupted()), model.urlResult)
+            assertTrue(System.nanoTime() - started < 5_000_000_000L)
+            assertEquals(AppPhase.BACKGROUND, model.core!!.phase())
+            model.close()
+        }
+    }
+
+    @Test
+    fun resumeIsReportedAndTerminateClosesTheCore() = runBlocking {
+        val model = newModel()
+        val core = model.core!!
+        val events = core.events()
+        model.setPhase(AppPhase.ACTIVE)
+        model.setPhase(AppPhase.BACKGROUND)
+        model.setPhase(AppPhase.INACTIVE)
+        assertEquals(AppEvent.PhaseChanged(AppPhase.ACTIVE, false), events.next())
+        assertEquals(AppEvent.PhaseChanged(AppPhase.BACKGROUND, false), events.next())
+        assertEquals(AppEvent.PhaseChanged(AppPhase.INACTIVE, true), events.next())
+
+        model.setPhase(AppPhase.TERMINATED)
+        assertNull(model.core)
+        try {
+            core.addNote("late")
+            fail("expected ShutDown")
+        } catch (_: AppException.ShutDown) {
+        }
+    }
+
+    @Test
+    fun activityEventsMapOntoAppPhases() {
+        assertEquals(AppPhase.INACTIVE, appPhaseFor(Lifecycle.Event.ON_START, false))
+        assertEquals(AppPhase.ACTIVE, appPhaseFor(Lifecycle.Event.ON_RESUME, false))
+        assertEquals(AppPhase.INACTIVE, appPhaseFor(Lifecycle.Event.ON_PAUSE, false))
+        assertEquals(AppPhase.BACKGROUND, appPhaseFor(Lifecycle.Event.ON_STOP, false))
+        // Rotation stops and restarts the activity; that is not the background.
+        assertNull(appPhaseFor(Lifecycle.Event.ON_STOP, true))
+        assertNull(appPhaseFor(Lifecycle.Event.ON_CREATE, false))
     }
 
     @Test

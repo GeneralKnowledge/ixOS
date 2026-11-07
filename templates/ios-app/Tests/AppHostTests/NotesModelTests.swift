@@ -1,6 +1,7 @@
 import AppHost
 @preconcurrency import ForgeFFI
 import Foundation
+import SwiftUI
 import XCTest
 
 /// Drives the view model against the app's real Rust core (rust/) through the
@@ -129,6 +130,57 @@ final class NotesModelTests: XCTestCase {
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
         XCTAssertFalse(model.isCheckingURL)
         model.close()
+    }
+
+    @MainActor
+    func testGoingToTheBackgroundInterruptsTheRequestInRust() async throws {
+        let dir = try makeDirectory()
+        let model = await openModel(dir)
+        model.setPhase(.active)
+        let (url, fd) = try silentServerURL()
+        defer { Darwin.close(fd) }
+        model.url = url
+        let started = Date()
+        let check = Task { await model.checkURL() }
+        try await Task.sleep(for: .milliseconds(200))
+        model.setPhase(.background)
+        await check.value
+        XCTAssertEqual(model.urlResult, NotesModel.describe(AppError.Interrupted))
+        XCTAssertLessThan(Date().timeIntervalSince(started), 5)
+        XCTAssertEqual(model.core?.phase(), .background)
+        model.close()
+    }
+
+    @MainActor
+    func testResumeIsReportedAndTerminateClosesTheCore() async throws {
+        let dir = try makeDirectory()
+        // Reported before Rust is open: applied when it opens.
+        let model = NotesModel(storageDirectory: dir.path)
+        model.setPhase(.active)
+        await model.open()
+        let core = try XCTUnwrap(model.core)
+        XCTAssertEqual(core.phase(), .active)
+
+        let events = try core.events()
+        model.setPhase(.background)
+        model.setPhase(.inactive)
+        guard case .phaseChanged(.background, false)? = await events.next(),
+            case .phaseChanged(.inactive, true)? = await events.next()
+        else { return XCTFail("expected background, then a resume") }
+
+        model.setPhase(.terminated)
+        XCTAssertNil(model.core)
+        XCTAssertEqual(core.phase(), .terminated)
+        do {
+            _ = try await core.addNote(text: "late")
+            XCTFail("expected ShutDown")
+        } catch AppError.ShutDown {}
+    }
+
+    func testScenePhasesMapOntoAppPhases() {
+        XCTAssertEqual(AppPhase(.active), .active)
+        XCTAssertEqual(AppPhase(.inactive), .inactive)
+        XCTAssertEqual(AppPhase(.background), .background)
     }
 
     @MainActor

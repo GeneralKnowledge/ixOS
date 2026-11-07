@@ -13,6 +13,10 @@
 //! - [`EventHub`] / [`Subscription`]: bounded, pull-based event streams. The
 //!   host awaits `next()`; a slow consumer loses the oldest events and is told
 //!   how many ([`Delivery::Dropped`]) instead of growing a queue forever.
+//! - [`Lifecycle`]: the app's phase (launching, active, inactive,
+//!   background, terminated) as the host reports it, with a lifetime scope
+//!   and a foreground scope that cancel work when the app terminates or
+//!   leaves the screen, and `resumed` on the way back.
 //! - The Android JNI entry point behind `ForgeAndroid.init(context)`, which
 //!   HTTPS needs on Android (see `forge_net::platform`). Linking this crate is
 //!   enough; apps call nothing.
@@ -23,10 +27,12 @@ mod background;
 mod events;
 #[cfg(not(target_os = "ios"))]
 mod jni_init;
+mod lifecycle;
 
 pub use background::{background, background_cancellable, block_on, Background};
 pub use events::{Delivery, EventHub, Subscription, DEFAULT_QUEUE_CAPACITY};
 pub use forge_net::CancelHandle;
+pub use lifecycle::{Lifecycle, Phase, Transition};
 
 /// Re-exported so app crates use the exact transport and storage versions the
 /// runtime was built against.

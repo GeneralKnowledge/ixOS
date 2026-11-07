@@ -23,6 +23,8 @@ public struct ContentView: View {
         // Opens Rust off the main thread. `open()` does nothing when already
         // open, so the view reappearing never opens a second instance.
         .task { await model.open() }
+        // Reports the scene phase to Rust (see AppLifecycle.swift).
+        .forgeLifecycle { model.setPhase($0) }
     }
 
     private var notesList: some View {
