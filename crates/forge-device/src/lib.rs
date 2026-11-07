@@ -10,13 +10,17 @@
 //! - [`pick_device`]: choose the phone to talk to.
 //! - [`LogFilter`]: keep only one app's lines from the system log.
 //! - [`app_crash_reports`]: crash reports written for one app.
+//! - [`live`]: the live connection to a development build (M1): pairing,
+//!   status, probes, commands and the app's own log stream.
 //!
 //! The phone side needs nothing from the app: logs come from the system log
 //! (where `forge_runtime::logging` writes), crash reports from the phone's
 //! crash reporter.
 
+pub mod live;
 mod usb;
 
+pub use live::{LiveStream, PairingStore};
 pub use usb::UsbBackend;
 
 /// How a phone is connected to this computer.
@@ -83,6 +87,15 @@ pub enum DeviceError {
     NotPaired { reason: String },
     #[error("the phone refused or dropped the request: {0}")]
     Service(String),
+    #[error(
+        "no development build is listening on the phone. Open the app (it must be on \
+         screen) and check it was installed with `forge run ios --devtools`"
+    )]
+    AppNotListening,
+    #[error(transparent)]
+    Live(#[from] forge_devproto::client::ClientError),
+    #[error("{0}")]
+    Pairings(String),
 }
 
 pub type Result<T> = std::result::Result<T, DeviceError>;
@@ -105,6 +118,16 @@ pub trait DeviceBackend {
 
     /// One crash report's contents.
     fn pull_crash_report(&self, device: &DeviceRef, name: &str) -> Result<Vec<u8>>;
+
+    /// A byte stream to `port` on the phone's loopback interface, where a
+    /// development build listens. Reads give up after a short wait (an
+    /// `ErrorKind::TimedOut` error) so a session loop can do other work.
+    fn connect_port(&self, device: &DeviceRef, port: u16) -> Result<Box<dyn LiveStream>> {
+        let _ = (device, port);
+        Err(DeviceError::Service(
+            "this backend cannot open connections".into(),
+        ))
+    }
 }
 
 /// The phone to use: the one with `udid`, or the only one connected.

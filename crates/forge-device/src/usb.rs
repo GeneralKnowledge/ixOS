@@ -7,6 +7,12 @@ use idevice::services::syslog_relay::SyslogRelayClient;
 use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use idevice::{IdeviceError, IdeviceService};
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+use crate::live::LiveStream;
 use crate::{Connection, DeviceBackend, DeviceError, DeviceInfo, DeviceRef, Result};
 
 /// Label idevice sends with each request; shows up in the phone's logs.
@@ -15,7 +21,7 @@ const LABEL: &str = "forge-device";
 /// Talks to phones through the local usbmuxd. Each call opens its own
 /// connections and closes them when it returns.
 pub struct UsbBackend {
-    runtime: tokio::runtime::Runtime,
+    runtime: Arc<tokio::runtime::Runtime>,
 }
 
 impl UsbBackend {
@@ -25,7 +31,9 @@ impl UsbBackend {
             .enable_time()
             .build()
             .map_err(|err| DeviceError::Service(format!("async runtime: {err}")))?;
-        Ok(Self { runtime })
+        Ok(Self {
+            runtime: Arc::new(runtime),
+        })
     }
 
     fn provider(&self, device: &DeviceRef) -> Result<UsbmuxdProvider> {
@@ -37,6 +45,39 @@ impl UsbBackend {
                 .map_err(|_| DeviceError::NotFound(device.udid.clone()))?;
             Ok(found.to_provider(UsbmuxdAddr::default(), LABEL))
         })
+    }
+}
+
+/// How long a read on a live connection waits before reporting `TimedOut`.
+const READ_WAIT: Duration = Duration::from_millis(100);
+
+/// A usbmuxd connection to a port on the phone, as a blocking stream.
+struct PortStream {
+    runtime: Arc<tokio::runtime::Runtime>,
+    socket: Box<dyn idevice::ReadWrite>,
+}
+
+impl std::io::Read for PortStream {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let socket = &mut self.socket;
+        self.runtime.block_on(async {
+            match tokio::time::timeout(READ_WAIT, socket.read(buf)).await {
+                Ok(result) => result,
+                Err(_) => Err(std::io::ErrorKind::TimedOut.into()),
+            }
+        })
+    }
+}
+
+impl std::io::Write for PortStream {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let socket = &mut self.socket;
+        self.runtime.block_on(socket.write(buf))
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        let socket = &mut self.socket;
+        self.runtime.block_on(socket.flush())
     }
 }
 
@@ -199,6 +240,37 @@ impl DeviceBackend for UsbBackend {
             }
             Ok(names)
         })
+    }
+
+    fn connect_port(&self, device: &DeviceRef, port: u16) -> Result<Box<dyn LiveStream>> {
+        let socket = self.runtime.block_on(async {
+            let found = mux()
+                .await?
+                .get_device(&device.udid)
+                .await
+                .map_err(|_| DeviceError::NotFound(device.udid.clone()))?;
+            // `connect_to_device` turns the usbmuxd connection into the
+            // tunnel, so it needs one of its own.
+            let idevice = mux()
+                .await?
+                .connect_to_device(found.device_id, port, LABEL)
+                .await
+                .map_err(|err| match err {
+                    IdeviceError::Usbmuxd(
+                        idevice::usbmuxd::errors::UsbmuxdError::ConnectionRefused,
+                    ) => DeviceError::AppNotListening,
+                    other => DeviceError::Usbmuxd {
+                        reason: describe(&other),
+                    },
+                })?;
+            idevice
+                .get_socket()
+                .ok_or_else(|| DeviceError::Service("usbmuxd gave no socket".into()))
+        })?;
+        Ok(Box::new(PortStream {
+            runtime: self.runtime.clone(),
+            socket,
+        }))
     }
 
     fn pull_crash_report(&self, device: &DeviceRef, name: &str) -> Result<Vec<u8>> {

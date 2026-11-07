@@ -61,7 +61,7 @@ case "$MODE" in
   ios)
     TARGET="${FORGE_IOS_TARGET:-aarch64-apple-ios}"
     PROFILE="${FORGE_IOS_PROFILE:-release}"
-    WANT="${TARGET}|${PROFILE}|${SDKROOT:-}"
+    WANT="${TARGET}|${PROFILE}|${SDKROOT:-}|${FORGE_RUST_FEATURES:-}"
     ;;
   android)
     ABIS="${FORGE_ANDROID_ABIS:-arm64-v8a x86_64}"

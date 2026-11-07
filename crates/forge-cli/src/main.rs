@@ -7,6 +7,7 @@ mod diagnose;
 mod doctor;
 mod ios_builder;
 mod ios_env;
+mod live;
 mod runner;
 
 use clap::{Parser, Subcommand};
@@ -86,8 +87,9 @@ enum Commands {
         #[command(subcommand)]
         cmd: RunCommands,
     },
-    /// A connected iPhone over USB, from Linux: its details, live logs and
-    /// crash reports (needs usbmuxd and a phone that trusts this computer)
+    /// A connected iPhone over USB, from Linux: its details, system log and
+    /// crash reports, and the live connection to a development build of your
+    /// app (needs usbmuxd and a phone that trusts this computer)
     Device {
         #[command(subcommand)]
         cmd: DeviceCommands,
@@ -109,8 +111,8 @@ enum DeviceCommands {
         /// Which phone, when several are connected
         #[arg(long)]
         udid: Option<String>,
-        /// Only this process's lines: the app's executable name as the log
-        /// shows it (for example `Chat`)
+        /// Only this process's lines: the app's executable as the log shows
+        /// it (`AppHostXtool` for apps made with `forge init`)
         #[arg(long, value_name = "NAME")]
         process: Option<String>,
         /// Only lines containing this text (case-insensitive)
@@ -132,6 +134,61 @@ enum DeviceCommands {
         #[arg(long, value_name = "DIR")]
         pull: Option<PathBuf>,
     },
+    /// Pair this computer with the development build on screen (once per app
+    /// and phone; the app must be built with `forge run ios --devtools`)
+    Pair {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// Forget the pairing on the phone and on this computer
+    Unpair {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// The paired app's phase, uptime, probes and commands
+    Status {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// The values of the state probes the app registered
+    Snapshot {
+        #[command(flatten)]
+        live: LiveArgs,
+    },
+    /// Run one of the app's own commands; with no name, list them
+    Cmd {
+        #[command(flatten)]
+        live: LiveArgs,
+        /// The command's name
+        name: Option<String>,
+        /// Its arguments
+        args: Vec<String>,
+    },
+    /// The app's own log and lifecycle, live; carries on when the app comes
+    /// back from the background. Ctrl-C stops
+    Connect {
+        #[command(flatten)]
+        live: LiveArgs,
+        /// Show this many buffered records from before connecting
+        #[arg(long, value_name = "N", default_value_t = 50)]
+        tail: u32,
+        /// Stop after this many records
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+        /// Stop when the app goes to the background instead of waiting
+        #[arg(long)]
+        no_follow: bool,
+    },
+}
+
+#[derive(clap::Args)]
+struct LiveArgs {
+    /// Which phone, when several are connected
+    #[arg(long)]
+    udid: Option<String>,
+    /// The port the development build listens on
+    #[arg(long, default_value_t = forge_devproto::DEFAULT_PORT, hide = true)]
+    port: u16,
 }
 
 #[derive(Subcommand)]
@@ -194,6 +251,10 @@ enum BuildCommands {
         /// Build the Swift app in the release configuration (xtool dev build -c release)
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
+        /// Include the live connection to `forge device` (pair, connect,
+        /// status, snapshot, cmd). For development only
+        #[arg(long)]
+        devtools: bool,
     },
     /// Build an Android app (work in progress: no new features while Forge focuses on iOS)
     Android {
@@ -229,6 +290,10 @@ enum RunCommands {
         /// Build the Swift app in the release configuration (xtool dev run -c release)
         #[arg(long)]
         release: bool,
+        /// Include the live connection to `forge device` (pair, connect,
+        /// status, snapshot, cmd). For development only
+        #[arg(long)]
+        devtools: bool,
     },
 }
 
@@ -305,6 +370,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 project,
                 package_only,
                 release,
+                devtools,
             } => {
                 let project = project_or_default(project, "examples/counter");
                 commands::build_ios(
@@ -314,6 +380,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     &project,
                     package_only,
                     configuration(release),
+                    devtools,
                 )
             }
             BuildCommands::Android { project, install } => {
@@ -347,15 +414,49 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     pull.as_deref(),
                     &mut out,
                 ),
+                DeviceCommands::Pair { live } => {
+                    with_target(&backend, &live, |t| live::pair(t, &mut out))
+                }
+                DeviceCommands::Unpair { live } => {
+                    with_target(&backend, &live, |t| live::unpair(t, &mut out))
+                }
+                DeviceCommands::Status { live } => {
+                    with_target(&backend, &live, |t| live::status(t, &mut out))
+                }
+                DeviceCommands::Snapshot { live } => {
+                    with_target(&backend, &live, |t| live::snapshot(t, &mut out))
+                }
+                DeviceCommands::Cmd { live, name, args } => with_target(&backend, &live, |t| {
+                    live::cmd(t, name.as_deref(), &args, &mut out)
+                }),
+                DeviceCommands::Connect {
+                    live,
+                    tail,
+                    limit,
+                    no_follow,
+                } => with_target(&backend, &live, |t| {
+                    live::connect(t, tail, limit, !no_follow, &mut out)
+                }),
             }
         }
         Commands::Install { cmd } => match cmd {
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },
         Commands::Run { cmd } => match cmd {
-            RunCommands::Ios { project, release } => {
+            RunCommands::Ios {
+                project,
+                release,
+                devtools,
+            } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(runner, &ios, &root, &project, configuration(release))
+                commands::run_ios(
+                    runner,
+                    &ios,
+                    &root,
+                    &project,
+                    configuration(release),
+                    devtools,
+                )
             }
         },
     }
@@ -402,6 +503,21 @@ fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     }
+}
+
+/// Runs a live-connection command against the default pairing store.
+fn with_target(
+    backend: &dyn forge_device::DeviceBackend,
+    args: &LiveArgs,
+    run: impl FnOnce(&live::Target) -> Result<(), String>,
+) -> Result<(), String> {
+    let store = forge_device::PairingStore::default_location().map_err(|e| e.to_string())?;
+    run(&live::Target {
+        backend,
+        udid: args.udid.as_deref(),
+        port: args.port,
+        store: &store,
+    })
 }
 
 #[cfg(test)]

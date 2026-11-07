@@ -1,0 +1,15 @@
+[package]
+name = "forge-devtools"
+version = "0.1.0"
+description = "The app end of the Forge Device live connection. Linked only into development builds (the app crate's `devtools` feature)."
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+forge-devproto = { path = "../forge-devproto" }
+forge-runtime = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

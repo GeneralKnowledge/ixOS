@@ -1,7 +1,7 @@
 [package]
 name = "forge-device"
 version = "0.1.0"
-description = "Developer access to a connected iPhone from Linux: device info, live logs and crash reports over usbmuxd"
+description = "Developer access to a connected iPhone from Linux: device info, system log, crash reports and the live connection to development builds, over usbmuxd"
 edition.workspace = true
 license.workspace = true
 rust-version.workspace = true
@@ -20,3 +20,9 @@ idevice = { version = "=0.1.68", default-features = false, features = [
 tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
 plist = "1"
 thiserror = { workspace = true }
+forge-devproto = { path = "../forge-devproto" }
+
+[dev-dependencies]
+forge-devtools = { path = "../forge-devtools" }
+forge-runtime = { workspace = true }
+tempfile = "3.14"
