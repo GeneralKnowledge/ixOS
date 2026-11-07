@@ -224,6 +224,11 @@ A test acts only on its own app. Before every tap, typing, expectation and tree 
 
 `forge ui run` exits non-zero on the first failing step and never reports success for a step it could not check. For each failure it prints the step, the error (for a missing element, the locator; for a wrong value, what was expected and what was found), and the elements on screen that a test could target instead. It also saves the screen as `failure-stepN-tree.txt` and `failure-stepN-tree.json`, and a screenshot as `failure-stepN.png`. With `forge --json`, the result's `data` has the same: `failed_step.{step, action, error, on_screen, tree}` and the screenshot paths. `forge --json ui tree` returns the whole tree as JSON nodes (`kind`, `identifier`, `label`, `value`, `enabled`, `visible`, `frame`, `children`) plus the audit findings.
 
+### When the phone refuses
+
+- **`Not authorized for performing UI testing actions` (XCTDaemonErrorDomain 41)** on every action while `forge ui setup` reports WDA ready: turn on Settings > Developer > Enable UI Automation on the phone (iOS 17 and later).
+- To see what the phone's test daemon answered, run any `forge ui` command with `FORGE_UI_DEBUG=1`. It prints `idevice`'s debug log to stderr, including `authorize_test reply: …` for the runner's UI testing authorisation. `idevice` treats any answer other than `false` there as success.
+
 ### What still needs the phone
 
 Everything above is tested on Linux against a fake driver and canned WebDriverAgent replies. These parts have only been checked against the source of `idevice` and WDA, and need a run on Cati:

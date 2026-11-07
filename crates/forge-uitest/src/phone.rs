@@ -55,6 +55,7 @@ pub struct DdiFiles {
 impl Phone {
     /// The phone with this UDID, or the only one connected.
     pub fn open(udid: Option<&str>) -> Result<Phone> {
+        debug_log_from_env();
         let backend =
             forge_device::UsbBackend::new().map_err(|e| UiError::Device(e.to_string()))?;
         let device = forge_device::pick_device(&backend, udid)
@@ -261,6 +262,25 @@ pub fn sideloaded(apps: &[String]) -> Vec<String> {
         .filter(|id| id.starts_with("XTL-"))
         .cloned()
         .collect()
+}
+
+/// With `FORGE_UI_DEBUG=1`, prints idevice's debug log (lockdown,
+/// testmanagerd and XCTest replies, e.g. the answer to the runner's UI
+/// testing authorisation) to stderr. Off by default: it is noisy.
+fn debug_log_from_env() {
+    use tracing_subscriber::prelude::*;
+    if std::env::var_os("FORGE_UI_DEBUG").is_none_or(|v| v.is_empty() || v == "0") {
+        return;
+    }
+    let only_idevice = tracing_subscriber::filter::Targets::new()
+        .with_target("idevice", tracing_subscriber::filter::LevelFilter::DEBUG);
+    let _ = tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(only_idevice),
+        )
+        .try_init();
 }
 
 /// A running WebDriverAgent; stops when dropped.
