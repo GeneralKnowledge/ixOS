@@ -196,11 +196,30 @@ impl DeviceBackend for UsbBackend {
     }
 
     fn syslog(&self, device: &DeviceRef, on_line: &mut dyn FnMut(&str) -> bool) -> Result<()> {
+        self.syslog_until(device, None, on_line)
+    }
+
+    fn syslog_until(
+        &self,
+        device: &DeviceRef,
+        until: Option<std::time::Instant>,
+        on_line: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<()> {
         let provider = self.provider(device)?;
         self.runtime.block_on(async {
             let mut relay: SyslogRelayClient = connect(&provider).await?;
             loop {
-                let line = match relay.next().await {
+                let next = match until {
+                    Some(until) => {
+                        match tokio::time::timeout_at(until.into(), relay.next()).await {
+                            Ok(next) => next,
+                            // Time is up, whether or not the phone logged anything.
+                            Err(_) => return Ok(()),
+                        }
+                    }
+                    None => relay.next().await,
+                };
+                let line = match next {
                     Ok(line) => line,
                     // The phone was unplugged or locked down the service.
                     Err(IdeviceError::UnexpectedResponse(_)) => return Ok(()),

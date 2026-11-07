@@ -7,6 +7,10 @@ import UniformTypeIdentifiers
 /// Photos and documents (M3). Rust keeps, uploads, downloads and checks the
 /// files; Swift picks them, shrinks photos, draws thumbnails and previews.
 
+/// Swift-side attachment failures, in the same log as Rust's
+/// (`forge device logs`, the live stream).
+let attachmentLog = ForgeLog("Attachments")
+
 /// A file picked in the composer, waiting to be sent with the next message.
 /// `url` is a private copy in the temporary directory: Rust copies it again
 /// into its attachment store when it is sent.
@@ -37,42 +41,16 @@ enum AttachmentFiles {
     }
 
     /// A picked photo as a JPEG of at most `maxPhotoPixels`, the right way
-    /// up, without its location or other metadata. ImageIO decodes straight
-    /// to the smaller size, so a 12 MP photo never sits in memory at full
-    /// size. Runs off the main actor.
+    /// up, without its location or other metadata (`ForgeImages`). Runs off
+    /// the main actor.
     static func preparePhoto(_ data: Data, takenAt date: Date = .now) async throws -> StagedFile {
-        try await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPhotoPixels,
-            ]
-            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-            else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyyMMdd_HHmmss"
-            let name = "IMG_\(formatter.string(from: date)).jpg"
-            let url = try stagingFolder().appendingPathComponent(name)
-            guard
-                let destination = CGImageDestinationCreateWithURL(
-                    url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
-            else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            CGImageDestinationAddImage(
-                destination, image,
-                [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            return StagedFile(url: url, name: name, mime: "image/jpeg")
-        }.value
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "IMG_\(formatter.string(from: date)).jpg"
+        let url = try stagingFolder().appendingPathComponent(name)
+        try await ForgeImages.writeDownscaledJPEG(from: data, maxPixels: maxPhotoPixels, to: url)
+        return StagedFile(url: url, name: name, mime: "image/jpeg")
     }
 
     /// A document from the Files picker, copied while its security scope is
@@ -121,27 +99,10 @@ enum AttachmentFiles {
         return name
     }
 
-    /// A decoded image handed from a background task to the main actor. A
-    /// `CGImage` is immutable, so sharing it is safe.
-    final class Decoded: @unchecked Sendable {
-        let image: CGImage?
-        init(_ image: CGImage?) { self.image = image }
-    }
-
     /// A thumbnail of the image at `url`, at most `maxPixels` on its longer
-    /// side, decoded off the main actor.
+    /// side, decoded off the main actor (`ForgeImages`).
     static func thumbnail(of url: URL, maxPixels: Int) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) { () -> Decoded in
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-                return Decoded(nil)
-            }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixels,
-            ]
-            return Decoded(CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary))
-        }.value.image
+        await ForgeImages.thumbnail(of: url, maxPixels: maxPixels)
     }
 
     /// "0:07", "1:23".

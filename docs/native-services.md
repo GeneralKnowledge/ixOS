@@ -127,6 +127,14 @@ ForgePermissions.openSettings()
 
 Links that arrive before any view has registered `onForgeDeepLink` are held, up to 16, and delivered to the first handler. This covers a cold launch from a link.
 
+## Swift helpers
+
+Some platform code has no Rust side at all. These files are copied into every app's `Generated/ForgeFFI`, whether or not it uses `native_services!`, from `crates/forge-services/swift/helpers/`:
+
+| Helper | What it does |
+|--------|--------------|
+| `ForgeImages` | `thumbnail(of: url, maxPixels:, cached:)` and `thumbnail(of: data, maxPixels:)` decode an image straight to the size shown, the right way up, off the main actor; `writeDownscaledJPEG(from:maxPixels:to:)` turns a picked photo into a smaller JPEG without its location or other metadata; `pixels(_ points:, scale:)` converts a view size. Uses ImageIO only |
+
 ## Optional services
 
 Device capabilities that link privacy-sensitive or heavy frameworks are opt-in. An app names the ones it uses in the macro call, and gets only those:
@@ -144,7 +152,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 | `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
 | `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudioSession`, `ForgeAudio.waveform` (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
 
-**How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review.
+**How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review. `forge config sync`, `forge config show` and every iOS build warn when the app selects `location`, `motion` or `bluetooth` but `forge.toml` lacks the matching `[ios.permissions]` text, because without it the service can only report `Unsupported` on the phone.
 
 **Live values.** Every optional service delivers through a `forge_services::Feed`. The first `watch` starts the platform updates, each value goes to every Rust listener, and dropping the last `Watch` stops them. Listeners run on the host's thread (the main thread for location, a serial queue for motion), so copy the value into your state and return. Watches that need a permission fail with `PermissionDenied` until it is granted, so ask from a button first:
 

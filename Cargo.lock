@@ -660,6 +660,7 @@ dependencies = [
  "forge-devproto",
  "forge-devtools",
  "forge-runtime",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",
@@ -739,6 +740,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
 ]

@@ -35,7 +35,7 @@ Times marked *measured* were measured for this page (cloud Linux container, x86_
 | 4. Install | Same command; xtool signs online, re-creates the profile, uploads the whole IPA | Not measured separately | First install: trust the profile on the phone. Every time the 3-app slot is full: delete an app on the phone |
 | 5. Launch | **Tap the icon.** xtool can't launch on iOS 17+ (`forge run ios` says so) | n/a | **Yes, every iteration** |
 | 6. Look at it | Look at the phone. Simulator screenshots exist only in macOS CI, for the starter, Pocket Library and Weather, and only when their Swift changes | n/a | **Yes, every iteration** |
-| 7. Logs | `forge device logs --grep "[target]"` (system log, Rust records only); `forge device connect` with `--devtools` (Rust records and lifecycle, not yet run on the phone) | Live | No, but Swift `print`/`Logger` output is missing from the live stream, and every starter app's process is `AppHostXtool` |
+| 7. Logs | `forge device logs --grep "[target]"` (system log, Rust records only); `forge device connect` with `--devtools` (Rust records and lifecycle, not yet run on the phone) | Live | No, but Swift `print`/`Logger` output is missing from the live stream, and starter apps made before 2026-11-07 share the process name `AppHostXtool` |
 | 8. Diagnose a crash | `forge device crashes --app … --pull` | Live | Reports are not symbolicated; no debugger from Linux |
 | 9. Test | Rust tests on Linux. XCTest only on macOS (`forge test` skips it). UI tests on the phone: PR #61, draft, not yet run on the phone | Rust: seconds. XCTest: macOS CI (step 3') | UI checks are manual runbooks (iphone-acceptance.md, ACCEPTANCE.md) |
 | 10. Repeat | Steps 2–7 again | | |
@@ -98,7 +98,7 @@ Smallest fixes:
 ### 4. Logs are incomplete and hard to filter — every diagnosis. Agent: partial
 
 - The live stream (`forge device connect`) carries only Rust's `forge_runtime::logging`. Swift `print`, `Logger` and caught Swift errors are not in it ("Swift-side logs not included", ledger). The fix is already planned as audit item C3 (a Swift log bridge into the same records); it should move up.
-- Every `forge init` app runs as `AppHostXtool`, so `forge device logs --process` and `crashes --app` can't tell two apps apart. Fix: let `forge init` name the xtool product after the app (`MyAppXtool`), as Chat does.
+- Every `forge init` app ran as `AppHostXtool`, so `forge device logs --process` and `crashes --app` couldn't tell two apps apart. Done (Phase 0.4): `forge init MyApp` now names the xtool product `MyAppXtool`. Pocket Library and Device Lab keep `AppHostXtool` until their open PRs land.
 - `forge device connect` has never run on the phone (ledger, M1 "iPhone: No"). Until it has, the main diagnosis tool is unproven. Run it at the next phone session.
 
 ### 5. The phone's state breaks the loop at random — weekly or worse; minutes to an hour each. Agent: **yes** when it needs hands on the phone
@@ -147,7 +147,7 @@ Each item is a small PR on existing crates. None adds a layer.
 | 4 | `forge device screenshot` (screenshotr) and the appearance set | 3 | #3's DDI mount, forge-devtools commands | 1 day |
 | 5 | Swift log bridge (audit C3) and per-app xtool product names | 4 | forge-devtools, forge-runtime logging | 1–2 days |
 | 6 | `forge device apps` (slots, expiry, remove) and `forge doctor --device` | 5 | forge-device | 1 day |
-| 7 | `--json` and exit codes on build/run/device/test | 8 | diagnose.rs; shape agreed with the MCP thread | 1–2 days |
+| 7 | `--json` and exit codes on build/run/device/test (done: `forge --json`, Phase 0.5) | 8 | diagnose.rs; shape agreed with the MCP thread | 1–2 days |
 | 8 | Patched xtool as the documented default; install time in the output | 6 | xtool fork | Hours |
 | 9 | Crash symbolication | 7 | forge-device | 1 day |
 

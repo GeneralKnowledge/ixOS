@@ -5,7 +5,8 @@
 use std::io::Write;
 use std::path::Path;
 
-use forge_device::{app_crash_reports, pick_device, DeviceBackend, LogFilter};
+use forge_device::{app_crash_reports, pick_device, DeviceBackend, DeviceInfo, LogFilter};
+use serde_json::{json, Value};
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -36,6 +37,47 @@ pub fn list(backend: &dyn DeviceBackend, out: &mut dyn Write) -> Result<(), Stri
     Ok(())
 }
 
+fn info_json(info: &DeviceInfo) -> Value {
+    json!({
+        "udid": info.udid,
+        "name": info.name,
+        "model": info.product_type,
+        "ios": info.ios_version,
+        "build": info.build_version,
+        "connection": info.connection.to_string(),
+        "developer_mode": info.developer_mode,
+    })
+}
+
+/// `forge device list --json`: `{"devices": [...]}`.
+pub fn list_data(backend: &dyn DeviceBackend) -> Result<Value, String> {
+    let devices = backend.devices().map_err(err)?;
+    if devices.is_empty() {
+        return Err(err(forge_device::DeviceError::NoDevice));
+    }
+    let list: Vec<Value> = devices
+        .iter()
+        .map(|device| match backend.info(device) {
+            Ok(info) => info_json(&info),
+            Err(e) => json!({
+                "udid": device.udid,
+                "connection": device.connection.to_string(),
+                "error": e.to_string(),
+            }),
+        })
+        .collect();
+    Ok(json!({ "devices": list }))
+}
+
+/// `forge device info --json`: the phone's details; also names the phone in
+/// the result's `device`.
+pub fn info_data(backend: &dyn DeviceBackend, udid: Option<&str>) -> Result<Value, String> {
+    let device = pick_device(backend, udid).map_err(err)?;
+    let info = backend.info(&device).map_err(err)?;
+    crate::report::set_device(&info.udid, Some(&info.name));
+    Ok(info_json(&info))
+}
+
 /// `forge device info`
 pub fn info(
     backend: &dyn DeviceBackend,
@@ -64,19 +106,22 @@ pub fn info(
 }
 
 /// `forge device logs`: streams until the phone disconnects, `limit` lines
-/// have matched, or the user presses Ctrl-C.
+/// have matched, `duration` has passed, or the user presses Ctrl-C.
 pub fn logs(
     backend: &dyn DeviceBackend,
     udid: Option<&str>,
     filter: &LogFilter,
     limit: Option<usize>,
+    duration: Option<std::time::Duration>,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let device = pick_device(backend, udid).map_err(err)?;
+    crate::report::set_device(&device.udid, None);
+    let until = duration.map(|d| std::time::Instant::now() + d);
     let mut shown = 0usize;
     let mut write_failed = None;
     backend
-        .syslog(&device, &mut |line| {
+        .syslog_until(&device, until, &mut |line| {
             if !filter.matches(line) {
                 return true;
             }
@@ -104,16 +149,7 @@ pub fn crashes(
     pull: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    let device = pick_device(backend, udid).map_err(err)?;
-    let all = backend.crash_reports(&device).map_err(err)?;
-    let names = match app {
-        Some(app) => app_crash_reports(&all, app),
-        None => {
-            let mut all = all;
-            all.sort();
-            all
-        }
-    };
+    let (device, names) = crash_names(backend, udid, app)?;
     if names.is_empty() {
         writeln!(
             out,
@@ -130,17 +166,68 @@ pub fn crashes(
             }
         }
         Some(dir) => {
-            std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
-            for name in &names {
-                let bytes = backend.pull_crash_report(&device, name).map_err(err)?;
-                let file = dir.join(name.rsplit('/').next().unwrap_or(name));
-                std::fs::write(&file, bytes)
-                    .map_err(|e| format!("write {}: {e}", file.display()))?;
+            for file in pull_reports(backend, &device, &names, dir)? {
                 writeln!(out, "{}", file.display()).map_err(err)?;
             }
         }
     }
     Ok(())
+}
+
+/// `forge device crashes --json`: `{"reports": [...]}`, plus `"pulled"`
+/// (local paths) with `--pull`.
+pub fn crashes_data(
+    backend: &dyn DeviceBackend,
+    udid: Option<&str>,
+    app: Option<&str>,
+    pull: Option<&Path>,
+) -> Result<Value, String> {
+    let (device, names) = crash_names(backend, udid, app)?;
+    let mut data = json!({ "reports": names });
+    if let Some(dir) = pull {
+        let files = pull_reports(backend, &device, &names, dir)?;
+        data["pulled"] = json!(files
+            .iter()
+            .map(|f| f.display().to_string())
+            .collect::<Vec<_>>());
+    }
+    Ok(data)
+}
+
+fn crash_names(
+    backend: &dyn DeviceBackend,
+    udid: Option<&str>,
+    app: Option<&str>,
+) -> Result<(forge_device::DeviceRef, Vec<String>), String> {
+    let device = pick_device(backend, udid).map_err(err)?;
+    crate::report::set_device(&device.udid, None);
+    let all = backend.crash_reports(&device).map_err(err)?;
+    let names = match app {
+        Some(app) => app_crash_reports(&all, app),
+        None => {
+            let mut all = all;
+            all.sort();
+            all
+        }
+    };
+    Ok((device, names))
+}
+
+fn pull_reports(
+    backend: &dyn DeviceBackend,
+    device: &forge_device::DeviceRef,
+    names: &[String],
+    dir: &Path,
+) -> Result<Vec<std::path::PathBuf>, String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let mut files = Vec::new();
+    for name in names {
+        let bytes = backend.pull_crash_report(device, name).map_err(err)?;
+        let file = dir.join(name.rsplit('/').next().unwrap_or(name));
+        std::fs::write(&file, bytes).map_err(|e| format!("write {}: {e}", file.display()))?;
+        files.push(file);
+    }
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -217,7 +304,7 @@ mod tests {
             process: Some("Chat".into()),
             contains: None,
         };
-        let shown = text(|out| logs(&Fake, None, &filter, Some(2), out));
+        let shown = text(|out| logs(&Fake, None, &filter, Some(2), None, out));
         assert_eq!(
             shown,
             "Nov  7 12:00 iPhone Chat[1] <Notice>: [chat] opened\n\

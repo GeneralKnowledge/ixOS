@@ -44,6 +44,10 @@ forge_runtime::app_shell! {
 // `ForgeServices.install()`; see docs/native-services.md.
 forge_services::native_services!(audio);
 
+// `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
+// into the same log as Rust (system log, recent records, `forge device`).
+forge_runtime::log_export!();
+
 /// Events queued per consumer before older ones are dropped
 /// (`ChatEvent::EventsDropped`).
 pub const EVENT_QUEUE_CAPACITY: usize = 512;
