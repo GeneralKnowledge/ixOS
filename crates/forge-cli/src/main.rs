@@ -75,14 +75,15 @@ enum Commands {
 
 #[derive(Subcommand)]
 enum BindingsCommands {
-    /// With --project, regenerates that app's Generated/ from its Rust crate
-    /// (Swift or Kotlin, from the app's platform). Otherwise writes the shared
-    /// forge-ffi bindings to --out.
+    /// Regenerates an app's Generated/ from its Rust crate (Swift or Kotlin,
+    /// from the app's platform): the app given by --project, or the current
+    /// directory when it has forge.toml. With --out, writes the shared
+    /// forge-ffi bindings there instead (default: examples/counter/Generated).
     Generate {
         #[arg(long, conflicts_with_all = ["out", "language"])]
         project: Option<PathBuf>,
-        #[arg(long, default_value = "examples/counter/Generated")]
-        out: PathBuf,
+        #[arg(long)]
+        out: Option<PathBuf>,
         #[arg(long, default_value = "swift", value_parser = ["swift", "kotlin"])]
         language: String,
     },
@@ -148,7 +149,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     let root = commands::workspace_root();
     let ios = ios_builder::XtoolBuilder;
     match cli.command {
-        Commands::Doctor { json: false } => commands::doctor(runner, &root),
+        Commands::Doctor { json: false } => doctor::print_text(runner, &root),
         Commands::Doctor { json: true } => doctor::print_json(runner, &root),
         Commands::Check { fail_fast } => {
             let host = check::Host::detect(runner, &root);
@@ -171,9 +172,24 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             } => commands::bindings_generate_for_project(runner, &root, &project),
             BindingsCommands::Generate {
                 project: None,
-                out,
+                out: Some(out),
                 language,
             } => commands::bindings_generate(runner, &root, &out, &language),
+            BindingsCommands::Generate {
+                project: None,
+                out: None,
+                language,
+            } => match project_or_default(None, "") {
+                app if !app.as_os_str().is_empty() => {
+                    commands::bindings_generate_for_project(runner, &root, &app)
+                }
+                _ => commands::bindings_generate(
+                    runner,
+                    &root,
+                    std::path::Path::new("examples/counter/Generated"),
+                    &language,
+                ),
+            },
         },
         Commands::Build { cmd } => match cmd {
             BuildCommands::Ios {

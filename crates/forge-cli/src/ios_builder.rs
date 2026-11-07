@@ -54,7 +54,7 @@ impl IosBuilder for XtoolBuilder {
         if which_program(runner, XTOOL) {
             Ok(())
         } else {
-            Err("xtool not available: use --package-only for macOS/Xcode builds, or install xtool + Darwin SDK (see docs/linux-setup.md)".into())
+            Err("xtool is not installed: install it and its Darwin SDK (docs/linux-setup.md; `forge doctor` lists what is missing). On macOS you can instead build with --package-only and Xcode (docs/ios-xcode.md)".into())
         }
     }
 

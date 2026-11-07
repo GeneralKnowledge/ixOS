@@ -1,5 +1,6 @@
-//! `forge doctor --json`: the same readiness facts as `forge doctor`, as one
-//! JSON object on stdout for CI and scripts.
+//! `forge doctor`: what this machine can build, and what to install for the
+//! rest. `--json` prints the same report as one JSON object for CI and
+//! scripts; without it the report is text with one fix per missing piece.
 
 use std::path::Path;
 
@@ -230,8 +231,173 @@ pub fn print_json(runner: &dyn CommandRunner, root: &Path) -> Result<(), String>
     Ok(())
 }
 
+/// One workflow's readiness, with a fix for each missing piece.
+#[derive(Debug, PartialEq, Eq)]
+pub struct Workflow {
+    pub name: &'static str,
+    pub ready: bool,
+    pub fixes: Vec<String>,
+}
+
+/// What each workflow still needs, in the order to fix it.
+pub fn workflows(r: &Report) -> Vec<Workflow> {
+    let ok = |n: &str| {
+        r.tools
+            .iter()
+            .any(|t| t.name == n && t.status == Status::Ok)
+    };
+    let set = |n: &str| r.env.iter().any(|e| e.name == n && e.value.is_some());
+    let has_target = |t: &str| r.rust_targets.iter().any(|x| x == t);
+
+    let mut rust = Vec::new();
+    if !ok("rustc") || !ok("cargo") {
+        rust.push("install Rust with rustup: https://rustup.rs".to_string());
+    }
+    if !r.workspace.valid {
+        rust.push(format!(
+            "{} is not a Forge checkout: run forge inside the checkout or set FORGE_WORKSPACE",
+            r.workspace.path
+        ));
+    }
+
+    let mut ios = Vec::new();
+    if !ok("swift") {
+        ios.push("install Swift 6 (docs/linux-setup.md)".to_string());
+    }
+    if !ok("xtool") {
+        ios.push("install xtool (docs/linux-setup.md)".to_string());
+    }
+    if !has_target(IOS_TARGET) {
+        ios.push(format!("rustup target add {IOS_TARGET}"));
+    }
+    if !r
+        .swift_sdks
+        .iter()
+        .any(|s| s.to_lowercase().contains("darwin"))
+    {
+        ios.push(
+            "xtool setup with an Xcode.xip, to install the Darwin SDK (docs/linux-setup.md)"
+                .to_string(),
+        );
+    }
+    // Installing on a device from Linux; not needed to build.
+    if r.host.os == "linux" && !ok("usbmuxd") {
+        ios.push("to install on an iPhone: install usbmuxd (docs/linux-setup.md)".to_string());
+    }
+
+    let mut android = Vec::new();
+    if !ok("java") {
+        android.push("install JDK 17 (docs/android-setup.md)".to_string());
+    }
+    if !(set("ANDROID_HOME") || set("ANDROID_SDK_ROOT")) {
+        android.push(
+            "install the Android SDK and set ANDROID_HOME (docs/android-setup.md)".to_string(),
+        );
+    }
+    if !(set("ANDROID_NDK_HOME") || set("NDK_HOME")) {
+        android
+            .push("install the NDK and set ANDROID_NDK_HOME (docs/android-setup.md)".to_string());
+    }
+    if !ok("cargo-ndk") {
+        android.push("cargo install cargo-ndk".to_string());
+    }
+    if !ANDROID_TARGETS.iter().any(|t| has_target(t)) {
+        android.push(format!("rustup target add {}", ANDROID_TARGETS.join(" ")));
+    }
+    if !ok("adb") {
+        android
+            .push("to install on a phone: put the SDK's platform-tools (adb) on PATH".to_string());
+    }
+
+    vec![
+        Workflow {
+            name: "Rust core, tests and bindings",
+            ready: r.ready.rust && r.workspace.valid,
+            fixes: rust,
+        },
+        Workflow {
+            name: "iOS from Linux (xtool, device builds)",
+            ready: r.ready.ios_xtool,
+            fixes: ios,
+        },
+        Workflow {
+            name: "Android (Gradle, debug APK)",
+            ready: r.ready.android,
+            fixes: android,
+        },
+    ]
+}
+
+/// The text report: tool versions, then each workflow with its fixes.
+pub fn render_text(r: &Report) -> String {
+    let mut out = format!(
+        "Forge {} on {}/{}\nWorkspace: {}{}\n\nTools:\n",
+        r.forge_version,
+        r.host.os,
+        r.host.arch,
+        r.workspace.path,
+        if r.workspace.valid {
+            ""
+        } else {
+            " (not a Forge checkout)"
+        }
+    );
+    for t in &r.tools {
+        let state = match t.status {
+            Status::Ok => t.version.clone().unwrap_or_else(|| "ok".into()),
+            Status::Missing => "missing".into(),
+            Status::Error => format!("error: {}", t.detail.clone().unwrap_or_default()),
+        };
+        out.push_str(&format!("  {:<10} {state}\n", t.name));
+    }
+    out.push('\n');
+    for w in workflows(r) {
+        let mark = if w.ready { "ready" } else { "not ready" };
+        out.push_str(&format!("{}: {mark}\n", w.name));
+        for fix in &w.fixes {
+            out.push_str(&format!("  - {fix}\n"));
+        }
+    }
+    if r.host.os == "macos" {
+        out.push_str("\nOn macOS you can also build iOS apps with Xcode instead of xtool (docs/ios-xcode.md).\n");
+    }
+    out.push_str("Signing, device pairing and SDK licences are not checked. Tested versions: docs/compatibility.md\n");
+    out
+}
+
+pub fn print_text(runner: &dyn CommandRunner, root: &Path) -> Result<(), String> {
+    let report = report(runner, root, &|k| {
+        std::env::var_os(k).map(|v| v.to_string_lossy().into_owned())
+    });
+    print!("{}", render_text(&report));
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn text_report_names_a_fix_for_every_missing_piece() {
+        let mock = MockRunner::default();
+        let r = report(&mock, &workspace_root(), &|_| None);
+        let flows = workflows(&r);
+        assert!(flows.iter().all(|w| !w.ready));
+        let ios = &flows[1];
+        assert!(ios
+            .fixes
+            .iter()
+            .any(|f| f == "rustup target add aarch64-apple-ios"));
+        assert!(ios.fixes.iter().any(|f| f.contains("xtool setup")));
+        let android = &flows[2];
+        assert!(android.fixes.iter().any(|f| f == "cargo install cargo-ndk"));
+        assert!(android.fixes.iter().any(|f| f.contains("ANDROID_NDK_HOME")));
+        let text = render_text(&r);
+        assert!(
+            text.contains("Android (Gradle, debug APK): not ready"),
+            "{text}"
+        );
+        assert!(text.contains("  xtool      missing"), "{text}");
+    }
+
     use super::*;
     use crate::commands::workspace_root;
     use crate::runner::MockRunner;

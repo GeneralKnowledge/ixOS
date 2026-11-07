@@ -173,6 +173,16 @@ Automated coverage stops at the JVM: Rust tests run real TLS handshakes against 
 3. Full chat over HTTPS (optional, needs a public certificate in front of the mock server): run `make mock-chat` on the laptop and a tunnel with a real certificate, for example `cloudflared tunnel --url http://localhost:8787`. Use the `https://….trycloudflare.com` URL in the app: rooms load, sending works, a message posted with curl to the tunnel appears live, and leaving a room stops its stream.
 4. `adb logcat | grep -i -E "forge|rustls|platformverifier"` shows no `ForgeAndroidInitException` or JNI errors.
 
+## Manual acceptance: a fresh app on an Android phone
+
+The end-to-end check for "create an app, write its logic in Rust, run it on a phone". Record the phone model, Android version, ABI, NDK and commit. Not yet run on a physical phone.
+
+1. `forge init NotesTest --platform android --bundle-id org.example.notestest --path ~/forge-test/NotesTest`, then in that folder: `cargo test --manifest-path rust/Cargo.toml`, `forge test --project .`, `forge build android --project . --install`.
+2. The app opens. Notes added survive swiping the app away and reopening; a deleted note stays deleted.
+3. "Network check": `https://example.com` shows `HTTP 200`; `expired.`, `wrong.host.`, `untrusted-root.` and `self-signed.badssl.com` each show "The server's certificate was rejected"; `https://localhost:1` and airplane mode show "You appear to be offline."
+4. Change `add_note` in `rust/src/lib.rs` (for example upper-case the text), `forge build android --project . --install` again: new notes show the change.
+5. `adb logcat -d | grep -i -E "ForgeAndroidInitException|UnsatisfiedLinkError|JNI"` prints nothing.
+
 ## Counter checklist
 
 | Test | Linux automated | Device manual |
