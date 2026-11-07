@@ -30,7 +30,7 @@ mod types;
 mod ureq_client;
 
 pub use cancel::{AbortRegistration, CancelHandle};
-pub use client::{HttpClient, NoopClient, StaticClient};
+pub use client::{download_to_file, HttpClient, NoopClient, StaticClient};
 #[cfg(feature = "ureq")]
 pub use platform::https_ready;
 pub use types::{
