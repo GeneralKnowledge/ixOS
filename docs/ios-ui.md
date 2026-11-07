@@ -214,7 +214,7 @@ The rule: if Rust needs the result in order to apply a rule or store it, pass th
 ## Checking the result
 
 - **Logic:** `forge test --project .` runs the app's Rust tests and, on a Mac, the XCTest suite against the real Rust library.
-- **Look:** The "Starter app screenshots" job (`.github/workflows/screenshots.yml`, run when `templates/ios-app/` changes or by hand from the Actions tab) renders a freshly generated app in the iOS Simulator in light and dark mode and at the largest text size, and uploads the screenshots as an artifact (`scripts/ios-screenshots.sh`). This is a review aid; the simulator is not part of the supported workflow.
+- **Look:** The Screenshots workflow (`.github/workflows/screenshots.yml`, run by hand from the Actions tab: Run workflow, pick the branch and `starter`) renders a freshly generated app in the iOS Simulator in light and dark mode and at the largest text size, and uploads the screenshots as an artifact (`scripts/ios-screenshots.sh`). This is a review aid; the simulator is not part of the supported workflow.
 - **Device:** `forge run ios --project .` builds with xtool and installs the app on a connected iPhone. Before calling a screen finished, check the back-swipe gesture, keyboard behaviour, sheets and dark mode on the phone (Settings › Display & Brightness).
 
 ## Examples

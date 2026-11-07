@@ -1,9 +1,46 @@
 name: macOS
 
+# The checks Linux cannot do: Swift host tests (XCTest against each app's
+# Rust core) and unsigned iOS device builds with Xcode, in one job so a pull
+# request takes one macOS runner, not several. macOS runners are few and
+# queue for a long time, so this runs only when something Swift or Xcode
+# depends on changes, and a pull request checks only the apps its diff
+# touches (scripts/ci-macos.sh). Pushes to main, a weekly run and
+# "Run workflow" (Actions tab, any branch) check every app.
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "LICENSE*"
+      - "examples/*-android/**"
+      - "templates/android-app/**"
+      - ".github/workflows/android.yml"
+      - ".github/workflows/screenshots.yml"
   pull_request:
+    paths:
+      - "**.swift"
+      - "**/Package.swift"
+      - "**/Generated/**"
+      - "**.xcodeproj/**"
+      - "**/forge.toml"
+      - "templates/ios-app/**"
+      - "templates/app-rust/**"
+      - "crates/forge-cli/**"
+      - "crates/forge-services/**"
+      - "scripts/ci-macos.sh"
+      - "scripts/test-swift-host.sh"
+      - "scripts/generate-bindings.sh"
+      - "scripts/forge-crate.sh"
+      - "scripts/build-rust-ios.sh"
+      - "scripts/package-ios-library.sh"
+      - "scripts/make-services-check-app.sh"
+      - ".github/workflows/macos.yml"
+      - "!examples/*-android/**"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,48 +52,8 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  swift-host-tests:
-    name: Swift host tests
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Rust toolchain
-        run: rustup show active-toolchain || rustup toolchain install
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - name: Show toolchain
-        run: |
-          xcodebuild -version
-          swift --version
-      - name: Counter example (XCTest)
-        run: ./scripts/test-swift-host.sh examples/counter
-      - name: Weather example (XCTest)
-        run: ./scripts/test-swift-host.sh examples/weather
-      - name: Chat (XCTest, app-owned crate, against the chat server)
-        run: ./scripts/test-swift-host.sh examples/chat
-      - name: Pocket Library (XCTest, app-owned crate)
-        run: ./scripts/test-swift-host.sh examples/pocket-library
-      # Device Lab selects every optional native service, so this compiles
-      # their Swift adapters and runs the macOS halves (connectivity, device
-      # status) against the real Rust core.
-      - name: Device Lab (XCTest, optional native services)
-        run: ./scripts/test-swift-host.sh examples/device-lab
-      # A new app outside the checkout, with its own Rust crate: `forge test`
-      # runs its Rust tests, regenerates its bindings and runs its XCTest suite.
-      - name: App generated outside the checkout (forge init --path, forge test)
-        run: |
-          APP="$RUNNER_TEMP/CiTemplateApp"
-          cargo run -q -p forge-cli -- init CiTemplateApp --platform ios --bundle-id org.example.citemplate --path "$APP"
-          cargo run -q -p forge-cli -- test --project "$APP"
-      # The native services device-check app (docs/native-services-device-check.md):
-      # its check screen and Rust checks must compile before anyone installs it.
-      - name: Native services check app (compiles, XCTest)
-        run: |
-          APP="$RUNNER_TEMP/ServicesCheck"
-          ./scripts/make-services-check-app.sh "$APP"
-          cargo run -q -p forge-cli -- test --project "$APP"
-
-  xcode-build:
-    name: Xcode iOS build
+  ios:
+    name: iOS (Swift tests, Xcode build)
     runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,54 +62,13 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-apple-ios
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # Chat, Pocket Library, Device Lab, a freshly generated app and the services check app.
-      # Counter and Weather are left out: their Swift is compiled by the host
-      # tests above and their Xcode projects are validated in rust.yml.
-      # The shared "App" scheme builds the app target (the Swift package has an
-      # executable product with the app's name, so a scheme named after it is ambiguous).
-      - name: Build Chat.xcodeproj (device, unsigned)
+      - name: Show toolchain
         run: |
-          xcodebuild build \
-            -project examples/chat/Xcode/Chat.xcodeproj \
-            -scheme App \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Build PocketLibrary.xcodeproj (device, unsigned)
-        run: |
-          xcodebuild build \
-            -project examples/pocket-library/Xcode/PocketLibrary.xcodeproj \
-            -scheme App \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-      # The iOS halves of the optional services (Core Motion, Core Location,
-      # Core Bluetooth) compile only here.
-      - name: Build DeviceLab.xcodeproj (device, unsigned)
-        run: |
-          xcodebuild build \
-            -project examples/device-lab/Xcode/DeviceLab.xcodeproj \
-            -scheme App \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Build an Xcode project generated outside the checkout
-        run: |
-          APP="$RUNNER_TEMP/CiXcodeApp"
-          cargo run -q -p forge-cli -- init CiXcodeApp --platform ios --bundle-id org.example.cixcode --path "$APP"
-          xcodebuild build \
-            -project "$APP/Xcode/CiXcodeApp.xcodeproj" \
-            -scheme App \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
-      - name: Build the native services check app for iOS (device, unsigned)
-        run: |
-          APP="$RUNNER_TEMP/ServicesCheckXcode"
-          ./scripts/make-services-check-app.sh "$APP"
-          xcodebuild build \
-            -project "$APP/Xcode/ServicesCheck.xcodeproj" \
-            -scheme App \
-            -destination 'generic/platform=iOS' \
-            -configuration Debug \
-            CODE_SIGNING_ALLOWED=NO
+          xcodebuild -version
+          swift --version
+      - name: Apps this pull request touches
+        if: github.event_name == 'pull_request'
+        run: ./scripts/ci-macos.sh affected "${{ github.event.pull_request.base.sha }}"
+      - name: Every app
+        if: github.event_name != 'pull_request'
+        run: ./scripts/ci-macos.sh all
