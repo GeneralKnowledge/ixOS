@@ -120,7 +120,7 @@ Owner: this thread; record the result in [ios-signing.md](../ios-signing.md) and
 
 - [ ] **Reuben decides** whether to join the paid program tonight. If not, skip to the fourth-app test, which should be refused.
 - [ ] If he joined: once Apple shows the membership as active, Reuben runs in a terminal on the laptop `xtool ds teams list`, then `xtool auth logout` and `xtool auth login`, picking the paid team. A new membership can take a while to become active; if the paid team isn't listed yet, carry on with the free plan and come back to this at the end.
-- [ ] Laptop: `xtool auth status` and `forge doctor --json`.
+- [ ] Laptop: `xtool auth status` and `forge doctor --json`. If the "Complete the development loop improvements" work (branch `claude/project-thread-7r54px`) is in the forge binary, `forge doctor` prints `Signing team: <name> (<id>), free/paid` from `xtool ds teams list`, which replaces asking Reuben.
 - [ ] **Fourth-app test.** With Pocket Library, AICheck and the runner installed, `forge run ios --project examples/device-lab --json`.
   - **Free team:** expected to be refused with "maximum number of apps for free development profiles". Record the exact message and whether Forge's `--json` result names the app limit as the cause and suggests removing an app.
   - **Paid team:** Device Lab installs and opens. Then follow [Paid team](#paid-team-install-side-by-side) for the rest of the evening. Reinstalling Pocket Library (`forge run ios`) on the new team also shows whether an app signed by the old team needs reinstalling.
@@ -132,6 +132,8 @@ Owner: this thread; record the result in [ios-signing.md](../ios-signing.md) and
 ## Step 4. The launch, screenshot and diagnostics loop — about 15 minutes
 
 Owner: "Speed up the Linux iOS dev loop" thread ([dev-loop.md](../dev-loop.md)). One measured cycle on Pocket Library with tonight's real commands, to see what an agent would get back. No code changes.
+
+**If `scripts/iphone-acceptance.sh` is available** (from the "Complete the development loop improvements" thread; it needs #61 in the same forge binary and `forge ui setup` done first), run it instead of the commands below: `scripts/iphone-acceptance.sh --app examples/pocket-library --with-ax-probe` (add `--with-mcp` if `forge mcp` is in the build). It removes nothing, only reinstalls Pocket Library over itself, and writes `results.md` (PASS/FAIL/SKIP per step) plus raw JSON. On a free team its S2 "paid team selected" step is expected to FAIL; that's the step 3 result, not a regression. Send `results.md` and the JSON to that thread. Otherwise, run the commands by hand:
 
 **Laptop (Remote Control), with timestamps for each command:**
 
