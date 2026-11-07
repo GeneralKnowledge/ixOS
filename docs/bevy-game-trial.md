@@ -1,6 +1,6 @@
 # Trial: an existing Bevy game on an iPhone, built on Linux
 
-Plan, 2026-11-07. Nothing here is built yet. This is a compatibility test: take a small open-source Bevy game, change it as little as possible, and get it running on a physical iPhone from Linux with Forge and xtool. What breaks tells us what ixOS is missing for real-time Rust apps. We do not build a Bevy framework. Anything that turns out to be reusable goes into ixOS as a general capability (see [architecture.md](architecture.md#framework-principles)).
+Plan, 2026-11-07. Kataster has been built for iPhone on Linux (see [Results so far](#results-so-far)); the trial files are in [`examples/kataster-ios/`](../examples/kataster-ios/). This is a compatibility test: take a small open-source Bevy game, change it as little as possible, and get it running on a physical iPhone from Linux with Forge and xtool. What breaks tells us what ixOS is missing for real-time Rust apps. We do not build a Bevy framework. Anything that turns out to be reusable goes into ixOS as a general capability (see [architecture.md](architecture.md#framework-principles)).
 
 ## The game: Kataster
 
@@ -84,17 +84,18 @@ We try route 1 first and fall back to route 2 if xtool can't sign a bundle it di
 
 ## Changes to the game
 
-The patch adds one file and touches two lines. It is kept in `examples/kataster-ios/` as a patch against d0a67e7.
+The patch adds one file and touches two lines. It is kept in `examples/kataster-ios/patch/` as a patch against d0a67e7.
 
 - **`Cargo.toml`:** add `virtual_joystick = "2.6"`.
 - **`src/main.rs`:** add `mod mobile;` and `app.add_plugins(mobile::MobilePlugin)`, compiled only for iOS.
 - **`src/mobile.rs`** (new, iOS only):
-  - A left virtual joystick. Up means thrust; left and right mean rotate. It presses Kataster's own `PlayerAction`s through leafwing's `ActionState`, so the game logic is unchanged.
-  - A fire button on the right and a pause button at the top.
+  - A floating virtual joystick on the left half of the screen. Up means thrust; left and right mean rotate. It presses Kataster's own `PlayerAction`s through leafwing's `ActionState` (in leafwing's `ManualControl` set), so the game logic is unchanged.
+  - Hold anywhere on the right half to fire; tap the top-right corner to pause or resume. These read raw `Touches` rather than Bevy UI buttons, because Bevy UI follows a single pointer and the joystick already holds one finger.
   - Menus: tapping a menu item selects it and presses `MenuAction::Accept`. This works by reading `Interaction` on the menu buttons.
   - Screen fit: the arena is a fixed 1280 x 800, larger than any phone in points. Set the camera's projection to `ScalingMode::AutoMin { 1280, 800 }` so the whole arena shows. The system only changes the camera Kataster spawns.
   - `WinitSettings::mobile()` and an `AppLifecycle` handler that moves the game to its own `Paused` state when the app is suspended.
-  - The **Exit** menu item does nothing on iOS, because apps don't quit themselves.
+  - The frame rate is logged every five seconds at warn level (`[trial] fps ...`), along with lifecycle changes, so `forge device logs` shows them.
+  - The **Exit** menu item still quits the app. iOS apps shouldn't quit themselves, but stopping it would mean changing Kataster's menus, which isn't worth it for a trial.
 
 Debug builds also enable Bevy Remote (an HTTP server) and the physics debug overlay. We build with `--release`, which drops both and is needed for frame rate anyway.
 
@@ -124,6 +125,21 @@ Reuse Forge Device and the UI testing work. Don't build anything game-specific.
    - no crash after 5 minutes of play;
    - roughly what frame rate the log shows.
 5. **Record the results** in the capability ledger and turn each gap into an ixOS item.
+
+## Results so far
+
+**Build, 2026-11-07, Reuben's laptop:** Kataster d0a67e7 built **unmodified** as an iOS executable. Setup was xtool 1.24.0, the iPhoneOS 26.0 SDK, Rust 1.97.0, the Swift toolchain's clang 17 and libclang 18.
+
+- **The binary:** Mach-O arm64, platform ios, minos 17.0. It links only system frameworks: UIKit, Foundation, CoreFoundation, AudioToolbox, CoreAudio, QuartzCore, Metal and CoreGraphics, plus libobjc, libSystem and libiconv.
+- **Time and size:** 9 minutes from cold (94 CPU-minutes). The binary is 147 MB, or 85 MB with symbols stripped; the assets are 1.1 MB.
+- **The iOS link worked first time** with `-fuse-ld=lld --ld-path=<sdk bundle>/toolset/bin/orig/ld64.lld`. The `toolset/bin/ld64.lld` beside it is xtool's wrapper script. bindgen for `coreaudio-sys` worked with `COREAUDIO_SDK_PATH` and `BINDGEN_EXTRA_CLANG_ARGS`. `examples/kataster-ios/build.sh` records the full environment.
+- **Two host fixes, no game changes:**
+  - Kataster's `.cargo/config.toml` (Bevy's fast-build template) sets `/usr/bin/clang` as the Linux linker. We override it with `CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER`.
+  - The laptop has no default rustup toolchain, so we set `RUSTUP_TOOLCHAIN`.
+- **lld warns:** "This version of lld does not support linking for platform iOS. Proceed at your own risk." It is the same lld that xtool uses for every Forge app, but only a launch on the phone will prove the binary works.
+- **Signing:** xtool 1.24.0 has no sign-only command for a bundle it didn't build. `xtool install <app>` signs and installs in one step. `xtool dev build --sign --ipa` signs locally, but only for SwiftPM projects. So we sign at install time for now. A local signing step (a stub SwiftPM wrapper, or rcodesign with xtool's certificate) is a gap.
+
+Not yet run on the iPhone.
 
 ## Expected gaps in ixOS
 

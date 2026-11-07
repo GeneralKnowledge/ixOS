@@ -1,0 +1,319 @@
+From 76d9278285670d84dcb32c05aab86daa34088148 Mon Sep 17 00:00:00 2001
+From: ixOS <noreply@example.com>
+Date: Sat, 7 Nov 2026 15:59:46 +0000
+Subject: [PATCH] ixOS iPhone trial: touch controls and iOS fixes
+
+---
+ Cargo.toml    |   6 +-
+ src/main.rs   |   5 +
+ src/mobile.rs | 260 ++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 270 insertions(+), 1 deletion(-)
+ create mode 100644 src/mobile.rs
+
+diff --git a/Cargo.toml b/Cargo.toml
+index d63de4b..2f9a419 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -14,4 +14,8 @@ bevy = { version = "0.17", features = ["bevy_remote"] }
+ leafwing-input-manager = "0.18"
+ rand = "0.8"
+ bevy_hanabi = "0.17"
+-avian2d = { version = "0.4" , features = [ "debug-plugin" ] } 
+\ No newline at end of file
++avian2d = { version = "0.4" , features = [ "debug-plugin" ] } 
++
++# ixOS iPhone trial (docs/bevy-game-trial.md): touch controls.
++[target.'cfg(target_os = "ios")'.dependencies]
++virtual_joystick = { version = "=2.6.0", default-features = false }
+diff --git a/src/main.rs b/src/main.rs
+index dd2b7f7..ebd9283 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -7,6 +7,8 @@ mod explosion;
+ mod hud;
+ mod laser;
+ mod menu;
++#[cfg(target_os = "ios")]
++mod mobile;
+ mod particle_effects;
+ mod player_ship;
+ mod state;
+@@ -79,6 +81,9 @@ fn main() {
+         BackgroundPlugin,
+     ));
+ 
++    #[cfg(target_os = "ios")]
++    app.add_plugins(mobile::MobilePlugin);
++
+     app.add_systems(OnEnter(AppState::Setup), setup_camera);
+ 
+     app.run();
+diff --git a/src/mobile.rs b/src/mobile.rs
+new file mode 100644
+index 0000000..6dc03a0
+--- /dev/null
++++ b/src/mobile.rs
+@@ -0,0 +1,260 @@
++//! Touch controls and iPhone fixes for Kataster, added by the ixOS trial
++//! (docs/bevy-game-trial.md). Not part of upstream Kataster.
++//!
++//! Everything here drives Kataster's own input actions (`PlayerAction`,
++//! `MenuAction`) through leafwing's `ActionState`, so the game logic is
++//! unchanged:
++//! - left half of the screen: a floating joystick (up = thrust, left/right = rotate);
++//! - right half: hold to fire;
++//! - top-right corner: tap to pause or resume;
++//! - menus: tap an entry to choose it.
++//!
++//! It also fits the 1280 x 800 arena to the screen, updates only while the app
++//! is in the foreground, pauses the game when iOS suspends the app, and logs
++//! the frame rate every five seconds for `forge device logs`.
++
++use bevy::camera::ScalingMode;
++use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
++use bevy::ui::UiSystems;
++use bevy::window::{AppLifecycle, PrimaryWindow};
++use bevy::winit::WinitSettings;
++use leafwing_input_manager::plugin::InputManagerSystem;
++use virtual_joystick::{
++    JoystickFloating, NoAction, VirtualJoystickMessage, VirtualJoystickMessageType,
++    VirtualJoystickPlugin, create_joystick,
++};
++
++use crate::prelude::*;
++
++/// Thumb travel, from -1 to 1, before a direction counts.
++const DEAD_ZONE: f32 = 0.3;
++/// Size of the pause area in the top-right corner, in points.
++const PAUSE_AREA: f32 = 90.0;
++
++pub struct MobilePlugin;
++
++impl Plugin for MobilePlugin {
++    fn build(&self, app: &mut App) {
++        app.insert_resource(WinitSettings::mobile())
++            .add_plugins(VirtualJoystickPlugin::<String>::default())
++            .init_resource::<StickAxis>()
++            .add_systems(Update, fit_arena_to_screen)
++            .add_systems(OnEnter(AppState::Game), spawn_touch_controls)
++            .add_systems(
++                PreUpdate,
++                (
++                    read_stick,
++                    drive_ship.after(read_stick),
++                    touch_pause,
++                    tap_menu_entry.after(UiSystems::Focus),
++                )
++                    .in_set(InputManagerSystem::ManualControl),
++            )
++            .add_plugins(FrameTimeDiagnosticsPlugin::default())
++            .add_systems(Update, (pause_on_suspend, log_frame_rate));
++    }
++}
++
++/// The joystick's latest direction; zero when no thumb is on it.
++#[derive(Resource, Default)]
++struct StickAxis(Vec2);
++
++/// Shows the whole arena whatever the screen's shape; Kataster spawns a
++/// default 2D camera sized for a 1280 x 800 window.
++fn fit_arena_to_screen(mut cameras: Query<&mut Projection, Added<Camera2d>>) {
++    for mut projection in &mut cameras {
++        if let Projection::Orthographic(ortho) = projection.as_mut() {
++            ortho.scaling_mode = ScalingMode::AutoMin {
++                min_width: ARENA_WIDTH,
++                min_height: ARENA_HEIGHT,
++            };
++        }
++    }
++}
++
++fn spawn_touch_controls(mut commands: Commands, assets: Res<AssetServer>) {
++    // Kataster's own round sprite serves as knob and ring.
++    let sphere: Handle<Image> = assets.load("sprite_sphere_256x256.png");
++    create_joystick(
++        &mut commands,
++        "move".to_string(),
++        sphere.clone(),
++        sphere,
++        Some(Color::srgba(1.0, 1.0, 1.0, 0.5)),
++        Some(Color::srgba(1.0, 1.0, 1.0, 0.15)),
++        None,
++        Vec2::new(60., 60.),
++        Vec2::new(140., 140.),
++        Node {
++            width: Val::Percent(50.),
++            height: Val::Percent(100.),
++            position_type: PositionType::Absolute,
++            left: Val::Percent(0.),
++            bottom: Val::Percent(0.),
++            ..default()
++        },
++        JoystickFloating,
++        NoAction,
++    );
++    // Hints only: input comes from raw touches (see drive_ship, touch_pause),
++    // because Bevy UI tracks a single pointer and the joystick holds one.
++    for (label, node) in [
++        (
++            "FIRE",
++            Node {
++                position_type: PositionType::Absolute,
++                right: Val::Px(40.),
++                bottom: Val::Px(40.),
++                ..default()
++            },
++        ),
++        (
++            "II",
++            Node {
++                position_type: PositionType::Absolute,
++                right: Val::Px(24.),
++                top: Val::Px(16.),
++                ..default()
++            },
++        ),
++    ] {
++        commands.spawn((
++            Text::new(label),
++            TextFont {
++                font_size: 28.0,
++                ..default()
++            },
++            TextColor(Color::srgba(1.0, 1.0, 1.0, 0.35)),
++            node,
++            DespawnOnExit(AppState::Game),
++        ));
++    }
++}
++
++fn read_stick(
++    mut messages: MessageReader<VirtualJoystickMessage<String>>,
++    mut stick: ResMut<StickAxis>,
++) {
++    for message in messages.read() {
++        stick.0 = match message.get_type() {
++            VirtualJoystickMessageType::Up => Vec2::ZERO,
++            _ => *message.axis(),
++        };
++    }
++}
++
++/// Pressed every frame while held: leafwing releases actions that no input
++/// holds when it updates, just before this set runs.
++fn drive_ship(
++    stick: Res<StickAxis>,
++    touches: Res<Touches>,
++    window: Query<&Window, With<PrimaryWindow>>,
++    game_state: Option<Res<State<GameState>>>,
++    mut ships: Query<&mut ActionState<PlayerAction>>,
++) {
++    if game_state.is_none_or(|s| *s.get() != GameState::Running) {
++        return;
++    }
++    let Ok(window) = window.single() else {
++        return;
++    };
++    let width = window.width();
++    let firing = touches.iter().any(|t| {
++        let p = t.position();
++        p.x > width / 2.0 && !(p.x > width - PAUSE_AREA && p.y < PAUSE_AREA)
++    });
++    for mut actions in &mut ships {
++        if stick.0.y > DEAD_ZONE {
++            actions.press(&PlayerAction::Forward);
++        }
++        if stick.0.x < -DEAD_ZONE {
++            actions.press(&PlayerAction::RotateLeft);
++        }
++        if stick.0.x > DEAD_ZONE {
++            actions.press(&PlayerAction::RotateRight);
++        }
++        if firing {
++            actions.press(&PlayerAction::Fire);
++        }
++    }
++}
++
++fn touch_pause(
++    touches: Res<Touches>,
++    window: Query<&Window, With<PrimaryWindow>>,
++    app_state: Res<State<AppState>>,
++    mut menu_actions: ResMut<ActionState<MenuAction>>,
++) {
++    if *app_state.get() != AppState::Game {
++        return;
++    }
++    let Ok(window) = window.single() else {
++        return;
++    };
++    let width = window.width();
++    if touches.iter_just_pressed().any(|t| {
++        let p = t.position();
++        p.x > width - PAUSE_AREA && p.y < PAUSE_AREA
++    }) {
++        menu_actions.press(&MenuAction::PauseUnpause);
++    }
++}
++
++/// Kataster's menus are keyboard driven: the buttons show the selection but
++/// do nothing when clicked. A tap selects the entry and accepts it.
++fn tap_menu_entry(
++    pressed: Query<(Entity, &Interaction, &ChildOf), (Changed<Interaction>, With<Button>)>,
++    children: Query<&Children>,
++    mut menus: Query<&mut MenuHandler>,
++    mut menu_actions: ResMut<ActionState<MenuAction>>,
++) {
++    for (entity, interaction, parent) in &pressed {
++        if *interaction != Interaction::Pressed {
++            continue;
++        }
++        let Ok(siblings) = children.get(parent.parent()) else {
++            continue;
++        };
++        let Some(index) = (**siblings).iter().position(|&e| e == entity) else {
++            continue;
++        };
++        if let Ok(mut menu) = menus.single_mut() {
++            menu.selected_id = index as i32;
++            menu_actions.press(&MenuAction::Accept);
++        }
++    }
++}
++
++/// iOS may suspend the app at any time (a call, the home gesture). Pause a
++/// running game so it doesn't continue, or end, behind the player's back.
++fn pause_on_suspend(
++    mut lifecycle: MessageReader<AppLifecycle>,
++    game_state: Option<Res<State<GameState>>>,
++    mut next: ResMut<NextState<GameState>>,
++) {
++    for event in lifecycle.read() {
++        // Warn level: the iPhone's syslog relay drops Info (docs/forge-device.md).
++        warn!("[trial] lifecycle {event:?}");
++        if matches!(event, AppLifecycle::WillSuspend | AppLifecycle::Suspended)
++            && game_state
++                .as_ref()
++                .is_some_and(|s| *s.get() == GameState::Running)
++        {
++            next.set(GameState::Paused);
++        }
++    }
++}
++
++fn log_frame_rate(time: Res<Time>, diagnostics: Res<DiagnosticsStore>, mut since: Local<f32>) {
++    *since += time.delta_secs();
++    if *since < 5.0 {
++        return;
++    }
++    *since = 0.0;
++    if let Some(fps) = diagnostics
++        .get(&FrameTimeDiagnosticsPlugin::FPS)
++        .and_then(|d| d.smoothed())
++    {
++        warn!("[trial] fps {fps:.1}");
++    }
++}
+-- 
+2.43.0
+
