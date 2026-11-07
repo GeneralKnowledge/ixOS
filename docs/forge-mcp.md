@@ -1,6 +1,6 @@
 # Forge MCP: an iOS development environment an AI agent can operate
 
-Status: **M0 server built** (`forge mcp`, crate `crates/forge-mcp`), tested on Linux against a fake `forge`; **not yet run by an agent against a phone**. [Using Forge MCP](#using-forge-mcp) says what exists and how it differs from the design below; the rest of the page is the design it follows.
+Status: **M0 server built** (`forge mcp`, crate `crates/forge-mcp`) and **run by an agent on Cati** (2026-11-07, [first run](#first-tipster-run-on-cati-2026-11-07)): a headless Claude Code agent built, installed, inspected, fixed and UI-tested Tipster with no person touching the phone. Reuben's own look at the app (done-when item 6) is pending. [Using Forge MCP](#using-forge-mcp) says what exists and how it differs from the design below; the rest of the page is the design it follows.
 
 The idea (Reuben, 2026-11-07): Forge becomes an MCP server, so a coding agent can **create, build, install, launch, inspect, test and fix a real native iOS app on a physical iPhone, from Linux, without a person in the loop**. The agent still writes Rust and SwiftUI with its own editing tools. Forge gives it the parts of iOS development an agent can't do alone: the toolchain, the signing, the phone, and eyes on the result.
 
@@ -54,6 +54,14 @@ Different from the design below, on purpose for M0:
 - **Not built:** `forge_ui_audit`, `forge_set_appearance`, `forge_app_state`, `forge_remove_app`, `forge_add_capability` (M1 and later, as planned); screenshot downscaling; a server-side log capture from the last launch; the "no more than two identical failed installs" rule.
 
 Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full MCP session over an in-memory pipe with a fake `forge` script (policy refusals, root escapes, diagnostics in summaries, a hung device call killed with `needs_person`, UI step files). Nothing has run against Cati yet; `iphone-acceptance.sh --with-mcp` (step X2) is the first phone check, asking `forge_device_status` from the phone. A short scripted session (doctor, device status, logs, then a launch, tree and screenshot) follows once `forge ui` has run on the phone; the unattended Tipster run comes after that.
+
+### First Tipster run on Cati (2026-11-07)
+
+`run-tipster.sh run` on the laptop: one `claude -p` with the M0 prompt and `forge mcp --allow install --bundle-id org.forgemobile.agentlab`, from a forge build of #92 plus #93. 44 minutes, 84 turns, nobody touching the phone.
+
+- The agent created Tipster, kept the maths in Rust, checked on Linux, built, installed, launched, and read the screenshot and tree. It drove the app (typed 84, tapped 20 %, added a person, expected £50.40 per person) and checked logs and crashes. It relaunched at `text_size: largest`, rebuilt and reinstalled, and its UI test `tip.toml` passed on the phone (14 of 14 steps in 9 s).
+- Problems it found from device evidence and fixed: the keyboard covered the per-person total, so the total moved under the bill; at the largest size the presets became 350×78 rows, so it switched to a `ViewThatFits` grid; VoiceOver read the stepper twice, so it relabelled it "Number of people".
+- What went wrong in Forge: the last `forge_install_device` hung for the full 30-minute limit before returning `needs_person` (the USB dropped and recovered by itself). That limit is now 8 minutes. A launch with `text_size` changed nothing while the app was running, so it now stops the app first. Two things are still open for `forge ui`: an identifier on both a toolbar wrapper and its button made tap by id hit the wrapper, and there is no scroll action, so the bottom of the screen at the largest size was never seen.
 
 ## What Forge MCP is, and what it isn't
 

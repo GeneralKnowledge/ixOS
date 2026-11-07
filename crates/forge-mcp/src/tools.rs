@@ -126,7 +126,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_install_device",
         title: "Build, sign and install on the iPhone",
-        description: "forge run ios: build, sign with the team xtool is signed in with, and install on the connected iPhone. It does not open the app: call forge_launch_app next. Only allowed when the person started the server with --allow install (it can use an app slot and an App ID on a free team).",
+        description: "forge run ios: build, sign with the team xtool is signed in with, and install on the connected iPhone. It does not open the app: call forge_launch_app next. Call forge_build_ios first: this tool gives up after 8 minutes (a hung USB install comes back as needs_person). Only allowed when the person started the server with --allow install (it can use an app slot and an App ID on a free team).",
         tier: Tier::Spends,
         device: true,
         needs_ui: false,
@@ -187,7 +187,7 @@ pub const SPECS: &[Spec] = &[
         needs_ui: true,
         schema: || schema(json!({
             "terminate": {"type": "boolean", "description": "Stop the app instead of opening it"},
-            "text_size": {"type": "string", "enum": TEXT_SIZES, "description": "Open the app at this Dynamic Type size, without changing the phone's settings (a launch argument; it lasts until the app is next opened without it). Use largest to check the biggest accessibility size"}
+            "text_size": {"type": "string", "enum": TEXT_SIZES, "description": "Open the app at this Dynamic Type size, without changing the phone's settings (a launch argument; the app is stopped first so it applies). Use largest to check the biggest accessibility size"}
         }), &[]),
     },
     Spec {
@@ -305,6 +305,9 @@ pub fn refusal(command: &str, stage: &str, error: &str, person_command: Option<S
 }
 
 const MIN: u64 = 60;
+
+/// forge_install_device's limit, in minutes.
+const INSTALL_MIN: u64 = 8;
 
 fn secs(n: u64) -> Duration {
     Duration::from_secs(n)
@@ -530,9 +533,14 @@ impl crate::Server {
                 if let Err(why) = self.install_allowed(&app) {
                     return Answer::of(refusal(name, "policy", &why, Some(person)));
                 }
-                let mut inv = Invocation::new(&["run", "ios"], &app.dir, secs(30 * MIN), "device")
-                    .arg("--project")
-                    .arg(app.dir.display().to_string());
+                // Build, sign and install. The build is normally done already by
+                // forge_build_ios; a USB install that hangs must come back to
+                // the agent as needs_person in minutes, not half an hour
+                // (Tipster M0 on Cati, 2026-11-07: one hung for 30 min).
+                let mut inv =
+                    Invocation::new(&["run", "ios"], &app.dir, secs(INSTALL_MIN * MIN), "device")
+                        .arg("--project")
+                        .arg(app.dir.display().to_string());
                 if args.bool("release") {
                     inv = inv.arg("--release");
                 }
@@ -583,15 +591,21 @@ impl crate::Server {
             "forge_diagnose" => Answer::of(self.diagnose()),
             "forge_launch_app" => {
                 let app = app_or_fail!();
-                let step = if args.bool("terminate") {
-                    ("terminate", json!({}))
+                let steps = if args.bool("terminate") {
+                    vec![("terminate", json!({}))]
                 } else {
                     match launch_args(&args) {
-                        Ok(launch) => ("launch", launch),
+                        // A running app keeps its launch arguments, so a
+                        // text size only applies after a fresh start (seen
+                        // on Cati, 2026-11-07).
+                        Ok(launch) if args.str("text_size").is_some() => {
+                            vec![("terminate", json!({})), ("launch", launch)]
+                        }
+                        Ok(launch) => vec![("launch", launch)],
                         Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
                     }
                 };
-                self.one_step(&app, name, vec![step], cancel).await
+                self.one_step(&app, name, steps, cancel).await
             }
             "forge_screenshot" => {
                 let app = app_or_fail!();
