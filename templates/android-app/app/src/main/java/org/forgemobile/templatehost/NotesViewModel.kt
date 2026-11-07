@@ -102,7 +102,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
             current.addNote(draft)
             draft = ""
             // The list also updates from the event; reading it here shows the change at once.
-            notes = current.notes()
+            refreshNotes()
         } catch (e: AppException) {
             errorMessage = describe(e)
         }
@@ -113,7 +113,7 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
         errorMessage = null
         try {
             current.deleteNote(note.id)
-            notes = current.notes()
+            refreshNotes()
         } catch (e: AppException) {
             errorMessage = describe(e)
         }
@@ -141,7 +141,21 @@ class NotesViewModel(private val storageDirectory: String) : ViewModel() {
         }
     }
 
-    /** Ends the event stream and shuts the Rust core down. Saved notes are already on disk. */
+    /**
+     * Re-reads the list after a command. It reads [core] again rather than reusing the instance
+     * the command started with: [close] may have run while the command was suspended (the app
+     * terminating), and a Kotlin call on a closed UniFFI object throws IllegalStateException
+     * instead of reaching Rust.
+     */
+    private fun refreshNotes() {
+        core?.let { notes = it.notes() }
+    }
+
+    /**
+     * Ends the event stream and shuts the Rust core down. Saved notes are already on disk.
+     * It also frees the Kotlin object, so after this any reference to the old [core] throws
+     * IllegalStateException; use `core.shutdown()` to stop Rust while keeping the object.
+     */
     fun close() {
         events?.cancel()
         events?.close()

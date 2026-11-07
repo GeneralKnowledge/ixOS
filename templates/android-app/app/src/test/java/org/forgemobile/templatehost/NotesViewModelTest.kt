@@ -156,10 +156,49 @@ class NotesViewModelTest {
 
         model.setPhase(AppPhase.TERMINATED)
         assertNull(model.core)
+        assertEquals(AppPhase.TERMINATED, model.lifecyclePhase)
+        // Rust announces the end, then ends every stream. `events` was subscribed before, so it
+        // is still a live Kotlin object; `core` is not: close() freed it, and Kotlin refuses
+        // calls on a freed UniFFI object before they reach Rust (see the next test).
+        assertEquals(AppEvent.PhaseChanged(AppPhase.TERMINATED, false), events.next())
+        assertNull(events.next())
+        events.close()
+        // The model refuses further work quietly instead of crashing.
+        model.draft = "late"
+        model.addNote()
+        assertNull(model.errorMessage)
+        assertEquals("late", model.draft)
+    }
+
+    @Test
+    fun terminatedRefusesWorkInRust() = runBlocking {
+        // Without the view model's close(), the Kotlin object stays alive and the call reaches
+        // Rust, which refuses it: Terminated is shutdown().
+        val model = newModel()
+        val core = model.core!!
+        core.setPhase(AppPhase.ACTIVE)
+        core.setPhase(AppPhase.TERMINATED)
+        assertEquals(AppPhase.TERMINATED, core.phase())
         try {
             core.addNote("late")
             fail("expected ShutDown")
         } catch (_: AppException.ShutDown) {
+        }
+        model.close()
+    }
+
+    @Test
+    fun terminatingWhileACommandIsInFlightDoesNotCrash() = runBlocking {
+        // addNote suspends in Rust; the app terminates before it resumes. Re-reading the list
+        // from the closed (freed) core used to throw IllegalStateException here.
+        repeat(20) {
+            val model = newModel()
+            model.draft = "racing"
+            val add = launch { model.addNote() }
+            kotlinx.coroutines.yield()
+            model.setPhase(AppPhase.TERMINATED)
+            withTimeout(5_000) { add.join() }
+            assertNull(model.core)
         }
     }
 
