@@ -94,7 +94,7 @@ Owner: "Speed up the Linux iOS dev loop" thread. What each result decides: [docs
 
 ## Step 2. WebDriverAgent UI testing M0 (#61) — slot C: Weather → runner, about 30 minutes
 
-Owner: "Automate testing on a real iPhone" thread, PR #61 (draft, kept draft until this run). The exact commands are in that thread's Remote Control instructions; this is the summary.
+Owner: "Automate testing on a real iPhone" thread, PR #61 (draft, kept draft until this run; head bab78d4 at 19:00, check the thread for a newer one). The exact commands are in [forge-ui-testing.md](../forge-ui-testing.md) on that branch, under "Running M0" and "What still needs the phone"; this is the summary. Add `--json` to every `forge ui` command.
 
 **On the phone (Reuben):**
 
@@ -110,7 +110,7 @@ Owner: "Automate testing on a real iPhone" thread, PR #61 (draft, kept draft unt
 
 **Pass:** the runner launches; M0 launches Pocket Library, taps `library.add`, types a title, sees the form react, takes screenshots and cancels; the screenshots are valid PNGs; `ui tree` lists the identifiers. The library is unchanged afterwards (Reuben glances at it).
 
-**Evidence:** full output of every `forge ui` command, `ls -la` and `file` on the output folder, and what Reuben saw. Also put the WDA tree next to step 1's probe tree: do both show the same identifiers and labels? That comparison decides how much of UI inspection can drop the runner.
+**Evidence:** the `--json` output of every `forge ui` command and the whole output folder (sent to the UI-testing thread), `ls -la` and `file` on it, and what Reuben saw. Also put the WDA tree next to step 1's probe tree: do both show the same identifiers and labels? That comparison decides how much of UI inspection can drop the runner.
 
 ---
 
