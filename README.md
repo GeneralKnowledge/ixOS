@@ -55,6 +55,7 @@ crates/forge-core      # Domain logic (testable on Linux)
 crates/forge-storage   # JSON snapshot persistence
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, Android HTTPS init
+crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-ffi       # UniFFI boundary
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app
