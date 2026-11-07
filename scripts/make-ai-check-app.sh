@@ -66,10 +66,11 @@ echo "$QWEN_SHA256  $QWEN_OUT.orig" | sha256sum -c --quiet - || {
     s/^public final class Qwen35MLKVGenerator \{/public final class StoppableQwen35Generator {\n    \/\/\/ Checked before every step; true ends the generation (ixOS patch).\n    \@ObservationIgnored public var shouldStop: (() -> Bool)?/;
     s/^(\s*)for \(t, tok\) in inputIds\.enumerated\(\) \{$/$&\n$1    try Task.checkCancellation()\n$1    if shouldStop?() == true { throw CancellationError() }/;
     s/^(\s*)for step in 0\.\.<maxNewTokens \{$/$&\n$1    if Task.isCancelled || shouldStop?() == true { break }/;
+    s/^(\s*)return \(try\? MLModel\.compileModel\(at: pkg\)\)$/$1\/\/ ixOS patch: keep the compiled model beside the package and drop the\n$1\/\/ package, so later loads (and offline launches) skip the compile and\n$1\/\/ tmp\/ does not fill up with a new copy on every load.\n$1guard let compiled = try? MLModel.compileModel(at: pkg) else { return nil }\n$1do {\n$1    try fm.moveItem(at: compiled, to: mlc)\n$1    try? fm.removeItem(at: pkg)\n$1    return mlc\n$1} catch {\n$1    return compiled\n$1}/;
   ' "$QWEN_OUT.orig"
 } >"$QWEN_OUT"
 rm "$QWEN_OUT.orig"
-[[ "$(grep -c 'shouldStop?() == true' "$QWEN_OUT")" == 2 ]] || {
+[[ "$(grep -c 'shouldStop?() == true' "$QWEN_OUT")" == 2 ]] && grep -q 'try fm.moveItem(at: compiled, to: mlc)' "$QWEN_OUT" || {
   echo "error: could not patch the Qwen3.5 generator" >&2
   exit 1
 }
