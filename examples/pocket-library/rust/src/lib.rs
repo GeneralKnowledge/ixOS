@@ -22,13 +22,10 @@ pub mod store;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
 
 use forge_net::UreqClient;
-use forge_runtime::{
-    background, background_cancellable, CancelHandle, Delivery, EventHub, Subscription,
-};
+use forge_runtime::{background, background_cancellable, lock, now_ms, CancelHandle, EventHub};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
 use domain::{fold, validate, LibraryData};
@@ -37,6 +34,13 @@ pub use model::*;
 use store::Store;
 
 uniffi::setup_scaffolding!("forge_ffi");
+
+// A per-request `Cancellation` and the event stream object
+// (`LibraryEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
+forge_runtime::app_shell! {
+    cancellation: Cancellation,
+    events: LibraryEvents(LibraryEvent::EventsDropped),
+}
 
 /// Sent with every catalogue request. Open Library asks clients to identify
 /// themselves.
@@ -63,28 +67,6 @@ pub struct Library {
     shut_down: Arc<AtomicBool>,
     /// Cancelled by `shutdown`; every catalogue request runs under a child.
     lifetime: CancelHandle,
-}
-
-/// Lets the host stop a catalogue request part way. Swift creates one per
-/// call and cancels it from `withTaskCancellationHandler`, because
-/// cancelling a Swift `Task` does not reach Rust on its own.
-#[derive(uniffi::Object, Default)]
-pub struct Cancellation {
-    handle: CancelHandle,
-}
-
-#[uniffi::export]
-impl Cancellation {
-    #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    /// Stops the request: it fails with `Cancelled` at once, even while
-    /// waiting for a slow server, and changes nothing. Idempotent.
-    pub fn cancel(&self) {
-        self.handle.cancel();
-    }
 }
 
 #[uniffi::export]
@@ -481,10 +463,7 @@ impl Library {
 
     /// A new event stream. Each consumer takes its own.
     pub fn events(&self) -> Result<Arc<LibraryEvents>, LibraryError> {
-        self.events
-            .subscribe()
-            .map(|subscription| Arc::new(LibraryEvents { subscription }))
-            .ok_or(LibraryError::ShutDown)
+        LibraryEvents::subscribe(&self.events).ok_or(LibraryError::ShutDown)
     }
 
     /// Refuses new commands with `ShutDown`, stops catalogue requests in
@@ -637,28 +616,6 @@ fn add_and_save(
     }
 }
 
-/// One consumer's events. Await `next()` in a loop; `None` means it ended.
-#[derive(uniffi::Object)]
-pub struct LibraryEvents {
-    subscription: Subscription<LibraryEvent>,
-}
-
-#[uniffi::export]
-impl LibraryEvents {
-    /// The next event, or `None` once this stream has ended.
-    pub async fn next(&self) -> Option<LibraryEvent> {
-        match self.subscription.next().await? {
-            Delivery::Event(event) => Some(event),
-            Delivery::Dropped(count) => Some(LibraryEvent::EventsDropped { count }),
-        }
-    }
-
-    /// Ends this stream; a pending `next()` returns `None`.
-    pub fn cancel(&self) {
-        self.subscription.cancel();
-    }
-}
-
 /// The library's default query for a fresh screen: everything, in the
 /// user's preferred order.
 #[uniffi::export]
@@ -689,19 +646,6 @@ fn non_empty(dir: &str) -> Result<&str, LibraryError> {
     } else {
         Ok(dir)
     }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
 }
 
 #[cfg(test)]

@@ -37,12 +37,24 @@ forge build android --install                # debug APK on a connected Android 
 | State that survives restarts, with a schema version | `notes.json` via `JsonFile` | [`forge_storage::JsonFile`](../crates/forge-storage/src/json_file.rs) |
 | `async` commands that never block the UI thread | `add_note`, `delete_note`, `check_url` | [`forge_runtime::background`](../crates/forge-runtime/src/background.rs) |
 | Typed errors, the same cases on both platforms | `AppError` | `#[derive(uniffi::Error)]` |
-| Events the host subscribes to | `events()` → `AppEvents.next()` | [`forge_runtime::EventHub`](../crates/forge-runtime/src/events.rs) |
+| Events the host subscribes to | `events()` → `AppEvents.next()` | [`forge_runtime::EventHub`](../crates/forge-runtime/src/events.rs); `AppEvents` from `app_shell!` |
 | HTTPS with the OS's certificate checks | `check_url` | [`forge_net::UreqClient`](../crates/forge-net/src/ureq_client.rs) |
-| A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
-| The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase`, `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
+| A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` (from `app_shell!`) | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
+| The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase` (from `app_shell!`), `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
 | Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
 | Native iOS services: Keychain, app directories, notifications, permissions, sharing, deep links | `forge_services::native_services!()` adds `crate::native`; the iOS host installs it with `AppServices.install()` | [`forge-services`](../crates/forge-services/src/lib.rs), [native-services.md](native-services.md) |
+
+The types every app repeats come from one macro, so each app keeps only what is its own:
+
+```rust
+forge_runtime::app_shell! {
+    phase: AppPhase,                             // enum AppPhase <-> forge_runtime::Phase
+    cancellation: Cancellation,                  // new(), cancel(); Rust reads `.handle`
+    events: AppEvents(AppEvent::EventsDropped),  // next(), cancel(); AppEvents::subscribe(&hub)
+}
+```
+
+Each line is optional and the names are the app's, so its Swift and Kotlin API reads the same as if it were written by hand. The logic stays in plain Rust (`Lifecycle`, `CancelHandle`, `Subscription`); the macro only emits the UniFFI wrappers. `forge_runtime::lock` (a mutex lock that survives poisoning) and `forge_runtime::now_ms` cover the two helpers every app also wrote. Chat and Pocket Library use it too.
 
 The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src/main/java/.../NotesViewModel.kt` and `AppLifecycle.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
 

@@ -1,6 +1,8 @@
 //! What crosses the FFI boundary: records, events and errors, and their
 //! conversions from chat-core.
 
+use crate::AppPhase;
+
 /// The signed-in account, without its token (the token never leaves Rust
 /// and the Keychain).
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
@@ -49,41 +51,6 @@ pub struct ChatMessage {
     /// Unix ms: device time while sending or failed, server time once sent.
     pub sent_at: i64,
     pub status: ChatMessageStatus,
-}
-
-/// Where the app is in its lifecycle, as the host reports it with
-/// `ChatCore::set_phase`.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AppPhase {
-    Launching,
-    Active,
-    Inactive,
-    Background,
-    Terminated,
-}
-
-impl From<AppPhase> for forge_runtime::Phase {
-    fn from(phase: AppPhase) -> Self {
-        match phase {
-            AppPhase::Launching => Self::Launching,
-            AppPhase::Active => Self::Active,
-            AppPhase::Inactive => Self::Inactive,
-            AppPhase::Background => Self::Background,
-            AppPhase::Terminated => Self::Terminated,
-        }
-    }
-}
-
-impl From<forge_runtime::Phase> for AppPhase {
-    fn from(phase: forge_runtime::Phase) -> Self {
-        match phase {
-            forge_runtime::Phase::Launching => Self::Launching,
-            forge_runtime::Phase::Active => Self::Active,
-            forge_runtime::Phase::Inactive => Self::Inactive,
-            forge_runtime::Phase::Background => Self::Background,
-            forge_runtime::Phase::Terminated => Self::Terminated,
-        }
-    }
 }
 
 /// Everything the host renders from. All events of a `ChatCore` go to every

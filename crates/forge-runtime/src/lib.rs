@@ -17,6 +17,10 @@
 //!   background, terminated) as the host reports it, with a lifetime scope
 //!   and a foreground scope that cancel work when the app terminates or
 //!   leaves the screen, and `resumed` on the way back.
+//! - [`app_shell!`]: the UniFFI types every app repeats (its lifecycle
+//!   phase enum, a per-call `Cancellation`, its event stream object),
+//!   emitted in the app's crate under the app's own names. Plus [`lock`]
+//!   and [`now_ms`].
 //! - The Android JNI entry point behind `ForgeAndroid.init(context)`, which
 //!   HTTPS needs on Android (see `forge_net::platform`). Linking this crate is
 //!   enough; apps call nothing.
@@ -28,11 +32,13 @@ mod events;
 #[cfg(not(target_os = "ios"))]
 mod jni_init;
 mod lifecycle;
+mod shell;
 
 pub use background::{background, background_cancellable, block_on, Background};
 pub use events::{Delivery, EventHub, Subscription, DEFAULT_QUEUE_CAPACITY};
 pub use forge_net::CancelHandle;
 pub use lifecycle::{Lifecycle, Phase, Transition};
+pub use shell::{lock, now_ms};
 
 /// Re-exported so app crates use the exact transport and storage versions the
 /// runtime was built against.

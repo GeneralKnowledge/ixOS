@@ -6,17 +6,13 @@
 
 use std::future::Future;
 use std::pin::{pin, Pin};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{self, Thread};
 
 use forge_net::CancelHandle;
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+use crate::shell::lock;
 
 struct Slot<T> {
     result: Option<std::thread::Result<T>>,
