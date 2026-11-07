@@ -57,7 +57,7 @@ CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app out
 ## Repository layout
 
 ```
-crates/forge-storage   # Atomic file writes and versioned JSON documents
+crates/forge-storage   # Atomic file writes, versioned JSON documents, SQLite (feature `sqlite`)
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, lifecycle, app_shell!, logging, Android HTTPS init
 crates/forge-device    # `forge device`: a connected iPhone's details, logs and crash reports from Linux (docs/forge-device.md)
