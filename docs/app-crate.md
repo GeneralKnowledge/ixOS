@@ -40,9 +40,10 @@ forge build android --install                # debug APK on a connected Android 
 | Events the host subscribes to | `events()` → `AppEvents.next()` | [`forge_runtime::EventHub`](../crates/forge-runtime/src/events.rs) |
 | HTTPS with the OS's certificate checks | `check_url` | [`forge_net::UreqClient`](../crates/forge-net/src/ureq_client.rs) |
 | A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
+| The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase`, `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
 | Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
 
-The hosts (`Sources/AppHost/NotesModel.swift`, `app/src/main/java/.../NotesViewModel.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
+The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src/main/java/.../NotesViewModel.kt` and `AppLifecycle.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
 
 ## Rules that keep it working
 
@@ -66,7 +67,26 @@ DNS lookup and the TCP connect itself are not interrupted; the request timeout b
 
 **One instance per storage directory.** Two `AppCore`s on the same folder would each overwrite the other's `notes.json`. The hosts create one instance and share it. Instances on different folders are independent; the starter's tests check this.
 
-**Background and resume.** The starter needs nothing special. Its state is saved on every change, and it holds no connection open between commands. A request that is in flight when the app is suspended may fail with `Offline` or `Timeout` when the app resumes; the user can simply retry. Apps that keep connections open, such as event streams, should expect them to drop while the app is suspended. They should reconnect on resume (SwiftUI `scenePhase`, Android `onStart`), as the Chat example's streams do through their retry loop.
+**The app lifecycle.** The host reports where the app is with one call, `set_phase(phase)`, and Rust decides what that means. The starter's hosts already do this, so a new app gets it for free:
+
+| `AppPhase` | iOS (SwiftUI) | Android (activity) | What the starter's Rust does |
+|---|---|---|---|
+| `Launching` | before the first report | before the first report | the initial phase |
+| `Active` | `scenePhase == .active` | `onResume` | nothing |
+| `Inactive` | `scenePhase == .inactive` | `onStart`, `onPause` | nothing |
+| `Background` | `scenePhase == .background` | `onStop`, unless the activity is only rotating | stops requests started on screen; they fail with `Interrupted` |
+| `Terminated` | `willTerminateNotification` | (the view model's `onCleared` calls `close()`) | `shutdown()` |
+
+On the way back from `Background`, Rust sends `PhaseChanged { resumed: true }` on the event stream, and the starter hosts re-read the notes. That is where an app refreshes data that may have changed while it was away and restarts work the background stopped (a live stream, a poll). Repeated reports are ignored, and nothing after `Terminated` counts.
+
+- **iOS:** `ContentView` attaches `.forgeLifecycle { model.setPhase($0) }` (in `AppLifecycle.swift`). It reports the scene phase the view appears in, every change, and `willTerminate`.
+- **Android:** `MainActivity` calls `reportLifecycle { model.setPhase(it) }` (in `AppLifecycle.kt`). It ignores the `onStop` of a rotation, so a request survives turning the phone.
+
+In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes. `lifetime()` is cancelled on `Terminated`. `foreground()` is cancelled on `Background` and renewed on resume. Run work that only makes sense on screen under `lifecycle.foreground().child()`, as `check_url` does. Run work that should finish anyway under the lifetime, or keep it short: iOS suspends a backgrounded app within seconds. `lifecycle.subscribe()` lets code on other threads follow changes.
+
+Do not rely on `Terminated` to save anything. iOS sends `willTerminate` only when it ends an app that is still running, not one it has suspended, and either OS may kill a background process without notice. The starter saves before each command returns, so it loses nothing either way.
+
+What is verified: the Rust, XCTest and JVM tests drive these phases through the real library. Phase changes on a physical device (pressing Home, the app switcher, an incoming call) have not been recorded yet.
 
 ## Adding dependencies
 

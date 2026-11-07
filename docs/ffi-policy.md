@@ -121,6 +121,7 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 - Create one instance per storage directory. Opening two at once on the same directory is not supported.
 - `shutdown()`: refuses new commands (`ShutDown`), cancels the running operation, finishes the commands already accepted, waits for the operation, ends every subscription, stops the thread. Idempotent. Queries keep answering with the last committed state. Releasing the last reference does the same without waiting.
 - App suspension and termination need no special handling: a command reports success only after its save, so everything reported is on disk. An operation killed with the process never committed, so nothing half-done is saved.
+- Apps from `forge init` report the OS lifecycle to Rust with one synchronous call, `set_phase(phase)` (`Launching`, `Active`, `Inactive`, `Background`, `Terminated`), from SwiftUI's `scenePhase` or the activity's callbacks. Rust owns the response through `forge_runtime::Lifecycle`: on-screen work is cancelled in the background and `PhaseChanged { resumed: true }` arrives on the event stream on the way back ([app-crate.md](app-crate.md#lifecycle)). The call does no I/O, because it runs on the UI thread.
 - No process-global mutable state: everything belongs to an instance.
 
 ## Panics

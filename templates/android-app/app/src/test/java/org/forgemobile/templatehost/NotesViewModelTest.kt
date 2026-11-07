@@ -15,7 +15,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
+import androidx.lifecycle.Lifecycle
+import uniffi.forge_ffi.AppEvent
 import uniffi.forge_ffi.AppException
+import uniffi.forge_ffi.AppPhase
 
 /**
  * Drives the view model against the app's real Rust core (rust/) through the generated Kotlin
@@ -119,6 +122,95 @@ class NotesViewModelTest {
             assertEquals(listOf("after"), model.notes.map { it.text })
             model.close()
         }
+    }
+
+    @Test
+    fun goingToTheBackgroundInterruptsTheRequestInRust() = runBlocking {
+        java.net.ServerSocket(0, 4, java.net.InetAddress.getByName("127.0.0.1")).use { server ->
+            val model = newModel()
+            model.setPhase(AppPhase.ACTIVE)
+            model.url = "http://127.0.0.1:${server.localPort}/"
+            val started = System.nanoTime()
+            val check = launch { model.checkUrl() }
+            delay(200)
+            model.setPhase(AppPhase.BACKGROUND)
+            withTimeout(5_000) { check.join() }
+            assertEquals(NotesViewModel.describe(AppException.Interrupted()), model.urlResult)
+            assertTrue(System.nanoTime() - started < 5_000_000_000L)
+            assertEquals(AppPhase.BACKGROUND, model.core!!.phase())
+            model.close()
+        }
+    }
+
+    @Test
+    fun resumeIsReportedAndTerminateClosesTheCore() = runBlocking {
+        val model = newModel()
+        val core = model.core!!
+        val events = core.events()
+        model.setPhase(AppPhase.ACTIVE)
+        model.setPhase(AppPhase.BACKGROUND)
+        model.setPhase(AppPhase.INACTIVE)
+        assertEquals(AppEvent.PhaseChanged(AppPhase.ACTIVE, false), events.next())
+        assertEquals(AppEvent.PhaseChanged(AppPhase.BACKGROUND, false), events.next())
+        assertEquals(AppEvent.PhaseChanged(AppPhase.INACTIVE, true), events.next())
+
+        model.setPhase(AppPhase.TERMINATED)
+        assertNull(model.core)
+        assertEquals(AppPhase.TERMINATED, model.lifecyclePhase)
+        // Rust announces the end, then ends every stream. `events` was subscribed before, so it
+        // is still a live Kotlin object; `core` is not: close() freed it, and Kotlin refuses
+        // calls on a freed UniFFI object before they reach Rust (see the next test).
+        assertEquals(AppEvent.PhaseChanged(AppPhase.TERMINATED, false), events.next())
+        assertNull(events.next())
+        events.close()
+        // The model refuses further work quietly instead of crashing.
+        model.draft = "late"
+        model.addNote()
+        assertNull(model.errorMessage)
+        assertEquals("late", model.draft)
+    }
+
+    @Test
+    fun terminatedRefusesWorkInRust() = runBlocking {
+        // Without the view model's close(), the Kotlin object stays alive and the call reaches
+        // Rust, which refuses it: Terminated is shutdown().
+        val model = newModel()
+        val core = model.core!!
+        core.setPhase(AppPhase.ACTIVE)
+        core.setPhase(AppPhase.TERMINATED)
+        assertEquals(AppPhase.TERMINATED, core.phase())
+        try {
+            core.addNote("late")
+            fail("expected ShutDown")
+        } catch (_: AppException.ShutDown) {
+        }
+        model.close()
+    }
+
+    @Test
+    fun terminatingWhileACommandIsInFlightDoesNotCrash() = runBlocking {
+        // addNote suspends in Rust; the app terminates before it resumes. Re-reading the list
+        // from the closed (freed) core used to throw IllegalStateException here.
+        repeat(20) {
+            val model = newModel()
+            model.draft = "racing"
+            val add = launch { model.addNote() }
+            kotlinx.coroutines.yield()
+            model.setPhase(AppPhase.TERMINATED)
+            withTimeout(5_000) { add.join() }
+            assertNull(model.core)
+        }
+    }
+
+    @Test
+    fun activityEventsMapOntoAppPhases() {
+        assertEquals(AppPhase.INACTIVE, appPhaseFor(Lifecycle.Event.ON_START, false))
+        assertEquals(AppPhase.ACTIVE, appPhaseFor(Lifecycle.Event.ON_RESUME, false))
+        assertEquals(AppPhase.INACTIVE, appPhaseFor(Lifecycle.Event.ON_PAUSE, false))
+        assertEquals(AppPhase.BACKGROUND, appPhaseFor(Lifecycle.Event.ON_STOP, false))
+        // Rotation stops and restarts the activity; that is not the background.
+        assertNull(appPhaseFor(Lifecycle.Event.ON_STOP, true))
+        assertNull(appPhaseFor(Lifecycle.Event.ON_CREATE, false))
     }
 
     @Test
