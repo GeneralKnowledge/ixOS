@@ -34,6 +34,11 @@ pub use repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, Remot
 pub use store::{ChatSnapshot, ChatStore, StoreError};
 pub use types::{ChatError, ChatEvent, Conversation, Message, MessageStatus};
 
+/// The storage engine compiled into this build, e.g. "SQLite 3.50.2".
+pub fn storage_engine() -> String {
+    format!("SQLite {}", forge_storage::Database::sqlite_version())
+}
+
 /// Wall-clock Unix milliseconds.
 pub(crate) fn now_ms() -> i64 {
     std::time::SystemTime::now()

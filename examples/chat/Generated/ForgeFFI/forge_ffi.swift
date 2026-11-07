@@ -4680,6 +4680,17 @@ public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) 
     )
 })
 }
+/**
+ * The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+ * (shown in Settings).
+ */
+public func storageEngine() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_storage_engine(uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4709,6 +4720,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_storage_engine() != 18473) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {

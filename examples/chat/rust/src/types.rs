@@ -75,6 +75,13 @@ pub enum ChatDelivery {
     Failed,
 }
 
+/// The storage engine compiled into the app, e.g. "SQLite 3.50.2"
+/// (shown in Settings).
+#[uniffi::export]
+pub fn storage_engine() -> String {
+    chat_core::storage_engine()
+}
+
 /// The delivery state of `message` in `conversation`: `Read` once another
 /// account's read cursor has passed one of our sent messages. Only
 /// meaningful for our own messages.

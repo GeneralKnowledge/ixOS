@@ -599,6 +599,12 @@ RustBuffer uniffi_forge_ffi_fn_func_parse_deep_link(RustBuffer url, RustCallStat
 RustBuffer uniffi_forge_ffi_fn_func_chat_delivery(RustBuffer message, RustBuffer conversation, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_STORAGE_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_STORAGE_ENGINE
+RustBuffer uniffi_forge_ffi_fn_func_storage_engine(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
 #define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
 RustBuffer ffi_forge_ffi_rustbuffer_alloc(uint64_t size, RustCallStatus *_Nonnull out_status
@@ -886,6 +892,12 @@ uint16_t uniffi_forge_ffi_checksum_func_parse_deep_link(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CHAT_DELIVERY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CHAT_DELIVERY
 uint16_t uniffi_forge_ffi_checksum_func_chat_delivery(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_STORAGE_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_STORAGE_ENGINE
+uint16_t uniffi_forge_ffi_checksum_func_storage_engine(void
     
 );
 #endif
