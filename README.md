@@ -112,10 +112,10 @@ An agent edits Rust and SwiftUI with its own tools; Forge gives it the toolchain
 |---|---|
 | `--json` on every command (`forge.result/1`: stage, compiler diagnostics with file and line, hints, log file) | Built |
 | `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK (xtool) or macOS CI |
-| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose; UI tools with #61), docs and the ledger as resources, installing only when the person allows it | Built (M0), tested on Linux against a fake CLI; not yet run against a phone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
+| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose, and UI tools through `forge ui`), docs and the ledger as resources, installing only when the person allows it | Built (M0), tested on Linux against a fake CLI; not yet run against a phone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
 | Which Apple team signs, free or paid, in `forge doctor` and `forge run ios` | Built; not yet run with a paid team ([docs/ios-signing.md](docs/ios-signing.md#which-team-is-xtool-using)) |
-| UI tests by accessibility identifier on a real iPhone (WebDriverAgent) | PR #61, not yet phone-verified |
-| Apple's accessibility audit service from Linux | Experimental probe ([docs/research/ax-audit.md](docs/research/ax-audit.md)), not yet phone-verified |
+| UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built (#61). On an iPhone: setup, launch, tree and screenshot work; finding by identifier and a passing test don't yet. Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |
+| Apple's accessibility service from Linux (no runner or disk image) | Experimental probe: reading identifiers and labels and pressing by identifier work on an iPhone; no typing, and Apple's audit doesn't answer yet ([docs/research/ax-audit.md](docs/research/ax-audit.md)) |
 
 New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
 

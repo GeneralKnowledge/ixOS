@@ -8,7 +8,7 @@ This page is the MCP layer only. The loop itself (create, change the UI, run on 
 
 ## The short answer
 
-- **It is feasible, and most of the hard parts already exist.** `forge init`, `forge build ios`, `forge run ios`, failure diagnosis (`diagnose.rs`), `forge device` (info, logs, crashes, live session with probes and commands) and, in PR #61, WebDriverAgent over `idevice` (accessibility tree, tap and type by identifier, screenshots) cover most of what the agent needs. The MCP server is a thin front end on top of them.
+- **It is feasible, and most of the hard parts already exist.** `forge init`, `forge build ios`, `forge run ios`, failure diagnosis (`diagnose.rs`), `forge device` (info, logs, crashes, live session with probes and commands) and `forge ui` (#61, merged; not yet run on a phone), WebDriverAgent over `idevice` (accessibility tree, tap and type by identifier, screenshots) cover most of what the agent needs. The MCP server is a thin front end on top of them.
 - **Four gaps block an unattended agent today**, and all four are already on the dev-loop list: nothing launches the app after install (DL2), nothing shows the screen (DL3), the phone's state (slots, expiry, disk image, USB) is only discovered by failing (DL5), and commands print prose, not data (DL8). M0 is mostly closing those four in the CLI, then wrapping them.
 - **Where the agent runs decides how fast it can fix Swift.** On Reuben's laptop, the xtool build reports a SwiftUI error in a minute or two. In a cloud session there is no Darwin SDK, so SwiftUI errors only surface through macOS CI, about 35 minutes later (DL1). M0 therefore runs the agent **on the laptop**, talking to Forge over stdio.
 - **The SDK question is settled.** The official Rust SDK, `rmcp` 3.9.0 (Apache-2.0, MSRV 1.88, protocol 2026-07-28), built inside our toolchain pin, passed the licence list in `deny.toml`, and served a `forge doctor` tool and the capability ledger as a resource to a scripted client in the spike.
@@ -39,7 +39,7 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 | `forge_read_logs` | `device logs --for --limit --process <xtool_product>` | 1–120 s, live only; marked as app output |
 | `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes` | Not symbolicated |
 | `forge_diagnose` | (server state) | The last failed result in the session and the end of its log file |
-| `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (PR #61). Screenshots, and the failure screenshot of a UI run, come back as images |
+| `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (any build from main since #61). Screenshots, and the failure screenshot of a UI run, come back as images |
 
 Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
 
@@ -48,12 +48,12 @@ Enforced by the server: paths stay inside the root (symlinks included); phone to
 Different from the design below, on purpose for M0:
 
 - **Approval is a standing allowance only.** Elicitation is not built: a tier-2 call without `--allow` is refused with the command a person can run. The 2026-07-28 protocol reworked server-to-client requests, and client support varies, so this waits until a client needs it.
-- **Launch goes through the WebDriverAgent runner** (`launch` and `terminate` steps of a UI test file, #61), not a separate `forge device launch` (DL2). Without `forge ui setup`, nothing launches the app.
+- **Launch goes through the WebDriverAgent runner** (`launch` and `terminate` steps of a UI test file, #61), not a separate `forge device launch` (DL2). Without `forge ui setup`, nothing launches the app. On Cati (2026-11-07) this works once **Settings > Developer > Enable UI Automation** is on; without it WDA refuses with code 41 and a person has to open the app by hand.
 - **No slot or expiry count yet.** `forge_device_status` reports the team and its limits but cannot list installed apps or profile expiry (`forge device apps`, DL5, not built).
 - **`--udid` instead of a device allowlist** in config. `forge_install_device` cannot pass it on: xtool chooses the phone.
 - **Not built:** `forge_ui_audit`, `forge_set_appearance`, `forge_app_state`, `forge_remove_app`, `forge_add_capability` (M1 and later, as planned); screenshot downscaling; a server-side log capture from the last launch; the "no more than two identical failed installs" rule.
 
-Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full MCP session over an in-memory pipe with a fake `forge` script (policy refusals, root escapes, diagnostics in summaries, a hung device call killed with `needs_person`, UI step files). Nothing has run against Cati yet. The first phone check is a short scripted session (doctor, device status, logs, and with #61 a launch, tree and screenshot) once #61 and the dev loop are validated on the phone; the unattended Tipster run comes after that.
+Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full MCP session over an in-memory pipe with a fake `forge` script (policy refusals, root escapes, diagnostics in summaries, a hung device call killed with `needs_person`, UI step files). Nothing has run against Cati yet; `iphone-acceptance.sh --with-mcp` (step X2) is the first phone check, asking `forge_device_status` from the phone. A short scripted session (doctor, device status, logs, then a launch, tree and screenshot) follows once `forge ui` has run on the phone; the unattended Tipster run comes after that.
 
 ## What Forge MCP is, and what it isn't
 
@@ -103,7 +103,7 @@ Decisions:
 
 ## The tools
 
-Grouped as Reuben proposed. "Exists" means the operation is on `main` or in an open PR; "Gap" names the missing piece. The **M0** column is what the first milestone needs.
+Grouped as Reuben proposed. "Exists" means the operation is on `main` (when this was written, some of it was still in open PRs, #61 among them); "Gap" names the missing piece. The **M0** column is what the first milestone needs.
 
 ### Project
 
@@ -118,7 +118,7 @@ Grouped as Reuben proposed. "Exists" means the operation is on `main` or in an o
 
 | Tool | What it does | Built on | Gap | M0 |
 |---|---|---|---|---|
-| `forge_inspect_ui` | The real accessibility tree of the screen on the phone: element type, identifier, label, value, enabled, frame. Plus unlabelled controls | `forge ui tree` (#61, WDA `/source` → `UiNode`) | `--json`. Needs #61 merged and its first phone run | Yes |
+| `forge_inspect_ui` | The real accessibility tree of the screen on the phone: element type, identifier, label, value, enabled, frame. Plus unlabelled controls | `forge ui tree` (#61, WDA `/source` → `UiNode`) | `--json`. #61 is merged; needs its first phone run | Yes |
 | `forge_screenshot` | PNG of the phone's screen, returned as image content (downscaled for the model) and saved to a file | `forge ui screenshot` (#61, WDA); `forge device screenshot` without the runner (DL3 fix 1) | DL3 fix 1 | Yes |
 | `forge_ui_audit` | Accessibility audit of the current screen: missing labels, no identifier, duplicates, small tap targets, truncated text at large sizes | #61 M3 plan | Not built | No (M2) |
 | `forge_set_appearance` | Light, dark, largest Dynamic Type, then screenshot | DL3 fix 3 (devtools command in dev builds) | Not built | No (M1) |
@@ -152,7 +152,7 @@ Signing happens inside `forge run ios` (xtool signs online with the logged-in Ap
 |---|---|---|---|---|
 | `forge_device_status` | Connected phones; for the chosen one: unlocked, Developer Mode, disk image mounted, free app slots, profile expiry per app, usbmuxd health | `forge device list/info`, `ios_env.rs`, `forge doctor` | `forge device apps` and `forge doctor --device` (DL5 fixes 1 and 3) | Yes |
 | `forge_install_device` | Build, sign, install the project's app | `forge run ios` (`xtool dev run`) | `--json`; a timeout and a clear "phone dropped off USB" result | Yes |
-| `forge_launch_app` / `forge_terminate_app` | Start or stop the app on the phone | Nothing on main. `idevice` CoreDevice app service, or WDA `launch` from #61 | DL2 (`forge device launch`, with automatic DDI mount) | Yes |
+| `forge_launch_app` / `forge_terminate_app` | Start or stop the app on the phone | WDA `launch` step from #61 (on main, used by M0). A runner-free route is not built: `idevice` CoreDevice app service | DL2 (`forge device launch`, with automatic DDI mount) | Yes |
 | `forge_remove_app` | Delete an app from the phone to free a slot | Nothing yet | DL5 fix 1 (`--remove`). Always needs approval | No (M1) |
 
 ### Inspection
@@ -264,7 +264,7 @@ More rules:
 
 ## What a paid team would unlock
 
-Everything on this page works on a free Apple ID team, and that stays the default: Forge must work for anyone with a free Apple ID. Reuben reported renewing his Apple Developer Program membership on 2026-11-07, but renewing does not switch xtool to the paid team (it signs with the team chosen at `xtool auth login`), so which team signs is confirmed at the phone session with `forge doctor` ([ios-signing.md](ios-signing.md#which-team-is-xtool-using)). This is what a paid team changes for an agent.
+Everything on this page works on a free Apple ID team, and that stays the default: Forge must work for anyone with a free Apple ID. Reuben has not paid for the Apple Developer Program (corrected 2026-11-07; an earlier note here said the membership was renewed, which was wrong). On Cati, xtool signs with his free personal team. If he does pay, joining does not switch xtool to the paid team by itself (it signs with the team chosen at `xtool auth login`); `forge doctor` shows which team signs ([ios-signing.md](ios-signing.md#which-team-is-xtool-using)). This is what a paid team changes for an agent.
 
 | | Free team (today) | Paid team |
 |---|---|---|
@@ -292,7 +292,7 @@ xtool facts above are from its source (main branch, 2026-11-07): `Sources/XKit/D
 
 | Limit | Effect on an unattended agent | What Forge MCP does |
 |---|---|---|
-| **3 sideloaded apps per phone (free account)** | Cati holds Pocket Library and, once #61 runs, the WDA runner. An agent that makes a new bundle id per app fills the phone in one session | One **agent sandbox bundle id** (`org.forgemobile.agentlab`) that every agent-made app installs as, until a person promotes the app to its own id. `forge_device_status` shows free slots before any install; removing an app is tier 2 |
+| **3 sideloaded apps per phone (free account)** | Cati holds Pocket Library and the WDA runner (installed 2026-11-07). An agent that makes a new bundle id per app fills the phone in one session | One **agent sandbox bundle id** (`org.forgemobile.agentlab`) that every agent-made app installs as, until a person promotes the app to its own id. `forge_device_status` shows free slots before any install; removing an app is tier 2 |
 | **10 new App IDs per 7 days** | Same cause: a new bundle id per experiment exhausts the week | Same fix: reuse the sandbox id. The server counts new App IDs it caused and warns |
 | **7-day signing** | Apps, including the WDA runner, stop launching after a week. Looks like a crash to an agent | `forge_device_status` reports each profile's expiry (misagent, DL5); launch failures with an expired profile are reported as `stage: signing`, with "reinstall" as the fix |
 | **USB dropouts** (usbmuxd stops; installs hang until replug and unlock) | A hung call holds the agent forever | Every device tool has a timeout and is killed on cancel. The result is `stage: device`, `"problem": "the iPhone dropped off USB"`, `"needs_person": true`. The agent must stop and say so, not retry in a loop. This is the one failure that always needs hands |
@@ -343,14 +343,14 @@ Allowed beforehand: freeing a slot, the one-time trust steps, `forge ui setup` (
 
 | # | Piece | Where | Size |
 |---|---|---|---|
-| 1 | PR #61 merged and its M0 run done on Cati (tree, screenshot, tap, type, TOML runner) | UI testing thread | In progress |
+| 1 | PR #61 merged and its M0 run done on Cati (tree, screenshot, tap, type, TOML runner) | UI testing thread | Merged 2026-11-07. On Cati: setup, launch, tree and screenshot work (with #90); find by identifier and a passing M0 test are not done yet |
 | 2 | `forge device launch` / `terminate`, auto-mount of the disk image (DL2, DL5 fix 2) | Dev-loop order #3 | 1–2 days |
 | 3 | `forge device apps` (read only) and `forge doctor --device` (DL5) | Dev-loop order #6 | 1 day |
-| 4 | `--json` and exit codes on `init`, `build ios`, `run ios`, `device *`, `ui *`, `config show` (DL8, shape above) | Dev-loop order #7, shape from here | 1–2 days |
-| 5 | Bounded logs: `forge device logs --since/--for` | forge-device | Hours |
+| 4 | `--json` and exit codes on `init`, `build ios`, `run ios`, `device *`, `ui *`, `config show` (DL8, shape above) | Dev-loop order #7, shape from here | Done (`forge --json`, `forge.result/1`) |
+| 5 | Bounded logs: `forge device logs --since/--for` | forge-device | `--for` done; no `--since` (the system log relay is live only) |
 | 6 | `forge inspect --json` | forge-cli | Half a day |
 | 7 | The `forge-mcp` crate and `forge mcp`: the M0 tools below, the four resources, two prompts, the tier policy with elicitation and `--allow`, the device lock, timeouts and cancellation; tested against fake CLI results without a phone | **Built** (without elicitation; see [Using Forge MCP](#using-forge-mcp)) | Done |
-| 8 | A per-app xtool product name in `forge init` (DL4), so logs and crashes can be filtered by app | forge-cli template | Hours |
+| 8 | A per-app xtool product name in `forge init` (DL4), so logs and crashes can be filtered by app | forge-cli template | Done |
 
 Items 2–6 and 8 make the CLI better for people with no MCP at all. Item 7 is the only MCP-specific work.
 
@@ -382,12 +382,12 @@ The mock social app in M2 is an acceptance exercise for the agent loop, not a ne
 3. **Approval route.** Recommend elicitation plus a narrow `--allow` at startup. Some clients don't support elicitation yet; they get a refusal with the command a person can run.
 4. **Ledger as data.** Decided (Reuben, 2026-11-07): one record per capability, with the Markdown tables generated from the records and checked in CI, because many parallel PRs edit the ledger. `forge://capabilities` reads the records.
 5. **Is M0 the next thing after #61 and the dev-loop fixes?** Decided (Reuben, 2026-11-07): yes. The CLI items in M0's table are already on the dev-loop order. Adding item 7 costs 2–3 days on top.
-6. **Paid Apple Developer Program?** Membership renewed (Reuben, 2026-11-07, later message); whether xtool signs with the paid team is checked at the phone session. `forge doctor`, `forge run ios` and `forge_device_status` now report the team and its limits, so the tier and bundle-id rules can follow the paid column once it is confirmed.
+6. **Paid Apple Developer Program?** Open. Reuben is on the free team (2026-11-07) and hasn't paid; the recommendation is to pay before M2, not M0 ([What a paid team would unlock](#what-a-paid-team-would-unlock)). `forge doctor`, `forge run ios` and `forge_device_status` report the team and its limits, so the tier and bundle-id rules can follow the paid column if he switches.
 
 ## Risks
 
 - **Client support varies.** Structured content, elicitation and image results are in the spec but not in every client. Every result also has a text form, and every tier-2 refusal says what to run instead.
 - **The agent's own judgement.** An agent can loop on a failure it can't fix (a signing error, a stuck USB). Results carry `needs_person`, the `fix_build` prompt says to stop on device and signing stages, and the server refuses to retry an install more than twice in a row without a change.
-- **#61 has not run on a phone yet.** If `idevice`'s XCTest support doesn't work on iOS 26.3, the tree and UI actions move to a fallback (go-ios `runwda` to start the runner, our WDA client unchanged). Screenshot through the developer screenshot service (DL3 fix 1) doesn't depend on WDA.
+- **#61 hasn't passed a test on a phone yet.** On Cati (iOS 26.3.1, 2026-11-07) `idevice`'s XCTest start works: setup, launch, tree and screenshot all ran. Find by identifier (an attribute WDA 16 rejects) and keeping the runner alive after `forge` exits are open bugs. Screenshot through the developer screenshot service (DL3 fix 1) doesn't depend on WDA.
 - **Liquid Glass and SDK stamping.** Linux builds may run in compatibility mode on iOS 26 ([ios-ui.md](ios-ui.md)). Screenshots an agent compares must come from the same kind of build.
 - **Scope creep.** The point of M0 is one small app built and fixed unattended. Tools beyond the M0 list wait until a run shows the agent needs them.

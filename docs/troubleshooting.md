@@ -65,6 +65,10 @@ ls build/ios-device/lib/libforge_ffi.a
 
 Packaging scripts call `scripts/native-lib-needs-rebuild.sh` so changing Rust sources or iOS/Android build settings triggers a rebuild instead of reusing a stale `.a` / `.so`. Delete `build/ios-device/lib/libforge_ffi.a` (and its `.forge-build-meta` sidecar) to force a full iOS relink.
 
+## `forge ui` fails with code 41, "Not authorized for performing UI testing actions"
+
+The phone doesn't allow UI automation yet. Turn on **Settings > Developer > Enable UI Automation** on the iPhone (the Developer menu appears once Developer Mode is on), then run the command again. It is a one-time setting per phone; without it WebDriverAgent can't launch apps or touch anything ([forge-ui-testing.md](forge-ui-testing.md#running-m0)).
+
 ## Signing and iPhone problems
 
 These come from the last step of `forge run ios`, when xtool signs the app and installs it. The error names the problem; here is what each one means.

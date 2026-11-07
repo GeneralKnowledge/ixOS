@@ -150,7 +150,7 @@ fi
 
 # --- L. Launch, relaunch, background, UI -----------------------------------------
 if [[ $has_ui -eq 0 ]]; then
-  for id in L1 U1 U2 U3 U4; do skip "$id" mandatory "this forge has no \`forge ui\` (PR #61 not merged/installed)"; done
+  for id in L1 U1 U2 U3 U4; do skip "$id" mandatory "this forge has no \`forge ui\` (built before #61; rebuild forge from main)"; done
 else
   if [[ -n "${FORGE_DDI:-}" || -n "${FORGE_WDA_RUNNER:-}" ]]; then
     step L0 mandatory "UI runner setup (forge ui setup)" -- ui setup ${FORGE_DDI:+--ddi "$FORGE_DDI"} ${FORGE_WDA_RUNNER:+--runner "$FORGE_WDA_RUNNER"}
