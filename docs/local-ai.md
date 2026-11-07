@@ -1,6 +1,6 @@
 # Local AI in Chat: design and milestones
 
-Status: **proposal, 2026-11-07. Nothing here is built yet.** Implementation starts only after Reuben approves the plan and answers the open questions at the end.
+Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 is under way.
 
 Goal: a private, offline AI assistant inside the Chat app on the iPhone. It downloads its own model, runs it on the phone and keeps working in airplane mode. It is the flagship's first feature that needs no server. For ixOS it proves a reusable **local model capability**: a native Swift inference adapter behind a stable interface that Rust app code drives, with storage, streaming, cancellation and resource limits handled by the framework.
 
@@ -125,7 +125,7 @@ Per conversation, with app-wide defaults: model, temperature (0–1.5), top-p, m
 
 Reuben's addition (2026-11-07): the user can pick or create a **character** for the assistant to play. A character is a harness around the model, not a different model:
 
-- **The record**, in `assistant.db`: name, an emoji or initials for the avatar, a one-line description, the character's instructions (personality, voice, what it knows, what it won't do), an optional opening line, and optional defaults (model, temperature). The app ships a few built-in characters (for example a plain Assistant, a terse Coding Buddy and a Storyteller), and the user can make, edit, duplicate and delete their own.
+- **The record**, in `assistant.db`: name, an emoji or initials for the avatar, a one-line description, the character's instructions (personality, voice, what it knows, what it won't do), an optional opening line, and optional defaults (model, temperature). The app ships two built-in test characters, a virtual boyfriend and a virtual girlfriend (Reuben, 2026-11-07), plus the plain Assistant with no character. The user can make, edit, duplicate and delete their own.
 - **Each conversation is bound to one character**, chosen when it starts. The list shows the character's avatar and name, and its bubbles carry them.
 - **Rust builds the harness prompt**: a short fixed frame (stay in character, answer as the character, keep it safe), then the character's instructions, then the trimmed history. The character block is **pinned**: history trimming never drops it, and the context budget reserves room for it.
 - **Small models drift out of character** after a few turns. The harness re-states a one-line character reminder just before the newest user message, and L0 measures how well 0.8B holds a character over ten turns with and without it.
@@ -155,6 +155,27 @@ Chat's sequence today: M0 and M1 done, M2 is draft PR #51, M3 (attachments) is b
 | **L4 Resource monitor** | Diagnostics screen, per-answer stats line, logged reports, performance rows added to the ledger | A table of measured load time, first-token time, tokens/s and footprint for each model on Cati, in the ledger. |
 | **L5 Framework extraction** | Move the trait, records and Swift adapters into `forge-ai` with `install`, version check and fakes; `docs/local-ai.md` becomes the developer guide; ledger rows | A `forge init` app can add local AI by following the doc (part of the "build without the maintainer" exercise). |
 
+### L0 results
+
+The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.md](local-ai-check.md). Found while building it, before any device run:
+
+- CoreML-LLM keeps models in `Documents/Models`, which iCloud backs up. The check app marks the folder excluded from backup; the L2 adapter must do the same or move it.
+- `Qwen35MLKVGenerator` compiles each `.mlpackage` chunk into a temporary location on every load (`MLModel.compileModel(at:)` without caching the result), so every launch may pay the compile time. K7 measures it; L2 may need to keep the compiled `.mlmodelc`.
+- Qwen3.5's tokenizer comes from Hugging Face at load time (`AutoTokenizer.from(pretrained:)`), not with the model download. K12 tests whether its cache makes it work offline.
+- CoreML-LLM's own sample app drops system messages for Qwen3.5. The check app sends them through the chat template; K9 shows whether that works for characters.
+
+| Question | Result on Cati |
+|---|---|
+| Foundation Models on a free-team app | Not run |
+| CoreML-LLM builds with xtool on Linux | Not run |
+| Available memory at launch / after 0.8B load | Not run |
+| LFM2.5 350M: load (first, second), tokens/s, stop latency | Not run |
+| Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | Not run |
+| Qwen3.5 2B fits | Not run |
+| Characters in character over ten turns (reminder on / off) | Not run |
+| Offline after download | Not run |
+| Swift → Rust push cost | Not run |
+
 Each milestone is one PR with a device runbook in `examples/chat/ACCEPTANCE.md`, the same as Chat's others.
 
 ### Capability ledger rows this adds
@@ -178,13 +199,15 @@ To add under a new "On-device AI" section, all **No** today: Apple Foundation Mo
 
 Build it, as Reuben proposed, in the Chat app: Foundation Models as the quick baseline, CoreML-LLM with **Qwen3.5 0.8B** as the real feature, behind a Rust-facing `LocalModelEngine` foreign trait with no inference in Rust. Start with the L0 spikes now, since they touch no Chat code and settle the four unknowns that could change the plan (free-team Foundation Models, the xtool build, the memory limit, cancellation). Begin L1 once M3 merges. Treat the 2B model as conditional on L0's memory measurement, and treat every published speed number as a guess until Cati has been measured.
 
-## 6. Open questions for Reuben
+## 6. Decisions (Reuben, 2026-11-07)
 
-1. **Order.** Slot L1–L4 between M3 and M4 (recommended), or after M6?
-2. **L0 now?** Start the spikes in parallel with the Chat thread's M3 (recommended)?
-3. **Minimum iOS.** Raise Chat to iOS 18 (CoreML-LLM's floor; Cati is on 26) and gate Foundation Models with `#available(iOS 26)`, or keep 17 and hide the Assistant below 18? Recommended: raise to 18.
-4. **Default models.** Qwen3.5 0.8B as default, LFM2.5 350M as the small option (its license excludes commercial use above $10M revenue), 2B only if it fits. OK?
-5. **App slots.** The L0 check app needs one of Cati's three slots. Remove ServicesCheck for it, and later swap it for Chat?
-6. **Assistant without an account.** Reachable from the signed-out screen too (recommended), or only after sign-up?
-7. **Downloads over cellular.** Wi-Fi only by default with an override (recommended), or ask each time?
-8. **Characters.** Which built-in characters should ship, and should the user's own characters be shareable as files from the start or later (recommended: later)?
+All recommendations accepted:
+
+1. **Order:** M3 → L1–L4 → M4 → M5 → L5 → M6.
+2. **L0 starts now**, in parallel with the Chat thread's M3, without touching Chat code.
+3. **Chat's minimum iOS goes up to 18**; Foundation Models is gated with `#available(iOS 26, *)`.
+4. **Models:** Qwen3.5 0.8B is the default, LFM2.5 350M the small option, and 2B only if L0 shows it fits.
+5. **App slot:** the L0 check app replaces ServicesCheck on Cati; Chat takes a slot again from L1.
+6. **The assistant works without a chat-server account.**
+7. **Model downloads are Wi-Fi only by default**, with an override.
+8. **Built-in characters:** a virtual boyfriend and a virtual girlfriend, as test characters. User-made characters become shareable files later.
