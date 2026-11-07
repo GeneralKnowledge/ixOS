@@ -1,0 +1,47 @@
+# Forge UI Testing M0: the five basics on a real iPhone.
+# Run from Linux with the phone plugged in:  forge ui run examples/pocket-library/uitests/m0.toml
+# It opens the New Book form, types a title, checks the form reacted, takes
+# screenshots and cancels, so it leaves the library unchanged.
+
+name = "M0: launch, find by identifier, tap, type, read state, screenshot"
+app = "org.forgemobile.pocketlibrary"
+
+# 1. Launch the installed app (restarts it if it is running).
+[[step]]
+launch = {}
+
+[[step]]
+screenshot = "1-library"
+
+# 2-3. Find the toolbar's Add button by accessibility identifier and tap it.
+[[step]]
+tap = { id = "library.add" }
+
+# The menu item by its VoiceOver label: the fallback when there is no identifier.
+[[step]]
+tap = { label = "Enter Details" }
+
+# 3. Enter text.
+[[step]]
+type = { id = "bookForm.title", text = "Hello from Forge" }
+
+# 4. Read the resulting UI state: the field holds the text and Add is now enabled.
+[[step]]
+expect = { id = "bookForm.title", value = "Hello from Forge" }
+
+[[step]]
+expect = { id = "bookForm.save", enabled = true }
+
+[[step]]
+tree = true
+
+# 5. A screenshot, saved on Linux.
+[[step]]
+screenshot = "2-new-book-form"
+
+# Leave without saving.
+[[step]]
+tap = { id = "bookForm.cancel" }
+
+[[step]]
+expect = { id = "bookForm.title", gone = true }

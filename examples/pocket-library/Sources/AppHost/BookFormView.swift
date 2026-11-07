@@ -56,10 +56,12 @@ struct BookFormView: View {
                         .font(.headline)
                         .wordsEntry()
                         .focused($focused, equals: .title)
+                        .accessibilityIdentifier("bookForm.title")
                         .submitLabel(.next)
                     TextField("Author", text: $input.author)
                         .wordsEntry()
                         .focused($focused, equals: .author)
+                        .accessibilityIdentifier("bookForm.author")
                         .submitLabel(.next)
                 }
                 .onSubmit { advance() }
@@ -70,17 +72,20 @@ struct BookFormView: View {
                             Text(status.label).tag(status)
                         }
                     }
+                    .accessibilityIdentifier("bookForm.status")
                     LabeledContent("Current page") {
                         TextField("0", text: $currentPage)
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .currentPage)
+                            .accessibilityIdentifier("bookForm.currentPage")
                     }
                     LabeledContent("Pages") {
                         TextField("Unknown", text: $totalPages)
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .totalPages)
+                            .accessibilityIdentifier("bookForm.totalPages")
                     }
                 }
 
@@ -92,15 +97,18 @@ struct BookFormView: View {
                     TextField("Thoughts, quotes, where you got it…", text: $input.notes, axis: .vertical)
                         .lineLimit(3...10)
                         .focused($focused, equals: .notes)
+                        .accessibilityIdentifier("bookForm.notes")
                 }
 
                 Section {
                     TextField("Description", text: $input.description, axis: .vertical)
                         .lineLimit(2...8)
                         .focused($focused, equals: .description)
+                        .accessibilityIdentifier("bookForm.description")
                     TextField("Cover image link (https://…)", text: $coverURL)
                         .autocorrectionDisabled()
                         .focused($focused, equals: .cover)
+                        .accessibilityIdentifier("bookForm.cover")
                         #if os(iOS)
                         .textContentType(.URL)
                         .keyboardType(.URL)
@@ -118,6 +126,7 @@ struct BookFormView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("bookForm.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if saving {
@@ -125,6 +134,7 @@ struct BookFormView: View {
                     } else {
                         Button(isEditing ? "Save" : "Add") { save() }
                             .disabled(input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                            .accessibilityIdentifier("bookForm.save")
                     }
                 }
                 #if os(iOS)

@@ -13,6 +13,7 @@ mod live;
 mod report;
 mod runner;
 mod swift_check;
+mod ui;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -127,6 +128,67 @@ enum Commands {
         /// The only phone device tools may touch
         #[arg(long)]
         udid: Option<String>,
+    },
+    /// Drive an app on a connected iPhone from Linux: find elements by
+    /// accessibility identifier, tap, type, read the screen, take screenshots
+    /// (XCTest through WebDriverAgent; docs/forge-ui-testing.md)
+    Ui {
+        #[command(subcommand)]
+        cmd: UiCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum UiCommands {
+    /// Mount the Developer Disk Image, install the WebDriverAgent runner and
+    /// check that it starts. Run after every phone restart
+    Setup {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Folder with a personalised Developer Disk Image (only needed when
+        /// none is mounted; see docs/forge-ui-testing.md)
+        #[arg(long, value_name = "DIR")]
+        ddi: Option<PathBuf>,
+        /// Install this WebDriverAgentRunner-Runner.app with `xtool install`
+        /// (skipped when a runner is already on the phone)
+        #[arg(long, value_name = "APP")]
+        runner: Option<PathBuf>,
+        /// Install the runner even if one is on the phone, e.g. to re-sign
+        /// it before a free account's 7 days run out
+        #[arg(long, requires = "runner")]
+        reinstall: bool,
+        /// The Apple team xtool signs with, `free` or `paid` (default: the
+        /// current app's `[ios.signing] team_type`). Paid teams have no
+        /// 3-app limit and no 7-day expiry
+        #[arg(long, value_name = "TYPE", value_parser = ["free", "paid"])]
+        team: Option<String>,
+    },
+    /// Print the accessibility tree of the screen and flag unlabelled controls
+    Tree {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Bring this app (its forge.toml bundle id) to the front first
+        #[arg(long, value_name = "BUNDLE_ID")]
+        app: Option<String>,
+    },
+    /// Save a screenshot of the phone's screen here
+    Screenshot {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Where to save the PNG
+        #[arg(default_value = "screenshot.png")]
+        path: PathBuf,
+    },
+    /// Run a UI test file (TOML steps) against its app
+    Run {
+        #[arg(long)]
+        udid: Option<String>,
+        /// The test file
+        file: PathBuf,
+        /// Where screenshots and failure details go
+        #[arg(long, value_name = "DIR", default_value = "forge-ui-out")]
+        out: PathBuf,
     },
 }
 
@@ -400,6 +462,11 @@ fn main() {
         Commands::Test { .. } | Commands::Check { .. } => "test",
         // usbmuxd missing, no phone, not paired, the app not listening.
         Commands::Device { .. } | Commands::Devices => "device",
+        Commands::Ui {
+            cmd: UiCommands::Run { .. },
+        } => "test",
+        // No DDI, no runner, WebDriverAgent not answering.
+        Commands::Ui { .. } => "device",
         _ => "forge",
     };
     if let (Some(dir), true) = (&project, logs_to_file(&cli.command)) {
@@ -461,6 +528,12 @@ fn command_name(command: &Commands) -> String {
             DeviceCommands::Snapshot { .. } => "device snapshot",
             DeviceCommands::Cmd { .. } => "device cmd",
             DeviceCommands::Connect { .. } => "device connect",
+        },
+        Commands::Ui { cmd } => match cmd {
+            UiCommands::Setup { .. } => "ui setup",
+            UiCommands::Tree { .. } => "ui tree",
+            UiCommands::Screenshot { .. } => "ui screenshot",
+            UiCommands::Run { .. } => "ui run",
         },
     };
     sub.into()
@@ -601,6 +674,43 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         },
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
+        Commands::Ui { cmd } => {
+            // Not `stdout().lock()`: `ui setup` runs xtool, and with --json
+            // its output is forwarded to stdout from another thread, which
+            // would wait forever for a lock held here (seen on Cati).
+            let mut out = std::io::stdout();
+            match cmd {
+                UiCommands::Setup {
+                    udid,
+                    ddi,
+                    runner: app,
+                    reinstall,
+                    team,
+                } => {
+                    let signing = ios_env::signing_team(runner);
+                    if let Some(signing) = &signing {
+                        let _ = std::io::Write::write_fmt(&mut out, format_args!("xtool signs with {}\n", signing.describe()));
+                    }
+                    let team = ui::Team::resolve(
+                        team.as_deref(),
+                        signing.map(|s| s.kind),
+                        std::path::Path::new("."),
+                    )?;
+                    ui::setup(
+                        runner,
+                        udid.as_deref(),
+                        ddi.as_deref(),
+                        app.as_deref(),
+                        reinstall,
+                        team,
+                        &mut out,
+                    )
+                }
+                UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
+                UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
+                UiCommands::Run { udid, file, out: dir } => ui::run(udid.as_deref(), &file, &dir, &mut out),
+            }
+        }
         Commands::Device { cmd } => device_command(cmd, cli.json),
         Commands::Install { cmd } => match cmd {
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),

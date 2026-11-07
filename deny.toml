@@ -35,6 +35,13 @@ unused-allowed-license = "allow"
 crate = "webpki-root-certs"
 allow = ["CDLA-Permissive-2.0"]
 
+# The same CA bundle, for the Linux CLI only: forge-uitest (via idevice's
+# `tss` feature) calls Apple's TSS server over HTTPS to personalise the
+# Developer Disk Image for a phone. Never compiled into an app.
+[[licenses.exceptions]]
+crate = "webpki-roots"
+allow = ["CDLA-Permissive-2.0"]
+
 [bans]
 multiple-versions = "allow"
 wildcards = "deny"

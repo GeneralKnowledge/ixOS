@@ -1,0 +1,34 @@
+[package]
+name = "forge-uitest"
+version = "0.1.0"
+description = "Forge UI Testing: drive an app on a connected iPhone from Linux through XCTest and WebDriverAgent, finding elements by accessibility identifier"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# Same exact pin as forge-device: one device stack. The extra features start
+# the XCTest runner through testmanagerd (iOS 17+ over CoreDeviceProxy and a
+# userspace TCP stack, no root), mount the personalised Developer Disk Image,
+# and find the installed runner.
+idevice = { version = "=0.1.68", default-features = false, features = [
+    "ring",
+    "usbmuxd",
+    "xctest",
+    "wda",
+    "installation_proxy",
+    "mobile_image_mounter",
+    "tss",
+] }
+forge-device = { path = "../forge-device" }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "time", "io-util"] }
+plist = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = "1.1"
+base64 = "0.22"
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

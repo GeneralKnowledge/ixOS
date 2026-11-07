@@ -61,6 +61,7 @@ crates/forge-storage   # Atomic file writes, versioned JSON documents, SQLite (f
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, lifecycle, app_shell!, logging, Android HTTPS init
 crates/forge-device    # `forge device`: a connected iPhone's details, logs and crash reports from Linux, and the live connection to development builds (docs/forge-device.md)
+crates/forge-uitest    # `forge ui`: drive an app on a connected iPhone from Linux by accessibility identifier, through XCTest and WebDriverAgent (docs/forge-ui-testing.md)
 crates/forge-devproto  # the live connection's wire protocol: frames, Noise handshake, messages, replay buffer
 crates/forge-devtools  # the live connection's server inside a development build (`forge run ios --devtools`)
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)

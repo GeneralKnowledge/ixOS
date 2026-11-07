@@ -22,13 +22,22 @@ public struct ContentView: View {
             case .open:
                 TabView(selection: $selectedTab) {
                     LibraryView()
-                        .tabItem { Label("Library", systemImage: "books.vertical") }
+                        .tabItem {
+                            Label("Library", systemImage: "books.vertical")
+                                .accessibilityIdentifier("tab.library")
+                        }
                         .tag("library")
                     ActivityView()
-                        .tabItem { Label("Activity", systemImage: "chart.bar") }
+                        .tabItem {
+                            Label("Activity", systemImage: "chart.bar")
+                                .accessibilityIdentifier("tab.activity")
+                        }
                         .tag("activity")
                     SettingsView()
-                        .tabItem { Label("Settings", systemImage: "gearshape") }
+                        .tabItem {
+                            Label("Settings", systemImage: "gearshape")
+                                .accessibilityIdentifier("tab.settings")
+                        }
                         .tag("settings")
                 }
             }

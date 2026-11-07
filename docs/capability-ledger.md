@@ -173,6 +173,17 @@ Developer tooling on the Linux computer, not app capabilities, so "Rust API" and
 | Status, state probes and app commands (`forge device status`, `snapshot`, `cmd`) | Yes: forge-devtools, forge-device | Yes: `DevTools::probe`, `DevTools::command` | n/a | Yes: starter app (`notes` probe, `log` command) | No | Yes: forge-device.md | Chat registers none yet; no built-in reset or test-notification commands |
 | Which Apple team xtool signs with, free or paid (`forge doctor`, `forge run ios`) | Yes: forge-cli | n/a | n/a | n/a | No | Yes: ios-signing.md | Reads `xtool auth status` and `xtool ds teams list` (needs network to tell free from paid); paid detection follows xtool's own rule, never checked against a paid team yet |
 
+## Forge UI Testing (W12)
+
+Driving an app on the phone from Linux through XCTest and WebDriverAgent. Plan and feasibility: [forge-ui-testing.md](forge-ui-testing.md).
+
+| Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
+|---|---|---|---|---|---|---|---|
+| Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`) | Yes: forge-uitest | n/a | n/a: prebuilt WDA, signed by xtool | n/a | Partial: DDI mounted and runner installed on iPhone16,2, iOS 26.3.1, 2026-11-07; the runner start and M0 not yet run | Partial: forge-ui-testing.md | Runner uses one of the 3 free-account app slots and expires after 7 days; the personalised DDI comes from the doronz88/DeveloperDiskImage mirror (Xcode 26.0's xip has none) and is gone after a reboot |
+| Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui run`, `tree`) | Yes: forge-uitest | n/a | n/a | Yes: Pocket Library (`uitests/m0.toml`) | No: M0 not yet run on a phone | Partial: forge-ui-testing.md | No coordinates by design; no reports until M1. Reading and pressing without the runner (Accessibility Inspector, docs/research/ax-audit.md) is unproven |
+| Screenshot saved on Linux (`forge ui screenshot`) | Yes: forge-uitest | n/a | n/a | Yes: Pocket Library | No: M0 not yet run on a phone | Partial: forge-ui-testing.md | No baseline comparison until M4 |
+| Accessibility identifiers and labels in the demos | No | n/a | Partial: labels per ios-ui.md | Partial: Pocket Library's library screen and book form | Partial: Pocket Library identifiers read by the accessibility service on iPhone16,2, iOS 26.3.1, 2026-11-07 (not yet through WDA) | Partial: ios-ui.md | Conventions and the full audit come in M3 |
+
 ## Performance
 
 A capability can work and still give a poor app. Each metric has a proposed target, a way to measure it from Linux with xtool (timestamps the app logs, read from the device log, or a diagnostics screen in the app), and the last recorded figure. Targets are proposals until the first measurement on the test iPhone, then they are revised once and kept.

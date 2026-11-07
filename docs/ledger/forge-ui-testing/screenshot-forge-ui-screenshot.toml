@@ -1,0 +1,9 @@
+order = 30
+capability = "Screenshot saved on Linux (`forge ui screenshot`)"
+framework = "Yes: forge-uitest"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes: Pocket Library"
+iphone = "No: M0 not yet run on a phone"
+documented = "Partial: forge-ui-testing.md"
+limits = "No baseline comparison until M4"

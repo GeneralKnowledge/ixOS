@@ -1,0 +1,9 @@
+order = 10
+capability = "Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`)"
+framework = "Yes: forge-uitest"
+rust_api = "n/a"
+ios_native = "n/a: prebuilt WDA, signed by xtool"
+in_app = "n/a"
+iphone = "Partial: DDI mounted and runner installed on iPhone16,2, iOS 26.3.1, 2026-11-07; the runner start and M0 not yet run"
+documented = "Partial: forge-ui-testing.md"
+limits = "Runner uses one of the 3 free-account app slots and expires after 7 days; the personalised DDI comes from the doronz88/DeveloperDiskImage mirror (Xcode 26.0's xip has none) and is gone after a reboot"
