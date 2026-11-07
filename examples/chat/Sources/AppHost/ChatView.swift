@@ -47,35 +47,60 @@ struct ChatView: View {
     private var messages: [ChatMessage] { model.messages(in: conversationId) }
     private var muted: Bool { model.conversation(conversationId)?.muted ?? false }
 
+    // `body` is split into small pieces: as one expression it was too big
+    // for the Swift type checker to finish in reasonable time.
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 2) {
-                    ForEach(Transcript.rows(messages)) { row in
-                        switch row.kind {
-                        case .separator(let date):
-                            Text(date.transcriptLabel)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .padding(.top, 12)
-                                .padding(.bottom, 4)
-                        case .message(let message, let place):
-                            MessageBubble(
-                                model: model,
-                                message: message,
-                                place: place,
-                                delivery: place.showsDelivery ? model.delivery(of: message) : nil,
-                                quoted: quote(for: message),
-                                highlighted: highlighted == message.id,
-                                actions: actions(for: message)
-                            )
-                        }
-                    }
-                    Color.clear.frame(height: 1).id(Self.bottom)
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+        let content = transcript
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ConnectionBanner(state: model.connection[conversationId] ?? .closed)
             }
+            .safeAreaInset(edge: .bottom, spacing: 0) { composer }
+        return lifecycle(attachmentPickers(navigation(content)))
+    }
+
+    private var transcript: some View {
+        ScrollViewReader { proxy in
+            scrolling(transcriptList, proxy: proxy)
+        }
+    }
+
+    private var transcriptList: some View {
+        ScrollView {
+            LazyVStack(spacing: 2) {
+                ForEach(Transcript.rows(messages)) { row in
+                    transcriptRow(row)
+                }
+                Color.clear.frame(height: 1).id(Self.bottom)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 8)
+        }
+    }
+
+    @ViewBuilder
+    private func transcriptRow(_ row: Transcript.Row) -> some View {
+        switch row.kind {
+        case .separator(let date):
+            Text(date.transcriptLabel)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .padding(.top, 12)
+                .padding(.bottom, 4)
+        case .message(let message, let place):
+            MessageBubble(
+                model: model,
+                message: message,
+                place: place,
+                delivery: place.showsDelivery ? model.delivery(of: message) : nil,
+                quoted: quote(for: message),
+                highlighted: highlighted == message.id,
+                actions: actions(for: message)
+            )
+        }
+    }
+
+    private func scrolling(_ content: some View, proxy: ScrollViewProxy) -> some View {
+        content
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.last?.id) { _, _ in
@@ -90,126 +115,167 @@ struct ChatView: View {
             }
             .onChange(of: jumpTarget) { _, target in
                 guard let target else { return }
-                withAnimation { proxy.scrollTo(target, anchor: .center) }
-                highlighted = target
-                jumpTarget = nil
-                Task {
-                    try? await Task.sleep(for: .seconds(1.5))
-                    withAnimation { if highlighted == target { highlighted = nil } }
-                }
+                jump(to: target, proxy: proxy)
             }
+    }
+
+    private func jump(to target: String, proxy: ScrollViewProxy) {
+        withAnimation { proxy.scrollTo(target, anchor: .center) }
+        highlighted = target
+        jumpTarget = nil
+        Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            withAnimation { if highlighted == target { highlighted = nil } }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            ConnectionBanner(state: model.connection[conversationId] ?? .closed)
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            Composer(
-                draft: $draft,
-                focused: $composing,
-                context: composerContext,
-                problem: model.sendError[conversationId],
-                staged: staged,
-                recorder: recorder,
-                cancel: cancelContext,
-                pickPhotos: { pickingPhotos = true },
-                pickFiles: { pickingFiles = true },
-                unstage: { file in staged.removeAll { $0.id == file.id } },
-                startRecording: startRecording,
-                cancelRecording: { recorder.cancel() },
-                sendRecording: { if let recording = recorder.stop() { sendVoice(recording) } },
-                send: send
-            )
-        }
-        .navigationTitle(model.title(of: conversationId))
-        #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-        #endif
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu("More", systemImage: "ellipsis.circle") {
-                    Button("Search in Conversation", systemImage: "magnifyingglass") {
-                        searching = true
-                    }
-                    if muted {
-                        Button("Unmute", systemImage: "bell") {
-                            model.setMuted(conversationId, false)
-                        }
-                    } else {
-                        Button("Mute", systemImage: "bell.slash") {
-                            model.setMuted(conversationId, true)
-                        }
-                    }
-                }
-            }
-        }
-        .sheet(isPresented: $searching) {
-            MessageSearchSheet(model: model, conversationId: conversationId) { found in
-                searching = false
-                jumpTarget = found.id
-            }
-        }
-        .confirmationDialog(
-            deleting?.status == .sent ? "Delete this message for everyone?" : "Delete this unsent message?",
-            isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
-            titleVisibility: .visible,
-            presenting: deleting
-        ) { message in
-            Button(message.status == .sent ? "Delete for Everyone" : "Delete", role: .destructive) {
-                Task { await model.delete(message) }
-            }
-        }
-        .photosPicker(
-            isPresented: $pickingPhotos, selection: $photoItems,
-            maxSelectionCount: MAX_ATTACHMENTS_PER_MESSAGE_SWIFT, matching: .images
+    }
+
+    private var composer: Composer {
+        Composer(
+            draft: $draft,
+            focused: $composing,
+            context: composerContext,
+            problem: model.sendError[conversationId],
+            staged: staged,
+            recorder: recorder,
+            cancel: cancelContext,
+            pickPhotos: { pickingPhotos = true },
+            pickFiles: { pickingFiles = true },
+            unstage: { file in staged.removeAll { $0.id == file.id } },
+            startRecording: startRecording,
+            cancelRecording: { recorder.cancel() },
+            sendRecording: sendRecording,
+            send: send
         )
-        .onChange(of: photoItems) { _, items in
-            guard !items.isEmpty else { return }
-            photoItems = []
-            Task { await stagePhotos(items) }
+    }
+
+    private func sendRecording() {
+        if let recording = recorder.stop() { sendVoice(recording) }
+    }
+
+    private var moreMenu: some View {
+        Menu("More", systemImage: "ellipsis.circle") {
+            Button("Search in Conversation", systemImage: "magnifyingglass") {
+                searching = true
+            }
+            if muted {
+                Button("Unmute", systemImage: "bell") {
+                    model.setMuted(conversationId, false)
+                }
+            } else {
+                Button("Mute", systemImage: "bell.slash") {
+                    model.setMuted(conversationId, true)
+                }
+            }
         }
-        .fileImporter(
-            isPresented: $pickingFiles, allowedContentTypes: [.item],
-            allowsMultipleSelection: true
-        ) { result in
-            stageDocuments(result)
-        }
-        .quickLookPreview($previewURL)
-        .alert("Microphone Access Is Off", isPresented: $microphoneDenied) {
+    }
+
+    private var deletingShown: Binding<Bool> {
+        Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })
+    }
+
+    private var deleteTitle: LocalizedStringKey {
+        deleting?.status == .sent ? "Delete this message for everyone?" : "Delete this unsent message?"
+    }
+
+    /// Title, the More menu, search, and the delete confirmation.
+    private func navigation(_ content: some View) -> some View {
+        content
+            .navigationTitle(model.title(of: conversationId))
             #if os(iOS)
-                Button("Open Settings") { ForgePermissions.openSettings() }
+                .navigationBarTitleDisplayMode(.inline)
             #endif
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("To record voice messages, allow Chat to use the microphone in Settings.")
-        }
-        .sensoryFeedback(.impact(weight: .light), trigger: model.sentCount)
-        .sensoryFeedback(.error, trigger: model.failedCount)
-        .task {
-            if !draftLoaded {
-                draft = model.draft(for: conversationId)
-                draftLoaded = true
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { moreMenu }
             }
-            // A recording that ends by itself (the 5-minute limit, or a
-            // phone call) is sent rather than lost.
-            recorder.onFinish = { recording in
-                if let recording { sendVoice(recording) }
+            .sheet(isPresented: $searching) {
+                MessageSearchSheet(model: model, conversationId: conversationId) { found in
+                    searching = false
+                    jumpTarget = found.id
+                }
             }
-            await model.enter(conversationId)
-            if let focusMessage { jumpTarget = focusMessage }
+            .confirmationDialog(
+                deleteTitle,
+                isPresented: deletingShown,
+                titleVisibility: .visible,
+                presenting: deleting
+            ) { message in
+                Button(message.status == .sent ? "Delete for Everyone" : "Delete", role: .destructive) {
+                    Task { await model.delete(message) }
+                }
+            }
+    }
+
+    /// The photo and file pickers, Quick Look, and the microphone alert.
+    private func attachmentPickers(_ content: some View) -> some View {
+        content
+            .photosPicker(
+                isPresented: $pickingPhotos, selection: $photoItems,
+                maxSelectionCount: MAX_ATTACHMENTS_PER_MESSAGE_SWIFT, matching: .images
+            )
+            .onChange(of: photoItems) { _, items in
+                guard !items.isEmpty else { return }
+                photoItems = []
+                Task { await stagePhotos(items) }
+            }
+            .fileImporter(
+                isPresented: $pickingFiles, allowedContentTypes: [.item],
+                allowsMultipleSelection: true
+            ) { result in
+                stageDocuments(result)
+            }
+            .quickLookPreview($previewURL)
+            .alert("Microphone Access Is Off", isPresented: $microphoneDenied) {
+                microphoneAlertButtons
+            } message: {
+                Text("To record voice messages, allow Chat to use the microphone in Settings.")
+            }
+    }
+
+    @ViewBuilder
+    private var microphoneAlertButtons: some View {
+        #if os(iOS)
+            Button("Open Settings") { ForgePermissions.openSettings() }
+        #endif
+        Button("OK", role: .cancel) {}
+    }
+
+    /// Haptics, entering and leaving the room, and saving the draft.
+    private func lifecycle(_ content: some View) -> some View {
+        content
+            .sensoryFeedback(.impact(weight: .light), trigger: model.sentCount)
+            .sensoryFeedback(.error, trigger: model.failedCount)
+            .task { await appear() }
+            .task(id: draft) { await autosaveDraft() }
+            .onDisappear(perform: disappear)
+    }
+
+    private func appear() async {
+        if !draftLoaded {
+            draft = model.draft(for: conversationId)
+            draftLoaded = true
         }
-        .task(id: draft) {
-            // Saved half a second after the last keystroke (and on leaving).
-            guard draftLoaded, editing == nil else { return }
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            model.saveDraft(draft, for: conversationId)
+        // A recording that ends by itself (the 5-minute limit, or a
+        // phone call) is sent rather than lost.
+        recorder.onFinish = { recording in
+            if let recording { sendVoice(recording) }
         }
-        .onDisappear {
-            recorder.cancel()
-            ForgeAudioPlayer.shared.stop()
-            model.saveDraft(editing == nil ? draft : stashedDraft, for: conversationId)
-            model.leave(conversationId)
-        }
+        await model.enter(conversationId)
+        if let focusMessage { jumpTarget = focusMessage }
+    }
+
+    private func autosaveDraft() async {
+        // Saved half a second after the last keystroke (and on leaving).
+        guard draftLoaded, editing == nil else { return }
+        try? await Task.sleep(for: .milliseconds(500))
+        guard !Task.isCancelled else { return }
+        model.saveDraft(draft, for: conversationId)
+    }
+
+    private func disappear() {
+        recorder.cancel()
+        ForgeAudioPlayer.shared.stop()
+        model.saveDraft(editing == nil ? draft : stashedDraft, for: conversationId)
+        model.leave(conversationId)
     }
 
     private static let bottom = "bottom"
