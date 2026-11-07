@@ -121,6 +121,19 @@ Engines are installed at launch like native services (`LocalModels.install([Foun
 
 Per conversation, with app-wide defaults: model, temperature (0–1.5), top-p, maximum answer length (tokens), context budget (tokens; capped by the model: 4096 for Foundation Models, 2048 as CoreML-LLM's published config), and a system prompt. Rust trims the oldest turns to fit the budget and shows when it did.
 
+### Characters
+
+Reuben's addition (2026-11-07): the user can pick or create a **character** for the assistant to play. A character is a harness around the model, not a different model:
+
+- **The record**, in `assistant.db`: name, an emoji or initials for the avatar, a one-line description, the character's instructions (personality, voice, what it knows, what it won't do), an optional opening line, and optional defaults (model, temperature). The app ships a few built-in characters (for example a plain Assistant, a terse Coding Buddy and a Storyteller), and the user can make, edit, duplicate and delete their own.
+- **Each conversation is bound to one character**, chosen when it starts. The list shows the character's avatar and name, and its bubbles carry them.
+- **Rust builds the harness prompt**: a short fixed frame (stay in character, answer as the character, keep it safe), then the character's instructions, then the trimmed history. The character block is **pinned**: history trimming never drops it, and the context budget reserves room for it.
+- **Small models drift out of character** after a few turns. The harness re-states a one-line character reminder just before the newest user message, and L0 measures how well 0.8B holds a character over ten turns with and without it.
+- **Foundation Models applies Apple's own guardrails** on top, so some characters may get refusals there. The UI shows the refusal as a refusal, not as an error.
+- Characters are plain data, so a later step can import and export them as small JSON files through the share sheet.
+
+All of it is Rust and SQLite, with nothing engine-specific, so it works the same on every adapter and moves into `forge-ai` with the rest in L5.
+
 ### Resource monitor
 
 A Settings → Assistant → Diagnostics screen, and a compact line under each answer: model, load time (with "compiled on first load"), time to first token, tokens per second, prompt/answer tokens, app footprint (`task_vm_info.phys_footprint`), `os_proc_available_memory()`, thermal state, battery level and Low Power Mode. Every generation's report is logged through `forge_runtime::logging`, so `forge device logs --grep assistant` on Linux records the numbers without anyone copying them by hand. Memory warnings unload the model.
@@ -138,7 +151,7 @@ Chat's sequence today: M0 and M1 done, M2 is draft PR #51, M3 (attachments) is b
 | **L0 spikes** (no Chat code) | A throwaway check app, like ServicesCheck, built on Linux with xtool: (a) Foundation Models availability and a streamed answer, signed with the free team; (b) CoreML-LLM + swift-transformers build with xtool; download Qwen3.5 0.8B, compile on device, generate, cancel mid-answer; (c) `os_proc_available_memory()` at launch and after load; (d) the Swift-to-Rust `TokenSink` round trip at full token rate | A short results table in this doc: what built, load/compile time, tokens/s, footprint, available memory. Decides whether the 2B model is offered and whether llama.cpp is needed. |
 | **L1 Assistant core and baseline** | `AssistantCore` in the Chat crate, the `LocalModelEngine` trait, a fake engine and Rust tests, `assistant.db`, the Foundation Models adapter, an Assistant conversation in the UI reachable signed in or out, streaming and Stop | A Foundation Models conversation works, Stop works, history survives a relaunch. If Foundation Models is unavailable, the screen says why (Apple Intelligence off, not ready). |
 | **L2 Downloadable models** | Model library (catalogue, download with progress and resume, remove, switch, free space and memory checks), the CoreML-LLM adapter, Qwen3.5 0.8B default, LFM2.5 350M as the small option, 2B only if L0 says it fits | Download, switch and remove each model; the **airplane-mode test** passes. |
-| **L3 Controls and limits** | Temperature, top-p, answer length, context budget, system prompt; history trimming; background, thermal and memory-warning stops | Each control visibly changes behaviour; backgrounding mid-answer stops cleanly; a memory warning unloads. |
+| **L3 Controls, characters and limits** | Temperature, top-p, answer length, context budget, system prompt; characters (built-in and user-made, pinned in the prompt); history trimming; background, thermal and memory-warning stops | Each control visibly changes behaviour; a user-made character stays in character for ten turns on 0.8B; backgrounding mid-answer stops cleanly; a memory warning unloads. |
 | **L4 Resource monitor** | Diagnostics screen, per-answer stats line, logged reports, performance rows added to the ledger | A table of measured load time, first-token time, tokens/s and footprint for each model on Cati, in the ledger. |
 | **L5 Framework extraction** | Move the trait, records and Swift adapters into `forge-ai` with `install`, version check and fakes; `docs/local-ai.md` becomes the developer guide; ledger rows | A `forge init` app can add local AI by following the doc (part of the "build without the maintainer" exercise). |
 
@@ -174,3 +187,4 @@ Build it, as Reuben proposed, in the Chat app: Foundation Models as the quick ba
 5. **App slots.** The L0 check app needs one of Cati's three slots. Remove ServicesCheck for it, and later swap it for Chat?
 6. **Assistant without an account.** Reachable from the signed-out screen too (recommended), or only after sign-up?
 7. **Downloads over cellular.** Wi-Fi only by default with an override (recommended), or ask each time?
+8. **Characters.** Which built-in characters should ship, and should the user's own characters be shareable as files from the start or later (recommended: later)?
