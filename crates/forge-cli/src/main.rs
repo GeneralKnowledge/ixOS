@@ -2,6 +2,7 @@ mod app_config;
 mod check;
 mod commands;
 mod config;
+mod device;
 mod diagnose;
 mod doctor;
 mod ios_builder;
@@ -84,6 +85,52 @@ enum Commands {
     Run {
         #[command(subcommand)]
         cmd: RunCommands,
+    },
+    /// A connected iPhone over USB, from Linux: its details, live logs and
+    /// crash reports (needs usbmuxd and a phone that trusts this computer)
+    Device {
+        #[command(subcommand)]
+        cmd: DeviceCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum DeviceCommands {
+    /// Connected phones: UDID, name, model, iOS version
+    List,
+    /// One phone's name, model, iOS version and whether Developer Mode is on
+    Info {
+        /// Which phone, when several are connected (see `forge device list`)
+        #[arg(long)]
+        udid: Option<String>,
+    },
+    /// Stream the phone's system log; Ctrl-C stops
+    Logs {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Only this process's lines: the app's executable name as the log
+        /// shows it (for example `Chat`)
+        #[arg(long, value_name = "NAME")]
+        process: Option<String>,
+        /// Only lines containing this text (case-insensitive)
+        #[arg(long, value_name = "TEXT")]
+        grep: Option<String>,
+        /// Stop after this many matching lines
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+    },
+    /// List crash reports on the phone, or copy them here with --pull
+    Crashes {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// Only this app's reports (its executable name), newest first
+        #[arg(long, value_name = "NAME")]
+        app: Option<String>,
+        /// Copy the reports into this folder
+        #[arg(long, value_name = "DIR")]
+        pull: Option<PathBuf>,
     },
 }
 
@@ -275,6 +322,33 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Devices => commands::devices(runner, &ios),
+        Commands::Device { cmd } => {
+            let backend = forge_device::UsbBackend::new().map_err(|e| e.to_string())?;
+            let mut out = std::io::stdout().lock();
+            match cmd {
+                DeviceCommands::List => device::list(&backend, &mut out),
+                DeviceCommands::Info { udid } => device::info(&backend, udid.as_deref(), &mut out),
+                DeviceCommands::Logs {
+                    udid,
+                    process,
+                    grep,
+                    limit,
+                } => {
+                    let filter = forge_device::LogFilter {
+                        process,
+                        contains: grep,
+                    };
+                    device::logs(&backend, udid.as_deref(), &filter, limit, &mut out)
+                }
+                DeviceCommands::Crashes { udid, app, pull } => device::crashes(
+                    &backend,
+                    udid.as_deref(),
+                    app.as_deref(),
+                    pull.as_deref(),
+                    &mut out,
+                ),
+            }
+        }
         Commands::Install { cmd } => match cmd {
             InstallCommands::Ios { ipa } => commands::install_ios(runner, &ios, &ipa),
         },

@@ -10,6 +10,14 @@
 pub async fn services_self_check() -> Vec<String> {
     use native::{LocalNotification, NativePermission, NativeServices, NotificationTrigger};
     let mut report = Vec::new();
+    // The system log: `forge device logs --grep services-check` on the
+    // laptop should show these three lines, one per level.
+    forge_runtime::logging::init();
+    forge_runtime::logging::info!(target: "services-check", "log probe info");
+    forge_runtime::logging::warn!(target: "services-check", "log probe warn");
+    forge_runtime::logging::error!(target: "services-check", "log probe error");
+    report.push("INFO logging: wrote 3 lines tagged [services-check] to the system log".into());
+
     let mut check = |name: &str, result: Result<String, String>| match result {
         Ok(detail) => report.push(format!("PASS {name}: {detail}")),
         Err(detail) => report.push(format!("FAIL {name}: {detail}")),
