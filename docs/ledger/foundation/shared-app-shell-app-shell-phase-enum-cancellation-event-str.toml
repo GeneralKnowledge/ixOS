@@ -1,0 +1,9 @@
+order = 30
+capability = "Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object)"
+framework = "Yes: forge-runtime"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: starter, Chat, Pocket Library"
+iphone = "No"
+documented = "Partial: app-crate.md"
+limits = ""

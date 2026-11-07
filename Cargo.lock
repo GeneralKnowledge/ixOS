@@ -749,10 +749,13 @@ dependencies = [
  "forge-devtools",
  "forge-runtime",
  "idevice",
+ "ns-keyed-archive",
  "plist",
+ "rustls",
  "tempfile",
  "thiserror",
  "tokio",
+ "tokio-rustls",
 ]
 
 [[package]]

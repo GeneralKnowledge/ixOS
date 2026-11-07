@@ -1,0 +1,9 @@
+order = 20
+capability = "Relational store with queries (SQLite)"
+framework = "Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Chat M2 (`forge-chat.db`)"
+iphone = "No: Chat M2 device run skipped"
+documented = "Partial: chat-demo.md"
+limits = "Bundled SQLite builds with xtool (Chat M2); the phone run that would show \"Storage: SQLite\" in Settings has not been done"

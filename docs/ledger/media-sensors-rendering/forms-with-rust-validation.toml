@@ -1,0 +1,9 @@
+order = 130
+capability = "Forms with Rust validation"
+framework = "Partial: compose sheet"
+rust_api = "Partial"
+ios_native = "Partial"
+in_app = "Yes: starter"
+iphone = "No"
+documented = "Partial"
+limits = ""

@@ -1,0 +1,9 @@
+order = 70
+capability = "Device identity and encrypted channel"
+framework = "Partial: Keychain only"
+rust_api = "Partial"
+ios_native = "Partial"
+in_app = "No"
+iphone = "No"
+documented = "No"
+limits = "Use a reviewed library"

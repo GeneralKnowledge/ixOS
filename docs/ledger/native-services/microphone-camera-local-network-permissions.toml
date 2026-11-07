@@ -1,0 +1,9 @@
+order = 70
+capability = "Microphone, camera, local network permissions"
+framework = "Partial: microphone (`audio` service)"
+rust_api = "Partial: `NativePermission::Microphone`"
+ios_native = "Partial: microphone"
+in_app = "Partial: Chat M4 (microphone)"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Camera and local network: config only"

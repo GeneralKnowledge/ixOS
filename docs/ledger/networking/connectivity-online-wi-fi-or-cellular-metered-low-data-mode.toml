@@ -1,0 +1,9 @@
+order = 40
+capability = "Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes)"
+framework = "Yes: forge-services `connectivity`"
+rust_api = "Yes: `ConnectivityService`, `TransferPolicy::Unmetered`"
+ios_native = "Yes: `NWPathMonitor`"
+in_app = "Yes: Device Lab"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; no signal strength or carrier"

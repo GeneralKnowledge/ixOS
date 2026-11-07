@@ -1,0 +1,9 @@
+order = 40
+capability = "Logging (platform log, recent records, extra sinks, panics logged)"
+framework = "Yes: forge-runtime"
+rust_api = "Yes: `forge_runtime::logging`"
+ios_native = "n/a: Rust writes the system log via `syslog`"
+in_app = "Yes: starter and every example call `logging::init`"
+iphone = "Partial: Warn reached the USB log on iPhone (iOS 26.3.1, 2026-11-07); Info did not (LOG_INFO dropped by the relay), fixed to notice priority, recheck pending"
+documented = "Partial: app-crate.md, architecture.md"
+limits = "Swift logs through `ForgeLog` (crates calling `forge_runtime::log_export!()`), so its records share the pipeline; no file sink yet"

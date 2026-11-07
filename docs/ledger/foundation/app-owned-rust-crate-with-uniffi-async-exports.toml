@@ -1,0 +1,9 @@
+order = 10
+capability = "App-owned Rust crate with UniFFI async exports"
+framework = "Yes"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Yes: starter, Pocket Library"
+iphone = "No: built with xtool, install not recorded"
+documented = "Yes: app-crate.md"
+limits = "Every example owns its crate; the Android Chat example keeps a frozen copy of the old Chat API in its own crate"

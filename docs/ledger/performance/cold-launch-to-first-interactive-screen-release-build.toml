@@ -1,0 +1,6 @@
+order = 10
+metric = "Cold launch to first interactive screen (release build)"
+target = "Under 1 s"
+how_measured = "Process start and first-frame timestamps logged by the app"
+first_needed_by = "Chat M1"
+last_recorded = "Not measured"

@@ -1,0 +1,9 @@
+order = 40
+capability = "Live connection to a development build: pairing over USB, encrypted session (`forge device pair`, `unpair`)"
+framework = "Yes: forge-devproto, forge-devtools, forge-device"
+rust_api = "Yes: `forge_devtools::DevTools`"
+ios_native = "n/a: pure Rust in the app"
+in_app = "Yes: starter app (`--devtools`)"
+iphone = "No"
+documented = "Yes: forge-device.md"
+limits = "USB only; no QR or Wi-Fi pairing yet"

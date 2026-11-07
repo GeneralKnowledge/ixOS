@@ -1,0 +1,9 @@
+order = 30
+capability = "Full-text search"
+framework = "Partial: FTS5 is built into `Database`; the query builder is still Chat's own (`fts_query`)"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Chat M2 search"
+iphone = "No"
+documented = "Partial: chat-demo.md"
+limits = ""

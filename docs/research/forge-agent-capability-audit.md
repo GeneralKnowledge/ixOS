@@ -4,6 +4,8 @@ Status: investigation, 2026-11-07. Nothing in this report has been built. It cha
 
 The question (Reuben, 2026-11-07): what would it take for an AI agent, told "Build me an X clone", to create a genuinely native SwiftUI + Rust app, build it on Linux, put it on his iPhone, inspect it, test it, find problems and fix them, with Forge supplying the environment?
 
+**Update, 2026-11-07 evening.** The capability ledger is becoming one record per capability, with its Markdown generated (A12, decided by Reuben). The Apple account is still a free team; what a paid team would unlock for agents, and when to pay, is now in [forge-mcp.md](../forge-mcp.md#what-a-paid-team-would-unlock).
+
 How claims are marked:
 
 | Mark | Means |

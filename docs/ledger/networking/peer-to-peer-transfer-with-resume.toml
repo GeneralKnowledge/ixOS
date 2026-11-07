@@ -1,0 +1,9 @@
+order = 60
+capability = "Peer-to-peer transfer with resume"
+framework = "No"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "No"
+limits = ""

@@ -1,0 +1,6 @@
+order = 50
+metric = "Attachment import and thumbnail"
+target = "A 12 MP photo imported and thumbnailed in under 500 ms, never decoded on the main thread"
+how_measured = "Timed in the app"
+first_needed_by = "Chat M3"
+last_recorded = "Not measured"

@@ -1,0 +1,9 @@
+order = 120
+capability = "Background refresh and processing tasks"
+framework = "Partial: config key"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "Partial"
+limits = "iOS decides when they run"

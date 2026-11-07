@@ -7,6 +7,7 @@ mod diagnose;
 mod doctor;
 mod ios_builder;
 mod ios_env;
+mod ledger;
 mod live;
 mod report;
 mod runner;
@@ -72,6 +73,11 @@ enum Commands {
         /// Also run the Forge workspace's own tests and format check
         #[arg(long)]
         workspace: bool,
+    },
+    /// The capability ledger: records in docs/ledger/, page generated from them
+    Ledger {
+        #[command(subcommand)]
+        cmd: LedgerCommands,
     },
     /// Generate UniFFI bindings (Swift or Kotlin)
     Bindings {
@@ -288,6 +294,19 @@ enum ConfigCommands {
 }
 
 #[derive(Subcommand)]
+enum LedgerCommands {
+    /// Write docs/capability-ledger.md from the records in docs/ledger/
+    Generate,
+    /// Fail if docs/capability-ledger.md differs from the records (for CI)
+    Check,
+    /// List the records, optionally only those mentioning TEXT
+    List {
+        #[arg(value_name = "TEXT")]
+        filter: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum BindingsCommands {
     /// Regenerates an app's Generated/ from its Rust crate (Swift or Kotlin,
     /// from the app's platform): the app given by --project, or the current
@@ -441,6 +460,11 @@ fn command_name(command: &Commands) -> String {
             ConfigCommands::Show { .. } => "config show",
         },
         Commands::Bindings { .. } => "bindings generate",
+        Commands::Ledger { cmd } => match cmd {
+            LedgerCommands::Generate => "ledger generate",
+            LedgerCommands::Check => "ledger check",
+            LedgerCommands::List { .. } => "ledger list",
+        },
         Commands::Build { cmd } => match cmd {
             BuildCommands::Ios { .. } => "build ios",
             BuildCommands::Android { .. } => "build android",
@@ -561,6 +585,11 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
             commands::config(&root, &project, action)
         }
+        Commands::Ledger { cmd } => match cmd {
+            LedgerCommands::Generate => ledger::generate(&root),
+            LedgerCommands::Check => ledger::check(&root),
+            LedgerCommands::List { filter } => ledger::list(&root, filter.as_deref()),
+        },
         Commands::Test { project, workspace } => {
             let project = project.or_else(app_in_cwd);
             commands::test(runner, &root, project.as_deref(), workspace)

@@ -1,0 +1,9 @@
+order = 80
+capability = "Photos picker"
+framework = "No"
+rust_api = "n/a"
+ios_native = "Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO"
+in_app = "Partial: Chat M3"
+iphone = "No"
+documented = "No"
+limits = "No permission needed"

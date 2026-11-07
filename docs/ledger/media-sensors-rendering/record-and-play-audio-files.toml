@@ -1,0 +1,9 @@
+order = 20
+capability = "Record and play audio files"
+framework = "Yes: forge-services `audio` (optional)"
+rust_api = "Yes: `AudioService::duration`, `NativePermission::Microphone`"
+ios_native = "Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms"
+in_app = "Partial: Chat M4"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "AAC `.m4a`; copied only into apps that select `audio`"

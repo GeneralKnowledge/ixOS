@@ -1,0 +1,9 @@
+order = 70
+capability = "Share sheet and Save to Files"
+framework = "Yes"
+rust_api = "Yes: `ShareItem`"
+ios_native = "Yes: `ForgeShareLink`"
+in_app = "Partial: services check app only"
+iphone = "No"
+documented = "Yes"
+limits = ""

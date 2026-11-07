@@ -187,7 +187,7 @@ Resources are read-only context the agent can load before acting. They are the a
 | `forge://runs/{id}` | A UI test or diagnose report, with screenshots | `forge ui run --out` |
 | `forge://limits` | What a free Apple account and Linux can't do (below), so the agent plans around them | capability plan, this page |
 
-The ledger is Markdown tables today. Serving it as-is works for M0 (models read tables well). For M1 it should become data the agent can query ("is local notifications proven on iPhone?") without reading 200 lines: either a `capabilities.toml` that generates the Markdown, or a parser for the existing tables with a CI test that keeps them parseable. The second is cheaper and keeps the ledger hand-edited; recommended.
+The ledger is Markdown tables today. Serving it as-is works for M0 (models read tables well). For M1 it should become data the agent can query ("is local notifications proven on iPhone?") without reading 200 lines. Decided: one record file per capability generates the Markdown (open decision 4).
 
 Server `instructions` (sent at connect) are short: read `forge://conventions` and `forge://capabilities` first, check `forge_device_status` before installing, never remove apps or change signing without asking.
 
@@ -220,6 +220,32 @@ More rules:
 - **Untrusted content.** Log lines, crash reports, UI text and screenshots come from the app, and a feed in an "X clone" can contain anything. The server marks them as app output in the result. Because tier 2 and 3 are enforced in the server, text that tricks the agent still can't remove an app or touch the account.
 - **Transport.** M0 is stdio only: no listening socket. If topology B is ever built, it is Streamable HTTP bound to localhost behind a tunnel with MCP's OAuth, and tier 2 still needs elicitation.
 - **No upstream xtool changes** are needed for any of this. Fixes to xtool go on Reuben's fork.
+
+## What a paid team would unlock
+
+Everything on this page works on the free Apple ID team Reuben uses today, and that stays the default: Forge must work for anyone with a free Apple ID. A paid Apple Developer Program membership (US$99 a year) is an open decision. This is what it would change for an agent.
+
+| | Free team (today) | Paid team |
+|---|---|---|
+| Apps on a phone | 3 sideloaded at a time | No limit |
+| New App IDs | 10 per 7 days | No weekly limit |
+| Profile lifetime | 7 days | 1 year, never past the membership's end |
+| Agent bundle ids | One sandbox id, `org.forgemobile.agentlab`, shared by every agent-made app | One per app (for example `org.forgemobile.agent.tipster`), each with its own data, side by side |
+| WDA runner (#61) | Takes one of the 3 slots and is reinstalled weekly | Installed once a year |
+| Paid-only capabilities | xtool drops them when it signs | Push notifications, Sign in with Apple, associated domains (universal links, passkeys, password autofill), network extensions, Wi-Fi Aware, SiriKit, multipath. xtool turns on the App ID capability from the app's entitlements |
+| Distribution | Your own devices only | TestFlight and the App Store become allowed. Whether xtool can produce a distribution build is unchecked |
+| Unattended sign-in | Apple ID and password session | Also an App Store Connect API key, which doesn't depend on an Apple ID session |
+| Devices | Your own | Up to 100 iPhones a year registered with the team |
+
+What it would mean for the agent loop:
+
+- **Phone state stops being the common failure.** Most of the "Practical limits" rows below are free-team limits: slot juggling, weekly re-signing, the App ID budget. With a paid team, `forge_device_status` only needs to watch the membership's end date.
+- **The tier-2 policy shrinks.** Installing a new app under the agent prefix becomes tier 1, so an agent can keep several experiments on the phone without asking. Removing apps, entitlement changes and sending pushes stay tier 2; APNs keys and API keys are tier 3.
+- **The X clone gets real push and sign-in.** APNs needs a paid team, and so do Sign in with Apple and passkeys (passkeys and universal links also need an HTTPS domain serving an `apple-app-site-association` file). On the free team the M2 app uses local notifications from background refresh and a username and password.
+
+**Recommendation:** pay before M2 (the mock social app), not before M0. M0's Tipster fits the free team: the runner and the sandbox take two slots and the run is shorter than a week. M2 is where the free team starts to cost real work (slot management across runs, no push, no Sign in with Apple), and paying then removes a whole class of failures the agent would otherwise need rules for. If Reuben pays, the switch is `xtool auth login` with the paid team chosen and `team_type = "paid"` in `forge.toml` ([ios-signing.md](ios-signing.md#moving-to-a-paid-team)); this page's tier and bundle-id rules then follow the paid column.
+
+xtool facts above are from its source (main branch, 2026-11-07): `Sources/XKit/DeveloperServices/App IDs/` (capabilities from entitlements, paid-only ones dropped for free teams), `Sources/XKit/Utilities/ProvisioningIdentifiers.swift` (App IDs are `XTL-<id>.<bundle id>` on every team), `Sources/XToolSupport/AuthCommand.swift` (team chosen at sign-in). Nothing here has been run with a paid team.
 
 ## Practical limits an agent must work around
 
@@ -313,8 +339,9 @@ The mock social app in M2 is an acceptance exercise for the agent loop, not a ne
 1. **Agent sandbox bundle id.** Decided (Reuben, 2026-11-07): yes. Recommend `org.forgemobile.agentlab`, one slot, reused by every agent-made app until a person promotes it. The alternative (new id per app) burns slots and App IDs within a day.
 2. **Subprocess now, library later.** Recommend subprocess with `--json` for M0. A library API comes when the JSON shapes have settled and the commands stop printing to stdout.
 3. **Approval route.** Recommend elicitation plus a narrow `--allow` at startup. Some clients don't support elicitation yet; they get a refusal with the command a person can run.
-4. **Ledger as data.** Recommend parsing the existing Markdown tables with a CI test, rather than a new source file.
+4. **Ledger as data.** Decided (Reuben, 2026-11-07): one record per capability, with the Markdown tables generated from the records and checked in CI, because many parallel PRs edit the ledger. `forge://capabilities` reads the records.
 5. **Is M0 the next thing after #61 and the dev-loop fixes?** Decided (Reuben, 2026-11-07): yes. The CLI items in M0's table are already on the dev-loop order. Adding item 7 costs 2–3 days on top.
+6. **Paid Apple Developer Program?** Open (Reuben, 2026-11-07: "could be convinced"). The design above assumes the free team. See [What a paid team would unlock](#what-a-paid-team-would-unlock) for the case and the recommendation.
 
 ## Risks
 

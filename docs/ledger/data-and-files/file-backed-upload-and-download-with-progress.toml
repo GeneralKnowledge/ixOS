@@ -1,0 +1,9 @@
+order = 90
+capability = "File-backed upload and download with progress"
+framework = "Partial: forge-net `HttpClient::send_file`, `download_to_file`"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Partial: Chat M3"
+iphone = "No"
+documented = "No"
+limits = "Streams from and to files; no progress reporting yet"
