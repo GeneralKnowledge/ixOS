@@ -847,8 +847,15 @@ fn pause_stops_streams_and_resume_catches_up() {
     h.client.list_conversations().unwrap();
     h.client.subscribe("general").unwrap();
     h.client.watch("random").unwrap();
-    h.wait_connected("general");
-    h.wait_connected("random");
+    // Both rooms connect in either order: wait for the pair in one pass, so
+    // an early "random" is not consumed while waiting for "general".
+    let mut pending = vec!["general", "random"];
+    h.wait_for("both rooms connected", |e| {
+        if let ChatEvent::StreamConnected { conversation_id } = e {
+            pending.retain(|room| room != conversation_id);
+        }
+        pending.is_empty()
+    });
 
     h.client.pause_streams();
     assert!(h.client.is_paused());
