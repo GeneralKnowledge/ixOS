@@ -22,7 +22,17 @@ pub fn exchange(
     stream.write_all(&encode_request(method, path, body))?;
     stream.flush()?;
     let mut raw = Vec::new();
-    stream.read_to_end(&mut raw)?;
+    let mut buf = [0u8; 16 * 1024];
+    loop {
+        let n = stream.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        raw.extend_from_slice(&buf[..n]);
+        if is_complete(&raw) {
+            break;
+        }
+    }
     parse_response(&raw)
 }
 
@@ -39,6 +49,33 @@ pub fn encode_request(method: &str, path: &str, body: Option<&[u8]>) -> Vec<u8> 
     let mut out = out.into_bytes();
     out.extend_from_slice(body);
     out
+}
+
+/// Whether `raw` holds a whole response: headers plus a body of the
+/// announced length, or a finished chunked body. Without either, only the
+/// server closing the connection ends it, which [`exchange`] and the USB
+/// transport also accept.
+pub fn is_complete(raw: &[u8]) -> bool {
+    let Some(split) = raw.windows(4).position(|w| w == b"\r\n\r\n") else {
+        return false;
+    };
+    let Ok(head) = std::str::from_utf8(&raw[..split]) else {
+        return false;
+    };
+    let body = &raw[split + 4..];
+    for line in head.split("\r\n").skip(1) {
+        let Some((name, value)) = line.split_once(':') else {
+            continue;
+        };
+        let value = value.trim();
+        if name.eq_ignore_ascii_case("content-length") {
+            return value.parse::<usize>().is_ok_and(|len| body.len() >= len);
+        }
+        if name.eq_ignore_ascii_case("transfer-encoding") && value.eq_ignore_ascii_case("chunked") {
+            return dechunk(body).is_some();
+        }
+    }
+    false
 }
 
 pub fn parse_response(raw: &[u8]) -> Result<(u16, Vec<u8>)> {
@@ -121,6 +158,56 @@ mod tests {
         )
         .unwrap();
         assert_eq!((status, body.as_slice()), (404, b"abcde".as_slice()));
+    }
+
+    #[test]
+    fn knows_when_a_response_is_complete() {
+        assert!(!is_complete(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n"));
+        assert!(!is_complete(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\n\r\n{}"
+        ));
+        assert!(is_complete(
+            b"HTTP/1.1 200 OK\r\ncontent-length: 2\r\n\r\n{}"
+        ));
+        assert!(!is_complete(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n"
+        ));
+        assert!(is_complete(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n2\r\n{}\r\n0\r\n\r\n"
+        ));
+        // No length: only the server closing the connection ends it.
+        assert!(!is_complete(b"HTTP/1.1 200 OK\r\n\r\n{}"));
+    }
+
+    /// A server that keeps the connection open after replying must not hang
+    /// the client: it stops at Content-Length.
+    #[test]
+    fn exchange_does_not_wait_for_a_kept_alive_connection() {
+        struct KeepAlive(std::io::Cursor<Vec<u8>>);
+        impl Read for KeepAlive {
+            fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+                match self.0.read(buf)? {
+                    0 => panic!("read past the response: the client would hang here"),
+                    n => Ok(n),
+                }
+            }
+        }
+        impl Write for KeepAlive {
+            fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+                Ok(buf.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut stream = KeepAlive(std::io::Cursor::new(
+            b"HTTP/1.1 200 OK\r\nContent-Length: 11\r\n\r\n{\"value\":1}".to_vec(),
+        ));
+        let (status, body) = exchange(&mut stream, "GET", "/status", None).unwrap();
+        assert_eq!(
+            (status, body.as_slice()),
+            (200, b"{\"value\":1}".as_slice())
+        );
     }
 
     #[test]

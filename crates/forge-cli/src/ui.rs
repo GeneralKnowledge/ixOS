@@ -121,7 +121,16 @@ pub fn setup(
         let files = find_ddi(dir)?;
         writeln!(out, "Mounting the Developer Disk Image from {} (Apple signs it for this phone, so this needs internet)…", files.image.display())
             .map_err(err)?;
-        phone.mount_ddi(&files).map_err(err)?;
+        phone.mount_ddi(&files).map_err(|e| {
+            format!("{e}\nCheck that the phone is unlocked, Developer Mode is on, this computer can reach Apple (gs.apple.com signs the image), and the folder's image matches an Xcode that supports this iOS version")
+        })?;
+        // Trust the phone, not the absence of an error.
+        if !phone.ddi_mounted().map_err(err)? {
+            return Err(
+                "the mount reported success but the phone lists no mounted Developer Disk Image"
+                    .into(),
+            );
+        }
         writeln!(out, "Developer Disk Image: mounted").map_err(err)?;
     }
 
@@ -146,6 +155,12 @@ pub fn setup(
             return Err(format!("xtool install failed ({status})"));
         }
         apps = phone.user_apps().map_err(err)?;
+        if find_runner(&apps).is_none() {
+            return Err(format!(
+                "xtool install finished, but no WebDriverAgent runner is installed (installed: {}). Check xtool's output above",
+                apps.join(", ")
+            ));
+        }
     }
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
     writeln!(out, "Runner: {runner_id}").map_err(err)?;
@@ -154,10 +169,24 @@ pub fn setup(
     writeln!(out, "Starting WebDriverAgent…").map_err(err)?;
     let (_runner, mut driver) = start(&phone, &runner_id, team)?;
     let status = driver.status().map_err(err)?;
+    // WDA answers /status before it can serve a session if XCTest is still
+    // starting; don't report a runner that isn't ready as working.
+    if status.get("ready").and_then(|v| v.as_bool()) == Some(false) {
+        return Err(format!(
+            "WebDriverAgent answered but says it is not ready: {status}"
+        ));
+    }
     let version = status
         .pointer("/build/version")
         .and_then(|v| v.as_str())
         .unwrap_or("unknown version");
+    report::set_device(&phone.udid, None);
+    report::set_data(serde_json::json!({
+        "runner": runner_id,
+        "wda_version": version,
+        "installed_apps": apps,
+        "team": format!("{team:?}").to_lowercase(),
+    }));
     writeln!(out, "WebDriverAgent {version} is ready. `forge ui tree`, `forge ui screenshot` and `forge ui run` will work.")
         .map_err(err)
 }
@@ -207,7 +236,11 @@ pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Resul
     let tree = driver.tree().map_err(err)?;
     write!(out, "{}", tree.render()).map_err(err)?;
     let findings = tree.audit();
-    report::set_data(serde_json::json!({ "tree": tree.render(), "findings": findings }));
+    report::set_data(serde_json::json!({
+        "tree": tree,
+        "text": tree.render(),
+        "findings": findings,
+    }));
     if !findings.is_empty() {
         writeln!(out, "\nAccessibility ({}):", findings.len()).map_err(err)?;
         for finding in findings {
@@ -240,7 +273,13 @@ pub fn run(
     report::set_data(serde_json::json!({
         "test": script.name,
         "passed_steps": report.passed,
-        "failed_step": report.failed.as_ref().map(|(step, why)| serde_json::json!({ "step": step, "error": why })),
+        "failed_step": report.failed.as_ref().map(|(step, why)| serde_json::json!({
+            "step": step,
+            "action": report.failed_step,
+            "error": why,
+            "on_screen": report.on_screen,
+            "tree": report.tree_file,
+        })),
         "screenshots": report.screenshots,
     }));
     if !report.screenshots.is_empty() {

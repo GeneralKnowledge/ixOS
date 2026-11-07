@@ -32,6 +32,10 @@ pub enum UiError {
         expected: String,
         found: String,
     },
+    /// The element went away between finding it and acting on it (the
+    /// screen re-rendered). Worth finding again once.
+    #[error("element went stale: {0}")]
+    Stale(String),
     #[error("WebDriverAgent: {0}")]
     Wda(String),
     #[error("{0}")]
@@ -189,6 +193,8 @@ pub mod fake {
         pub calls: Vec<String>,
         /// Replaces `screen` after the next tap on an element with this id.
         pub on_tap: Vec<(String, UiNode)>,
+        /// The next this-many taps fail as if the element went stale.
+        pub stale_taps: usize,
     }
 
     impl FakeDriver {
@@ -237,6 +243,10 @@ pub mod fake {
                 .collect())
         }
         fn tap(&mut self, element: &ElementRef) -> Result<()> {
+            if self.stale_taps > 0 {
+                self.stale_taps -= 1;
+                return Err(UiError::Stale("tap".into()));
+            }
             let id = self.node(element)?.identifier.clone();
             self.calls
                 .push(format!("tap {}", id.as_deref().unwrap_or("?")));

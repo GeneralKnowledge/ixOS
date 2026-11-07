@@ -173,11 +173,15 @@ fn call<T: HttpTransport>(
             .and_then(|v| v.get("message"))
             .and_then(Value::as_str)
             .unwrap_or("");
-        return Err(UiError::Wda(format!(
+        let text = format!(
             "{method} {path}: {} {}",
             error.unwrap_or("HTTP error"),
             message.lines().next().unwrap_or("")
-        )));
+        );
+        if error == Some("stale element reference") {
+            return Err(UiError::Stale(text));
+        }
+        return Err(UiError::Wda(text));
     }
     Ok(json)
 }
@@ -279,6 +283,22 @@ mod tests {
             err.to_string(),
             "WebDriverAgent: POST /session/S1/element/gone/click: no such element unable to find"
         );
+    }
+
+    #[test]
+    fn stale_elements_are_their_own_error() {
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (
+                404,
+                json!({ "value": { "error": "stale element reference", "message": "gone" } }),
+            ),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        assert!(matches!(
+            driver.tap(&ElementRef("E1".into())),
+            Err(UiError::Stale(_))
+        ));
     }
 
     #[test]

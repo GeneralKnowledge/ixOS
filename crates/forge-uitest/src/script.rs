@@ -224,7 +224,14 @@ impl Step {
 #[derive(Debug, Default)]
 pub struct Report {
     pub passed: usize,
+    /// The failing step's number and the error.
     pub failed: Option<(usize, String)>,
+    /// What the failing step tried to do.
+    pub failed_step: Option<String>,
+    /// At a failure: what a test could target on screen instead.
+    pub on_screen: Vec<String>,
+    /// At a failure: the whole accessibility tree, as JSON.
+    pub tree_file: Option<PathBuf>,
     pub screenshots: Vec<PathBuf>,
 }
 
@@ -264,6 +271,7 @@ pub fn run(
                 )?;
                 record_failure(driver, number, out_dir, out, &mut report);
                 report.failed = Some((number, error.to_string()));
+                report.failed_step = Some(step.describe());
                 return Ok(report);
             }
         }
@@ -295,19 +303,18 @@ fn run_step(
         return driver.background(seconds);
     }
     if let Some(target) = &step.tap {
-        let element = wait_for(driver, &locate(target)?, timeout)?;
-        return driver.tap(&element);
+        return act(driver, &locate(target)?, timeout, &mut |d, e| d.tap(e));
     }
     if let Some(typing) = &step.type_text {
-        let element = wait_for(driver, &locate(&typing.target)?, timeout)?;
-        if typing.clear {
-            driver.clear(&element)?;
-        }
-        return driver.type_text(&element, &typing.text);
+        return act(driver, &locate(&typing.target)?, timeout, &mut |d, e| {
+            if typing.clear {
+                d.clear(e)?;
+            }
+            d.type_text(e, &typing.text)
+        });
     }
     if let Some(target) = &step.clear {
-        let element = wait_for(driver, &locate(target)?, timeout)?;
-        return driver.clear(&element);
+        return act(driver, &locate(target)?, timeout, &mut |d, e| d.clear(e));
     }
     if let Some(expect) = &step.expect {
         return check(driver, expect, &locate(&expect.target)?, timeout);
@@ -321,6 +328,25 @@ fn run_step(
     let tree = driver.tree()?;
     write!(out, "{}", indent(&tree.render()))?;
     Ok(())
+}
+
+/// Finds the element and acts on it. SwiftUI re-renders freely, so an
+/// element can go stale between the find and the action: then it is found
+/// again and the action retried, once.
+fn act(
+    driver: &mut dyn Driver,
+    locator: &Locator,
+    timeout: Duration,
+    action: &mut dyn FnMut(&mut dyn Driver, &crate::ElementRef) -> Result<()>,
+) -> Result<()> {
+    let element = wait_for(driver, locator, timeout)?;
+    match action(driver, &element) {
+        Err(UiError::Stale(_)) => {
+            let element = wait_for(driver, locator, timeout)?;
+            action(driver, &element)
+        }
+        other => other,
+    }
 }
 
 /// Polls until the expectation holds or the timeout passes, so a test can
@@ -346,7 +372,12 @@ fn check(
             if let Some(wanted) = wanted {
                 let found = driver.attribute(&element, attribute)?;
                 if found.as_deref() != Some(wanted.as_str()) {
-                    mismatch = Some((format!("{attribute} {wanted:?}"), format!("{found:?}")));
+                    mismatch = Some((
+                        format!("{attribute} {wanted:?}"),
+                        found
+                            .map(|v| format!("{v:?}"))
+                            .unwrap_or_else(|| format!("no {attribute}")),
+                    ));
                 }
             }
         }
@@ -383,10 +414,28 @@ fn record_failure(
     out: &mut dyn Write,
     report: &mut Report,
 ) {
-    if let Ok(tree) = driver.tree() {
-        let path = out_dir.join(format!("failure-step{number}-tree.txt"));
-        if std::fs::write(&path, tree.render()).is_ok() {
-            let _ = writeln!(out, "        screen at failure: {}", path.display());
+    match driver.tree() {
+        Ok(tree) => {
+            report.on_screen = tree.on_screen(15);
+            if !report.on_screen.is_empty() {
+                let _ = writeln!(out, "        on screen:");
+                for line in &report.on_screen {
+                    let _ = writeln!(out, "          {line}");
+                }
+            }
+            let text = out_dir.join(format!("failure-step{number}-tree.txt"));
+            let json = out_dir.join(format!("failure-step{number}-tree.json"));
+            let saved = std::fs::write(&text, tree.render()).is_ok()
+                && serde_json::to_vec_pretty(&tree)
+                    .map(|bytes| std::fs::write(&json, bytes).is_ok())
+                    .unwrap_or(false);
+            if saved {
+                let _ = writeln!(out, "        screen at failure: {}", text.display());
+                report.tree_file = Some(json);
+            }
+        }
+        Err(e) => {
+            let _ = writeln!(out, "        could not read the screen: {e}");
         }
     }
     if let Ok(png) = driver.screenshot() {
@@ -520,6 +569,50 @@ mod tests {
         let tree = std::fs::read_to_string(dir.path().join("failure-step1-tree.txt")).unwrap();
         assert!(tree.contains("Button id=library.add \"Add Book\""));
         assert!(dir.path().join("failure-step1.png").exists());
+        assert_eq!(report.on_screen, ["Button id=library.add \"Add Book\""]);
+        assert_eq!(report.failed_step.as_deref(), Some("tap id `library.nope`"));
+        let json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(report.tree_file.unwrap()).unwrap()).unwrap();
+        assert_eq!(json["children"][0]["identifier"], "library.add");
+        let out = String::from_utf8(out).unwrap();
+        assert!(
+            out.contains("on screen:\n          Button id=library.add"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn a_stale_element_is_found_again_once() {
+        let script =
+            Script::parse("name='s'\napp='a'\ntimeout=0\n[[step]]\ntap={id='library.add'}\n")
+                .unwrap();
+        let mut driver = FakeDriver::new(library());
+        driver.stale_taps = 1;
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(driver.calls, ["tap library.add"]);
+
+        // Stale twice in a row is a real failure, not retried forever.
+        let mut driver = FakeDriver::new(library());
+        driver.stale_taps = 2;
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.unwrap().1.starts_with("element went stale"));
+    }
+
+    #[test]
+    fn a_wrong_value_fails_with_what_was_found() {
+        let script = Script::parse(
+            "name='v'\napp='a'\ntimeout=0\n[[step]]\nexpect={id='bookForm.title', value='Hi'}\n",
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(form());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert_eq!(
+            report.failed.unwrap().1,
+            "id `bookForm.title`: expected value \"Hi\", found no value"
+        );
     }
 
     #[test]

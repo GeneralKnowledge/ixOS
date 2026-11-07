@@ -1,9 +1,10 @@
 //! The accessibility tree of the screen, as WebDriverAgent reports it
 //! (`GET /source?format=json`), in Forge's own types.
 
+use serde::Serialize;
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
@@ -12,19 +13,26 @@ pub struct Rect {
 }
 
 /// One element of the accessibility tree.
-#[derive(Debug, Clone, Default, PartialEq)]
+/// Serialises as JSON for agents (`forge --json ui tree`, failure files):
+/// empty fields are left out.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct UiNode {
     /// The element type without Apple's prefix: `Button`, `TextField`, `Cell`…
     pub kind: String,
     /// `.accessibilityIdentifier(...)`, for tests only.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub identifier: Option<String>,
     /// What VoiceOver reads.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
     /// A field's text, a toggle's state, a slider's position.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub value: Option<String>,
     pub enabled: bool,
     pub visible: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub frame: Option<Rect>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub children: Vec<UiNode>,
 }
 
@@ -180,6 +188,17 @@ impl UiNode {
         line
     }
 
+    /// What a test could target on this screen: visible elements that have
+    /// an identifier or can be acted on, one line each, at most `limit`.
+    /// Shown when a step can't find its element.
+    pub fn on_screen(&self, limit: usize) -> Vec<String> {
+        self.walk()
+            .filter(|n| n.visible && (n.identifier.is_some() || n.is_interactive()))
+            .take(limit)
+            .map(UiNode::summary)
+            .collect()
+    }
+
     /// Visible interactive elements that VoiceOver has no name for, and
     /// those a test cannot find by identifier. The full audit is M3; this is
     /// the part every screen needs.
@@ -256,6 +275,22 @@ mod tests {
                 "no identifier (tests fall back to the label): Button (disabled)"
             ]
         );
+    }
+
+    #[test]
+    fn lists_what_is_on_screen_and_serialises() {
+        let root = UiNode::from_wda(&sample());
+        assert_eq!(
+            root.on_screen(2),
+            ["Button id=library.add \"Add Book\"", "Button (disabled)"]
+        );
+        let json = serde_json::to_value(&root).unwrap();
+        assert_eq!(json["kind"], "Application");
+        assert_eq!(
+            json["children"][0]["children"][0]["identifier"],
+            "library.add"
+        );
+        assert!(json["children"][0].get("identifier").is_none());
     }
 
     #[test]

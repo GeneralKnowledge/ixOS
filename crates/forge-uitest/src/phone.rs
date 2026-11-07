@@ -15,7 +15,7 @@ use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use idevice::{IdeviceError, IdeviceService};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::http::{encode_request, parse_response, HttpTransport};
+use crate::http::{encode_request, is_complete, parse_response, HttpTransport};
 use crate::{Result, UiError};
 
 /// Label idevice sends with each request; shows up in the phone's logs.
@@ -237,16 +237,37 @@ impl HttpTransport for UsbHttp {
                 .ok_or_else(|| UiError::Device("usbmuxd gave no socket".into()))?;
             socket.write_all(&request).await?;
             socket.flush().await?;
+            // Read until the response is complete or the server closes;
+            // never wait for a close that a kept-alive server won't send.
             let mut raw = Vec::new();
-            match tokio::time::timeout(REQUEST_TIMEOUT, socket.read_to_end(&mut raw)).await {
+            let mut buf = vec![0u8; 64 * 1024];
+            let read_all = async {
+                loop {
+                    let n = socket.read(&mut buf).await?;
+                    if n == 0 {
+                        break;
+                    }
+                    raw.extend_from_slice(&buf[..n]);
+                    if is_complete(&raw) {
+                        break;
+                    }
+                }
+                Ok::<_, std::io::Error>(())
+            };
+            match tokio::time::timeout(REQUEST_TIMEOUT, read_all).await {
                 Ok(read) => read?,
                 Err(_) => {
                     return Err(UiError::Wda(format!(
-                        "{method} {path}: no reply after {} s",
+                        "{method} {path}: no complete reply after {} s (is the phone locked, or WebDriverAgent stuck?)",
                         REQUEST_TIMEOUT.as_secs()
                     )))
                 }
             };
+            if raw.is_empty() {
+                return Err(UiError::Wda(format!(
+                    "{method} {path}: WebDriverAgent closed the connection without replying (did the runner stop?)"
+                )));
+            }
             Ok::<_, UiError>(raw)
         })?;
         parse_response(&raw)

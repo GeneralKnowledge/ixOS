@@ -109,9 +109,9 @@ iPhone
 
 A host-only crate next to `forge-device`. It depends on `idevice` at the same exact pin and adds the features `xctest`, `wda`, `mobile_image_mounter`, `tss` and `core_device_proxy`. It reuses `forge-device` for picking the phone, and it doesn't change `forge-device` itself.
 
-- `Locator` is the only way a test names an element: `Id("library.add")` first, then `Label("Add Book")`, then `Type(Button) + Label`. Coordinates are not a locator. The one escape hatch, `tap_at`, is logged as a warning in reports.
-- `Driver` trait: `launch`, `activate`, `terminate`, `background(secs)`, `find`, `find_all`, `tap`, `type_text`, `clear`, `swipe`, `scroll_to`, `value`, `label`, `is_enabled`, `tree`, `screenshot`, `accept_alert`, `dismiss_alert`. `WdaDriver` implements it. A `FakeDriver` lets the runner, assertions and reports be tested in CI without a phone, the same way `forge-device` tests its CLI against a fake backend.
-- Waiting is built in: `find` polls until a timeout (default 10 s), so tests never sleep.
+- `Locator` is the only way a test names an element: `Id("library.add")` first, then `Label("Add Book")` or `LabelContains(...)`. Coordinates are not a locator, and there is no coordinate tap. Matching by element type comes later if tests need it.
+- `Driver` trait (built): `launch`, `activate`, `terminate`, `background(secs)`, `find_all`, `tap`, `type_text`, `clear`, `attribute`, `tree`, `screenshot`. Planned for M1–M2: `swipe`, `scroll_to`, `accept_alert`, `dismiss_alert`. `WdaDriver` implements it. A `FakeDriver` lets the runner, assertions and reports be tested in CI without a phone, the same way `forge-device` tests its CLI against a fake backend.
+- Waiting is built in: finding polls until a timeout (default 10 s), so tests never sleep. An element that goes stale between the find and the tap (SwiftUI re-rendered) is found again once; a second stale is a failure.
 - `tree` returns a typed `UiNode { kind, identifier, label, value, enabled, visible, frame, children }` parsed from WDA's `/source`. Tests use it for assertions, and the accessibility audit and exploratory testing use it as their model of the screen.
 
 ### Tests as files
@@ -215,6 +215,22 @@ On the Linux machine, with the phone plugged in, unlocked and trusting the compu
 After the phone restarts, run `forge ui setup --ddi …` again (the image is unmounted at every reboot). After seven days, reinstall the runner with `--runner`.
 
 `forge ui setup` words its app-limit and expiry notes for the team xtool signs with: `--team free|paid`, or `[ios.signing] team_type` in the forge.toml of the directory it runs in. A paid Apple Developer Program team has no 3-app limit and its signatures last as long as the provisioning profile (up to a year), so the runner can stay installed. Without either setting it assumes nothing and says what a free account would hit.
+
+### What a failing run gives an agent
+
+`forge ui run` exits non-zero on the first failing step and never reports success for a step it could not check. For each failure it prints the step, the error (for a missing element, the locator; for a wrong value, what was expected and what was found), and the elements on screen that a test could target instead. It also saves the screen as `failure-stepN-tree.txt` and `failure-stepN-tree.json`, and a screenshot as `failure-stepN.png`. With `forge --json`, the result's `data` has the same: `failed_step.{step, action, error, on_screen, tree}` and the screenshot paths. `forge --json ui tree` returns the whole tree as JSON nodes (`kind`, `identifier`, `label`, `value`, `enabled`, `visible`, `frame`, `children`) plus the audit findings.
+
+### What still needs the phone
+
+Everything above is tested on Linux against a fake driver and canned WebDriverAgent replies. These parts have only been checked against the source of `idevice` and WDA, and need a run on Cati:
+
+| Part | What the run proves |
+|---|---|
+| `forge ui setup --ddi` | Personalised DDI mounting through `idevice` and Apple's TSS on iOS 26.3 |
+| `forge ui setup --runner` | `xtool install` signs the unsigned WDA runner, its `XTL-` bundle id is accepted, and it fits in the app slots |
+| Runner start | `idevice`'s XCTest launch through `CoreDeviceProxy` on iOS 26.3, and WDA answering on port 8100 through usbmuxd |
+| `uitests/m0.toml` | SwiftUI identifiers reach WDA (`identifier` predicates), a toolbar `Menu` and its items can be tapped, typing into a vertical `TextField` works, `enabled` reads correctly |
+| `forge ui screenshot` | The PNG arrives intact on Linux |
 
 ## Risks
 
