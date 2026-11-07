@@ -94,7 +94,7 @@ final class ReadAloud: NSObject {
 
     /// The text spoken for a block: exactly the text the reader shows, so
     /// word ranges line up with it. Scene breaks and pictures are skipped.
-    static func speakableText(_ block: TextBlock) -> String {
+    nonisolated static func speakableText(_ block: TextBlock) -> String {
         switch block.kind {
         case .separator, .image: return ""
         default: return block.spans.map(\.text).joined()
@@ -230,7 +230,7 @@ final class ReadAloud: NSObject {
 
     /// AVSpeech rates run from 0 to 1 with 0.5 as normal, and are not
     /// linear: about 0.6 already sounds twice as fast.
-    static func rate(for speed: Double) -> Float {
+    nonisolated static func rate(for speed: Double) -> Float {
         let normal = Double(AVSpeechUtteranceDefaultSpeechRate)
         let rate: Double
         if speed <= 1 {
