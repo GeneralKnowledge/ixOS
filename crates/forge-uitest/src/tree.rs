@@ -202,20 +202,63 @@ impl UiNode {
     /// Visible interactive elements that VoiceOver has no name for, and
     /// those a test cannot find by identifier. The full audit is M3; this is
     /// the part every screen needs.
-    pub fn audit(&self) -> Vec<String> {
+    pub fn audit(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
         for node in self.walk().filter(|n| n.visible && n.is_interactive()) {
+            let element = || ElementSummary {
+                kind: node.kind.clone(),
+                identifier: node.identifier.clone(),
+                label: node.label.clone(),
+                summary: node.summary(),
+            };
             if node.label.is_none() {
-                findings.push(format!("no accessibility label: {}", node.summary()));
+                findings.push(Finding {
+                    issue: "no_label",
+                    severity: "error",
+                    element: element(),
+                });
             }
             if node.identifier.is_none() {
-                findings.push(format!(
-                    "no identifier (tests fall back to the label): {}",
-                    node.summary()
-                ));
+                findings.push(Finding {
+                    issue: "no_identifier",
+                    severity: "warning",
+                    element: element(),
+                });
             }
         }
         findings
+    }
+}
+
+/// One accessibility audit result. `no_label` is an accessibility error
+/// (VoiceOver has nothing to read); `no_identifier` is a test-robustness
+/// warning (tests fall back to the label).
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Finding {
+    pub issue: &'static str,
+    pub severity: &'static str,
+    pub element: ElementSummary,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct ElementSummary {
+    pub kind: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identifier: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    /// The element as `forge ui tree` prints it.
+    pub summary: String,
+}
+
+impl std::fmt::Display for Finding {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let what = match self.issue {
+            "no_label" => "no accessibility label",
+            "no_identifier" => "no identifier (tests fall back to the label)",
+            other => other,
+        };
+        write!(f, "{what}: {}", self.element.summary)
     }
 }
 
@@ -267,7 +310,15 @@ mod tests {
 
     #[test]
     fn audit_flags_unlabelled_controls() {
-        let findings = UiNode::from_wda(&sample()).audit();
+        let findings: Vec<String> = UiNode::from_wda(&sample())
+            .audit()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let json = serde_json::to_value(UiNode::from_wda(&sample()).audit()).unwrap();
+        assert_eq!(json[0]["issue"], "no_label");
+        assert_eq!(json[0]["element"]["kind"], "Button");
+        assert_eq!(json[1]["severity"], "warning");
         assert_eq!(
             findings,
             [
