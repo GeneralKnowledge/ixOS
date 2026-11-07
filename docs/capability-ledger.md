@@ -186,6 +186,8 @@ A capability can work and still give a poor app. Each metric has a proposed targ
 
 ## Developer experience: build without the maintainer
 
+The day-to-day loop (create, change, build, launch, inspect, diagnose) is assessed in [dev-loop.md](dev-loop.md), with measured times and the gaps that block it.
+
 The demos prove that we can build apps with ixOS, not that someone else can. In this exercise a developer who has not worked on ixOS gets a clean Ubuntu machine, the docs and an iPhone, and nothing else. It runs first after Chat M6 and again after the sixth demo.
 
 | Step | Docs they start from | Last run | Time taken | Findings |
