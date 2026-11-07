@@ -219,6 +219,10 @@ android = true
     }
 
     println!("Created Forge app at {}", dest.display());
+    crate::report::set_data(serde_json::json!({
+        "path": dest.display().to_string(),
+        "platform": platform,
+    }));
     match &workspace {
         WorkspaceRef::Relative(_) => {}
         WorkspaceRef::Absolute(ws) => println!(
@@ -918,6 +922,13 @@ pub fn run_ios(
     package_ios(runner, root, &project_dir, &cfg, devtools)?;
     println!("[forge] Building and installing ({})", configuration.name());
     builder.run(runner, &project_dir, configuration)?;
+    // xtool installs but cannot launch on iOS 17+: someone opens the app.
+    crate::report::set_data(serde_json::json!({
+        "configuration": configuration.name(),
+        "devtools": devtools,
+        "installed": true,
+        "launched": false,
+    }));
     println!(
         "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
     );
@@ -972,6 +983,10 @@ pub fn config(root: &Path, project: &Path, action: ConfigAction) -> Result<(), S
             }
         }
         ConfigAction::Show => {
+            if crate::report::json_mode() {
+                crate::report::set_data(app_config::summary_json(&cfg, &project_dir)?);
+                return Ok(());
+            }
             print!("{}", app_config::summary(&cfg)?);
             let notes: Vec<String> = app_config::warnings(&cfg, &project_dir)
                 .into_iter()

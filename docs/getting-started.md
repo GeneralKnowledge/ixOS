@@ -101,6 +101,8 @@ The layers are:
 
 If a check before the build is wrong about your setup, `FORGE_SKIP_PREFLIGHT=1 forge run ios` skips it.
 
+For scripts and coding agents, add `--json` to any command: stdout then carries one result object (`ok`, the failed `stage`, compiler `diagnostics` with file and line, the `hints` above, and the path of a full log), progress goes to stderr, and the exit code names the stage: 10 Rust, 11 Swift, 12 signing, 13 iPhone, 14 tests, 2 a wrong command line. The format is in [forge-mcp.md](forge-mcp.md#the-result-contract).
+
 ## Next
 
 - [builds.md](builds.md): every way to build, debug and release, and what is not supported yet.

@@ -164,6 +164,15 @@ Every command the server wraps gets `--json`. Stdout carries exactly one JSON ob
 - The MCP tool returns this object as `structuredContent` with an `outputSchema`, plus a short text summary for clients that ignore structured content.
 - Raw output is never dropped: it is in the log file, and `forge_diagnose` can return its tail.
 
+**Implemented (Phase 0.5)** as `forge --json` (`crates/forge-cli/src/report.rs`), with these details settled while building it:
+
+- Two fields beyond the sketch above: `error` (the human-readable message, present only on failure) and `data` (each command's own payload: `init` gives the path, `config show` the effective settings, `device list`/`info` the phones, `device crashes` the reports and pulled files, `device logs` and the live commands `data.lines`, `run ios` `installed`/`launched`).
+- Two more stages: `usage` (exit 2: the command was called wrongly, for example `device logs --json` with neither `--for` nor `--limit`) and `forge` (exit 1: anything unclassified, such as a bad `forge.toml`). Device commands that fail without a recognised cause count as `device` (13); `forge test` and `forge check` as `test` (14).
+- `app` is filled in whenever the command works on an app directory: name, bundle id, xtool product and path. `installed_as` (xtool's `XTL-…` rewrite) is not known yet; it needs the launch work (DL2).
+- The log file is `<app>/.forge/logs/<UTC time>-<command>.log`, written for `build ios`, `run ios` and `test`, starting each step with `$ <command line>`.
+- `forge doctor --json` keeps its own report shape, which predates this contract.
+- `forge device logs --for <DURATION>` ends a log read even when the phone is silent. A `--since` that reaches back in time was not built: the USB syslog relay is live-only, so history before the call has to come from a capture the MCP server keeps running from the last launch.
+
 ## Resources and prompts: making Forge self-describing
 
 Resources are read-only context the agent can load before acting. They are the answer to "it shouldn't rediscover the framework every time".

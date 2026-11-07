@@ -104,6 +104,10 @@ impl CommandRunner for RealRunner {
     }
 
     fn stream(&self, cmd: &Cmd) -> Result<ExitStatus, String> {
+        // With --json, every step's output also goes into the result's log.
+        if crate::report::json_mode() {
+            return self.stream_tail(cmd).map(|(status, _)| status);
+        }
         cmd.to_command()
             .stdin(Stdio::inherit())
             .stdout(Stdio::inherit())
@@ -116,6 +120,7 @@ impl CommandRunner for RealRunner {
         use std::io::{Read, Write};
         use std::sync::{Arc, Mutex};
 
+        crate::report::log_bytes(format!("$ {}\n", cmd.display()).as_bytes());
         let mut child = cmd
             .to_command()
             .stdin(Stdio::inherit())
@@ -135,6 +140,7 @@ impl CommandRunner for RealRunner {
                 }
                 let _ = to.write_all(&buf[..n]);
                 let _ = to.flush();
+                crate::report::log_bytes(&buf[..n]);
                 let mut t = tail.lock().unwrap_or_else(|p| p.into_inner());
                 t.extend_from_slice(&buf[..n]);
                 if t.len() > 2 * TAIL_BYTES {

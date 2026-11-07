@@ -660,6 +660,7 @@ dependencies = [
  "forge-devproto",
  "forge-devtools",
  "forge-runtime",
+ "libc",
  "serde",
  "serde_json",
  "tempfile",

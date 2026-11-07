@@ -1091,6 +1091,51 @@ pub fn xcode_differences(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
     out
 }
 
+impl Plist {
+    /// The same value as JSON (`forge config show --json`).
+    pub fn to_json(&self) -> serde_json::Value {
+        use serde_json::Value;
+        match self {
+            Plist::String(s) => Value::from(s.as_str()),
+            Plist::Bool(b) => Value::from(*b),
+            Plist::Integer(i) => Value::from(*i),
+            Plist::Real(f) => Value::from(*f),
+            Plist::Array(items) => Value::Array(items.iter().map(Plist::to_json).collect()),
+            Plist::Dict(map) => {
+                Value::Object(map.iter().map(|(k, v)| (k.clone(), v.to_json())).collect())
+            }
+        }
+    }
+}
+
+/// The effective iOS configuration as JSON: what [`summary`] shows, plus the
+/// notes `forge config show` prints after it.
+pub fn summary_json(cfg: &ForgeConfig, app_dir: &Path) -> Result<serde_json::Value, String> {
+    let ios = ios(cfg);
+    let dict = |map: BTreeMap<String, Plist>| Plist::Dict(map).to_json();
+    let notes: Vec<String> = warnings(cfg, app_dir)
+        .into_iter()
+        .chain(xcode_differences(cfg, app_dir))
+        .collect();
+    Ok(serde_json::json!({
+        "name": cfg.app.name,
+        "bundle_id": cfg.app.bundle_id,
+        "display_name": display_name(cfg),
+        "version": version(cfg),
+        "build_number": build_number(cfg),
+        "minimum_ios": cfg.app.minimum_ios,
+        "xtool_product": xtool_product(cfg),
+        "icon": ios.icon,
+        "signing": {
+            "team_type": ios.signing.team_type,
+            "team_id": ios.signing.team_id,
+        },
+        "info_plist": dict(info_plist(cfg)?),
+        "entitlements": dict(entitlements(cfg)?),
+        "notes": notes,
+    }))
+}
+
 /// A readable summary of the effective iOS configuration.
 pub fn summary(cfg: &ForgeConfig) -> Result<String, String> {
     let ios = ios(cfg);
