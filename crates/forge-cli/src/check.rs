@@ -111,7 +111,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             skip: None,
         },
         Step {
-            name: "binding drift (Swift + Kotlin)",
+            name: "Kotlin binding drift (Android examples)",
             cmds: vec![script(root, "check-bindings.sh")],
             skip: None,
         },
@@ -129,7 +129,17 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
             name: "Android JVM unit tests",
             cmds: vec![
                 // The Chat tests also run against the real chat server.
-                cargo(&["build", "-p", "forge-ffi", "-p", "chat-server"]),
+                cargo(&[
+                    "build",
+                    "--manifest-path",
+                    "examples/counter/rust/Cargo.toml",
+                ]),
+                cargo(&[
+                    "build",
+                    "--manifest-path",
+                    "examples/chat-android/rust/Cargo.toml",
+                ]),
+                cargo(&["build", "-p", "chat-server"]),
                 Cmd::new(android_dir.join("gradlew"))
                     .args([":app:testDebugUnitTest", "--no-daemon"])
                     .cwd(&android_dir),
@@ -271,7 +281,9 @@ mod tests {
             "check-bindings.sh",
             "check-app-crates.sh",
             "test-native-rebuild.sh",
-            "cargo build -p forge-ffi -p chat-server",
+            "examples/counter/rust/Cargo.toml",
+            "examples/chat-android/rust/Cargo.toml",
+            "cargo build -p chat-server",
             "counter-android/gradlew :app:testDebugUnitTest --no-daemon",
             "chat-android/gradlew :app:testDebugUnitTest --no-daemon",
             "examples/counter",
@@ -293,7 +305,7 @@ mod tests {
         let lines = mock.call_lines();
         assert!(!lines.iter().any(|l| l.contains("gradlew")));
         assert!(!lines.iter().any(|l| l.contains("test-swift-host")));
-        assert!(!lines.iter().any(|l| l.contains("build -p forge-ffi")));
+        assert!(!lines.iter().any(|l| l.contains("build -p chat-server")));
     }
 
     #[test]

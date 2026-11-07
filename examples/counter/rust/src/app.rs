@@ -27,8 +27,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-use forge_core::{CounterAction, CounterEngine, CounterSnapshot};
-use forge_storage::SnapshotStore;
+use crate::domain::{CounterAction, CounterEngine, CounterSnapshot};
+use crate::store::SnapshotStore;
 
 use crate::api::CounterStateSnapshot;
 use crate::errors::ForgeAppError;
@@ -462,7 +462,8 @@ fn run_bulk_add(
 mod tests {
     use super::*;
     use crate::signal::block_on;
-    use forge_storage::{JsonSnapshotStore, StorageError};
+    use crate::store::JsonSnapshotStore;
+    use forge_storage::StorageError;
     use std::sync::mpsc::SyncSender;
 
     /// In-memory store whose saves can be made to fail or to pause.

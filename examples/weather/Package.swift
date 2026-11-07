@@ -5,9 +5,10 @@ import PackageDescription
 
 // Absolute paths, so linking works whatever directory SwiftPM or Xcode runs the linker from.
 let packageDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().path
-let iosLibSearch = "\(packageDir)/../../build/ios-device/lib"
+// The app's Rust library (rust/), staged by `forge build` / scripts/package-ios-library.sh.
+let iosLibSearch = "\(packageDir)/build/ios-device/lib"
 // Host (macOS) static library for `swift test`; see scripts/test-swift-host.sh.
-let macosLibSearch = "\(packageDir)/../../build/macos-host/lib"
+let macosLibSearch = "\(packageDir)/build/macos-host/lib"
 
 let package = Package(
     name: "Weather",

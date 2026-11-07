@@ -123,15 +123,10 @@ enum ConfigCommands {
 enum BindingsCommands {
     /// Regenerates an app's Generated/ from its Rust crate (Swift or Kotlin,
     /// from the app's platform): the app given by --project, or the current
-    /// directory when it has forge.toml. With --out, writes the shared
-    /// forge-ffi bindings there instead (default: examples/counter/Generated).
+    /// directory when it has forge.toml.
     Generate {
-        #[arg(long, conflicts_with_all = ["out", "language"])]
-        project: Option<PathBuf>,
         #[arg(long)]
-        out: Option<PathBuf>,
-        #[arg(long, default_value = "swift", value_parser = ["swift", "kotlin"])]
-        language: String,
+        project: Option<PathBuf>,
     },
 }
 
@@ -247,29 +242,14 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             let project = project.or_else(app_in_cwd);
             commands::test(runner, &root, project.as_deref(), workspace)
         }
-        Commands::Bindings { cmd } => match cmd {
-            BindingsCommands::Generate {
-                project: Some(project),
-                ..
-            } => commands::bindings_generate_for_project(runner, &root, &project),
-            BindingsCommands::Generate {
-                project: None,
-                out: Some(out),
-                language,
-            } => commands::bindings_generate(runner, &root, &out, &language),
-            BindingsCommands::Generate {
-                project: None,
-                out: None,
-                language,
-            } => match app_in_cwd() {
-                Some(app) => commands::bindings_generate_for_project(runner, &root, &app),
-                None => commands::bindings_generate(
-                    runner,
-                    &root,
-                    std::path::Path::new("examples/counter/Generated"),
-                    &language,
-                ),
-            },
+        Commands::Bindings {
+            cmd: BindingsCommands::Generate { project },
+        } => match project.or_else(app_in_cwd) {
+            Some(app) => commands::bindings_generate_for_project(runner, &root, &app),
+            None => Err(
+                "no app here: run inside an app directory (one with forge.toml) or pass --project <app>"
+                    .into(),
+            ),
         },
         Commands::Build { cmd } => match cmd {
             BuildCommands::Ios {
@@ -362,8 +342,7 @@ name = "Bad"
 bundle_id = "not a bundle id"
 minimum_ios = "17.0"
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+path = "rust"
 [build]
 ios_device = true
 ios_simulator = false

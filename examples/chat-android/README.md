@@ -10,7 +10,7 @@ Design: [docs/chat-demo.md](../../docs/chat-demo.md).
 
 ```
 ChatRoot (Compose) → ChatViewModel → ChatSession → Generated Kotlin (uniffi.forge_ffi)
-  → forge-ffi (ForgeChatApp) → chat-core → forge-net (UreqClient)
+  → the app's Rust crate, rust/ (ForgeChatApp) → chat-core → forge-net (UreqClient)
   → examples/chat-server (HTTP + Server-Sent Events, --allow-anonymous)
 ```
 
@@ -42,7 +42,8 @@ bindings, and runs the demo interaction (send, kill the server, failed send, res
 leave the room and watch its Rust thread end) against the real chat server:
 
 ```sh
-cargo build -p forge-ffi -p chat-server
+cargo build --manifest-path examples/chat-android/rust/Cargo.toml
+cargo build -p chat-server
 cd examples/chat-android && ./gradlew :app:testDebugUnitTest
 ```
 

@@ -1,4 +1,4 @@
-use forge_core::CounterError;
+use crate::domain::CounterError;
 use forge_storage::StorageError;
 
 /// Every error that crosses the FFI boundary.

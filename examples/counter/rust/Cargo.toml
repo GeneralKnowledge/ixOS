@@ -1,0 +1,35 @@
+# The Counter example's own Rust library: the counter rules (domain/), its versioned snapshot store, and the UniFFI API (ForgeCounterApp) the iOS and Android hosts call. counter-android builds from this crate too.
+[package]
+name = "counter-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+forge-storage = { path = "../../../crates/forge-storage" }
+# The async bridge and the Android JNI init (ForgeAndroid.nativeInit).
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+proptest = "=1.12.0"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

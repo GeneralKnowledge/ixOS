@@ -1,5 +1,7 @@
 # Forge Mobile — ideal design (from documentation)
 
+> **Historical.** Written when Forge had shared `forge-core` and `forge-ffi` crates. Those were removed: every app now owns its Rust crate ([app-crate.md](app-crate.md)). Read the crate names below as "the app crate's domain and FFI modules".
+
 This document captures how Forge Mobile **should** work according to the product README and `docs/` only. It was written **before** reading `crates/`, `examples/`, `scripts/`, or CI configuration.
 
 Each statement is tagged:

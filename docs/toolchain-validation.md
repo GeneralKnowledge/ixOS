@@ -52,9 +52,9 @@ cargo test --workspace
 Uses:
 
 ```bash
-cargo build -p forge-ffi
+cargo build --manifest-path examples/counter/rust/Cargo.toml
 cargo run -p uniffi-bindgen -- generate \
-  --library target/debug/libforge_ffi.so \
+  --library examples/counter/rust/target/debug/libforge_ffi.so \
   --language swift \
   --out-dir examples/counter/Generated
 ```
@@ -187,7 +187,7 @@ The end-to-end check for "create an app, write its logic in Rust, run it on a ph
 
 | Test | Linux automated | Device manual |
 |------|-----------------|---------------|
-| Increment from zero | `cargo test -p forge-core` | UI |
+| Increment from zero | `cargo test --manifest-path examples/counter/rust/Cargo.toml` | UI |
 | Decrement at zero rejected | yes | UI error message |
 | Max 1_000_000 | yes | optional |
 | Persistence save/load | `cargo test -p forge-storage` | relaunch |

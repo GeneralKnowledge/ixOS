@@ -10,15 +10,15 @@ cancellation, lifecycle), Weather exercises the FFI *type mapping* and real I/O:
 | What | Where |
 |------|-------|
 | Real HTTPS from Rust (`ureq` + rustls, system trust store) | `crates/forge-net` (`UreqClient`, `ureq` feature) |
-| Nested payload: records in records, optional records, lists of records, enums with data holding enums | `crates/forge-ffi/src/weather/types.rs` → generated Swift structs and enums |
-| Refresh / cancellation: one refresh at a time, a new one supersedes the old, `cancel()` resolves at once | `crates/forge-ffi/src/weather/app.rs`, `WeatherClient.report(for:)` |
+| Nested payload: records in records, optional records, lists of records, enums with data holding enums | `rust/src/weather/types.rs` → generated Swift structs and enums |
+| Refresh / cancellation: one refresh at a time, a new one supersedes the old, `cancel()` resolves at once | `rust/src/weather/app.rs`, `WeatherClient.report(for:)` |
 | Error paths: offline, timeout, HTTP status (with the API's reason), bad JSON, invalid input | `WeatherError` (Rust) → `WeatherClientError` (Swift) |
 | Offline fallback: a cached report marked `.cached(ageSeconds:problem:)` instead of an error | `app.rs` cache, `WeatherViewModel.staleNotice` |
 | Location stays in Swift: CoreLocation one-shot fix, when-in-use permission, city search fallback | `Sources/WeatherBridge/LocationProvider.swift` |
 
 ```
 WeatherView → WeatherViewModel → WeatherBridge (WeatherClient, LocationProvider)
-  → Generated Swift (ForgeFFI) → forge-ffi (ForgeWeatherApp) → forge-net (UreqClient) → Open-Meteo
+  → Generated Swift (ForgeFFI) → the app's Rust crate, rust/ (ForgeWeatherApp) → forge-net (UreqClient) → Open-Meteo
 ```
 
 ## Design notes
@@ -38,9 +38,9 @@ WeatherView → WeatherViewModel → WeatherBridge (WeatherClient, LocationProvi
 - **Units** are fixed (°C, km/h, mm) and encoded in field names. Times are the
   place's local time as ISO strings, so the UI never converts through the
   device's time zone.
-- **Bindings.** `forge-ffi` is one library, so its generated bindings include
-  both Counter and Weather. Each iOS example commits its own copy under
-  `Generated/`; `scripts/check-bindings.sh` checks both.
+- **Bindings.** The app owns its Rust crate (`rust/`), so its committed
+  `Generated/` holds only the Weather API; `scripts/check-app-crates.sh`
+  checks it for drift.
 
 ## Run
 
@@ -48,8 +48,8 @@ Tests (macOS, no network needed; offline and cancellation paths use local ports)
 
 ```bash
 ./scripts/test-swift-host.sh examples/weather
-cargo test -p forge-ffi weather          # Rust side, recorded JSON fixtures
-cargo test -p forge-ffi -- --ignored live_open_meteo   # real network
+cargo test --manifest-path rust/Cargo.toml          # Rust side, recorded JSON fixtures
+cargo test --manifest-path rust/Cargo.toml -- --ignored live_open_meteo   # real network
 ```
 
 On a device:

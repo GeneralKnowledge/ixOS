@@ -12,7 +12,7 @@ default = []
 # Real HTTPS transport (`UreqClient`): ureq + rustls (ring) with the platform's
 # certificate verifier, so iOS/macOS use the system trust store.
 # On Android the verifier calls into the JVM, so it also needs `jni` and a one-time
-# init with the app Context (`platform::android::init`, called by forge-ffi).
+# init with the app Context (`platform::android::init`, called by forge-runtime's JNI export).
 ureq = ["dep:ureq", "dep:rustls", "dep:jni", "dep:rustls-platform-verifier"]
 
 [dependencies]

@@ -13,7 +13,7 @@ import org.junit.Test
 
 /**
  * Drives the view model against the real Rust core through the generated Kotlin bindings.
- * Needs the host library: run `cargo build -p forge-ffi` from the workspace root first.
+ * Needs the host library: run `cargo build --manifest-path examples/counter/rust/Cargo.toml` first (`forge test --project examples/counter-android` does it).
  */
 class CounterViewModelTest {
     private lateinit var dir: File

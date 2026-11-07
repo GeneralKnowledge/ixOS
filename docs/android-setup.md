@@ -1,12 +1,12 @@
 # Android setup (Linux)
 
-Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the same `forge-ffi` crate as iOS.
+Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the app's own Rust crate (`rust/`, or a crate shared with the iOS app, as `examples/counter-android` does).
 
 ## Prerequisites
 
 | Tool | Purpose |
 |------|---------|
-| Rust stable | Workspace + `forge-ffi` |
+| Rust stable | Workspace + the app's Rust crate |
 | `rustup target add aarch64-linux-android x86_64-linux-android` | Device + emulator ABIs |
 | Android SDK + NDK (r28+) | Gradle + 16 KB page-size defaults |
 | `cargo install cargo-ndk` | Cross-compile `.so` into `jniLibs/` |
@@ -95,7 +95,7 @@ The Kotlin host passes an app-private directory string into `ForgeCounterApp` (t
 | `ForgeAndroidInitException: ...CertificateVerifier is not in the app` | The `org.rustls:rustls-platform-verifier` dependency (or its Maven repository in `settings.gradle.kts`) is missing, or R8 stripped it |
 | `https://` fails with "TLS is not initialised on this host" | `ForgeAndroid.init(applicationContext)` was not called before the Rust app object was created |
 | `https://` fails with "certificate rejected" | The server's certificate is expired, for another host, or not issued by a CA Android trusts |
-| Bindings compile errors | Regenerate: `forge bindings generate --language kotlin --out examples/counter-android/Generated` |
+| Bindings compile errors | Regenerate: `forge bindings generate --project examples/counter-android` |
 | Play 16 KB page warning | Use NDK r28+; run alignment probe in `validate-android-toolchain.sh` |
 
 See also [toolchain-validation.md](toolchain-validation.md) and [ffi-policy.md](ffi-policy.md).

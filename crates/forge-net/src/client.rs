@@ -11,7 +11,7 @@ use crate::types::{Method, NetError, Request, Response, StreamingResponse};
 /// app instance's command thread and anything else that needs it.
 pub trait HttpClient: Send + Sync {
     /// Performs `request` and blocks until a response or error. Call it from
-    /// a worker thread (e.g. `forge-ffi`'s command thread), never the UI.
+    /// a worker thread (e.g. an app's command thread), never the UI.
     fn send(&self, request: &Request) -> Result<Response, NetError>;
 
     /// [`send`](HttpClient::send) that `cancel` can stop while the request is

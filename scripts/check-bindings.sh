@@ -1,33 +1,27 @@
 #!/usr/bin/env bash
+# Checks that every Android example's committed Kotlin bindings match what its
+# Rust crate generates now. (Swift bindings of the iOS examples are checked
+# with their crates by check-app-crates.sh.)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
+cd "$ROOT"
 
-"$ROOT/scripts/generate-bindings.sh" "$TMP/swift"
-
-# Every iOS example on the shared forge-ffi carries its own copy of the Swift
-# bindings. Chat and Pocket Library own their crates: check-app-crates.sh.
-for example in counter weather; do
-  for file in ForgeFFI/forge_ffi.swift forge_ffiFFI/forge_ffiFFI.h forge_ffiFFI/module.modulemap; do
-    if ! diff -u "$ROOT/examples/$example/Generated/$file" "$TMP/swift/$file"; then
-      echo "error: examples/$example/Generated/$file is stale; run scripts/generate-bindings.sh examples/$example/Generated" >&2
-      exit 1
-    fi
-  done
-done
-
-"$ROOT/scripts/generate-bindings.sh" "$TMP/kotlin" kotlin
-
-# Every Android example carries its own copy of the Kotlin bindings.
-for example in counter-android chat-android; do
+checked=()
+for app in examples/*/; do
+  app="${app%/}"
+  [[ -f "$app/forge.toml" && -f "$app/build.gradle.kts" ]] || continue
+  out="$TMP/$(basename "$app")"
+  FORGE_APP_DIR="$app" "$ROOT/scripts/generate-bindings.sh" "$out" kotlin >/dev/null
   for KOTLIN_FILE in uniffi/forge_ffi/forge_ffi.kt org/forgemobile/ffi/ForgeAndroid.kt; do
-    if ! diff -u "$ROOT/examples/$example/Generated/$KOTLIN_FILE" "$TMP/kotlin/$KOTLIN_FILE"; then
-      echo "error: examples/$example/Generated/$KOTLIN_FILE is stale; run scripts/generate-bindings.sh examples/$example/Generated kotlin" >&2
+    if ! diff -u "$app/Generated/$KOTLIN_FILE" "$out/$KOTLIN_FILE"; then
+      echo "error: $app/Generated/$KOTLIN_FILE is stale; run scripts/generate-bindings.sh $app/Generated kotlin" >&2
       exit 1
     fi
   done
+  checked+=("$app")
 done
 
-echo "[forge] Generated bindings match committed copies."
+echo "[forge] Kotlin bindings match committed copies: ${checked[*]}"

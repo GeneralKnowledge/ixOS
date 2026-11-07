@@ -1,0 +1,35 @@
+# The frozen Android Chat example's own Rust library: the ForgeChatApp API over chat-core, as it was before Chat M0. New Chat features go to examples/chat/rust (iOS); this crate only keeps the Android app building and tested until it is ported.
+[package]
+name = "chat-android-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+chat-core = { path = "../../chat-core", features = ["ureq"] }
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# The async bridge and the Android JNI init (ForgeAndroid.nativeInit), which HTTPS needs.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

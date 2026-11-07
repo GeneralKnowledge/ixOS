@@ -1,0 +1,35 @@
+# The Weather example's own Rust library: Open-Meteo search and forecasts over forge-net, an offline cache, and the UniFFI API (ForgeWeatherApp) the SwiftUI host calls.
+[package]
+name = "weather-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+forge-storage = { path = "../../../crates/forge-storage" }
+# The async bridge and the Android JNI init (ForgeAndroid.nativeInit).
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

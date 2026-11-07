@@ -236,14 +236,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "forge-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "thiserror",
-]
-
-[[package]]
 name = "forge-net"
 version = "0.1.0"
 dependencies = [
@@ -266,7 +258,6 @@ dependencies = [
 name = "forge-storage"
 version = "0.1.0"
 dependencies = [
- "forge-core",
  "serde",
  "serde_json",
  "thiserror",

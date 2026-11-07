@@ -1,38 +1,54 @@
 # Sourced by the build scripts: which Rust crate builds this app's native library.
 #
-# Apps created by `forge init` own their Rust crate (FORGE_APP_DIR/rust, or
-# FORGE_RUST_DIR): it is built with its own Cargo.toml and target directory, and
-# its native libraries are staged inside the app (FORGE_APP_DIR/build). Without
-# FORGE_APP_DIR the scripts build the workspace's forge-ffi, which the bundled
-# examples share.
+# Every app owns its Rust crate (FORGE_APP_DIR/rust, or FORGE_RUST_DIR, or the
+# `[rust] path` in its forge.toml): it is built with its own Cargo.toml and
+# target directory, and its native libraries are staged inside the app
+# (FORGE_APP_DIR/build). Without FORGE_APP_DIR the app is found from the
+# script's first argument: the app directory itself, or its Generated/ folder.
 #
-# Sets: CRATE_DIR, CARGO_SELECT (array), CARGO_TARGET, NATIVE_OUT, SCAN_DIRS (array).
+# Sets: APP_DIR, CRATE_DIR, CARGO_SELECT (array), CARGO_TARGET, NATIVE_OUT, SCAN_DIRS (array).
 # Expects ROOT (the Forge workspace).
 
-if [[ -n "${FORGE_APP_DIR:-}" ]]; then
-  APP_DIR="$(cd "$FORGE_APP_DIR" && pwd)"
-  CRATE_DIR="${FORGE_RUST_DIR:-$APP_DIR/rust}"
-  if [[ ! -f "$CRATE_DIR/Cargo.toml" ]]; then
-    echo "[forge] error: no Rust crate at $CRATE_DIR (expected Cargo.toml)." >&2
-    echo "[forge]        forge.toml [rust] path names it; forge init creates it as rust/." >&2
-    exit 1
-  fi
-  CRATE_DIR="$(cd "$CRATE_DIR" && pwd)"
-  CARGO_SELECT=(--manifest-path "$CRATE_DIR/Cargo.toml")
-  CARGO_TARGET="${CARGO_TARGET_DIR:-$CRATE_DIR/target}"
-  NATIVE_OUT="$APP_DIR/build"
-  # The app's crate plus the Forge crates it depends on by path.
-  SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-services" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage" "$ROOT/crates/forge-core")
-  # Plus every other crate the app's Cargo.toml names by path (Chat's
-  # chat-core, say), so editing one of those also rebuilds the library.
-  while IFS= read -r dep; do
-    dep_dir="$(cd "$CRATE_DIR" && cd "$dep" 2>/dev/null && pwd)" || continue
-    [[ " ${SCAN_DIRS[*]} " == *" $dep_dir "* ]] || SCAN_DIRS+=("$dep_dir")
-  done < <(sed -nE 's/.*[{ ,]path *= *"([^"]+)".*/\1/p' "$CRATE_DIR/Cargo.toml")
-else
-  CRATE_DIR="$ROOT/crates/forge-ffi"
-  CARGO_SELECT=(-p forge-ffi)
-  CARGO_TARGET="${CARGO_TARGET_DIR:-$ROOT/target}"
-  NATIVE_OUT="$ROOT/build"
-  SCAN_DIRS=("$ROOT/crates/forge-ffi" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage" "$ROOT/crates/forge-core" "$ROOT/examples/chat-core")
+# The `path` under [rust] in a forge.toml, if any.
+forge_toml_rust_path() {
+  sed -n '/^\[rust\]/,/^\[/ s/^path *= *"\([^"]*\)".*/\1/p' "$1" | head -n 1
+}
+
+if [[ -z "${FORGE_APP_DIR:-}" ]]; then
+  for candidate in "${1:-}" "$(dirname "${1:-.}")"; do
+    if [[ -n "$candidate" && -f "$candidate/forge.toml" ]]; then
+      export FORGE_APP_DIR="$candidate"
+      break
+    fi
+  done
 fi
+if [[ -z "${FORGE_APP_DIR:-}" ]]; then
+  echo "[forge] error: no app given. Pass the app directory (or its Generated/ folder), or set FORGE_APP_DIR." >&2
+  exit 1
+fi
+if [[ -z "${FORGE_RUST_DIR:-}" && -f "$FORGE_APP_DIR/forge.toml" ]]; then
+  rust_path="$(forge_toml_rust_path "$FORGE_APP_DIR/forge.toml")"
+  if [[ -n "$rust_path" ]]; then
+    FORGE_RUST_DIR="$FORGE_APP_DIR/$rust_path"
+  fi
+fi
+
+APP_DIR="$(cd "$FORGE_APP_DIR" && pwd)"
+CRATE_DIR="${FORGE_RUST_DIR:-$APP_DIR/rust}"
+if [[ ! -f "$CRATE_DIR/Cargo.toml" ]]; then
+  echo "[forge] error: no Rust crate at $CRATE_DIR (expected Cargo.toml)." >&2
+  echo "[forge]        forge.toml [rust] path names it; forge init creates it as rust/." >&2
+  exit 1
+fi
+CRATE_DIR="$(cd "$CRATE_DIR" && pwd)"
+CARGO_SELECT=(--manifest-path "$CRATE_DIR/Cargo.toml")
+CARGO_TARGET="${CARGO_TARGET_DIR:-$CRATE_DIR/target}"
+NATIVE_OUT="$APP_DIR/build"
+# The app's crate plus the Forge crates it depends on by path.
+SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-services" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage")
+# Plus every other crate the app's Cargo.toml names by path (Chat's
+# chat-core, say), so editing one of those also rebuilds the library.
+while IFS= read -r dep; do
+  dep_dir="$(cd "$CRATE_DIR" && cd "$dep" 2>/dev/null && pwd)" || continue
+  [[ " ${SCAN_DIRS[*]} " == *" $dep_dir "* ]] || SCAN_DIRS+=("$dep_dir")
+done < <(sed -nE 's/.*[{ ,]path *= *"([^"]+)".*/\1/p' "$CRATE_DIR/Cargo.toml")

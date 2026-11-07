@@ -6,7 +6,7 @@ cd "$ROOT"
 # shellcheck source=forge-crate.sh
 source "$ROOT/scripts/forge-crate.sh"
 
-GENERATED="${1:-${FORGE_GENERATED_DIR:-examples/counter/Generated}}"
+GENERATED="${1:-${FORGE_GENERATED_DIR:-$APP_DIR/Generated}}"
 "$ROOT/scripts/generate-bindings.sh" "$GENERATED"
 
 IOS_LIB="$NATIVE_OUT/ios-device/lib/libforge_ffi.a"

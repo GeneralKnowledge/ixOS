@@ -18,7 +18,9 @@ check:
 	cargo run -q -p forge-cli -- check
 
 test-android-host:
-	cargo build -p forge-ffi -p chat-server
+	cargo build --manifest-path examples/counter/rust/Cargo.toml
+	cargo build --manifest-path examples/chat-android/rust/Cargo.toml
+	cargo build -p chat-server
 	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
 	cd examples/chat-android && ./gradlew :app:testDebugUnitTest
 
@@ -37,7 +39,8 @@ clippy:
 bindings:
 	./scripts/generate-bindings.sh examples/counter/Generated
 	./scripts/generate-bindings.sh examples/weather/Generated
-	FORGE_APP_DIR=examples/chat ./scripts/generate-bindings.sh examples/chat/Generated
+	./scripts/generate-bindings.sh examples/chat/Generated
+	./scripts/generate-bindings.sh examples/pocket-library/Generated
 
 bindings-kotlin:
 	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
@@ -60,10 +63,11 @@ check-fresh-app:
 doctor:
 	./scripts/validate-toolchain.sh
 
+# Package one app's Rust library and bindings: make package-ios APP=examples/chat
 package-ios:
-	./scripts/package-ios-library.sh
+	./scripts/package-ios-library.sh $(or $(APP),examples/counter)/Generated
 
 package-android:
-	./scripts/package-android-library.sh
+	./scripts/package-android-library.sh $(or $(APP),examples/counter-android)/Generated
 
 validate: fmt clippy test check-bindings check-template

@@ -7,11 +7,7 @@ cd "$ROOT"
 source "$ROOT/scripts/forge-crate.sh"
 
 PROFILE="${FORGE_ANDROID_PROFILE:-release}"
-if [[ -n "${FORGE_APP_DIR:-}" ]]; then
-  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$APP_DIR/app/src/main/jniLibs}"
-else
-  JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$ROOT/examples/counter-android/app/src/main/jniLibs}"
-fi
+JNI_LIBS="${FORGE_ANDROID_JNI_LIBS:-$APP_DIR/app/src/main/jniLibs}"
 
 # Space-separated Gradle ABI folder names (arm64-v8a, x86_64, armeabi-v7a).
 ABIS="${FORGE_ANDROID_ABIS:-arm64-v8a x86_64}"

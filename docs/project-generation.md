@@ -81,6 +81,6 @@ forge bindings generate   # from the app directory, or --project <dir>
 
 `forge build` and `forge run` regenerate them too, as does `forge test` when it runs host tests (Android, or iOS on macOS). Never edit `Generated/` by hand.
 
-## Older apps and the bundled examples
+## Apps from before app-owned crates
 
-`forge.toml` may instead say `core_crate = "forge-core"` and `ffi_crate = "forge-ffi"`. Such apps (and the bundled examples) build the checkout's shared `forge-ffi` and stage its libraries in the checkout's `build/`. The CLI supports both; new apps always get their own crate.
+Forge used to have a shared `forge-ffi` crate that apps named with `core_crate = "forge-core"` and `ffi_crate = "forge-ffi"`. It has been removed, and every bundled example now owns its crate like a `forge init` app. An old `forge.toml` is rejected with a message saying what to write instead: give the app a `rust/` crate (copy `templates/app-rust`) and set `[rust] path = "rust"`.

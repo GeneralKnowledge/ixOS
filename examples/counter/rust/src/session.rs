@@ -1,5 +1,7 @@
-use forge_core::{CounterAction, CounterEngine, CounterSnapshot};
-use forge_storage::{SnapshotStore, StorageError};
+use crate::domain::{CounterAction, CounterEngine, CounterSnapshot};
+use forge_storage::StorageError;
+
+use crate::store::SnapshotStore;
 
 use crate::errors::ForgeAppError;
 
@@ -64,8 +66,8 @@ pub fn recover_after_corruption(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use forge_core::CounterSnapshot;
-    use forge_storage::JsonSnapshotStore;
+    use crate::domain::CounterSnapshot;
+    use crate::store::JsonSnapshotStore;
     use std::cell::RefCell;
     use std::fs;
 
@@ -218,7 +220,7 @@ mod tests {
     fn write_newer_snapshot(json: &JsonSnapshotStore) -> String {
         let contents = format!(
             r#"{{"schema_version": {}, "count": 7}}"#,
-            forge_storage::SCHEMA_VERSION + 1
+            crate::store::SCHEMA_VERSION + 1
         );
         fs::write(json.path(), &contents).unwrap();
         contents

@@ -14,8 +14,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use forge_core::CounterAction;
-use forge_storage::JsonSnapshotStore;
+use crate::domain::CounterAction;
+use crate::store::JsonSnapshotStore;
 
 use crate::app::{self, AppCore, Operation};
 use crate::errors::ForgeAppError;

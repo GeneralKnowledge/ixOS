@@ -13,14 +13,14 @@ impl CounterSnapshot {
         Self { count: COUNTER_MIN }
     }
 
-    pub fn validate(&self) -> Result<(), crate::CounterError> {
+    pub fn validate(&self) -> Result<(), super::CounterError> {
         if self.count < COUNTER_MIN {
-            return Err(crate::CounterError::WouldUnderflow {
+            return Err(super::CounterError::WouldUnderflow {
                 minimum: COUNTER_MIN,
             });
         }
         if self.count > COUNTER_MAX {
-            return Err(crate::CounterError::WouldOverflow {
+            return Err(super::CounterError::WouldOverflow {
                 maximum: COUNTER_MAX,
             });
         }
