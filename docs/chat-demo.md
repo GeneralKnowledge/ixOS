@@ -16,8 +16,8 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 |---|---|---|
 | M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | Done (PR #40); passed on an iPhone (PR #42) |
 | M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | Done (PR #46); device run E1–E13 passed on an iPhone 15 Pro Max, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
-| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51); iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m2-device-run) |
-| M3 | Photos and documents | Planned |
+| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51), CI green; the iPhone run F1–F14 was skipped at Reuben's request, not run, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m2-device-run) |
+| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m3-photos-and-documents) |
 | M4 | Voice messages | Planned |
 | M5 | Notifications through forge-services, deep links, background work | Planned |
 | M6 | Physical iPhone acceptance and framework gap report | Planned |
@@ -162,6 +162,14 @@ A message that cannot reach the server (a network error or a 5xx) stays `Sending
 
 Edits, deletions and reactions are server events: the server stamps the message with `updated_at` from the room's clock (strictly increasing, shared with `sent_at`) and broadcasts it as a `message` event. `?since=` returns messages *changed* after the cursor, so catch-up after a reconnect brings changes too, and the cursor follows `changed_at() = max(sent_at, updated_at)`. A changed message that is already stored is announced as `MessageUpdated`, never counted unread and never notified. Rooms that are neither open nor watched see changes on their next catch-up (the list prefetch only fetches rooms with new messages).
 
+### Attachments (M3)
+
+A photo or document is a file named by the SHA-256 of its bytes (64 lowercase hex characters), the same id on the server and on every device. `send_with_files` copies each file into the attachment store (`<data dir>/attachments/<id>`, hashing while it copies; empty files and files over 25 MiB are refused before the network, at most 10 per message) and queues the message in the outbox like any other. The outbox uploads each file first (`POST /attachments`, idempotent, so a retry after a dropped connection costs nothing), then posts the message with the ids. Another device stores the message at once and fetches a file only when it is shown or opened (`fetch_attachment`): the body is streamed into a `.part` file and kept only if its SHA-256 matches the id. A message with files may have an empty body.
+
+forge-net gained two pieces for this: `HttpClient::send_file` (the ureq client streams the file with its `Content-Length`; the default reads it into memory) and `download_to_file` (a 2xx body streamed to a `.part` file, flushed and renamed when complete; an error status writes nothing).
+
+The SwiftUI host picks photos with `PhotosPicker` (no photo-library permission: the picker runs out of process), shrinks them to a JPEG of at most 2048 pixels with ImageIO (which also drops their location), copies documents from the Files picker inside their security scope, draws thumbnails off the main thread, and opens files in Quick Look, which also shares them. Rust names stored files by id without an extension, so Swift gives Quick Look a hard-linked copy under the attachment's own name.
+
 ### Store
 
 **Since M2** the store is a SQLite database, `forge-chat.db`, opened through `forge_storage::Database` (feature `sqlite`: bundled SQLite, WAL mode, migrations by `user_version`). Tables: `conversations`, `messages` (each row the message as JSON plus indexed columns), `cursors`, `drafts`, and `messages_fts`, an FTS5 index kept in step by triggers. Saves are diffs in one transaction, not a rewrite.
@@ -171,7 +179,7 @@ Edits, deletions and reactions are server events: the server stamps the message 
 - Each room keeps at most 500 messages; only `Sent` messages are evicted.
 - Settings shows the engine and version (`storage_engine()`, e.g. "SQLite 3.50.4"), which is the device check that SQLite runs on the iPhone.
 
-**Before M2** it was one JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::write_atomic`) after every change:, `forge-chat-store.json`, rewritten atomically (`forge_storage::write_atomic`) after every change:
+**Before M2** it was one JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::write_atomic`) after every change:
 
 ```json
 {
@@ -197,12 +205,14 @@ In M1, messages left `Sending` by a killed app loaded as `Failed`; since M2 they
 | post | `POST /rooms/{id}/messages` `{"id","author","body","reply_to"?}` | `200`/`201` `Message`; **idempotent by `id`**; `reply_to` must be a message in the room (`400`) |
 | edit (M2) | `PATCH /rooms/{id}/messages/{mid}` `{"body"}` | `200` `Message` with `edited_at`; author only (`403`), not after deletion (`409`) |
 | delete (M2) | `DELETE /rooms/{id}/messages/{mid}` | `200` the tombstone (`deleted: true`, empty body, no reactions); author only (`403`) |
+| upload (M3) | `POST /attachments`, the raw bytes, `Content-Type` the file's type | `201` (new) or `200` (already stored) `{"id","size"}`; `id` is the SHA-256 hex of the bytes; needs an account; `413` over 25 MiB, `400` when empty |
+| download (M3) | `GET /attachments/{id}` | `200` the bytes; `404` if unknown; `400` for an id that is not 64 hex characters |
 | react (M2) | `POST /rooms/{id}/messages/{mid}/reactions` `{"emoji","on"}` | `200` `Message`; needs an account; one emoji (≤ 8 characters), ≤ 20 different per message; `409` on a deleted message |
 | stream | `GET /rooms/{id}/stream` | `200` `text/event-stream` |
 
 Every call but `register` carries `Authorization: Bearer <token>`. The server takes a message's author from the token (`author` and `author_id`), whatever the body says; an unknown or missing token is `401`, which the client reports as `ChatError::Unauthorized`. Only a server started with `--allow-anonymous` also accepts calls without a token, with the author from the body: that is how the frozen Android example and curl post.
 
-`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers), plus since M2 the optional `updated_at`, `reply_to`, `edited_at`, `deleted` and `reactions` (`{"👍": ["user-id", …]}`), each left out when empty. Edits, deletions and reactions are broadcast as `message` events with the changed message. `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`; the two read fields are only in answers to the caller (a room in the stream goes to everyone). The stream sends `event: message` (a `Message`), `event: room` (a room) and `event: read` (`{"conversation_id","user_id","up_to"}`) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
+`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers), plus since M2 the optional `updated_at`, `reply_to`, `edited_at`, `deleted` and `reactions` (`{"👍": ["user-id", …]}`), each left out when empty, and since M3 `attachments` (`[{"id","name","mime","size"}]`; on a post the server checks each id was uploaded, takes the size from the stored file and cleans the name and type). Edits, deletions and reactions are broadcast as `message` events with the changed message. `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`; the two read fields are only in answers to the caller (a room in the stream goes to everyone). The stream sends `event: message` (a `Message`), `event: room` (a room) and `event: read` (`{"conversation_id","user_id","up_to"}`) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
 
 `HttpRepo` implements this over `forge_net::HttpClient`. Phase 1 added `HttpClient::open_stream` (a response whose body is read incrementally) to forge-net, with a real implementation in `UreqClient` (timeout covers connect + headers only) and a buffering default for test doubles, so `StaticClient` can serve canned SSE bodies.
 

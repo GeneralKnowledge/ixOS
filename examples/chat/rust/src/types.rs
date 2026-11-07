@@ -72,6 +72,57 @@ pub struct ChatMessage {
     pub deleted: bool,
     /// Reactions, most popular first (then by emoji).
     pub reactions: Vec<ChatReaction>,
+    /// Photos and documents it carries, in order (M3). Fetch the bytes with
+    /// `ChatCore::fetch_attachment`.
+    pub attachments: Vec<ChatAttachment>,
+}
+
+/// A file a message carries.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatAttachment {
+    /// The SHA-256 of its bytes (lowercase hex): how to fetch it.
+    pub id: String,
+    /// The file name as the sender had it, e.g. `IMG_0042.jpg`.
+    pub name: String,
+    /// Its media type, e.g. `image/jpeg` or `application/pdf`.
+    pub mime: String,
+    pub size: u64,
+    /// A picture the app can show inline.
+    pub is_image: bool,
+}
+
+/// A file the user picked to send.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChatOutgoingFile {
+    /// Where it is now (Rust copies it at once; it may be deleted after
+    /// `send_files` returns).
+    pub path: String,
+    /// The name to show; empty takes the file name.
+    pub name: String,
+    /// Its media type; empty means `application/octet-stream`.
+    pub mime: String,
+}
+
+impl From<ChatOutgoingFile> for chat_core::OutgoingFile {
+    fn from(file: ChatOutgoingFile) -> Self {
+        Self {
+            path: file.path.into(),
+            name: file.name,
+            mime: file.mime,
+        }
+    }
+}
+
+impl From<chat_core::Attachment> for ChatAttachment {
+    fn from(a: chat_core::Attachment) -> Self {
+        Self {
+            is_image: a.is_image(),
+            id: a.id,
+            name: a.name,
+            mime: a.mime,
+            size: a.size,
+        }
+    }
 }
 
 /// One emoji on a message and who put it there.
@@ -268,6 +319,7 @@ pub(crate) fn message(m: chat_core::Message, user_id: &str) -> ChatMessage {
         edited: m.edited_at.is_some(),
         deleted: m.deleted,
         reactions,
+        attachments: m.attachments.into_iter().map(Into::into).collect(),
         id: m.id,
         conversation_id: m.conversation_id,
         author: m.author,

@@ -302,6 +302,58 @@ public final class ChatModel {
         updateWaitingCount()
     }
 
+    /// Sends photos and documents (copied into Rust's attachment store at
+    /// once), with `text` as an optional caption. Like `send`, they wait in
+    /// the outbox while the server cannot be reached.
+    public func send(
+        files: [ChatOutgoingFile], text: String, to conversationId: String, replyTo: String? = nil
+    ) async {
+        guard let core, !files.isEmpty else { return }
+        sendError[conversationId] = nil
+        sentCount += 1
+        do {
+            _ = try await core.sendFiles(
+                conversationId: conversationId,
+                body: text.trimmingCharacters(in: .whitespacesAndNewlines),
+                replyTo: replyTo, files: files)
+        } catch {
+            sendError[conversationId] = Self.describe(error)
+        }
+        updateWaitingCount()
+    }
+
+    /// The attachment's file on this iPhone, fetching it from the server
+    /// the first time (Rust checks it against its id). Nil if that fails.
+    public func localFile(for attachment: ChatAttachment) async -> URL? {
+        guard let core else { return nil }
+        if let path = core.attachmentFile(attachmentId: attachment.id) {
+            return URL(fileURLWithPath: path)
+        }
+        guard let path = try? await core.fetchAttachment(attachmentId: attachment.id) else {
+            return nil
+        }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// A file for Quick Look and the share sheet: the attachment under its
+    /// own name. Shows an alert if it cannot be fetched.
+    public func previewFile(for attachment: ChatAttachment) async -> URL? {
+        guard let core else { return nil }
+        do {
+            let path: String
+            if let local = core.attachmentFile(attachmentId: attachment.id) {
+                path = local
+            } else {
+                path = try await core.fetchAttachment(attachmentId: attachment.id)
+            }
+            return try AttachmentFiles.namedCopy(
+                of: URL(fileURLWithPath: path), for: attachment)
+        } catch {
+            actionError = Self.describe(error)
+            return nil
+        }
+    }
+
     /// Replaces the text of one of our sent messages, for everyone.
     public func edit(_ message: ChatMessage, to text: String) async {
         guard let core else { return }

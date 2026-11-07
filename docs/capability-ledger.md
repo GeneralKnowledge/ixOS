@@ -47,8 +47,8 @@ The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Rela
 | App directories | Yes: forge-services | Yes | Yes | Partial: services check app only | No | Yes | Store relative paths only |
 | Document picker import (copy into app) | Yes | Partial: path handed to Rust | Yes: `forgeFileImporter` | Partial: services check app only | No | Yes | |
 | Share sheet and Save to Files | Yes | Yes: `ShareItem` | Yes: `ForgeShareLink` | Partial: services check app only | No | Yes | |
-| Managed attachment store | No | No | n/a | No | No | No | |
-| File-backed upload and download with progress | No | No | n/a | No | No | No | `forge-net` bodies are in memory |
+| Managed attachment store | No: lives in `examples/chat-core` (`AttachmentStore`) | Partial: Chat's own FFI | n/a | Partial: Chat M3 | No | No | Content-addressed by SHA-256, checked on download; a candidate to move into a Forge crate |
+| File-backed upload and download with progress | Partial: forge-net `HttpClient::send_file`, `download_to_file` | Yes | n/a | Partial: Chat M3 | No | No | Streams from and to files; no progress reporting yet |
 | Background transfers | No | No | No | No | No | No | Needs native `URLSession` (S6) |
 | CSV import and export | No | No | n/a | No | No | No | |
 | Report export (zip, GPX, GeoJSON, PDF, PNG) | No | No | No | No | No | No | PDF and PNG drawn natively |
@@ -90,7 +90,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
 | Permission interface | Partial: notifications only | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes 20 permission strings the runtime cannot request yet |
 | Microphone, camera, location, motion, local network, Bluetooth permissions | No | No | No | No | No | Partial: config only | |
-| Photos picker | No | No | No | No | No | No | No permission needed |
+| Photos picker | No | n/a | Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO | Partial: Chat M3 | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
 | Face ID app lock | No | No | No | No | No | Partial: config only | |

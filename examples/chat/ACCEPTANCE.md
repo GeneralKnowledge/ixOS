@@ -113,27 +113,64 @@ M2 adds message changes (reactions, replies, edits, delete for everyone), drafts
 | A16 | chat-server: edit, delete and react routes (author checks, 409 after deletion), `since` returns changes, all kept across a restart; the killer demo now goes through the outbox | automated | Done | `cargo test -p chat-server` (`message_changes_between_two_accounts`, `killer_demo_interaction_over_real_sockets`) |
 | A17 | The app's Rust crate: `send_reply`, `set_reaction` (with `mine`), `edit_message`, `delete_message`, drafts across a relaunch, accent-insensitive search | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (`message_changes_drafts_and_search_through_the_ffi`) |
 | A18 | chat-cli: `reply`, `edit`, `delete`, `react`, messages picked as `@1` (newest) or by id | automated | Done | `cargo test -p chat-cli` |
-| A19 | SwiftUI: `testRepliesReactionsEditsDeletesDraftsAndSearch` (two accounts against the real server) | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` on PR #51 |
+| A19 | SwiftUI: `testRepliesReactionsEditsDeletesDraftsAndSearch` (two accounts against the real server) | automated (macOS CI) | Done | Swift host tests job green on PR #51 (commit 2679eb3) |
 
 ### On an iPhone (Linux, xtool)
+
+**Skipped at Reuben's request (2026-11-07): "Assume that these are all running perfectly."** None of F1–F14 was run on a phone, so none is marked passed. Run them together with the M3 steps below when Chat is back on the phone.
 
 Before you start: the M1 setup (server on `0.0.0.0:8787`, the app signed in, `chat-cli` signed up as "Laptop"). Update first: check out the branch (or `git pull` once merged), restart `make chat-server ARGS="--bind 0.0.0.0:8787"` on the same data file (it upgrades it to version 3), then `forge run ios --project examples/chat`. In the steps, `@1` is the newest message in the room; `make chat-cli ARGS="read general"` lists them numbered.
 
 | # | Step | Expected | Status |
 |---|------|----------|--------|
-| F1 | Open the app, then Settings | The M1 chats and messages are all still there (imported from the old store into SQLite once). Settings shows "Storage: SQLite 3.x" | Not yet run |
-| F2 | In General, touch and hold one of the laptop's messages, tap 👍 | A "👍 1" chip under the bubble, highlighted as yours; `make chat-cli ARGS="read general"` shows `👍1` on it. Tap the chip: it goes away | Not yet run |
-| F3 | `make chat-cli ARGS="react general @1 ❤️"` with the phone's newest message at `@1` | "❤️ 1" appears under that bubble within a second; no unread dot, no banner | Not yet run |
-| F4 | Touch and hold a message, Reply, type "answer", send | A bar "Replying to …" above the composer while typing; the sent bubble quotes the original; tapping the quote scrolls to it. `chat-cli read general` shows `(reply to …)` | Not yet run |
-| F5 | `make chat-cli ARGS="reply general @1 back at you"` | The laptop's bubble quotes the phone's message | Not yet run |
-| F6 | Touch and hold one of your sent messages, Edit, change the text, tap the check mark | The bubble changes and shows "Edited"; `chat-cli follow general` prints `changed: … (edited)` | Not yet run |
-| F7 | `make chat-cli ARGS="send general to delete"`, then `make chat-cli ARGS="delete general @1"` | The bubble appears, then turns into "This message was deleted" | Not yet run |
-| F8 | Touch and hold one of your own messages, Delete, Delete for Everyone | It becomes "This message was deleted" on the phone and in `chat-cli read general` | Not yet run |
-| F9 | Type "half a thought" in Random without sending, go back, force-quit the app, open it again and go to Random | The composer still holds "half a thought" | Not yet run |
-| F10 | Stop the server (Ctrl-C). Send two messages in General | Both stay "Sending…" (not red); the banner says messages wait; the Chats list says 2 messages are waiting | Not yet run |
-| F11 | Force-quit the app with the server still stopped; start the server; open the app and General | Both messages go out by themselves, in order, without tapping; `chat-cli read general` shows them | Not yet run |
-| F12 | Pull down on the Chats list and search for a word from an older message, typed without accents or capitals | Matching messages from every conversation, with the room name and the word in bold; tapping one opens the chat scrolled to it, highlighted | Not yet run |
-| F13 | In a chat: More (…) → Search in Conversation, search for a word | Only that chat's messages; tapping one closes the sheet and scrolls to it | Not yet run |
-| F14 | `forge run ios --project examples/chat --release` | Builds, installs, and F2, F6 and F12 still work | Not yet run |
+| F1 | Open the app, then Settings | The M1 chats and messages are all still there (imported from the old store into SQLite once). Settings shows "Storage: SQLite 3.x" | Skipped (not run) |
+| F2 | In General, touch and hold one of the laptop's messages, tap 👍 | A "👍 1" chip under the bubble, highlighted as yours; `make chat-cli ARGS="read general"` shows `👍1` on it. Tap the chip: it goes away | Skipped (not run) |
+| F3 | `make chat-cli ARGS="react general @1 ❤️"` with the phone's newest message at `@1` | "❤️ 1" appears under that bubble within a second; no unread dot, no banner | Skipped (not run) |
+| F4 | Touch and hold a message, Reply, type "answer", send | A bar "Replying to …" above the composer while typing; the sent bubble quotes the original; tapping the quote scrolls to it. `chat-cli read general` shows `(reply to …)` | Skipped (not run) |
+| F5 | `make chat-cli ARGS="reply general @1 back at you"` | The laptop's bubble quotes the phone's message | Skipped (not run) |
+| F6 | Touch and hold one of your sent messages, Edit, change the text, tap the check mark | The bubble changes and shows "Edited"; `chat-cli follow general` prints `changed: … (edited)` | Skipped (not run) |
+| F7 | `make chat-cli ARGS="send general to delete"`, then `make chat-cli ARGS="delete general @1"` | The bubble appears, then turns into "This message was deleted" | Skipped (not run) |
+| F8 | Touch and hold one of your own messages, Delete, Delete for Everyone | It becomes "This message was deleted" on the phone and in `chat-cli read general` | Skipped (not run) |
+| F9 | Type "half a thought" in Random without sending, go back, force-quit the app, open it again and go to Random | The composer still holds "half a thought" | Skipped (not run) |
+| F10 | Stop the server (Ctrl-C). Send two messages in General | Both stay "Sending…" (not red); the banner says messages wait; the Chats list says 2 messages are waiting | Skipped (not run) |
+| F11 | Force-quit the app with the server still stopped; start the server; open the app and General | Both messages go out by themselves, in order, without tapping; `chat-cli read general` shows them | Skipped (not run) |
+| F12 | Pull down on the Chats list and search for a word from an older message, typed without accents or capitals | Matching messages from every conversation, with the room name and the word in bold; tapping one opens the chat scrolled to it, highlighted | Skipped (not run) |
+| F13 | In a chat: More (…) → Search in Conversation, search for a word | Only that chat's messages; tapping one closes the sheet and scrolls to it | Skipped (not run) |
+| F14 | `forge run ios --project examples/chat --release` | Builds, installs, and F2, F6 and F12 still work | Skipped (not run) |
+
+Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
+
+## M3: Photos and documents
+
+M3 adds photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and kept once by SHA-256 on the server and the phone, downloads checked against their id, thumbnails, Quick Look and sharing, and `chat-cli send-file` / `download`. Device results are Reuben's reports; nothing here is marked done until he reported it.
+
+### Automated and local
+
+| # | Check | Kind | Status | Evidence |
+|---|-------|------|--------|----------|
+| A20 | forge-net: `send_file` streams a file with its length, a missing file is a clear error, `download_to_file` keeps only a complete 2xx body | automated | Done | `cargo test -p forge-net` |
+| A21 | chat-server: upload stored once by content (201 then 200), names and types cleaned, posts must name uploaded files, anonymous downloads refused, bad ids 400, files kept across a restart | automated | Done | `cargo test -p chat-server` (`attachments_between_two_accounts`) |
+| A22 | chat-core: files uploaded before the message and fetched (and checked) by the other account; files sent offline wait in the outbox with their own copy; empty, missing and oversized files refused before the network | automated | Done | `cargo test -p chat-core` (81 tests) |
+| A23 | The app's Rust crate: `send_files`, `attachment_file`, `fetch_attachment` | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (`photos_and_documents_through_the_ffi`) |
+| A24 | chat-cli: `send-file` guesses the type, `download` checks the SHA-256 | automated | Done | `cargo test -p chat-cli` |
+| A25 | SwiftUI: `testPhotosAndDocumentsBetweenTwoPeople` (a 4000×3000 photo shrunk to 2048×1536 JPEG, a text file, sent and fetched between two accounts, thumbnail and named preview copy) | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` |
+
+### On an iPhone (Linux, xtool)
+
+Before you start: the M1 setup, on this branch (or after it is merged), the server restarted on the same data file, `forge run ios --project examples/chat`. Chat must be installed on the phone (with a free account, at most 3 sideloaded apps).
+
+| # | Step | Expected | Status |
+|---|------|----------|--------|
+| G1 | In General, tap +, Photo, pick a photo from the library | No permission prompt. A "IMG_….jpg" chip above the text field; × removes it | Not yet run |
+| G2 | Pick a photo again, type a caption, send | The bubble shows the photo as a thumbnail with the caption below; Sending… then Sent. `make chat-cli ARGS="read general"` shows `[file: IMG_….jpg (…)]` under 2 MB or so | Not yet run |
+| G3 | `make chat-cli ARGS="download general @1 /tmp"`, open the file on the laptop | The photo, the right way up, at most 2048 pixels wide; `exiftool` shows no GPS position | Not yet run |
+| G4 | Tap the photo in the bubble | Quick Look opens it full screen; its share button offers Save Image, AirDrop and other apps | Not yet run |
+| G5 | Tap +, Document, pick a PDF from Files, send without text | A row with a document icon, the file's name and size. The Chats list shows "You: <name>" | Not yet run |
+| G6 | Tap the PDF row | Quick Look shows the PDF with its pages | Not yet run |
+| G7 | `make chat-cli ARGS="send-file general ~/some.pdf from the laptop"` and `make chat-cli ARGS="send-file general ~/photo.jpg"` | Both appear live; the photo's thumbnail loads by itself; tapping the PDF downloads and opens it | Not yet run |
+| G8 | Stop the server. Send a photo. Force-quit the app, start the server, open the app and General | The photo waits as "Sending…" and goes out by itself after the restart; the laptop can download it | Not yet run |
+| G9 | Pick four photos at once and send | One message with four thumbnails, in the order picked | Not yet run |
+| G10 | Touch and hold a bubble with a photo | The menu has Open Photo (and no Copy when there is no caption); Reply quotes it as "Photo" | Not yet run |
+| G11 | `forge run ios --project examples/chat --release` | Builds, installs, and G2 and G4 still work | Not yet run |
 
 Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
