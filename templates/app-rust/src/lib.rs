@@ -189,15 +189,26 @@ impl AppCore {
         newest_first(&lock(&self.state).stored.notes)
     }
 
+    /// Notes containing `query` (ignoring case and surrounding spaces),
+    /// newest first; every note when `query` is blank. A quick in-memory
+    /// read, so the host may call it on each keystroke.
+    pub fn search_notes(&self, query: String) -> Vec<Note> {
+        let query = query.trim().to_lowercase();
+        let state = lock(&self.state);
+        let matches: Vec<Note> = state
+            .stored
+            .notes
+            .iter()
+            .filter(|note| query.is_empty() || note.text.to_lowercase().contains(&query))
+            .cloned()
+            .collect();
+        newest_first(&matches)
+    }
+
     /// Adds a note and saves. Emits `NotesChanged` after the save.
     pub async fn add_note(&self, text: String) -> Result<Note, AppError> {
         self.ensure_running()?;
-        let text = text.trim().to_string();
-        if text.is_empty() {
-            return Err(AppError::InvalidInput {
-                reason: "a note needs some text".into(),
-            });
-        }
+        let text = note_text(text)?;
         let (state, file, events) = self.parts();
         background("add-note", move || {
             let mut state = lock(&state);
@@ -212,6 +223,35 @@ impl AppCore {
             };
             next.notes.push(note.clone());
             file.save(&next)?; // nothing changes in memory if the save fails
+            state.stored = next;
+            events.publish(AppEvent::NotesChanged {
+                notes: newest_first(&state.stored.notes),
+            });
+            Ok(note)
+        })
+        .await
+    }
+
+    /// Replaces a note's text and saves. `NotFound` if there is no such
+    /// note, `InvalidInput` if `text` is blank. Emits `NotesChanged`.
+    pub async fn update_note(&self, id: u64, text: String) -> Result<Note, AppError> {
+        self.ensure_running()?;
+        let text = note_text(text)?;
+        let (state, file, events) = self.parts();
+        background("update-note", move || {
+            let mut state = lock(&state);
+            let mut next = StoredNotes {
+                next_id: state.stored.next_id,
+                notes: state.stored.notes.clone(),
+            };
+            let note = next
+                .notes
+                .iter_mut()
+                .find(|n| n.id == id)
+                .ok_or(AppError::NotFound { id })?;
+            note.text = text;
+            let note = note.clone();
+            file.save(&next)?;
             state.stored = next;
             events.publish(AppEvent::NotesChanged {
                 notes: newest_first(&state.stored.notes),
@@ -350,6 +390,17 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
         .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
+/// The validation rule for note text, shared by add and update.
+fn note_text(text: String) -> Result<String, AppError> {
+    let text = text.trim().to_string();
+    if text.is_empty() {
+        return Err(AppError::InvalidInput {
+            reason: "a note needs some text".into(),
+        });
+    }
+    Ok(text)
+}
+
 fn newest_first(notes: &[Note]) -> Vec<Note> {
     let mut notes = notes.to_vec();
     notes.sort_by_key(|note| std::cmp::Reverse(note.id));
@@ -385,6 +436,39 @@ mod tests {
         assert_eq!(reopened.notes(), vec![second.clone(), first.clone()]);
         block_on(reopened.delete_note(first.id)).unwrap();
         assert_eq!(open(dir.path()).notes(), vec![second]);
+    }
+
+    #[test]
+    fn notes_can_be_edited_and_searched() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = open(dir.path());
+        let milk = block_on(app.add_note("Buy milk".into())).unwrap();
+        let call = block_on(app.add_note("Call Sam".into())).unwrap();
+        let events = app.events().unwrap();
+
+        let edited = block_on(app.update_note(milk.id, "  Buy oat milk ".into())).unwrap();
+        assert_eq!(edited.text, "Buy oat milk");
+        assert_eq!(edited.created_at_ms, milk.created_at_ms);
+        assert_eq!(
+            block_on(events.next()),
+            Some(AppEvent::NotesChanged {
+                notes: vec![call.clone(), edited.clone()]
+            })
+        );
+        assert_eq!(open(dir.path()).notes()[1].text, "Buy oat milk");
+
+        assert_eq!(app.search_notes("MILK ".into()), vec![edited.clone()]);
+        assert_eq!(app.search_notes("  ".into()).len(), 2);
+        assert!(app.search_notes("eggs".into()).is_empty());
+
+        assert!(matches!(
+            block_on(app.update_note(milk.id, " ".into())),
+            Err(AppError::InvalidInput { .. })
+        ));
+        assert_eq!(
+            block_on(app.update_note(99, "x".into())),
+            Err(AppError::NotFound { id: 99 })
+        );
     }
 
     #[test]
