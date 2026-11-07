@@ -186,7 +186,8 @@ pub const SPECS: &[Spec] = &[
         device: true,
         needs_ui: true,
         schema: || schema(json!({
-            "terminate": {"type": "boolean", "description": "Stop the app instead of opening it"}
+            "terminate": {"type": "boolean", "description": "Stop the app instead of opening it"},
+            "text_size": {"type": "string", "enum": TEXT_SIZES, "description": "Open the app at this Dynamic Type size, without changing the phone's settings (a launch argument; it lasts until the app is next opened without it). Use largest to check the biggest accessibility size"}
         }), &[]),
     },
     Spec {
@@ -231,7 +232,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_run_ui_test",
         title: "Run a UI test file",
-        description: "Runs a UI test file (TOML steps: launch, tap, type, expect, screenshot, tree) against the app on the phone. On failure: the failed step, what was on screen, the tree, and a screenshot.",
+        description: "Runs a UI test file (TOML steps: launch, tap, type, expect, screenshot, tree; format and an example in forge://docs/forge-ui-testing, and the starter's uitests/smoke.toml) against the app on the phone. On failure: the failed step, what was on screen, the tree, and a screenshot.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
@@ -388,7 +389,15 @@ impl crate::Server {
                     .arg(args.str("bundle_id").unwrap_or(crate::SANDBOX_BUNDLE_ID))
                     .arg("--path")
                     .arg(dest.display().to_string());
-                Answer::of(self.forge(inv, cancel).await)
+                let mut result = self.forge(inv, cancel).await;
+                if result["ok"] == json!(true) {
+                    // Every later tool takes the folder relative to the root.
+                    let project = rel(&root, &dest);
+                    result["next"] = json!(format!(
+                        "Pass project: \"{project}\" to the other tools. The starter is a notes app: replace its screens and Rust API with yours, keep its patterns (docs in forge://docs/app-crate and forge://docs/ios-ui), and keep an accessibility identifier on every control. After changing what rust/src/lib.rs exports, forge_check (swift) or forge_build_ios regenerates Generated/. A starter UI test is in {project}/uitests/smoke.toml (format: forge://docs/forge-ui-testing)."
+                    ));
+                }
+                Answer::of(result)
             }
             "forge_inspect_app" => {
                 let app = app_or_fail!();
@@ -577,7 +586,10 @@ impl crate::Server {
                 let step = if args.bool("terminate") {
                     ("terminate", json!({}))
                 } else {
-                    ("launch", json!({}))
+                    match launch_args(&args) {
+                        Ok(launch) => ("launch", launch),
+                        Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
+                    }
                 };
                 self.one_step(&app, name, vec![step], cancel).await
             }
@@ -879,6 +891,29 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
     Ok((key, Value::Object(target)))
 }
 
+/// `text_size` values for forge_launch_app, smallest first.
+const TEXT_SIZES: [&str; 5] = ["default", "small", "large", "accessibility", "largest"];
+
+/// The launch step for forge_launch_app. A text size becomes UIKit's
+/// `UIPreferredContentSizeCategoryName` launch argument, which overrides
+/// the phone's Dynamic Type setting for this launch only (SwiftUI follows it).
+fn launch_args(args: &Args) -> Result<Value, String> {
+    let category = match args.str("text_size").unwrap_or("default") {
+        "default" => return Ok(json!({})),
+        "small" => "UICTContentSizeCategoryS",
+        "large" => "UICTContentSizeCategoryXXXL",
+        "accessibility" => "UICTContentSizeCategoryAccessibilityL",
+        "largest" => "UICTContentSizeCategoryAccessibilityXXXL",
+        other => {
+            return Err(format!(
+                "text_size `{other}`: use one of {}",
+                TEXT_SIZES.join(", ")
+            ))
+        }
+    };
+    Ok(json!({"args": ["-UIPreferredContentSizeCategoryName", category]}))
+}
+
 /// A UI test file (forge-uitest's TOML format) for `steps`.
 fn script(app: &App, tool: &str, steps: &[(&str, Value)]) -> String {
     let mut doc = toml::Table::new();
@@ -974,5 +1009,34 @@ mod tests {
         let launch = script(&app, "forge_launch_app", &[("launch", json!({}))]);
         let doc: toml::Table = launch.parse().unwrap();
         assert!(doc["step"][0]["launch"].as_table().unwrap().is_empty());
+    }
+
+    #[test]
+    fn text_size_becomes_a_launch_argument() {
+        let none = args(json!({}));
+        assert_eq!(launch_args(&Args(&none)).unwrap(), json!({}));
+        let big = args(json!({"text_size": "largest"}));
+        let largest = launch_args(&Args(&big)).unwrap();
+        assert_eq!(
+            largest["args"],
+            json!([
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL"
+            ])
+        );
+        let huge = args(json!({"text_size": "huge"}));
+        assert!(launch_args(&Args(&huge)).is_err());
+        // In the step file it is the TOML array forge ui run reads.
+        let app = App {
+            dir: PathBuf::from("/x"),
+            name: "Tipster".into(),
+            bundle_id: "org.forgemobile.agentlab".into(),
+            product: "TipsterXtool".into(),
+            team_type: None,
+        };
+        let text = script(&app, "forge_launch_app", &[("launch", largest)]);
+        let doc: toml::Table = text.parse().unwrap();
+        let launch_args = doc["step"][0]["launch"]["args"].as_array().unwrap();
+        assert_eq!(launch_args.len(), 2);
     }
 }

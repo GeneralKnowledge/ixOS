@@ -39,7 +39,7 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 | `forge_read_logs` | `device logs --for --limit --process <xtool_product>` | 1–120 s, live only; marked as app output |
 | `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes` | Not symbolicated |
 | `forge_diagnose` | (server state) | The last failed result in the session and the end of its log file |
-| `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (any build from main since #61). Screenshots, and the failure screenshot of a UI run, come back as images |
+| `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (any build from main since #61). Screenshots, and the failure screenshot of a UI run, come back as images. `forge_launch_app` takes `text_size` (`small` to `largest`): a `UIPreferredContentSizeCategoryName` launch argument, so the agent checks the largest Dynamic Type size without changing the phone's settings (not yet run on a phone) |
 
 Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
 
