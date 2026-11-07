@@ -10,6 +10,7 @@ use forge_uitest::script::{self, Script};
 use forge_uitest::wda::WdaDriver;
 use forge_uitest::Driver;
 
+use crate::report;
 use crate::runner::{Cmd, CommandRunner};
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -118,6 +119,7 @@ fn connect(
     }
     let apps = phone.user_apps().map_err(err)?;
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
+    report::set_device(&phone.udid, None);
     let (runner, driver) = start(&phone, &runner_id)?;
     Ok((phone, apps, runner, driver))
 }
@@ -142,6 +144,7 @@ pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Resul
     let tree = driver.tree().map_err(err)?;
     write!(out, "{}", tree.render()).map_err(err)?;
     let findings = tree.audit();
+    report::set_data(serde_json::json!({ "tree": tree.render(), "findings": findings }));
     if !findings.is_empty() {
         writeln!(out, "\nAccessibility ({}):", findings.len()).map_err(err)?;
         for finding in findings {
@@ -156,6 +159,7 @@ pub fn screenshot(udid: Option<&str>, path: &Path, out: &mut dyn Write) -> Resul
     let (_phone, _apps, _runner, mut driver) = connect(udid)?;
     let png = driver.screenshot().map_err(err)?;
     std::fs::write(path, &png).map_err(|e| format!("{}: {e}", path.display()))?;
+    report::set_data(serde_json::json!({ "path": path, "bytes": png.len() }));
     writeln!(out, "Saved {} ({} KB)", path.display(), png.len() / 1024).map_err(err)
 }
 
@@ -170,6 +174,12 @@ pub fn run(
     let (_phone, apps, _runner, mut driver) = connect(udid)?;
     let app = resolve_app(&apps, &script.app)?.to_owned();
     let report = script::run(&script, &app, &mut driver, out_dir, out).map_err(err)?;
+    report::set_data(serde_json::json!({
+        "test": script.name,
+        "passed_steps": report.passed,
+        "failed_step": report.failed.as_ref().map(|(step, why)| serde_json::json!({ "step": step, "error": why })),
+        "screenshots": report.screenshots,
+    }));
     if !report.screenshots.is_empty() {
         writeln!(out, "Screenshots: {}", out_dir.display()).map_err(err)?;
     }

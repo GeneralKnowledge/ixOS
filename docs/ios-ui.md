@@ -33,6 +33,8 @@ Keep each screen in its own file, named after what it shows. Put the model in it
 
 ### The model
 
+Keep the view model in its own files that import only Foundation and Observation (plus `ForgeFFI`), never SwiftUI or UIKit, and keep SwiftUI-only helpers (such as mapping `ScenePhase`) in view files. Then `forge check swift` can compile the model and run its tests on Linux without the iOS SDK. That is where most Swift–Rust boundary mistakes show up. The starter follows this rule.
+
 The minimum deployment target is iOS 17, so models use the Observation framework:
 
 ```swift
@@ -214,7 +216,7 @@ The rule: if Rust needs the result in order to apply a rule or store it, pass th
 
 ## Checking the result
 
-- **Logic:** `forge test --project .` runs the app's Rust tests and, on a Mac, the XCTest suite against the real Rust library.
+- **Logic:** `forge test --project .` runs the app's Rust tests and, on a Mac, the XCTest suite against the real Rust library. On Linux, `forge check swift` compiles the view model and bindings and runs the tests that need no SwiftUI.
 - **Look:** The Screenshots workflow (`.github/workflows/screenshots.yml`, run by hand from the Actions tab: Run workflow, pick the branch and `starter`) renders a freshly generated app in the iOS Simulator in light and dark mode and at the largest text size, and uploads the screenshots as an artifact (`scripts/ios-screenshots.sh`). This is a review aid; the simulator is not part of the supported workflow.
 - **Device:** `forge run ios --project .` builds with xtool and installs the app on a connected iPhone. Before calling a screen finished, check the back-swipe gesture, keyboard behaviour, sheets and dark mode on the phone (Settings › Display & Brightness).
 

@@ -142,7 +142,7 @@ Each item is a small PR on existing crates. None adds a layer.
 | # | Fix | Gap | Builds on | Rough size |
 |---|---|---|---|---|
 | 1 | Path filter on the macOS workflow | 1 | macos.yml | Hours |
-| 2 | `forge check swift` on Linux + `AppModel`/`AppHost` split in the template + Linux CI step | 1 | This spike | 1–2 days |
+| 2 | `forge check swift` on Linux + `AppModel`/`AppHost` split in the template + Linux CI step (done as `forge check swift`, Phase 0.6. Instead of splitting the target, it picks the Swift files that import nothing Apple-only, so Package.swift, the Xcode project and existing apps stay as they are. CI runs it on a fresh app in `scripts/check-fresh-app.sh`, including a deliberate boundary mistake that must fail with exit 11) | 1 | This spike | 1–2 days |
 | 3 | `forge device launch`/`terminate`, auto DDI mount, `forge run ios --launch --attach` | 2, 5 | #61's DDI mount, forge-device | 1–2 days |
 | 4 | `forge device screenshot` (screenshotr) and the appearance set | 3 | #3's DDI mount, forge-devtools commands | 1 day |
 | 5 | Swift log bridge (audit C3) and per-app xtool product names | 4 | forge-devtools, forge-runtime logging | 1–2 days |
