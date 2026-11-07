@@ -61,7 +61,10 @@ Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full M
 
 - The agent created Tipster, kept the maths in Rust, checked on Linux, built, installed, launched, and read the screenshot and tree. It drove the app (typed 84, tapped 20 %, added a person, expected £50.40 per person) and checked logs and crashes. It relaunched at `text_size: largest`, rebuilt and reinstalled, and its UI test `tip.toml` passed on the phone (14 of 14 steps in 9 s).
 - Problems it found from device evidence and fixed: the keyboard covered the per-person total, so the total moved under the bill; at the largest size the presets became 350×78 rows, so it switched to a `ViewThatFits` grid; VoiceOver read the stepper twice, so it relabelled it "Number of people".
-- What went wrong in Forge: the last `forge_install_device` hung for the full 30-minute limit before returning `needs_person` (the USB dropped and recovered by itself). That limit is now 8 minutes. A launch with `text_size` changed nothing while the app was running, so it now stops the app first. Two things are still open for `forge ui`: an identifier on both a toolbar wrapper and its button made tap by id hit the wrapper, and there is no scroll action, so the bottom of the screen at the largest size was never seen.
+- What went wrong in Forge:
+  - Two of the four installs hung. xtool printed `[Installing] 100%`, never printed `[Verifying]`, and never exited. One of them had installed the app anyway. The agent waited out the full 30-minute limit before it got `needs_person`. Now `forge run ios` stops xtool after 90 s of silence following `[Installing] 100%` and reports `data.verified: false`, and `forge_install_device` gives up after 8 minutes.
+  - A launch with `text_size` changed nothing while the app was running, so it now stops the app first.
+  - Tap by id hit a toolbar wrapper that shared the button's identifier, there was no scroll, and `expect gone` failed on a stale element. All three are fixed in `forge ui` (#92), and `forge_ui_act` has a `scroll` action.
 
 ## What Forge MCP is, and what it isn't
 

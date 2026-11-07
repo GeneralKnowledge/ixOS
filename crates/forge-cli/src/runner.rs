@@ -87,6 +87,21 @@ pub trait CommandRunner: Send + Sync {
     fn stream_tail(&self, cmd: &Cmd) -> Result<(ExitStatus, String), String> {
         self.stream(cmd).map(|status| (status, String::new()))
     }
+
+    /// Like [`stream_tail`](Self::stream_tail), for a child that may hang
+    /// after its work is done: once `done` holds for the output so far and
+    /// the child then prints nothing for `grace`, it is killed. The `bool` is
+    /// true when that happened (the exit status is then the kill's).
+    fn stream_tail_until(
+        &self,
+        cmd: &Cmd,
+        done: &(dyn Fn(&str) -> bool + Sync),
+        grace: std::time::Duration,
+    ) -> Result<(ExitStatus, String, bool), String> {
+        let _ = (done, grace);
+        self.stream_tail(cmd)
+            .map(|(status, tail)| (status, tail, false))
+    }
 }
 
 /// How much of a child's output [`CommandRunner::stream_tail`] keeps.
@@ -117,6 +132,16 @@ impl CommandRunner for RealRunner {
     }
 
     fn stream_tail(&self, cmd: &Cmd) -> Result<(ExitStatus, String), String> {
+        self.stream_tail_until(cmd, &|_| false, std::time::Duration::ZERO)
+            .map(|(status, tail, _)| (status, tail))
+    }
+
+    fn stream_tail_until(
+        &self,
+        cmd: &Cmd,
+        done: &(dyn Fn(&str) -> bool + Sync),
+        grace: std::time::Duration,
+    ) -> Result<(ExitStatus, String, bool), String> {
         use std::io::{Read, Write};
         use std::sync::{Arc, Mutex};
 
@@ -132,7 +157,12 @@ impl CommandRunner for RealRunner {
 
         // Forwards each chunk as soon as it is read (not line by line), so a
         // prompt without a trailing newline still shows.
-        fn pump<R: Read, W: Write>(mut from: R, mut to: W, tail: &Mutex<Vec<u8>>) {
+        fn pump<R: Read, W: Write>(
+            mut from: R,
+            mut to: W,
+            tail: &Mutex<Vec<u8>>,
+            printed: &std::sync::atomic::AtomicUsize,
+        ) {
             let mut buf = [0u8; 8192];
             while let Ok(n) = from.read(&mut buf) {
                 if n == 0 {
@@ -141,6 +171,7 @@ impl CommandRunner for RealRunner {
                 let _ = to.write_all(&buf[..n]);
                 let _ = to.flush();
                 crate::report::log_bytes(&buf[..n]);
+                printed.fetch_add(n, std::sync::atomic::Ordering::Relaxed);
                 let mut t = tail.lock().unwrap_or_else(|p| p.into_inner());
                 t.extend_from_slice(&buf[..n]);
                 if t.len() > 2 * TAIL_BYTES {
@@ -150,25 +181,61 @@ impl CommandRunner for RealRunner {
             }
         }
 
+        // Bytes printed so far, to tell a quiet child from a busy one.
+        let printed = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let out = child.stdout.take().map(|o| {
-            let tail = Arc::clone(&tail);
-            std::thread::spawn(move || pump(o, std::io::stdout(), &tail))
+            let (tail, printed) = (Arc::clone(&tail), Arc::clone(&printed));
+            std::thread::spawn(move || pump(o, std::io::stdout(), &tail, &printed))
         });
         let err = child.stderr.take().map(|e| {
-            let tail = Arc::clone(&tail);
-            std::thread::spawn(move || pump(e, std::io::stderr(), &tail))
+            let (tail, printed) = (Arc::clone(&tail), Arc::clone(&printed));
+            std::thread::spawn(move || pump(e, std::io::stderr(), &tail, &printed))
         });
-        let status = child
-            .wait()
-            .map_err(|e| format!("failed to wait for {}: {e}", cmd.program.to_string_lossy()))?;
-        for handle in [out, err].into_iter().flatten() {
-            let _ = handle.join();
+        let wait_err = |e: std::io::Error| {
+            format!("failed to wait for {}: {e}", cmd.program.to_string_lossy())
+        };
+        // Output keeps the child alive: `quiet_since` restarts whenever the
+        // tail grows, so a step that still reports progress is never cut.
+        let mut is_done = false;
+        let mut seen = 0usize;
+        let mut quiet_since = std::time::Instant::now();
+        let mut cut_short = false;
+        let status = loop {
+            if let Some(status) = child.try_wait().map_err(wait_err)? {
+                break status;
+            }
+            {
+                let t = tail.lock().unwrap_or_else(|p| p.into_inner());
+                let now = printed.load(std::sync::atomic::Ordering::Relaxed);
+                if now != seen {
+                    seen = now;
+                    quiet_since = std::time::Instant::now();
+                }
+                if !is_done {
+                    let start = t.len().saturating_sub(4096);
+                    is_done = done(&String::from_utf8_lossy(&t[start..]));
+                }
+            }
+            if is_done && quiet_since.elapsed() >= grace {
+                // Its work is done but it doesn't exit: stop it. Its
+                // children may hold the pipes, so don't wait for the pumps.
+                let _ = child.kill();
+                cut_short = true;
+                break child.wait().map_err(wait_err)?;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        };
+        if !cut_short {
+            for handle in [out, err].into_iter().flatten() {
+                let _ = handle.join();
+            }
         }
         let bytes = tail.lock().unwrap_or_else(|p| p.into_inner()).clone();
         let start = bytes.len().saturating_sub(TAIL_BYTES);
         Ok((
             status,
             String::from_utf8_lossy(&bytes[start..]).into_owned(),
+            cut_short,
         ))
     }
 }
@@ -259,5 +326,30 @@ mod tests {
             .unwrap();
         assert_eq!(status.code(), Some(3));
         assert!(tail.contains("out") && tail.contains("err"), "{tail}");
+    }
+
+    #[test]
+    fn real_stream_tail_until_stops_a_child_that_hangs_after_its_work() {
+        let started = std::time::Instant::now();
+        let (_, tail, cut_short) = RealRunner
+            .stream_tail_until(
+                &Cmd::new("sh").args(["-c", "echo 'Installing 100%'; sleep 30"]),
+                &|t| t.contains("100%"),
+                std::time::Duration::from_millis(300),
+            )
+            .unwrap();
+        assert!(cut_short);
+        assert!(tail.contains("Installing 100%"), "{tail}");
+        assert!(started.elapsed() < std::time::Duration::from_secs(10));
+
+        // A child that exits by itself is left alone.
+        let (status, _, cut_short) = RealRunner
+            .stream_tail_until(
+                &Cmd::new("sh").args(["-c", "echo 'Installing 100%'; exit 0"]),
+                &|t| t.contains("100%"),
+                std::time::Duration::from_secs(5),
+            )
+            .unwrap();
+        assert!(status.success() && !cut_short);
     }
 }

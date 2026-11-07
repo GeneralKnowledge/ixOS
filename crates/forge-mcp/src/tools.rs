@@ -213,15 +213,16 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_ui_act",
         title: "One UI action",
-        description: "One action on the app on screen, by accessibility identifier or label (never coordinates): tap, type text, clear a field, or expect a state (value, enabled, gone). Fails with the screen's tree when the element isn't there.",
+        description: "One action on the app on screen, by accessibility identifier or label (never coordinates): tap, type text, clear a field, scroll (to an element below the fold, or a list up/down), or expect a state (value, enabled, gone). Fails with the screen's tree when the element isn't there.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
         schema: || {
             let mut props = target_props();
             let obj = props.as_object_mut().expect("object");
-            obj.insert("action".into(), json!({"type": "string", "enum": ["tap", "type", "clear", "expect"]}));
+            obj.insert("action".into(), json!({"type": "string", "enum": ["tap", "type", "clear", "scroll", "expect"]}));
             obj.insert("text".into(), json!({"type": "string", "description": "For type"}));
+            obj.insert("direction".into(), json!({"type": "string", "enum": ["visible", "up", "down", "left", "right"], "description": "For scroll: visible (default) scrolls until the element is on screen; up/down/left/right scroll the element (a list or scroll view) itself"}));
             obj.insert("value".into(), json!({"type": "string", "description": "For expect: the element's value"}));
             obj.insert("enabled".into(), json!({"type": "boolean", "description": "For expect"}));
             obj.insert("gone".into(), json!({"type": "boolean", "description": "For expect: the element is not on screen"}));
@@ -873,6 +874,17 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
     let key = match action {
         "tap" => "tap",
         "clear" => "clear",
+        "scroll" => {
+            if let Some(direction) = args.str("direction") {
+                if !["visible", "up", "down", "left", "right"].contains(&direction) {
+                    return Err(format!(
+                        "direction `{direction}`: use visible, up, down, left or right"
+                    ));
+                }
+                target.insert("direction".into(), json!(direction));
+            }
+            "scroll"
+        }
         "type" => {
             let text = args
                 .0
@@ -900,7 +912,11 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
             }
             "expect"
         }
-        other => return Err(format!("action `{other}`: use tap, type, clear or expect")),
+        other => {
+            return Err(format!(
+                "action `{other}`: use tap, type, clear, scroll or expect"
+            ))
+        }
     };
     Ok((key, Value::Object(target)))
 }
@@ -991,6 +1007,18 @@ mod tests {
             json!({"label": "Total", "gone": false})
         );
         let a = args(json!({"action": "tap", "id": "a", "label": "b"}));
+        assert!(ui_step(&Args(&a)).is_err());
+        let a = args(json!({"action": "scroll", "id": "tip.total"}));
+        assert_eq!(
+            ui_step(&Args(&a)).unwrap(),
+            ("scroll", json!({"id": "tip.total"}))
+        );
+        let a = args(json!({"action": "scroll", "id": "list", "direction": "down"}));
+        assert_eq!(
+            ui_step(&Args(&a)).unwrap().1,
+            json!({"id": "list", "direction": "down"})
+        );
+        let a = args(json!({"action": "scroll", "id": "list", "direction": "sideways"}));
         assert!(ui_step(&Args(&a)).is_err());
         let a = args(json!({"action": "swipe", "id": "a"}));
         assert!(ui_step(&Args(&a)).is_err());
