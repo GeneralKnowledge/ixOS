@@ -6,6 +6,8 @@ Status labels: **In progress** (someone is on it), **Planned** (agreed, not star
 
 Last reviewed: 2026-11-07.
 
+What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
+
 ## Near term
 
 ### iPhone acceptance of the integrated framework — In progress
