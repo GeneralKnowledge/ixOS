@@ -76,7 +76,7 @@ When `minimum_ios` changes, Forge rewrites the `.iOS(...)` entry in `Package.swi
 
 | Key | Writes | Notes |
 |---|---|---|
-| `xtool_product` | `xtool.yml` `product` | The SwiftPM library product holding `@main`. Default `AppHostXtool` (what `forge init` creates). |
+| `xtool_product` | `xtool.yml` `product` | The SwiftPM library product holding `@main`. `forge init MyApp` sets `MyAppXtool`. It is the app's executable, so it is the process name in the phone's log and on crash reports. Default when unset: `AppHostXtool` (apps made before 2026-11-07). Change it together with the `.library(name:)` in `Package.swift`. |
 | `icon` | `xtool.yml` `iconPath` | A PNG inside the app. Use 1024x1024 with no alpha channel. xtool copies it into the app and sets `CFBundleIconFile`; iOS scales it. |
 | `orientations` | `UISupportedInterfaceOrientations` | Default `["portrait"]`. |
 | `url_schemes` | `CFBundleURLTypes` | Custom schemes for deep links. System schemes (`https`, `tel`, …) are refused: use `associated_domains` for https links. |
