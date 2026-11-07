@@ -166,15 +166,15 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 
 | Question | Result on Cati |
 |---|---|
-| Foundation Models on a free-team app | Not run |
-| CoreML-LLM builds with xtool on Linux | Not run |
-| Available memory at launch / after 0.8B load | Not run |
+| Foundation Models on a free-team app | **Available** (K2, 2026-11-07); generation not yet run |
+| CoreML-LLM builds with xtool on Linux | **Yes**: CoreML-LLM 1.9.0 + swift-transformers, debug, 162 s, no errors (Reuben's laptop, xtool 1.24.0) |
+| Available memory at launch / after 0.8B load | **3,350 MB** at launch (footprint 22 MB), 3,158 MB after loading Qwen3.5 0.8B (footprint 217 MB). The Core ML weights mostly do not count against the app's footprint |
 | LFM2.5 350M: load (first, second), tokens/s, stop latency | Not run |
-| Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | Not run |
+| Qwen3.5 0.8B: load (first, second), tokens/s, stop latency | First load 23.4 s (compiles; used about 1.1 GB of disk while loaded). **About 9 pieces/s** in a debug build, first text after 4.2–5.9 s with the character prompt (Qwen3.5 prefill runs one decode step per prompt token). Far below the published 22–48 tok/s: a release build is the first suspect. Stop not yet tested |
 | Qwen3.5 2B fits | Not run |
 | Characters in character over ten turns (reminder on / off) | Not run |
 | Offline after download | Not run |
-| Swift → Rust push cost | Not run |
+| Swift → Rust push cost | **1.6 µs per push** (10,000 pushes), negligible against 100 ms per token |
 
 Each milestone is one PR with a device runbook in `examples/chat/ACCEPTANCE.md`, the same as Chat's others.
 
