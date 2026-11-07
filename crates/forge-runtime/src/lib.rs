@@ -21,6 +21,9 @@
 //!   phase enum, a per-call `Cancellation`, its event stream object),
 //!   emitted in the app's crate under the app's own names. Plus [`lock`]
 //!   and [`now_ms`].
+//! - [`logging`]: one log pipeline for every build (the `log` macros, the
+//!   platform log, recent records in memory, extra sinks, panics logged).
+//!   Apps call [`logging::init`] once.
 //! - The Android JNI entry point behind `ForgeAndroid.init(context)`, which
 //!   HTTPS needs on Android (see `forge_net::platform`). Linking this crate is
 //!   enough; apps call nothing.
@@ -32,6 +35,7 @@ mod events;
 #[cfg(not(target_os = "ios"))]
 mod jni_init;
 mod lifecycle;
+pub mod logging;
 mod shell;
 
 pub use background::{background, background_cancellable, block_on, Background};

@@ -70,7 +70,7 @@ impl Credentials for KeychainCredentials {
             // An unreadable item is useless: drop it, so the user can sign
             // up again instead of being stuck.
             Err(err) => {
-                eprintln!("[chat] ignoring an unreadable Keychain account: {err}");
+                forge_runtime::logging::warn!(target: "chat", "ignoring an unreadable Keychain account: {err}");
                 self.services.delete_secret(ACCOUNT_KEY)?;
                 Ok(None)
             }

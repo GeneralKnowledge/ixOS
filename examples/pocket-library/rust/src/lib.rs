@@ -482,6 +482,7 @@ impl Library {
         storage_directory: String,
         catalogue: Arc<dyn BookCatalogue>,
     ) -> Result<Arc<Self>, LibraryError> {
+        forge_runtime::logging::init();
         let store = Store::new(non_empty(&storage_directory)?);
         let data = store.load()?;
         store.remove_orphan_covers(&data);

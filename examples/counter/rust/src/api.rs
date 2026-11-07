@@ -99,6 +99,7 @@ pub struct ForgeCounterApp {
 
 impl ForgeCounterApp {
     async fn open_core(storage_directory: String, mode: OpenMode) -> Result<Self, ForgeAppError> {
+        forge_runtime::logging::init();
         let store = Box::new(JsonSnapshotStore::new(storage_directory));
         let core = AppCore::open(store, to_internal_mode(mode)).await?;
         Ok(Self { core })
