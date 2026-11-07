@@ -157,7 +157,7 @@ Owner: "Speed up the Linux iOS dev loop" thread ([dev-loop.md](../dev-loop.md)).
 
 Owner: "Add EPUB reading to Pocket Library" thread, PR #53 (merged). Steps: [iphone-acceptance.md](../integration/iphone-acceptance.md) section E for the basics; the reader specifics below come from #53.
 
-**Laptop:** step 1 installed Pocket Library from #61's branch, which already contains the reader (#53). If #61 has fallen behind main since, reinstall from `~/ixos-session` (main) only after #61 merges; otherwise keep the #61 build so the identifiers stay. Get Reuben's manuscript EPUB onto the phone (AirDrop or Files) if it isn't already there.
+**Laptop:** step 1 installed Pocket Library from #61's branch, which already contains the reader (#53). Part 1 is done by now, so the identifiers are no longer needed tonight: if #82 or #83 (the extraction follow-ups) merged before the session, update `~/ixos-session` to main and reinstall Pocket Library from it, in place. Otherwise keep the #61 build. #83's Swift has not been compiled anywhere yet; if the build fails in `ReadAloud.swift`, that's the cause: report the error and keep the #61 build. Get Reuben's manuscript EPUB onto the phone (AirDrop or Files) if it isn't already there.
 
 **On the phone (Reuben):**
 
@@ -167,8 +167,10 @@ Owner: "Add EPUB reading to Pocket Library" thread, PR #53 (merged). Steps: [iph
 - [ ] Read a little, leave the book, reopen it. **Pass:** it opens where you left off, and the page count on the book moved.
 - [ ] Tap the headphones: it reads aloud, highlights each word, scrolls along. Try pause, skip paragraph, speed and voice.
 - [ ] Lock the phone while it reads. **Pass:** it keeps reading; play and pause work on the lock screen.
+- [ ] *Only if #82 (files onto FileStore) is in the build:* books that had covers before the update still show them, and the reader still opens a chapter with pictures. Proves old saved file names still load on the device.
+- [ ] *Only if #83 (read-aloud onto ForgeAudioSession) is in the build:* start some music in another app, then read-aloud in Pocket Library, lock the screen: speech carries on, lock-screen play/pause and skip work, and the other app's music resumes after Stop.
 
-**Evidence:** pass/fail per line, one screenshot of the reader and one of the lock screen player; `forge device crashes --app pocketlibrary` empty.
+**Evidence:** pass/fail per line, one screenshot of the reader and one of the lock screen player; `forge device crashes --app pocketlibrary` empty; which commit was installed. #82/#83 results go to the "Finish the extraction follow-ups" thread.
 
 ---
 
