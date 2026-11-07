@@ -123,6 +123,16 @@ jobs:
           ./scripts/ios-screenshots.sh \
             "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator/Starter.app" \
             org.example.starter Starter "$RUNNER_TEMP/screenshots"
+      # Reviewers who cannot download artifacts (for example from a sandbox
+      # that blocks the artifact store) can decode these from the job log.
+      - name: Small copies in the log
+        run: |
+          mkdir -p "$RUNNER_TEMP/small"
+          for f in "$RUNNER_TEMP"/screenshots/*.png; do
+            name="$(basename "$f" .png)"
+            sips -Z 900 -s format jpeg -s formatOptions 70 "$f" --out "$RUNNER_TEMP/small/$name.jpg" >/dev/null
+            echo "SCREENSHOT $name $(base64 -i "$RUNNER_TEMP/small/$name.jpg" | tr -d '\n')"
+          done
       - name: Upload screenshots
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
