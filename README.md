@@ -66,6 +66,7 @@ crates/forge-devproto  # the live connection's wire protocol: frames, Noise hand
 crates/forge-devtools  # the live connection's server inside a development build (`forge run ios --devtools`)
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-cli       # `forge` CLI
+crates/forge-mcp       # `forge mcp`: Forge as a local MCP server for coding agents (docs/forge-mcp.md)
 examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # (Android, work in progress) Compose + Gradle app on the same Rust crate as examples/counter
@@ -98,7 +99,25 @@ cargo run -p forge-cli -- run ios --project examples/counter --release  # same, 
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
+cargo run -p forge-cli -- check swift --project examples/pocket-library   # model + bindings with plain Swift on Linux (not the SwiftUI views)
+cargo run -p forge-cli -- --json run ios --project examples/counter        # one forge.result/1 object on stdout, exit code per stage
+cargo run -p forge-cli -- device logs --process CounterXtool --for 20s    # the app's log on a USB iPhone (docs/forge-device.md)
 ```
+
+## For coding agents
+
+An agent edits Rust and SwiftUI with its own tools; Forge gives it the toolchain, signing, the phone and structured results. What exists today:
+
+| | State |
+|---|---|
+| `--json` on every command (`forge.result/1`: stage, compiler diagnostics with file and line, hints, log file) | Built |
+| `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK (xtool) or macOS CI |
+| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose; UI tools with #61), docs and the ledger as resources, installing only when the person allows it | Built (M0), tested on Linux against a fake CLI; not yet run against a phone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
+| Which Apple team signs, free or paid, in `forge doctor` and `forge run ios` | Built; not yet run with a paid team ([docs/ios-signing.md](docs/ios-signing.md#which-team-is-xtool-using)) |
+| UI tests by accessibility identifier on a real iPhone (WebDriverAgent) | PR #61, not yet phone-verified |
+| Apple's accessibility audit service from Linux | Experimental probe ([docs/research/ax-audit.md](docs/research/ax-audit.md)), not yet phone-verified |
+
+New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
 
 Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. New apps go under the workspace's `examples/` unless you pass `--path <dir>`; an app created outside the checkout points its build files at the checkout by absolute path.
 

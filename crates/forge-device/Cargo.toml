@@ -36,6 +36,8 @@ name = "ax_probe"
 required-features = ["ax-probe"]
 
 [dev-dependencies]
+# The ax_probe spike's --json report.
+serde_json = { workspace = true }
 forge-devtools = { path = "../forge-devtools" }
 forge-runtime = { workspace = true }
 tempfile = "3.14"

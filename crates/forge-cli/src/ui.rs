@@ -22,7 +22,8 @@ fn err(e: impl std::fmt::Display) -> String {
 const FREE_APP_LIMIT: usize = 3;
 
 /// Which Apple team signs the runner: it decides the app limit and how long
-/// the signature lasts. From `--team`, else `[ios.signing] team_type` in the
+/// the signature lasts. From `--team`, else what xtool's sign-in says
+/// ([`crate::ios_env::signing_team`]), else `[ios.signing] team_type` in the
 /// current directory's forge.toml, else unknown (treated like free, but said
 /// so).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -33,7 +34,11 @@ pub enum Team {
 }
 
 impl Team {
-    pub fn resolve(flag: Option<&str>, dir: &Path) -> Result<Team, String> {
+    pub fn resolve(
+        flag: Option<&str>,
+        detected: Option<crate::ios_env::TeamKind>,
+        dir: &Path,
+    ) -> Result<Team, String> {
         let from = |value: &str| match value {
             "free" => Ok(Team::Free),
             "paid" => Ok(Team::Paid),
@@ -41,6 +46,11 @@ impl Team {
         };
         if let Some(flag) = flag {
             return from(flag);
+        }
+        match detected {
+            Some(crate::ios_env::TeamKind::Free) => return Ok(Team::Free),
+            Some(crate::ios_env::TeamKind::Paid) => return Ok(Team::Paid),
+            _ => {}
         }
         let Ok(text) = std::fs::read_to_string(dir.join("forge.toml")) else {
             return Ok(Team::Unknown);
@@ -211,7 +221,7 @@ fn connect(
     let apps = phone.user_apps().map_err(err)?;
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
     report::set_device(&phone.udid, None);
-    let team = Team::resolve(None, Path::new(".")).unwrap_or(Team::Unknown);
+    let team = Team::resolve(None, None, Path::new(".")).unwrap_or(Team::Unknown);
     let (runner, driver) = start(&phone, &runner_id, team)?;
     Ok((phone, apps, runner, driver))
 }
@@ -322,17 +332,34 @@ mod tests {
     }
 
     #[test]
-    fn team_comes_from_the_flag_then_forge_toml() {
+    fn team_comes_from_the_flag_then_xtool_then_forge_toml() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(Team::resolve(None, dir.path()), Ok(Team::Unknown));
+        assert_eq!(Team::resolve(None, None, dir.path()), Ok(Team::Unknown));
         let example = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples/pocket-library/forge.toml");
         let mut toml = std::fs::read_to_string(example).unwrap();
         toml.push_str("\n[ios.signing]\nteam_type = \"paid\"\n");
         std::fs::write(dir.path().join("forge.toml"), toml).unwrap();
-        assert_eq!(Team::resolve(None, dir.path()), Ok(Team::Paid));
-        assert_eq!(Team::resolve(Some("free"), dir.path()), Ok(Team::Free));
-        assert!(Team::resolve(Some("pro"), dir.path()).is_err());
+        assert_eq!(Team::resolve(None, None, dir.path()), Ok(Team::Paid));
+        assert_eq!(
+            Team::resolve(Some("free"), None, dir.path()),
+            Ok(Team::Free)
+        );
+        assert!(Team::resolve(Some("pro"), None, dir.path()).is_err());
+        // What xtool says beats forge.toml; the flag beats both.
+        use crate::ios_env::TeamKind;
+        assert_eq!(
+            Team::resolve(None, Some(TeamKind::Free), dir.path()),
+            Ok(Team::Free)
+        );
+        assert_eq!(
+            Team::resolve(None, Some(TeamKind::Unknown), dir.path()),
+            Ok(Team::Paid)
+        );
+        assert_eq!(
+            Team::resolve(Some("paid"), Some(TeamKind::Free), dir.path()),
+            Ok(Team::Paid)
+        );
     }
 
     #[test]

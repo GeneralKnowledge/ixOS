@@ -81,6 +81,22 @@ jobs:
         env:
           FORGE_SWIFT_DOCKER: swift:6.2
         run: ./scripts/check-fresh-app.sh "$RUNNER_TEMP/fresh-app"
+      # The headless twin (docs/evidence.md): Pocket Library's real view
+      # model against its real Rust core, on Linux, judged against the app's
+      # requirements.toml. Fails on a failed test or a requirement whose test
+      # no longer exists. The evidence bundle is kept as an artifact.
+      - name: Pocket Library headless twin
+        env:
+          FORGE_SWIFT_DOCKER: swift:6.2
+        run: ./target/debug/forge check swift --project examples/pocket-library
+      - name: Keep the evidence bundle
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pocket-library-evidence
+          path: examples/pocket-library/.forge/runs/
+          include-hidden-files: true
+          if-no-files-found: ignore
 
   # Cheap policy checks, one job: the minimum supported Rust version still
   # compiles, and dependencies pass advisories, licences, bans and sources.
