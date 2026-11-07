@@ -1,5 +1,6 @@
 //! The optional services an app selects in `native_services!(...)`:
-//! `connectivity`, `device_status`, `motion`, `location` and `bluetooth`.
+//! `connectivity`, `device_status`, `motion`, `location`, `bluetooth` and
+//! `audio`.
 //!
 //! Each one emits a submodule of the app's `native` module with its records,
 //! one host trait the Swift adapter implements, a sink object the adapter
@@ -27,11 +28,14 @@ macro_rules! __native_service {
     (bluetooth) => {
         $crate::__native_bluetooth!();
     };
+    (audio) => {
+        $crate::__native_audio!();
+    };
     ($other:ident) => {
         compile_error!(concat!(
             "unknown native service `",
             stringify!($other),
-            "`: use connectivity, device_status, motion, location or bluetooth"
+            "`: use connectivity, device_status, motion, location, bluetooth or audio"
         ));
     };
 }
@@ -1367,6 +1371,109 @@ macro_rules! __native_bluetooth {
                     }
                     fn stop(&self) {
                         *self.sink.lock().unwrap() = None;
+                    }
+                }
+            }
+        }
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __native_audio {
+    () => {
+        /// Audio files. Recording and playing are driven by the UI, so they
+        /// are SwiftUI-side classes in the iOS adapter (`ForgeAudioRecorder`,
+        /// `ForgeAudioPlayer`, `ForgeAudioSession`, `ForgeAudio.waveform`);
+        /// Rust asks for the microphone (`NativePermission::Microphone`) and
+        /// measures files. Needs `[ios.permissions] microphone` in forge.toml.
+        pub mod audio {
+            use ::std::sync::Arc;
+
+            /// Implemented by the host (iOS: AVFoundation).
+            #[::uniffi::export(with_foreign)]
+            pub trait AudioFiles: Send + Sync {
+                /// The length in seconds of the audio file at `path`.
+                fn duration(&self, path: String) -> Result<f64, super::NativeServiceError>;
+            }
+
+            #[::uniffi::export]
+            pub fn install_native_audio(files: Arc<dyn AudioFiles>) {
+                AudioService::new(files).install();
+            }
+
+            /// Audio files for Rust code. Cheap to clone.
+            #[derive(Clone)]
+            pub struct AudioService {
+                files: Arc<dyn AudioFiles>,
+            }
+
+            $crate::__native_slot!(AudioService, "audio");
+
+            impl AudioService {
+                pub fn new(files: Arc<dyn AudioFiles>) -> Self {
+                    Self { files }
+                }
+
+                /// The length of the audio file at `path` (absolute).
+                pub fn duration(
+                    &self,
+                    path: &::std::path::Path,
+                ) -> Result<::std::time::Duration, super::NativeServiceError> {
+                    if !path.is_absolute() {
+                        return Err(super::NativeServiceError::InvalidInput {
+                            reason: format!("an audio path must be absolute, got {path:?}"),
+                        });
+                    }
+                    let seconds = self.files.duration(path.to_string_lossy().into_owned())?;
+                    ::std::time::Duration::try_from_secs_f64(seconds).map_err(|_| {
+                        super::NativeServiceError::Platform {
+                            code: -1,
+                            reason: format!("the host reported a length of {seconds} s"),
+                        }
+                    })
+                }
+
+                pub fn for_tests() -> (Self, Arc<testing::FakeAudioFiles>) {
+                    let fake = Arc::new(testing::FakeAudioFiles::default());
+                    (Self::new(fake.clone()), fake)
+                }
+            }
+
+            pub mod testing {
+                use super::*;
+                use ::std::collections::HashMap;
+                use ::std::sync::Mutex;
+
+                /// Lengths set by the test; other paths are `Platform` errors.
+                #[derive(Default)]
+                pub struct FakeAudioFiles {
+                    lengths: Mutex<HashMap<String, f64>>,
+                }
+
+                impl FakeAudioFiles {
+                    pub fn set(&self, path: impl Into<String>, seconds: f64) {
+                        self.lengths
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .insert(path.into(), seconds);
+                    }
+                }
+
+                impl AudioFiles for FakeAudioFiles {
+                    fn duration(
+                        &self,
+                        path: String,
+                    ) -> Result<f64, super::super::NativeServiceError> {
+                        self.lengths
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .get(&path)
+                            .copied()
+                            .ok_or(super::super::NativeServiceError::Platform {
+                                code: 2,
+                                reason: format!("no audio file at {path}"),
+                            })
                     }
                 }
             }

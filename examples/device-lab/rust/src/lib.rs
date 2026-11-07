@@ -527,7 +527,8 @@ impl DeviceLab {
                 NativePermission::Location => state.permissions.location = status,
                 NativePermission::Motion => state.permissions.motion = status,
                 NativePermission::Bluetooth => state.permissions.bluetooth = status,
-                NativePermission::Notifications => {}
+                // Device Lab does not show these.
+                NativePermission::Notifications | NativePermission::Microphone => {}
             }
         }
         if lock(&self.state).active {

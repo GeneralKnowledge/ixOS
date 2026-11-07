@@ -10,7 +10,7 @@ import Foundation
 
 /// The services-interface version these adapters implement. Must equal
 /// `nativeServicesVersion()` from the Rust side (forge_services::VERSION).
-let forgeServicesSwiftVersion: UInt32 = 2
+let forgeServicesSwiftVersion: UInt32 = 3
 
 /// Installs Forge's iOS implementations of the native services, so the app's
 /// Rust code can use them (`native::NativeServices::installed()`).

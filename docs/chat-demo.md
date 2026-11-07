@@ -17,8 +17,8 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 | M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | Done (PR #40); passed on an iPhone (PR #42) |
 | M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | Done (PR #46); device run E1–E13 passed on an iPhone 15 Pro Max, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
 | M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Built (PR #51), CI green; the iPhone run F1–F14 was skipped at Reuben's request, not run, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m2-device-run) |
-| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m3-photos-and-documents) |
-| M4 | Voice messages | Planned |
+| M3 | Photos and documents: the photo picker and the Files picker, photos shrunk on the phone, files uploaded through the outbox and stored by content hash, downloads checked, thumbnails, Quick Look and sharing | Built (PR #56), CI green; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m3-photos-and-documents) |
+| M4 | Voice messages: record from the composer, send as an audio attachment, play inline with a waveform; recording and playback are Forge's optional audio module, not Chat code | Built; iPhone run pending, see [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#m4-voice-messages) |
 | M5 | Notifications through forge-services, deep links, background work | Planned |
 | M6 | Physical iPhone acceptance and framework gap report | Planned |
 
@@ -169,6 +169,12 @@ A photo or document is a file named by the SHA-256 of its bytes (64 lowercase he
 forge-net gained two pieces for this: `HttpClient::send_file` (the ureq client streams the file with its `Content-Length`; the default reads it into memory) and `download_to_file` (a 2xx body streamed to a `.part` file, flushed and renamed when complete; an error status writes nothing).
 
 The SwiftUI host picks photos with `PhotosPicker` (no photo-library permission: the picker runs out of process), shrinks them to a JPEG of at most 2048 pixels with ImageIO (which also drops their location), copies documents from the Files picker inside their security scope, draws thumbnails off the main thread, and opens files in Quick Look, which also shares them. Rust names stored files by id without an extension, so Swift gives Quick Look a hard-linked copy under the attachment's own name.
+
+### Voice messages (M4)
+
+A voice message is an attachment like any other (M3): an AAC `.m4a` file sent as `audio/mp4`, named "Voice message.m4a", through the outbox, stored by content hash, checked on download. The server and chat-core need nothing new; `chat-cli read` shows it as `[voice: …]`. The phone fetches a voice message when its bubble appears (they are small, about 240 KB a minute) and measures and draws it locally.
+
+Recording and playback are not Chat code. They are Forge's optional `audio` native service (`crates/forge-services/swift/optional/ForgeServices+Audio.swift`, see [native-services.md](native-services.md#audio-audio)), which Chat selects with `native_services!(audio)` (and `microphone` in forge.toml): `ForgeAudioRecorder` (the microphone permission, the audio session, a level meter, a 5-minute limit), `ForgeAudioPlayer` (one file at a time, pauses on interruptions and unplugged headphones) and `ForgeAudio.waveform`. Rust asks for the microphone as `NativePermission::Microphone` (services interface v3). A recording that ends by itself (the limit, or a phone call) is sent rather than lost.
 
 ### Store
 

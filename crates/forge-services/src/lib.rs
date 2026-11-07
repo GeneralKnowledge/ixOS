@@ -52,7 +52,7 @@ pub use slot::Slot;
 /// Version of the interface between the Rust items and the Swift adapters.
 /// The adapters check it at install time; bump it whenever a trait, record
 /// or enum in [`native_services!`] changes shape.
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// Longest secure-store key accepted.
 pub const MAX_SECRET_KEY_LEN: usize = 256;
@@ -196,6 +196,9 @@ macro_rules! native_services {
                 Motion,
                 /// Bluetooth (`bluetooth` service).
                 Bluetooth,
+                /// Recording audio (`audio` service, since interface v3).
+                /// Needs `microphone` under `[ios.permissions]` in forge.toml.
+                Microphone,
             }
 
             /// The same states on every platform.

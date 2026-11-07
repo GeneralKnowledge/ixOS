@@ -4,7 +4,14 @@
 use std::sync::{Arc, Mutex};
 
 uniffi::setup_scaffolding!("optional_services_test");
-forge_services::native_services!(connectivity, device_status, motion, location, bluetooth);
+forge_services::native_services!(
+    connectivity,
+    device_status,
+    motion,
+    location,
+    bluetooth,
+    audio
+);
 
 use native::*;
 
@@ -283,4 +290,37 @@ fn new_permissions_go_through_the_one_provider() {
     assert!(
         forge_runtime::block_on(services.request_permission(NativePermission::Motion)).allows_use()
     );
+}
+
+#[test]
+fn audio_measures_files_through_the_host() {
+    use audio::*;
+    let (service, fake) = AudioService::for_tests();
+    fake.set("/voice/a.m4a", 2.5);
+    assert_eq!(
+        service
+            .duration(std::path::Path::new("/voice/a.m4a"))
+            .unwrap(),
+        std::time::Duration::from_millis(2500)
+    );
+    assert!(matches!(
+        service.duration(std::path::Path::new("relative.m4a")),
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        service.duration(std::path::Path::new("/voice/missing.m4a")),
+        Err(NativeServiceError::Platform { .. })
+    ));
+    fake.set("/voice/bad.m4a", -1.0);
+    assert!(service
+        .duration(std::path::Path::new("/voice/bad.m4a"))
+        .is_err());
+
+    AudioService::uninstall();
+    assert!(matches!(
+        AudioService::installed(),
+        Err(NativeServiceError::NotInstalled { .. })
+    ));
+    install_native_audio(fake);
+    assert!(AudioService::installed().is_ok());
 }

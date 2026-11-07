@@ -103,7 +103,7 @@ iOS refuses (and App Review rejects) a permission request without a usage descri
 | `location_when_in_use` | `NSLocationWhenInUseUsageDescription` |
 | `location_always` | `NSLocationAlwaysAndWhenInUseUsageDescription` (also needs `location_when_in_use`) |
 | `media_library` | `NSAppleMusicUsageDescription` |
-| `microphone` | `NSMicrophoneUsageDescription` |
+| `microphone` | `NSMicrophoneUsageDescription`; needed by the optional `audio` native service ([native-services.md](native-services.md#audio-audio)) |
 | `motion` | `NSMotionUsageDescription` |
 | `nfc` | `NFCReaderUsageDescription` |
 | `photo_library` / `photo_library_add` | `NSPhotoLibraryUsageDescription` / `NSPhotoLibraryAddUsageDescription` |

@@ -12,7 +12,7 @@ Forge splits an app in two. Rust holds the logic: state, persistence, networking
 | Sharing | `ShareItem` (text, URL, file) | `ForgeShareLink(item:)` |
 | Deep links | `DeepLink`, `parse_deep_link` | `ForgeDeepLinks`, `.forgeOpenURLs()`, `.onForgeDeepLink { }` |
 
-Every app from `forge init` has these services installed. Device capabilities (connectivity, device status, motion, location, Bluetooth) are [optional services](#optional-services) an app selects. Android implementations are not written yet. On Android, `NativeServices::installed()` returns `NotInstalled` (see [Android](#android)).
+Every app from `forge init` has these services installed. Device capabilities (connectivity, device status, motion, location, Bluetooth, audio) are [optional services](#optional-services) an app selects. Android implementations are not written yet. On Android, `NativeServices::installed()` returns `NotInstalled` (see [Android](#android)).
 
 ## How it fits together
 
@@ -140,7 +140,7 @@ Some platform code has no Rust side at all. These files are copied into every ap
 Device capabilities that link privacy-sensitive or heavy frameworks are opt-in. An app names the ones it uses in the macro call, and gets only those:
 
 ```rust
-forge_services::native_services!(connectivity, device_status, motion, location, bluetooth);
+forge_services::native_services!(connectivity, device_status, motion, location, bluetooth, audio);
 ```
 
 | Service | Rust (`crate::native::<name>`) | iOS adapter | Permission and `forge.toml` |
@@ -150,6 +150,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 | `motion` | `MotionService`: `availability()`, `watch(sensor, interval_ms, ..)` for the accelerometer, gyroscope, magnetometer, fused device motion (attitude, gravity, user acceleration, heading) and the barometer | `ForgeMotionSensors` (Core Motion) | The barometer needs `NativePermission::Motion` and `[ios.permissions] motion`; the other sensors need nothing |
 | `location` | `LocationService`: `watch(LocationOptions, ..)` for fixes and compass headings, `last_known()`, `is_precise()`; `LocationFix::distance_to` | `ForgeLocationSource` (`CLLocationManager`, when in use) | `NativePermission::Location` and `[ios.permissions] location_when_in_use` |
 | `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
+| `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudioSession`, `ForgeAudio.waveform` (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
 
 **How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review. `forge config sync`, `forge config show` and every iOS build warn when the app selects `location`, `motion` or `bluetooth` but `forge.toml` lacks the matching `[ios.permissions]` text, because without it the service can only report `Unsupported` on the phone.
 
@@ -175,6 +176,38 @@ if network.current().allows(connectivity::TransferPolicy::Unmetered) { /* start 
 
 **Tests.** Each service has `for_tests()`, returning the service and a fake you drive (`FakeConnectivity::set`, `FakeMotion::send`, `FakeLocation::send`, `FakeDevice::set`, `FakeBluetooth::set`). `crates/forge-services/tests/optional_services.rs` and `examples/device-lab/rust/src/tests.rs` use all of them.
 
+### Audio (`audio`)
+
+Recording and playing audio files. Chat's voice messages (M4) are its first user. Declare `microphone` under `[ios.permissions]` in `forge.toml` as well: recording without it is refused.
+
+```rust
+forge_services::native_services!(audio);
+// Rust: ask for the microphone, and measure a file.
+native.request_permission(NativePermission::Microphone).await;
+let length = native::audio::AudioService::installed()?.duration(path)?;
+```
+
+Recording and playing are driven by the UI, so they are SwiftUI-side classes in the adapter:
+
+```swift
+// Record: asks for the microphone the first time; AAC .m4a, mono, about 240 KB a minute.
+@State private var recorder = ForgeAudioRecorder(maxDuration: 300)
+try await recorder.start()           // throws ForgeAudioError.microphoneDenied
+recorder.elapsed; recorder.levels    // live time and level meter (0...1, 20 a second)
+let recording = recorder.stop()      // nil if shorter than minDuration; recorder.cancel() discards
+recorder.onFinish = { recording in } // the limit was reached or a call interrupted it
+
+// Play: one file at a time across the app; pauses on interruptions and when headphones are unplugged.
+try ForgeAudioPlayer.shared.toggle(url)
+ForgeAudioPlayer.shared.progress(of: url)
+
+// Draw and label it: computed off the main actor.
+let bars = try await ForgeAudio.waveform(of: url, bars: 28)
+let seconds = try ForgeAudio.duration(of: url)
+```
+
+`ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
+
 **Foreground only.** Nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
 
 **What iOS does not give apps,** whatever the account: signal strength, carrier name (retired API), the ambient light sensor, MAC addresses. The Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; the device's own name needs an entitlement Apple grants on request (apps see "iPhone"). [examples/device-lab](../examples/device-lab) shows all of it in one app.
@@ -186,6 +219,7 @@ The services need no `Info.plist` keys of their own. Notifications, Keychain, fi
 - **Custom URL schemes** (`myapp://...`) are declared in `forge.toml` under `[ios] url_schemes`, which writes `CFBundleURLTypes` ([app-config.md](app-config.md)).
 - **Universal links** (`https://example.com/...`) need the `associated_domains` entitlement in `forge.toml` and an `apple-app-site-association` file on your domain. A free Apple ID cannot sign that entitlement.
 - **Permissions that need a usage description** (camera, photos, location) go in `forge.toml` `[ios.permissions]` when you add their adapter. Asking for one without its description crashes the app.
+- **The microphone** (`microphone` in `[ios.permissions]`) is needed by the optional `audio` service.
 
 ## Adding a capability
 

@@ -46,7 +46,7 @@ Layers: **Core** (any app may need it), **Optional** (a substantial system an ap
 | Local AI | Optional | `forge-ai` (planned, #55 L5) | Model library, download, inference behind a foreign trait, token streaming, cancellation, resource guard | Foundation Models, Core ML (CoreML-LLM) | Swift packages in the app | Planned: L0 check app in #55 | No | No | Planned | Chat assistant (planned) |
 | Attachments | Optional | chat-core today; generic parts to Managed files and Networking | Upload queue and recovery, on top of Managed files | Photos picker, Quick Look | Managed files, Networking | Partial: Chat M3 (#56) | No | No | Planned | Chat |
 | Documents | Optional | Pocket Library today; `epub` feature later | EPUB metadata, chapters as styled text blocks, positions to pages | None | `zip`, `quick-xml` | Partial: Pocket Library (#53) | No | No | Planned | Pocket Library |
-| Audio | Optional | Pocket Library today (Swift) | Audio session ownership, Now Playing and remote commands, speech synthesis; recording later | AVFoundation, MediaPlayer | None | Partial: read-aloud (#53) | No | No | Planned | Pocket Library; Chat M4 voice next |
+| Audio | Optional | `forge-services`: `native_services!(audio)`; adapter `swift/optional/ForgeServices+Audio.swift` (#60). Pocket Library's read-aloud still in its app | Microphone permission, recording (`ForgeAudioRecorder`), one-at-a-time playback (`ForgeAudioPlayer`), audio session (`ForgeAudioSession`), waveforms and lengths; Now Playing, remote commands and speech synthesis later | AVFoundation, MediaPlayer | None | Partial: compiled and tested in CI (macOS), not yet run on an iPhone | No | No | Experimental | Chat M4 voice; Pocket Library read-aloud to move onto its session |
 
 ## Foundation
 
@@ -112,9 +112,9 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Local notifications | Yes | Yes | Yes | Yes: Chat messages (`LocalChatNotifier` on `ForgeNotifications`), services check app | No | Yes | No push: APNs is a non-goal |
 | Notification actions and grouping | Partial: grouping (`thread_id`), subtitle, tap opens a deep link; no actions | Yes | Yes | Yes: Chat groups by room and opens the room on tap | No | Partial: native-services.md, chat-demo.md | No action buttons or categories yet |
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
-| Permission interface | Partial: notifications, location, motion, Bluetooth | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
+| Permission interface | Partial: notifications, location, motion, Bluetooth, microphone | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth); Partial: Chat M4 (microphone) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
 | Location, motion and Bluetooth permissions | Yes: forge-services | Yes: `NativePermission` | Yes | Yes: Device Lab | No | Partial: native-services.md | Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing |
-| Microphone, camera, local network permissions | No | No | No | No | No | Partial: config only | |
+| Microphone, camera, local network permissions | Partial: microphone (`audio` service) | Partial: `NativePermission::Microphone` | Partial: microphone | Partial: Chat M4 (microphone) | No | Partial: native-services.md | Camera and local network: config only |
 | Photos picker | No | n/a | Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO | Partial: Chat M3 | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
@@ -127,9 +127,9 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Audio session handling | No | No | No | No | No | No | |
-| Record and play audio files | No | No | No | No | No | No | |
-| Waveform summaries | No | No | n/a | No | No | No | |
+| Audio session handling | Yes: forge-services `audio` (optional) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 | No | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
+| Record and play audio files | Yes: forge-services `audio` (optional) | Yes: `AudioService::duration`, `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that select `audio` |
+| Waveform summaries | Yes: forge-services `audio` (optional) | n/a | Yes: `ForgeAudio.waveform(of:bars:)`, off the main actor | Partial: Chat M4 | No | Partial: native-services.md | Peaks per slice from the decoded file; no precomputed summaries sent with messages |
 | Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
 | Background audio | Partial: config | No | No | No | No | Partial | |
 | Location fix | Yes: forge-services `location` | Yes: `LocationService` | Yes: `CLLocationManager` | Yes: Device Lab; Weather still has its own one-shot provider | Partial: Weather's own provider, 2026-11-06; the service is not yet run on an iPhone | Partial: native-services.md | When in use only |

@@ -295,6 +295,13 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
+typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, double* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
@@ -325,6 +332,15 @@ typedef struct UniffiVTableCallbackInterfaceSecureStore {
     UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
     UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
 } UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AUDIO_FILES
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AUDIO_FILES
+typedef struct UniffiVTableCallbackInterfaceAudioFiles {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAudioFilesMethod0 _Nonnull duration;
+} UniffiVTableCallbackInterfaceAudioFiles;
 
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_CHATCORE
@@ -627,6 +643,26 @@ void uniffi_forge_ffi_fn_method_securestore_set(uint64_t ptr, RustBuffer key, Ru
 void uniffi_forge_ffi_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_AUDIOFILES
+uint64_t uniffi_forge_ffi_fn_clone_audiofiles(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_AUDIOFILES
+void uniffi_forge_ffi_fn_free_audiofiles(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_AUDIOFILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_AUDIOFILES
+void uniffi_forge_ffi_fn_init_callback_vtable_audiofiles(const UniffiVTableCallbackInterfaceAudioFiles* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AUDIOFILES_DURATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_AUDIOFILES_DURATION
+double uniffi_forge_ffi_fn_method_audiofiles_duration(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
 void uniffi_forge_ffi_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -657,6 +693,11 @@ uint32_t uniffi_forge_ffi_fn_func_native_services_version(RustCallStatus *_Nonnu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 RustBuffer uniffi_forge_ffi_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_AUDIO
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_AUDIO
+void uniffi_forge_ffi_fn_func_install_native_audio(uint64_t files, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CHAT_DELIVERY
@@ -966,6 +1007,12 @@ uint16_t uniffi_forge_ffi_checksum_func_parse_deep_link(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
+uint16_t uniffi_forge_ffi_checksum_func_install_native_audio(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CHAT_DELIVERY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CHAT_DELIVERY
 uint16_t uniffi_forge_ffi_checksum_func_chat_delivery(void
@@ -1245,6 +1292,12 @@ uint16_t uniffi_forge_ffi_checksum_method_securestore_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 uint16_t uniffi_forge_ffi_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AUDIOFILES_DURATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_AUDIOFILES_DURATION
+uint16_t uniffi_forge_ffi_checksum_method_audiofiles_duration(void
     
 );
 #endif

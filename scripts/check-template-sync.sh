@@ -40,6 +40,12 @@ if [[ -z "$rust_services" || "$rust_services" != "$swift_services" ]]; then
   status=1
 fi
 
+template_test="$ROOT/templates/ios-app/Tests/AppHostTests/NativeServicesTests.swift"
+if ! grep -q "XCTAssertEqual(nativeServicesVersion(), ${rust_services})" "$template_test"; then
+  echo "error: ${template_test#"$ROOT/"} must expect native services interface v${rust_services}" >&2
+  status=1
+fi
+
 if [[ $status -eq 0 ]]; then
   echo "[forge] Starter crate uses uniffi ${workspace_uniffi}, like the workspace."
   echo "[forge] Android hosts use rustls-platform-verifier ${lock_version}, matching Cargo.lock."

@@ -6906,6 +6906,11 @@ public enum NativePermission: Equatable, Hashable {
      * Bluetooth (`bluetooth` service).
      */
     case bluetooth
+    /**
+     * Recording audio (`audio` service, since interface v3).
+     * Needs `microphone` under `[ios.permissions]` in forge.toml.
+     */
+    case microphone
 
 
 
@@ -6935,6 +6940,8 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case 4: return .bluetooth
         
+        case 5: return .microphone
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -6957,6 +6964,10 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case .bluetooth:
             writeInt(&buf, Int32(4))
+        
+        
+        case .microphone:
+            writeInt(&buf, Int32(5))
         
         }
     }
