@@ -146,13 +146,18 @@ enum UiCommands {
         /// Which phone, when several are connected
         #[arg(long)]
         udid: Option<String>,
-        /// Folder with the Developer Disk Image: Xcode's
-        /// Contents/Resources/CoreDeviceDDIs (only needed when not mounted)
+        /// Folder with a personalised Developer Disk Image (only needed when
+        /// none is mounted; see docs/forge-ui-testing.md)
         #[arg(long, value_name = "DIR")]
         ddi: Option<PathBuf>,
         /// Install this WebDriverAgentRunner-Runner.app with `xtool install`
+        /// (skipped when a runner is already on the phone)
         #[arg(long, value_name = "APP")]
         runner: Option<PathBuf>,
+        /// Install the runner even if one is on the phone, e.g. to re-sign
+        /// it before a free account's 7 days run out
+        #[arg(long, requires = "runner")]
+        reinstall: bool,
         /// The Apple team xtool signs with, `free` or `paid` (default: the
         /// current app's `[ios.signing] team_type`). Paid teams have no
         /// 3-app limit and no 7-day expiry
@@ -670,12 +675,16 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
         Commands::Ui { cmd } => {
-            let mut out = std::io::stdout().lock();
+            // Not `stdout().lock()`: `ui setup` runs xtool, and with --json
+            // its output is forwarded to stdout from another thread, which
+            // would wait forever for a lock held here (seen on Cati).
+            let mut out = std::io::stdout();
             match cmd {
                 UiCommands::Setup {
                     udid,
                     ddi,
                     runner: app,
+                    reinstall,
                     team,
                 } => {
                     let signing = ios_env::signing_team(runner);
@@ -692,6 +701,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         udid.as_deref(),
                         ddi.as_deref(),
                         app.as_deref(),
+                        reinstall,
                         team,
                         &mut out,
                     )

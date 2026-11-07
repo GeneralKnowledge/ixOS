@@ -70,8 +70,9 @@ pub struct DeviceInfo {
 #[derive(Debug, thiserror::Error)]
 pub enum DeviceError {
     #[error(
-        "cannot reach usbmuxd ({reason}). Install and start it: \
-         `sudo apt install usbmuxd`, then plug the phone in"
+        "cannot reach usbmuxd ({reason}). Plug the iPhone in and unlock it: on Linux \
+         usbmuxd only runs while a phone is connected. If it is plugged in, install \
+         usbmuxd: `sudo apt install usbmuxd`"
     )]
     Usbmuxd { reason: String },
     #[error("no iPhone connected. Plug it in with a cable, unlock it and tap Trust if asked")]

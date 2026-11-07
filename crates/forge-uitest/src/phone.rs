@@ -80,6 +80,24 @@ impl Phone {
         })
     }
 
+    /// Runs one exchange with the phone, and gives up after `limit` rather
+    /// than waiting forever on a socket the phone never answers.
+    fn within<T>(
+        &self,
+        what: &str,
+        limit: Duration,
+        work: impl std::future::Future<Output = Result<T>>,
+    ) -> Result<T> {
+        self.runtime
+            .block_on(tokio::time::timeout(limit, work))
+            .unwrap_or_else(|_| {
+                Err(UiError::Device(format!(
+                    "{what}: the phone did not answer within {} s (is it unlocked and still plugged in?)",
+                    limit.as_secs()
+                )))
+            })
+    }
+
     async fn lockdown(&self) -> Result<LockdownClient> {
         let pairing = self
             .provider
@@ -98,7 +116,7 @@ impl Phone {
 
     /// The iOS major version.
     pub fn ios_major(&self) -> Result<u32> {
-        self.runtime.block_on(async {
+        self.within("reading the iOS version", Duration::from_secs(30), async {
             let mut lockdown = self.lockdown().await?;
             let version = lockdown
                 .get_value(Some("ProductVersion"), None)
@@ -114,16 +132,20 @@ impl Phone {
 
     /// Whether a Developer Disk Image is mounted (it is gone after a reboot).
     pub fn ddi_mounted(&self) -> Result<bool> {
-        self.runtime.block_on(async {
-            let mut mounter = ImageMounter::connect(&*self.provider)
-                .await
-                .map_err(|e| device_error("mobile_image_mounter", e))?;
-            let devices = mounter
-                .copy_devices()
-                .await
-                .map_err(|e| device_error("listing mounted images", e))?;
-            Ok(!devices.is_empty())
-        })
+        self.within(
+            "checking the Developer Disk Image",
+            Duration::from_secs(30),
+            async {
+                let mut mounter = ImageMounter::connect(&*self.provider)
+                    .await
+                    .map_err(|e| device_error("mobile_image_mounter", e))?;
+                let devices = mounter
+                    .copy_devices()
+                    .await
+                    .map_err(|e| device_error("listing mounted images", e))?;
+                Ok(!devices.is_empty())
+            },
+        )
     }
 
     /// Mounts the personalised Developer Disk Image (iOS 17 and later).
@@ -132,37 +154,41 @@ impl Phone {
         let image = std::fs::read(&files.image)?;
         let trust_cache = std::fs::read(&files.trust_cache)?;
         let manifest = std::fs::read(&files.build_manifest)?;
-        self.runtime.block_on(async {
-            let chip_id = {
-                let mut lockdown = self.lockdown().await?;
-                let value = lockdown
-                    .get_value(Some("UniqueChipID"), None)
+        self.within(
+            "mounting the Developer Disk Image",
+            Duration::from_secs(300),
+            async {
+                let chip_id = {
+                    let mut lockdown = self.lockdown().await?;
+                    let value = lockdown
+                        .get_value(Some("UniqueChipID"), None)
+                        .await
+                        .map_err(|e| device_error("chip id", e))?;
+                    value
+                        .as_unsigned_integer()
+                        .ok_or_else(|| UiError::Device("unreadable chip id".into()))?
+                };
+                let mut mounter = ImageMounter::connect(&*self.provider)
                     .await
-                    .map_err(|e| device_error("chip id", e))?;
-                value
-                    .as_unsigned_integer()
-                    .ok_or_else(|| UiError::Device("unreadable chip id".into()))?
-            };
-            let mut mounter = ImageMounter::connect(&*self.provider)
-                .await
-                .map_err(|e| device_error("mobile_image_mounter", e))?;
-            mounter
-                .mount_personalized(
-                    &*self.provider,
-                    image,
-                    trust_cache,
-                    &manifest,
-                    None,
-                    chip_id,
-                )
-                .await
-                .map_err(|e| device_error("mounting the Developer Disk Image", e))
-        })
+                    .map_err(|e| device_error("mobile_image_mounter", e))?;
+                mounter
+                    .mount_personalized(
+                        &*self.provider,
+                        image,
+                        trust_cache,
+                        &manifest,
+                        None,
+                        chip_id,
+                    )
+                    .await
+                    .map_err(|e| device_error("mounting the Developer Disk Image", e))
+            },
+        )
     }
 
     /// Bundle ids of the apps the developer installed.
     pub fn user_apps(&self) -> Result<Vec<String>> {
-        self.runtime.block_on(async {
+        self.within("listing apps", Duration::from_secs(60), async {
             let mut proxy = InstallationProxyClient::connect(&*self.provider)
                 .await
                 .map_err(|e| device_error("installation_proxy", e))?;

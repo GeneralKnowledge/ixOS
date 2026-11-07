@@ -110,6 +110,7 @@ pub fn setup(
     udid: Option<&str>,
     ddi: Option<&Path>,
     wda_app: Option<&Path>,
+    reinstall: bool,
     team: Team,
     out: &mut dyn Write,
 ) -> Result<(), String> {
@@ -146,6 +147,17 @@ pub fn setup(
     }
 
     let mut apps = phone.user_apps().map_err(err)?;
+    let wda_app = match (wda_app, find_runner(&apps)) {
+        (Some(_), Some(installed)) if !reinstall => {
+            writeln!(
+                out,
+                "The runner is already installed ({installed}); not installing it again (pass --reinstall to re-sign it)"
+            )
+            .map_err(err)?;
+            None
+        }
+        (app, _) => app,
+    };
     if let Some(app) = wda_app {
         if find_runner(&apps).is_none() {
             if let Some(note) = team.full_note(&sideloaded(&apps)) {
