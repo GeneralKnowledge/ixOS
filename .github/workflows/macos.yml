@@ -3,19 +3,7 @@ name: macOS
 on:
   push:
     branches: [main]
-  # macOS runners are shared by every open PR and queue for tens of minutes,
-  # so pull requests that cannot change what these jobs build skip them.
-  # Pushes to main always run in full. The list says what to ignore rather
-  # than what to include, because the jobs depend on nearly every crate.
   pull_request:
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE-*"
-      - "examples/counter-android/**"
-      - "examples/chat-android/**"
-      - ".github/workflows/android.yml"
-      - ".github/workflows/screenshots.yml"
 
 permissions:
   contents: read
