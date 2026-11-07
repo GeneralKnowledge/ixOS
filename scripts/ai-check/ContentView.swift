@@ -122,7 +122,7 @@ enum EngineChoice: String, CaseIterable, Identifiable {
 final class ModelHost {
     var loadedId: String?
     var llm: CoreMLLLM?
-    var qwen: Qwen35MLKVGenerator?
+    var qwen: StoppableQwen35Generator?
     var qwenTokenizer: (any Tokenizer)?
 
     func unload() {
@@ -223,23 +223,35 @@ func generate(
     }
 #endif
 
-/// Qwen3.5 has its own generator with a token callback and no cancellation
-/// check, so the only way to stop is to ignore what comes after the sink says
-/// stop. The report's `pieces_after_stop` and the stop latency show the cost.
+/// Qwen3.5 runs through its own generator with a token callback. CoreML-LLM's
+/// version cannot be stopped, so the check app builds a patched copy
+/// (`StoppableQwen35Generator`) that checks `shouldStop` and task cancellation
+/// before every step: Stop really ends the computation, and the report's
+/// stop latency is at most one step.
 func generateWithQwen(
-    qwen: Qwen35MLKVGenerator, tokenizer: any Tokenizer, turns: [AiTurn], maxTokens: Int,
+    qwen: StoppableQwen35Generator, tokenizer: any Tokenizer, turns: [AiTurn], maxTokens: Int,
     temperature: Double, sink: AiTokenSink, onPiece: @escaping @Sendable () -> Void
 ) async throws {
     let chat: [[String: Any]] = turns.map { ["role": $0.role, "content": $0.text] }
-    let templated = try? tokenizer.applyChatTemplate(messages: chat)
-    if templated == nil { aiLog(line: "INFO qwen: chat template failed, using plain encoding") }
-    let ids = templated ?? tokenizer.encode(text: turns.last?.text ?? "")
+    // Never drop the system prompt or the history: if swift-transformers
+    // cannot render Qwen3.5's template, write the same ChatML by hand.
+    let ids: [Int]
+    do {
+        ids = try tokenizer.applyChatTemplate(messages: chat)
+    } catch {
+        aiLog(line: "INFO qwen: chat template failed (\(error.localizedDescription)); using hand-written ChatML with the whole conversation")
+        let chatML = turns.map { "<|im_start|>\($0.role)\n\($0.text)<|im_end|>\n" }.joined()
+            + "<|im_start|>assistant\n"
+        ids = tokenizer.encode(text: chatML)
+    }
     let room = 2048 - ids.count - 1
     guard room > 0 else { throw CheckError.unavailable("prompt is \(ids.count) tokens, over 2048") }
     var eos: Set<Int32> = [248044, 248045, 248046]
     if let id = tokenizer.eosTokenId { eos.insert(Int32(id)) }
     var ids32: [Int] = []
     var sent = ""
+    qwen.shouldStop = { sink.isStopped() }
+    defer { qwen.shouldStop = nil }
     _ = try await qwen.generate(
         inputIds: ids.map { Int32($0) }, maxNewTokens: min(room, maxTokens),
         temperature: Float(temperature), topK: 40, topP: 0.95, repetitionPenalty: 1.1,
@@ -491,7 +503,7 @@ public struct ContentView: View {
                 let folder = file.deletingLastPathComponent()
                 if model.isQwen35, let tokenizerId = model.tokenizer {
                     let tokenizer = try await AutoTokenizer.from(pretrained: tokenizerId)
-                    let generator = Qwen35MLKVGenerator(cfg: model.id == "qwen3.5-2b" ? .default2B : .default0_8B)
+                    let generator = StoppableQwen35Generator(cfg: model.id == "qwen3.5-2b" ? .default2B : .default0_8B)
                     generator.setModelFolder(folder)
                     try await generator.load()
                     host.qwen = generator

@@ -45,7 +45,7 @@ Each step writes PASS, FAIL or INFO lines to the Results section at the bottom o
 | K5 | 3 → **LFM2.5 350M** → **Download** (Wi-Fi) | Download time; free disk after |
 | K6 | **Load**, then 4 → Engine **Downloaded model** → **Generate**; press **Stop** halfway through a second one | Load time (first load compiles), memory used, pieces/s, stop latency |
 | K7 | 3 → **Unload**, **Load** again | Second load time (is the compiled model reused?) |
-| K8 | 3 → **Qwen3.5 0.8B** → Download, Load, Generate, Stop halfway | As K5–K6. The first load compiles four chunks and can take minutes; it also fetches the tokenizer from Hugging Face |
+| K8 | 3 → **Qwen3.5 0.8B** → Download, Load, Generate, Stop halfway; then Generate with **Auto-stop after 20 pieces** | As K5–K6. **Pass only if** `stop took` is under a second and `late pieces` is 0 (the generator really stopped, not just the text). The first load compiles four chunks and can take minutes; it also fetches the tokenizer from Hugging Face |
 | K9 | 5 → **Mia**, reminder on, ten messages; then **Leo** the same; with Qwen3.5 0.8B | For each reply: in character or not (write it down); the per-turn lines |
 | K10 | K9 again with the reminder off, five messages | Does it drift sooner? |
 | K11 | K9 with Engine **Apple Foundation Models**, five messages | In character? Any refusals? |

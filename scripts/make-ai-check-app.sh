@@ -42,6 +42,38 @@ grep -q 'CoreML-LLM' "$APP/Package.swift" || { echo "error: could not add CoreML
 grep -q 'swiftLanguageMode(.v5)\]' "$APP/Package.swift" || { echo "error: could not patch the AppHost target" >&2; exit 1; }
 rm -f "$APP"/*.bak "$APP"/Xcode/AICheck.xcodeproj/*.bak
 
+# CoreML-LLM's Qwen3.5 generator cannot be stopped: its decode loop has no
+# cancellation check, so after Stop the phone keeps computing tokens nobody
+# reads. The check app builds its own copy (MIT, same tag, checksum pinned)
+# with a stop check before every prefill and decode step, under another
+# name, so stopping is real and measurable (docs/local-ai.md, L0).
+QWEN_SRC="https://raw.githubusercontent.com/john-rocky/CoreML-LLM/v$COREML_LLM_VERSION/Sources/CoreMLLLM/Qwen35MLKVGenerator.swift"
+QWEN_SHA256="53352aa8b6c90b3544ab8e82d874d2be93e1683546058d2309a528d738411bf0"
+QWEN_OUT="$APP/Sources/AppHost/StoppableQwen35Generator.swift"
+curl -sSfL "$QWEN_SRC" -o "$QWEN_OUT.orig"
+echo "$QWEN_SHA256  $QWEN_OUT.orig" | sha256sum -c --quiet - || {
+  echo "error: $QWEN_SRC changed; check the patch below against it" >&2
+  exit 1
+}
+{
+  printf '%s\n' \
+    "// Copied by scripts/make-ai-check-app.sh from CoreML-LLM $COREML_LLM_VERSION" \
+    "// (https://github.com/john-rocky/CoreML-LLM, MIT License, Copyright (c) the" \
+    "// CoreML-LLM authors), renamed, with a stop check added to the prefill and" \
+    "// decode loops. Throwaway spike code; see docs/local-ai.md." \
+    ""
+  perl -pe '
+    s/^public final class Qwen35MLKVGenerator \{/public final class StoppableQwen35Generator {\n    \/\/\/ Checked before every step; true ends the generation (ixOS patch).\n    \@ObservationIgnored public var shouldStop: (() -> Bool)?/;
+    s/^(\s*)for \(t, tok\) in inputIds\.enumerated\(\) \{$/$&\n$1    try Task.checkCancellation()\n$1    if shouldStop?() == true { throw CancellationError() }/;
+    s/^(\s*)for step in 0\.\.<maxNewTokens \{$/$&\n$1    if Task.isCancelled || shouldStop?() == true { break }/;
+  ' "$QWEN_OUT.orig"
+} >"$QWEN_OUT"
+rm "$QWEN_OUT.orig"
+[[ "$(grep -c 'shouldStop?() == true' "$QWEN_OUT")" == 2 ]] || {
+  echo "error: could not patch the Qwen3.5 generator" >&2
+  exit 1
+}
+
 # Rewrite Info.plist, xtool.yml and Package.swift's iOS version from forge.toml.
 "$ROOT/target/debug/forge" config sync --project "$APP"
 
