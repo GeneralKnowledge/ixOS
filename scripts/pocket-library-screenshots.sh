@@ -2,7 +2,8 @@
 # Screenshots of Pocket Library in the iOS Simulator, so its UI can be
 # reviewed without a device: the empty library, then a seeded one (books in
 # every status, covers, two weeks of history) on each tab, in light and dark,
-# and the Library and Activity tabs at the largest accessibility text size.
+# the EPUB reader, and the Library and Activity tabs and the reader at the
+# largest accessibility text size.
 #
 # The simulator is a review aid, not part of the supported workflow (the app
 # is built with xtool on Linux and run on an iPhone), and these are not
@@ -39,8 +40,11 @@ cargo run -q --manifest-path "$ROOT/examples/pocket-library/rust/Cargo.toml" \
 shoot 2-library library
 shoot 3-activity activity
 shoot 4-settings settings
+# The reader, on the seeded book that has an EPUB ("Night Trains", id 3).
+sim_shoot "$OUT" 7-reader "$BUNDLE_ID" -selectedTab library -openReader 3
 
 sim_text_size accessibility-extra-extra-extra-large
 shoot 5-library-largest-text library
 shoot 6-activity-largest-text activity
+sim_shoot "$OUT" 8-reader-largest-text "$BUNDLE_ID" -selectedTab library -openReader 3
 sim_text_size large

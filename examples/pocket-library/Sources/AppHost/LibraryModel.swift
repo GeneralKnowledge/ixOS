@@ -214,6 +214,29 @@ public final class LibraryModel {
         return try await run { try await $0.importEpub(path: url.path) }
     }
 
+    // MARK: Reading EPUBs
+
+    /// Opens a book's saved EPUB: its chapters and where to start.
+    public func openReader(_ id: UInt64) async throws -> ReaderContents {
+        guard let library else { throw LibraryError.ShutDown }
+        return try await library.openReader(id: id)
+    }
+
+    /// One chapter's text, from the book `openReader` opened.
+    public func chapter(_ id: UInt64, index: UInt32) async throws -> ReaderChapter {
+        guard let library else { throw LibraryError.ShutDown }
+        return try await library.readerChapter(id: id, index: index)
+    }
+
+    /// Saves where the reader is. Rust moves the book's page to match, so
+    /// the library, history and stats update too.
+    @discardableResult
+    public func saveReadingPosition(_ id: UInt64, chapter: UInt32, fraction: Double) async throws -> Book {
+        try await run {
+            try await $0.saveReadingPosition(id: id, position: ReadingPosition(chapter: chapter, fraction: fraction))
+        }
+    }
+
     public func updateSettings(_ settings: LibrarySettings) async throws {
         self.settings = try await run { try await $0.updateSettings(settings: settings) }
     }

@@ -29,6 +29,9 @@ struct BookDetailView: View {
         }
         .navigationTitle(book?.title ?? "")
         .inlineNavigationTitle()
+        .navigationDestination(for: ReaderRoute.self) { route in
+            ReaderView(bookID: route.bookID)
+        }
         .errorAlert($error)
         .sensoryFeedback(.success, trigger: finishedCount)
     }
@@ -38,6 +41,7 @@ struct BookDetailView: View {
             Section {
                 header(book)
             }
+            readSection(book)
             Section("Progress") {
                 progress(book)
             }
@@ -133,6 +137,26 @@ struct BookDetailView: View {
             if !focused { savePage(book) }
         }
         .onChange(of: book.currentPage) { _, page in pageText = String(page) }
+    }
+
+    /// Read or Continue Reading for a book with a saved EPUB; for an
+    /// imported book from before EPUBs were kept, how to make it readable.
+    @ViewBuilder
+    private func readSection(_ book: Book) -> some View {
+        if book.canRead {
+            Section {
+                NavigationLink(value: ReaderRoute(bookID: book.id)) {
+                    Label(book.readingPosition == nil ? "Read" : "Continue Reading", systemImage: "book")
+                        .font(.headline)
+                }
+            }
+        } else if case .epub = book.source {
+            Section {
+                Label("Import this book's EPUB again to read it here. Your progress is kept.", systemImage: "info.circle")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private func header(_ book: Book) -> some View {

@@ -4,6 +4,8 @@
 //! <storage directory>/
 //!   library.json      books, history, settings (forge_storage::JsonFile)
 //!   covers/           saved cover images, named in library.json
+//!   books/            saved EPUB files, named in library.json
+//!   reader/           images of the chapter being read (emptied at launch)
 //!   exports/          the latest export, for the share sheet
 //! ```
 
@@ -46,6 +48,14 @@ impl Store {
 
     pub fn covers_dir(&self) -> PathBuf {
         self.dir.join("covers")
+    }
+
+    pub fn books_dir(&self) -> PathBuf {
+        self.dir.join("books")
+    }
+
+    pub fn reader_dir(&self) -> PathBuf {
+        self.dir.join("reader")
     }
 
     pub fn exports_dir(&self) -> PathBuf {
@@ -96,46 +106,68 @@ impl Store {
         std::fs::create_dir_all(&dir).map_err(|e| LibraryError::Storage {
             reason: format!("create {}: {e}", dir.display()),
         })?;
-        let safe: String = stem
-            .chars()
-            .map(|c| {
-                if c.is_ascii_alphanumeric() || c == '-' {
-                    c
-                } else {
-                    '-'
-                }
-            })
-            .collect();
-        let name = format!("{safe}.{extension}");
+        let name = format!("{}.{extension}", sanitize(stem));
         write_atomic(&dir.join(&name), bytes)?;
         Ok(name)
     }
 
     /// Best effort: a cover that cannot be deleted only wastes space.
     pub fn delete_cover(&self, name: &str) {
-        if !name.contains('/') && !name.contains("..") {
+        if safe_name(name) {
             let _ = std::fs::remove_file(self.covers_dir().join(name));
         }
     }
 
-    /// Deletes covers that no book refers to (left behind by a crash between
-    /// saving a cover and saving the library). Returns how many.
-    pub fn remove_orphan_covers(&self, data: &LibraryData) -> u32 {
-        let Ok(entries) = std::fs::read_dir(self.covers_dir()) else {
-            return 0;
-        };
-        let mut removed = 0;
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().into_owned();
-            let used = data
-                .books
-                .iter()
-                .any(|b| b.cover_file.as_deref() == Some(name.as_str()));
-            if !used && std::fs::remove_file(entry.path()).is_ok() {
-                removed += 1;
-            }
+    /// Copies an EPUB into `books/` under a new name and returns the name.
+    pub fn save_book_file(&self, stem: &str, bytes: &[u8]) -> Result<String, LibraryError> {
+        let dir = self.books_dir();
+        std::fs::create_dir_all(&dir).map_err(|e| LibraryError::Storage {
+            reason: format!("create {}: {e}", dir.display()),
+        })?;
+        let name = format!("{}.epub", sanitize(stem));
+        write_atomic(&dir.join(&name), bytes)?;
+        Ok(name)
+    }
+
+    /// The saved EPUB's path for this launch, if `name` is a safe name.
+    pub fn book_file(&self, name: &str) -> Option<PathBuf> {
+        safe_name(name).then(|| self.books_dir().join(name))
+    }
+
+    /// Best effort, like [`Self::delete_cover`].
+    pub fn delete_book_file(&self, name: &str) {
+        if let Some(path) = self.book_file(name) {
+            let _ = std::fs::remove_file(path);
         }
-        removed
+    }
+
+    /// Empties `reader/` (chapter images from an earlier launch) and
+    /// returns a fresh folder for `book_id`'s images.
+    pub fn reset_reader_dir(&self, book_id: u64) -> Result<PathBuf, LibraryError> {
+        let _ = std::fs::remove_dir_all(self.reader_dir());
+        let dir = self.reader_dir().join(book_id.to_string());
+        std::fs::create_dir_all(&dir).map_err(|e| LibraryError::Storage {
+            reason: format!("create {}: {e}", dir.display()),
+        })?;
+        Ok(dir)
+    }
+
+    /// Deletes covers and EPUBs that no book refers to (left behind by a
+    /// crash between saving the file and saving the library), and the
+    /// reader's images. Returns how many files went.
+    pub fn remove_orphan_covers(&self, data: &LibraryData) -> u32 {
+        let _ = std::fs::remove_dir_all(self.reader_dir());
+        let covers = remove_unused(&self.covers_dir(), |name| {
+            data.books
+                .iter()
+                .any(|b| b.cover_file.as_deref() == Some(name))
+        });
+        let books = remove_unused(&self.books_dir(), |name| {
+            data.books
+                .iter()
+                .any(|b| b.epub_file.as_deref() == Some(name))
+        });
+        covers + books
     }
 
     pub fn write_export(&self, file_name: &str, bytes: &[u8]) -> Result<PathBuf, LibraryError> {
@@ -150,28 +182,69 @@ impl Store {
         Ok(path)
     }
 
-    /// Deletes covers and exports (the caller saves an empty library).
+    /// Deletes covers, EPUBs, reader images and exports (the caller saves
+    /// an empty library).
     pub fn clear_files(&self) {
         let _ = std::fs::remove_dir_all(self.covers_dir());
+        let _ = std::fs::remove_dir_all(self.books_dir());
+        let _ = std::fs::remove_dir_all(self.reader_dir());
         let _ = std::fs::remove_dir_all(self.exports_dir());
     }
 
-    /// (number of saved covers, bytes of library.json + covers)
-    pub fn usage(&self) -> (u32, u64) {
+    /// (number of saved covers, number of saved EPUBs, bytes of
+    /// library.json + covers + EPUBs)
+    pub fn usage(&self) -> (u32, u32, u64) {
         let file_bytes = std::fs::metadata(self.file.path())
             .map(|m| m.len())
             .unwrap_or(0);
-        let (mut covers, mut bytes) = (0u32, file_bytes);
-        if let Ok(entries) = std::fs::read_dir(self.covers_dir()) {
-            for entry in entries.flatten() {
-                if let Ok(meta) = entry.metadata() {
-                    covers += 1;
-                    bytes += meta.len();
-                }
+        let (covers, cover_bytes) = folder_usage(&self.covers_dir());
+        let (books, book_bytes) = folder_usage(&self.books_dir());
+        (covers, books, file_bytes + cover_bytes + book_bytes)
+    }
+}
+
+/// File names Rust made: no folders, no way out of the folder.
+fn safe_name(name: &str) -> bool {
+    !name.is_empty() && !name.contains('/') && !name.contains('\\') && !name.contains("..")
+}
+
+fn sanitize(stem: &str) -> String {
+    stem.chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn remove_unused(dir: &Path, used: impl Fn(&str) -> bool) -> u32 {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    let mut removed = 0;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if !used(&name) && std::fs::remove_file(entry.path()).is_ok() {
+            removed += 1;
+        }
+    }
+    removed
+}
+
+fn folder_usage(dir: &Path) -> (u32, u64) {
+    let (mut files, mut bytes) = (0u32, 0u64);
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if let Ok(meta) = entry.metadata() {
+                files += 1;
+                bytes += meta.len();
             }
         }
-        (covers, bytes)
     }
+    (files, bytes)
 }
 
 #[cfg(test)]
@@ -272,7 +345,14 @@ mod tests {
         let mut data = sample();
         data.books[0].cover_file = Some(name.clone());
         assert_eq!(store.usage().0, 2);
-        assert_eq!(store.remove_orphan_covers(&data), 1);
+        let book = store.save_book_file("epub-1", b"zip").unwrap();
+        let stray = store.save_book_file("epub-2", b"zip").unwrap();
+        data.books[0].epub_file = Some(book.clone());
+        assert_eq!(store.usage().1, 2);
+        assert_eq!(store.remove_orphan_covers(&data), 2);
+        assert!(store.books_dir().join(&book).exists());
+        assert!(!store.books_dir().join(stray).exists());
+        assert_eq!(store.book_file("../library.json"), None);
         assert!(!store.covers_dir().join(orphan).exists());
         store.delete_cover("../library.json"); // ignored
         store.delete_cover(&name);
