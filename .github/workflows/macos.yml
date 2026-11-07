@@ -1,55 +1,28 @@
 name: macOS
 
 # The checks Linux cannot do: Swift host tests (XCTest against each app's
-# Rust core) and unsigned iOS device builds with Xcode, in one job so a pull
-# request takes one macOS runner, not several. macOS runners are few and
-# queue for a long time, so this runs only when something Swift or Xcode
-# depends on changes, and a pull request checks only the apps its diff
-# touches (scripts/ci-macos.sh). Pushes to main, a weekly run and
-# "Run workflow" (Actions tab, any branch) check every app.
+# Rust core) and unsigned iOS device builds with Xcode, in one job. The
+# supported stack is Linux + xtool + an iPhone, so this does not gate pull
+# requests: it runs weekly, and by hand on any branch (Actions tab -> macOS ->
+# Run workflow) when you want a Mac's opinion on a Swift change. Leave "apps"
+# empty to check every app, or name some: counter weather chat
+# pocket-library device-lab template services-check.
 on:
-  push:
-    branches: [main]
-    paths-ignore:
-      - "**.md"
-      - "docs/**"
-      - "LICENSE*"
-      - "examples/*-android/**"
-      - "templates/android-app/**"
-      - ".github/workflows/android.yml"
-      - ".github/workflows/screenshots.yml"
-  pull_request:
-    paths:
-      - "**.swift"
-      - "**/Package.swift"
-      - "**/Generated/**"
-      - "**.xcodeproj/**"
-      - "**/forge.toml"
-      - "templates/ios-app/**"
-      - "templates/app-rust/**"
-      - "crates/forge-cli/**"
-      - "crates/forge-services/**"
-      - "scripts/ci-macos.sh"
-      - "scripts/test-swift-host.sh"
-      - "scripts/generate-bindings.sh"
-      - "scripts/forge-crate.sh"
-      - "scripts/build-rust-ios.sh"
-      - "scripts/package-ios-library.sh"
-      - "scripts/make-services-check-app.sh"
-      - ".github/workflows/macos.yml"
-      - "!examples/*-android/**"
   schedule:
     - cron: "0 6 * * 1"
   workflow_dispatch:
+    inputs:
+      apps:
+        description: Apps to check (space-separated; empty = all)
+        type: string
+        default: ""
 
 permissions:
   contents: read
 
-# Pull requests cancel their own superseded runs; every push to main gets its
-# own group so each merge commit is checked in full.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   ios:
@@ -66,9 +39,9 @@ jobs:
         run: |
           xcodebuild -version
           swift --version
-      - name: Apps this pull request touches
-        if: github.event_name == 'pull_request'
-        run: ./scripts/ci-macos.sh affected "${{ github.event.pull_request.base.sha }}"
-      - name: Every app
-        if: github.event_name != 'pull_request'
-        run: ./scripts/ci-macos.sh all
+      - name: Check apps
+        env:
+          APPS: ${{ inputs.apps }}
+        run: |
+          read -ra list <<< "${APPS:-all}"
+          ./scripts/ci-macos.sh "${list[@]}"

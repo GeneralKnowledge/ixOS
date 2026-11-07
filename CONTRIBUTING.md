@@ -46,18 +46,18 @@ CI runs both, plus unsigned `xcodebuild` device builds; see [CI](#ci) for when.
 
 ## CI
 
-CI is kept lean on purpose: macOS runners are scarce, and a pull request should be green in minutes. Docs-only changes (`*.md`, `docs/`) run nothing.
+CI is kept lean on purpose: a pull request should be green in minutes, and is gated by Linux checks only. The supported stack is Linux, xtool and an iPhone, so the macOS job is a weekly backstop and an on-demand check, not a gate. Docs-only changes (`*.md`, `docs/`) run nothing.
 
 | Workflow | Job | Pull requests | Pushes to main |
 | --- | --- | --- | --- |
 | Rust (Linux) | Rust: fmt, clippy, tests, app-owned crates, binding drift, Xcode project layout | Every code change | Every code change |
 | Rust (Linux) | Fresh app outside the checkout | Every code change | Every code change |
 | Rust (Linux) | MSRV (1.88) and cargo-deny | Every code change | Every code change |
-| macOS | iOS (Swift tests, Xcode build): one job, `scripts/ci-macos.sh` | Only when Swift, bindings, Xcode projects, templates, `forge-cli` or `forge-services` change, and only for the apps the diff touches | Every app, on every code change; also weekly |
+| macOS | iOS (Swift tests, Xcode build): one job, `scripts/ci-macos.sh` | On demand | Weekly, every app |
 | Android (Linux) | android-apk | Only when Android code changes | When shared Rust or Android code changes |
 | Screenshots (macOS) | Simulator screenshots | On demand | On demand |
 
-Anything path-filtered can be run by hand on any branch: Actions tab, pick the workflow, **Run workflow**. Use it for Android (frozen, work in progress), for every iOS app on a branch (macOS), and for simulator screenshots of a UI change (Screenshots, pick `starter`, `pocket-library` or `weather`; the images are uploaded and also printed as small JPEGs in the log). `./scripts/ci-macos.sh --list affected "$(git merge-base origin/main HEAD)"` shows which apps a branch's macOS run would check.
+Anything path-filtered can be run by hand on any branch: Actions tab, pick the workflow, **Run workflow**. Use it for Android (frozen, work in progress), for the Swift host tests and Xcode device builds on a branch (macOS; optionally name the apps), and for simulator screenshots of a UI change (Screenshots, pick `starter`, `pocket-library` or `weather`; the images are uploaded and also printed as small JPEGs in the log). `./scripts/ci-macos.sh --list affected "$(git merge-base origin/main HEAD)"` shows which apps a branch's macOS run would check.
 
 ## Pull requests
 
