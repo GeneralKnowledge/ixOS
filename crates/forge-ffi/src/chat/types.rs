@@ -214,6 +214,12 @@ impl From<chat_core::ChatError> for ChatError {
             Core::UnsupportedOnHost { detail } => Self::UnsupportedOnHost { detail },
             Core::InvalidInput { reason } => Self::InvalidInput { reason },
             Core::ShutDown => Self::ShutDown,
+            // The frozen Android example has no accounts; a server that wants
+            // one answers 401, which this API reports as plain HTTP.
+            Core::Unauthorized { reason } => Self::Http {
+                status: 401,
+                reason,
+            },
         }
     }
 }

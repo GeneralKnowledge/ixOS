@@ -21,6 +21,9 @@ pub struct OutgoingMessage {
     pub id: String,
     pub conversation_id: String,
     pub author: String,
+    /// The sender's account id; empty without an account. Servers with
+    /// accounts take both from the token instead.
+    pub author_id: String,
     pub body: String,
 }
 

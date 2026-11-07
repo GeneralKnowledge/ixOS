@@ -156,7 +156,7 @@ Running `xtool dev` without Darwin SDK may fail immediately. In Cloud Agent sand
 
 ## Manual acceptance: Android HTTPS on a device
 
-Automated coverage stops at the JVM: Rust tests run real TLS handshakes against local servers (`cargo test -p forge-net --features ureq`, `cargo test -p mock-chat-server --test https_end_to_end`), and the Chat JVM tests call the real `ForgeAndroid.nativeInit` JNI export. Android's own trust store is only exercised on a device or emulator. Record the phone model, Android version, NDK and the commit for every run.
+Automated coverage stops at the JVM: Rust tests run real TLS handshakes against local servers (`cargo test -p forge-net --features ureq`, `cargo test -p chat-server --test https_end_to_end`), and the Chat JVM tests call the real `ForgeAndroid.nativeInit` JNI export. Android's own trust store is only exercised on a device or emulator. Record the phone model, Android version, NDK and the commit for every run.
 
 1. Build and install Chat: `forge build android --project examples/chat-android --install` (USB debugging on; `adb devices` lists the phone).
 2. In the app, change the server URL to each of these in turn. None of them is a chat server, so the result to look for is *which* error the app shows:
@@ -170,7 +170,7 @@ Automated coverage stops at the JVM: Rust tests run real TLS handshakes against 
    | `https://self-signed.badssl.com` | same | Self-signed rejected |
    | `https://localhost:1` | "Can't reach the chat server." | Connection failure is a network error, not a certificate one |
 
-3. Full chat over HTTPS (optional, needs a public certificate in front of the mock server): run `make mock-chat` on the laptop and a tunnel with a real certificate, for example `cloudflared tunnel --url http://localhost:8787`. Use the `https://….trycloudflare.com` URL in the app: rooms load, sending works, a message posted with curl to the tunnel appears live, and leaving a room stops its stream.
+3. Full chat over HTTPS (optional, needs a public certificate in front of the chat server): run `make chat-server ARGS="--in-memory --allow-anonymous"` on the laptop and a tunnel with a real certificate, for example `cloudflared tunnel --url http://localhost:8787`. Use the `https://….trycloudflare.com` URL in the app: rooms load, sending works, a message posted with curl to the tunnel appears live, and leaving a room stops its stream.
 4. `adb logcat | grep -i -E "forge|rustls|platformverifier"` shows no `ForgeAndroidInitException` or JNI errors.
 
 ## Manual acceptance: a fresh app on an Android phone

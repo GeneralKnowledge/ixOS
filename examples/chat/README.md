@@ -1,90 +1,79 @@
-# Chat example
+# Chat
 
-A deliberately plain SwiftUI chat client: a conversation list and a chat
-screen. It exists to stress the FFI contract with what Counter and Weather do
-not have: a long-lived, high-frequency event stream that outlives any single
-command, explicit room subscriptions, multi-entity storage with a `since`
-cursor, and typed errors. Design: [docs/chat-demo.md](../../docs/chat-demo.md).
+The flagship ixOS acceptance app: a SwiftUI messaging app on a Rust core,
+growing one milestone at a time into a real iPhone chat app. Every feature
+works for real and tests a real ixOS capability. Plan and status:
+[docs/chat-demo.md](../../docs/chat-demo.md).
 
 ```
-ConversationListView / ChatView → ChatSession → ChatBridge (ChatClient, ChatEvents)
-  → Generated Swift (ForgeFFI) → forge-ffi (ForgeChatApp) → chat-core → forge-net (UreqClient)
-  → scripts/mock-chat-server (HTTP + Server-Sent Events)
+SwiftUI (Sources/AppHost: ChatModel, screens)        navigation, UI, notifications
+  → Generated Swift (ForgeFFI) + forge-services adapters (Keychain, ...)
+  → rust/ (ChatCore)                                   account, lifecycle, the UniFFI API
+  → examples/chat-core (ChatClient)                    rooms, live streams, store, send/retry
+  → forge-net (UreqClient) → examples/chat-server      HTTP + Server-Sent Events, accounts
 ```
 
-Not a production chat client. No auth, push, media, read receipts or
-encryption, and PRs adding them will be declined. New messages in rooms you
-are not in do show as local notifications while the app runs.
+Rust decides everything about the chat: who you are, which messages are
+yours, unread counts, reconnects, retries. Swift shows it and owns the
+platform (the Keychain adapter, notifications, the scene lifecycle).
 
-## Run it
+## Run it (Linux, physical iPhone)
 
-Like every Forge example, this builds and installs from **Linux**: xtool
-supplies the iOS toolchain (see [docs/linux-setup.md](../../docs/linux-setup.md)),
-and the app runs on a physical iPhone. A Mac is optional.
-
-1. Start the demo server so the phone can reach it:
-   `make mock-chat ARGS="--bind 0.0.0.0:8787"` (rooms `general`, `random`, `forge`).
-2. With the iPhone connected over USB, build and install:
-   `cargo run -p forge-cli -- build ios --project examples/chat`.
-3. In the app, tap **Server** and enter your computer's LAN address, e.g.
-   `http://192.168.1.10:8787`. iOS asks for local network access the first
-   time.
-
-On a Mac you can also open `Xcode/Chat.xcodeproj`, or run the app on the
-desktop with `swift run --package-path examples/chat Chat` (after
-`./scripts/test-swift-host.sh examples/chat` has built the host library once;
-the default server, `http://127.0.0.1:8787`, then works with plain
-`make mock-chat`). The Swift tests also need macOS, so CI runs them on a Mac.
-
-The Android version is [examples/chat-android](../chat-android/README.md).
-
-## The demo interaction
-
-1. Open **General**, type a message, tap **Send**: grey "Sending", then blue.
-2. Go back to the list. Nothing is cancelled.
-3. Stop the server (Ctrl-C). The chat shows "Reconnecting…".
-4. Send again: the bubble turns red, "Not sent. Tap to retry."
-5. Restart the server, tap the red bubble: Sending, then Sent. The room
-   reconnects and catches up on its own.
-6. Post from curl while the chat is open; the message appears within a
-   second:
+1. Start the chat server where the phone can reach it:
+   `make chat-server ARGS="--bind 0.0.0.0:8787"`.
+   Accounts and messages are kept in `~/.local/share/ixos-chat/server.json`.
+2. With the iPhone on USB: `forge run ios --project examples/chat`
+   (or `cargo run -p forge-cli -- run ios --project examples/chat`).
+3. In the app, enter your name and your computer's address on the network,
+   e.g. `http://192.168.1.10:8787`, and tap **Create Account**. iOS asks for
+   local network access the first time.
+4. Be the other person from the terminal:
 
    ```sh
-   curl -X POST localhost:8787/rooms/general/messages \
-     -H 'Content-Type: application/json' -d '{"author":"curl","body":"hello from curl"}'
+   make chat-cli ARGS='signup "Reuben (laptop)"'
+   make chat-cli ARGS="send general Hello from the laptop"
+   make chat-cli ARGS="follow general"
    ```
 
-7. Post the same way to `random` while General is open, or with the app on
-   the list: a notification banner shows "Random", "curl" and the text, and
-   the room's unread badge goes up. Posts to the open room don't notify.
+The full device check is [ACCEPTANCE.md](ACCEPTANCE.md).
 
-The mock server keeps everything in memory, so a restart empties it; the app
-keeps its own copy.
+On a Mac you can also open `Xcode/Chat.xcodeproj`, or run it on the desktop
+with `swift run --package-path examples/chat Chat` (after
+`./scripts/test-swift-host.sh examples/chat` has built the host library).
+
+## What it does today (M0)
+
+- **An account per device, in the Keychain.** First launch creates an account
+  on the server. Rust stores it, token included, through `forge-services`'
+  Keychain adapter; the token never reaches Swift. Relaunching is signed in at
+  once, offline too. If the server forgets the account (its data was deleted),
+  the app says so and you can sign out from Settings.
+- **Rooms and messages**: list with unread badges, live updates, sending with
+  Sending / Sent / Failed (tap to retry), catch-up after a dropped connection.
+- **Lifecycle.** In the background Rust closes every room connection; back in
+  the foreground it reconnects them and catches up, and the list refreshes.
+- **Local notifications** for new messages in rooms you are not in, while the
+  app runs. There is no remote push (APNs), so nothing alerts you while the app
+  is suspended or closed.
 
 ## Where things live
 
 | What | Where |
 |------|-------|
-| Swift face of the Rust instance; the event stream as an `AsyncSequence` | `Sources/ChatBridge/ChatClient.swift` |
-| Rust `ChatError` → `ChatClientError` (`userMessage` for the UI) | `Sources/ChatBridge/ChatClientError.swift` |
-| Presentation state; applies Rust events, re-reads the store after `eventsDropped` | `Sources/ChatApp/ChatSession.swift` |
-| Local notifications | `Sources/ChatApp/LocalChatNotifier.swift` |
-| Screens | `Sources/ChatApp/ConversationListView.swift`, `ChatView.swift`, `ChatRootView.swift` |
-| Tests, including the demo against the real mock server | `Tests/ChatAppTests/` (`scripts/test-swift-host.sh examples/chat`) |
+| The Rust API: `ChatCore`, records, events, errors | `rust/src/lib.rs`, `rust/src/types.rs` |
+| Where the account is kept (Keychain, or memory in tests) | `rust/src/credentials.rs` |
+| Rust tests, against the real chat server in process | `rust/src/tests.rs` (`cargo test --manifest-path examples/chat/rust/Cargo.toml`) |
+| Presentation state; applies Rust events | `Sources/AppHost/ChatModel.swift` |
+| Screens | `Sources/AppHost/ContentView.swift`, `SignUpView.swift`, `ConversationListView.swift`, `ChatView.swift`, `SettingsView.swift` |
+| Swift tests, against the real chat server | `Tests/AppHostTests/` (`scripts/test-swift-host.sh examples/chat`, macOS) |
+| App settings (bundle id, permissions) | `forge.toml` (Forge writes Info.plist, App.entitlements and xtool.yml from it) |
 
 ## Notes
 
 - **Leaving a room never cancels a send.** `ChatView` sends from a detached
-  `Task`, and the bridge does not tie commands to task cancellation.
-- **Local notifications.** `ChatSession` watches every room when it has a
-  notifier, and posts Rust's `.notify` events through `LocalChatNotifier`
-  (banners in the foreground too). iOS asks for permission on first launch.
-  Only while the app runs: there is no push server. Design:
-  [docs/chat-demo.md](../../docs/chat-demo.md#notifications).
-- **Plain HTTP.** The demo server is `http://`. The Rust client opens its own
-  sockets, so App Transport Security (a URLSession policy) does not apply;
-  iOS local network privacy does, hence `NSLocalNetworkUsageDescription`.
-- **One store per server URL**, under Application Support, so switching
-  servers never mixes rooms.
-- `Generated/` is an identical copy of the bindings every iOS example uses
-  (`scripts/check-bindings.sh` keeps it in sync).
+  `Task`, and Rust finishes the send whatever the screen does.
+- **Plain HTTP.** The server is `http://`. The Rust client opens its own
+  sockets, so App Transport Security (a URLSession policy) does not apply; iOS
+  local network privacy does, hence `NSLocalNetworkUsageDescription`.
+- **One store per account**, under Application Support. Signing out deletes it
+  (the messages stay on the server).

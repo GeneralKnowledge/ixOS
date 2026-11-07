@@ -1,0 +1,46 @@
+# The Chat app's own Rust library: accounts, the chat engine (chat-core),
+# lifecycle, and the UniFFI API the SwiftUI host calls. `forge build`
+# rebuilds it and regenerates the bindings.
+[package]
+name = "chat-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a,
+# Swift module ForgeFFI), so the build scripts and host project never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# The platform-neutral chat engine, shared with chat-cli and the frozen
+# Android example.
+chat-core = { path = "../../chat-core", features = ["ureq"] }
+# Forge's runtime crates, from this checkout.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# Native services: the account token lives in the iOS Keychain.
+forge-services = { path = "../../../crates/forge-services" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+# The tests run the real chat server in process.
+chat-server = { path = "../../chat-server" }
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "net"] }
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

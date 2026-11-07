@@ -10,7 +10,21 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 | Typed errors for network, HTTP, protocol and host support | Weather has one error enum for one API |
 | The same domain on both hosts | Weather is iOS-only |
 
-It is deliberately **not** a production chat client. Non-goals: real auth, push notifications (the apps show *local* notifications while they run; see [Notifications](#notifications)), media messages, read receipts, typing indicators, encryption. PRs that add them will be declined; if the mock server needs persistence or auth, that is the signal the demo needs a real backend, which is out of scope.
+**Since 2026-11-07 Chat is the flagship ixOS acceptance app.** It grows milestone by milestone into a real iPhone messaging app, and every feature it gains has to work for real and exercise a real ixOS capability (accounts in the Keychain, the lifecycle, attachments, voice, notifications). The milestones:
+
+| Milestone | What | State |
+|---|---|---|
+| M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | This PR; device check in [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
+| M1 | Native messaging UI: previews, read state, bubbles, composer, haptics | Planned |
+| M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Planned |
+| M3 | Photos and documents | Planned |
+| M4 | Voice messages | Planned |
+| M5 | Notifications through forge-services, deep links, background work | Planned |
+| M6 | Physical iPhone acceptance and framework gap report | Planned |
+
+Still out of scope: remote push (APNs). Without it, new-message alerts appear only while the app runs, and the app never promises alerts while it is suspended or closed. Also out: end-to-end encryption, and a hosted server (the chat server runs on your own computer).
+
+The Android client ([examples/chat-android](../examples/chat-android/README.md)) is **frozen** at its phase-5 features while the iOS app grows: it keeps building, and its tests run against the new server in anonymous mode.
 
 ## Status
 
@@ -18,22 +32,26 @@ It is deliberately **not** a production chat client. Non-goals: real auth, push 
 |---|---|---|
 | 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
 | 2 | FFI boundary in `forge-ffi` (`ForgeChatApp`), Swift + Kotlin bindings | **Done.** `cargo test -p forge-ffi chat`; bindings regenerated |
-| 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat` | **Done.** End-to-end test: `cargo test -p mock-chat-server` |
+| 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat`; since M0 `examples/chat-server` | **Done.** End-to-end test: `cargo test -p chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
 | 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
 | 6 | CI matrix, README (screenshots from an iPhone, built on Linux), roadmap | **Done** |
+
+The phases above built the original FFI stress test. The flagship milestones (M0 onwards) are in the table at the top.
 
 ## Layout
 
 ```
 examples/chat-core        # Rust domain: types, ChatClient, ChatRepo (in-memory + HTTP/SSE), SSE parser, JSON store
-crates/forge-ffi/src/chat # ForgeChatApp, the UniFFI surface (like src/weather)
-scripts/mock-chat-server  # In-memory axum server: `make mock-chat`
+examples/chat/rust        # The iOS app's own crate (ChatCore): account + Keychain, lifecycle, the UniFFI API
+examples/chat-server      # The chat server: accounts, rooms, messages on disk (`make chat-server`)
+examples/chat-cli         # Terminal client on chat-core: be the other person (`make chat-cli`)
 examples/chat             # SwiftUI host
-examples/chat-android     # Compose host
+crates/forge-ffi/src/chat # ForgeChatApp, the frozen Android example's UniFFI surface
+examples/chat-android     # Compose host (frozen)
 ```
 
-`chat-core` is a workspace member, so `cargo test --workspace` (CI, `make test`, `forge check`) runs its tests.
+`chat-core`, `chat-server` and `chat-cli` are workspace members, so `cargo test --workspace` (CI, `make test`, `forge check`) runs their tests. `examples/chat/rust` has its own Cargo workspace, like every app from `forge init`; `scripts/check-app-crates.sh` checks it.
 
 ## The core, in one paragraph
 
@@ -136,48 +154,64 @@ One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::wr
 - Messages left `Sending` by a killed app load as `Failed`, so the user can retry them.
 - Keep it dumb: the whole file is rewritten (with fsync) per change. That is fine for a demo; a real client would batch writes. If the high-frequency demo shows it, batch in the FFI layer rather than making the store clever.
 
-## Wire protocol (what the mock server must serve)
+## Wire protocol (what the chat server serves)
 
 | Call | Request | Success |
 |---|---|---|
+| register | `POST /accounts` `{"display_name"}` | `201` `{"user_id","display_name","token"}` |
+| who am I | `GET /me` | `200` `{"user_id","display_name"}` |
 | list | `GET /rooms` | `200` `[{"id","title","last_message_at"}]` |
 | load | `GET /rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first, `sent_at > since` |
 | post | `POST /rooms/{id}/messages` `{"id","author","body"}` | `200`/`201` `Message`; **idempotent by `id`** |
 | stream | `GET /rooms/{id}/stream` | `200` `text/event-stream` |
 
-`Message` is `{"id","conversation_id","author","body","sent_at"}`. The stream sends `event: message` (a `Message`) and `event: room` (a room) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the mock server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
+Every call but `register` carries `Authorization: Bearer <token>`. The server takes a message's author from the token (`author` and `author_id`), whatever the body says; an unknown or missing token is `401`, which the client reports as `ChatError::Unauthorized`. Only a server started with `--allow-anonymous` also accepts calls without a token, with the author from the body: that is how the frozen Android example and curl post.
+
+`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers). The stream sends `event: message` (a `Message`) and `event: room` (a room) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
 
 `HttpRepo` implements this over `forge_net::HttpClient`. Phase 1 added `HttpClient::open_stream` (a response whose body is read incrementally) to forge-net, with a real implementation in `UreqClient` (timeout covers connect + headers only) and a buffering default for test doubles, so `StaticClient` can serve canned SSE bodies.
 
-## The mock server (Phase 3)
+## The chat server
+
+Started as an in-memory mock (phase 3); since M0 it is a small real server you run on your own computer:
 
 ```sh
-make mock-chat                                 # http://127.0.0.1:8787, rooms general, random, forge
-make mock-chat ARGS="--bind 0.0.0.0:8787"      # reachable from a phone on the same network
-make mock-chat ARGS="--heartbeat-ms 1000"      # faster heartbeats (default 15 s)
+make chat-server                                 # http://127.0.0.1:8787, data in ~/.local/share/ixos-chat/server.json
+make chat-server ARGS="--bind 0.0.0.0:8787"      # reachable from a phone on the same network
+make chat-server ARGS="--data /tmp/chat.json"    # somewhere else
+make chat-server ARGS="--in-memory --allow-anonymous"   # the old mock: nothing on disk, no accounts needed
 ```
 
-Try it with curl:
+- **Accounts.** `POST /accounts` creates one and returns a random 256-bit token. There is no password and no recovery: the token is the account. The app keeps it in the Keychain; `chat-cli` keeps its own in `~/.config/ixos-chat/cli-accounts.json` (owner-only).
+- **Storage.** One JSON file, rewritten atomically after every change and saved *before* clients hear about the change, so a message a phone has seen survives a server restart. The file holds the tokens, so it is created owner-readable only. A corrupt file, or one from a newer server, is refused, not overwritten.
+- **Limits.** For one person's devices on a home network: plain HTTP (put it behind a TLS proxy for anything else), no rate limiting, three fixed rooms (creating rooms comes with M1).
+- A stream subscriber that falls more than 1024 events behind is disconnected, and the client reconnects and catches up. Ctrl-C stops the server immediately (every change is already on disk).
+
+`chat-cli` is the other person in a conversation, from a Linux terminal:
 
 ```sh
-curl localhost:8787/rooms
-curl -N localhost:8787/rooms/general/stream          # leave running: events appear here
+make chat-cli ARGS='signup "Reuben (laptop)"'
+make chat-cli ARGS="rooms"
+make chat-cli ARGS="send general Hello from the terminal"
+make chat-cli ARGS="follow general"             # live, with chat-core's own reconnect logic
+```
+
+`--server URL` (or `CHAT_SERVER`) points it at another server. Curl still works against a server started with `--allow-anonymous`:
+
+```sh
 curl -X POST localhost:8787/rooms/general/messages \
   -H 'Content-Type: application/json' -d '{"author":"curl","body":"hi"}'
-curl 'localhost:8787/rooms/general/messages?since=0'
 ```
 
-`id` is optional on a POST from curl (the server assigns `srv-N`); clients always send their own. It answers `201` for a new message, `200` with the stored message when the id already exists, `400` for an empty author or body, and `404` for an unknown room. A stream subscriber that falls more than 1024 events behind is disconnected, and the client reconnects and catches up. Ctrl-C stops the server immediately, open streams included (no graceful shutdown, because killing the server is part of the demo). State is in memory only, so a restart starts empty.
-
-`scripts/mock-chat-server/tests/end_to_end.rs` runs chat-core's real HTTP + SSE client (`HttpRepo` over `UreqClient`) against the server over sockets: rooms, idempotent post, `since`, `404`s, and the six-step demo below with a real kill and restart on the same port.
+`examples/chat-server/tests/end_to_end.rs` runs chat-core's real HTTP + SSE client (`HttpRepo` over `UreqClient`) against the server over sockets: accounts and tokens, the server owning the author, data surviving a restart, rooms, idempotent post, `since`, `404`s, and the six-step demo below with a real kill and restart on the same port.
 
 ## The demo interaction
 
-This goes in the README with a GIF once the hosts exist. `killer_demo_interaction` in the chat-core tests runs the same script against the in-memory repo, and `killer_demo_interaction_over_real_sockets` in the mock server tests runs it over HTTP.
+This goes in the README with a GIF once the hosts exist. `killer_demo_interaction` in the chat-core tests runs the same script against the in-memory repo, and `killer_demo_interaction_over_real_sockets` in the chat server tests runs it over HTTP.
 
 1. Open a chat, type a message, tap send. It goes `Sending` → `Sent`.
 2. Navigate back to the list. Nothing is cancelled: a message in flight still completes.
-3. Kill the mock server. The open chat shows "reconnecting" (`StreamDisconnected { will_retry: true }`).
+3. Kill the chat server. The open chat shows "reconnecting" (`StreamDisconnected { will_retry: true }`).
 4. Send again. `ChatError::Network` comes back and the bubble turns red (`MessageStatusChanged { status: Failed }`).
 5. Restart the server, tap the failed message to retry: `Sending` → `Sent`. The stream reconnects on its own and catches up.
 6. While in the chat, post a message with curl. It appears within a second via `MessageReceived`:
@@ -240,7 +274,8 @@ Two separate problems, and the demo as planned only hits one of them:
 | Android TLS verifier not wired | Wired: `ForgeAndroid.init` + the verifier's Kotlin library. Until init, `https` fails at once with a typed error, never unverified (see above). |
 | Cancellation semantics differ between Swift and Kotlin | Explicit subscribe/unsubscribe, tested in Rust (`live_pumps()` reaches zero, the server sees the stream closed). |
 | Event queue overflow under load | `EventsDropped` + re-read from the store; tested with a 512-message burst. |
-| A blocked stream read outlives unsubscribe | Fixed in M13: each room streams on its own connection, which unsubscribe and shutdown close (`HttpClient::open_stream_cancellable`). Tested against the mock server with heartbeats 60 s apart. |
+| A blocked stream read outlives unsubscribe | Fixed in M13: each room streams on its own connection, which unsubscribe and shutdown close (`HttpClient::open_stream_cancellable`). Tested against the chat server with heartbeats 60 s apart. |
 | Store rewrite per message is slow on a phone | Measured in Phase 4/5; batch writes in the FFI layer if needed. |
 | Scope creep (media, auth, receipts) | Non-goals above. |
-| Mock server grows into a project | Single file, in-memory, no persistence. |
+| The server grows into a project | It stays a single-binary server for your own devices: one JSON file, no hosting, no push. |
+| The account token leaks | The app keeps it in the Keychain (this device only, after first unlock) and never passes it to Swift; the server and chat-cli files are owner-only. Plain HTTP on the LAN still exposes it to the network: use a TLS proxy beyond a home network. |

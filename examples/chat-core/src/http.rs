@@ -1,16 +1,22 @@
 //! [`ChatRepo`] over HTTP + Server-Sent Events, through `forge_net`.
 //!
-//! The wire protocol (what `scripts/mock-chat-server` serves):
+//! The wire protocol (what `examples/chat-server` serves):
 //!
 //! | Call | Request | Success |
 //! |---|---|---|
+//! | register | `POST {base}/accounts` `{"display_name"}` | `201` `{"user_id","display_name","token"}` |
+//! | who am I | `GET {base}/me` | `200` `{"user_id","display_name"}` |
 //! | list | `GET {base}/rooms` | `200` `[Room]` |
 //! | load | `GET {base}/rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first, `sent_at > since` |
 //! | post | `POST {base}/rooms/{id}/messages` `{"id","author","body"}` | `200`/`201` `Message` (idempotent by `id`) |
 //! | stream | `GET {base}/rooms/{id}/stream` | `200` `text/event-stream` |
 //!
 //! `Room` is `{"id","title","last_message_at"}` and `Message` is
-//! `{"id","conversation_id","author","body","sent_at"}` (times in Unix ms).
+//! `{"id","conversation_id","author","author_id","body","sent_at"}` (times in
+//! Unix ms; `author_id` may be missing, from servers or clients without
+//! accounts). With an account, every request carries
+//! `Authorization: Bearer <token>`; the server then takes the author from
+//! the token, and a `401` is [`ChatError::Unauthorized`].
 //! The stream sends `event: message` / `event: room` with that JSON as
 //! `data`, and `: ping` comment lines as heartbeats (the mock server sends
 //! one every 15 s). Unknown event names and JSON fields are ignored. A `404`
@@ -46,6 +52,8 @@ struct WireMessage {
     id: String,
     conversation_id: String,
     author: String,
+    #[serde(default)]
+    author_id: String,
     body: String,
     sent_at: i64,
 }
@@ -55,6 +63,49 @@ struct WirePost<'a> {
     id: &'a str,
     author: &'a str,
     body: &'a str,
+}
+
+/// An account on the chat server. The token is a credential: keep it in the
+/// platform's secure store (the iOS Keychain), never in plain files.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Account {
+    pub user_id: String,
+    pub display_name: String,
+    pub token: String,
+}
+
+/// Who the server says a token belongs to.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Identity {
+    pub user_id: String,
+    pub display_name: String,
+}
+
+#[derive(Serialize)]
+struct WireRegister<'a> {
+    display_name: &'a str,
+}
+
+/// Longest display name accepted, in characters (the server's limit too).
+pub const MAX_DISPLAY_NAME_CHARS: usize = 40;
+
+/// Trims `name` and checks it is usable as a display name.
+pub fn validate_display_name(name: &str) -> Result<String, ChatError> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(ChatError::invalid("display name is empty"));
+    }
+    if name.chars().count() > MAX_DISPLAY_NAME_CHARS {
+        return Err(ChatError::invalid(format!(
+            "display name is longer than {MAX_DISPLAY_NAME_CHARS} characters"
+        )));
+    }
+    if name.chars().any(char::is_control) {
+        return Err(ChatError::invalid(
+            "display name contains control characters",
+        ));
+    }
+    Ok(name.to_string())
 }
 
 impl From<WireRoom> for RemoteConversation {
@@ -73,6 +124,7 @@ impl From<WireMessage> for Message {
             id: m.id,
             conversation_id: m.conversation_id,
             author: m.author,
+            author_id: m.author_id,
             body: m.body,
             sent_at: m.sent_at,
             status: MessageStatus::Sent,
@@ -86,6 +138,8 @@ pub struct HttpRepo {
     client: Arc<dyn HttpClient>,
     base_url: String,
     timeout: Duration,
+    /// The account token, sent as `Authorization: Bearer`.
+    token: Option<String>,
 }
 
 impl HttpRepo {
@@ -94,6 +148,54 @@ impl HttpRepo {
             client,
             base_url: base_url.into().trim_end_matches('/').to_string(),
             timeout: DEFAULT_TIMEOUT,
+            token: None,
+        }
+    }
+
+    /// Signs every request with this account token.
+    pub fn with_token(mut self, token: impl Into<String>) -> Self {
+        self.token = Some(token.into());
+        self
+    }
+
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Creates an account named `display_name` and returns it with its
+    /// token. Needs no token itself.
+    pub fn register(&self, display_name: &str) -> Result<Account, ChatError> {
+        let display_name = validate_display_name(display_name)?;
+        let body = serde_json::to_vec(&WireRegister {
+            display_name: &display_name,
+        })
+        .map_err(ChatError::protocol)?;
+        let request = Request::post(format!("{}/accounts", self.base_url), body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json");
+        let response = self.send(request, None)?;
+        let account: Account = decode(&response.body)?;
+        if account.token.is_empty() || account.user_id.is_empty() {
+            return Err(ChatError::protocol(
+                "server returned an account without a token",
+            ));
+        }
+        Ok(account)
+    }
+
+    /// Who the server says this repo's token belongs to.
+    /// [`ChatError::Unauthorized`] if it does not know the token.
+    pub fn identity(&self) -> Result<Identity, ChatError> {
+        let request =
+            Request::get(format!("{}/me", self.base_url)).header("Accept", "application/json");
+        let response = self.send(request, None)?;
+        decode(&response.body)
+    }
+
+    fn authorised(&self, request: Request) -> Request {
+        match &self.token {
+            Some(token) => request.header("Authorization", format!("Bearer {token}")),
+            None => request,
         }
     }
 
@@ -123,7 +225,9 @@ impl HttpRepo {
     }
 
     fn send(&self, request: Request, room: Option<&str>) -> Result<Response, ChatError> {
-        let response = self.client.send(&request.timeout(self.timeout))?;
+        let response = self
+            .client
+            .send(&self.authorised(request).timeout(self.timeout))?;
         check_status(response.status, &response.body, room)?;
         Ok(response)
     }
@@ -133,6 +237,15 @@ impl HttpRepo {
 fn check_status(status: u16, body: &[u8], room: Option<&str>) -> Result<(), ChatError> {
     if (200..300).contains(&status) {
         return Ok(());
+    }
+    if status == 401 {
+        return Err(ChatError::Unauthorized {
+            reason: String::from_utf8_lossy(body)
+                .trim()
+                .chars()
+                .take(MAX_REASON_CHARS)
+                .collect(),
+        });
     }
     if let (404, Some(room)) = (status, room) {
         return Err(ChatError::NotFound {
@@ -229,7 +342,8 @@ impl ChatRepo for HttpRepo {
         cancel: &CancelHandle,
     ) -> Result<Box<dyn RemoteStream>, ChatError> {
         let url = self.room_url(conversation_id, "/stream");
-        let request = Request::get(url)
+        let request = self
+            .authorised(Request::get(url))
             .header("Accept", "text/event-stream")
             .header("Cache-Control", "no-cache")
             .timeout(self.timeout);
@@ -409,6 +523,54 @@ mod tests {
     }
 
     #[test]
+    fn accounts_register_and_sign_requests() {
+        let (repo, client) = repo(
+            StaticClient::new()
+                .route(
+                    Method::Post,
+                    format!("{BASE}/accounts"),
+                    json(
+                        201,
+                        r#"{"user_id":"u1","display_name":"Ana","token":"t0k"}"#,
+                    ),
+                )
+                .route(
+                    Method::Get,
+                    format!("{BASE}/me"),
+                    json(401, "unknown token"),
+                ),
+        );
+        let account = repo.register("  Ana ").unwrap();
+        assert_eq!(account.user_id, "u1");
+        let sent: serde_json::Value = serde_json::from_slice(&client.received()[0].body).unwrap();
+        assert_eq!(sent, serde_json::json!({"display_name":"Ana"}));
+        assert!(matches!(
+            repo.register(" "),
+            Err(ChatError::InvalidInput { .. })
+        ));
+
+        let signed = HttpRepo::new(client.clone(), BASE).with_token("t0k");
+        assert_eq!(
+            signed.identity().unwrap_err(),
+            ChatError::Unauthorized {
+                reason: "unknown token".into()
+            }
+        );
+        let last = client.received().pop().unwrap();
+        assert!(last
+            .headers
+            .iter()
+            .any(|h| h.name == "Authorization" && h.value == "Bearer t0k"));
+    }
+
+    #[test]
+    fn display_names_are_trimmed_and_bounded() {
+        assert_eq!(validate_display_name(" Reuben ").unwrap(), "Reuben");
+        assert!(validate_display_name(&"x".repeat(MAX_DISPLAY_NAME_CHARS + 1)).is_err());
+        assert!(validate_display_name("a\nb").is_err());
+    }
+
+    #[test]
     fn transport_errors_are_network_errors() {
         let (repo, _) = repo(StaticClient::new().route(
             Method::Get,
@@ -433,6 +595,7 @@ mod tests {
             id: "m1".into(),
             conversation_id: "general".into(),
             author: "me".into(),
+            author_id: String::new(),
             body: "hi".into(),
         };
         let stored = repo.post_message(&out).unwrap();

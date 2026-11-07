@@ -26,8 +26,8 @@ import uniffi.forge_ffi.ForgeChatApp
 
 /**
  * Drives [ChatSession] against the real Rust core through the generated Kotlin bindings, and
- * the demo interaction against the real mock server. Needs the host builds:
- * `cargo build -p forge-ffi -p mock-chat-server` from the workspace root.
+ * the demo interaction against the real chat server. Needs the host builds:
+ * `cargo build -p forge-ffi -p chat-server` from the workspace root.
  */
 class ChatSessionTest {
     private lateinit var dir: File

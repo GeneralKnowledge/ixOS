@@ -119,6 +119,8 @@ impl InMemoryRepo {
             id: format!("srv-{}-{}", room.id, room.messages.len() + 1),
             conversation_id: conversation_id.into(),
             author: author.into(),
+            // Injected authors stand for accounts named after them.
+            author_id: author.into(),
             body: body.into(),
             sent_at: room.next_sent_at(),
             status: MessageStatus::Sent,
@@ -229,6 +231,7 @@ impl ChatRepo for InMemoryRepo {
             id: outgoing.id.clone(),
             conversation_id: outgoing.conversation_id.clone(),
             author: outgoing.author.clone(),
+            author_id: outgoing.author_id.clone(),
             body: outgoing.body.clone(),
             sent_at: room.next_sent_at(),
             status: MessageStatus::Sent,
@@ -327,6 +330,7 @@ mod tests {
             id: id.into(),
             conversation_id: "general".into(),
             author: "me".into(),
+            author_id: String::new(),
             body: body.into(),
         }
     }

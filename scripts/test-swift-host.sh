@@ -35,12 +35,12 @@ LIB_DIR="$NATIVE_OUT/macos-host/lib"
 mkdir -p "$LIB_DIR"
 cp "$CARGO_TARGET/debug/libforge_ffi.a" "$LIB_DIR/"
 
-# The Chat example's tests drive the real mock chat server (they skip the
-# tests that need it when CHAT_MOCK_SERVER is unset).
+# The Chat example's tests drive the real chat server (they skip the tests
+# that need it when CHAT_SERVER is unset).
 if [[ "$(basename "$PACKAGE")" == "chat" ]]; then
-  echo "[forge] Building the mock chat server for the Chat tests..."
-  cargo build -p mock-chat-server
-  export CHAT_MOCK_SERVER="$ROOT/target/debug/mock-chat-server"
+  echo "[forge] Building the chat server for the Chat tests..."
+  (cd "$ROOT" && cargo build -p chat-server)
+  export CHAT_SERVER="$ROOT/target/debug/chat-server"
 fi
 
 echo "[forge] Running swift test in $PACKAGE..."
