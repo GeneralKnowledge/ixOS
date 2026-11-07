@@ -47,6 +47,10 @@ forge_runtime::app_shell! {
     events: AppEvents(AppEvent::EventsDropped),
 }
 
+// `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
+// into the same log as Rust (system log, recent records, `forge device`).
+forge_runtime::log_export!();
+
 /// Schema version of `notes.json`. Bump it (and add a migration) when
 /// [`StoredNotes`] changes shape.
 const STORE_VERSION: u32 = 1;

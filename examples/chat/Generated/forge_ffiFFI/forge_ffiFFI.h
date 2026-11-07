@@ -627,6 +627,16 @@ void uniffi_forge_ffi_fn_method_securestore_set(uint64_t ptr, RustBuffer key, Ru
 void uniffi_forge_ffi_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
+void uniffi_forge_ffi_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG_ENABLED
+int8_t uniffi_forge_ffi_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_SERVICES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_SERVICES
 void uniffi_forge_ffi_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
@@ -918,6 +928,18 @@ void ffi_forge_ffi_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_VOID
 void ffi_forge_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG
+uint16_t uniffi_forge_ffi_checksum_func_forge_log(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG_ENABLED
+uint16_t uniffi_forge_ffi_checksum_func_forge_log_enabled(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES

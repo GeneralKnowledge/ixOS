@@ -20,6 +20,11 @@
 //!   previous panic hook runs, so it reaches the platform log even when the
 //!   host only sees a UniFFI error.
 //!
+//! - **Host code.** [`log_export!`](crate::log_export) gives the Swift (or
+//!   Kotlin) host a `forge_log` call that writes into this same pipeline, so
+//!   its records reach the platform log, [`recent`] and the `forge device`
+//!   live stream next to Rust's. On iOS, `ForgeLog` wraps it.
+//!
 //! Records are text written by app code. Never log secrets: tokens,
 //! passwords, Keychain contents, message bodies.
 //!
@@ -158,6 +163,25 @@ fn initial_level() -> LevelFilter {
         .unwrap_or(default)
 }
 
+/// Writes one record from host code (Swift, Kotlin) with `category` as its
+/// target ("host" when empty). Installs the pipeline first if the app has not.
+pub fn write_from_host(level: Level, category: &str, message: &str) {
+    init();
+    let category = category.trim();
+    let target = if category.is_empty() {
+        "host"
+    } else {
+        category
+    };
+    log::log!(target: target, level, "{message}");
+}
+
+/// Whether a record at `level` would be kept, so a host can skip building
+/// an expensive message.
+pub fn enabled(level: Level) -> bool {
+    level <= log::max_level()
+}
+
 /// Sets the most detailed level that is recorded.
 pub fn set_level(level: LevelFilter) {
     log::set_max_level(level);
@@ -294,6 +318,21 @@ mod tests {
         remove_sink(id);
         warn!(target: "test-sink", "after removal");
         assert!(!lock(&sink.0).iter().any(|r| r.message == "after removal"));
+
+        let id = add_sink(sink.clone());
+        write_from_host(Level::Warn, "Chat", "picker failed");
+        write_from_host(Level::Info, "  ", "no category");
+        write_from_host(Level::Trace, "Chat", "too detailed");
+        assert!(enabled(Level::Debug) && !enabled(Level::Trace));
+        let seen = lock(&sink.0).clone();
+        assert!(seen
+            .iter()
+            .any(|r| r.target == "Chat" && r.level == Level::Warn && r.message == "picker failed"));
+        assert!(seen
+            .iter()
+            .any(|r| r.target == "host" && r.message == "no category"));
+        assert!(!seen.iter().any(|r| r.message == "too detailed"));
+        remove_sink(id);
 
         let caught = std::panic::catch_unwind(|| panic!("boom in test"));
         assert!(caught.is_err());
