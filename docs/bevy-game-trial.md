@@ -86,7 +86,7 @@ We try route 1 first and fall back to route 2 if xtool can't sign a bundle it di
 
 The patch adds one file and touches two lines. It is kept in `examples/kataster-ios/patch/` as a patch against d0a67e7.
 
-- **`Cargo.toml`:** add `virtual_joystick = "2.6"`.
+- **`Cargo.toml`:** add `virtual_joystick = "=2.6.0"` (iOS only).
 - **`src/main.rs`:** add `mod mobile;` and `app.add_plugins(mobile::MobilePlugin)`, compiled only for iOS.
 - **`src/mobile.rs`** (new, iOS only):
   - A floating virtual joystick on the left half of the screen. Up means thrust; left and right mean rotate. It presses Kataster's own `PlayerAction`s through leafwing's `ActionState` (in leafwing's `ManualControl` set), so the game logic is unchanged.
@@ -107,7 +107,7 @@ Reuse Forge Device and the UI testing work. Don't build anything game-specific.
 |---|---|---|
 | Logs | `forge device logs --process kataster` (Bevy writes os_log) | Our syslog relay drops Info level, so only Bevy warnings and errors show. Fine for a first run; to fix, route Bevy's tracing through `forge_runtime::logging` |
 | Crashes | `forge device crashes --app kataster --pull crashes/` | None expected |
-| Frame rate | Bevy's `FrameTimeDiagnosticsPlugin` logged at warn level once a second, in the trial patch | No Forge performance channel yet. The `forge-devtools` live connection could carry FPS, memory and thermal state once a Rust-only app can link it |
+| Frame rate | Bevy's `FrameTimeDiagnosticsPlugin` logged at warn level every five seconds, in the trial patch | No Forge performance channel yet. The `forge-devtools` live connection could carry FPS, memory and thermal state once a Rust-only app can link it |
 | Thermal and memory | Not available: the Device Lab's `device_status` service needs the Swift host | Needs a Rust-only path to these signals (`ProcessInfo` via objc2) |
 | Automated play | WebDriverAgent (the "Automate testing on a real iPhone" work) can launch, background, foreground and rotate the app | Bevy draws everything itself and exposes no iOS accessibility tree, so WDA can't find buttons by identifier. Don't fall back to coordinates. Use in-game test commands (press action X, jump to state Y) through `forge-devtools` later |
 
@@ -139,6 +139,8 @@ Reuse Forge Device and the UI testing work. Don't build anything game-specific.
 - **lld warns:** "This version of lld does not support linking for platform iOS. Proceed at your own risk." It is the same lld that xtool uses for every Forge app, but only a launch on the phone will prove the binary works.
 - **Signing:** xtool 1.24.0 has no sign-only command for a bundle it didn't build. `xtool install <app>` signs and installs in one step. `xtool dev build --sign --ipa` signs locally, but only for SwiftPM projects. So we sign at install time for now. A local signing step (a stub SwiftPM wrapper, or rcodesign with xtool's certificate) is a gap.
 
+**Patched build, same day:** the touch-controls patch compiled unchanged against Bevy 0.17, leafwing 0.18 and virtual_joystick 2.6.0. `build.sh` worked except for stripping (the Swift toolchain has `llvm-objcopy` but no `llvm-strip`), fixed in 3a668a2. The app is 87 MB with the binary stripped; keep the unstripped one for crash symbolication.
+
 Not yet run on the iPhone.
 
 ## Expected gaps in ixOS
@@ -154,7 +156,7 @@ Not yet run on the iPhone.
 
 ## Risks
 
-- **`xtool install` on a bundle xtool didn't build.** It deep-signs `.app` and `.ipa` inputs with rcodesign and rewrites the bundle ID to `XTL-<team>.<id>`, but we haven't tried it with a non-SwiftPM executable.
+- **`xtool install` on a bundle xtool didn't build.** It deep-signs `.app` and `.ipa` inputs with rcodesign and rewrites the bundle ID to `XTL-<team>.<id>`, but we haven't tried it with a non-SwiftPM executable. The UI testing work (#61) installs Appium's prebuilt WebDriverAgent runner the same way, so the signing path itself is exercised.
 - **Linking a large Rust binary with `ld64.lld` against the SDK's `.tbd` stubs.** Our SwiftPM builds already link with it, but rustc drives it differently.
 - **`bevy_hanabi` compute shaders on Metal.** They should work, but if they fail we can turn the particles off with a cfg in the patch.
 - **Release build time on the laptop.** The first Bevy build takes several minutes.
