@@ -31,7 +31,7 @@ The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Rela
 | App-owned Rust crate with UniFFI async exports | Yes | Yes | Yes | Yes: starter, Pocket Library | No: built with xtool, install not recorded | Yes: app-crate.md | Every example owns its crate; the Android Chat example keeps a frozen copy of the old Chat API in its own crate |
 | Native SwiftUI structure (navigation, lists, sheets, search) | Yes: starter | n/a | Yes | Yes: starter, Pocket Library | No | Yes: ios-ui.md | Older examples use `ObservableObject` |
 | Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object) | Yes: forge-runtime | Yes | n/a | Yes: starter, Chat, Pocket Library | No | Partial: app-crate.md | |
-| Logging (platform log, recent records, extra sinks, panics logged) | Yes: forge-runtime | Yes: `forge_runtime::logging` | n/a: Rust writes the system log via `syslog` | Yes: starter and every example call `logging::init` | No: system-log output not yet checked on the phone | Partial: app-crate.md, architecture.md | Swift code logs with `os.Logger` directly; no file sink yet |
+| Logging (platform log, recent records, extra sinks, panics logged) | Yes: forge-runtime | Yes: `forge_runtime::logging` | n/a: Rust writes the system log via `syslog` | Yes: starter and every example call `logging::init` | Partial: Warn reached the USB log on iPhone (iOS 26.3.1, 2026-11-07); Info did not (LOG_INFO dropped by the relay), fixed to notice priority, recheck pending | Partial: app-crate.md, architecture.md | Swift code logs with `os.Logger` directly; no file sink yet |
 | Lifecycle phases reported to Rust | Yes: forge-runtime | Yes | Yes: `.forgeLifecycle` | Yes: starter | No | Yes | |
 | Background work and cancellation in Rust | Yes: forge-runtime | Yes | n/a | Yes | No | Yes | Stops when iOS suspends the app |
 | `forge.toml` app config (Info.plist, entitlements, xtool.yml) | Yes | n/a | n/a | Yes | Partial: builds only | Yes: app-config.md | No asset catalogs on Linux |
@@ -129,6 +129,16 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | ARKit | No | n/a | No | No | No | No | Device only |
 | Core ML | No | No | No | No | No | No | `.mlmodel` compiles only on a Mac |
 | NFC | No | No | No | No | No | No | Paid team |
+
+## Forge Device (W12)
+
+Developer tooling on the Linux computer, not app capabilities, so "Rust API" and "iOS native" are n/a. "In an app" means used against an app on the phone.
+
+| Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
+|---|---|---|---|---|---|---|---|
+| Phone details from Linux (`forge device list`, `info`) | Yes: forge-device | n/a | n/a | n/a | Yes: iPhone16,2, iOS 26.3.1, 2026-11-07 | Partial: forge-device.md | USB only; Wi-Fi-synced phones are listed but untested |
+| Live system log, filtered by app (`forge device logs`) | Yes: forge-device | n/a | n/a | Yes: any app; Rust logs via `forge_runtime::logging` | Yes: iPhone, iOS 26.3.1, 2026-11-07 (`--grep`, `--process`, `--limit`) | Partial: forge-device.md | Every `forge init` app runs as `AppHostXtool`, so filter on the log target; no OS trace (structured `os_log` metadata) yet |
+| Crash reports (`forge device crashes`) | Yes: forge-device | n/a | n/a | Yes: any app | Yes: iPhone, iOS 26.3.1, 2026-11-07 (listed 161, pulled 4) | Partial: forge-device.md | No symbolication yet |
 
 ## Performance
 

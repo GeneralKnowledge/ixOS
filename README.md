@@ -60,6 +60,7 @@ CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app out
 crates/forge-storage   # Atomic file writes and versioned JSON documents
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, lifecycle, app_shell!, logging, Android HTTPS init
+crates/forge-device    # `forge device`: a connected iPhone's details, logs and crash reports from Linux (docs/forge-device.md)
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-cli       # `forge` CLI
 examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
