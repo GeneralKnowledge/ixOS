@@ -333,6 +333,9 @@ fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, Strin
 pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Result<(), String> {
     let (app, _cfg) = crate::commands::ios_project(root, project)?;
     let app = app.canonicalize().unwrap_or(app);
+    // The bindings must match the Rust being checked. Generated first, so a
+    // machine without Swift still leaves Generated/ matching the Rust API.
+    crate::commands::bindings_generate_for_project(runner, root, &app)?;
     if std::env::var_os("FORGE_SWIFT_DOCKER").is_none()
         && !crate::commands::which_program(runner, "swift")
     {
@@ -341,8 +344,6 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
                 .into(),
         );
     }
-    // The bindings must match the Rust being checked.
-    crate::commands::bindings_generate_for_project(runner, root, &app)?;
     let lib = host_library(runner, &app)?;
     let sel = select(&app);
     if sel.sources.is_empty() {
