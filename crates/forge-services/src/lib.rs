@@ -39,16 +39,20 @@
 //! crate keeps one namespace. The logic that does not cross the boundary
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
+mod feed;
 pub mod link;
 pub mod notify;
+mod optional;
+pub mod sensors;
 mod slot;
 
+pub use feed::{Feed, Watch};
 pub use slot::Slot;
 
 /// Version of the interface between the Rust items and the Swift adapters.
 /// The adapters check it at install time; bump it whenever a trait, record
 /// or enum in [`native_services!`] changes shape.
-pub const VERSION: u32 = 1;
+pub const VERSION: u32 = 3;
 
 /// Longest secure-store key accepted.
 pub const MAX_SECRET_KEY_LEN: usize = 256;
@@ -89,9 +93,17 @@ pub fn validate_directory(name: &str, path: &str) -> Result<(), String> {
 ///
 /// The calling crate must depend on `uniffi` and `async-trait` directly
 /// (the `forge init` template does). Call it once, at the crate root.
+///
+/// Optional services are named in the call and become submodules of
+/// `native`; only their Swift adapters are copied into the app:
+///
+/// ```ignore
+/// forge_services::native_services!(connectivity, device_status, motion, location, bluetooth);
+/// // native::connectivity::ConnectivityService::installed()?.current()
+/// ```
 #[macro_export]
 macro_rules! native_services {
-    () => {
+    ($($service:ident),* $(,)?) => {
         /// Native platform services (Keychain, directories, notifications,
         /// permissions, deep links), implemented by the host app.
         ///
@@ -170,12 +182,23 @@ macro_rules! native_services {
             }
 
             /// A permission the app can ask the user for. More cases (camera,
-            /// photos, location) are added as their adapters are; see
-            /// docs/native-services.md.
+            /// photos, microphone) are added as their adapters are; see
+            /// docs/native-services.md. A permission whose service the app
+            /// did not select reports `Unsupported`.
             #[derive(::uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
             pub enum NativePermission {
                 /// Alerts, sounds and badges from local notifications.
                 Notifications,
+                /// Location while the app is in use (`location` service).
+                Location,
+                /// Motion & Fitness: the barometer, pedometer and activity
+                /// (`motion` service). The other motion sensors need none.
+                Motion,
+                /// Bluetooth (`bluetooth` service).
+                Bluetooth,
+                /// Recording audio (`audio` service, since interface v3).
+                /// Needs `microphone` under `[ios.permissions]` in forge.toml.
+                Microphone,
             }
 
             /// The same states on every platform.
@@ -668,6 +691,8 @@ macro_rules! native_services {
                     }
                 }
             }
+
+            $( $crate::__native_service!($service); )*
         }
     };
 }

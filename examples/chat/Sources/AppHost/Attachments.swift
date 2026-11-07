@@ -7,6 +7,10 @@ import UniformTypeIdentifiers
 /// Photos and documents (M3). Rust keeps, uploads, downloads and checks the
 /// files; Swift picks them, shrinks photos, draws thumbnails and previews.
 
+/// Swift-side attachment failures, in the same log as Rust's
+/// (`forge device logs`, the live stream).
+let attachmentLog = ForgeLog("Attachments")
+
 /// A file picked in the composer, waiting to be sent with the next message.
 /// `url` is a private copy in the temporary directory: Rust copies it again
 /// into its attachment store when it is sent.
@@ -37,42 +41,16 @@ enum AttachmentFiles {
     }
 
     /// A picked photo as a JPEG of at most `maxPhotoPixels`, the right way
-    /// up, without its location or other metadata. ImageIO decodes straight
-    /// to the smaller size, so a 12 MP photo never sits in memory at full
-    /// size. Runs off the main actor.
+    /// up, without its location or other metadata (`ForgeImages`). Runs off
+    /// the main actor.
     static func preparePhoto(_ data: Data, takenAt date: Date = .now) async throws -> StagedFile {
-        try await Task.detached(priority: .userInitiated) {
-            guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPhotoPixels,
-            ]
-            guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
-            else {
-                throw CocoaError(.fileReadCorruptFile)
-            }
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "yyyyMMdd_HHmmss"
-            let name = "IMG_\(formatter.string(from: date)).jpg"
-            let url = try stagingFolder().appendingPathComponent(name)
-            guard
-                let destination = CGImageDestinationCreateWithURL(
-                    url as CFURL, UTType.jpeg.identifier as CFString, 1, nil)
-            else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            CGImageDestinationAddImage(
-                destination, image,
-                [kCGImageDestinationLossyCompressionQuality: 0.8] as CFDictionary)
-            guard CGImageDestinationFinalize(destination) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            return StagedFile(url: url, name: name, mime: "image/jpeg")
-        }.value
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd_HHmmss"
+        let name = "IMG_\(formatter.string(from: date)).jpg"
+        let url = try stagingFolder().appendingPathComponent(name)
+        try await ForgeImages.writeDownscaledJPEG(from: data, maxPixels: maxPhotoPixels, to: url)
+        return StagedFile(url: url, name: name, mime: "image/jpeg")
     }
 
     /// A document from the Files picker, copied while its security scope is
@@ -121,28 +99,19 @@ enum AttachmentFiles {
         return name
     }
 
-    /// A decoded image handed from a background task to the main actor. A
-    /// `CGImage` is immutable, so sharing it is safe.
-    final class Decoded: @unchecked Sendable {
-        let image: CGImage?
-        init(_ image: CGImage?) { self.image = image }
+    /// A thumbnail of the image at `url`, at most `maxPixels` on its longer
+    /// side, decoded off the main actor (`ForgeImages`).
+    static func thumbnail(of url: URL, maxPixels: Int) async -> CGImage? {
+        await ForgeImages.thumbnail(of: url, maxPixels: maxPixels)
     }
 
-    /// A thumbnail of the image at `url`, at most `maxPixels` on its longer
-    /// side, decoded off the main actor.
-    static func thumbnail(of url: URL, maxPixels: Int) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) { () -> Decoded in
-            guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
-                return Decoded(nil)
-            }
-            let options: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxPixels,
-            ]
-            return Decoded(CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary))
-        }.value.image
+    /// "0:07", "1:23".
+    static func timeLabel(_ seconds: TimeInterval) -> String {
+        Duration.seconds(max(0, seconds.rounded())).formatted(.time(pattern: .minuteSecond))
     }
+
+    /// The name a voice message is sent under.
+    static let voiceMessageName = "Voice message.m4a"
 
     /// "2 KB", "1.4 MB".
     static func sizeLabel(_ bytes: UInt64) -> String {
@@ -161,47 +130,63 @@ enum AttachmentFiles {
     }
 }
 
+extension ChatAttachment {
+    /// A voice message (or any audio file): played inline in its bubble.
+    var isAudio: Bool { mime.hasPrefix("audio/") }
+}
+
 extension ChatMessage {
     /// The text to show where only a line fits (a list row, a quote): the
     /// body, or "Photo" / the file name for a message without text.
     var summary: String {
         if !body.isEmpty || attachments.isEmpty { return body }
         let first = attachments[0]
-        let what = first.isImage ? String(localized: "Photo") : first.name
+        let what =
+            first.isImage
+            ? String(localized: "Photo")
+            : first.isAudio ? String(localized: "Voice message") : first.name
         return attachments.count > 1 ? "\(what) +\(attachments.count - 1)" : what
     }
 }
 
-/// The attachments at the top of a bubble: photos as thumbnails, other
-/// files as rows. Tapping one opens it in Quick Look.
+/// The attachments at the top of a bubble: photos as thumbnails, voice
+/// messages as players, other files as rows. Tapping a photo or file opens
+/// it in Quick Look.
 struct AttachmentsView: View {
     let model: ChatModel
     let attachments: [ChatAttachment]
     let onMine: Bool
     let open: (ChatAttachment) -> Void
+    let play: (ChatAttachment) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(attachments.enumerated()), id: \.offset) { _, attachment in
-                Button {
-                    open(attachment)
-                } label: {
-                    if attachment.isImage {
-                        PhotoThumbnail(model: model, attachment: attachment)
-                    } else {
-                        DocumentRow(attachment: attachment, onMine: onMine)
+                if attachment.isAudio {
+                    VoiceMessageRow(
+                        model: model, attachment: attachment, onMine: onMine,
+                        play: { play(attachment) })
+                } else {
+                    Button {
+                        open(attachment)
+                    } label: {
+                        if attachment.isImage {
+                            PhotoThumbnail(model: model, attachment: attachment)
+                        } else {
+                            DocumentRow(attachment: attachment, onMine: onMine)
+                        }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        attachment.isImage
+                            ? String(localized: "Photo, \(attachment.name)")
+                            : String(
+                                localized:
+                                    "Document, \(attachment.name), \(AttachmentFiles.sizeLabel(attachment.size))"
+                            )
+                    )
+                    .accessibilityHint("Opens it")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(
-                    attachment.isImage
-                        ? String(localized: "Photo, \(attachment.name)")
-                        : String(
-                            localized:
-                                "Document, \(attachment.name), \(AttachmentFiles.sizeLabel(attachment.size))"
-                        )
-                )
-                .accessibilityHint("Opens it")
             }
         }
     }
@@ -274,6 +259,86 @@ private struct DocumentRow: View {
                 .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
         )
     }
+}
+
+/// A voice message in a bubble: play/pause, its waveform (filled as it
+/// plays) and its length. The file is fetched and measured when the bubble
+/// appears; voice messages are small.
+private struct VoiceMessageRow: View {
+    let model: ChatModel
+    let attachment: ChatAttachment
+    let onMine: Bool
+    let play: () -> Void
+    @State private var url: URL?
+    @State private var bars: [Float] = []
+    @State private var duration: TimeInterval?
+    @State private var failed = false
+
+    private var player: ForgeAudioPlayer { ForgeAudioPlayer.shared }
+    private var playing: Bool { url != nil && player.current == url && player.isPlaying }
+    private var progress: Double { url.map { player.progress(of: $0) } ?? 0 }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Button(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill", action: play)
+                .labelStyle(.iconOnly)
+                .font(.title2)
+                .frame(width: 32, height: 32)
+                .disabled(url == nil)
+            if failed {
+                Label("Not available", systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+            } else {
+                WaveformView(bars: bars, progress: progress, onMine: onMine)
+                    .frame(width: 140, height: 28)
+            }
+            Text(AttachmentFiles.timeLabel(playing || progress > 0 ? player.position : duration ?? 0))
+                .font(.caption.monospacedDigit())
+                .opacity(0.8)
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(
+            String(localized: "Voice message, \(AttachmentFiles.timeLabel(duration ?? 0))"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction { play() }
+        .task(id: attachment.id) {
+            guard url == nil else { return }
+            guard let file = await model.localFile(for: attachment) else {
+                failed = true
+                return
+            }
+            duration = try? ForgeAudio.duration(of: file)
+            bars = (try? await ForgeAudio.waveform(of: file, bars: 28)) ?? []
+            url = file
+        }
+    }
+}
+
+/// Bars for a voice message, filled up to `progress` (0 to 1).
+struct WaveformView: View {
+    let bars: [Float]
+    let progress: Double
+    let onMine: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            let count = max(bars.count, 1)
+            let step = geometry.size.width / CGFloat(count)
+            HStack(alignment: .center, spacing: step * 0.35) {
+                ForEach(Array(bars.enumerated()), id: \.offset) { index, level in
+                    Capsule()
+                        .fill(Double(index) / Double(count) < progress ? played : unplayed)
+                        .frame(height: max(3, geometry.size.height * CGFloat(level)))
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private var played: Color { onMine ? .white : .accentColor }
+    private var unplayed: Color { onMine ? .white.opacity(0.4) : .secondary.opacity(0.4) }
 }
 
 /// Files picked for the next message, above the text field. Tap × to drop

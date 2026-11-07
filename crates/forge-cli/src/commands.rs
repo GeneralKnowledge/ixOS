@@ -219,6 +219,10 @@ android = true
     }
 
     println!("Created Forge app at {}", dest.display());
+    crate::report::set_data(serde_json::json!({
+        "path": dest.display().to_string(),
+        "platform": platform,
+    }));
     match &workspace {
         WorkspaceRef::Relative(_) => {}
         WorkspaceRef::Absolute(ws) => println!(
@@ -918,6 +922,13 @@ pub fn run_ios(
     package_ios(runner, root, &project_dir, &cfg, devtools)?;
     println!("[forge] Building and installing ({})", configuration.name());
     builder.run(runner, &project_dir, configuration)?;
+    // xtool installs but cannot launch on iOS 17+: someone opens the app.
+    crate::report::set_data(serde_json::json!({
+        "configuration": configuration.name(),
+        "devtools": devtools,
+        "installed": true,
+        "launched": false,
+    }));
     println!(
         "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
     );
@@ -972,6 +983,10 @@ pub fn config(root: &Path, project: &Path, action: ConfigAction) -> Result<(), S
             }
         }
         ConfigAction::Show => {
+            if crate::report::json_mode() {
+                crate::report::set_data(app_config::summary_json(&cfg, &project_dir)?);
+                return Ok(());
+            }
             print!("{}", app_config::summary(&cfg)?);
             let notes: Vec<String> = app_config::warnings(&cfg, &project_dir)
                 .into_iter()
@@ -1637,6 +1652,15 @@ ios_device = true
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         let readme = fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
+        // Agent instructions come with the app, named after it.
+        let agents = fs::read_to_string(dest.join("AGENTS.md")).unwrap();
+        assert!(
+            agents.contains("InitTestApp is a native iOS app"),
+            "{agents}"
+        );
+        assert!(!agents.contains("FORGE_APP_NAME"));
+        assert!(dest.join("CLAUDE.md").is_file());
+        assert!(dest.join(".mcp.json").is_file());
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));
@@ -1646,7 +1670,8 @@ ios_device = true
             xtool.contains("bundleID: org.example.inittest\n"),
             "{xtool}"
         );
-        assert!(xtool.contains("product: AppHostXtool\n"), "{xtool}");
+        assert!(xtool.contains("product: InitTestAppXtool\n"), "{xtool}");
+        assert!(pkg.contains(".library(name: \"InitTestAppXtool\""), "{pkg}");
         assert!(dest.join("App.entitlements").is_file());
         let cfg = crate::config::ForgeConfig::parse(&read(dest.join("forge.toml"))).unwrap();
         crate::app_config::sync(&dest, &cfg, crate::app_config::Mode::Check)

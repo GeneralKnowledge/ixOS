@@ -4,4 +4,6 @@
 # SwiftPM / xtool
 /.build/
 /xtool/
+# Logs of `forge ... --json` runs
+/.forge/
 *.xcuserstate

@@ -130,6 +130,26 @@ fn permissions_report_and_request() {
 }
 
 #[test]
+fn the_microphone_is_its_own_permission() {
+    let (_dir, services, fakes) = services();
+    fakes
+        .permissions
+        .set(NativePermission::Notifications, PermissionStatus::Denied);
+    assert_eq!(
+        block_on(services.permission_status(NativePermission::Microphone)),
+        PermissionStatus::NotDetermined
+    );
+    assert_eq!(
+        block_on(services.request_permission(NativePermission::Microphone)),
+        PermissionStatus::Granted
+    );
+    assert_eq!(
+        block_on(services.permission_status(NativePermission::Notifications)),
+        PermissionStatus::Denied
+    );
+}
+
+#[test]
 fn deep_links_parse_through_the_export() {
     let link = parse_deep_link("myapp://book/7?from=notification".into()).unwrap();
     assert_eq!(link.route, vec!["book".to_string(), "7".to_string()]);

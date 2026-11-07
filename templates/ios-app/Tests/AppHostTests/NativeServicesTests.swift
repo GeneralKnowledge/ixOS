@@ -10,7 +10,7 @@ import XCTest
 /// covers them on an iPhone.
 final class NativeServicesTests: XCTestCase {
     func testInstallReachesRust() {
-        XCTAssertEqual(nativeServicesVersion(), 1)
+        XCTAssertEqual(nativeServicesVersion(), 3)
         XCTAssertTrue(ForgeServices.install(keychainService: "forge-tests-\(UUID().uuidString)"))
         XCTAssertTrue(nativeServicesInstalled())
     }

@@ -174,3 +174,37 @@ Before you start: the M1 setup, on this branch (or after it is merged), the serv
 | G11 | `forge run ios --project examples/chat --release` | Builds, installs, and G2 and G4 still work | Not yet run |
 
 Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
+
+## M4: Voice messages
+
+M4 adds voice messages: record from the composer, send as an audio attachment through the M3 path, play inline with a waveform. Recording and playback are Forge's optional `audio` native service, selected with `native_services!(audio)`; forge.toml declares `microphone`. Device results are Reuben's reports; nothing here is marked done until he reported it.
+
+### Automated and local
+
+| # | Check | Kind | Status | Evidence |
+|---|-------|------|--------|----------|
+| A26 | forge-services: `NativePermission::Microphone` and the `audio` service (`AudioService::duration`), interface v3 in Rust and Swift | automated | Done | `cargo test -p forge-services` (`the_microphone_is_its_own_permission`, `audio_measures_files_through_the_host`), `scripts/check-template-sync.sh` |
+| A27 | The audio adapter is copied only into apps that select `audio`, and committed copies match | automated | Done | `scripts/check-app-crates.sh` (Chat has `ForgeServices+Audio.swift`; the other apps do not) |
+| A28 | chat-cli shows audio attachments as `[voice: …]` | automated | Done | `cargo test -p chat-cli` |
+| A29 | SwiftUI and ForgeAudio: duration and waveform of an AAC file, the microphone registered as a permission, the player (one file at a time, pause, seek), a voice message between two accounts | automated (macOS CI) | Pending | Passed on PR #60 at 4055652 (the player really played); to re-check after the move to the `audio` service |
+
+### On an iPhone (Linux, xtool)
+
+Before you start: the M1 setup, this branch (or main once merged), `forge run ios --project examples/chat`. Chat must be installed on the phone (a free account allows at most 3 sideloaded apps). Have headphones to hand for H8.
+
+| # | Step | Expected | Status |
+|---|------|----------|--------|
+| H1 | In General, with the text field empty | The send button is a microphone. Typing text turns it back into the send arrow | Not yet run |
+| H2 | Tap the microphone | The system asks for the microphone with Chat's sentence from forge.toml. Allow | Not yet run |
+| H3 | Tap the microphone, speak for about 5 seconds, tap the send arrow | While recording: a red dot, the time counting, a level meter that moves with your voice. The bubble shows a play button, a waveform and "0:05". `make chat-cli ARGS="read general"` shows `[voice: Voice message.m4a (…)]` | Not yet run |
+| H4 | Tap play on that bubble | You hear the recording through the speaker; the waveform fills and the time counts up; it returns to the start at the end | Not yet run |
+| H5 | Turn the ring switch to silent and play it again | It still plays | Not yet run |
+| H6 | Record, then tap the trash button | Nothing is sent | Not yet run |
+| H7 | Record something on the laptop (any `.m4a`), then `make chat-cli ARGS="send-file general ~/note.m4a"` | It appears as a voice message on the phone and plays | Not yet run |
+| H8 | Play a long voice message with headphones in, then unplug them (or turn off Bluetooth headphones) | Playback pauses instead of switching to the speaker | Not yet run |
+| H9 | Start playing one voice message, then tap play on another | The first stops; only one plays | Not yet run |
+| H10 | Settings → Privacy & Security → Microphone → turn Chat off, then tap the microphone in Chat | An alert explains it and offers Open Settings, which opens Chat's page in Settings | Not yet run |
+| H11 | Record, and have someone call the phone while recording | The recording stops and what was recorded is sent | Not yet run |
+| H12 | `forge run ios --project examples/chat --release` | Builds, installs, and H3 and H4 still work | Not yet run |
+
+Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.

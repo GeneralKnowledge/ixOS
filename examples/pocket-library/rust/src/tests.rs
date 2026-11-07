@@ -228,7 +228,7 @@ fn the_catalogue_can_be_switched_off() {
 }
 
 #[test]
-fn epub_import_saves_metadata_and_cover_only() {
+fn epub_import_saves_metadata_cover_and_file() {
     let dir = tempfile::tempdir().unwrap();
     let library = open(dir.path());
     let file = dir.path().join("The Test Book.epub");
@@ -245,7 +245,9 @@ fn epub_import_saves_metadata_and_cover_only() {
         }
     );
     assert!(Path::new(book.cover_file.as_ref().unwrap()).exists());
-    // The host may delete its copy; the library does not need it.
+    assert!(book.can_read);
+    assert_eq!(book.reading_position, None);
+    // The host may delete its copy; the library keeps its own.
     std::fs::remove_file(&file).unwrap();
     assert_eq!(
         open(dir.path()).book(book.id).unwrap().title,
@@ -266,8 +268,174 @@ fn epub_import_saves_metadata_and_cover_only() {
         block_on(library.import_epub(dir_string(&dir.path().join("missing.epub")))),
         Err(LibraryError::UnsupportedFile { .. })
     ));
-    // Failed imports leave no stray covers.
-    assert_eq!(library.storage_info().saved_covers, 1);
+    // Failed imports leave no stray covers or EPUBs.
+    let info = library.storage_info();
+    assert_eq!((info.saved_covers, info.saved_books), (1, 1));
+}
+
+/// A two-chapter EPUB of 1000 words each (plus a heading word).
+fn import_readable(library: &Library, dir: &Path, title: &str) -> Book {
+    let file = dir.join(format!("{title}.epub"));
+    std::fs::write(&file, sample_epub(title, 1000, true)).unwrap();
+    block_on(library.import_epub(dir_string(&file))).unwrap()
+}
+
+#[test]
+fn an_imported_epub_opens_in_the_reader() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Readable");
+
+    let contents = block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(contents.title, "Readable");
+    assert_eq!(contents.chapters.len(), 2);
+    assert_eq!(contents.chapters[0].title, "Chapter");
+    assert_eq!(contents.chapters[0].words, 1001);
+    assert_eq!(contents.total_words, 2002);
+    assert_eq!(
+        contents.start,
+        ReadingPosition {
+            chapter: 0,
+            fraction: 0.0
+        }
+    );
+
+    let chapter = block_on(library.reader_chapter(book.id, 1)).unwrap();
+    assert_eq!(chapter.index, 1);
+    assert_eq!(chapter.blocks[0].kind, TextBlockKind::Heading { level: 1 });
+    assert_eq!(chapter.blocks[1].kind, TextBlockKind::Paragraph);
+    assert!(chapter.blocks[1].spans[0].text.starts_with("word word"));
+    assert!(matches!(
+        block_on(library.reader_chapter(book.id, 2)),
+        Err(LibraryError::InvalidInput { .. })
+    ));
+}
+
+#[test]
+fn reading_moves_the_page_and_is_remembered() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Progress");
+    assert_eq!(book.total_pages, Some(8));
+    assert!(
+        matches!(
+            block_on(library.save_reading_position(
+                book.id,
+                ReadingPosition {
+                    chapter: 0,
+                    fraction: 0.5
+                }
+            )),
+            Err(LibraryError::InvalidInput { .. })
+        ),
+        "the reader must be open first"
+    );
+    block_on(library.open_reader(book.id)).unwrap();
+
+    // Halfway through chapter 2 of 2 is three quarters of the book.
+    let middle = ReadingPosition {
+        chapter: 1,
+        fraction: 0.5,
+    };
+    let book = block_on(library.save_reading_position(book.id, middle)).unwrap();
+    assert_eq!(book.status, ReadingStatus::Reading);
+    assert_eq!(book.current_page, 6);
+    assert_eq!(book.reading_position, Some(middle));
+    assert!(matches!(
+        library.history(Some(book.id), 10)[0].kind,
+        ActivityKind::Progress {
+            from_page: 0,
+            to_page: 6
+        }
+    ));
+
+    // The very end stops a page short: finishing is the reader's choice.
+    let end = ReadingPosition {
+        chapter: 1,
+        fraction: 1.0,
+    };
+    let book = block_on(library.save_reading_position(book.id, end)).unwrap();
+    assert_eq!(
+        (book.status, book.current_page),
+        (ReadingStatus::Reading, 7)
+    );
+
+    // Reopened later, the reader starts where it was left.
+    library.shutdown();
+    let library = open(dir.path());
+    let contents = block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(contents.start, end);
+
+    // A page typed in by hand wins over the saved position.
+    let book = block_on(library.update_progress(book.id, 2)).unwrap();
+    let start = block_on(library.open_reader(book.id)).unwrap().start;
+    assert_eq!(start.chapter, 0);
+    assert!((start.fraction - 0.5).abs() < 0.01, "{start:?}");
+
+    // A finished book keeps its page and status while it is re-read.
+    block_on(library.set_status(book.id, ReadingStatus::Finished)).unwrap();
+    let book = block_on(library.save_reading_position(book.id, middle)).unwrap();
+    assert_eq!(
+        (book.status, book.current_page),
+        (ReadingStatus::Finished, 8)
+    );
+    assert_eq!(book.reading_position, Some(middle));
+    assert_eq!(
+        block_on(library.open_reader(book.id)).unwrap().start,
+        middle
+    );
+}
+
+#[test]
+fn books_without_an_epub_cannot_be_opened_until_one_is_imported() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let mut typed = input("Attach Me", Some(300));
+    typed.author = "Ada Writer, Bo Coauthor".into();
+    typed.status = ReadingStatus::Reading;
+    typed.current_page = 150;
+    let book = block_on(library.add_book(typed)).unwrap();
+    assert!(!book.can_read);
+    assert!(matches!(
+        block_on(library.open_reader(book.id)),
+        Err(LibraryError::NotReadable { .. })
+    ));
+
+    // Importing the same book's EPUB attaches it, keeping the progress.
+    let attached = import_readable(&library, dir.path(), "Attach Me");
+    assert_eq!(attached.id, book.id);
+    assert!(attached.can_read);
+    assert_eq!(
+        (attached.current_page, attached.total_pages),
+        (150, Some(300))
+    );
+    assert_eq!(library.storage_info().books, 1);
+    // …and the reader opens at that page: halfway, so chapter 2's start.
+    let start = block_on(library.open_reader(book.id)).unwrap().start;
+    assert_eq!(start.chapter, 1);
+    assert!(start.fraction < 0.01, "{start:?}");
+    // A second import is refused as before.
+    let file = dir.path().join("again.epub");
+    std::fs::write(&file, sample_epub("Attach Me", 10, false)).unwrap();
+    assert_eq!(
+        block_on(library.import_epub(dir_string(&file))),
+        Err(LibraryError::AlreadyInLibrary { id: book.id })
+    );
+}
+
+#[test]
+fn deleting_a_book_deletes_its_epub() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Gone");
+    block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(library.storage_info().saved_books, 1);
+    block_on(library.delete_book(book.id)).unwrap();
+    assert_eq!(library.storage_info().saved_books, 0);
+    assert!(matches!(
+        block_on(library.reader_chapter(book.id, 0)),
+        Err(LibraryError::InvalidInput { .. })
+    ));
 }
 
 /// Imports a real EPUB when `POCKET_LIBRARY_EPUB` names one (the book files
@@ -286,6 +454,27 @@ fn imports_a_real_epub_when_given_one() {
         book.title, book.author, book.total_pages, book.cover_file, book.description
     );
     assert!(!book.title.is_empty());
+
+    let contents = block_on(library.open_reader(book.id)).unwrap();
+    eprintln!("{} words", contents.total_words);
+    for chapter in &contents.chapters {
+        let text = block_on(library.reader_chapter(book.id, chapter.index)).unwrap();
+        eprintln!(
+            "{:>3} {:<40} listed={} words={} blocks={}",
+            chapter.index,
+            chapter.title,
+            chapter.in_contents,
+            chapter.words,
+            text.blocks.len()
+        );
+    }
+    if std::env::var("POCKET_LIBRARY_DUMP").is_ok() {
+        let first = contents.chapters.iter().find(|c| c.words > 200).unwrap();
+        let text = block_on(library.reader_chapter(book.id, first.index)).unwrap();
+        for block in text.blocks.iter().take(25) {
+            eprintln!("{block:?}");
+        }
+    }
 }
 
 #[test]

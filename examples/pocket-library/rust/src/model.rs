@@ -66,6 +66,10 @@ pub struct Book {
     /// A remote cover, used when there is no saved one.
     pub cover_url: Option<String>,
     pub source: BookSource,
+    /// The book's EPUB is saved, so it can be opened in the reader.
+    pub can_read: bool,
+    /// Where the reader was left, if the book has been opened in it.
+    pub reading_position: Option<ReadingPosition>,
     /// Unix time in milliseconds.
     pub added_at_ms: i64,
     pub started_at_ms: Option<i64>,
@@ -178,7 +182,9 @@ pub struct StorageInfo {
     pub books: u32,
     pub activity_entries: u32,
     pub saved_covers: u32,
-    /// Library file plus saved covers.
+    /// EPUBs kept for reading.
+    pub saved_books: u32,
+    /// Library file plus saved covers and EPUBs.
     pub bytes: u64,
 }
 
@@ -191,4 +197,89 @@ pub enum LibraryEvent {
     SettingsChanged { settings: LibrarySettings },
     /// This stream fell behind and missed `count` events; re-read everything.
     EventsDropped { count: u64 },
+}
+
+// MARK: Reading EPUBs
+
+/// A place in a book: a chapter (an index into `ReaderContents::chapters`)
+/// and how far through it, 0.0–1.0.
+#[derive(uniffi::Record, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+pub struct ReadingPosition {
+    pub chapter: u32,
+    pub fraction: f64,
+}
+
+/// One chapter (one file of the EPUB's reading order).
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ChapterSummary {
+    pub index: u32,
+    /// From the book's table of contents, else the chapter's first heading,
+    /// else "Section N".
+    pub title: String,
+    /// Whether the book's own table of contents lists it. Files a chapter
+    /// is split across, and title pages, usually are not.
+    pub in_contents: bool,
+    pub words: u32,
+}
+
+/// What the reader needs to open a book.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+pub struct ReaderContents {
+    pub book_id: u64,
+    pub title: String,
+    pub chapters: Vec<ChapterSummary>,
+    pub total_words: u64,
+    /// Where to open: the saved position, or the place matching the book's
+    /// current page if that was changed by hand since.
+    pub start: ReadingPosition,
+}
+
+/// A run of text in one style.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct TextSpan {
+    pub text: String,
+    pub bold: bool,
+    pub italic: bool,
+    pub monospace: bool,
+}
+
+/// What a block of a chapter is. The host chooses how each looks.
+#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+pub enum TextBlockKind {
+    /// `level` 1–6, as `<h1>`–`<h6>`.
+    Heading {
+        level: u8,
+    },
+    Paragraph,
+    /// Inside a `<blockquote>`.
+    Quote,
+    /// `marker` is "•" or "3." and so on.
+    ListItem {
+        marker: String,
+    },
+    /// Keep line breaks and spacing; show in a fixed-width font.
+    Preformatted,
+    /// A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
+    Separator,
+    /// An image saved for this launch at `file` (absolute path).
+    Image {
+        file: String,
+        alt: String,
+    },
+}
+
+/// One paragraph, heading, image… of a chapter, in reading order.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct TextBlock {
+    pub kind: TextBlockKind,
+    /// Empty for separators and images. Line breaks are `\n`.
+    pub spans: Vec<TextSpan>,
+}
+
+/// A chapter's text, ready to lay out.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct ReaderChapter {
+    pub index: u32,
+    pub title: String,
+    pub blocks: Vec<TextBlock>,
 }

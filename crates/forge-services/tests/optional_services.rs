@@ -1,0 +1,326 @@
+//! Expands `native_services!` with every optional service, the way an app
+//! crate selects them, and checks each Rust-side API against its fake.
+
+use std::sync::{Arc, Mutex};
+
+uniffi::setup_scaffolding!("optional_services_test");
+forge_services::native_services!(
+    connectivity,
+    device_status,
+    motion,
+    location,
+    bluetooth,
+    audio
+);
+
+use native::*;
+
+fn collect<T: Clone + Send + 'static>() -> (Arc<Mutex<Vec<T>>>, impl Fn(&T) + Send + Sync) {
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    (seen, move |value: &T| {
+        sink.lock().unwrap().push(value.clone())
+    })
+}
+
+fn wifi() -> connectivity::ConnectivityStatus {
+    use connectivity::*;
+    ConnectivityStatus {
+        reachability: Reachability::Online,
+        interfaces: vec![NetworkInterface::Wifi],
+        is_expensive: false,
+        is_constrained: false,
+        supports_ipv4: true,
+        supports_ipv6: true,
+        supports_dns: true,
+        offline_reason: None,
+        observed_at_ms: 1,
+    }
+}
+
+#[test]
+fn connectivity_watch_and_transfer_policy() {
+    use connectivity::*;
+    let (service, fake) = ConnectivityService::for_tests();
+    assert!(!service.current().is_online());
+
+    let (seen, listener) = collect();
+    let watch = service.watch(listener);
+    assert!(fake.is_started());
+    fake.set(wifi());
+    let mut cellular = wifi();
+    cellular.interfaces = vec![NetworkInterface::Cellular];
+    cellular.is_expensive = true;
+    fake.set(cellular.clone());
+
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 3, "current status on start, then two changes");
+    assert_eq!(seen[1].primary_interface(), Some(NetworkInterface::Wifi));
+    assert!(seen[1].allows(TransferPolicy::Unmetered));
+    assert!(cellular.allows(TransferPolicy::Any));
+    assert!(!cellular.allows(TransferPolicy::Unmetered));
+
+    let mut low_data = wifi();
+    low_data.is_constrained = true;
+    assert!(!low_data.is_unmetered());
+    let mut offline = wifi();
+    offline.reachability = Reachability::Offline;
+    assert_eq!(offline.primary_interface(), None);
+    assert!(!offline.allows(TransferPolicy::Any));
+
+    drop(watch);
+    assert!(!fake.is_started(), "the last watch stops the monitor");
+}
+
+#[test]
+fn optional_services_install_through_their_exports() {
+    let (service, fake) = connectivity::ConnectivityService::for_tests();
+    drop(service);
+    connectivity::ConnectivityService::uninstall();
+    assert!(matches!(
+        connectivity::ConnectivityService::installed(),
+        Err(NativeServiceError::NotInstalled { .. })
+    ));
+    fake.set(wifi());
+    connectivity::install_native_connectivity(fake.clone());
+    assert!(connectivity::ConnectivityService::installed()
+        .unwrap()
+        .current()
+        .is_online());
+
+    let (_, motion_fake) = motion::MotionService::for_tests();
+    motion::install_native_motion(motion_fake);
+    assert!(
+        motion::MotionService::installed()
+            .unwrap()
+            .availability()
+            .altimeter
+    );
+
+    let (_, device_fake) = device_status::DeviceStatusService::for_tests();
+    device_status::install_native_device_status(device_fake);
+    let (_, location_fake) = location::LocationService::for_tests();
+    location::install_native_location(location_fake);
+    let (_, bluetooth_fake) = bluetooth::BluetoothService::for_tests();
+    bluetooth::install_native_bluetooth(bluetooth_fake);
+    assert!(device_status::DeviceStatusService::installed().is_ok());
+    assert!(location::LocationService::installed().is_ok());
+    assert!(bluetooth::BluetoothService::installed().is_ok());
+}
+
+#[test]
+fn device_status_policy_and_changes() {
+    use device_status::*;
+    let (service, fake) = DeviceStatusService::for_tests();
+    assert_eq!(service.info().model_identifier, "iPhone16,2");
+    let status = service.status();
+    assert_eq!(status.defer_heavy_work(Some(1 << 30)), None);
+    assert_eq!(
+        status.defer_heavy_work(Some(4 << 30)),
+        Some(DeferReason::LowMemory)
+    );
+
+    let (seen, listener) = collect();
+    let _watch = service.watch(listener);
+    let mut hot = status.clone();
+    hot.thermal_state = ThermalState::Serious;
+    fake.set(hot);
+    let mut low = status.clone();
+    low.battery_level = Some(0.1);
+    fake.set(low.clone());
+    assert_eq!(low.defer_heavy_work(None), Some(DeferReason::LowBattery));
+    low.battery_state = BatteryState::Charging;
+    assert_eq!(
+        low.defer_heavy_work(None),
+        None,
+        "charging lifts the battery rule"
+    );
+
+    let seen = seen.lock().unwrap();
+    assert_eq!(seen.len(), 3);
+    assert_eq!(seen[1].defer_heavy_work(None), Some(DeferReason::Thermal));
+}
+
+#[test]
+fn motion_feeds_are_per_sensor_and_checked() {
+    use motion::*;
+    let (service, fake) = MotionService::for_tests();
+    assert!(matches!(
+        service.watch(MotionSensor::Accelerometer, 5, |_| {}),
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+
+    let (accel, listener) = collect();
+    let a = service
+        .watch(MotionSensor::Accelerometer, 20, listener)
+        .unwrap();
+    // A second watcher shares the sensor at the first one's rate.
+    let (accel2, listener2) = collect();
+    let b = service
+        .watch(MotionSensor::Accelerometer, 100, listener2)
+        .unwrap();
+    assert_eq!(fake.interval_ms(MotionSensor::Accelerometer), Some(20));
+    assert_eq!(fake.interval_ms(MotionSensor::Gyroscope), None);
+
+    let reading = MotionReading::Acceleration {
+        value: Vector3 {
+            x: 0.0,
+            y: 0.0,
+            z: -1.0,
+        },
+        timestamp_s: 10.0,
+    };
+    fake.send(reading.clone());
+    fake.send(MotionReading::RotationRate {
+        value: Vector3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        timestamp_s: 10.0,
+    });
+    assert_eq!(*accel.lock().unwrap(), vec![reading.clone()]);
+    assert_eq!(*accel2.lock().unwrap(), vec![reading.clone()]);
+    assert_eq!(service.latest(MotionSensor::Accelerometer), Some(reading));
+    assert_eq!(service.latest(MotionSensor::Gyroscope), None);
+
+    drop(a);
+    assert!(fake.interval_ms(MotionSensor::Accelerometer).is_some());
+    drop(b);
+    assert!(fake.interval_ms(MotionSensor::Accelerometer).is_none());
+
+    fake.availability.lock().unwrap().altimeter = false;
+    assert!(matches!(
+        service.watch(MotionSensor::Altimeter, 1000, |_| {}),
+        Err(NativeServiceError::Unavailable { .. })
+    ));
+    assert_eq!(
+        Vector3 {
+            x: 3.0,
+            y: 4.0,
+            z: 0.0
+        }
+        .magnitude(),
+        5.0
+    );
+}
+
+#[test]
+fn location_watch_permission_and_distance() {
+    use location::*;
+    let (service, fake) = LocationService::for_tests();
+    let options = LocationOptions {
+        accuracy: LocationAccuracy::Best,
+        distance_filter_m: Some(-1.0),
+        include_heading: true,
+    };
+    assert!(matches!(
+        service.watch(options, |_| {}),
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+    let options = LocationOptions {
+        distance_filter_m: None,
+        ..options
+    };
+
+    fake.denied.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(matches!(
+        service.watch(options, |_| {}),
+        Err(NativeServiceError::PermissionDenied { .. })
+    ));
+    fake.denied
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+
+    let (seen, listener) = collect();
+    let watch = service.watch(options, listener).unwrap();
+    assert_eq!(fake.options(), Some(options));
+    let fix = |lat: f64, lon: f64| LocationFix {
+        latitude: lat,
+        longitude: lon,
+        horizontal_accuracy_m: 5.0,
+        altitude_m: Some(12.0),
+        vertical_accuracy_m: Some(3.0),
+        speed_mps: None,
+        speed_accuracy_mps: None,
+        course_degrees: None,
+        course_accuracy_degrees: None,
+        floor: None,
+        timestamp_ms: 1,
+    };
+    fake.send(LocationEvent::Fix {
+        fix: fix(51.5, -0.12),
+    });
+    assert_eq!(seen.lock().unwrap().len(), 1);
+    assert_eq!(service.last_known().unwrap().latitude, 51.5);
+    assert!(fix(0.0, 0.0).distance_to(&fix(0.0, 1.0)) > 111_000.0);
+    drop(watch);
+    assert_eq!(fake.options(), None);
+}
+
+#[test]
+fn bluetooth_state_changes() {
+    use bluetooth::*;
+    let (service, fake) = BluetoothService::for_tests();
+    let (seen, listener) = collect();
+    let _watch = service.watch(listener);
+    fake.set(BluetoothState::PoweredOff);
+    fake.set(BluetoothState::PoweredOn);
+    assert_eq!(service.state(), BluetoothState::PoweredOn);
+    assert_eq!(
+        *seen.lock().unwrap(),
+        vec![
+            BluetoothState::Unknown,
+            BluetoothState::PoweredOff,
+            BluetoothState::PoweredOn
+        ]
+    );
+}
+
+#[test]
+fn new_permissions_go_through_the_one_provider() {
+    let dir = tempfile::tempdir().unwrap();
+    let (services, fakes) = NativeServices::for_tests(dir.path());
+    fakes
+        .permissions
+        .set(NativePermission::Location, PermissionStatus::Denied);
+    assert_eq!(
+        forge_runtime::block_on(services.request_permission(NativePermission::Location)),
+        PermissionStatus::Denied
+    );
+    assert!(
+        forge_runtime::block_on(services.request_permission(NativePermission::Motion)).allows_use()
+    );
+}
+
+#[test]
+fn audio_measures_files_through_the_host() {
+    use audio::*;
+    let (service, fake) = AudioService::for_tests();
+    fake.set("/voice/a.m4a", 2.5);
+    assert_eq!(
+        service
+            .duration(std::path::Path::new("/voice/a.m4a"))
+            .unwrap(),
+        std::time::Duration::from_millis(2500)
+    );
+    assert!(matches!(
+        service.duration(std::path::Path::new("relative.m4a")),
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        service.duration(std::path::Path::new("/voice/missing.m4a")),
+        Err(NativeServiceError::Platform { .. })
+    ));
+    fake.set("/voice/bad.m4a", -1.0);
+    assert!(service
+        .duration(std::path::Path::new("/voice/bad.m4a"))
+        .is_err());
+
+    AudioService::uninstall();
+    assert!(matches!(
+        AudioService::installed(),
+        Err(NativeServiceError::NotInstalled { .. })
+    ));
+    install_native_audio(fake);
+    assert!(AudioService::installed().is_ok());
+}

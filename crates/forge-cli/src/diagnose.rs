@@ -37,6 +37,16 @@ impl Stage {
             Stage::Device => "iPhone",
         }
     }
+
+    /// The name in `--json` results (`stage`): rust, swift, signing, device.
+    pub fn key(self) -> &'static str {
+        match self {
+            Stage::Rust => "rust",
+            Stage::Swift => "swift",
+            Stage::Signing => "signing",
+            Stage::Device => "device",
+        }
+    }
 }
 
 struct Rule {
@@ -224,6 +234,14 @@ pub fn diagnose(output: &str) -> Vec<Hint> {
 /// The error message for a failed step: what failed, then each diagnosis.
 pub fn explain(step: &str, status: impl std::fmt::Display, output: &str) -> String {
     let hints = diagnose(output);
+    crate::report::record_failure(
+        step,
+        hints
+            .iter()
+            .map(crate::report::JsonHint::from_hint)
+            .collect(),
+        output,
+    );
     let mut msg = format!("`{step}` failed ({status})");
     if hints.is_empty() {
         msg.push_str(

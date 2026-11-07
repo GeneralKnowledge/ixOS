@@ -1,4 +1,4 @@
-import ImageIO
+@preconcurrency import ForgeFFI
 import SwiftUI
 
 /// A book cover: the copy saved on the device if there is one (works
@@ -61,36 +61,11 @@ struct CoverImage: View {
     }
 }
 
-/// Saved cover files, downsampled with ImageIO to the size they are shown at
-/// and cached (NSCache drops them under memory pressure).
+/// Saved cover files, downsampled to the size they are shown at and cached
+/// (`ForgeImages`; the cache drops them under memory pressure).
 enum CoverThumbnails {
-    private final class Box: @unchecked Sendable {
-        let image: CGImage
-        init(_ image: CGImage) { self.image = image }
-    }
-
-    nonisolated(unsafe) private static let cache = NSCache<NSString, Box>()
-
     static func image(at path: String, maxPixels: Int) async -> Image? {
-        let key = "\(path)#\(maxPixels)" as NSString
-        if let hit = cache.object(forKey: key) {
-            return Image(decorative: hit.image, scale: 1)
-        }
-        let decoded = await Task.detached(priority: .userInitiated) { () -> Box? in
-            let options = [kCGImageSourceShouldCache: false] as [CFString: Any] as CFDictionary
-            guard let source = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, options) else {
-                return nil
-            }
-            let thumbnail = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceThumbnailMaxPixelSize: max(maxPixels, 1),
-            ] as [CFString: Any] as CFDictionary
-            return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnail).map(Box.init)
-        }.value
-        guard let decoded else { return nil }
-        cache.setObject(decoded, forKey: key)
-        return Image(decorative: decoded.image, scale: 1)
+        await ForgeImages.thumbnail(of: URL(fileURLWithPath: path), maxPixels: maxPixels, cached: true)
+            .map { Image(decorative: $0, scale: 1) }
     }
 }

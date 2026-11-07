@@ -495,8 +495,13 @@ fn line(message: &Message, account: &Account) -> String {
         if !text.ends_with(' ') {
             text.push(' ');
         }
+        let kind = if attachment.mime.starts_with("audio/") {
+            "voice"
+        } else {
+            "file"
+        };
         text.push_str(&format!(
-            "[file: {} ({})]",
+            "[{kind}: {} ({})]",
             attachment.name,
             human_size(attachment.size)
         ));
@@ -686,6 +691,20 @@ mod tests {
         assert_eq!(
             line(&message, &me),
             "[00:00:00 UTC] Ben: m [file: a.pdf (2 KB)]"
+        );
+        let voice = Message {
+            body: String::new(),
+            attachments: vec![Attachment {
+                name: "Voice message.m4a".into(),
+                mime: "audio/mp4".into(),
+                size: 40 * 1024,
+                ..Attachment::default()
+            }],
+            ..message.clone()
+        };
+        assert_eq!(
+            line(&voice, &me),
+            "[00:00:00 UTC] Ben: [voice: Voice message.m4a (40 KB)]"
         );
     }
 

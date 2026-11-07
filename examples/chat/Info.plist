@@ -7,10 +7,23 @@
 	<string>Chat</string>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0.0</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>org.forgemobile.chat</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>forgechat</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Chat connects to the demo chat server on your local network.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Chat records a voice message while you tap the microphone button.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

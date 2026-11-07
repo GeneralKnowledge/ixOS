@@ -535,6 +535,22 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -619,6 +635,218 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
         writeBytes(&buf, value)
     }
 }
+
+
+
+
+/**
+ * Implemented by the host (iOS: AVFoundation).
+ */
+public protocol AudioFiles: AnyObject, Sendable {
+    
+    /**
+     * The length in seconds of the audio file at `path`.
+     */
+    func duration(path: String) throws  -> Double
+    
+}
+/**
+ * Implemented by the host (iOS: AVFoundation).
+ */
+open class AudioFilesImpl: AudioFiles, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_audiofiles(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_audiofiles(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The length in seconds of the audio file at `path`.
+     */
+open func duration(path: String)throws  -> Double  {
+    return try  FfiConverterDouble.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_audiofiles_duration(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAudioFiles {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAudioFiles = UniffiVTableCallbackInterfaceAudioFiles(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAudioFiles.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AudioFiles: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAudioFiles.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AudioFiles: handle missing in uniffiClone")
+            }
+        },
+        duration: { (
+            uniffiHandle: UInt64,
+            path: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Double>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Double in
+                guard let uniffiObj = try? FfiConverterTypeAudioFiles.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.duration(
+                     path: try FfiConverterString.lift(path)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterDouble.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAudioFiles> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAudioFiles>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAudioFiles() {
+    uniffi_forge_ffi_fn_init_callback_vtable_audiofiles(UniffiCallbackInterfaceAudioFiles.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAudioFiles: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AudioFiles>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AudioFiles
+
+    public static func lift(_ handle: UInt64) throws -> AudioFiles {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AudioFilesImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AudioFiles) -> UInt64 {
+         if let rustImpl = value as? AudioFilesImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AudioFiles {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AudioFiles, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioFiles_lift(_ handle: UInt64) throws -> AudioFiles {
+    return try FfiConverterTypeAudioFiles.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAudioFiles_lower(_ value: AudioFiles) -> UInt64 {
+    return FfiConverterTypeAudioFiles.lower(value)
+}
+
+
 
 
 
@@ -4305,9 +4533,100 @@ public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) 
 
 
 /**
+ * A log level for [`forge_log`].
+ */
+
+public enum ForgeLogLevel: Equatable, Hashable {
+    
+    case trace
+    case debug
+    case info
+    case warn
+    case error
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ForgeLogLevel: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeForgeLogLevel: FfiConverterRustBuffer {
+    typealias SwiftType = ForgeLogLevel
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ForgeLogLevel {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .trace
+        
+        case 2: return .debug
+        
+        case 3: return .info
+        
+        case 4: return .warn
+        
+        case 5: return .error
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ForgeLogLevel, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .trace:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .debug:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .info:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .warn:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .error:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> ForgeLogLevel {
+    return try FfiConverterTypeForgeLogLevel.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
+    return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
  * A permission the app can ask the user for. More cases (camera,
- * photos, location) are added as their adapters are; see
- * docs/native-services.md.
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
  */
 
 public enum NativePermission: Equatable, Hashable {
@@ -4316,6 +4635,24 @@ public enum NativePermission: Equatable, Hashable {
      * Alerts, sounds and badges from local notifications.
      */
     case notifications
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    case location
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    case motion
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    case bluetooth
+    /**
+     * Recording audio (`audio` service, since interface v3).
+     * Needs `microphone` under `[ios.permissions]` in forge.toml.
+     */
+    case microphone
 
 
 
@@ -4339,6 +4676,14 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case 1: return .notifications
         
+        case 2: return .location
+        
+        case 3: return .motion
+        
+        case 4: return .bluetooth
+        
+        case 5: return .microphone
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4349,6 +4694,22 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case .notifications:
             writeInt(&buf, Int32(1))
+        
+        
+        case .location:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .motion:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .microphone:
+            writeInt(&buf, Int32(5))
         
         }
     }
@@ -5288,6 +5649,31 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * Writes one record from host code into Forge's log, with
+ * `category` as its target. Never log secrets.
+ */
+public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log(
+        FfiConverterTypeForgeLogLevel_lower(level),
+        FfiConverterString.lower(category),
+        FfiConverterString.lower(message),uniffiCallStatus
+    )
+}
+}
+/**
+ * Whether a record at `level` would be kept, so the host can skip
+ * building a message nobody will see.
+ */
+public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_forge_log_enabled(
+        FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
+    )
+})
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -5335,6 +5721,13 @@ public func parseDeepLink(url: String)throws  -> DeepLink  {
     )
 })
 }
+public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_install_native_audio(
+        FfiConverterTypeAudioFiles_lower(files),uniffiCallStatus
+    )
+}
+}
 /**
  * The delivery state of `message` in `conversation`: `Read` once another
  * account's read cursor has passed one of our sent messages. Only
@@ -5376,6 +5769,12 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_forge_log() != 59998) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_forge_log_enabled() != 61613) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5386,6 +5785,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_parse_deep_link() != 63697) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_install_native_audio() != 57444) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
@@ -5529,6 +5931,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_securestore_delete() != 58219) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_audiofiles_duration() != 58202) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_constructor_chatcore_new() != 36317) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5536,6 +5941,7 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitAudioFiles()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()
     uniffiCallbackInitSecureStore()

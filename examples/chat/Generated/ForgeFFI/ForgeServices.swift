@@ -10,7 +10,7 @@ import Foundation
 
 /// The services-interface version these adapters implement. Must equal
 /// `nativeServicesVersion()` from the Rust side (forge_services::VERSION).
-let forgeServicesSwiftVersion: UInt32 = 1
+let forgeServicesSwiftVersion: UInt32 = 3
 
 /// Installs Forge's iOS implementations of the native services, so the app's
 /// Rust code can use them (`native::NativeServices::installed()`).
@@ -40,11 +40,22 @@ public enum ForgeServices {
                     service: keychainService ?? KeychainSecureStore.defaultService),
                 notifier: ForgeNotifications.makeNotifier(),
                 permissions: ForgePermissions.shared)
-            return true
         } catch {
             print("[forge] native services not installed: \(error)")
             return false
         }
+        // The optional services the Rust crate selected in
+        // `native_services!(...)` (ForgeServices+Selected.swift, written by
+        // generate-bindings.sh). One that fails is logged and left out; Rust
+        // then gets `NotInstalled` for it alone.
+        for service in forgeSelectedServices {
+            do {
+                try service.install()
+            } catch {
+                print("[forge] native service \(service.name) not installed: \(error)")
+            }
+        }
+        return true
     }
 
     /// True when this process is an installed app bundle. Some services (the

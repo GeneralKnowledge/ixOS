@@ -47,6 +47,10 @@ pub enum LibraryError {
     /// The file is not an EPUB this app can read.
     #[error("unsupported file: {reason}")]
     UnsupportedFile { reason: String },
+    /// The book has no saved EPUB to read (typed in, from the catalogue, or
+    /// imported before Pocket Library kept EPUBs), or the saved one is gone.
+    #[error("this book can't be opened: {reason}")]
+    NotReadable { reason: String },
     /// The request was stopped with its `Cancellation`. Nothing changed.
     #[error("cancelled")]
     Cancelled,

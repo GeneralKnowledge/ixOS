@@ -20,12 +20,13 @@ Wi-Fi, installing builds with verification, and over-the-air updates come later.
 | `forge device info` | One phone's name, model, iOS version and build, and whether Developer Mode is on |
 | `forge device logs --process ChatXtool` | Streams the system log, keeping only lines from Chat's process (`ChatXtool`). Ctrl-C stops |
 | `forge device logs --grep "[chat]" --limit 20` | Lines containing some text; stop after 20 |
+| `forge device logs --process MyAppXtool --for 30s` | Stop after 30 seconds, even if the phone logs nothing |
 | `forge device crashes --app ChatXtool` | Chat's crash reports on the phone, newest first |
 | `forge device crashes --app ChatXtool --pull crashes/` | Copies them into `crashes/` |
 
 With several phones connected, add `--udid <UDID>` (from `forge device list`). A phone connected by USB and Wi-Fi at once counts once.
 
-The process name is the app's executable: the `product` in its `xtool.yml`. That is `AppHostXtool` for every app made with `forge init` (Chat's is `ChatXtool`), so `--process AppHostXtool` cannot tell two starter apps apart. Filter on the log target instead, for example `--grep "[chat]"`. Crash reports are named after the same executable, so `crashes --app` takes the same name.
+The process name is the app's executable: the `product` in its `xtool.yml`. `forge init MyApp` names it `MyAppXtool` (`[ios] xtool_product` in forge.toml), and Chat's is `ChatXtool`, so `--process MyAppXtool` picks one app. Apps made before 2026-11-07, and Pocket Library and Device Lab, still use `AppHostXtool`, which can't tell them apart: set `xtool_product` and rename the library product in `Package.swift` to match, or filter on the log target instead, for example `--grep "[chat]"`. Crash reports are named after the same executable, so `crashes --app` takes the same name.
 
 Rust log lines look like `LEVEL [target] message`: `forge_runtime::logging::info!(target: "chat", "sent")` appears as `... ChatXtool[512] <Notice>: INFO [chat] sent`. The relay shows them as `<Notice>` whatever their level (it drops lower syslog priorities, so Forge writes Info and below as notice), so read the level from the text.
 

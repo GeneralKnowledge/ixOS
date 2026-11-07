@@ -1,12 +1,13 @@
 //! Reads the metadata of an EPUB file: title, author, description, cover and
-//! an estimated page count. It never keeps the book's text.
+//! an estimated page count. The book's text is read for reading in
+//! [`crate::reader`], which shares the helpers here.
 //!
 //! An EPUB is a zip. `META-INF/container.xml` names the package file (OPF),
 //! whose `<metadata>` has Dublin Core fields, whose `<manifest>` lists every
 //! file, and whose `<spine>` gives the reading order.
 
 use std::collections::HashMap;
-use std::io::{Cursor, Read};
+use std::io::{Cursor, Read, Seek};
 
 use quick_xml::events::Event;
 use quick_xml::{Reader, XmlVersion};
@@ -19,8 +20,8 @@ pub const WORDS_PER_PAGE: u32 = 275;
 pub const MAX_EPUB_BYTES: usize = 100 * 1024 * 1024;
 /// Stop reading text after this much, so a hostile file cannot make us
 /// inflate gigabytes. Plenty for any real book.
-const MAX_TEXT_BYTES: u64 = 64 * 1024 * 1024;
-const MAX_COVER_BYTES: u64 = 10 * 1024 * 1024;
+pub(crate) const MAX_TEXT_BYTES: u64 = 64 * 1024 * 1024;
+pub(crate) const MAX_COVER_BYTES: u64 = 10 * 1024 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EpubCover {
@@ -38,13 +39,13 @@ pub struct EpubMetadata {
     pub cover: Option<EpubCover>,
 }
 
-fn unsupported(reason: impl Into<String>) -> LibraryError {
+pub(crate) fn unsupported(reason: impl Into<String>) -> LibraryError {
     LibraryError::UnsupportedFile {
         reason: reason.into(),
     }
 }
 
-type Archive = zip::ZipArchive<Cursor<Vec<u8>>>;
+pub(crate) type Archive<R = Cursor<Vec<u8>>> = zip::ZipArchive<R>;
 
 /// Parses `bytes` as an EPUB. Fails with `UnsupportedFile` for anything that
 /// is not a readable EPUB with a title.
@@ -54,17 +55,8 @@ pub fn read_metadata(bytes: Vec<u8>) -> Result<EpubMetadata, LibraryError> {
     }
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes))
         .map_err(|e| unsupported(format!("not an EPUB (zip): {e}")))?;
-
-    let container = read_text(&mut archive, "META-INF/container.xml", 1024 * 1024)?
-        .ok_or_else(|| unsupported("not an EPUB: META-INF/container.xml is missing"))?;
-    let opf_path = rootfile_path(&container)?;
-    let opf = read_text(&mut archive, &opf_path, 8 * 1024 * 1024)?
-        .ok_or_else(|| unsupported(format!("the package file {opf_path} is missing")))?;
-    let package = parse_package(&opf)?;
-    let base = match opf_path.rfind('/') {
-        Some(i) => &opf_path[..=i],
-        None => "",
-    };
+    let (package, base) = open_package(&mut archive)?;
+    let base = base.as_str();
 
     let title = package
         .title
@@ -105,6 +97,28 @@ pub fn read_metadata(bytes: Vec<u8>) -> Result<EpubMetadata, LibraryError> {
     })
 }
 
+/// Reads the package file named by `container.xml`. Returns it and the
+/// folder it is in (`""` or ending in `/`), which its hrefs are relative to.
+pub(crate) fn open_package<R: Read + Seek>(
+    archive: &mut Archive<R>,
+) -> Result<(Package, String), LibraryError> {
+    let container = read_text(archive, "META-INF/container.xml", 1024 * 1024)?
+        .ok_or_else(|| unsupported("not an EPUB: META-INF/container.xml is missing"))?;
+    let opf_path = rootfile_path(&container)?;
+    let opf = read_text(archive, &opf_path, 8 * 1024 * 1024)?
+        .ok_or_else(|| unsupported(format!("the package file {opf_path} is missing")))?;
+    let package = parse_package(&opf)?;
+    Ok((package, folder_of(&opf_path).to_string()))
+}
+
+/// The folder part of a path inside the zip: `""` or ending in `/`.
+pub(crate) fn folder_of(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(i) => &path[..=i],
+        None => "",
+    }
+}
+
 /// Pages for `words` words at [`WORDS_PER_PAGE`], rounded up; `None` for a
 /// book with no text.
 pub fn estimate_pages(words: u64) -> Option<u32> {
@@ -116,8 +130,8 @@ pub fn estimate_pages(words: u64) -> Option<u32> {
 }
 
 /// Reads one entry as UTF-8 text, at most `limit` bytes. `None` if absent.
-fn read_text(
-    archive: &mut Archive,
+pub(crate) fn read_text<R: Read + Seek>(
+    archive: &mut Archive<R>,
     name: &str,
     limit: u64,
 ) -> Result<Option<String>, LibraryError> {
@@ -127,8 +141,8 @@ fn read_text(
     Ok(Some(String::from_utf8_lossy(&bytes).into_owned()))
 }
 
-fn read_entry(
-    archive: &mut Archive,
+pub(crate) fn read_entry<R: Read + Seek>(
+    archive: &mut Archive<R>,
     name: &str,
     limit: u64,
 ) -> Result<Option<Vec<u8>>, LibraryError> {
@@ -145,7 +159,10 @@ fn read_entry(
     Ok(Some(bytes))
 }
 
-fn read_cover(archive: &mut Archive, path: &str) -> Result<Option<EpubCover>, LibraryError> {
+fn read_cover<R: Read + Seek>(
+    archive: &mut Archive<R>,
+    path: &str,
+) -> Result<Option<EpubCover>, LibraryError> {
     let Some(bytes) = read_entry(archive, path, MAX_COVER_BYTES + 1)? else {
         return Ok(None);
     };
@@ -173,7 +190,7 @@ pub fn image_extension(bytes: &[u8]) -> Option<&'static str> {
 
 /// Joins `href` (relative to the package file, possibly percent-encoded) to
 /// the package's folder, resolving `..`.
-fn resolve(base: &str, href: &str) -> String {
+pub(crate) fn resolve(base: &str, href: &str) -> String {
     let href = href.split('#').next().unwrap_or(href);
     let decoded = percent_decode(href);
     let mut parts: Vec<&str> = base.split('/').filter(|p| !p.is_empty()).collect();
@@ -208,13 +225,13 @@ fn percent_decode(text: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
-fn xml_reader(xml: &str) -> Reader<&[u8]> {
+pub(crate) fn xml_reader(xml: &str) -> Reader<&[u8]> {
     let mut reader = Reader::from_reader(xml.as_bytes());
     reader.config_mut().check_end_names = false;
     reader
 }
 
-fn attribute(e: &quick_xml::events::BytesStart<'_>, local: &str) -> Option<String> {
+pub(crate) fn attribute(e: &quick_xml::events::BytesStart<'_>, local: &str) -> Option<String> {
     e.attributes().flatten().find_map(|a| {
         (a.key.local_name().as_ref() == local).then(|| {
             a.normalized_value(XmlVersion::Implicit1_0)
@@ -242,7 +259,7 @@ fn rootfile_path(container: &str) -> Result<String, LibraryError> {
 }
 
 #[derive(Debug, Default)]
-struct Package {
+pub(crate) struct Package {
     title: Option<String>,
     creators: Vec<String>,
     description: Option<String>,
@@ -284,7 +301,23 @@ impl Package {
         candidates.first().copied()
     }
 
-    fn spine_hrefs(&self) -> impl Iterator<Item = &str> {
+    /// The EPUB 3 navigation document (`properties="nav"`), if any.
+    pub(crate) fn nav_href(&self) -> Option<&str> {
+        self.manifest
+            .values()
+            .find(|(_, _, props)| props.split_whitespace().any(|p| p == "nav"))
+            .map(|(href, _, _)| href.as_str())
+    }
+
+    /// The EPUB 2 table of contents (NCX), if any.
+    pub(crate) fn ncx_href(&self) -> Option<&str> {
+        self.manifest
+            .values()
+            .find(|(_, media, _)| media == "application/x-dtbncx+xml")
+            .map(|(href, _, _)| href.as_str())
+    }
+
+    pub(crate) fn spine_hrefs(&self) -> impl Iterator<Item = &str> {
         self.spine.iter().filter_map(|id| {
             self.manifest
                 .get(id)
@@ -366,7 +399,7 @@ fn parse_package(opf: &str) -> Result<Package, LibraryError> {
     Ok(package)
 }
 
-fn resolve_entity(name: &str, char_ref: Option<char>) -> String {
+pub(crate) fn resolve_entity(name: &str, char_ref: Option<char>) -> String {
     if let Some(c) = char_ref {
         return c.to_string();
     }
@@ -412,7 +445,7 @@ fn strip_markup(text: &str) -> String {
 }
 
 /// Counts the words in an XHTML document's `<body>`, ignoring markup.
-fn count_words(xhtml: &str) -> u64 {
+pub(crate) fn count_words(xhtml: &str) -> u64 {
     let mut reader = xml_reader(xhtml);
     let mut in_body = false;
     let mut skip_depth = 0u32; // inside <script>/<style>

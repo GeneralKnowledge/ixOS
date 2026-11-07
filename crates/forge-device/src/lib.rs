@@ -112,6 +112,24 @@ pub trait DeviceBackend {
     /// returns `false` or the connection ends.
     fn syslog(&self, device: &DeviceRef, on_line: &mut dyn FnMut(&str) -> bool) -> Result<()>;
 
+    /// Like [`syslog`](Self::syslog), but also stops at `until`, even when
+    /// the phone logs nothing (`forge device logs --for`). The default only
+    /// checks the time when a line arrives; backends that can wait with a
+    /// timeout override it.
+    fn syslog_until(
+        &self,
+        device: &DeviceRef,
+        until: Option<std::time::Instant>,
+        on_line: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<()> {
+        match until {
+            None => self.syslog(device, on_line),
+            Some(until) => self.syslog(device, &mut |line| {
+                std::time::Instant::now() < until && on_line(line)
+            }),
+        }
+    }
+
     /// Names of the crash reports on the phone (paths relative to the crash
     /// report folder).
     fn crash_reports(&self, device: &DeviceRef) -> Result<Vec<String>>;
@@ -333,6 +351,27 @@ mod tests {
         assert!(!filter.matches("Nov  7 12:00 iPhone Chat[1] <Notice>: [chat] opened"));
         assert!(!filter.matches("Nov  7 12:00 iPhone Mail[2] <Notice>: message sent"));
         assert!(LogFilter::default().matches("anything"));
+    }
+
+    #[test]
+    fn syslog_until_a_past_deadline_shows_nothing() {
+        let mut backend = fake(vec![usb("a")]);
+        backend.lines = vec!["one", "two"];
+        let mut seen = 0;
+        backend
+            .syslog_until(&usb("a"), Some(std::time::Instant::now()), &mut |_| {
+                seen += 1;
+                true
+            })
+            .unwrap();
+        assert_eq!(seen, 0);
+        backend
+            .syslog_until(&usb("a"), None, &mut |_| {
+                seen += 1;
+                true
+            })
+            .unwrap();
+        assert_eq!(seen, 2);
     }
 
     #[test]

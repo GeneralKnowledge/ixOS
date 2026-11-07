@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use flate2::write::ZlibEncoder;
 use flate2::{Compression, Crc};
-use forge_ffi::domain::{validate, LibraryData};
+use forge_ffi::domain::{validate, LibraryData, SavedPosition};
 use forge_ffi::store::Store;
 use forge_ffi::{BookInput, BookSource, LibrarySort, ReadingStatus};
 
@@ -147,6 +147,21 @@ fn main() {
         }
         let book = data.books.iter_mut().find(|b| b.id == id).unwrap();
         book.rating = seed.rating;
+        // One book has its EPUB, opened at its first chapter, for the
+        // reader screenshot (`-openReader <id>`).
+        if seed.title == "Night Trains" {
+            book.epub_file = Some(
+                store
+                    .save_book_file("night-trains", &night_trains_epub())
+                    .unwrap(),
+            );
+            book.reading_position = Some(SavedPosition {
+                chapter: 0,
+                fraction: 0.0,
+                page: book.current_page,
+            });
+            println!("[seed] readable book id {id}");
+        }
     }
     store.save(&data).unwrap();
     println!("[seed] {} books in {dir}", data.books.len());
@@ -191,4 +206,62 @@ fn cover_png(background: [u8; 3], band: [u8; 3]) -> Vec<u8> {
         png.extend_from_slice(&crc.sum().to_be_bytes());
     }
     png
+}
+
+/// A short EPUB with two chapters of original text (no real book is
+/// bundled), using the formatting the reader shows: headings, italics,
+/// a scene break and a quotation.
+fn night_trains_epub() -> Vec<u8> {
+    let chapters = [
+        (
+            "One: The Last Sleeper",
+            r#"<h1>One: The Last Sleeper</h1>
+<p>The train left the city a little after ten, when the platforms had emptied and the station clock had begun to sound louder than the announcements. Lena found her compartment near the front, a narrow room with two bunks, a folding table and a window that would not quite close.</p>
+<p>She had bought the ticket on an impulse, the way people buy a coat they are not sure they need. <em>Somewhere east</em>, she had told the clerk, and he had smiled as if he heard that every night.</p>
+<p>The conductor came by with a clipboard and a tired kindness. He asked whether she wanted tea in the morning, and whether she would be getting off before the border or after it.</p>
+<blockquote><p>“Most people know,” he said. “The ones who don’t usually sleep best.”</p></blockquote>
+<p>She did not know. She lay on the lower bunk and watched the lights of the suburbs thin out into villages, and the villages into dark fields where only a single farmhouse window kept watch.</p>
+<p class="center">* * *</p>
+<p>Somewhere after midnight the train stopped in a station with no name she could read. A woman with a cello case climbed aboard, looked at the number on Lena’s door, and laughed quietly when she realised it was hers too.</p>
+<p>“I hope you don’t mind music,” she said. “I never play it. I only carry it.”</p>"#,
+        ),
+        (
+            "Two: Border Light",
+            r#"<h1>Two: Border Light</h1>
+<p>Morning came up grey and then gold over a river that seemed too wide for the country it ran through. The cellist was already awake, sitting by the window with her hands around a paper cup.</p>
+<p>They talked about nothing for an hour: the best bread they had ever eaten, cities that looked better in the rain, a dog one of them had loved as a child. It was the kind of conversation that only happens between strangers who know they will part at the next long platform.</p>
+<p>At the border the train waited while men in blue walked its length with torches they no longer needed. Lena realised she had decided, somewhere in the night, that she would not be getting off before it.</p>"#,
+        ),
+    ];
+    let mut zip = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    let options = zip::write::SimpleFileOptions::default();
+    let mut add = |name: &str, body: &str| {
+        zip.start_file(name, options).unwrap();
+        zip.write_all(body.as_bytes()).unwrap();
+    };
+    add("mimetype", "application/epub+zip");
+    add(
+        "META-INF/container.xml",
+        r#"<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf"/></rootfiles></container>"#,
+    );
+    add(
+        "OEBPS/content.opf",
+        r#"<package xmlns="http://www.idpf.org/2007/opf" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Night Trains</dc:title><dc:creator>Ines Kovač</dc:creator></metadata>
+<manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="c1" href="one.xhtml" media-type="application/xhtml+xml"/><item id="c2" href="two.xhtml" media-type="application/xhtml+xml"/></manifest>
+<spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>"#,
+    );
+    add(
+        "OEBPS/nav.xhtml",
+        &format!(
+            r#"<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body><nav epub:type="toc"><ol><li><a href="one.xhtml">{}</a></li><li><a href="two.xhtml">{}</a></li></ol></nav></body></html>"#,
+            chapters[0].0, chapters[1].0
+        ),
+    );
+    for (file, (_, body)) in ["one.xhtml", "two.xhtml"].iter().zip(chapters) {
+        add(
+            &format!("OEBPS/{file}"),
+            &format!(r#"<html xmlns="http://www.w3.org/1999/xhtml"><body>{body}</body></html>"#),
+        );
+    }
+    zip.finish().unwrap().into_inner()
 }

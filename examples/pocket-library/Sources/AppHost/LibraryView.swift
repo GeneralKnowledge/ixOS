@@ -26,6 +26,7 @@ struct LibraryView: View {
                 .searchable(text: bindable.searchText, prompt: "Title or author")
                 .toolbar { toolbar }
         }
+        .onAppear(perform: openReaderFromLaunchArgument)
         .sheet(isPresented: $showingAddForm) {
             BookFormView(mode: .add) { book in path.append(book.id) }
         }
@@ -188,6 +189,15 @@ struct LibraryView: View {
         Task {
             do { try await model.delete(book.id) } catch { self.error = PresentedError(error) }
         }
+    }
+
+    /// `-openReader <id>` opens that book in the reader at launch: how the
+    /// screenshot job shows the reader without UI automation.
+    private func openReaderFromLaunchArgument() {
+        let id = UserDefaults.standard.integer(forKey: "openReader")
+        guard id > 0, path.isEmpty, model.book(id: UInt64(id))?.canRead == true else { return }
+        path.append(UInt64(id))
+        path.append(ReaderRoute(bookID: UInt64(id)))
     }
 
     private func importEpub(_ url: URL) {

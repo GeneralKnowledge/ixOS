@@ -1,0 +1,57 @@
+name: Local AI check app
+
+# Compiles the local AI spike app (scripts/make-ai-check-app.sh, docs/local-ai.md)
+# for an iPhone, with Xcode 26 so the Foundation Models code is compiled too.
+# Only runs when the check app or its generator changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/ai-check/**"
+      - "scripts/make-ai-check-app.sh"
+      - ".github/workflows/ai-check.yml"
+  pull_request:
+    paths:
+      - "scripts/ai-check/**"
+      - "scripts/make-ai-check-app.sh"
+      - ".github/workflows/ai-check.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ios-build:
+    name: AI check app (iOS, Xcode 26)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and iOS target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Select the newest Xcode 26
+        run: |
+          XC="$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)"
+          if [ -z "$XC" ]; then
+            echo "::error::No Xcode 26 on this runner; Foundation Models needs the iOS 26 SDK"
+            exit 1
+          fi
+          sudo xcode-select -s "$XC"
+          xcodebuild -version
+      - name: Generate the app (Rust tests, bindings)
+        run: ./scripts/make-ai-check-app.sh "$RUNNER_TEMP/AICheck"
+      - name: Build for iOS (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project "$RUNNER_TEMP/AICheck/Xcode/AICheck.xcodeproj" \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            -skipMacroValidation \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO

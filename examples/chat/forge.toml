@@ -15,7 +15,11 @@ ios_simulator = false
 # them (docs/app-config.md).
 [ios]
 xtool_product = "ChatXtool"
+# Message notifications open forgechat://conversation/<id> (LocalChatNotifier).
+url_schemes = ["forgechat"]
 
 [ios.permissions]
 # The demo server runs on your computer, reached over the LAN.
 local_network = "Chat connects to the demo chat server on your local network."
+# Voice messages (M4). Declaring it also brings Forge's Swift audio module.
+microphone = "Chat records a voice message while you tap the microphone button."

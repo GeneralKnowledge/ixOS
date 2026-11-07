@@ -38,6 +38,7 @@ platform (the Keychain adapter, notifications, the scene lifecycle).
    make chat-cli ARGS="reply general @2 good point"
    make chat-cli ARGS="send-file general ~/photo.jpg a caption"
    make chat-cli ARGS="download general @1 /tmp"     # checked against its SHA-256
+   make chat-cli ARGS="send-file general ~/note.m4a"  # shows on the phone as a voice message
    ```
 
 The full device check is [ACCEPTANCE.md](ACCEPTANCE.md).
@@ -46,7 +47,7 @@ On a Mac you can also open `Xcode/Chat.xcodeproj`, or run it on the desktop
 with `swift run --package-path examples/chat Chat` (after
 `./scripts/test-swift-host.sh examples/chat` has built the host library).
 
-## What it does today (M0 to M3)
+## What it does today (M0 to M4)
 
 - **An account per device, in the Keychain.** First launch creates an account
   on the server. Rust stores it, token included, through `forge-services`'
@@ -88,6 +89,12 @@ with `swift run --package-path examples/chat Chat` (after
   with their size; tap one to open it in Quick Look, which also shares it.
   Files from others are downloaded when shown and checked before they are
   kept. Up to 10 files of 25 MB each per message.
+- **Voice messages (M4).** With nothing typed, the send button is a
+  microphone: tap it to record (Chat asks for the microphone the first
+  time), watch the time and level meter, then send or discard. Voice
+  messages play in the bubble, one at a time, with a waveform that fills as
+  they play; they keep playing with the ring switch on silent. Recording
+  and playback are Forge's optional audio module, not Chat code.
 - **Lifecycle.** In the background Rust closes every room connection; back in
   the foreground it reconnects them and catches up, and the list refreshes.
 - **Local notifications** for new messages in rooms you are not in, while the

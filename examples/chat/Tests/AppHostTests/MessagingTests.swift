@@ -233,6 +233,45 @@ final class MessagingTests: XCTestCase {
         me.close()
         other.close()
     }
+    /// M4: a voice message (an audio attachment) from one account to the
+    /// other, which fetches it and can measure and draw it.
+    func testVoiceMessagesBetweenTwoPeople() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try await signedIn("Reuben", on: server)
+        let other = try await signedIn("Laptop", on: server)
+        let recording = try toneFile(seconds: 3, loudFrom: 1, in: self)
+
+        await me.enter("general")
+        await waitUntil("connected") { me.connection["general"] == .connected }
+        await me.send(
+            files: [
+                ChatOutgoingFile(
+                    path: recording.path, name: AttachmentFiles.voiceMessageName, mime: "audio/mp4")
+            ],
+            text: "", to: "general")
+        await waitUntil("sent") { me.messages(in: "general").first?.status == .sent }
+        XCTAssertEqual(me.conversation("general")?.lastMessage?.summary, "Voice message")
+
+        await other.enter("general")
+        await waitUntil("the voice message arrived") {
+            other.messages(in: "general").first?.attachments.first?.isAudio == true
+        }
+        let voice = try XCTUnwrap(other.messages(in: "general").first?.attachments.first)
+        XCTAssertEqual(voice.mime, "audio/mp4")
+        XCTAssertFalse(voice.isImage)
+        let fetched = await other.localFile(for: voice)
+        let file = try XCTUnwrap(fetched)
+        XCTAssertEqual(try ForgeAudio.duration(of: file), 3, accuracy: 0.1)
+        let bars = try await ForgeAudio.waveform(of: file, bars: 28)
+        XCTAssertEqual(bars.count, 28)
+        XCTAssertEqual(AttachmentFiles.timeLabel(3.2), "0:03")
+
+        me.leave("general")
+        other.leave("general")
+        me.close()
+        other.close()
+    }
 }
 
 /// Grouping and separators in the transcript, without a server.

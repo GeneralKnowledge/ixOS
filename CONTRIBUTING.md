@@ -32,7 +32,7 @@ Going further:
 ## Toolchain and dependencies
 
 - Rust is pinned in `rust-toolchain.toml`; rustup installs it automatically. Bump it in its own PR and fix any new Clippy lints there. CI also checks the declared MSRV (1.88).
-- `cargo deny check` (install with `cargo install cargo-deny --locked`) audits advisories, licenses and sources using `deny.toml`. CI runs it on every PR.
+- `cargo deny check` (install with `cargo install cargo-deny --locked`) audits advisories, licenses and sources using `deny.toml`. CI runs it on every PR that changes code.
 - Dependabot opens grouped weekly PRs for Cargo and GitHub Actions (pinned by commit SHA) and monthly ones for Gradle.
 
 ## Host app tests
@@ -42,7 +42,22 @@ The view-model tests call the real Rust core through the generated bindings, so 
 - **Android (any OS with a JDK and Android SDK):** `cargo build --manifest-path examples/counter/rust/Cargo.toml`, then `cd examples/counter-android && ./gradlew :app:testDebugUnitTest` (or `make test-android-host`, or `forge test --project examples/counter-android`).
 - **iOS (macOS only):** `./scripts/test-swift-host.sh examples/counter` (or `make test-swift-host` for every example). It builds the app's Rust crate for the Mac and runs `swift test` in the app.
 
-CI runs both, plus unsigned `xcodebuild` device builds of Chat, Pocket Library and a freshly generated iOS template app (`.github/workflows/macos.yml`, on every pull request; `.github/workflows/android.yml`, when Android or shared Rust code changes).
+CI runs both, plus unsigned `xcodebuild` device builds; see [CI](#ci) for when.
+
+## CI
+
+CI is kept lean on purpose: a pull request should be green in minutes, and is gated by Linux checks only. The supported stack is Linux, xtool and an iPhone, so the macOS job is a weekly backstop and an on-demand check, not a gate. Docs-only changes (`*.md`, `docs/`) run nothing.
+
+| Workflow | Job | Pull requests | Pushes to main |
+| --- | --- | --- | --- |
+| Rust (Linux) | Rust: fmt, clippy, tests, app-owned crates, binding drift, Xcode project layout | Every code change | Every code change |
+| Rust (Linux) | Fresh app outside the checkout | Every code change | Every code change |
+| Rust (Linux) | MSRV (1.88) and cargo-deny | Every code change | Every code change |
+| macOS | iOS (Swift tests, Xcode build): one job, `scripts/ci-macos.sh` | On demand | Weekly, every app |
+| Android (Linux) | android-apk | Only when Android code changes | When shared Rust or Android code changes |
+| Screenshots (macOS) | Simulator screenshots | On demand | On demand |
+
+Anything path-filtered can be run by hand on any branch: Actions tab, pick the workflow, **Run workflow**. Use it for Android (frozen, work in progress), for the Swift host tests and Xcode device builds on a branch (macOS; optionally name the apps), and for simulator screenshots of a UI change (Screenshots, pick `starter`, `pocket-library` or `weather`; the images are uploaded and also printed as small JPEGs in the log). `./scripts/ci-macos.sh --list affected "$(git merge-base origin/main HEAD)"` shows which apps a branch's macOS run would check.
 
 ## Pull requests
 

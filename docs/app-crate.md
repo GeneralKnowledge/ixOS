@@ -42,7 +42,7 @@ forge build android --install                # debug APK on a connected Android 
 | A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` (from `app_shell!`) | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
 | The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase` (from `app_shell!`), `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
 | Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
-| Logging to logcat (Android) and the system log (iOS), recent records kept for diagnostics, panics logged | `logging::init()` in `AppCore::new`, `logging::info!` | [`forge_runtime::logging`](../crates/forge-runtime/src/logging.rs) |
+| Logging to logcat (Android) and the system log (iOS), recent records kept for diagnostics, panics logged | `logging::init()` in `AppCore::new`, `logging::info!`; Swift writes the same log with `ForgeLog("Notes").warn(...)` because the crate calls `forge_runtime::log_export!()` | [`forge_runtime::logging`](../crates/forge-runtime/src/logging.rs), [`ForgeLog.swift`](../crates/forge-runtime/swift/ForgeLog.swift) |
 | Native iOS services: Keychain, app directories, notifications, permissions, sharing, deep links | `forge_services::native_services!()` adds `crate::native`; the iOS host installs it with `AppServices.install()` | [`forge-services`](../crates/forge-services/src/lib.rs), [native-services.md](native-services.md) |
 
 The types every app repeats come from one macro, so each app keeps only what is its own:

@@ -793,7 +793,7 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func books(query: LibraryQuery)  -> [Book]
     
     /**
-     * Deletes a book and its saved cover. Its history stays.
+     * Deletes a book, its saved cover and its EPUB. Its history stays.
      */
     func deleteBook(id: UInt64) async throws 
     
@@ -821,8 +821,14 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     /**
      * Adds the book in the EPUB at `path` as Want to Read: title, authors,
      * description and cover from the file, and a page count estimated from
-     * its length. Only the metadata and cover are kept, never the text. The
-     * host may delete the file afterwards.
+     * its length. A copy of the file is kept so the book can be read in the
+     * app (`open_reader`); the host may delete its own copy afterwards.
+     *
+     * If the book is already in the library without a saved EPUB (typed
+     * in, found in the catalogue, or imported before EPUBs were kept), the
+     * file is attached to that book instead, keeping its progress, and that
+     * book is returned. Otherwise a second import fails with
+     * `AlreadyInLibrary`.
      */
     func importEpub(path: String) async throws  -> Book
     
@@ -835,9 +841,29 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func importFromCatalogue(key: String, cancellation: Cancellation?) async throws  -> ImportedBook
     
     /**
+     * Opens a book's saved EPUB for reading: its chapters, and where to
+     * start (see `ReaderContents::start`). Fails with `NotReadable` for a
+     * book without one. Images of earlier chapters are deleted.
+     */
+    func openReader(id: UInt64) async throws  -> ReaderContents
+    
+    /**
+     * The text of chapter `index` of a book opened with `open_reader`.
+     */
+    func readerChapter(id: UInt64, index: UInt32) async throws  -> ReaderChapter
+    
+    /**
      * Increases with every saved change.
      */
     func revision()  -> UInt64
+    
+    /**
+     * Saves where the reader is, and moves the book's current page to
+     * match: reading in the app starts the book and counts as pages read,
+     * like typing the page in. It never finishes a book; the reader offers
+     * "Mark as Finished" at the end. A finished book keeps its page.
+     */
+    func saveReadingPosition(id: UInt64, position: ReadingPosition) async throws  -> Book
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
@@ -1010,7 +1036,7 @@ open func books(query: LibraryQuery) -> [Book]  {
 }
     
     /**
-     * Deletes a book and its saved cover. Its history stays.
+     * Deletes a book, its saved cover and its EPUB. Its history stays.
      */
 open func deleteBook(id: UInt64)async throws   {
     return
@@ -1096,8 +1122,14 @@ open func history(bookId: UInt64?, limit: UInt32) -> [ActivityEntry]  {
     /**
      * Adds the book in the EPUB at `path` as Want to Read: title, authors,
      * description and cover from the file, and a page count estimated from
-     * its length. Only the metadata and cover are kept, never the text. The
-     * host may delete the file afterwards.
+     * its length. A copy of the file is kept so the book can be read in the
+     * app (`open_reader`); the host may delete its own copy afterwards.
+     *
+     * If the book is already in the library without a saved EPUB (typed
+     * in, found in the catalogue, or imported before EPUBs were kept), the
+     * file is attached to that book instead, keeping its progress, and that
+     * book is returned. Otherwise a second import fails with
+     * `AlreadyInLibrary`.
      */
 open func importEpub(path: String)async throws  -> Book  {
     return
@@ -1138,6 +1170,46 @@ open func importFromCatalogue(key: String, cancellation: Cancellation?)async thr
 }
     
     /**
+     * Opens a book's saved EPUB for reading: its chapters, and where to
+     * start (see `ReaderContents::start`). Fails with `NotReadable` for a
+     * book without one. Images of earlier chapters are deleted.
+     */
+open func openReader(id: UInt64)async throws  -> ReaderContents  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_library_open_reader(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeReaderContents_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
+     * The text of chapter `index` of a book opened with `open_reader`.
+     */
+open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_library_reader_chapter(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(index)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeReaderChapter_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
      * Increases with every saved change.
      */
 open func revision() -> UInt64  {
@@ -1147,6 +1219,28 @@ open func revision() -> UInt64  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Saves where the reader is, and moves the book's current page to
+     * match: reading in the app starts the book and counts as pages read,
+     * like typing the page in. It never finishes a book; the reader offers
+     * "Mark as Finished" at the end. A finished book keeps its page.
+     */
+open func saveReadingPosition(id: UInt64, position: ReadingPosition)async throws  -> Book  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_library_save_reading_position(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeReadingPosition_lower(position)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeBook_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
 }
     
     /**
@@ -1595,6 +1689,14 @@ public struct Book: Equatable, Hashable {
     public var coverUrl: String?
     public var source: BookSource
     /**
+     * The book's EPUB is saved, so it can be opened in the reader.
+     */
+    public var canRead: Bool
+    /**
+     * Where the reader was left, if the book has been opened in it.
+     */
+    public var readingPosition: ReadingPosition?
+    /**
      * Unix time in milliseconds.
      */
     public var addedAtMs: Int64
@@ -1620,6 +1722,12 @@ public struct Book: Equatable, Hashable {
          * A remote cover, used when there is no saved one.
          */coverUrl: String?, source: BookSource, 
         /**
+         * The book's EPUB is saved, so it can be opened in the reader.
+         */canRead: Bool, 
+        /**
+         * Where the reader was left, if the book has been opened in it.
+         */readingPosition: ReadingPosition?, 
+        /**
          * Unix time in milliseconds.
          */addedAtMs: Int64, startedAtMs: Int64?, finishedAtMs: Int64?, updatedAtMs: Int64) {
         self.id = id
@@ -1635,6 +1743,8 @@ public struct Book: Equatable, Hashable {
         self.coverFile = coverFile
         self.coverUrl = coverUrl
         self.source = source
+        self.canRead = canRead
+        self.readingPosition = readingPosition
         self.addedAtMs = addedAtMs
         self.startedAtMs = startedAtMs
         self.finishedAtMs = finishedAtMs
@@ -1670,6 +1780,8 @@ public struct FfiConverterTypeBook: FfiConverterRustBuffer {
                 coverFile: FfiConverterOptionString.read(from: &buf), 
                 coverUrl: FfiConverterOptionString.read(from: &buf), 
                 source: FfiConverterTypeBookSource.read(from: &buf), 
+                canRead: FfiConverterBool.read(from: &buf), 
+                readingPosition: FfiConverterOptionTypeReadingPosition.read(from: &buf), 
                 addedAtMs: FfiConverterInt64.read(from: &buf), 
                 startedAtMs: FfiConverterOptionInt64.read(from: &buf), 
                 finishedAtMs: FfiConverterOptionInt64.read(from: &buf), 
@@ -1691,6 +1803,8 @@ public struct FfiConverterTypeBook: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.coverFile, into: &buf)
         FfiConverterOptionString.write(value.coverUrl, into: &buf)
         FfiConverterTypeBookSource.write(value.source, into: &buf)
+        FfiConverterBool.write(value.canRead, into: &buf)
+        FfiConverterOptionTypeReadingPosition.write(value.readingPosition, into: &buf)
         FfiConverterInt64.write(value.addedAtMs, into: &buf)
         FfiConverterOptionInt64.write(value.startedAtMs, into: &buf)
         FfiConverterOptionInt64.write(value.finishedAtMs, into: &buf)
@@ -1892,6 +2006,87 @@ public func FfiConverterTypeCatalogueBook_lift(_ buf: RustBuffer) throws -> Cata
 #endif
 public func FfiConverterTypeCatalogueBook_lower(_ value: CatalogueBook) -> RustBuffer {
     return FfiConverterTypeCatalogueBook.lower(value)
+}
+
+
+/**
+ * One chapter (one file of the EPUB's reading order).
+ */
+public struct ChapterSummary: Equatable, Hashable {
+    public var index: UInt32
+    /**
+     * From the book's table of contents, else the chapter's first heading,
+     * else "Section N".
+     */
+    public var title: String
+    /**
+     * Whether the book's own table of contents lists it. Files a chapter
+     * is split across, and title pages, usually are not.
+     */
+    public var inContents: Bool
+    public var words: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(index: UInt32, 
+        /**
+         * From the book's table of contents, else the chapter's first heading,
+         * else "Section N".
+         */title: String, 
+        /**
+         * Whether the book's own table of contents lists it. Files a chapter
+         * is split across, and title pages, usually are not.
+         */inContents: Bool, words: UInt32) {
+        self.index = index
+        self.title = title
+        self.inContents = inContents
+        self.words = words
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChapterSummary: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChapterSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChapterSummary {
+        return
+            try ChapterSummary(
+                index: FfiConverterUInt32.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                inContents: FfiConverterBool.read(from: &buf), 
+                words: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChapterSummary, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.index, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterBool.write(value.inContents, into: &buf)
+        FfiConverterUInt32.write(value.words, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChapterSummary_lift(_ buf: RustBuffer) throws -> ChapterSummary {
+    return try FfiConverterTypeChapterSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChapterSummary_lower(_ value: ChapterSummary) -> RustBuffer {
+    return FfiConverterTypeChapterSummary.lower(value)
 }
 
 
@@ -2187,6 +2382,202 @@ public func FfiConverterTypeLibraryStats_lower(_ value: LibraryStats) -> RustBuf
 
 
 /**
+ * A chapter's text, ready to lay out.
+ */
+public struct ReaderChapter: Equatable, Hashable {
+    public var index: UInt32
+    public var title: String
+    public var blocks: [TextBlock]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(index: UInt32, title: String, blocks: [TextBlock]) {
+        self.index = index
+        self.title = title
+        self.blocks = blocks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderChapter: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderChapter: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderChapter {
+        return
+            try ReaderChapter(
+                index: FfiConverterUInt32.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                blocks: FfiConverterSequenceTypeTextBlock.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderChapter, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.index, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeTextBlock.write(value.blocks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderChapter_lift(_ buf: RustBuffer) throws -> ReaderChapter {
+    return try FfiConverterTypeReaderChapter.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderChapter_lower(_ value: ReaderChapter) -> RustBuffer {
+    return FfiConverterTypeReaderChapter.lower(value)
+}
+
+
+/**
+ * What the reader needs to open a book.
+ */
+public struct ReaderContents: Equatable, Hashable {
+    public var bookId: UInt64
+    public var title: String
+    public var chapters: [ChapterSummary]
+    public var totalWords: UInt64
+    /**
+     * Where to open: the saved position, or the place matching the book's
+     * current page if that was changed by hand since.
+     */
+    public var start: ReadingPosition
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(bookId: UInt64, title: String, chapters: [ChapterSummary], totalWords: UInt64, 
+        /**
+         * Where to open: the saved position, or the place matching the book's
+         * current page if that was changed by hand since.
+         */start: ReadingPosition) {
+        self.bookId = bookId
+        self.title = title
+        self.chapters = chapters
+        self.totalWords = totalWords
+        self.start = start
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderContents: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderContents: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderContents {
+        return
+            try ReaderContents(
+                bookId: FfiConverterUInt64.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                chapters: FfiConverterSequenceTypeChapterSummary.read(from: &buf), 
+                totalWords: FfiConverterUInt64.read(from: &buf), 
+                start: FfiConverterTypeReadingPosition.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderContents, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.bookId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeChapterSummary.write(value.chapters, into: &buf)
+        FfiConverterUInt64.write(value.totalWords, into: &buf)
+        FfiConverterTypeReadingPosition.write(value.start, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderContents_lift(_ buf: RustBuffer) throws -> ReaderContents {
+    return try FfiConverterTypeReaderContents.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderContents_lower(_ value: ReaderContents) -> RustBuffer {
+    return FfiConverterTypeReaderContents.lower(value)
+}
+
+
+/**
+ * A place in a book: a chapter (an index into `ReaderContents::chapters`)
+ * and how far through it, 0.0–1.0.
+ */
+public struct ReadingPosition: Equatable, Hashable {
+    public var chapter: UInt32
+    public var fraction: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(chapter: UInt32, fraction: Double) {
+        self.chapter = chapter
+        self.fraction = fraction
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReadingPosition: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReadingPosition: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReadingPosition {
+        return
+            try ReadingPosition(
+                chapter: FfiConverterUInt32.read(from: &buf), 
+                fraction: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReadingPosition, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.chapter, into: &buf)
+        FfiConverterDouble.write(value.fraction, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReadingPosition_lift(_ buf: RustBuffer) throws -> ReadingPosition {
+    return try FfiConverterTypeReadingPosition.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReadingPosition_lower(_ value: ReadingPosition) -> RustBuffer {
+    return FfiConverterTypeReadingPosition.lower(value)
+}
+
+
+/**
  * What `Settings` shows about local data.
  */
 public struct StorageInfo: Equatable, Hashable {
@@ -2195,7 +2586,11 @@ public struct StorageInfo: Equatable, Hashable {
     public var activityEntries: UInt32
     public var savedCovers: UInt32
     /**
-     * Library file plus saved covers.
+     * EPUBs kept for reading.
+     */
+    public var savedBooks: UInt32
+    /**
+     * Library file plus saved covers and EPUBs.
      */
     public var bytes: UInt64
 
@@ -2203,12 +2598,16 @@ public struct StorageInfo: Equatable, Hashable {
     // declare one manually.
     public init(directory: String, books: UInt32, activityEntries: UInt32, savedCovers: UInt32, 
         /**
-         * Library file plus saved covers.
+         * EPUBs kept for reading.
+         */savedBooks: UInt32, 
+        /**
+         * Library file plus saved covers and EPUBs.
          */bytes: UInt64) {
         self.directory = directory
         self.books = books
         self.activityEntries = activityEntries
         self.savedCovers = savedCovers
+        self.savedBooks = savedBooks
         self.bytes = bytes
     }
 
@@ -2232,6 +2631,7 @@ public struct FfiConverterTypeStorageInfo: FfiConverterRustBuffer {
                 books: FfiConverterUInt32.read(from: &buf), 
                 activityEntries: FfiConverterUInt32.read(from: &buf), 
                 savedCovers: FfiConverterUInt32.read(from: &buf), 
+                savedBooks: FfiConverterUInt32.read(from: &buf), 
                 bytes: FfiConverterUInt64.read(from: &buf)
         )
     }
@@ -2241,6 +2641,7 @@ public struct FfiConverterTypeStorageInfo: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.books, into: &buf)
         FfiConverterUInt32.write(value.activityEntries, into: &buf)
         FfiConverterUInt32.write(value.savedCovers, into: &buf)
+        FfiConverterUInt32.write(value.savedBooks, into: &buf)
         FfiConverterUInt64.write(value.bytes, into: &buf)
     }
 }
@@ -2258,6 +2659,134 @@ public func FfiConverterTypeStorageInfo_lift(_ buf: RustBuffer) throws -> Storag
 #endif
 public func FfiConverterTypeStorageInfo_lower(_ value: StorageInfo) -> RustBuffer {
     return FfiConverterTypeStorageInfo.lower(value)
+}
+
+
+/**
+ * One paragraph, heading, image… of a chapter, in reading order.
+ */
+public struct TextBlock: Equatable, Hashable {
+    public var kind: TextBlockKind
+    /**
+     * Empty for separators and images. Line breaks are `\n`.
+     */
+    public var spans: [TextSpan]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: TextBlockKind, 
+        /**
+         * Empty for separators and images. Line breaks are `\n`.
+         */spans: [TextSpan]) {
+        self.kind = kind
+        self.spans = spans
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TextBlock: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextBlock: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextBlock {
+        return
+            try TextBlock(
+                kind: FfiConverterTypeTextBlockKind.read(from: &buf), 
+                spans: FfiConverterSequenceTypeTextSpan.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TextBlock, into buf: inout [UInt8]) {
+        FfiConverterTypeTextBlockKind.write(value.kind, into: &buf)
+        FfiConverterSequenceTypeTextSpan.write(value.spans, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextBlock_lift(_ buf: RustBuffer) throws -> TextBlock {
+    return try FfiConverterTypeTextBlock.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextBlock_lower(_ value: TextBlock) -> RustBuffer {
+    return FfiConverterTypeTextBlock.lower(value)
+}
+
+
+/**
+ * A run of text in one style.
+ */
+public struct TextSpan: Equatable, Hashable {
+    public var text: String
+    public var bold: Bool
+    public var italic: Bool
+    public var monospace: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, bold: Bool, italic: Bool, monospace: Bool) {
+        self.text = text
+        self.bold = bold
+        self.italic = italic
+        self.monospace = monospace
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TextSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextSpan {
+        return
+            try TextSpan(
+                text: FfiConverterString.read(from: &buf), 
+                bold: FfiConverterBool.read(from: &buf), 
+                italic: FfiConverterBool.read(from: &buf), 
+                monospace: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TextSpan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.bold, into: &buf)
+        FfiConverterBool.write(value.italic, into: &buf)
+        FfiConverterBool.write(value.monospace, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextSpan_lift(_ buf: RustBuffer) throws -> TextSpan {
+    return try FfiConverterTypeTextSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextSpan_lower(_ value: TextSpan) -> RustBuffer {
+    return FfiConverterTypeTextSpan.lower(value)
 }
 
 
@@ -2518,6 +3047,12 @@ enum LibraryError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case UnsupportedFile(reason: String
     )
     /**
+     * The book has no saved EPUB to read (typed in, from the catalogue, or
+     * imported before Pocket Library kept EPUBs), or the saved one is gone.
+     */
+    case NotReadable(reason: String
+    )
+    /**
      * The request was stopped with its `Cancellation`. Nothing changed.
      */
     case Cancelled
@@ -2590,8 +3125,11 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
         case 13: return .UnsupportedFile(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .Cancelled
-        case 15: return .ShutDown
+        case 14: return .NotReadable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 15: return .Cancelled
+        case 16: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -2668,12 +3206,17 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Cancelled:
+        case let .NotReadable(reason):
             writeInt(&buf, Int32(14))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(15))
         
         
         case .ShutDown:
-            writeInt(&buf, Int32(15))
+            writeInt(&buf, Int32(16))
         
         }
     }
@@ -2959,6 +3502,138 @@ public func FfiConverterTypeReadingStatus_lower(_ value: ReadingStatus) -> RustB
 }
 
 
+
+/**
+ * What a block of a chapter is. The host chooses how each looks.
+ */
+
+public enum TextBlockKind: Equatable, Hashable {
+    
+    /**
+     * `level` 1–6, as `<h1>`–`<h6>`.
+     */
+    case heading(level: UInt8
+    )
+    case paragraph
+    /**
+     * Inside a `<blockquote>`.
+     */
+    case quote
+    /**
+     * `marker` is "•" or "3." and so on.
+     */
+    case listItem(marker: String
+    )
+    /**
+     * Keep line breaks and spacing; show in a fixed-width font.
+     */
+    case preformatted
+    /**
+     * A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
+     */
+    case separator
+    /**
+     * An image saved for this launch at `file` (absolute path).
+     */
+    case image(file: String, alt: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TextBlockKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTextBlockKind: FfiConverterRustBuffer {
+    typealias SwiftType = TextBlockKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextBlockKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .heading(level: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 2: return .paragraph
+        
+        case 3: return .quote
+        
+        case 4: return .listItem(marker: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .preformatted
+        
+        case 6: return .separator
+        
+        case 7: return .image(file: try FfiConverterString.read(from: &buf), alt: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TextBlockKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .heading(level):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt8.write(level, into: &buf)
+            
+        
+        case .paragraph:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .quote:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .listItem(marker):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(marker, into: &buf)
+            
+        
+        case .preformatted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .separator:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .image(file,alt):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(file, into: &buf)
+            FfiConverterString.write(alt, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextBlockKind_lift(_ buf: RustBuffer) throws -> TextBlockKind {
+    return try FfiConverterTypeTextBlockKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTextBlockKind_lower(_ value: TextBlockKind) -> RustBuffer {
+    return FfiConverterTypeTextBlockKind.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -3154,6 +3829,30 @@ fileprivate struct FfiConverterOptionTypeCancellation: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeReadingPosition: FfiConverterRustBuffer {
+    typealias SwiftType = ReadingPosition?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeReadingPosition.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeReadingPosition.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeLibraryEvent: FfiConverterRustBuffer {
     typealias SwiftType = LibraryEvent?
 
@@ -3298,6 +3997,81 @@ fileprivate struct FfiConverterSequenceTypeCatalogueBook: FfiConverterRustBuffer
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChapterSummary: FfiConverterRustBuffer {
+    typealias SwiftType = [ChapterSummary]
+
+    public static func write(_ value: [ChapterSummary], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChapterSummary.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChapterSummary] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChapterSummary]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChapterSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer {
+    typealias SwiftType = [TextBlock]
+
+    public static func write(_ value: [TextBlock], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTextBlock.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TextBlock] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TextBlock]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTextBlock.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer {
+    typealias SwiftType = [TextSpan]
+
+    public static func write(_ value: [TextSpan], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTextSpan.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TextSpan] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TextSpan]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTextSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -3403,7 +4177,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_books() != 12940) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_delete_book() != 16261) {
+    if (uniffi_forge_ffi_checksum_method_library_delete_book() != 4514) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_erase_library() != 2928) {
@@ -3418,13 +4192,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_history() != 26648) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_import_epub() != 151) {
+    if (uniffi_forge_ffi_checksum_method_library_import_epub() != 51301) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_import_from_catalogue() != 52856) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_library_open_reader() != 58001) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_library_reader_chapter() != 2267) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_library_revision() != 17488) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_library_save_reading_position() != 43436) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_search_catalogue() != 56333) {

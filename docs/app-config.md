@@ -57,6 +57,8 @@ ITSAppUsesNonExemptEncryption = false
 
 Forge checks every value when it reads `forge.toml`, so a typo fails the next command with the fix rather than failing on the phone. For example: `[ios.permissions] unknown permission "camra". Use one of: bluetooth, calendars, camera, ...`.
 
+Forge also warns, without stopping the build, when the app's Rust crate selects an [optional native service](native-services.md#optional-services) that needs a permission (`location`, `motion`, `bluetooth`) and `[ios.permissions]` has no text for it. It reads the selection from `Generated/ForgeFFI/ForgeServices+Selected.swift`, so the check starts working once bindings have been generated.
+
 ## Reference
 
 ### `[app]`
@@ -76,7 +78,7 @@ When `minimum_ios` changes, Forge rewrites the `.iOS(...)` entry in `Package.swi
 
 | Key | Writes | Notes |
 |---|---|---|
-| `xtool_product` | `xtool.yml` `product` | The SwiftPM library product holding `@main`. Default `AppHostXtool` (what `forge init` creates). |
+| `xtool_product` | `xtool.yml` `product` | The SwiftPM library product holding `@main`. `forge init MyApp` sets `MyAppXtool`. It is the app's executable, so it is the process name in the phone's log and on crash reports. Default when unset: `AppHostXtool` (apps made before 2026-11-07). Change it together with the `.library(name:)` in `Package.swift`. |
 | `icon` | `xtool.yml` `iconPath` | A PNG inside the app. Use 1024x1024 with no alpha channel. xtool copies it into the app and sets `CFBundleIconFile`; iOS scales it. |
 | `orientations` | `UISupportedInterfaceOrientations` | Default `["portrait"]`. |
 | `url_schemes` | `CFBundleURLTypes` | Custom schemes for deep links. System schemes (`https`, `tel`, …) are refused: use `associated_domains` for https links. |
@@ -101,7 +103,7 @@ iOS refuses (and App Review rejects) a permission request without a usage descri
 | `location_when_in_use` | `NSLocationWhenInUseUsageDescription` |
 | `location_always` | `NSLocationAlwaysAndWhenInUseUsageDescription` (also needs `location_when_in_use`) |
 | `media_library` | `NSAppleMusicUsageDescription` |
-| `microphone` | `NSMicrophoneUsageDescription` |
+| `microphone` | `NSMicrophoneUsageDescription`; needed by the optional `audio` native service ([native-services.md](native-services.md#audio-audio)) |
 | `motion` | `NSMotionUsageDescription` |
 | `nfc` | `NFCReaderUsageDescription` |
 | `photo_library` / `photo_library_add` | `NSPhotoLibraryUsageDescription` / `NSPhotoLibraryAddUsageDescription` |
