@@ -25,9 +25,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use forge_net::{HttpClient, NetError, Request, UreqClient};
-use forge_runtime::{
-    background, background_cancellable, lock, now_ms, EventHub, Lifecycle, Phase,
-};
+use forge_runtime::{background, background_cancellable, lock, now_ms, EventHub, Lifecycle, Phase};
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
@@ -406,7 +404,6 @@ fn newest_first(notes: &[Note]) -> Vec<Note> {
     notes.sort_by_key(|note| std::cmp::Reverse(note.id));
     notes
 }
-
 
 #[cfg(test)]
 mod tests {
