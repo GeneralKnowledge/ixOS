@@ -127,6 +127,14 @@ ForgePermissions.openSettings()
 
 Links that arrive before any view has registered `onForgeDeepLink` are held, up to 16, and delivered to the first handler. This covers a cold launch from a link.
 
+## Swift helpers
+
+Some platform code has no Rust side at all. These files are copied into every app's `Generated/ForgeFFI`, whether or not it uses `native_services!`, from `crates/forge-services/swift/helpers/`:
+
+| Helper | What it does |
+|--------|--------------|
+| `ForgeImages` | `thumbnail(of: url, maxPixels:, cached:)` and `thumbnail(of: data, maxPixels:)` decode an image straight to the size shown, the right way up, off the main actor; `writeDownscaledJPEG(from:maxPixels:to:)` turns a picked photo into a smaller JPEG without its location or other metadata; `pixels(_ points:, scale:)` converts a view size. Uses ImageIO only |
+
 ## Optional services
 
 Device capabilities that link privacy-sensitive or heavy frameworks are opt-in. An app names the ones it uses in the macro call, and gets only those:

@@ -70,7 +70,11 @@ else
   # links only the frameworks (Core Location, Core Motion, ...) it selected.
   # ForgeServices+Selected.swift lists their installers for
   # ForgeServices.install().
-  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift
+  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift "$OUT/ForgeFFI"/ForgeImages.swift
+  # Swift helpers with no Rust side and no privacy-sensitive framework
+  # (ImageIO thumbnails), for every app. Source of truth:
+  # crates/forge-services/swift/helpers/.
+  cp "$ROOT/crates/forge-services/swift/helpers/"*.swift "$OUT/ForgeFFI/"
   if grep -q 'public func installNativeServices(' "$OUT/ForgeFFI/forge_ffi.swift"; then
     cp "$ROOT/crates/forge-services/swift/"ForgeServices*.swift "$OUT/ForgeFFI/"
     selected=()
