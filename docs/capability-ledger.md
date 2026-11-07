@@ -143,6 +143,17 @@ Developer tooling on the Linux computer, not app capabilities, so "Rust API" and
 | App log and lifecycle stream that survives the background (`forge device connect`) | Yes: forge-devtools, forge-device | Yes | n/a | Yes: starter app | No | Yes: forge-device.md | 2,000-record buffer, older records reported as a gap; Swift-side logs not included |
 | Status, state probes and app commands (`forge device status`, `snapshot`, `cmd`) | Yes: forge-devtools, forge-device | Yes: `DevTools::probe`, `DevTools::command` | n/a | Yes: starter app (`notes` probe, `log` command) | No | Yes: forge-device.md | Chat registers none yet; no built-in reset or test-notification commands |
 
+## Forge UI Testing (W12)
+
+Driving an app on the phone from Linux through XCTest and WebDriverAgent. Plan and feasibility: [forge-ui-testing.md](forge-ui-testing.md).
+
+| Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
+|---|---|---|---|---|---|---|---|
+| Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`) | No: M0 in progress | n/a | n/a: prebuilt WDA, signed by xtool | n/a | No | Partial: forge-ui-testing.md | Runner uses one of the 3 free-account app slots and expires after 7 days; DDI comes from `Xcode.xip` and is gone after a reboot |
+| Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui`) | No: M0 in progress | n/a | n/a | No | No | Partial: forge-ui-testing.md | No coordinates by design; no test files or reports until M1 |
+| Screenshot saved on Linux (`forge ui screenshot`) | No: M0 in progress | n/a | n/a | No | No | Partial: forge-ui-testing.md | No baseline comparison until M4 |
+| Accessibility identifiers and labels in the demos | No | n/a | Partial: labels per ios-ui.md, no identifiers anywhere yet | No | No | Partial: ios-ui.md | Conventions and `forge ui audit` come in M3 |
+
 ## Performance
 
 A capability can work and still give a poor app. Each metric has a proposed target, a way to measure it from Linux with xtool (timestamps the app logs, read from the device log, or a diagnostics screen in the app), and the last recorded figure. Targets are proposals until the first measurement on the test iPhone, then they are revised once and kept.
