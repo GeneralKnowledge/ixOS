@@ -84,6 +84,77 @@ final class MessagingTests: XCTestCase {
         me.close()
         other.close()
     }
+
+    /// M2: replies, reactions, edits and deletes reach the other person
+    /// live; drafts and search come from Rust's SQLite store.
+    func testRepliesReactionsEditsDeletesDraftsAndSearch() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try await signedIn("Reuben", on: server)
+        let other = try await signedIn("Laptop", on: server)
+        await me.enter("general")
+        await other.enter("general")
+        await waitUntil("both connected") {
+            me.connection["general"] == .connected && other.connection["general"] == .connected
+        }
+
+        // I ask; the laptop replies to it.
+        await me.send("Café at noon?", to: "general")
+        await waitUntil("the laptop has it") { other.messages(in: "general").count == 1 }
+        let question = try XCTUnwrap(other.messages(in: "general").first)
+        await other.send("Yes", to: "general", replyTo: question.id)
+        await waitUntil("the reply arrives") { me.messages(in: "general").count == 2 }
+        let reply = try XCTUnwrap(me.messages(in: "general").last)
+        XCTAssertEqual(reply.replyTo, question.id)
+        XCTAssertEqual(me.message(question.id, in: "general")?.body, "Café at noon?")
+
+        // The laptop reacts; I see it, and toggling mine adds then removes it.
+        await other.toggleReaction("👍", on: question)
+        await waitUntil("the reaction shows") {
+            me.message(question.id, in: "general")?.reactions.first?.count == 1
+        }
+        let reacted = try XCTUnwrap(me.message(question.id, in: "general"))
+        XCTAssertEqual(reacted.reactions.first?.mine, false)
+        await me.toggleReaction("👍", on: reacted)
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.count, 2)
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.mine, true)
+        await me.toggleReaction("👍", on: try XCTUnwrap(me.message(question.id, in: "general")))
+        XCTAssertEqual(me.message(question.id, in: "general")?.reactions.first?.count, 1)
+
+        // I edit my question; the laptop sees it edited.
+        await me.edit(try XCTUnwrap(me.message(question.id, in: "general")), to: "Café at one?")
+        await waitUntil("the edit arrives") {
+            other.message(question.id, in: "general")?.body == "Café at one?"
+        }
+        XCTAssertEqual(other.message(question.id, in: "general")?.edited, true)
+
+        // The laptop deletes its reply; I see the placeholder.
+        await other.delete(try XCTUnwrap(other.message(reply.id, in: "general")))
+        await waitUntil("the deletion arrives") {
+            me.message(reply.id, in: "general")?.deleted == true
+        }
+        XCTAssertEqual(me.message(reply.id, in: "general")?.body, "")
+        XCTAssertNil(me.actionError)
+        XCTAssertNil(other.actionError)
+
+        // Search ignores case and accents; deleted messages are not found.
+        let found = await me.search("cafe ONE")
+        XCTAssertEqual(found.map(\.id), [question.id])
+        let deleted = await me.search("yes", in: "general")
+        XCTAssertEqual(deleted.count, 0)
+
+        // Drafts are kept per room until sent.
+        me.saveDraft("see you there", for: "general")
+        XCTAssertEqual(me.draft(for: "general"), "see you there")
+        XCTAssertEqual(me.draft(for: "random"), "")
+        await me.send("see you there", to: "general")
+        XCTAssertEqual(me.draft(for: "general"), "")
+        XCTAssertEqual(me.waitingCount, 0)
+        me.leave("general")
+        other.leave("general")
+        me.close()
+        other.close()
+    }
 }
 
 /// Grouping and separators in the transcript, without a server.
@@ -97,7 +168,8 @@ final class TranscriptTests: XCTestCase {
     ) -> ChatMessage {
         ChatMessage(
             id: id, conversationId: "general", author: author, authorId: "id-\(author)",
-            isMine: mine, body: id, sentAt: base + minutes * minute, status: status)
+            isMine: mine, body: id, sentAt: base + minutes * minute, status: status,
+            replyTo: nil, edited: false, deleted: false, reactions: [])
     }
 
     private func places(_ rows: [Transcript.Row]) -> [String: Transcript.Place] {

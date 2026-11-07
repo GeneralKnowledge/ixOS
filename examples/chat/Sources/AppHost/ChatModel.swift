@@ -58,6 +58,9 @@ public final class ChatModel {
     /// Increases each time one of this device's messages fails to send; a
     /// haptic trigger.
     public private(set) var failedCount = 0
+    /// Our messages waiting in Rust's outbox (written offline, or the
+    /// server could not be reached). Rust sends them by itself.
+    public private(set) var waitingCount = 0
 
     public private(set) var core: ChatCore?
     private let storageDirectory: String?
@@ -268,29 +271,107 @@ public final class ChatModel {
         try? core?.unsubscribe(conversationId: conversationId)
     }
 
-    /// Sends `text`. The bubble appears through `.messageReceived`.
-    public func send(_ text: String, to conversationId: String) async {
+    /// Sends `text`, as an answer to `replyTo` if given. The bubble
+    /// appears through `.messageReceived`. Offline, it waits in Rust's
+    /// outbox (still "Sending…") and goes out when the server is back, even
+    /// after a relaunch. Sending clears the room's draft.
+    public func send(_ text: String, to conversationId: String, replyTo: String? = nil) async {
         guard let core else { return }
         let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty else { return }
         sendError[conversationId] = nil
         sentCount += 1
         do {
-            _ = try await core.sendMessage(conversationId: conversationId, body: body)
+            _ = try await core.sendReply(
+                conversationId: conversationId, body: body, replyTo: replyTo)
         } catch {
             sendError[conversationId] = Self.describe(error)
         }
+        updateWaitingCount()
     }
 
-    /// Sends a failed message again.
+    /// Sends a failed (or still waiting) message again now.
     public func retry(_ message: ChatMessage) async {
-        guard let core, message.status == .failed else { return }
+        guard let core, message.status != .sent else { return }
         sendError[message.conversationId] = nil
         do {
             _ = try await core.retryMessage(messageId: message.id)
         } catch {
             sendError[message.conversationId] = Self.describe(error)
         }
+        updateWaitingCount()
+    }
+
+    /// Replaces the text of one of our sent messages, for everyone.
+    public func edit(_ message: ChatMessage, to text: String) async {
+        guard let core else { return }
+        let body = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, body != message.body else { return }
+        do {
+            upsert(try await core.editMessage(messageId: message.id, body: body))
+        } catch {
+            actionError = Self.describe(error)
+        }
+    }
+
+    /// Deletes one of our messages for everyone (a "deleted" placeholder
+    /// stays). One that was never sent is simply removed.
+    public func delete(_ message: ChatMessage) async {
+        guard let core else { return }
+        do {
+            if let tombstone = try await core.deleteMessage(messageId: message.id) {
+                upsert(tombstone)
+            } else {
+                remove(message.id, from: message.conversationId)
+            }
+        } catch {
+            actionError = Self.describe(error)
+        }
+        updateWaitingCount()
+    }
+
+    /// Adds our `emoji` to a message, or takes it away if it is already ours.
+    public func toggleReaction(_ emoji: String, on message: ChatMessage) async {
+        guard let core else { return }
+        let mine = message.reactions.contains { $0.emoji == emoji && $0.mine }
+        do {
+            upsert(try await core.setReaction(messageId: message.id, emoji: emoji, on: !mine))
+        } catch {
+            actionError = Self.describe(error)
+        }
+    }
+
+    /// The room's unsent composer text, kept by Rust across launches.
+    public func draft(for conversationId: String) -> String {
+        core?.draft(conversationId: conversationId) ?? ""
+    }
+
+    /// Saves the composer's text (empty clears the draft).
+    public func saveDraft(_ text: String, for conversationId: String) {
+        try? core?.setDraft(conversationId: conversationId, text: text)
+    }
+
+    /// Messages on this iPhone containing every word of `query` (as word
+    /// starts, ignoring case and accents), newest first: in one room, or in
+    /// all with nil. Rust searches its SQLite full-text index.
+    public func search(_ query: String, in conversationId: String? = nil) async -> [ChatMessage] {
+        guard let core, !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return []
+        }
+        do {
+            return try await core.search(query: query, conversationId: conversationId)
+        } catch {
+            return []
+        }
+    }
+
+    /// A loaded message of a room, for quoting the message a reply answers.
+    public func message(_ id: String, in conversationId: String) -> ChatMessage? {
+        messages[conversationId]?.first { $0.id == id }
+    }
+
+    private func updateWaitingCount() {
+        waitingCount = Int(core?.outboxCount() ?? 0)
     }
 
     // MARK: Events
@@ -324,7 +405,18 @@ public final class ChatModel {
             notifier?.post(message, roomTitle: title(of: message.conversationId))
         case .messageReceived(let message):
             upsert(message)
+            if message.isMine { updateWaitingCount() }
+        case .messageUpdated(let message):
+            // Edits, deletions and reactions, by anyone. Only rooms already
+            // on screen keep a list; the rest read the store when opened.
+            if messages[message.conversationId]?.contains(where: { $0.id == message.id }) == true {
+                upsert(message)
+            }
+        case .messageRemoved(let room, let id):
+            remove(id, from: room)
+            updateWaitingCount()
         case .messageStatusChanged(let room, let id, let status):
+            updateWaitingCount()
             guard var list = messages[room], let index = list.firstIndex(where: { $0.id == id })
             else { break }
             // A `.sent` message also carries the server's time and may move:
@@ -362,6 +454,10 @@ public final class ChatModel {
         messages[message.conversationId] = list
     }
 
+    private func remove(_ id: String, from conversationId: String) {
+        messages[conversationId]?.removeAll { $0.id == id }
+    }
+
     private func reloadFromStore() {
         guard let core else { return }
         conversations = core.cachedConversations()
@@ -381,6 +477,7 @@ public final class ChatModel {
         sendError = [:]
         listError = nil
         conversations = core?.cachedConversations() ?? []
+        updateWaitingCount()
         phase = newAccount == nil ? .signedOut : .ready
         if newAccount != nil {
             conversations.forEach { watchIfNotifying($0.id) }

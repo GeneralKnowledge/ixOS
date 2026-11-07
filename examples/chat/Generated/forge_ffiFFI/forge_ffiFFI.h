@@ -372,6 +372,21 @@ uint64_t uniffi_forge_ffi_fn_method_chatcore_check_account(uint64_t ptr
 uint64_t uniffi_forge_ffi_fn_method_chatcore_create_conversation(uint64_t ptr, RustBuffer title
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_DELETE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_DELETE_MESSAGE
+uint64_t uniffi_forge_ffi_fn_method_chatcore_delete_message(uint64_t ptr, RustBuffer message_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_DRAFT
+RustBuffer uniffi_forge_ffi_fn_method_chatcore_draft(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_EDIT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_EDIT_MESSAGE
+uint64_t uniffi_forge_ffi_fn_method_chatcore_edit_message(uint64_t ptr, RustBuffer message_id, RustBuffer body
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_EVENTS
 uint64_t uniffi_forge_ffi_fn_method_chatcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -392,6 +407,11 @@ uint32_t uniffi_forge_ffi_fn_method_chatcore_live_streams(uint64_t ptr, RustCall
 uint64_t uniffi_forge_ffi_fn_method_chatcore_mark_read(uint64_t ptr, RustBuffer conversation_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_OUTBOX_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_OUTBOX_COUNT
+uint32_t uniffi_forge_ffi_fn_method_chatcore_outbox_count(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_PHASE
 RustBuffer uniffi_forge_ffi_fn_method_chatcore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -402,9 +422,24 @@ RustBuffer uniffi_forge_ffi_fn_method_chatcore_phase(uint64_t ptr, RustCallStatu
 uint64_t uniffi_forge_ffi_fn_method_chatcore_retry_message(uint64_t ptr, RustBuffer message_id
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEARCH
+uint64_t uniffi_forge_ffi_fn_method_chatcore_search(uint64_t ptr, RustBuffer query, RustBuffer conversation_id
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_MESSAGE
 uint64_t uniffi_forge_ffi_fn_method_chatcore_send_message(uint64_t ptr, RustBuffer conversation_id, RustBuffer body
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_REPLY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_REPLY
+uint64_t uniffi_forge_ffi_fn_method_chatcore_send_reply(uint64_t ptr, RustBuffer conversation_id, RustBuffer body, RustBuffer reply_to
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_DRAFT
+void uniffi_forge_ffi_fn_method_chatcore_set_draft(uint64_t ptr, RustBuffer conversation_id, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_MARKED_UNREAD
@@ -420,6 +455,11 @@ void uniffi_forge_ffi_fn_method_chatcore_set_muted(uint64_t ptr, RustBuffer conv
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_PHASE
 void uniffi_forge_ffi_fn_method_chatcore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SET_REACTION
+uint64_t uniffi_forge_ffi_fn_method_chatcore_set_reaction(uint64_t ptr, RustBuffer message_id, RustBuffer emoji, int8_t on
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SHUTDOWN
@@ -931,6 +971,24 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_create_conversation(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_DELETE_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_DELETE_MESSAGE
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_delete_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_DRAFT
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_draft(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_EDIT_MESSAGE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_EDIT_MESSAGE
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_edit_message(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_EVENTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_EVENTS
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_events(void
@@ -955,6 +1013,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_mark_read(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_OUTBOX_COUNT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_OUTBOX_COUNT
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_outbox_count(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_PHASE
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_phase(void
@@ -967,9 +1031,27 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_retry_message(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEARCH
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_search(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_MESSAGE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_MESSAGE
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_send_message(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_send_reply(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_DRAFT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_DRAFT
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_set_draft(void
     
 );
 #endif
@@ -988,6 +1070,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_set_muted(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_PHASE
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_set_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_REACTION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SET_REACTION
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_set_reaction(void
     
 );
 #endif

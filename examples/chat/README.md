@@ -33,6 +33,9 @@ platform (the Keychain adapter, notifications, the scene lifecycle).
    make chat-cli ARGS='signup "Reuben (laptop)"'
    make chat-cli ARGS="send general Hello from the laptop"
    make chat-cli ARGS="follow general"
+   make chat-cli ARGS="read general"                 # numbered: @1 is the newest
+   make chat-cli ARGS="react general @1 👍"
+   make chat-cli ARGS="reply general @2 good point"
    ```
 
 The full device check is [ACCEPTANCE.md](ACCEPTANCE.md).
@@ -41,7 +44,7 @@ On a Mac you can also open `Xcode/Chat.xcodeproj`, or run it on the desktop
 with `swift run --package-path examples/chat Chat` (after
 `./scripts/test-swift-host.sh examples/chat` has built the host library).
 
-## What it does today (M0 and M1)
+## What it does today (M0 to M2)
 
 - **An account per device, in the Keychain.** First launch creates an account
   on the server. Rust stores it, token included, through `forge-services`'
@@ -59,6 +62,21 @@ with `swift run --package-path examples/chat Chat` (after
   room. Opening a room moves yours, unread counts come from it (so reading on
   one device clears another), and your messages say Read once someone else's
   cursor passes them. Mute and "marked unread" stay on the device.
+- **Message changes (M2).** Touch and hold a bubble to react (a row of
+  quick emojis), reply (the answer quotes the original; tap the quote to jump
+  to it), copy, edit your message ("Edited") or delete it for everyone (a
+  "This message was deleted" placeholder). Changes by anyone arrive live and
+  in catch-up, and never count as unread.
+- **Drafts and an outbox (M2).** What you type is kept per conversation,
+  across launches. Messages sent while the server cannot be reached wait as
+  "Sending…" and go out by themselves when it is back, even after the app was
+  closed; only a message the server refuses turns red.
+- **Search (M2).** The Chats list searches every conversation on the phone,
+  a chat's menu searches that chat; case and accents are ignored. Rust
+  answers from a SQLite full-text index.
+- **SQLite storage (M2).** The phone's chats are in a SQLite database
+  through forge-storage, with migrations and recovery from a damaged file;
+  Settings shows the SQLite version.
 - **Lifecycle.** In the background Rust closes every room connection; back in
   the foreground it reconnects them and catches up, and the list refreshes.
 - **Local notifications** for new messages in rooms you are not in, while the
