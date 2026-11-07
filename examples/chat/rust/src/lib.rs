@@ -364,6 +364,7 @@ impl ChatCore {
         storage_directory: PathBuf,
         credentials: Arc<dyn Credentials>,
     ) -> Result<Self, ChatError> {
+        forge_runtime::logging::init();
         if storage_directory.as_os_str().is_empty() {
             return Err(ChatError::InvalidInput {
                 reason: "storage directory must not be empty".into(),
@@ -496,7 +497,7 @@ fn normalise_server_url(url: &str) -> Result<String, ChatError> {
 fn remove_directory(path: &Path) {
     if let Err(err) = std::fs::remove_dir_all(path) {
         if err.kind() != std::io::ErrorKind::NotFound {
-            eprintln!("[chat] could not remove {}: {err}", path.display());
+            forge_runtime::logging::warn!(target: "chat", "could not remove {}: {err}", path.display());
         }
     }
 }

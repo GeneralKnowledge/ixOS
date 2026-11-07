@@ -276,6 +276,7 @@ impl ForgeWeatherApp {
         storage_directory: Option<PathBuf>,
         config: WeatherConfig,
     ) -> Result<Self, WeatherError> {
+        forge_runtime::logging::init();
         let base = |value: Option<String>, default: &str| -> Result<String, WeatherError> {
             let value = value.unwrap_or_else(|| default.to_string());
             Request::get(&value).validate().map_err(|_| {

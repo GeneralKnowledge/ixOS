@@ -17,7 +17,8 @@
 //! - the app lifecycle ([`AppCore::set_phase`]): the host reports the
 //!   phase, Rust stops on-screen work in the background and announces resume
 //!   ([`forge_runtime::Lifecycle`]);
-//! - shutdown that refuses new work and stops requests in flight.
+//! - shutdown that refuses new work and stops requests in flight;
+//! - logging to the platform log ([`forge_runtime::logging`]).
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -161,6 +162,7 @@ impl AppCore {
     /// it is left untouched.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
+        forge_runtime::logging::init();
         if storage_directory.is_empty() {
             return Err(AppError::InvalidInput {
                 reason: "storage directory must not be empty".into(),
@@ -170,7 +172,10 @@ impl AppCore {
             PathBuf::from(storage_directory).join("notes.json"),
             STORE_VERSION,
         );
-        let stored = file.load()?.unwrap_or_default();
+        let stored: StoredNotes = file.load()?.unwrap_or_default();
+        // Logs go to logcat on Android and the system log on iOS (see
+        // forge_runtime::logging). Never log note text or other user data.
+        forge_runtime::logging::info!("opened with {} notes", stored.notes.len());
         Ok(Arc::new(Self {
             state: Arc::new(Mutex::new(State { stored })),
             file: Arc::new(file),

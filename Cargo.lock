@@ -468,6 +468,7 @@ version = "0.1.0"
 dependencies = [
  "forge-net",
  "jni",
+ "log",
 ]
 
 [[package]]

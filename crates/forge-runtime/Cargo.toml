@@ -9,6 +9,9 @@ publish = false
 
 [dependencies]
 forge-net = { workspace = true, features = ["ureq"] }
+# The logging facade (src/logging.rs); its macros are re-exported, so apps
+# need no direct dependency.
+log = { version = "0.4", features = ["std"] }
 
 [target.'cfg(not(target_os = "ios"))'.dependencies]
 # Only for the `ForgeAndroid.nativeInit` JNI export (src/jni_init.rs); the
