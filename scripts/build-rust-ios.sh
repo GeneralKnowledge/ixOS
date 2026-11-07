@@ -6,6 +6,12 @@ cd "$ROOT"
 # shellcheck source=forge-crate.sh
 source "$ROOT/scripts/forge-crate.sh"
 
+# The SDKROOT the caller asked for, before this script resolves one from xcrun or
+# xtool's Darwin SDK. The build metadata records this one, because that is what
+# native-lib-needs-rebuild.sh sees on the next run; recording the resolved path
+# made every Linux build look stale.
+REQUESTED_SDKROOT="${SDKROOT:-}"
+
 TARGET="${FORGE_IOS_TARGET:-aarch64-apple-ios}"
 PROFILE="${FORGE_IOS_PROFILE:-release}"
 
@@ -72,5 +78,5 @@ cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET"
 OUT_DIR="$NATIVE_OUT/ios-device/lib"
 mkdir -p "$OUT_DIR"
 cp "$CARGO_TARGET/${TARGET}/${PROFILE_DIR}/libforge_ffi.a" "$OUT_DIR/"
-"$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
+SDKROOT="$REQUESTED_SDKROOT" "$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
 echo "[forge] Staged $OUT_DIR/libforge_ffi.a"

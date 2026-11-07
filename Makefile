@@ -1,4 +1,4 @@
-.PHONY: mock-chat test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
+.PHONY: check-app-crates mock-chat test check check-template check-fresh-app test-android-host test-swift-host fmt clippy bindings bindings-kotlin check-bindings doctor package-ios package-android validate
 
 test:
 	cargo test --workspace
@@ -21,6 +21,7 @@ test-swift-host:
 	./scripts/test-swift-host.sh examples/counter
 	./scripts/test-swift-host.sh examples/weather
 	./scripts/test-swift-host.sh examples/chat
+	./scripts/test-swift-host.sh examples/pocket-library
 
 fmt:
 	cargo fmt --all
@@ -39,6 +40,10 @@ bindings-kotlin:
 
 check-bindings:
 	./scripts/check-bindings.sh
+
+# Apps from forge init in examples/ (own Cargo workspace): fmt, clippy, tests, bindings.
+check-app-crates:
+	./scripts/check-app-crates.sh
 
 check-template:
 	./scripts/check-template-sync.sh

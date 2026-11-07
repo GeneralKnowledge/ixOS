@@ -16,65 +16,36 @@ BUNDLE_ID="$2"
 APP_NAME="$3"
 OUT="$4"
 mkdir -p "$OUT"
+# shellcheck source=ios-simulator.sh
+source "$(dirname "$0")/ios-simulator.sh"
 
-# The first available iPhone with "Pro" in its name, else any iPhone.
-DEVICE="$(xcrun simctl list devices available -j | python3 -c '
-import json, sys
-devices = [d for runtime, ds in json.load(sys.stdin)["devices"].items()
-           if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")]
-pro = [d for d in devices if "Pro" in d["name"] and "Max" not in d["name"]]
-print((pro or devices)[0]["udid"])
-')"
-echo "[screenshots] Using simulator $DEVICE"
-xcrun simctl boot "$DEVICE" 2>/dev/null || true
-xcrun simctl bootstatus "$DEVICE" -b >/dev/null
-xcrun simctl status_bar "$DEVICE" override --time 9:41 --batteryState charged --batteryLevel 100 \
-  --cellularBars 4 --wifiBars 3 >/dev/null 2>&1 || true
-xcrun simctl install "$DEVICE" "$APP_PATH"
-
-store() {
-  local data
-  data="$(xcrun simctl get_app_container "$DEVICE" "$BUNDLE_ID" data)"
-  echo "$data/Library/Application Support/$APP_NAME/notes.json"
-}
+sim_boot_and_install "$APP_PATH"
+store() { echo "$(sim_app_support "$BUNDLE_ID")/$APP_NAME/notes.json"; }
 
 now_ms=$(( $(date +%s) * 1000 ))
 day=86400000
 seed() {
-  cat >"$(store)" <<EOF
+  cat >"$(store)" <<JSON
 {"schema_version": 1, "data": {"next_id": 4, "notes": [
   {"id": 1, "text": "Groceries\noat milk, eggs, sourdough, lemons", "created_at_ms": $(( now_ms - 6 * day ))},
   {"id": 2, "text": "Book club\nFinish chapters 9 to 12 before Thursday", "created_at_ms": $(( now_ms - 2 * day ))},
   {"id": 3, "text": "Ideas for the weekend\nCoast walk if the weather holds, otherwise the museum", "created_at_ms": $now_ms}
 ]}}
-EOF
-}
-
-shoot() { # name
-  for appearance in light dark; do
-    xcrun simctl ui "$DEVICE" appearance "$appearance"
-    xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" >/dev/null 2>&1 || true
-    xcrun simctl launch "$DEVICE" "$BUNDLE_ID" >/dev/null
-    sleep 4
-    xcrun simctl io "$DEVICE" screenshot "$OUT/$1-$appearance.png" >/dev/null
-    echo "[screenshots] $OUT/$1-$appearance.png"
-  done
+JSON
 }
 
 # First launch creates the container and an empty store.
-xcrun simctl launch "$DEVICE" "$BUNDLE_ID" >/dev/null
-sleep 4
-xcrun simctl terminate "$DEVICE" "$BUNDLE_ID" >/dev/null 2>&1 || true
+sim_first_launch "$BUNDLE_ID"
 rm -f "$(store)"
-shoot 1-empty
+sim_shoot "$OUT" 1-empty "$BUNDLE_ID"
 
 seed
-shoot 2-notes
+sim_shoot "$OUT" 2-notes "$BUNDLE_ID"
 
-xcrun simctl ui "$DEVICE" content_size accessibility-extra-extra-extra-large
-shoot 3-notes-largest-text
-xcrun simctl ui "$DEVICE" content_size large
+sim_text_size accessibility-extra-extra-extra-large
+sim_shoot "$OUT" 3-notes-largest-text "$BUNDLE_ID"
+sim_text_size large
 
 # A store from a newer build: the app must offer recovery, not overwrite it.
 echo '{"schema_version": 99, "data": {}}' >"$(store)"
-shoot 4-cannot-open
+sim_shoot "$OUT" 4-cannot-open "$BUNDLE_ID"
