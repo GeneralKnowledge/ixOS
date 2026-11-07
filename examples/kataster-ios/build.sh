@@ -39,7 +39,8 @@ rustup target add "$TARGET" >/dev/null
 APP="$HERE/Kataster.app"
 rm -rf "$APP" && mkdir -p "$APP"
 cp "$DIR/target/$TARGET/release/kataster" "$APP/kataster"
-"$(dirname "$CLANG")/llvm-strip" "$APP/kataster" 2>/dev/null || true
+# The Swift toolchain ships llvm-objcopy but not llvm-strip.
+"$(dirname "$CLANG")/llvm-objcopy" --strip-all "$APP/kataster"
 cp -R "$DIR/assets" "$APP/assets"
 cp "$HERE/Info.plist" "$APP/Info.plist"
 echo "Assembled $APP (unsigned). Install with: xtool install $APP"
