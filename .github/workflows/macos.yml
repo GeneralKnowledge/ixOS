@@ -35,6 +35,11 @@ jobs:
         run: ./scripts/test-swift-host.sh examples/chat
       - name: Pocket Library (XCTest, app-owned crate)
         run: ./scripts/test-swift-host.sh examples/pocket-library
+      # Device Lab selects every optional native service, so this compiles
+      # their Swift adapters and runs the macOS halves (connectivity, device
+      # status) against the real Rust core.
+      - name: Device Lab (XCTest, optional native services)
+        run: ./scripts/test-swift-host.sh examples/device-lab
       # A new app outside the checkout, with its own Rust crate: `forge test`
       # runs its Rust tests, regenerates its bindings and runs its XCTest suite.
       - name: App generated outside the checkout (forge init --path, forge test)
@@ -60,7 +65,7 @@ jobs:
           rustup show active-toolchain || rustup toolchain install
           rustup target add aarch64-apple-ios
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      # Chat, Pocket Library, a freshly generated app and the services check app.
+      # Chat, Pocket Library, Device Lab, a freshly generated app and the services check app.
       # Counter and Weather are left out: their Swift is compiled by the host
       # tests above and their Xcode projects are validated in rust.yml.
       # The shared "App" scheme builds the app target (the Swift package has an
@@ -77,6 +82,16 @@ jobs:
         run: |
           xcodebuild build \
             -project examples/pocket-library/Xcode/PocketLibrary.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS' \
+            -configuration Debug \
+            CODE_SIGNING_ALLOWED=NO
+      # The iOS halves of the optional services (Core Motion, Core Location,
+      # Core Bluetooth) compile only here.
+      - name: Build DeviceLab.xcodeproj (device, unsigned)
+        run: |
+          xcodebuild build \
+            -project examples/device-lab/Xcode/DeviceLab.xcodeproj \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -configuration Debug \

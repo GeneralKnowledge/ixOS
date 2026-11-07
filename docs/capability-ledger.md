@@ -24,6 +24,28 @@ Android is work in progress ([roadmap](roadmap.md#android--work-in-progress)), s
 
 The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Relay, Sketchbook. Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
 
+## Modules
+
+This table is the capability registry: one row per framework module, saying what it provides, what it needs and how far it has got. The capability rows further down are the evidence for each module's status. The modules and their order come from the [framework extraction audit](framework-extraction-audit.md); the rules for what becomes a module are in [architecture.md](architecture.md#framework-principles).
+
+Layers: **Core** (any app may need it), **Optional** (a substantial system an app opts into). Status: **Stable** (main capabilities proven on a physical iPhone and documented), **Experimental** (used by an app, not yet proven on the phone), **Planned** (only in a plan or an open PR). Platforms: **Yes**, **Partial**, **WIP** (Android: builds and tests, no new features), **Planned**, **No**. "Desktop" means a Linux, macOS or Windows app host; today Rust code runs on Linux only in tests and tools.
+
+| Module | Layer | Crate and feature | Provides | Native APIs | Dependencies | iOS | Android | Desktop | Status | Exercised by |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Runtime | Core | `forge-runtime` | Background work, cancellation, event streams, lifecycle, `app_shell!` | None | `log`; `forge-net` for the Android certificate init | Yes | WIP | Planned | Experimental | Every app |
+| Logging | Core | `forge-runtime::logging` | One log pipeline, recent records, extra sinks, panics logged | System log (`syslog`), logcat | `log` | Partial: Rust only, Swift logs nothing yet | WIP | Planned | Experimental | Every app |
+| Persistence | Core | `forge-storage`; SQLite under `sqlite` | Atomic writes, versioned JSON, SQLite with migrations, FTS5, recovery | None | `rusqlite` (bundled SQLite) with `sqlite` | Yes | WIP: JSON only | Planned | Experimental | Chat, Pocket Library, Weather, Counter, starter |
+| Managed files | Core | `forge-storage::files` (proposed) | Copy-in, content or app naming, verified downloads, relative paths, orphan sweep, backup exclusion | Backup exclusion flag | `sha2` under a `hash` feature | Planned | Planned | Planned | Planned | Chat attachments, Pocket Library covers and books, AI models |
+| Networking | Core | `forge-net`; HTTPS under `ureq` | HTTP requests, streams, cancellation, file upload and download (#56); backoff proposed. Connectivity is in Device services | Platform certificate verifier | `ureq`, `rustls` | Yes | WIP | Planned | Experimental | Weather, Chat, Pocket Library |
+| Native services | Core | `forge-services` (`native_services!` and `swift/`) | Keychain, app directories, file import, sharing, local notifications, permissions, deep links | Security, UserNotifications, SwiftUI | `uniffi`, `async-trait` | Partial: services check app only for most | No | No | Experimental | Chat (Keychain), services check app |
+| Device services | Core, opt-in per app | `forge-services`: `native_services!(connectivity, device_status, motion, location, bluetooth)`; adapters in `swift/optional/`, copied only when selected | Connectivity and a Wi-Fi-only transfer policy; battery, power, thermal, storage, memory and the heavy-work rule; accelerometer, gyroscope, magnetometer, device motion, barometer; location and heading; Bluetooth state; location, motion and Bluetooth permissions | Network, UIKit, ProcessInfo, Core Motion, Core Location, Core Bluetooth | `uniffi`, `async-trait` | Partial: compiled in CI, not yet run on an iPhone | No | No | Experimental | Device Lab; meant for AI downloads (connectivity, heavy-work rule), Chat reconnect, FieldKit |
+| Media | Core | `forge-services/swift` (proposed) | Thumbnails and downscaling off the main thread | ImageIO | None | Planned: two app copies today | No | No | Planned | Chat, Pocket Library |
+| Developer tools | Optional | `forge-devtools` (app, `devtools` feature), `forge-devproto`, `forge-device` (host) | Phone details, logs and crashes from Linux; live paired session with log stream, probes, commands (#57) | usbmuxd on the host; nothing native in the app | `idevice`, `snow`, `ciborium` | Partial: host tools proven, live session in #57 | No | n/a | Experimental | Starter app, any app over USB |
+| Local AI | Optional | `forge-ai` (planned, #55 L5) | Model library, download, inference behind a foreign trait, token streaming, cancellation, resource guard | Foundation Models, Core ML (CoreML-LLM) | Swift packages in the app | Planned: L0 check app in #55 | No | No | Planned | Chat assistant (planned) |
+| Attachments | Optional | chat-core today; generic parts to Managed files and Networking | Upload queue and recovery, on top of Managed files | Photos picker, Quick Look | Managed files, Networking | Partial: Chat M3 (#56) | No | No | Planned | Chat |
+| Documents | Optional | Pocket Library today; `epub` feature later | EPUB metadata, chapters as styled text blocks, positions to pages | None | `zip`, `quick-xml` | Partial: Pocket Library (#53) | No | No | Planned | Pocket Library |
+| Audio | Optional | Pocket Library today (Swift) | Audio session ownership, Now Playing and remote commands, speech synthesis; recording later | AVFoundation, MediaPlayer | None | Partial: read-aloud (#53) | No | No | Planned | Pocket Library; Chat M4 voice next |
+
 ## Foundation
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
@@ -41,8 +63,8 @@ The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Rela
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
 | JSON snapshot storage with migration hook | Yes: forge-storage | Yes | n/a | Yes: Chat, starter | Yes: Chat, 2026-11-05 | Yes | Rewrites the whole file on every change |
-| Relational store with queries (SQLite) | No | No | n/a | No | No | No | S1: `rusqlite` bundled cross-compile with xtool unproven |
-| Full-text search | No | No | n/a | No | No | No | Depends on SQLite FTS5 |
+| Relational store with queries (SQLite) | Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery | Yes | n/a | Yes: Chat M2 (`forge-chat.db`) | No: Chat M2 device run skipped | Partial: chat-demo.md | Bundled SQLite builds with xtool (Chat M2); the phone run that would show "Storage: SQLite" in Settings has not been done |
+| Full-text search | Partial: FTS5 is built into `Database`; the query builder is still Chat's own (`fts_query`) | Yes | n/a | Yes: Chat M2 search | No | Partial: chat-demo.md | |
 | Backup and restore archive | No | No | No | No | No | No | |
 | App directories | Yes: forge-services | Yes | Yes | Partial: services check app only | No | Yes | Store relative paths only |
 | Document picker import (copy into app) | Yes | Partial: path handed to Rust | Yes: `forgeFileImporter` | Partial: services check app only | No | Yes | |
@@ -59,7 +81,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Durable outgoing queue (sends, edits, deletes, reactions, uploads) | No | Partial: Chat's Sending and Failed states | n/a | Partial: Chat | No | Partial: chat-demo.md | Not yet stored before the network call, nor tested across a kill |
+| Durable outgoing queue (sends, edits, deletes, reactions, uploads) | No: Chat only | Yes: chat-core outbox, stored before the network call | n/a | Yes: Chat M2 | No: Chat M2 device run skipped | Partial: chat-demo.md | Survives a relaunch in Rust tests; not yet checked across a kill on the phone |
 | Retry with exponential backoff and jitter | Partial: Chat stream reconnect | Partial | n/a | Partial: Chat streams; sends retry by hand | No | Partial | |
 | Deduplication of retried sends | No: Chat only | Yes: client-chosen ids in Chat | n/a | Yes: Chat | No | Yes: chat-demo.md | Needs the new server to keep honouring ids |
 | Delivery state reconciliation after reconnect | No | Partial: `since` catch-up | n/a | Partial: Chat | No | Partial | No read state on the server yet |
@@ -74,7 +96,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | HTTPS requests with typed errors | Yes: forge-net | Yes | n/a | Yes: Weather, Chat | Yes: 2026-11-05 and 2026-11-06 | Yes | |
 | Long-lived streams (SSE) with reconnect | Yes | Yes | n/a | Yes: Chat | Yes: Chat | Yes: chat-demo.md | |
 | Cancellable requests | Yes | Yes | Yes: task cancellation | Yes: starter | No | Yes | |
-| Reachability | No | No | No | No | No | No | |
+| Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes) | Yes: forge-services `connectivity` | Yes: `ConnectivityService`, `TransferPolicy::Unmetered` | Yes: `NWPathMonitor` | Yes: Device Lab | No | Partial: native-services.md | Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; no signal strength or carrier |
 | Bonjour advertise and browse | No | No | No | No | No | No | Needs `NSBonjourServices` key |
 | Peer-to-peer transfer with resume | No | No | No | No | No | No | |
 | Device identity and encrypted channel | Partial: Keychain only | Partial | Partial | No | No | No | Use a reviewed library |
@@ -88,8 +110,9 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Local notifications | Yes | Yes | Yes | Partial: services check app only | No | Yes | No push: APNs is a non-goal |
 | Notification actions and grouping | No | No | No | No | No | No | |
 | Deep links (custom URL schemes) | Yes | Yes | Yes | Partial: services check app only | No | Yes | Universal links need a paid team |
-| Permission interface | Partial: notifications and microphone | Partial | Partial | Partial: services check app only | No | Yes | `forge.toml` writes permission strings; the runtime can request notifications and the microphone |
-| Microphone, camera, location, motion, local network, Bluetooth permissions | Partial: microphone (interface v2) | Partial: microphone | Partial: microphone (`ForgeAudio`) | Partial: Chat M4 (microphone) | No | Partial: config only | Others: config only |
+| Permission interface | Partial: notifications, location, motion, Bluetooth, microphone | Partial | Partial | Yes: Device Lab (location, motion, Bluetooth); Partial: Chat M4 (microphone) | No | Yes | A permission whose optional service the app did not select reports `Unsupported` |
+| Location, motion and Bluetooth permissions | Yes: forge-services | Yes: `NativePermission` | Yes | Yes: Device Lab | No | Partial: native-services.md | Asking without the `forge.toml` usage string returns `Unsupported` instead of hanging or crashing |
+| Microphone, camera, local network permissions | Partial: microphone (`audio` service) | Partial: `NativePermission::Microphone` | Partial: microphone | Partial: Chat M4 (microphone) | No | Partial: native-services.md | Camera and local network: config only |
 | Photos picker | No | n/a | Partial: direct `PhotosPicker` use in Chat, shrunk with ImageIO | Partial: Chat M3 | No | No | No permission needed |
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
@@ -102,15 +125,17 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Audio session handling | Yes: forge-services (optional `ForgeAudio`) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 | No | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
-| Record and play audio files | Yes: forge-services (optional `ForgeAudio`) | Partial: `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that declare the microphone |
+| Audio session handling | Yes: forge-services `audio` (optional) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 | No | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
+| Record and play audio files | Yes: forge-services `audio` (optional) | Yes: `AudioService::duration`, `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that select `audio` |
 | Waveform summaries | No | No | n/a | No | No | No | |
 | Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
 | Background audio | Partial: config | No | No | No | No | Partial | |
-| Location fix | No | No | Partial: app code | Yes: Weather (one-shot) | Yes: Weather, 2026-11-06 | Partial: Weather README | Not a reusable service |
-| Continuous location and tracks | No | No | No | No | No | No | |
+| Location fix | Yes: forge-services `location` | Yes: `LocationService` | Yes: `CLLocationManager` | Yes: Device Lab; Weather still has its own one-shot provider | Partial: Weather's own provider, 2026-11-06; the service is not yet run on an iPhone | Partial: native-services.md | When in use only |
+| Continuous location and tracks | Partial: continuous fixes and `distance_m`; no track storage | Yes | Yes | Partial: Device Lab distance travelled | No | Yes | No GPX or track file yet (FieldKit) |
 | Background location | Partial: config | No | No | No | No | Partial | Needs "always" permission |
-| Heading, altitude, motion | No | No | No | No | No | No | |
+| Heading, altitude, motion | Yes: forge-services `motion` and `location` | Yes: `MotionService` (accelerometer, gyroscope, magnetometer, device motion, barometer) | Yes: Core Motion, Core Location heading | Yes: Device Lab | No | Partial: native-services.md | Foreground only; the barometer needs the Motion & Fitness permission; 10 ms to 10 s intervals |
+| Device status (battery, Low Power Mode, thermal state, storage, memory, model) | Yes: forge-services `device_status` | Yes: `DeviceStatusService`, `defer_heavy_work` | Yes | Yes: Device Lab | No | Partial: native-services.md | Device name is the generic model since iOS 16 (the real name needs an Apple-granted entitlement) |
+| Bluetooth on or off | Yes: forge-services `bluetooth` | Yes: `BluetoothService` | Yes: `CBCentralManager` | Yes: Device Lab | No | Partial: native-services.md | State only: no scanning or connections yet |
 | Maps (MapKit) | n/a | n/a | No | No | No | No | MapKit has no offline tiles |
 | Forms with Rust validation | Partial: compose sheet | Partial | Partial | Yes: starter | No | Partial | |
 | Charts (Swift Charts) | No | n/a | No | No | No | No | |
@@ -158,6 +183,8 @@ A capability can work and still give a poor app. Each metric has a proposed targ
 | Audio glitches and latency | No underruns in 10 minutes; under 20 ms round trip at a 256-frame buffer | Underrun counter in the render callback; the audio session's buffer duration | Spike S4, Soundscape | Not measured |
 
 ## Developer experience: build without the maintainer
+
+The day-to-day loop (create, change, build, launch, inspect, diagnose) is assessed in [dev-loop.md](dev-loop.md), with measured times and the gaps that block it.
 
 The demos prove that we can build apps with ixOS, not that someone else can. In this exercise a developer who has not worked on ixOS gets a clean Ubuntu machine, the docs and an iPhone, and nothing else. It runs first after Chat M6 and again after the sixth demo.
 

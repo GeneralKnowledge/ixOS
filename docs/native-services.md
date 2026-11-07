@@ -11,9 +11,8 @@ Forge splits an app in two. Rust holds the logic: state, persistence, networking
 | Permissions | `PermissionProvider`, `NativePermission`, `PermissionStatus` | `ForgePermissions`, `ForgePermissionAdapter` |
 | Sharing | `ShareItem` (text, URL, file) | `ForgeShareLink(item:)` |
 | Deep links | `DeepLink`, `parse_deep_link` | `ForgeDeepLinks`, `.forgeOpenURLs()`, `.onForgeDeepLink { }` |
-| Audio (optional, since v2) | `NativePermission::Microphone` | `ForgeAudio` (microphone permission, `duration(of:)`, `waveform(of:bars:)`), `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudioSession` |
 
-Every app from `forge init` has these services installed. Android implementations are not written yet. On Android, `NativeServices::installed()` returns `NotInstalled` (see [Android](#android)).
+Every app from `forge init` has these services installed. Device capabilities (connectivity, device status, motion, location, Bluetooth, audio) are [optional services](#optional-services) an app selects. Android implementations are not written yet. On Android, `NativeServices::installed()` returns `NotInstalled` (see [Android](#android)).
 
 ## How it fits together
 
@@ -128,14 +127,61 @@ ForgePermissions.openSettings()
 
 Links that arrive before any view has registered `onForgeDeepLink` are held, up to 16, and delivered to the first handler. This covers a cold launch from a link.
 
-## Audio (optional)
+## Optional services
 
-Recording and playing audio files lives in `crates/forge-services/swift/ForgeAudio.swift`. It is an **optional module**: `forge build` copies it only into apps that declare `microphone` under `[ios.permissions]` in `forge.toml`, so an app that never records carries no microphone code. Chat's voice messages (M4) are its first user.
+Device capabilities that link privacy-sensitive or heavy frameworks are opt-in. An app names the ones it uses in the macro call, and gets only those:
+
+```rust
+forge_services::native_services!(connectivity, device_status, motion, location, bluetooth, audio);
+```
+
+| Service | Rust (`crate::native::<name>`) | iOS adapter | Permission and `forge.toml` |
+|---------|------------------------------|-------------|-----------------------------|
+| `connectivity` | `ConnectivityService`: `current()`, `watch(..)`; `ConnectivityStatus` (online, interfaces, metered, Low Data Mode, offline reason), `allows(TransferPolicy::Unmetered)` | `ForgeConnectivityMonitor` (`NWPathMonitor`) | None |
+| `device_status` | `DeviceStatusService`: `info()` (model, iOS version, cores, RAM, screen), `status()` (battery, Low Power Mode, thermal state, storage, memory left), `watch(..)`; `DeviceStatus::defer_heavy_work(memory)` | `ForgeDeviceStatus` (`UIDevice`, `ProcessInfo`, file system, `os_proc_available_memory`) | None |
+| `motion` | `MotionService`: `availability()`, `watch(sensor, interval_ms, ..)` for the accelerometer, gyroscope, magnetometer, fused device motion (attitude, gravity, user acceleration, heading) and the barometer | `ForgeMotionSensors` (Core Motion) | The barometer needs `NativePermission::Motion` and `[ios.permissions] motion`; the other sensors need nothing |
+| `location` | `LocationService`: `watch(LocationOptions, ..)` for fixes and compass headings, `last_known()`, `is_precise()`; `LocationFix::distance_to` | `ForgeLocationSource` (`CLLocationManager`, when in use) | `NativePermission::Location` and `[ios.permissions] location_when_in_use` |
+| `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
+| `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudioSession`, `ForgeAudio.waveform` (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
+
+**How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review.
+
+**Live values.** Every optional service delivers through a `forge_services::Feed`. The first `watch` starts the platform updates, each value goes to every Rust listener, and dropping the last `Watch` stops them. Listeners run on the host's thread (the main thread for location, a serial queue for motion), so copy the value into your state and return. Watches that need a permission fail with `PermissionDenied` until it is granted, so ask from a button first:
+
+```rust
+use crate::native::{location::*, NativePermission, NativeServices};
+
+let native = NativeServices::installed()?;
+if native.request_permission(NativePermission::Location).await.allows_use() {
+    let location = LocationService::installed()?;
+    let watch = location.watch(
+        LocationOptions { accuracy: LocationAccuracy::Best, distance_filter_m: Some(5.0), include_heading: false },
+        move |event| if let LocationEvent::Fix { fix } = event { /* store it */ },
+    )?;
+    // keep `watch`; drop it to stop
+}
+
+// Wi-Fi-only model downloads:
+let network = connectivity::ConnectivityService::installed()?;
+if network.current().allows(connectivity::TransferPolicy::Unmetered) { /* start */ }
+```
+
+**Tests.** Each service has `for_tests()`, returning the service and a fake you drive (`FakeConnectivity::set`, `FakeMotion::send`, `FakeLocation::send`, `FakeDevice::set`, `FakeBluetooth::set`). `crates/forge-services/tests/optional_services.rs` and `examples/device-lab/rust/src/tests.rs` use all of them.
+
+### Audio (`audio`)
+
+Recording and playing audio files. Chat's voice messages (M4) are its first user. Declare `microphone` under `[ios.permissions]` in `forge.toml` as well: recording without it is refused.
+
+```rust
+forge_services::native_services!(audio);
+// Rust: ask for the microphone, and measure a file.
+native.request_permission(NativePermission::Microphone).await;
+let length = native::audio::AudioService::installed()?.duration(path)?;
+```
+
+Recording and playing are driven by the UI, so they are SwiftUI-side classes in the adapter:
 
 ```swift
-// At launch, after ForgeServices.install(): Rust's NativePermission::Microphone now answers.
-ForgeAudio.install()
-
 // Record: asks for the microphone the first time; AAC .m4a, mono, about 240 KB a minute.
 @State private var recorder = ForgeAudioRecorder(maxDuration: 300)
 try await recorder.start()           // throws ForgeAudioError.microphoneDenied
@@ -152,7 +198,11 @@ let bars = try await ForgeAudio.waveform(of: url, bars: 28)
 let seconds = try ForgeAudio.duration(of: url)
 ```
 
-`ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this module; see spike S4 in the capability plan.
+`ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
+
+**Foreground only.** Nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
+
+**What iOS does not give apps,** whatever the account: signal strength, carrier name (retired API), the ambient light sensor, MAC addresses. The Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; the device's own name needs an entitlement Apple grants on request (apps see "iPhone"). [examples/device-lab](../examples/device-lab) shows all of it in one app.
 
 ## App configuration
 
@@ -161,7 +211,7 @@ The services need no `Info.plist` keys of their own. Notifications, Keychain, fi
 - **Custom URL schemes** (`myapp://...`) are declared in `forge.toml` under `[ios] url_schemes`, which writes `CFBundleURLTypes` ([app-config.md](app-config.md)).
 - **Universal links** (`https://example.com/...`) need the `associated_domains` entitlement in `forge.toml` and an `apple-app-site-association` file on your domain. A free Apple ID cannot sign that entitlement.
 - **Permissions that need a usage description** (camera, photos, location) go in `forge.toml` `[ios.permissions]` when you add their adapter. Asking for one without its description crashes the app.
-- **The microphone** (`microphone` in `[ios.permissions]`) also brings the optional audio module above.
+- **The microphone** (`microphone` in `[ios.permissions]`) is needed by the optional `audio` service.
 
 ## Adding a capability
 
@@ -170,10 +220,9 @@ Keep each capability small and iOS-first, behind an interface that Android can i
 1. **Decide which side drives it.** If Rust needs to call it (store a secret, schedule something), add a foreign trait or a method to the `native_services!` macro in `crates/forge-services/src/lib.rs`. If only the UI uses it (haptics, the share sheet, a picker), write a SwiftUI helper in `crates/forge-services/swift/` and pass data to Rust as records or paths.
 2. **Put rules in plain Rust** in `crates/forge-services/src/` (as `link.rs` and `notify.rs` do), with unit tests.
 3. **Write the Swift adapter** as `crates/forge-services/swift/ForgeServices+<Name>.swift`. Code that cannot work outside an app bundle should report `Unavailable` or `.unsupported` under `swift test`, as the notifier does.
-4. **For a permission,** add a `NativePermission` case and a `ForgePermissionAdapter`, registered in `ForgePermissions.init` or by the app (`ForgePermissions.shared.register(_:for:)`). Put adapters that link privacy-sensitive frameworks (AVFoundation, Photos, CoreLocation) in separate files that apps opt into. App Store processing flags apps that reference these APIs without a usage description.
-5. **Opt-in modules** (like `ForgeAudio.swift`) are named outside the `ForgeServices*.swift` pattern and copied by `scripts/generate-bindings.sh` only when the app's `forge.toml` asks for them; `scripts/check-app-crates.sh` checks that each app's committed copies match.
-6. **Bump `VERSION`** in `crates/forge-services/src/lib.rs`, and `forgeServicesSwiftVersion` with it, whenever a trait, record or enum changes shape.
-7. **Test** in `crates/forge-services/tests/`, in the template's `Tests/AppHostTests/NativeServicesTests.swift` (macOS CI), and on a device with the runbook below.
+4. **For a permission,** add a `NativePermission` case and a `ForgePermissionAdapter`, registered in `ForgePermissions.init` or, for an optional service, in its `ForgeServices.install<Name>()`. A capability that links a privacy-sensitive framework (AVFoundation, Photos, Core Location) is an optional service: add an arm to `__native_service!` in `crates/forge-services/src/optional.rs` and its adapter as `swift/optional/ForgeServices+<Name>.swift`, defining `ForgeServices.install<Name>()`. App Store processing flags apps that reference these APIs without a usage description. Check for the usage description before asking: without it iOS ignores the request (or ends the app, for Bluetooth).
+5. **Bump `VERSION`** in `crates/forge-services/src/lib.rs`, and `forgeServicesSwiftVersion` with it, whenever a trait, record or enum changes shape.
+6. **Test** in `crates/forge-services/tests/`, in the template's `Tests/AppHostTests/NativeServicesTests.swift` (macOS CI), and on a device with the runbook below.
 
 ## Android
 

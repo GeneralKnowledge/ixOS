@@ -50,9 +50,10 @@ final class AudioTests: XCTestCase {
     }
 
     func testTheMicrophoneIsAPermission() async {
-        ForgeAudio.install()
+        XCTAssertTrue(ForgeServices.install(keychainService: "chat-tests-\(UUID().uuidString)"))
+        XCTAssertTrue(forgeSelectedServices.contains { $0.name == "Audio" }, "Chat selects audio")
         let status = await ForgePermissions.shared.status(permission: .microphone)
-        XCTAssertNotEqual(status, .unsupported, "ForgeAudio.install() registers the microphone")
+        XCTAssertNotEqual(status, .unsupported, "installing the audio service registers the microphone")
     }
 
     func testThePlayerPlaysOneFileAtATime() async throws {

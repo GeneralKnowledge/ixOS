@@ -45,6 +45,7 @@ jobs:
           ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
+          ./scripts/validate-xcode-project.sh examples/device-lab/Xcode/DeviceLab.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj
 
   fresh-app:

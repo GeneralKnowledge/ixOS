@@ -1,27 +1,38 @@
-// Forge native services: recording and playing audio files.
-// Source of truth: crates/forge-services/swift/ForgeAudio.swift.
+// Forge native services: audio (optional: `native_services!(audio)`).
+// Source of truth: crates/forge-services/swift/optional/. Copied into an app's
+// Generated/ForgeFFI only when its Rust crate selects the service.
 //
-// Optional: `forge build` / scripts/generate-bindings.sh copy this file only
-// into apps that declare `microphone` under [ios.permissions] in forge.toml,
-// so apps that never record do not carry microphone code.
+// Recording needs the microphone permission and an NSMicrophoneUsageDescription
+// (forge.toml `[ios.permissions] microphone`). Playing needs neither.
 
 import AVFoundation
 import Foundation
 import Observation
 
-/// Audio for Forge apps: the microphone permission, a recorder, a player
-/// and waveforms. Recordings are AAC in an `.m4a` file, mono, about 240 KB a
-/// minute, which every Apple device plays.
-///
-/// Call `ForgeAudio.install()` once at launch, after
-/// `ForgeServices.install()`, so Rust's `NativePermission::Microphone`
-/// answers.
-public enum ForgeAudio {
-    /// Registers the microphone with `ForgePermissions`.
-    public static func install() {
+extension ForgeServices {
+    static func installAudio() throws {
+        installNativeAudio(files: ForgeAudioFiles())
         ForgePermissions.shared.register(MicrophonePermissionAdapter(), for: .microphone)
     }
+}
 
+/// `AudioFiles` for Rust: file lengths through AVFoundation.
+final class ForgeAudioFiles: AudioFiles, @unchecked Sendable {
+    func duration(path: String) throws -> Double {
+        do {
+            return try ForgeAudio.duration(of: URL(fileURLWithPath: path))
+        } catch {
+            throw NativeServiceError.Platform(
+                code: Int64((error as NSError).code), reason: "cannot read \(path): \(error)")
+        }
+    }
+}
+
+/// Audio file helpers. Recordings (`ForgeAudioRecorder`) are AAC in an
+/// `.m4a` file, mono, about 240 KB a minute, which every Apple device plays.
+/// `ForgeServices.install()` registers the microphone with
+/// `ForgePermissions` when the app selects the `audio` service.
+public enum ForgeAudio {
     /// The loudest sample of each of `bars` equal slices of the file, scaled
     /// so the loudest slice is 1. Decoded off the main actor, a chunk at a
     /// time.
