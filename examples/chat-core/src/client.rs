@@ -352,8 +352,10 @@ impl ChatClient {
             let mut state = self.inner.lock();
             self.inner.ensure_running_locked(&state)?;
             state.snapshot.upsert_message(message.clone());
-            self.inner.persist(&mut state);
             self.inner.emit(ChatEvent::MessageReceived(message.clone()));
+            self.inner
+                .refresh_conversation(&mut state, conversation_id, 0, false);
+            self.inner.persist(&mut state);
         }
         self.inner.deliver(message)
     }
@@ -381,35 +383,107 @@ impl ChatClient {
                 .snapshot
                 .set_status(message_id, MessageStatus::Sending)
                 .expect("message exists");
-            self.inner.persist(&mut state);
             self.inner.emit(ChatEvent::MessageStatusChanged {
                 conversation_id: message.conversation_id.clone(),
                 id: message.id.clone(),
                 status: MessageStatus::Sending,
             });
+            self.inner
+                .refresh_conversation(&mut state, &message.conversation_id, 0, false);
+            self.inner.persist(&mut state);
             message
         };
         self.inner.deliver(message)
     }
 
+    /// Marks everything stored in the room as read: locally at once
+    /// (`unread_count` → 0, `marked_unread` cleared, `ConversationUpdated`),
+    /// then on the server, so other devices and other people see it. An open
+    /// room is marked read automatically as messages arrive.
+    pub fn mark_read(&self, conversation_id: &str) -> Result<(), ChatError> {
+        validate_room(conversation_id)?;
+        let up_to = {
+            let mut state = self.inner.lock();
+            self.inner.ensure_running_locked(&state)?;
+            if state.snapshot.conversation(conversation_id).is_none() {
+                return Err(ChatError::NotFound {
+                    conversation_id: conversation_id.into(),
+                });
+            }
+            let up_to = self.inner.mark_read_locally(&mut state, conversation_id);
+            self.inner.persist(&mut state);
+            up_to
+        };
+        match up_to {
+            Some(up_to) => self.inner.repo.mark_read(conversation_id, up_to),
+            None => Ok(()),
+        }
+    }
+
+    /// Shows the room as unread (`true`) until it is opened or marked read,
+    /// or stops doing so. Kept on this device.
+    pub fn set_marked_unread(&self, conversation_id: &str, marked: bool) -> Result<(), ChatError> {
+        self.inner
+            .update_local(conversation_id, |c| c.marked_unread = marked)
+    }
+
+    /// Mutes the room (no `Notify` for it) or unmutes it. Kept on this
+    /// device.
+    pub fn set_muted(&self, conversation_id: &str, muted: bool) -> Result<(), ChatError> {
+        self.inner
+            .update_local(conversation_id, |c| c.muted = muted)
+    }
+
+    /// Creates a conversation on the server, adds it to the list
+    /// (`ConversationUpdated`) and returns it.
+    pub fn create_conversation(&self, title: &str) -> Result<Conversation, ChatError> {
+        let title = crate::validate_title(title)?;
+        self.inner.ensure_running()?;
+        let remote = self.inner.repo.create_conversation(&title)?;
+        let mut state = self.inner.lock();
+        self.inner.ensure_running_locked(&state)?;
+        if state.snapshot.conversation(&remote.id).is_none() {
+            state.snapshot.conversations.push(Conversation {
+                id: remote.id.clone(),
+                title: remote.title.clone(),
+                last_message_at: remote.last_message_at,
+                last_message: remote.last_message.clone(),
+                read_up_to: remote.read_up_to,
+                others_read_up_to: remote.others_read_up_to,
+                ..Conversation::default()
+            });
+        }
+        self.inner
+            .refresh_conversation(&mut state, &remote.id, 0, true);
+        self.inner.persist(&mut state);
+        Ok(state
+            .snapshot
+            .conversation(&remote.id)
+            .cloned()
+            .expect("just added"))
+    }
+
     /// Opens the room: starts its live stream on a pump thread (unless it
-    /// is already watched) and marks it read (`unread_count` → 0); it stays
-    /// read while open. Returns at once; `StreamConnected` /
+    /// is already watched) and marks it read (`unread_count` → 0, here and,
+    /// in the background, on the server); it stays read while open. Returns at once; `StreamConnected` /
     /// `StreamDisconnected` report how the connection goes. Idempotent.
     pub fn subscribe(&self, conversation_id: &str) -> Result<(), ChatError> {
         validate_room(conversation_id)?;
         let mut state = self.inner.lock();
         self.inner.ensure_running_locked(&state)?;
         state.open.insert(conversation_id.into());
-        if let Some(conversation) = state.snapshot.conversation_mut(conversation_id) {
-            if conversation.unread_count > 0 {
-                conversation.unread_count = 0;
-                let conversation = conversation.clone();
-                self.inner.persist(&mut state);
-                self.inner
-                    .emit(ChatEvent::ConversationUpdated(conversation));
-            }
+        if let Some(up_to) = self.inner.mark_read_locally(&mut state, conversation_id) {
+            // Tell the server too, off this thread. (A room that is not
+            // streaming yet is also marked by its pump after the catch-up.)
+            let inner = Arc::clone(&self.inner);
+            let room = conversation_id.to_string();
+            let _ = thread::Builder::new()
+                .name("forge-chat-mark-read".into())
+                .spawn(move || {
+                    let _ = inner.repo.mark_read(&room, up_to);
+                });
         }
+        self.inner.persist(&mut state);
         let started = self.start_stream_locked(&mut state, conversation_id);
         if started.is_err() {
             state.open.remove(conversation_id);
@@ -611,14 +685,16 @@ impl Inner {
         format!("m-{nanos:x}-{:x}-{n:x}", std::process::id())
     }
 
-    /// Replaces the conversation list with the server's, keeping local
-    /// `unread_count`. Rooms the server no longer lists are forgotten.
+    /// Replaces the conversation list with the server's, keeping what this
+    /// device knows (unread counts without server cursors, mute, marked
+    /// unread, cursors that moved further). Rooms the server no longer lists
+    /// are forgotten.
     fn replace_conversations(&self, state: &mut State, remote: &[RemoteConversation]) {
         let conversations: Vec<Conversation> = remote
             .iter()
             .map(|room| {
                 let existing = state.snapshot.conversation(&room.id);
-                Conversation {
+                let mut conversation = Conversation {
                     id: room.id.clone(),
                     title: room.title.clone(),
                     last_message_at: max_opt(
@@ -626,7 +702,20 @@ impl Inner {
                         existing.and_then(|c| c.last_message_at),
                     ),
                     unread_count: existing.map_or(0, |c| c.unread_count),
-                }
+                    last_message: newest_of(
+                        room.last_message.clone(),
+                        existing.and_then(|c| c.last_message.clone()),
+                    ),
+                    read_up_to: max_opt(room.read_up_to, existing.and_then(|c| c.read_up_to)),
+                    others_read_up_to: max_opt(
+                        room.others_read_up_to,
+                        existing.and_then(|c| c.others_read_up_to),
+                    ),
+                    muted: existing.is_some_and(|c| c.muted),
+                    marked_unread: existing.is_some_and(|c| c.marked_unread),
+                };
+                self.derive(state, &mut conversation, 0);
+                conversation
             })
             .collect();
         let listed: Vec<&str> = conversations.iter().map(|c| c.id.as_str()).collect();
@@ -663,6 +752,10 @@ impl Inner {
                 .last_synced(conversation_id)
                 .is_some_and(|cursor| since <= cursor),
         };
+        let (read_up_to, muted) = state
+            .snapshot
+            .conversation(conversation_id)
+            .map_or((None, false), |c| (c.read_up_to, c.muted));
         let mut newest = None;
         let mut unread_added = 0u32;
         for mut message in messages {
@@ -670,8 +763,10 @@ impl Inner {
             newest = newest.max(Some(message.sent_at));
             match state.snapshot.upsert_message(message.clone()) {
                 Upsert::Inserted => {
-                    let unread = !viewing && !self.config.is_own(&message);
-                    let notify = unread && message.sent_at >= self.started_at;
+                    let unread = !viewing
+                        && !self.config.is_own(&message)
+                        && read_up_to.is_none_or(|read| message.sent_at > read);
+                    let notify = unread && !muted && message.sent_at >= self.started_at;
                     if unread {
                         unread_added += 1;
                     }
@@ -694,28 +789,171 @@ impl Inner {
         if let (true, Some(newest)) = (contiguous, newest) {
             state.snapshot.advance_cursor(conversation_id, newest);
         }
-        self.touch_conversation(state, conversation_id, newest, unread_added);
+        self.refresh_conversation(state, conversation_id, unread_added, false);
     }
 
-    /// Bumps `last_message_at` / `unread_count`; emits `ConversationUpdated`
-    /// when either changed.
-    fn touch_conversation(
+    /// Recomputes what a conversation derives from the stored messages and
+    /// its cursors: the preview, `last_message_at` and `unread_count`.
+    /// `unread_added` only counts without a server read cursor (then the
+    /// count is kept incrementally on this device).
+    fn derive(&self, state: &State, conversation: &mut Conversation, unread_added: u32) {
+        let messages = state.snapshot.messages(&conversation.id);
+        if let Some(newest) = messages.last() {
+            conversation.last_message = newest_of(
+                Some(newest.clone()),
+                conversation
+                    .last_message
+                    .take()
+                    // A stored message may have changed status: prefer it.
+                    .filter(|m| !messages.iter().any(|s| s.id == m.id)),
+            );
+        }
+        let newest_sent = messages
+            .iter()
+            .rev()
+            .find(|m| m.status == MessageStatus::Sent)
+            .map(|m| m.sent_at);
+        conversation.last_message_at = max_opt(conversation.last_message_at, newest_sent);
+        conversation.unread_count = if state.open.contains(&conversation.id) {
+            0
+        } else if let Some(read) = conversation.read_up_to {
+            let unread = messages
+                .iter()
+                .filter(|m| {
+                    m.status == MessageStatus::Sent && m.sent_at > read && !self.config.is_own(m)
+                })
+                .count();
+            u32::try_from(unread).unwrap_or(u32::MAX)
+        } else {
+            conversation.unread_count.saturating_add(unread_added)
+        };
+    }
+
+    /// [`derive`](Self::derive)s the conversation and emits
+    /// `ConversationUpdated` if anything changed (or always, with `announce`).
+    fn refresh_conversation(
         &self,
         state: &mut State,
         conversation_id: &str,
-        newest: Option<i64>,
         unread_added: u32,
+        announce: bool,
     ) {
-        let Some(conversation) = state.snapshot.conversation_mut(conversation_id) else {
+        let Some(before) = state.snapshot.conversation(conversation_id).cloned() else {
             return;
         };
+        let mut after = before.clone();
+        self.derive(state, &mut after, unread_added);
+        let changed = after != before;
+        if changed {
+            *state
+                .snapshot
+                .conversation_mut(conversation_id)
+                .expect("checked above") = after.clone();
+        }
+        if changed || announce {
+            self.emit(ChatEvent::ConversationUpdated(after));
+        }
+    }
+
+    /// Changes a device-only field of a conversation and announces it.
+    fn update_local(
+        &self,
+        conversation_id: &str,
+        change: impl FnOnce(&mut Conversation),
+    ) -> Result<(), ChatError> {
+        validate_room(conversation_id)?;
+        let mut state = self.lock();
+        self.ensure_running_locked(&state)?;
+        let conversation = state
+            .snapshot
+            .conversation_mut(conversation_id)
+            .ok_or_else(|| ChatError::NotFound {
+                conversation_id: conversation_id.into(),
+            })?;
         let before = conversation.clone();
-        conversation.last_message_at = max_opt(conversation.last_message_at, newest);
-        conversation.unread_count = conversation.unread_count.saturating_add(unread_added);
+        change(conversation);
+        if *conversation != before {
+            let conversation = conversation.clone();
+            self.persist(&mut state);
+            self.emit(ChatEvent::ConversationUpdated(conversation));
+        }
+        Ok(())
+    }
+
+    /// Marks the room read on this device up to its newest stored message.
+    /// Returns the cursor to send to the server, if it moved.
+    fn mark_read_locally(&self, state: &mut State, conversation_id: &str) -> Option<i64> {
+        let newest = state
+            .snapshot
+            .messages(conversation_id)
+            .iter()
+            .rev()
+            .find(|m| m.status == MessageStatus::Sent)
+            .map(|m| m.sent_at);
+        let conversation = state.snapshot.conversation_mut(conversation_id)?;
+        let before = conversation.clone();
+        let moved = newest.filter(|&newest| conversation.read_up_to.is_none_or(|r| newest > r));
+        if let Some(newest) = moved {
+            conversation.read_up_to = Some(newest);
+        }
+        conversation.marked_unread = false;
+        conversation.unread_count = 0;
         if *conversation != before {
             let conversation = conversation.clone();
             self.emit(ChatEvent::ConversationUpdated(conversation));
         }
+        moved
+    }
+
+    /// Applies a read cursor move from the room's stream.
+    fn apply_read(&self, state: &mut State, conversation_id: &str, user_id: &str, up_to: i64) {
+        let mine = user_id == self.config.user_id;
+        let Some(conversation) = state.snapshot.conversation_mut(conversation_id) else {
+            return;
+        };
+        if mine {
+            if conversation.read_up_to.is_some_and(|r| r >= up_to) {
+                return;
+            }
+            conversation.read_up_to = Some(up_to);
+            // Read on another device: the request to show it unread is
+            // answered.
+            conversation.marked_unread = false;
+        } else {
+            if conversation.others_read_up_to.is_some_and(|r| r >= up_to) {
+                return;
+            }
+            conversation.others_read_up_to = Some(up_to);
+        }
+        self.refresh_conversation(state, conversation_id, 0, true);
+    }
+
+    /// Applies messages from the room's pump and persists them. While the
+    /// room is open, what arrived is marked read in the same step (so it
+    /// can never count as unread after the room closes) and then on the
+    /// server. `None` means the pump must stop.
+    fn apply_from_pump(
+        &self,
+        subscription: &Arc<Subscription>,
+        messages: Vec<Message>,
+        fetched_since: Option<Option<i64>>,
+    ) -> Option<()> {
+        let room = &subscription.conversation_id;
+        let up_to = self.with_current(subscription, |inner, state| {
+            inner.apply_server_messages(state, room, messages, fetched_since);
+            let up_to = if state.open.contains(room) {
+                inner.mark_read_locally(state, room)
+            } else {
+                None
+            };
+            inner.persist(state);
+            up_to
+        })?;
+        if let Some(up_to) = up_to {
+            // Best effort: the next mark (or opening the room again) retries.
+            let _ = self.repo.mark_read(room, up_to);
+        }
+        Some(())
     }
 
     /// Posts a message that is already stored as `Sending`, then records the
@@ -746,14 +984,17 @@ impl Inner {
                         }
                         Upsert::Unchanged => {}
                     }
-                    // Our own send does not move the cursor: messages from
-                    // others may sit between the cursor and this one.
-                    self.touch_conversation(
-                        &mut state,
-                        &stored.conversation_id,
-                        Some(stored.sent_at),
-                        0,
-                    );
+                    // Our own send does not move the sync cursor: messages
+                    // from others may sit between the cursor and this one.
+                    // It does move the read cursor, as the server does.
+                    if let Some(conversation) =
+                        state.snapshot.conversation_mut(&stored.conversation_id)
+                    {
+                        if let Some(read) = conversation.read_up_to.as_mut() {
+                            *read = (*read).max(stored.sent_at);
+                        }
+                    }
+                    self.refresh_conversation(&mut state, &stored.conversation_id, 0, false);
                 }
                 self.persist(&mut state);
                 Ok(stored)
@@ -769,15 +1010,17 @@ impl Inner {
                 state
                     .snapshot
                     .set_status(&message.id, MessageStatus::Failed);
-                self.persist(&mut state);
                 if shut_down {
+                    self.persist(&mut state);
                     return Err(ChatError::Cancelled);
                 }
                 self.emit(ChatEvent::MessageStatusChanged {
-                    conversation_id: message.conversation_id,
+                    conversation_id: message.conversation_id.clone(),
                     id: message.id,
                     status: MessageStatus::Failed,
                 });
+                self.refresh_conversation(&mut state, &message.conversation_id, 0, false);
+                self.persist(&mut state);
                 Err(err)
             }
         }
@@ -861,11 +1104,10 @@ impl Inner {
                     };
                     let reason = match self.repo.load_messages(&room, since) {
                         Ok(messages) => {
-                            let applied = self.with_current(&subscription, |inner, state| {
-                                inner.apply_server_messages(state, &room, messages, Some(since));
-                                inner.persist(state);
-                            });
-                            if applied.is_none() {
+                            if self
+                                .apply_from_pump(&subscription, messages, Some(since))
+                                .is_none()
+                            {
                                 return;
                             }
                             delay = self.config.reconnect_initial;
@@ -929,24 +1171,30 @@ impl Inner {
                     if message.conversation_id != *room {
                         continue;
                     }
-                    self.with_current(subscription, |inner, state| {
-                        inner.apply_server_messages(state, room, vec![message], None);
-                        inner.persist(state);
-                    })?;
+                    self.apply_from_pump(subscription, vec![message], None)?;
                 }
                 RemoteEvent::Conversation(remote) => {
+                    if remote.id != *room {
+                        continue;
+                    }
                     self.with_current(subscription, |inner, state| {
                         if let Some(conversation) = state.snapshot.conversation_mut(&remote.id) {
-                            let before = conversation.clone();
                             conversation.title = remote.title.clone();
                             conversation.last_message_at =
                                 max_opt(conversation.last_message_at, remote.last_message_at);
-                            if *conversation != before {
-                                let conversation = conversation.clone();
-                                inner.persist(state);
-                                inner.emit(ChatEvent::ConversationUpdated(conversation));
-                            }
+                            conversation.last_message = newest_of(
+                                conversation.last_message.take(),
+                                remote.last_message.clone(),
+                            );
+                            inner.refresh_conversation(state, &remote.id, 0, false);
+                            inner.persist(state);
                         }
+                    })?;
+                }
+                RemoteEvent::Read { user_id, up_to } => {
+                    self.with_current(subscription, |inner, state| {
+                        inner.apply_read(state, room, &user_id, up_to);
+                        inner.persist(state);
                     })?;
                 }
             }
@@ -956,6 +1204,18 @@ impl Inner {
 
 fn max_opt(a: Option<i64>, b: Option<i64>) -> Option<i64> {
     a.max(b)
+}
+
+/// The later of two messages (by `sent_at`, then id).
+fn newest_of(a: Option<Message>, b: Option<Message>) -> Option<Message> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(if (b.sent_at, &b.id) > (a.sent_at, &a.id) {
+            b
+        } else {
+            a
+        }),
+        (a, b) => a.or(b),
+    }
 }
 
 #[cfg(test)]

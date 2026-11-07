@@ -343,6 +343,8 @@ mod tests {
             title: "General".into(),
             last_message_at: Some(2),
             unread_count: 1,
+            muted: true,
+            ..Conversation::default()
         });
         snap.upsert_message(message("a", 1, MessageStatus::Sent));
         snap.upsert_message(message("b", 2, MessageStatus::Sending));

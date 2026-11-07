@@ -26,10 +26,11 @@ use chat_core::{
 const USAGE: &str = "usage: chat-cli [--server URL] COMMAND
   signup NAME          create an account on the server (once per server)
   whoami               the account this terminal uses
-  rooms                list conversations
-  read ROOM [--last N] show the last N messages (default 20)
+  rooms                list conversations, newest first, with the last message
+  create TITLE...      start a new conversation
+  read ROOM [--last N] show the last N messages (default 20) and mark them read
   send ROOM TEXT...    send a message
-  follow ROOM          show new messages as they arrive (Ctrl-C to stop)
+  follow ROOM          show new messages as they arrive and mark them read (Ctrl-C to stop)
 
   --server  the chat server (default $CHAT_SERVER, or http://127.0.0.1:8787)";
 
@@ -74,6 +75,7 @@ fn run(args: Vec<String>) -> Result<(), String> {
             signup(&accounts, &server, &name)
         }
         ("whoami", []) => whoami(&accounts, &server),
+        ("create", title) if !title.is_empty() => create(&accounts, &server, &title.join(" ")),
         ("rooms", []) => rooms(&accounts, &server),
         ("read", [room]) => read(&accounts, &server, room, 20),
         ("read", [room, flag, n]) if flag == "--last" => {
@@ -130,14 +132,35 @@ fn whoami(accounts: &AccountFile, server: &str) -> Result<(), String> {
 }
 
 fn rooms(accounts: &AccountFile, server: &str) -> Result<(), String> {
-    let (_, repo) = signed_in(accounts, server)?;
-    for room in repo.list_conversations().map_err(|e| explain(e, server))? {
-        let last = room
-            .last_message_at
-            .map(|t| format!("last message {}", clock(t)))
-            .unwrap_or_else(|| "empty".into());
-        println!("{:<12} {:<20} {last}", room.id, room.title);
+    let (account, repo) = signed_in(accounts, server)?;
+    let mut rooms = repo.list_conversations().map_err(|e| explain(e, server))?;
+    // Newest activity first, like the phone's list.
+    rooms.sort_by_key(|room| std::cmp::Reverse(room.last_message_at));
+    for room in rooms {
+        let last = match &room.last_message {
+            Some(message) => {
+                let unread = room.read_up_to.is_some_and(|read| {
+                    message.sent_at > read && message.author_id != account.user_id
+                });
+                format!(
+                    "{}{}",
+                    if unread { "* " } else { "" },
+                    line(message, &account)
+                )
+            }
+            None => "(no messages)".into(),
+        };
+        println!("{:<16} {:<20} {last}", room.id, room.title);
     }
+    Ok(())
+}
+
+fn create(accounts: &AccountFile, server: &str, title: &str) -> Result<(), String> {
+    let (_, repo) = signed_in(accounts, server)?;
+    let room = repo
+        .create_conversation(title)
+        .map_err(|e| explain(e, server))?;
+    println!("Created {:?}. Its id is {}.", room.title, room.id);
     Ok(())
 }
 
@@ -149,6 +172,11 @@ fn read(accounts: &AccountFile, server: &str, room: &str, last: usize) -> Result
     let skip = messages.len().saturating_sub(last);
     for message in &messages[skip..] {
         println!("{}", line(message, &account));
+    }
+    // Reading them here is reading them: the phone shows them as read.
+    if let Some(newest) = messages.last() {
+        repo.mark_read(room, newest.sent_at)
+            .map_err(|e| explain(e, server))?;
     }
     Ok(())
 }
@@ -169,7 +197,8 @@ fn send(accounts: &AccountFile, server: &str, room: &str, text: &str) -> Result<
 }
 
 /// Follows a room with chat-core's own client: the same reconnect and
-/// catch-up logic the phone uses.
+/// catch-up logic the phone uses. The room is open, so what arrives is
+/// marked read, as on the phone.
 fn follow(accounts: &AccountFile, server: &str, room: &str) -> Result<(), String> {
     let (account, repo) = signed_in(accounts, server)?;
     let (tx, rx) = mpsc::channel();

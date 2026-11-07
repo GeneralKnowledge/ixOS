@@ -20,8 +20,20 @@ pub struct ChatConversation {
     pub title: String,
     /// Newest message the server knows of, Unix ms. `None` for an empty room.
     pub last_message_at: Option<i64>,
-    /// Messages from others that arrived while the room was not open.
+    /// Messages from others this account has not read (by the server's read
+    /// cursor). 0 while the room is open.
     pub unread_count: u32,
+    /// Show the unread dot: unread messages, or the user marked it unread.
+    pub shows_unread: bool,
+    /// The newest message, for the preview line (ours too, while sending).
+    pub last_message: Option<ChatMessage>,
+    /// How far anyone else has read, Unix ms. One of our sent messages with
+    /// `sent_at` up to it has been read; `ChatMessage::is_read` says so.
+    pub others_read_up_to: Option<i64>,
+    /// No notifications for this room (this device only).
+    pub muted: bool,
+    /// The user swiped it to unread (this device only).
+    pub marked_unread: bool,
 }
 
 #[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -51,6 +63,37 @@ pub struct ChatMessage {
     /// Unix ms: device time while sending or failed, server time once sent.
     pub sent_at: i64,
     pub status: ChatMessageStatus,
+}
+
+/// Where one of our messages is, as its bubble shows it.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ChatDelivery {
+    Sending,
+    Sent,
+    /// Someone else in the room has read it (their read cursor passed it).
+    Read,
+    Failed,
+}
+
+/// The delivery state of `message` in `conversation`: `Read` once another
+/// account's read cursor has passed one of our sent messages. Only
+/// meaningful for our own messages.
+#[uniffi::export]
+pub fn chat_delivery(message: ChatMessage, conversation: Option<ChatConversation>) -> ChatDelivery {
+    match message.status {
+        ChatMessageStatus::Sending => ChatDelivery::Sending,
+        ChatMessageStatus::Failed => ChatDelivery::Failed,
+        ChatMessageStatus::Sent => {
+            let read = conversation
+                .and_then(|c| c.others_read_up_to)
+                .is_some_and(|up_to| message.sent_at <= up_to);
+            if read {
+                ChatDelivery::Read
+            } else {
+                ChatDelivery::Sent
+            }
+        }
+    }
 }
 
 /// Everything the host renders from. All events of a `ChatCore` go to every
@@ -144,14 +187,19 @@ pub enum ChatError {
     Internal { reason: String },
 }
 
-impl From<chat_core::Conversation> for ChatConversation {
-    fn from(c: chat_core::Conversation) -> Self {
-        Self {
-            id: c.id,
-            title: c.title,
-            last_message_at: c.last_message_at,
-            unread_count: c.unread_count,
-        }
+/// Converts with the signed-in account's id, which decides the preview's
+/// `is_mine`.
+pub(crate) fn conversation(c: chat_core::Conversation, user_id: &str) -> ChatConversation {
+    ChatConversation {
+        shows_unread: c.shows_unread(),
+        id: c.id,
+        title: c.title,
+        last_message_at: c.last_message_at,
+        unread_count: c.unread_count,
+        last_message: c.last_message.map(|m| message(m, user_id)),
+        others_read_up_to: c.others_read_up_to,
+        muted: c.muted,
+        marked_unread: c.marked_unread,
     }
 }
 
@@ -183,7 +231,7 @@ pub(crate) fn event(event: chat_core::ChatEvent, user_id: &str) -> ChatEvent {
     use chat_core::ChatEvent as Core;
     match event {
         Core::ConversationUpdated(c) => ChatEvent::ConversationUpdated {
-            conversation: c.into(),
+            conversation: conversation(c, user_id),
         },
         Core::MessageReceived(m) => ChatEvent::MessageReceived {
             message: message(m, user_id),

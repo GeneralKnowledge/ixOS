@@ -179,15 +179,64 @@ impl ChatCore {
     /// Lists conversations from the server, prefetching new messages for
     /// rooms that are not open (they count as unread).
     pub async fn list_conversations(&self) -> Result<Vec<ChatConversation>, ChatError> {
-        let client = self.client()?;
+        let (client, user_id) = self.client_and_user()?;
         let result = background("chat-list", move || {
             client
                 .list_conversations()
-                .map(|list| list.into_iter().map(Into::into).collect())
+                .map(|list| {
+                    list.into_iter()
+                        .map(|c| types::conversation(c, &user_id))
+                        .collect()
+                })
                 .map_err(ChatError::from)
         })
         .await;
         result.map_err(|e| self.rejected(e))
+    }
+
+    /// Creates a conversation on the server. It is added to the list
+    /// (`ConversationUpdated`) and returned, ready to open.
+    pub async fn create_conversation(&self, title: String) -> Result<ChatConversation, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        let result = background("chat-create", move || {
+            client
+                .create_conversation(&title)
+                .map(|c| types::conversation(c, &user_id))
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// Marks everything in the room read, here at once and then on the
+    /// server (other devices and other people see it). Clears "marked
+    /// unread". An open room is kept read without this.
+    pub async fn mark_read(&self, conversation_id: String) -> Result<(), ChatError> {
+        let client = self.client()?;
+        let result = background("chat-read", move || {
+            client.mark_read(&conversation_id).map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// Shows the room as unread until it is opened or marked read (`true`),
+    /// or stops doing so. This device only.
+    pub fn set_marked_unread(
+        &self,
+        conversation_id: String,
+        marked: bool,
+    ) -> Result<(), ChatError> {
+        self.client()?
+            .set_marked_unread(&conversation_id, marked)
+            .map_err(Into::into)
+    }
+
+    /// Mutes the room (no notifications) or unmutes it. This device only.
+    pub fn set_muted(&self, conversation_id: String, muted: bool) -> Result<(), ChatError> {
+        self.client()?
+            .set_muted(&conversation_id, muted)
+            .map_err(Into::into)
     }
 
     /// Fetches the room's messages newer than what is stored, merges them
@@ -276,11 +325,11 @@ impl ChatCore {
 
     /// Conversations as stored, for a first render before the network.
     pub fn cached_conversations(&self) -> Vec<ChatConversation> {
-        self.client()
-            .map(|c| {
+        self.client_and_user()
+            .map(|(c, user_id)| {
                 c.cached_conversations()
                     .into_iter()
-                    .map(Into::into)
+                    .map(|c| types::conversation(c, &user_id))
                     .collect()
             })
             .unwrap_or_default()

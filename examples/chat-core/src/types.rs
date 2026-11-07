@@ -5,17 +5,53 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// One chat room as the conversation list shows it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Conversation {
     pub id: String,
     pub title: String,
     /// `sent_at` of the newest message the server knows of, in Unix
     /// milliseconds. `None` for an empty room.
     pub last_message_at: Option<i64>,
-    /// Messages from other people that arrived while this conversation was
-    /// not open (not subscribed). Tracked on the device; reset by
-    /// [`crate::ChatClient::subscribe`].
+    /// Messages from other people this account has not read. With a server
+    /// that keeps read cursors (`read_up_to` is set) it is the stored
+    /// messages from others after the cursor; otherwise it counts what
+    /// arrived while the room was not open on this device. Always 0 while
+    /// the room is open.
     pub unread_count: u32,
+    /// The newest message, for the list's preview line (including one of
+    /// ours still `Sending` or `Failed`).
+    #[serde(default)]
+    pub last_message: Option<Message>,
+    /// This account's read cursor: every message with `sent_at` up to it
+    /// is read. `None` when the server keeps no cursors.
+    #[serde(default)]
+    pub read_up_to: Option<i64>,
+    /// How far anyone else has read. One of our `Sent` messages with
+    /// `sent_at <= others_read_up_to` has been read.
+    #[serde(default)]
+    pub others_read_up_to: Option<i64>,
+    /// No notifications for this room. Kept on this device.
+    #[serde(default)]
+    pub muted: bool,
+    /// The user asked to see this room as unread (a swipe); cleared when it
+    /// is opened or marked read. Kept on this device.
+    #[serde(default)]
+    pub marked_unread: bool,
+}
+
+impl Conversation {
+    /// Whether the list should show the unread dot.
+    pub fn shows_unread(&self) -> bool {
+        self.unread_count > 0 || self.marked_unread
+    }
+
+    /// Whether one of our sent messages has been read by someone else.
+    pub fn is_read_by_others(&self, message: &Message) -> bool {
+        message.status == MessageStatus::Sent
+            && self
+                .others_read_up_to
+                .is_some_and(|up_to| message.sent_at <= up_to)
+    }
 }
 
 /// One chat message.
@@ -60,7 +96,8 @@ pub enum MessageStatus {
 /// so re-reading the store never contradicts an event already seen.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatEvent {
-    /// A conversation's title, `last_message_at` or `unread_count` changed.
+    /// A conversation changed: title, preview, unread count, read cursors,
+    /// mute or marked-unread; or it is new (created, or first listed).
     ConversationUpdated(Conversation),
     /// A message the host has not been told about yet: someone else's
     /// message from the stream or a catch-up fetch, or the local user's own

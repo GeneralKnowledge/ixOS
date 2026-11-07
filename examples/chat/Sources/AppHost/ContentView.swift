@@ -2,7 +2,7 @@
 import SwiftUI
 
 /// The app's root. It owns the model, opens the Rust core once, and shows
-/// sign-up, the conversations, a spinner, or a recovery screen.
+/// sign-up, the two tabs, a spinner, or a recovery screen.
 public struct ContentView: View {
     @State private var model: ChatModel
 
@@ -18,9 +18,7 @@ public struct ContentView: View {
             case .signedOut:
                 SignUpView(model: model)
             case .ready:
-                NavigationStack {
-                    ConversationListView(model: model)
-                }
+                MainTabs(model: model)
             case .failed(let message):
                 ContentUnavailableView {
                     Label("Can't Open Chat", systemImage: "exclamationmark.bubble")
@@ -36,5 +34,25 @@ public struct ContentView: View {
         .task { await model.open() }
         // Reports the scene phase to Rust (see AppLifecycle.swift).
         .forgeLifecycle { model.setPhase($0) }
+    }
+}
+
+/// Chats and Settings, each with its own navigation stack.
+struct MainTabs: View {
+    let model: ChatModel
+
+    var body: some View {
+        TabView {
+            ChatsTab(model: model)
+                .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
+                .badge(model.unreadConversationCount)
+
+            NavigationStack {
+                SettingsView(model: model)
+            }
+            .tabItem { Label("Settings", systemImage: "gearshape") }
+        }
+        // Failed swipes and menu actions, from either tab.
+        .errorAlert("Something Went Wrong", message: Bindable(model).actionError)
     }
 }

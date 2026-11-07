@@ -331,3 +331,77 @@ fn without_installed_services_the_keychain_constructor_says_why() {
         Err(ChatError::UnsupportedOnHost { .. })
     ));
 }
+
+#[test]
+fn read_receipts_new_rooms_and_mute_through_the_ffi() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let me =
+        ChatCore::with_memory_credentials(dir.path().join("me").to_string_lossy().into()).unwrap();
+    let other =
+        ChatCore::with_memory_credentials(dir.path().join("other").to_string_lossy().into())
+            .unwrap();
+    block_on(me.sign_up(server.url.clone(), "Me".into())).unwrap();
+    block_on(other.sign_up(server.url.clone(), "Other".into())).unwrap();
+    let events = me.events().unwrap();
+
+    // A new room, created here and found by the other account.
+    let room = block_on(me.create_conversation("  Plans ".into())).unwrap();
+    assert_eq!(room.title, "Plans");
+    assert!(!room.shows_unread && room.last_message.is_none());
+    assert!(block_on(other.list_conversations())
+        .unwrap()
+        .iter()
+        .any(|c| c.id == room.id));
+    assert!(matches!(
+        block_on(me.create_conversation(" ".into())),
+        Err(ChatError::InvalidInput { .. })
+    ));
+
+    // Our message is Sent until the other account opens the room.
+    me.watch(room.id.clone()).unwrap();
+    next_matching(&events, "connected", |e| {
+        matches!(e, ChatEvent::StreamConnected { .. })
+    });
+    let sent = block_on(me.send_message(room.id.clone(), "see you at 8".into())).unwrap();
+    let mine = me
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == room.id)
+        .unwrap();
+    assert_eq!(mine.last_message.as_ref().unwrap().body, "see you at 8");
+    assert!(mine.last_message.as_ref().unwrap().is_mine);
+    assert_eq!(chat_delivery(sent.clone(), Some(mine)), ChatDelivery::Sent);
+
+    block_on(other.list_conversations()).unwrap();
+    let theirs = other
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == room.id)
+        .unwrap();
+    assert!(theirs.shows_unread);
+    assert_eq!(theirs.unread_count, 1);
+    assert!(!theirs.last_message.unwrap().is_mine);
+    block_on(other.mark_read(room.id.clone())).unwrap();
+
+    next_matching(&events, "read by the other account", |e| {
+        matches!(e, ChatEvent::ConversationUpdated { conversation }
+            if chat_delivery(sent.clone(), Some(conversation.clone())) == ChatDelivery::Read)
+    });
+
+    // Mute and marked-unread are this device's.
+    me.set_muted(room.id.clone(), true).unwrap();
+    me.set_marked_unread(room.id.clone(), true).unwrap();
+    let mine = me
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == room.id)
+        .unwrap();
+    assert!(mine.muted && mine.marked_unread && mine.shows_unread);
+    block_on(me.mark_read(room.id.clone())).unwrap();
+    assert!(!me.cached_conversations().iter().any(|c| c.marked_unread));
+    assert!(matches!(
+        me.set_muted("no-such-room".into(), true),
+        Err(ChatError::NotFound { .. })
+    ));
+}

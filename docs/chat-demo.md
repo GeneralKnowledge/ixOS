@@ -14,8 +14,8 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 
 | Milestone | What | State |
 |---|---|---|
-| M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | This PR; device check in [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
-| M1 | Native messaging UI: previews, read state, bubbles, composer, haptics | Planned |
+| M0 | Chat on the current framework: its own Rust crate, `@Observable` SwiftUI, lifecycle, a real server with accounts and storage on disk, the account in the Keychain, `chat-cli` | Done (PR #40); passed on an iPhone (PR #42) |
+| M1 | Native messaging UI: Chats and Settings tabs, previews, server read cursors (unread and "Read"), mark read/unread and mute, new conversations, grouped bubbles with time separators, a pinned composer, haptics | In review; device check in [examples/chat/ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md) |
 | M2 | Edits, deletes, replies, reactions; drafts; a durable outbox; search; storage on the reusable forge-storage database (SQLite spike first) | Planned |
 | M3 | Photos and documents | Planned |
 | M4 | Voice messages | Planned |
@@ -121,9 +121,17 @@ Tying the subscription to the lifetime of an `AsyncSequence` / `Flow` would make
 - a stream message moves it (the stream has been open since the last catch-up);
 - **our own send does not**: messages from others may sit between the cursor and ours.
 
-### Unread counts
+### Unread counts and read receipts
 
-Tracked on the device: messages from other people that arrive while a room is not open. `list_conversations` notices rooms with news (server `last_message_at` > cursor) and fetches only those. `subscribe` resets the count. No server state, no read receipts.
+Since M1 the server keeps a **read cursor** per account and room: every message up to that `sent_at` is read. `list_conversations` returns the caller's cursor (`read_up_to`; an account that never marked a room has read everything before it joined) and the furthest any *other* account has read (`others_read_up_to`). Then:
+
+- `unread_count` is the stored messages from others after `read_up_to`, and 0 while the room is open;
+- opening a room (`subscribe`) marks it read here and, on a background thread, on the server; while it is open, the pump marks each arrival read in the same step that stores it, then tells the server;
+- posting a message moves its author's cursor to it (writing is reading);
+- one of our sent messages is **read** once `others_read_up_to` reaches its `sent_at` (`Conversation::is_read_by_others`; the app crate's `chat_delivery` turns that into `Sending`/`Sent`/`Read`/`Failed`). The stream's `read` events carry cursor moves, so "Read" appears live;
+- `mark_read`, `set_marked_unread` and `set_muted` are the list's swipes. Marked-unread and mute are this device's own (in the store); a muted room still counts unread but never raises `Notify`. Reading the room anywhere (another device, `chat-cli read`) clears marked-unread.
+
+With a server that keeps no cursors (`read_up_to` is `None`), the count is kept on the device as before M1: messages from others that arrive while the room is not open. `list_conversations` notices rooms with news (server `last_message_at` > cursor) and fetches only those.
 
 ### Notifications
 
@@ -160,14 +168,16 @@ One JSON file, `forge-chat-store.json`, rewritten atomically (`forge_storage::wr
 |---|---|---|
 | register | `POST /accounts` `{"display_name"}` | `201` `{"user_id","display_name","token"}` |
 | who am I | `GET /me` | `200` `{"user_id","display_name"}` |
-| list | `GET /rooms` | `200` `[{"id","title","last_message_at"}]` |
+| list | `GET /rooms` | `200` `[Room]`, with the caller's read state |
+| create | `POST /rooms` `{"title"}` | `201` `Room` (needs an account; titles up to 60 characters) |
+| mark read | `POST /rooms/{id}/read` `{"up_to"}` | `200` `{"up_to"}`; the cursor only moves forward, and never past the newest message |
 | load | `GET /rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first, `sent_at > since` |
 | post | `POST /rooms/{id}/messages` `{"id","author","body"}` | `200`/`201` `Message`; **idempotent by `id`** |
 | stream | `GET /rooms/{id}/stream` | `200` `text/event-stream` |
 
 Every call but `register` carries `Authorization: Bearer <token>`. The server takes a message's author from the token (`author` and `author_id`), whatever the body says; an unknown or missing token is `401`, which the client reports as `ChatError::Unauthorized`. Only a server started with `--allow-anonymous` also accepts calls without a token, with the author from the body: that is how the frozen Android example and curl post.
 
-`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers). The stream sends `event: message` (a `Message`) and `event: room` (a room) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
+`Message` is `{"id","conversation_id","author","author_id","body","sent_at"}` (`author_id` is empty for anonymous posts, and may be missing from older servers). `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`; the two read fields are only in answers to the caller (a room in the stream goes to everyone). The stream sends `event: message` (a `Message`), `event: room` (a room) and `event: read` (`{"conversation_id","user_id","up_to"}`) with JSON `data`, plus `: ping` comment lines every 15 s as heartbeats. A `404` on a room path means the room does not exist. Unknown fields and event names are ignored. `InMemoryRepo` is the executable reference: the chat server must behave like it (strictly increasing `sent_at` per room, idempotent post, broadcast to the room's streams).
 
 `HttpRepo` implements this over `forge_net::HttpClient`. Phase 1 added `HttpClient::open_stream` (a response whose body is read incrementally) to forge-net, with a real implementation in `UreqClient` (timeout covers connect + headers only) and a buffering default for test doubles, so `StaticClient` can serve canned SSE bodies.
 
@@ -184,7 +194,7 @@ make chat-server ARGS="--in-memory --allow-anonymous"   # the old mock: nothing 
 
 - **Accounts.** `POST /accounts` creates one and returns a random 256-bit token. There is no password and no recovery: the token is the account. The app keeps it in the Keychain; `chat-cli` keeps its own in `~/.config/ixos-chat/cli-accounts.json` (owner-only).
 - **Storage.** One JSON file, rewritten atomically after every change and saved *before* clients hear about the change, so a message a phone has seen survives a server restart. The file holds the tokens, so it is created owner-readable only. A corrupt file, or one from a newer server, is refused, not overwritten.
-- **Limits.** For one person's devices on a home network: plain HTTP (put it behind a TLS proxy for anything else), no rate limiting, three fixed rooms (creating rooms comes with M1).
+- **Limits.** For one person's devices on a home network: plain HTTP (put it behind a TLS proxy for anything else), no rate limiting, at most 200 conversations, and other devices see a new conversation on their next refresh (pull to refresh, or coming back to the app), not live.
 - A stream subscriber that falls more than 1024 events behind is disconnected, and the client reconnects and catches up. Ctrl-C stops the server immediately (every change is already on disk).
 
 `chat-cli` is the other person in a conversation, from a Linux terminal:

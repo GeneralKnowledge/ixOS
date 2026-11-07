@@ -26,7 +26,8 @@ mod types;
 
 pub use client::{ChatClient, ChatConfig, EventSink, MAX_BODY_CHARS};
 pub use http::{
-    validate_display_name, Account, HttpRepo, Identity, DEFAULT_TIMEOUT, MAX_DISPLAY_NAME_CHARS,
+    validate_display_name, validate_title, Account, HttpRepo, Identity, DEFAULT_TIMEOUT,
+    MAX_DISPLAY_NAME_CHARS, MAX_TITLE_CHARS,
 };
 pub use memory::{InMemoryRepo, MEMORY_HEARTBEAT};
 pub use repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
