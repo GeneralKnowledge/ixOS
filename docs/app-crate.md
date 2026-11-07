@@ -87,6 +87,8 @@ In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes.
 
 Do not rely on `Terminated` to save anything. iOS sends `willTerminate` only when it ends an app that is still running, not one it has suspended, and either OS may kill a background process without notice. The starter saves before each command returns, so it loses nothing either way.
 
+On Android, `close()` also frees the Kotlin `AppCore`, and UniFFI's Kotlin throws `IllegalStateException` for any later call on a freed object before Rust sees it. So after a suspending call, read the view model's current `core` again rather than reusing the instance the call started with: the app may have closed in between. The starter's `NotesViewModel` does this (`refreshNotes`). Swift frees the object only when the last reference goes, so the same call there reaches Rust and gets `ShutDown`.
+
 What is verified: the Rust, XCTest and JVM tests drive these phases through the real library. Phase changes on a physical device (pressing Home, the app switcher, an incoming call) have not been recorded yet.
 
 ## Adding dependencies
