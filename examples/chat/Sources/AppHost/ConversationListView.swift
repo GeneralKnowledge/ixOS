@@ -5,7 +5,7 @@ import SwiftUI
 /// as soon as it is created.
 struct ChatsTab: View {
     let model: ChatModel
-    @State private var path: [ChatRoute] = []
+    @Binding var path: [ChatRoute]
 
     var body: some View {
         NavigationStack(path: $path) {

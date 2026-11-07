@@ -1652,6 +1652,15 @@ ios_device = true
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         let readme = fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
+        // Agent instructions come with the app, named after it.
+        let agents = fs::read_to_string(dest.join("AGENTS.md")).unwrap();
+        assert!(
+            agents.contains("InitTestApp is a native iOS app"),
+            "{agents}"
+        );
+        assert!(!agents.contains("FORGE_APP_NAME"));
+        assert!(dest.join("CLAUDE.md").is_file());
+        assert!(dest.join(".mcp.json").is_file());
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));
