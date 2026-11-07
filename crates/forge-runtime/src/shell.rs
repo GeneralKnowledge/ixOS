@@ -179,3 +179,59 @@ macro_rules! __event_stream {
         }
     };
 }
+
+/// Emits `forge_log(level, category, message)` and `forge_log_enabled(level)`
+/// as UniFFI exports in the calling crate (which must depend on `uniffi`),
+/// with a `ForgeLogLevel` enum. They write into
+/// [`forge_runtime::logging`](crate::logging), so host records reach the
+/// platform log, `recent()` and the `forge device` live stream like Rust's.
+///
+/// On iOS, `scripts/generate-bindings.sh` adds `ForgeLog.swift` whenever the
+/// bindings contain `forgeLog`, so Swift code writes:
+///
+/// ```swift
+/// let log = ForgeLog("Attachments")
+/// log.warn("thumbnail failed: \(error)")
+/// ```
+///
+/// Never log secrets: tokens, passwords, Keychain contents, message bodies.
+#[macro_export]
+macro_rules! log_export {
+    () => {
+        /// A log level for [`forge_log`].
+        #[derive(::uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+        pub enum ForgeLogLevel {
+            Trace,
+            Debug,
+            Info,
+            Warn,
+            Error,
+        }
+
+        impl From<ForgeLogLevel> for $crate::logging::Level {
+            fn from(level: ForgeLogLevel) -> Self {
+                match level {
+                    ForgeLogLevel::Trace => Self::Trace,
+                    ForgeLogLevel::Debug => Self::Debug,
+                    ForgeLogLevel::Info => Self::Info,
+                    ForgeLogLevel::Warn => Self::Warn,
+                    ForgeLogLevel::Error => Self::Error,
+                }
+            }
+        }
+
+        /// Writes one record from host code into Forge's log, with
+        /// `category` as its target. Never log secrets.
+        #[::uniffi::export]
+        pub fn forge_log(level: ForgeLogLevel, category: String, message: String) {
+            $crate::logging::write_from_host(level.into(), &category, &message);
+        }
+
+        /// Whether a record at `level` would be kept, so the host can skip
+        /// building a message nobody will see.
+        #[::uniffi::export]
+        pub fn forge_log_enabled(level: ForgeLogLevel) -> bool {
+            $crate::logging::enabled(level.into())
+        }
+    };
+}

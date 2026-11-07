@@ -70,7 +70,14 @@ else
   # links only the frameworks (Core Location, Core Motion, ...) it selected.
   # ForgeServices+Selected.swift lists their installers for
   # ForgeServices.install().
-  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift
+  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift "$OUT/ForgeFFI/ForgeLog.swift"
+  # Swift logging: crates calling `forge_runtime::log_export!()` export
+  # forgeLog, and get the ForgeLog wrapper. Source of truth:
+  # crates/forge-runtime/swift/ForgeLog.swift.
+  if grep -q 'public func forgeLog(' "$OUT/ForgeFFI/forge_ffi.swift"; then
+    cp "$ROOT/crates/forge-runtime/swift/ForgeLog.swift" "$OUT/ForgeFFI/ForgeLog.swift"
+    echo "[forge] Added ForgeLog (Swift logging into the Rust log pipeline)."
+  fi
   if grep -q 'public func installNativeServices(' "$OUT/ForgeFFI/forge_ffi.swift"; then
     cp "$ROOT/crates/forge-services/swift/"ForgeServices*.swift "$OUT/ForgeFFI/"
     selected=()
