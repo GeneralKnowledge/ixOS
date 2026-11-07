@@ -147,7 +147,7 @@ Each item is a small PR on existing crates. None adds a layer.
 | 4 | `forge device screenshot` (screenshotr) and the appearance set | 3 | #3's DDI mount, forge-devtools commands | 1 day |
 | 5 | Swift log bridge (audit C3) and per-app xtool product names | 4 | forge-devtools, forge-runtime logging | 1–2 days |
 | 6 | `forge device apps` (slots, expiry, remove) and `forge doctor --device` | 5 | forge-device | 1 day |
-| 7 | `--json` and exit codes on build/run/device/test | 8 | diagnose.rs; shape agreed with the MCP thread | 1–2 days |
+| 7 | `--json` and exit codes on build/run/device/test (done: `forge --json`, Phase 0.5) | 8 | diagnose.rs; shape agreed with the MCP thread | 1–2 days |
 | 8 | Patched xtool as the documented default; install time in the output | 6 | xtool fork | Hours |
 | 9 | Crash symbolication | 7 | forge-device | 1 day |
 

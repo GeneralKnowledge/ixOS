@@ -20,6 +20,7 @@ Wi-Fi, installing builds with verification, and over-the-air updates come later.
 | `forge device info` | One phone's name, model, iOS version and build, and whether Developer Mode is on |
 | `forge device logs --process ChatXtool` | Streams the system log, keeping only lines from Chat's process (`ChatXtool`). Ctrl-C stops |
 | `forge device logs --grep "[chat]" --limit 20` | Lines containing some text; stop after 20 |
+| `forge device logs --process MyAppXtool --for 30s` | Stop after 30 seconds, even if the phone logs nothing |
 | `forge device crashes --app ChatXtool` | Chat's crash reports on the phone, newest first |
 | `forge device crashes --app ChatXtool --pull crashes/` | Copies them into `crashes/` |
 
