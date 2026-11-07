@@ -65,8 +65,8 @@ jobs:
           FORGE_ANDROID_JNI_LIBS: ${{ github.workspace }}/examples/chat-android/app/src/main/jniLibs
         run: ./scripts/package-android-library.sh examples/chat-android/Generated
 
-      - name: Build host forge-ffi and the mock chat server for JVM unit tests
-        run: cargo build -p forge-ffi -p mock-chat-server
+      - name: Build host forge-ffi and the chat server for JVM unit tests
+        run: cargo build -p forge-ffi -p chat-server
 
       - name: JVM unit tests (view model against the Rust core)
         working-directory: examples/counter-android

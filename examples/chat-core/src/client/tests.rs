@@ -16,6 +16,7 @@ struct Harness {
 fn fast_config() -> ChatConfig {
     ChatConfig {
         user: "me".into(),
+        user_id: String::new(),
         reconnect_initial: Duration::from_millis(10),
         reconnect_max: Duration::from_millis(40),
     }
@@ -838,4 +839,77 @@ fn repeated_subscribe_cycles_leak_no_threads_or_streams() {
     }
     wait_promptly("every pump exits", || h.client.live_pumps() == 0);
     wait_promptly("every stream closes", || h.repo.open_stream_count() == 0);
+}
+
+#[test]
+fn pause_stops_streams_and_resume_catches_up() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.client.subscribe("general").unwrap();
+    h.client.watch("random").unwrap();
+    h.wait_connected("general");
+    h.wait_connected("random");
+
+    h.client.pause_streams();
+    assert!(h.client.is_paused());
+    wait_until("pumps end", || h.client.live_pumps() == 0);
+    wait_until("streams close", || h.repo.open_stream_count() == 0);
+    let paused: Vec<_> = h
+        .drain()
+        .into_iter()
+        .filter(|e| matches!(e, ChatEvent::StreamDisconnected { reason, will_retry: true, .. } if reason == "paused"))
+        .collect();
+    assert_eq!(paused.len(), 2, "{paused:?}");
+    // The rooms are still open/watched, and a new open only records intent.
+    assert!(h.client.is_subscribed("general"));
+    assert!(h.client.is_watched("random"));
+
+    // Sent while the app was away.
+    let missed = h.repo.inject("random", "ana", "while you were away");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(h.client.live_pumps(), 0);
+
+    h.client.resume_streams().unwrap();
+    h.wait_for(
+        "the missed message",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == missed.id),
+    );
+    wait_until("both rooms live", || h.client.live_pumps() == 2);
+    h.client.resume_streams().unwrap();
+    assert_eq!(h.client.live_pumps(), 2);
+    h.client.shutdown();
+}
+
+#[test]
+fn own_messages_are_recognised_by_account_id() {
+    let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
+    let (tx, events) = mpsc::channel();
+    let config = ChatConfig {
+        user: "Sam".into(),
+        user_id: "u-me".into(),
+        ..fast_config()
+    };
+    let client = ChatClient::open(repo.clone(), ChatStore::in_memory(), config, move |e| {
+        let _ = tx.send(e);
+    })
+    .unwrap();
+    let h = Harness {
+        repo,
+        client,
+        events,
+    };
+    h.client.list_conversations().unwrap();
+    let mine = h.client.send_message("general", "hi").unwrap();
+    assert_eq!(mine.author_id, "u-me");
+    assert!(h.client.config().is_own(&mine));
+    h.client.watch("general").unwrap();
+    h.wait_connected("general");
+    // Someone else with the same display name is not us.
+    let other = h.repo.inject("general", "Sam", "same name, other person");
+    h.wait_for(
+        "the other Sam's message",
+        |e| matches!(e, ChatEvent::Notify(m) if m.id == other.id),
+    );
+    assert!(!h.client.config().is_own(&other));
+    h.client.shutdown();
 }

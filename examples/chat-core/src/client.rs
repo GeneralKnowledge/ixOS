@@ -53,16 +53,33 @@ pub const MAX_BODY_CHARS: usize = 4000;
 pub struct ChatConfig {
     /// The local user's display name, sent as `author`.
     pub user: String,
+    /// The local user's account id on the server; empty without an account.
+    /// With an id, "is this message mine" compares ids, not names, so two
+    /// people may share a display name.
+    pub user_id: String,
     /// First reconnect delay after a stream drops; doubles up to
     /// `reconnect_max`, and resets once a stream connects and catches up.
     pub reconnect_initial: Duration,
     pub reconnect_max: Duration,
 }
 
+impl ChatConfig {
+    /// Whether the local user wrote `message`: by account id when this
+    /// client has one, by display name otherwise.
+    pub fn is_own(&self, message: &Message) -> bool {
+        if self.user_id.is_empty() {
+            message.author == self.user
+        } else {
+            message.author_id == self.user_id
+        }
+    }
+}
+
 impl Default for ChatConfig {
     fn default() -> Self {
         Self {
             user: "me".into(),
+            user_id: String::new(),
             reconnect_initial: Duration::from_millis(500),
             reconnect_max: Duration::from_secs(5),
         }
@@ -109,6 +126,9 @@ struct State {
     open: HashSet<String>,
     /// Rooms kept live in the background (`watch`).
     watched: HashSet<String>,
+    /// Set by `pause_streams`: no stream runs, but `open` and `watched`
+    /// are kept so `resume_streams` restarts them.
+    paused: bool,
     shut_down: bool,
     store_error: Option<StoreError>,
 }
@@ -170,6 +190,7 @@ impl ChatClient {
                     subscriptions: HashMap::new(),
                     open: HashSet::new(),
                     watched: HashSet::new(),
+                    paused: false,
                     shut_down: false,
                     store_error,
                 }),
@@ -322,6 +343,7 @@ impl ChatClient {
             id: self.inner.new_message_id(),
             conversation_id: conversation_id.into(),
             author: self.inner.config.user.clone(),
+            author_id: self.inner.config.user_id.clone(),
             body: body.into(),
             sent_at: now_ms(),
             status: MessageStatus::Sending,
@@ -439,7 +461,7 @@ impl ChatClient {
         state: &mut State,
         conversation_id: &str,
     ) -> Result<(), ChatError> {
-        if state.subscriptions.contains_key(conversation_id) {
+        if state.paused || state.subscriptions.contains_key(conversation_id) {
             return Ok(());
         }
         let subscription = Arc::new(Subscription {
@@ -464,6 +486,53 @@ impl ChatClient {
             });
         }
         Ok(())
+    }
+
+    /// Stops every live stream without forgetting which rooms are open or
+    /// watched, as an app does when it goes to the background (iOS
+    /// suspends it within seconds, and a suspended app's sockets die
+    /// anyway). Each stream ends with `StreamDisconnected { will_retry:
+    /// true }`, and `subscribe`/`watch` while paused only record the room.
+    /// Sends in flight are not touched. Idempotent.
+    pub fn pause_streams(&self) {
+        let mut state = self.inner.lock();
+        if state.shut_down || state.paused {
+            return;
+        }
+        state.paused = true;
+        let mut ended: Vec<_> = state.subscriptions.drain().collect();
+        ended.sort_by(|a, b| a.0.cmp(&b.0));
+        for (conversation_id, subscription) in ended {
+            subscription.cancel.cancel();
+            self.inner.emit(ChatEvent::StreamDisconnected {
+                conversation_id,
+                reason: "paused".into(),
+                will_retry: true,
+            });
+        }
+    }
+
+    /// Restarts the streams of every open or watched room after
+    /// [`pause_streams`](Self::pause_streams). Each catches up from its
+    /// cursor, so nothing sent meanwhile is missed. Idempotent.
+    pub fn resume_streams(&self) -> Result<(), ChatError> {
+        let mut state = self.inner.lock();
+        self.inner.ensure_running_locked(&state)?;
+        if !state.paused {
+            return Ok(());
+        }
+        state.paused = false;
+        let mut rooms: Vec<String> = state.open.union(&state.watched).cloned().collect();
+        rooms.sort();
+        for room in rooms {
+            self.start_stream_locked(&mut state, &room)?;
+        }
+        Ok(())
+    }
+
+    /// Whether streams are paused (`pause_streams`).
+    pub fn is_paused(&self) -> bool {
+        self.inner.lock().paused
     }
 
     /// Ends every subscription and refuses further commands with
@@ -601,7 +670,7 @@ impl Inner {
             newest = newest.max(Some(message.sent_at));
             match state.snapshot.upsert_message(message.clone()) {
                 Upsert::Inserted => {
-                    let unread = !viewing && message.author != self.config.user;
+                    let unread = !viewing && !self.config.is_own(&message);
                     let notify = unread && message.sent_at >= self.started_at;
                     if unread {
                         unread_added += 1;
@@ -656,6 +725,7 @@ impl Inner {
             id: message.id.clone(),
             conversation_id: message.conversation_id.clone(),
             author: message.author.clone(),
+            author_id: message.author_id.clone(),
             body: message.body.clone(),
         });
         let mut state = self.lock();

@@ -335,6 +335,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "chat-cli"
+version = "0.1.0"
+dependencies = [
+ "chat-core",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "chat-core"
 version = "0.1.0"
 dependencies = [
@@ -344,6 +354,22 @@ dependencies = [
  "serde_json",
  "tempfile",
  "thiserror",
+]
+
+[[package]]
+name = "chat-server"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "chat-core",
+ "futures-util",
+ "getrandom 0.4.3",
+ "rcgen",
+ "rustls",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -879,20 +905,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "mock-chat-server"
-version = "0.1.0"
-dependencies = [
- "axum",
- "chat-core",
- "futures-util",
- "rcgen",
- "rustls",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

@@ -4,8 +4,8 @@ bundle_id = "org.forgemobile.chat"
 minimum_ios = "17.0"
 
 [rust]
-core_crate = "forge-core"
-ffi_crate = "forge-ffi"
+# This app's own Rust crate: account, chat engine (chat-core), lifecycle.
+path = "rust"
 
 [build]
 ios_device = true

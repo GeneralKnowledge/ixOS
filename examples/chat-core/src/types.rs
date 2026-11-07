@@ -29,6 +29,11 @@ pub struct Message {
     /// Display name of the author. The local user's own messages carry
     /// [`crate::ChatConfig::user`].
     pub author: String,
+    /// The author's account id on the server. Empty for messages from
+    /// clients without an account (the frozen Android example, `curl`) and
+    /// in stores written before accounts existed.
+    #[serde(default)]
+    pub author_id: String,
     pub body: String,
     /// Unix milliseconds. Device time while `Sending`/`Failed`, server time
     /// once `Sent`. The server keeps it strictly increasing within a room,
@@ -125,6 +130,10 @@ pub enum ChatError {
     /// The client was shut down; it accepts no more commands.
     #[error("the chat client has been shut down")]
     ShutDown,
+    /// The server rejected the account token (HTTP 401): the account was
+    /// removed, or this is a different server. Sign in again.
+    #[error("not signed in: {reason}")]
+    Unauthorized { reason: String },
 }
 
 impl ChatError {

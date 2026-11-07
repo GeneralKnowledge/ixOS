@@ -16,7 +16,7 @@ The Rust-to-Swift bridge is asynchronous: SwiftUI talks to a thin Swift layer (`
   <img src="docs/images/chat-ios-room.png" width="270" alt="Chat example on an iPhone: the General room, with messages sent from the phone and posted from curl">
 </p>
 
-The [Chat example](docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local mock server (the grey bubbles were posted with curl).
+The [Chat example](docs/chat-demo.md) on an iPhone, built and installed from Linux with xtool, talking to the local chat server (the grey bubbles were posted from another client).
 
 ## Why Forge?
 
@@ -46,7 +46,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
 New to Forge? [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
-To try the bundled examples instead: `forge run ios --project examples/chat` (start `make mock-chat` first), or `forge build android --project examples/chat-android --install`.
+To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first), or `forge build android --project examples/chat-android --install`.
 
 [docs/builds.md](docs/builds.md) lists what each build produces: xtool or Xcode, device or simulator, debug or release, and what is not supported yet. A Mac with Xcode works too ([docs/ios-xcode.md](docs/ios-xcode.md)) but is never required.
 
@@ -74,7 +74,7 @@ examples/pocket-library   # Reading tracker from forge init: own Rust crate, cat
 templates/app-rust        # Starter Rust crate every new app gets as rust/ (see docs/app-crate.md)
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # `forge init --platform android`
-scripts/               # Toolchain and build scripts; mock-chat-server (`make mock-chat`)
+scripts/               # Toolchain and build scripts
 docs/                  # Architecture, setup, validation
 ```
 

@@ -23,6 +23,12 @@ if [[ -n "${FORGE_APP_DIR:-}" ]]; then
   NATIVE_OUT="$APP_DIR/build"
   # The app's crate plus the Forge crates it depends on by path.
   SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-services" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage" "$ROOT/crates/forge-core")
+  # Plus every other crate the app's Cargo.toml names by path (Chat's
+  # chat-core, say), so editing one of those also rebuilds the library.
+  while IFS= read -r dep; do
+    dep_dir="$(cd "$CRATE_DIR" && cd "$dep" 2>/dev/null && pwd)" || continue
+    [[ " ${SCAN_DIRS[*]} " == *" $dep_dir "* ]] || SCAN_DIRS+=("$dep_dir")
+  done < <(sed -nE 's/.*[{ ,]path *= *"([^"]+)".*/\1/p' "$CRATE_DIR/Cargo.toml")
 else
   CRATE_DIR="$ROOT/crates/forge-ffi"
   CARGO_SELECT=(-p forge-ffi)

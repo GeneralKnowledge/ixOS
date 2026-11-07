@@ -1,0 +1,20 @@
+[package]
+name = "chat-cli"
+version = "0.1.0"
+description = "Terminal client for the Chat example: be the other person in a conversation with your phone"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[[bin]]
+name = "chat-cli"
+path = "src/main.rs"
+
+[dependencies]
+chat-core = { workspace = true, features = ["ureq"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

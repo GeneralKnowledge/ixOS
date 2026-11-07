@@ -11,12 +11,13 @@ import org.junit.Assert.fail
 import org.junit.Assume.assumeTrue
 
 /**
- * Runs `scripts/mock-chat-server` for a test, on a free port (or on [port], to restart a server
+ * Runs the chat server (`examples/chat-server`) for a test, in memory and accepting posts without an
+ * account (this frozen example has no accounts), on a free port (or on [port], to restart a server
  * where a killed one was).
  *
  * The path comes from the `chat.mockServer` system property, set by `app/build.gradle.kts`
- * (`target/debug/mock-chat-server`, or `CHAT_MOCK_SERVER`). If the binary has not been built,
- * the test is skipped; CI always builds it (`cargo build -p mock-chat-server`).
+ * (`target/debug/chat-server`, or `CHAT_MOCK_SERVER`). If the binary has not been built,
+ * the test is skipped; CI always builds it (`cargo build -p chat-server`).
  */
 class MockServer private constructor(val url: String, private val process: Process) {
     val port: Int get() = url.substringAfterLast(':').toInt()
@@ -46,7 +47,7 @@ class MockServer private constructor(val url: String, private val process: Proce
             val path = System.getProperty("chat.mockServer").orEmpty()
             val file = File(path)
             assumeTrue(
-                "mock chat server not built at $path; run cargo build -p mock-chat-server",
+                "chat server not built at $path; run cargo build -p chat-server",
                 path.isNotEmpty() && file.canExecute(),
             )
             return file
@@ -63,10 +64,12 @@ class MockServer private constructor(val url: String, private val process: Proce
                             "127.0.0.1:$port",
                             "--heartbeat-ms",
                             heartbeatMs.toString(),
+                            "--in-memory",
+                            "--allow-anonymous",
                         )
                         .redirectErrorStream(true)
                         .start()
-                // The first line is "mock chat server on http://127.0.0.1:PORT (...".
+                // The first line is "chat server on http://127.0.0.1:PORT (...".
                 val line = process.inputStream.bufferedReader().readLine().orEmpty()
                 val start = line.indexOf("http://")
                 if (start >= 0) {
@@ -79,7 +82,7 @@ class MockServer private constructor(val url: String, private val process: Proce
                 process.destroy()
                 Thread.sleep(100)
             }
-            error("mock chat server did not start on port $port")
+            error("chat server did not start on port $port")
         }
 
         /** A port nothing listens on: "server down". */

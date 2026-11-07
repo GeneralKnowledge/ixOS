@@ -24,8 +24,10 @@ pub mod sse;
 pub mod store;
 mod types;
 
-pub use client::{ChatClient, ChatConfig, EventSink};
-pub use http::{HttpRepo, DEFAULT_TIMEOUT};
+pub use client::{ChatClient, ChatConfig, EventSink, MAX_BODY_CHARS};
+pub use http::{
+    validate_display_name, Account, HttpRepo, Identity, DEFAULT_TIMEOUT, MAX_DISPLAY_NAME_CHARS,
+};
 pub use memory::{InMemoryRepo, MEMORY_HEARTBEAT};
 pub use repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent, RemoteStream};
 pub use store::{ChatSnapshot, ChatStore, StoreError};

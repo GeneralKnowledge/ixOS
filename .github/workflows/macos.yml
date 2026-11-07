@@ -29,7 +29,7 @@ jobs:
         run: ./scripts/test-swift-host.sh examples/counter
       - name: Weather example (XCTest)
         run: ./scripts/test-swift-host.sh examples/weather
-      - name: Chat example (XCTest, against the mock chat server)
+      - name: Chat (XCTest, app-owned crate, against the chat server)
         run: ./scripts/test-swift-host.sh examples/chat
       - name: Pocket Library (XCTest, app-owned crate)
         run: ./scripts/test-swift-host.sh examples/pocket-library

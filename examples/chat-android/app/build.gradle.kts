@@ -72,12 +72,12 @@ android {
             it.systemProperty("jna.library.path", hostLibs)
             // ForgeAndroid.init loads the same library through System.loadLibrary (JNI).
             it.systemProperty("java.library.path", hostLibs)
-            // The chat tests run against the real mock server
-            // (`cargo build -p mock-chat-server`). CHAT_MOCK_SERVER overrides the path.
+            // The chat tests run against the real chat server
+            // (`cargo build -p chat-server`). CHAT_MOCK_SERVER overrides the path.
             it.systemProperty(
                 "chat.mockServer",
                 System.getenv("CHAT_MOCK_SERVER")
-                    ?: rootProject.file("../../target/debug/mock-chat-server").absolutePath,
+                    ?: rootProject.file("../../target/debug/chat-server").absolutePath,
             )
         }
     }

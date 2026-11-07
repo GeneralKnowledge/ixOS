@@ -128,8 +128,8 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         Step {
             name: "Android JVM unit tests",
             cmds: vec![
-                // The Chat tests also run against the real mock server.
-                cargo(&["build", "-p", "forge-ffi", "-p", "mock-chat-server"]),
+                // The Chat tests also run against the real chat server.
+                cargo(&["build", "-p", "forge-ffi", "-p", "chat-server"]),
                 Cmd::new(android_dir.join("gradlew"))
                     .args([":app:testDebugUnitTest", "--no-daemon"])
                     .cwd(&android_dir),
@@ -271,7 +271,7 @@ mod tests {
             "check-bindings.sh",
             "check-app-crates.sh",
             "test-native-rebuild.sh",
-            "cargo build -p forge-ffi -p mock-chat-server",
+            "cargo build -p forge-ffi -p chat-server",
             "counter-android/gradlew :app:testDebugUnitTest --no-daemon",
             "chat-android/gradlew :app:testDebugUnitTest --no-daemon",
             "examples/counter",

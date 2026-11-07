@@ -267,6 +267,7 @@ mod tests {
             id: id.into(),
             conversation_id: "general".into(),
             author: "ana".into(),
+            author_id: "ana".into(),
             body: id.into(),
             sent_at,
             status,

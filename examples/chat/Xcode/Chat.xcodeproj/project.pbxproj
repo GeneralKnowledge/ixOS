@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B10000010000000000000001 /* AppMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000020000000000000001 /* AppMain.swift */; };
-		B10000010000000000000002 /* ChatApp in Frameworks */ = {isa = PBXBuildFile; productRef = B10000050000000000000001 /* ChatApp */; };
+		B10000010000000000000002 /* AppHost in Frameworks */ = {isa = PBXBuildFile; productRef = B10000050000000000000001 /* AppHost */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,7 +21,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B10000010000000000000002 /* ChatApp in Frameworks */,
+				B10000010000000000000002 /* AppHost in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,7 +69,7 @@
 			);
 			name = Chat;
 			packageProductDependencies = (
-				B10000050000000000000001 /* ChatApp */,
+				B10000050000000000000001 /* AppHost */,
 			);
 			productName = Chat;
 			productReference = B10000030000000000000001 /* Chat.app */;
@@ -126,11 +126,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(SRCROOT)/../../../build/ios-device/lib/libforge_ffi.a",
+				"$(SRCROOT)/../build/ios-device/lib/libforge_ffi.a",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nREPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\"\nGENERATED=\"$(cd \"${SRCROOT}/..\" && pwd)/Generated\"\ncd \"${REPO_ROOT}\"\n./scripts/package-ios-library.sh \"${GENERATED}\"\n";
+			shellScript = "set -euo pipefail\nREPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\"\nexport FORGE_APP_DIR=\"$(cd \"${SRCROOT}/..\" && pwd)\"\nGENERATED=\"${FORGE_APP_DIR}/Generated\"\ncd \"${REPO_ROOT}\"\n./scripts/package-ios-library.sh \"${GENERATED}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -266,10 +266,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		B10000050000000000000001 /* ChatApp */ = {
+		B10000050000000000000001 /* AppHost */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B100000F0000000000000001 /* XCLocalSwiftPackageReference "Chat" */;
-			productName = ChatApp;
+			productName = AppHost;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
