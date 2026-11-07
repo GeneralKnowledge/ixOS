@@ -1,0 +1,32 @@
+# A starter UI test: launch, find controls by accessibility identifier, type,
+# check the screen reacted, cancel. Replace it as the app changes.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+# (agents: forge_run_ui_test). Format: docs/forge-ui-testing.md.
+
+name = "Smoke: open the compose sheet, type, cancel"
+app = "FORGE_BUNDLE_ID"
+
+[[step]]
+launch = {}
+
+[[step]]
+screenshot = "1-start"
+
+[[step]]
+tap = { id = "notes.add" }
+
+[[step]]
+type = { id = "compose.text", text = "Hello from Forge" }
+
+[[step]]
+expect = { id = "compose.save", enabled = true }
+
+[[step]]
+screenshot = "2-compose"
+
+# Leave without saving, so the test changes nothing.
+[[step]]
+tap = { id = "compose.cancel" }
+
+[[step]]
+expect = { id = "compose.text", gone = true }
