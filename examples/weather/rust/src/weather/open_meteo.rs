@@ -13,13 +13,14 @@ use super::types::{
 pub(crate) const DEFAULT_FORECAST_BASE: &str = "https://api.open-meteo.com";
 pub(crate) const DEFAULT_GEOCODING_BASE: &str = "https://geocoding-api.open-meteo.com";
 
-pub(crate) const HOURLY_POINTS: usize = 24;
-pub(crate) const DAILY_POINTS: usize = 7;
+/// Two days of hours, so a report cached yesterday still fills the strip.
+pub(crate) const HOURLY_POINTS: usize = 48;
+pub(crate) const DAILY_POINTS: usize = 10;
 pub(crate) const MAX_SEARCH_RESULTS: u32 = 10;
 pub(crate) const MAX_QUERY_CHARS: usize = 100;
 
 const CURRENT_FIELDS: &str = "temperature_2m,apparent_temperature,relative_humidity_2m,precipitation,weather_code,is_day,wind_speed_10m,wind_direction_10m,wind_gusts_10m";
-const HOURLY_FIELDS: &str = "temperature_2m,precipitation_probability,weather_code";
+const HOURLY_FIELDS: &str = "temperature_2m,precipitation_probability,weather_code,wind_gusts_10m";
 const DAILY_FIELDS: &str = "weather_code,temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max,sunrise,sunset,uv_index_max";
 
 pub(crate) fn validate_coordinate(c: Coordinate) -> Result<(), WeatherError> {
@@ -132,6 +133,8 @@ struct HourlyJson {
     #[serde(default)]
     precipitation_probability: Vec<Option<f64>>,
     weather_code: Vec<Option<f64>>,
+    #[serde(default)]
+    wind_gusts_10m: Vec<Option<f64>>,
 }
 
 #[derive(Deserialize)]
@@ -277,6 +280,26 @@ pub(crate) fn decode_forecast(
         is_day: c.is_day.is_none_or(|d| d >= 0.5),
     };
 
+    let d = r.daily;
+    // (date, sunrise, sunset) for working out day and night per hour.
+    let sun: Vec<(&str, Option<String>, Option<String>)> = d
+        .time
+        .iter()
+        .enumerate()
+        .map(|(i, date)| (date.as_str(), at(&d.sunrise, i), at(&d.sunset, i)))
+        .collect();
+    let is_day_at = |time: &str| -> bool {
+        let date = time.split('T').next().unwrap_or(time);
+        match sun.iter().find(|(d, _, _)| *d == date) {
+            Some((_, Some(rise), Some(set))) => {
+                // An hour is daytime if the sun is up for most of it.
+                let mid = format!("{}:30", time.get(..13).unwrap_or(time));
+                rise.as_str() <= mid.as_str() && mid.as_str() < set.as_str()
+            }
+            _ => true,
+        }
+    };
+
     let h = r.hourly;
     let hourly = h
         .time
@@ -289,12 +312,13 @@ pub(crate) fn decode_forecast(
                 temperature_c: at(&h.temperature_2m, i)?,
                 precipitation_probability_pct: percent(at(&h.precipitation_probability, i)),
                 condition: condition(at(&h.weather_code, i)),
+                is_day: is_day_at(time),
+                wind_gusts_kmh: at(&h.wind_gusts_10m, i),
             })
         })
         .take(HOURLY_POINTS)
         .collect();
 
-    let d = r.daily;
     let mut daily = Vec::with_capacity(d.time.len().min(DAILY_POINTS));
     for (i, date) in d.time.iter().enumerate().take(DAILY_POINTS) {
         let (Some(high_c), Some(low_c)) =
@@ -422,11 +446,11 @@ mod tests {
         ));
         for part in [
             "current=temperature_2m,",
-            "hourly=temperature_2m,precipitation_probability,weather_code",
+            "hourly=temperature_2m,precipitation_probability,weather_code,wind_gusts_10m",
             "daily=weather_code,",
             "timezone=auto",
-            "forecast_days=7",
-            "forecast_hours=24",
+            "forecast_days=10",
+            "forecast_hours=48",
             "wind_speed_unit=kmh",
         ] {
             assert!(url.contains(part), "{part} missing from {url}");

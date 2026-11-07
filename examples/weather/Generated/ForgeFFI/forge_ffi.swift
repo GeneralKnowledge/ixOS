@@ -663,6 +663,17 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
      */
     func cachedReport()  -> WeatherReport?
     
+    /**
+     * The cached report for `place` (within 5 km), however old, marked
+     * `Cached`. `weather_overview` drops the hours and days already past.
+     */
+    func cachedReportFor(place: Place)  -> WeatherReport?
+    
+    /**
+     * Every cached report, newest first, marked `Cached`.
+     */
+    func cachedReports()  -> [WeatherReport]
+    
     func isShutDown()  -> Bool
     
     /**
@@ -683,6 +694,29 @@ public protocol ForgeWeatherAppProtocol: AnyObject, Sendable {
      * touching the cache.
      */
     func shutdown() 
+    
+    /**
+     * Moves the saved place at `from` to `to` (indexes in `saved_places()`).
+     * Returns the new list.
+     */
+    func moveSavedPlace(from: UInt32, to: UInt32) throws  -> [Place]
+    
+    /**
+     * Removes the saved place within 2 km of `place`, if any. Returns the
+     * new list.
+     */
+    func removeSavedPlace(place: Place) throws  -> [Place]
+    
+    /**
+     * Adds `place` at the end, unless a saved place is already within 2 km
+     * of it. Returns the new list. Device locations cannot be saved.
+     */
+    func savePlace(place: Place) throws  -> [Place]
+    
+    /**
+     * The saved places, in the user's order.
+     */
+    func savedPlaces()  -> [Place]
     
 }
 /**
@@ -793,6 +827,32 @@ open func cachedReport() -> WeatherReport?  {
 })
 }
     
+    /**
+     * The cached report for `place` (within 5 km), however old, marked
+     * `Cached`. `weather_overview` drops the hours and days already past.
+     */
+open func cachedReportFor(place: Place) -> WeatherReport?  {
+    return try!  FfiConverterOptionTypeWeatherReport.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_cached_report_for(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePlace_lower(place),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Every cached report, newest first, marked `Cached`.
+     */
+open func cachedReports() -> [WeatherReport]  {
+    return try!  FfiConverterSequenceTypeWeatherReport.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_cached_reports(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
 open func isShutDown() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
@@ -847,6 +907,61 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Moves the saved place at `from` to `to` (indexes in `saved_places()`).
+     * Returns the new list.
+     */
+open func moveSavedPlace(from: UInt32, to: UInt32)throws  -> [Place]  {
+    return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_move_saved_place(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt32.lower(from),
+        FfiConverterUInt32.lower(to),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Removes the saved place within 2 km of `place`, if any. Returns the
+     * new list.
+     */
+open func removeSavedPlace(place: Place)throws  -> [Place]  {
+    return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_remove_saved_place(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePlace_lower(place),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Adds `place` at the end, unless a saved place is already within 2 km
+     * of it. Returns the new list. Device locations cannot be saved.
+     */
+open func savePlace(place: Place)throws  -> [Place]  {
+    return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_save_place(
+            self.uniffiCloneHandle(),
+        FfiConverterTypePlace_lower(place),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The saved places, in the user's order.
+     */
+open func savedPlaces() -> [Place]  {
+    return try!  FfiConverterSequenceTypePlace.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_forgeweatherapp_saved_places(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 
@@ -1346,17 +1461,27 @@ public struct HourlyPoint: Equatable, Hashable {
     public var temperatureC: Double
     public var precipitationProbabilityPct: UInt8?
     public var condition: WeatherCondition
+    /**
+     * Between that day's sunrise and sunset (true when they are unknown).
+     */
+    public var isDay: Bool
+    public var windGustsKmh: Double?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(
         /**
          * Local time, ISO 8601 without offset.
-         */time: String, temperatureC: Double, precipitationProbabilityPct: UInt8?, condition: WeatherCondition) {
+         */time: String, temperatureC: Double, precipitationProbabilityPct: UInt8?, condition: WeatherCondition, 
+        /**
+         * Between that day's sunrise and sunset (true when they are unknown).
+         */isDay: Bool, windGustsKmh: Double?) {
         self.time = time
         self.temperatureC = temperatureC
         self.precipitationProbabilityPct = precipitationProbabilityPct
         self.condition = condition
+        self.isDay = isDay
+        self.windGustsKmh = windGustsKmh
     }
 
     
@@ -1378,7 +1503,9 @@ public struct FfiConverterTypeHourlyPoint: FfiConverterRustBuffer {
                 time: FfiConverterString.read(from: &buf), 
                 temperatureC: FfiConverterDouble.read(from: &buf), 
                 precipitationProbabilityPct: FfiConverterOptionUInt8.read(from: &buf), 
-                condition: FfiConverterTypeWeatherCondition.read(from: &buf)
+                condition: FfiConverterTypeWeatherCondition.read(from: &buf), 
+                isDay: FfiConverterBool.read(from: &buf), 
+                windGustsKmh: FfiConverterOptionDouble.read(from: &buf)
         )
     }
 
@@ -1387,6 +1514,8 @@ public struct FfiConverterTypeHourlyPoint: FfiConverterRustBuffer {
         FfiConverterDouble.write(value.temperatureC, into: &buf)
         FfiConverterOptionUInt8.write(value.precipitationProbabilityPct, into: &buf)
         FfiConverterTypeWeatherCondition.write(value.condition, into: &buf)
+        FfiConverterBool.write(value.isDay, into: &buf)
+        FfiConverterOptionDouble.write(value.windGustsKmh, into: &buf)
     }
 }
 
@@ -1602,6 +1731,135 @@ public func FfiConverterTypeWeatherConfig_lower(_ value: WeatherConfig) -> RustB
 
 
 /**
+ * What the screen shows for a report, worked out for a given moment by
+ * [`crate::weather_overview`]. A cached report gets the same treatment:
+ * hours and days already past at the place are left out.
+ */
+public struct WeatherOverview: Equatable, Hashable {
+    public var scene: SkyScene
+    public var isDay: Bool
+    /**
+     * "Cloudy conditions will continue for the rest of the day. Wind gusts
+     * are up to 18 km/h." Empty when there is nothing worth saying.
+     */
+    public var summary: String
+    /**
+     * The place's local date, "YYYY-MM-DD".
+     */
+    public var localDate: String
+    /**
+     * Today's forecast at the place, when the report still covers it.
+     */
+    public var today: DailyForecast?
+    /**
+     * Up to 24 hours from the current hour, with sunrises and sunsets in
+     * between. Empty when the report is too old to cover the current hour.
+     */
+    public var timeline: [TimelineEntry]
+    /**
+     * Today onward.
+     */
+    public var days: [DailyForecast]
+    /**
+     * Lowest low and highest high across `days`, so every row's
+     * temperature bar shares one scale.
+     */
+    public var rangeLowC: Double
+    public var rangeHighC: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(scene: SkyScene, isDay: Bool, 
+        /**
+         * "Cloudy conditions will continue for the rest of the day. Wind gusts
+         * are up to 18 km/h." Empty when there is nothing worth saying.
+         */summary: String, 
+        /**
+         * The place's local date, "YYYY-MM-DD".
+         */localDate: String, 
+        /**
+         * Today's forecast at the place, when the report still covers it.
+         */today: DailyForecast?, 
+        /**
+         * Up to 24 hours from the current hour, with sunrises and sunsets in
+         * between. Empty when the report is too old to cover the current hour.
+         */timeline: [TimelineEntry], 
+        /**
+         * Today onward.
+         */days: [DailyForecast], 
+        /**
+         * Lowest low and highest high across `days`, so every row's
+         * temperature bar shares one scale.
+         */rangeLowC: Double, rangeHighC: Double) {
+        self.scene = scene
+        self.isDay = isDay
+        self.summary = summary
+        self.localDate = localDate
+        self.today = today
+        self.timeline = timeline
+        self.days = days
+        self.rangeLowC = rangeLowC
+        self.rangeHighC = rangeHighC
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WeatherOverview: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWeatherOverview: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WeatherOverview {
+        return
+            try WeatherOverview(
+                scene: FfiConverterTypeSkyScene.read(from: &buf), 
+                isDay: FfiConverterBool.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                localDate: FfiConverterString.read(from: &buf), 
+                today: FfiConverterOptionTypeDailyForecast.read(from: &buf), 
+                timeline: FfiConverterSequenceTypeTimelineEntry.read(from: &buf), 
+                days: FfiConverterSequenceTypeDailyForecast.read(from: &buf), 
+                rangeLowC: FfiConverterDouble.read(from: &buf), 
+                rangeHighC: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WeatherOverview, into buf: inout [UInt8]) {
+        FfiConverterTypeSkyScene.write(value.scene, into: &buf)
+        FfiConverterBool.write(value.isDay, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterString.write(value.localDate, into: &buf)
+        FfiConverterOptionTypeDailyForecast.write(value.today, into: &buf)
+        FfiConverterSequenceTypeTimelineEntry.write(value.timeline, into: &buf)
+        FfiConverterSequenceTypeDailyForecast.write(value.days, into: &buf)
+        FfiConverterDouble.write(value.rangeLowC, into: &buf)
+        FfiConverterDouble.write(value.rangeHighC, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeatherOverview_lift(_ buf: RustBuffer) throws -> WeatherOverview {
+    return try FfiConverterTypeWeatherOverview.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeatherOverview_lower(_ value: WeatherOverview) -> RustBuffer {
+    return FfiConverterTypeWeatherOverview.lower(value)
+}
+
+
+/**
  * The full payload of one refresh.
  */
 public struct WeatherReport: Equatable, Hashable {
@@ -1619,11 +1877,11 @@ public struct WeatherReport: Equatable, Hashable {
     public var utcOffsetSeconds: Int32
     public var current: CurrentConditions
     /**
-     * The next 24 hours, starting with the current hour.
+     * The next 48 hours, starting with the current hour.
      */
     public var hourly: [HourlyPoint]
     /**
-     * Today and the following six days.
+     * Today and the following nine days.
      */
     public var daily: [DailyForecast]
     /**
@@ -1642,10 +1900,10 @@ public struct WeatherReport: Equatable, Hashable {
          * IANA zone all local times in the report use.
          */timezone: String, timezoneAbbreviation: String?, utcOffsetSeconds: Int32, current: CurrentConditions, 
         /**
-         * The next 24 hours, starting with the current hour.
+         * The next 48 hours, starting with the current hour.
          */hourly: [HourlyPoint], 
         /**
-         * Today and the following six days.
+         * Today and the following nine days.
          */daily: [DailyForecast], 
         /**
          * Unix seconds when the data was fetched.
@@ -2210,6 +2468,204 @@ public func FfiConverterTypeRefreshPhase_lower(_ value: RefreshPhase) -> RustBuf
 
 
 /**
+ * The kind of sky to paint behind a report. Hosts pair it with
+ * [`WeatherOverview::is_day`] to pick a day or night palette.
+ */
+
+public enum SkyScene: Equatable, Hashable {
+    
+    case clear
+    case partlyCloudy
+    case cloudy
+    case fog
+    case rain
+    case snow
+    case thunderstorm
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SkyScene: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSkyScene: FfiConverterRustBuffer {
+    typealias SwiftType = SkyScene
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SkyScene {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .clear
+        
+        case 2: return .partlyCloudy
+        
+        case 3: return .cloudy
+        
+        case 4: return .fog
+        
+        case 5: return .rain
+        
+        case 6: return .snow
+        
+        case 7: return .thunderstorm
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SkyScene, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .clear:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .partlyCloudy:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .cloudy:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .fog:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .rain:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .snow:
+            writeInt(&buf, Int32(6))
+        
+        
+        case .thunderstorm:
+            writeInt(&buf, Int32(7))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSkyScene_lift(_ buf: RustBuffer) throws -> SkyScene {
+    return try FfiConverterTypeSkyScene.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSkyScene_lower(_ value: SkyScene) -> RustBuffer {
+    return FfiConverterTypeSkyScene.lower(value)
+}
+
+
+
+/**
+ * One slot of the hourly strip: an hour, or a sunrise or sunset between
+ * two hours.
+ */
+
+public enum TimelineEntry: Equatable, Hashable {
+    
+    /**
+     * `is_now` marks the first slot, the current hour.
+     */
+    case hour(point: HourlyPoint, isNow: Bool
+    )
+    /**
+     * Local time, ISO 8601 without offset.
+     */
+    case sunrise(time: String
+    )
+    case sunset(time: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension TimelineEntry: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTimelineEntry: FfiConverterRustBuffer {
+    typealias SwiftType = TimelineEntry
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TimelineEntry {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .hour(point: try FfiConverterTypeHourlyPoint.read(from: &buf), isNow: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .sunrise(time: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 3: return .sunset(time: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TimelineEntry, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .hour(point,isNow):
+            writeInt(&buf, Int32(1))
+            FfiConverterTypeHourlyPoint.write(point, into: &buf)
+            FfiConverterBool.write(isNow, into: &buf)
+            
+        
+        case let .sunrise(time):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(time, into: &buf)
+            
+        
+        case let .sunset(time):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(time, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelineEntry_lift(_ buf: RustBuffer) throws -> TimelineEntry {
+    return try FfiConverterTypeTimelineEntry.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTimelineEntry_lower(_ value: TimelineEntry) -> RustBuffer {
+    return FfiConverterTypeTimelineEntry.lower(value)
+}
+
+
+
+/**
  * Sky and precipitation, decoded from a WMO weather interpretation code
  * (WW). Codes this build does not know arrive as `Unknown { code }` rather
  * than failing the whole report.
@@ -2561,6 +3017,75 @@ public func FfiConverterTypeWeatherError_lower(_ value: WeatherError) -> RustBuf
     return FfiConverterTypeWeatherError.lower(value)
 }
 
+
+/**
+ * How the summary sentence states wind speeds.
+ */
+
+public enum WindUnit: Equatable, Hashable {
+    
+    case kilometresPerHour
+    case milesPerHour
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension WindUnit: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWindUnit: FfiConverterRustBuffer {
+    typealias SwiftType = WindUnit
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WindUnit {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .kilometresPerHour
+        
+        case 2: return .milesPerHour
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: WindUnit, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .kilometresPerHour:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .milesPerHour:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWindUnit_lift(_ buf: RustBuffer) throws -> WindUnit {
+    return try FfiConverterTypeWindUnit.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWindUnit_lower(_ value: WindUnit) -> RustBuffer {
+    return FfiConverterTypeWindUnit.lower(value)
+}
+
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -2724,6 +3249,30 @@ fileprivate struct FfiConverterOptionTypeWeatherOperation: FfiConverterRustBuffe
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeWeatherOperation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeDailyForecast: FfiConverterRustBuffer {
+    typealias SwiftType = DailyForecast?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeDailyForecast.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeDailyForecast.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -2899,6 +3448,56 @@ fileprivate struct FfiConverterSequenceTypePlace: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeWeatherReport: FfiConverterRustBuffer {
+    typealias SwiftType = [WeatherReport]
+
+    public static func write(_ value: [WeatherReport], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeWeatherReport.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [WeatherReport] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [WeatherReport]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeWeatherReport.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTimelineEntry: FfiConverterRustBuffer {
+    typealias SwiftType = [TimelineEntry]
+
+    public static func write(_ value: [TimelineEntry], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTimelineEntry.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TimelineEntry] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TimelineEntry]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTimelineEntry.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -2947,6 +3546,21 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+/**
+ * Works out what to show for `report` at `now_unix` (Unix seconds). Hours
+ * and days already past at the place are dropped, so a cached report reads
+ * correctly. `wind_unit` is how the summary states wind speed.
+ */
+public func weatherOverview(report: WeatherReport, nowUnix: Int64, windUnit: WindUnit) -> WeatherOverview  {
+    return try!  FfiConverterTypeWeatherOverview_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_weather_overview(
+        FfiConverterTypeWeatherReport_lower(report),
+        FfiConverterInt64.lower(nowUnix),
+        FfiConverterTypeWindUnit_lower(windUnit),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -2963,10 +3577,19 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_weather_overview() != 44844) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_forgeweatherapp_active_refresh() != 33919) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_report() != 3505) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_report_for() != 56956) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_reports() != 29172) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgeweatherapp_is_shut_down() != 10746) {
@@ -2979,6 +3602,18 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_forgeweatherapp_shutdown() != 57161) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_move_saved_place() != 15394) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_remove_saved_place() != 63079) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_save_place() != 54089) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_saved_places() != 63972) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_weatheroperation_cancel() != 45041) {

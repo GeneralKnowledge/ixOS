@@ -50,10 +50,11 @@ public enum WeatherFormat {
         -> (text: String, symbol: String)
     {
         switch condition {
-        case .clear: return ("Clear", isDay ? "sun.max.fill" : "moon.stars.fill")
-        case .mainlyClear: return ("Mainly clear", isDay ? "sun.min.fill" : "moon.fill")
+        case .clear: return (isDay ? "Sunny" : "Clear", isDay ? "sun.max.fill" : "moon.stars.fill")
+        case .mainlyClear:
+            return (isDay ? "Mostly sunny" : "Mostly clear", isDay ? "sun.max.fill" : "moon.stars.fill")
         case .partlyCloudy: return ("Partly cloudy", isDay ? "cloud.sun.fill" : "cloud.moon.fill")
-        case .overcast: return ("Overcast", "cloud.fill")
+        case .overcast: return ("Cloudy", "cloud.fill")
         case let .fog(rime): return (rime ? "Freezing fog" : "Fog", "cloud.fog.fill")
         case let .drizzle(intensity, freezing):
             return ("\(name(intensity)) \(freezing ? "freezing drizzle" : "drizzle")", "cloud.drizzle.fill")
@@ -71,6 +72,43 @@ public enum WeatherFormat {
         case let .unknown(code):
             return (code == UInt16.max ? "Unknown" : "Unknown (code \(code))", "questionmark.circle")
         }
+    }
+
+    /// Rain, drizzle, snow or a storm: the conditions where the chance of
+    /// precipitation is worth showing under the icon.
+    public static func isWet(_ condition: WeatherCondition) -> Bool {
+        switch condition {
+        case .drizzle, .rain, .snow, .snowGrains, .rainShowers, .snowShowers, .thunderstorm: return true
+        default: return false
+        }
+    }
+
+    /// "29 km/h" or "18 mph" from km/h.
+    public static func speed(kmh: Double, unit: WindUnit) -> String {
+        switch unit {
+        case .kilometresPerHour: return "\(Int(kmh.rounded())) km/h"
+        case .milesPerHour: return "\(Int((kmh / 1.609_344).rounded())) mph"
+        }
+    }
+
+    /// The UV index band as the WHO names it.
+    public static func uvLevel(_ index: Double) -> String {
+        switch index {
+        case ..<3: return "Low"
+        case ..<6: return "Moderate"
+        case ..<8: return "High"
+        case ..<11: return "Very high"
+        default: return "Extreme"
+        }
+    }
+
+    /// The time now at a place `utcOffsetSeconds` from UTC, "13:14".
+    public static func localClock(utcOffsetSeconds: Int32, now: Date = Date()) -> String {
+        let out = DateFormatter()
+        out.locale = Locale(identifier: "en_GB")
+        out.timeZone = TimeZone(secondsFromGMT: Int(utcOffsetSeconds))
+        out.dateFormat = "HH:mm"
+        return out.string(from: now)
     }
 
     private static func name(_ intensity: Intensity) -> String {
