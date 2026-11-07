@@ -19,8 +19,21 @@ idevice = { version = "=0.1.68", default-features = false, features = [
 ] }
 tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
 plist = "1"
+# Only for the `ax_probe` spike (`--features ax-probe`): Apple's accessibility
+# audit service speaks DTX after a TLS handshake that is then dropped.
+ns-keyed-archive = { version = "0.1.5", optional = true }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"], optional = true }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring"], optional = true }
 thiserror = { workspace = true }
 forge-devproto = { path = "../forge-devproto" }
+
+[features]
+# Spike: probe Apple's accessibility audit service (docs/research/ax-audit.md).
+ax-probe = ["idevice/dvt", "dep:ns-keyed-archive", "dep:rustls", "dep:tokio-rustls"]
+
+[[example]]
+name = "ax_probe"
+required-features = ["ax-probe"]
 
 [dev-dependencies]
 forge-devtools = { path = "../forge-devtools" }
