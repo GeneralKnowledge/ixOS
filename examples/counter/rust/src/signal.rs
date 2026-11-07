@@ -7,7 +7,7 @@
 
 use std::future::Future;
 use std::pin::{pin, Pin};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Wake, Waker};
 use std::thread::{self, Thread};
 
@@ -16,11 +16,7 @@ use crate::errors::ForgeAppError;
 /// Locks a mutex, ignoring poisoning. The data these primitives guard is
 /// never left half-updated by a panic (each critical section is a plain
 /// assignment), so the value inside a poisoned lock is still consistent.
-pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+pub(crate) use forge_runtime::lock;
 
 /// A value set once and awaited by any number of waiters.
 pub(crate) struct Completion<T> {

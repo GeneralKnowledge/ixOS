@@ -632,23 +632,25 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 /**
- * Lets the host stop a catalogue request part way. Swift creates one per
- * call and cancels it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own.
+ * Lets the host stop one request part way. Swift: create one per
+ * call and cancel it from `withTaskCancellationHandler`, because
+ * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
+ * cancelling the coroutine is enough; pass `null`.
  */
 public protocol CancellationProtocol: AnyObject, Sendable {
     
     /**
-     * Stops the request: it fails with `Cancelled` at once, even while
-     * waiting for a slow server, and changes nothing. Idempotent.
+     * Stops the request: it fails with `Cancelled` at once, even
+     * while waiting for a slow server. Idempotent.
      */
     func cancel() 
     
 }
 /**
- * Lets the host stop a catalogue request part way. Swift creates one per
- * call and cancels it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own.
+ * Lets the host stop one request part way. Swift: create one per
+ * call and cancel it from `withTaskCancellationHandler`, because
+ * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
+ * cancelling the coroutine is enough; pass `null`.
  */
 open class Cancellation: CancellationProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -712,8 +714,8 @@ public convenience init() {
 
     
     /**
-     * Stops the request: it fails with `Cancelled` at once, even while
-     * waiting for a slow server, and changes nothing. Idempotent.
+     * Stops the request: it fails with `Cancelled` at once, even
+     * while waiting for a slow server. Idempotent.
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
@@ -3389,7 +3391,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_epub_words_per_page() != 4754) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_cancellation_cancel() != 39214) {
+    if (uniffi_forge_ffi_checksum_method_cancellation_cancel() != 6133) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_add_book() != 49896) {

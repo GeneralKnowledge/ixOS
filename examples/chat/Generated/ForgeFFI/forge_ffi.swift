@@ -1182,8 +1182,7 @@ public func FfiConverterTypeChatCore_lower(_ value: ChatCore) -> UInt64 {
 
 
 /**
- * One consumer's events. Await `next()` in a loop; `None` means the core
- * shut down.
+ * One consumer's events. Await `next()` in a loop; `None` means it ended.
  */
 public protocol ChatEventsProtocol: AnyObject, Sendable {
     
@@ -1199,8 +1198,7 @@ public protocol ChatEventsProtocol: AnyObject, Sendable {
     
 }
 /**
- * One consumer's events. Await `next()` in a loop; `None` means the core
- * shut down.
+ * One consumer's events. Await `next()` in a loop; `None` means it ended.
  */
 open class ChatEvents: ChatEventsProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -2902,16 +2900,34 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 
 
 /**
- * Where the app is in its lifecycle, as the host reports it with
- * `ChatCore::set_phase`.
+ * Where the app is in its lifecycle. The host reports it with
+ * `set_phase`: iOS from SwiftUI's `scenePhase` (and
+ * `willTerminate`), Android from the activity's `onStart`,
+ * `onResume`, `onPause` and `onStop`.
  */
 
 public enum AppPhase: Equatable, Hashable {
     
+    /**
+     * Created, not on screen yet. The phase before the first report.
+     */
     case launching
+    /**
+     * On screen and receiving input.
+     */
     case active
+    /**
+     * On screen without input: an alert, the app switcher, a dialog.
+     */
     case inactive
+    /**
+     * Not visible; the OS may suspend or kill the process from here.
+     * Work started on screen is stopped.
+     */
     case background
+    /**
+     * Going away: same as `shutdown()`. iOS does not always report it.
+     */
     case terminated
 
 
@@ -4419,7 +4435,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_live_streams() != 15081) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 43052) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 51598) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 28797) {
@@ -4428,7 +4444,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 14155) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 55363) {
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 4202) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_shutdown() != 5826) {

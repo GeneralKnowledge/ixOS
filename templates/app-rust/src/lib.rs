@@ -21,13 +21,12 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use forge_net::{HttpClient, NetError, Request, UreqClient};
 use forge_runtime::{
-    background, background_cancellable, CancelHandle, Delivery, EventHub, Lifecycle, Phase,
-    Subscription,
+    background, background_cancellable, lock, now_ms, EventHub, Lifecycle, Phase,
 };
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
@@ -39,6 +38,15 @@ uniffi::setup_scaffolding!("forge_ffi");
 // installs them with `ForgeServices.install()`; Rust code uses
 // `native::NativeServices::installed()`. See docs/native-services.md.
 forge_services::native_services!();
+
+// The types every Forge app shares, under this app's names: the lifecycle
+// phase the host reports, a per-request `Cancellation`, and the event stream
+// (`AppEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
+forge_runtime::app_shell! {
+    phase: AppPhase,
+    cancellation: Cancellation,
+    events: AppEvents(AppEvent::EventsDropped),
+}
 
 /// Schema version of `notes.json`. Bump it (and add a migration) when
 /// [`StoredNotes`] changes shape.
@@ -64,49 +72,6 @@ pub enum AppEvent {
     /// `resumed` is true on the way back from `Background`: the moment to
     /// refresh anything that may have changed while the app was away.
     PhaseChanged { phase: AppPhase, resumed: bool },
-}
-
-/// Where the app is in its lifecycle. The host reports it with
-/// [`AppCore::set_phase`]: iOS from SwiftUI's `scenePhase` (and
-/// `willTerminate`), Android from the activity's `onStart`, `onResume`,
-/// `onPause` and `onStop`.
-#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
-pub enum AppPhase {
-    /// Created, not on screen yet. The phase before the first report.
-    Launching,
-    /// On screen and receiving input.
-    Active,
-    /// On screen without input: an alert, the app switcher, a dialog.
-    Inactive,
-    /// Not visible; the OS may suspend or kill the process from here.
-    /// Requests started on screen are stopped with `Interrupted`.
-    Background,
-    /// Going away: same as `shutdown()`. iOS does not always report it.
-    Terminated,
-}
-
-impl From<AppPhase> for Phase {
-    fn from(phase: AppPhase) -> Self {
-        match phase {
-            AppPhase::Launching => Phase::Launching,
-            AppPhase::Active => Phase::Active,
-            AppPhase::Inactive => Phase::Inactive,
-            AppPhase::Background => Phase::Background,
-            AppPhase::Terminated => Phase::Terminated,
-        }
-    }
-}
-
-impl From<Phase> for AppPhase {
-    fn from(phase: Phase) -> Self {
-        match phase {
-            Phase::Launching => AppPhase::Launching,
-            Phase::Active => AppPhase::Active,
-            Phase::Inactive => AppPhase::Inactive,
-            Phase::Background => AppPhase::Background,
-            Phase::Terminated => AppPhase::Terminated,
-        }
-    }
 }
 
 /// Every error the API returns. `reason` fields are diagnostics, not UI copy.
@@ -189,29 +154,6 @@ pub struct AppCore {
     /// it: requests run under its foreground scope, which the background and
     /// `shutdown` cancel.
     lifecycle: Lifecycle,
-}
-
-/// Lets the host stop one request part way. Swift: create one per call and
-/// cancel it from `withTaskCancellationHandler`, because cancelling a Swift
-/// `Task` does not reach Rust on its own. Kotlin: cancelling the coroutine
-/// is enough; pass `null`.
-#[derive(uniffi::Object, Default)]
-pub struct Cancellation {
-    handle: CancelHandle,
-}
-
-#[uniffi::export]
-impl Cancellation {
-    #[uniffi::constructor]
-    pub fn new() -> Arc<Self> {
-        Arc::new(Self::default())
-    }
-
-    /// Stops the request: it fails with `Cancelled` at once, even while
-    /// waiting for a slow server. Idempotent.
-    pub fn cancel(&self) {
-        self.handle.cancel();
-    }
 }
 
 #[uniffi::export]
@@ -383,10 +325,7 @@ impl AppCore {
 
     /// A new event stream. Each consumer takes its own.
     pub fn events(&self) -> Result<Arc<AppEvents>, AppError> {
-        self.events
-            .subscribe()
-            .map(|subscription| Arc::new(AppEvents { subscription }))
-            .ok_or(AppError::ShutDown)
+        AppEvents::subscribe(&self.events).ok_or(AppError::ShutDown)
     }
 
     /// The phase last reported with `set_phase`.
@@ -451,34 +390,6 @@ impl AppCore {
     }
 }
 
-/// One consumer's events. Await `next()` in a loop; `None` means it ended.
-#[derive(uniffi::Object)]
-pub struct AppEvents {
-    subscription: Subscription<AppEvent>,
-}
-
-#[uniffi::export]
-impl AppEvents {
-    /// The next event, or `None` once this stream has ended.
-    pub async fn next(&self) -> Option<AppEvent> {
-        match self.subscription.next().await? {
-            Delivery::Event(event) => Some(event),
-            Delivery::Dropped(count) => Some(AppEvent::EventsDropped { count }),
-        }
-    }
-
-    /// Ends this stream; a pending `next()` returns `None`.
-    pub fn cancel(&self) {
-        self.subscription.cancel();
-    }
-}
-
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
 /// The validation rule for note text, shared by add and update.
 fn note_text(text: String) -> Result<String, AppError> {
     let text = text.trim().to_string();
@@ -496,12 +407,6 @@ fn newest_first(notes: &[Note]) -> Vec<Note> {
     notes
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as i64)
-        .unwrap_or(0)
-}
 
 #[cfg(test)]
 mod tests {

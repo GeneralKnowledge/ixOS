@@ -22,7 +22,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use chat_core::{ChatClient, ChatConfig, ChatStore, HttpRepo};
-use forge_runtime::{background, Delivery, EventHub, Lifecycle, Phase, Subscription};
+use forge_runtime::{background, EventHub, Lifecycle, Phase};
 
 pub mod credentials;
 mod types;
@@ -31,6 +31,13 @@ pub use credentials::{Credentials, KeychainCredentials, MemoryCredentials, Store
 pub use types::*;
 
 uniffi::setup_scaffolding!("forge_ffi");
+
+// The lifecycle phase the host reports and the event stream object
+// (`ChatEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
+forge_runtime::app_shell! {
+    phase: AppPhase,
+    events: ChatEvents(ChatEvent::EventsDropped),
+}
 
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
@@ -166,10 +173,7 @@ impl ChatCore {
     /// A new event stream. Each consumer takes its own and sees every event
     /// from now on.
     pub fn events(&self) -> Result<Arc<ChatEvents>, ChatError> {
-        self.events
-            .subscribe()
-            .map(|subscription| Arc::new(ChatEvents { subscription }))
-            .ok_or(ChatError::ShutDown)
+        ChatEvents::subscribe(&self.events).ok_or(ChatError::ShutDown)
     }
 
     /// Lists conversations from the server, prefetching new messages for
@@ -475,29 +479,6 @@ impl ChatCore {
             });
         }
         error
-    }
-}
-
-/// One consumer's events. Await `next()` in a loop; `None` means the core
-/// shut down.
-#[derive(uniffi::Object)]
-pub struct ChatEvents {
-    subscription: Subscription<ChatEvent>,
-}
-
-#[uniffi::export]
-impl ChatEvents {
-    /// The next event, or `None` once this stream has ended.
-    pub async fn next(&self) -> Option<ChatEvent> {
-        match self.subscription.next().await? {
-            Delivery::Event(event) => Some(event),
-            Delivery::Dropped(count) => Some(ChatEvent::EventsDropped { count }),
-        }
-    }
-
-    /// Ends this stream; a pending `next()` returns `None`.
-    pub fn cancel(&self) {
-        self.subscription.cancel();
     }
 }
 

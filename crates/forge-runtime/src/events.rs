@@ -13,17 +13,13 @@
 use std::collections::VecDeque;
 use std::future::Future;
 use std::pin::Pin;
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::{Arc, Mutex, Weak};
 use std::task::{Context, Poll, Waker};
 
 /// Events buffered per subscription before the oldest are dropped.
 pub const DEFAULT_QUEUE_CAPACITY: usize = 64;
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
+use crate::shell::lock;
 
 /// What [`Subscription::next`] yields.
 #[derive(Debug, Clone, PartialEq, Eq)]
