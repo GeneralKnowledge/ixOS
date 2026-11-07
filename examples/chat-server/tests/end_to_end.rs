@@ -395,3 +395,106 @@ fn accounts_sign_every_call_and_own_the_author() {
     assert_eq!(messages.len(), 1);
     assert_eq!(messages[0].author_id, ana.user_id);
 }
+
+fn account_client(
+    base: &str,
+    account: &chat_core::Account,
+) -> (ChatClient, mpsc::Receiver<ChatEvent>) {
+    let (tx, rx) = mpsc::channel();
+    let client = ChatClient::open(
+        Arc::new(HttpRepo::with_ureq(base).with_token(&account.token)),
+        ChatStore::in_memory(),
+        ChatConfig {
+            user: account.display_name.clone(),
+            user_id: account.user_id.clone(),
+            reconnect_initial: Duration::from_millis(20),
+            reconnect_max: Duration::from_millis(100),
+        },
+        move |e| {
+            let _ = tx.send(e);
+        },
+    )
+    .unwrap();
+    (client, rx)
+}
+
+/// M1: read receipts, previews and new conversations, between two accounts
+/// over real sockets, and the read cursors surviving a restart.
+#[test]
+fn read_receipts_previews_and_new_rooms_between_two_accounts() {
+    no_proxy();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("server.json");
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let base = format!("http://{addr}");
+    let signup = HttpRepo::with_ureq(&base);
+    let ana = signup.register("Ana").unwrap();
+    let ben = signup.register("Ben").unwrap();
+    let (ana_client, ana_events) = account_client(&base, &ana);
+    let (ben_client, ben_events) = account_client(&base, &ben);
+    ana_client.list_conversations().unwrap();
+    ben_client.list_conversations().unwrap();
+
+    // Ana creates a room; Ben finds it on his next refresh.
+    let room = ana_client.create_conversation("Weekend").unwrap();
+    assert!(room.id.starts_with("r-"));
+    assert!(room.read_up_to.is_some());
+    let bens = ben_client.list_conversations().unwrap();
+    assert!(bens.iter().any(|c| c.id == room.id && c.title == "Weekend"));
+
+    // Ana writes while Ben has the room only watched: unread for Ben,
+    // with a preview.
+    ana_client.watch(&room.id).unwrap();
+    let in_room = |e: &ChatEvent| matches!(e, ChatEvent::StreamConnected { .. });
+    wait_for(&ana_events, "Ana connected", in_room);
+    ben_client.watch(&room.id).unwrap();
+    wait_for(&ben_events, "Ben connected", in_room);
+    let sent = ana_client.send_message(&room.id, "Saturday?").unwrap();
+    wait_for(&ben_events, "Ben's unread count", |e| {
+        matches!(e, ChatEvent::ConversationUpdated(c) if c.unread_count == 1
+            && c.last_message.as_ref().is_some_and(|m| m.body == "Saturday?"))
+    });
+    let listed = ben_client.list_conversations().unwrap();
+    let for_ben = listed.iter().find(|c| c.id == room.id).unwrap();
+    assert_eq!(for_ben.unread_count, 1);
+    assert_eq!(for_ben.last_message.as_ref().unwrap().author, "Ana");
+
+    // Ben opens it: his client marks it read on the server, and Ana's
+    // message turns "read" on her side.
+    ben_client.subscribe(&room.id).unwrap();
+    wait_for(
+        &ana_events,
+        "Ana sees it read",
+        |e| matches!(e, ChatEvent::ConversationUpdated(c) if c.others_read_up_to == Some(sent.sent_at)),
+    );
+    let ana_room = ana_client
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == room.id)
+        .unwrap();
+    assert!(ana_room.is_read_by_others(&sent));
+    ana_client.shutdown();
+    ben_client.shutdown();
+
+    // A restart keeps the cursors (and the room).
+    drop(server);
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (_server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let ben_again = HttpRepo::with_ureq(format!("http://{addr}")).with_token(&ben.token);
+    let rooms = chat_core::ChatRepo::list_conversations(&ben_again).unwrap();
+    let kept = rooms.iter().find(|r| r.id == room.id).unwrap();
+    assert_eq!(kept.read_up_to, Some(sent.sent_at));
+    assert_eq!(kept.others_read_up_to, Some(sent.sent_at));
+
+    // Without an account: no cursor of its own, and no new rooms.
+    let anonymous = HttpRepo::with_ureq(format!("http://{addr}"));
+    assert!(matches!(
+        chat_core::ChatRepo::create_conversation(&ben_again, ""),
+        Err(ChatError::InvalidInput { .. })
+    ));
+    assert!(matches!(
+        chat_core::ChatRepo::create_conversation(&anonymous, "Nope"),
+        Err(ChatError::Unauthorized { .. })
+    ));
+}

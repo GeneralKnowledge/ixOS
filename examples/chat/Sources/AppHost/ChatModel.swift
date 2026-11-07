@@ -55,6 +55,9 @@ public final class ChatModel {
     public private(set) var lifecyclePhase: AppPhase = .launching
     /// Increases after each message this device sends; a haptic trigger.
     public private(set) var sentCount = 0
+    /// Increases each time one of this device's messages fails to send; a
+    /// haptic trigger.
+    public private(set) var failedCount = 0
 
     public private(set) var core: ChatCore?
     private let storageDirectory: String?
@@ -164,13 +167,84 @@ public final class ChatModel {
     }
 
     public func title(of conversationId: String) -> String {
-        conversations.first { $0.id == conversationId }?.title ?? conversationId
+        conversation(conversationId)?.title ?? conversationId
+    }
+
+    public func conversation(_ id: String) -> ChatConversation? {
+        conversations.first { $0.id == id }
+    }
+
+    /// The list as the Chats tab shows it: most recent activity first.
+    /// Rooms without messages keep the server's order, after the rest.
+    public var sortedConversations: [ChatConversation] {
+        conversations.enumerated()
+            .sorted { a, b in
+                let (left, right) = (activity(a.element), activity(b.element))
+                return left != right ? left > right : a.offset < b.offset
+            }
+            .map(\.element)
+    }
+
+    /// Rooms with the unread dot, for the tab's badge.
+    public var unreadConversationCount: Int {
+        conversations.filter(\.showsUnread).count
+    }
+
+    private func activity(_ conversation: ChatConversation) -> Int64 {
+        max(conversation.lastMessage?.sentAt ?? .min, conversation.lastMessageAt ?? .min)
+    }
+
+    /// Creates a conversation and returns its id, ready to open. Throws so
+    /// the sheet can stay open with the title intact.
+    public func createConversation(title: String) async throws -> String {
+        guard let core else { throw ChatError.ShutDown }
+        let conversation = try await core.createConversation(title: title)
+        if self.conversation(conversation.id) == nil {
+            conversations.append(conversation)
+        }
+        watchIfNotifying(conversation.id)
+        return conversation.id
+    }
+
+    /// Marks the room read here and on the server (a swipe).
+    public func markRead(_ conversationId: String) async {
+        guard let core else { return }
+        do {
+            try await core.markRead(conversationId: conversationId)
+        } catch {
+            actionError = Self.describe(error)
+        }
+    }
+
+    /// Shows the room as unread until it is opened (a swipe).
+    public func markUnread(_ conversationId: String) {
+        perform { try $0.setMarkedUnread(conversationId: conversationId, marked: true) }
+    }
+
+    /// Mutes or unmutes the room's notifications on this iPhone.
+    public func setMuted(_ conversationId: String, _ muted: Bool) {
+        perform { try $0.setMuted(conversationId: conversationId, muted: muted) }
+    }
+
+    private func perform(_ action: (ChatCore) throws -> Void) {
+        guard let core else { return }
+        do {
+            try action(core)
+        } catch {
+            actionError = Self.describe(error)
+        }
     }
 
     // MARK: A conversation
 
     public func messages(in conversationId: String) -> [ChatMessage] {
         messages[conversationId] ?? []
+    }
+
+    /// Where one of our messages is: sending, sent, read or failed. Rust
+    /// decides "read" from the other accounts' read cursors.
+    public func delivery(of message: ChatMessage) -> ChatDelivery {
+        chatDelivery(message: message, conversation: conversation(message.conversationId))
     }
 
     /// Opens a room: shows stored messages, goes live, then catches up.
@@ -255,6 +329,7 @@ public final class ChatModel {
             else { break }
             // A `.sent` message also carries the server's time and may move:
             // re-read the store.
+            if status == .failed && list[index].isMine { failedCount += 1 }
             let stored = core?.cachedMessages(conversationId: room) ?? []
             if stored.contains(where: { $0.id == id }) {
                 messages[room] = stored

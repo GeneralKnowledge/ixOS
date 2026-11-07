@@ -1,6 +1,7 @@
 //! In-memory [`ChatRepo`]: the test double, and the reference for what the
 //! mock server must do.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -33,25 +34,51 @@ pub struct InMemoryRepo {
 #[derive(Default)]
 struct State {
     offline: bool,
+    /// Set by [`InMemoryRepo::with_read_cursors`]: the account id this
+    /// repo's client reads as. `None`: a server without read cursors.
+    reader: Option<String>,
+    next_room: usize,
     rooms: Vec<Room>,
     listeners: Vec<(String, Sender<Result<RemoteEvent, ChatError>>)>,
     /// Calls made, for assertions: `"list"`, `"load <id> <since>"`, ...
     calls: Vec<String>,
 }
 
+#[derive(Default)]
 struct Room {
     id: String,
     title: String,
     messages: Vec<Message>,
+    /// Read cursors by account id.
+    reads: BTreeMap<String, i64>,
 }
 
 impl Room {
-    fn remote(&self) -> RemoteConversation {
+    fn remote(&self, reader: Option<&str>) -> RemoteConversation {
         RemoteConversation {
             id: self.id.clone(),
             title: self.title.clone(),
             last_message_at: self.messages.last().map(|m| m.sent_at),
+            last_message: self.messages.last().cloned(),
+            read_up_to: reader.map(|me| self.reads.get(me).copied().unwrap_or(i64::MIN)),
+            others_read_up_to: reader.and_then(|me| {
+                self.reads
+                    .iter()
+                    .filter(|(who, _)| who.as_str() != me)
+                    .map(|(_, up_to)| *up_to)
+                    .max()
+            }),
         }
+    }
+
+    /// Moves `user_id`'s cursor forward; the new cursor if it moved.
+    fn mark_read(&mut self, user_id: &str, up_to: i64) -> Option<i64> {
+        let up_to = up_to.min(self.messages.last()?.sent_at);
+        let cursor = self.reads.entry(user_id.into()).or_insert(i64::MIN);
+        (up_to > *cursor).then(|| {
+            *cursor = up_to;
+            up_to
+        })
     }
 
     fn next_sent_at(&self) -> i64 {
@@ -80,11 +107,47 @@ impl InMemoryRepo {
                 state.rooms.push(Room {
                     id: (*id).into(),
                     title: (*title).into(),
-                    messages: Vec::new(),
+                    ..Room::default()
                 });
             }
         }
         repo
+    }
+
+    /// Keeps read cursors like the chat server, with this repo's client
+    /// reading as `reader_id` (its `ChatConfig::user_id`). Without it the
+    /// repo is a server without cursors.
+    pub fn with_read_cursors(self, reader_id: &str) -> Self {
+        self.lock().reader = Some(reader_id.into());
+        self
+    }
+
+    /// Someone else (`user_id`) read the room up to `up_to`: moves their
+    /// cursor and broadcasts it.
+    pub fn inject_read(&self, conversation_id: &str, user_id: &str, up_to: i64) {
+        let mut state = self.lock();
+        let room = state
+            .rooms
+            .iter_mut()
+            .find(|r| r.id == conversation_id)
+            .expect("a room that exists");
+        if let Some(up_to) = room.mark_read(user_id, up_to) {
+            broadcast(
+                &mut state,
+                conversation_id,
+                RemoteEvent::Read {
+                    user_id: user_id.into(),
+                    up_to,
+                },
+            );
+        }
+    }
+
+    /// An account's read cursor, as the server holds it.
+    pub fn read_cursor(&self, conversation_id: &str, user_id: &str) -> Option<i64> {
+        let state = self.lock();
+        let room = state.rooms.iter().find(|r| r.id == conversation_id)?;
+        room.reads.get(user_id).copied()
     }
 
     fn lock(&self) -> MutexGuard<'_, State> {
@@ -178,7 +241,12 @@ impl ChatRepo for InMemoryRepo {
         if state.offline {
             return Err(offline());
         }
-        Ok(state.rooms.iter().map(Room::remote).collect())
+        let reader = state.reader.clone();
+        Ok(state
+            .rooms
+            .iter()
+            .map(|room| room.remote(reader.as_deref()))
+            .collect())
     }
 
     fn load_messages(
@@ -217,6 +285,7 @@ impl ChatRepo for InMemoryRepo {
         if state.offline {
             return Err(offline());
         }
+        let cursors = state.reader.is_some();
         let room = state
             .rooms
             .iter_mut()
@@ -237,12 +306,73 @@ impl ChatRepo for InMemoryRepo {
             status: MessageStatus::Sent,
         };
         room.messages.push(message.clone());
+        let read = match cursors && !message.author_id.is_empty() {
+            true => room.mark_read(&message.author_id, message.sent_at),
+            false => None,
+        };
         broadcast(
             &mut state,
             &outgoing.conversation_id,
             RemoteEvent::Message(message.clone()),
         );
+        if let Some(up_to) = read {
+            broadcast(
+                &mut state,
+                &outgoing.conversation_id,
+                RemoteEvent::Read {
+                    user_id: message.author_id.clone(),
+                    up_to,
+                },
+            );
+        }
         Ok(message)
+    }
+
+    fn mark_read(&self, conversation_id: &str, up_to: i64) -> Result<(), ChatError> {
+        let mut state = self.lock();
+        state.calls.push(format!("read {conversation_id} {up_to}"));
+        if state.offline {
+            return Err(offline());
+        }
+        let Some(reader) = state.reader.clone() else {
+            return Ok(());
+        };
+        let room = state
+            .rooms
+            .iter_mut()
+            .find(|r| r.id == conversation_id)
+            .ok_or_else(|| ChatError::NotFound {
+                conversation_id: conversation_id.into(),
+            })?;
+        if let Some(up_to) = room.mark_read(&reader, up_to) {
+            broadcast(
+                &mut state,
+                conversation_id,
+                RemoteEvent::Read {
+                    user_id: reader,
+                    up_to,
+                },
+            );
+        }
+        Ok(())
+    }
+
+    fn create_conversation(&self, title: &str) -> Result<RemoteConversation, ChatError> {
+        let title = crate::validate_title(title)?;
+        let mut state = self.lock();
+        state.calls.push(format!("create {title}"));
+        if state.offline {
+            return Err(offline());
+        }
+        state.next_room += 1;
+        let room = Room {
+            id: format!("room-{}", state.next_room),
+            title,
+            ..Room::default()
+        };
+        let remote = room.remote(state.reader.as_deref());
+        state.rooms.push(room);
+        Ok(remote)
     }
 
     fn open_stream(

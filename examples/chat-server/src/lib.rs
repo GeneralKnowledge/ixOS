@@ -6,10 +6,22 @@
 //!
 //! - `POST /accounts`                       ← `{"display_name"}` → `201` `{"user_id","display_name","token"}`
 //! - `GET  /me`                             → `{"user_id","display_name"}` for the token
-//! - `GET  /rooms`                          → `[{"id","title","last_message_at"}]`
+//! - `GET  /rooms`                          → `[Room]`, with the caller's read state
+//! - `POST /rooms`                          ← `{"title"}` → `201` `Room` (a new conversation)
 //! - `GET  /rooms/{id}/messages?since=ms`   → messages with `sent_at > since`, oldest first
 //! - `POST /rooms/{id}/messages`            ← `{"id"?, "body"}`; `201` new, `200` if the id exists
-//! - `GET  /rooms/{id}/stream`              → `text/event-stream`: `event: message`, `event: room`, `:ping`
+//! - `POST /rooms/{id}/read`                ← `{"up_to": ms}` → `200` `{"up_to"}` (the caller's read cursor)
+//! - `GET  /rooms/{id}/stream`              → `text/event-stream`: `event: message`, `event: room`, `event: read`, `:ping`
+//!
+//! `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`.
+//! `read_up_to` is the caller's read cursor: every message up to that
+//! `sent_at` counts as read (an account that never marked a room read has
+//! read everything before it joined). `others_read_up_to` is the furthest
+//! any *other* account has read, which is what makes "Read" on a sent
+//! message real. Posting a message also moves its author's cursor to it.
+//! The two read fields are left out of the stream's `room` events, which go
+//! to everyone; `read` events (`{"conversation_id","user_id","up_to"}`)
+//! carry cursor moves instead.
 //!
 //! Every call except `POST /accounts` needs `Authorization: Bearer <token>`;
 //! the author of a message is the token's account. A missing or unknown
@@ -27,7 +39,7 @@
 //! TLS (put it behind a TLS proxy for anything else), no rate limiting and
 //! no account recovery.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::io::Write;
 use std::path::{Path as FsPath, PathBuf};
@@ -61,8 +73,15 @@ pub const MAX_DISPLAY_NAME_CHARS: usize = 40;
 pub const MAX_BODY_CHARS: usize = 4000;
 
 /// Version of the data file. Bump it, and migrate in [`load`], when the
-/// stored shape changes.
-pub const DATA_VERSION: u32 = 1;
+/// stored shape changes. 2 added read cursors (version 1 files load with
+/// none).
+pub const DATA_VERSION: u32 = 2;
+
+/// Longest conversation title, in characters (chat-core checks the same).
+pub const MAX_TITLE_CHARS: usize = 60;
+
+/// Most conversations a server holds.
+pub const MAX_ROOMS: usize = 200;
 
 /// Events buffered per stream subscriber before it is disconnected.
 const STREAM_BUFFER: usize = 1024;
@@ -84,6 +103,33 @@ struct WireRoom {
     id: String,
     title: String,
     last_message_at: Option<i64>,
+    last_message: Option<WireMessage>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    read_up_to: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    others_read_up_to: Option<i64>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+struct WireRead {
+    conversation_id: String,
+    user_id: String,
+    up_to: i64,
+}
+
+#[derive(Deserialize)]
+struct CreateRoomBody {
+    title: String,
+}
+
+#[derive(Deserialize)]
+struct ReadBody {
+    up_to: i64,
+}
+
+#[derive(Serialize)]
+struct ReadAnswer {
+    up_to: i64,
 }
 
 #[derive(Deserialize)]
@@ -122,6 +168,16 @@ struct SinceQuery {
 enum StreamEvent {
     Message(WireMessage),
     Room(WireRoom),
+    Read(WireRead),
+}
+
+/// Whose view of a room to describe.
+enum Viewer<'a> {
+    /// A stream event everyone receives: no read state.
+    Everyone,
+    /// A request without an account: how far anyone has read.
+    Anonymous,
+    User(&'a User),
 }
 
 /// An account, as stored.
@@ -136,23 +192,55 @@ struct User {
 struct Room {
     title: String,
     messages: Vec<WireMessage>,
+    /// Read cursors that accounts set, by user id.
+    reads: BTreeMap<String, i64>,
     events: broadcast::Sender<StreamEvent>,
 }
 
 impl Room {
-    fn new(title: String, messages: Vec<WireMessage>) -> Self {
+    fn new(title: String, messages: Vec<WireMessage>, reads: BTreeMap<String, i64>) -> Self {
         Self {
             title,
             messages,
+            reads,
             events: broadcast::channel(STREAM_BUFFER).0,
         }
     }
 
-    fn wire(&self, id: &str) -> WireRoom {
+    fn wire(&self, id: &str, viewer: Viewer<'_>) -> WireRoom {
+        let (read_up_to, others_read_up_to) = match viewer {
+            Viewer::Everyone => (None, None),
+            Viewer::Anonymous => (None, self.reads.values().copied().max()),
+            Viewer::User(user) => (
+                Some(self.reads.get(&user.id).copied().unwrap_or(user.created_at)),
+                self.reads
+                    .iter()
+                    .filter(|(reader, _)| **reader != user.id)
+                    .map(|(_, up_to)| *up_to)
+                    .max(),
+            ),
+        };
         WireRoom {
             id: id.to_string(),
             title: self.title.clone(),
             last_message_at: self.messages.last().map(|m| m.sent_at),
+            last_message: self.messages.last().cloned(),
+            read_up_to,
+            others_read_up_to,
+        }
+    }
+
+    /// Moves `user_id`'s cursor forward to `up_to` (never back, never past
+    /// the newest message). `Some(cursor)` if it moved.
+    fn mark_read(&mut self, user_id: &str, up_to: i64) -> Option<i64> {
+        let newest = self.messages.last()?.sent_at;
+        let up_to = up_to.min(newest);
+        let cursor = self.reads.entry(user_id.to_string()).or_insert(i64::MIN);
+        if up_to > *cursor {
+            *cursor = up_to;
+            Some(up_to)
+        } else {
+            None
         }
     }
 }
@@ -171,6 +259,9 @@ struct StoredRoom {
     id: String,
     title: String,
     messages: Vec<WireMessage>,
+    /// Read cursors by user id (since version 2).
+    #[serde(default)]
+    reads: BTreeMap<String, i64>,
 }
 
 struct Inner {
@@ -200,6 +291,7 @@ impl Inner {
                     id: id.clone(),
                     title: self.rooms[id].title.clone(),
                     messages: self.rooms[id].messages.clone(),
+                    reads: self.rooms[id].reads.clone(),
                 })
                 .collect(),
             next_server_id: self.next_server_id,
@@ -289,7 +381,7 @@ impl AppState {
         let rooms = stored
             .rooms
             .into_iter()
-            .map(|r| (r.id, Room::new(r.title, r.messages)))
+            .map(|r| (r.id, Room::new(r.title, r.messages, r.reads)))
             .collect();
         Self {
             inner: Arc::new(Mutex::new(Inner {
@@ -319,6 +411,7 @@ fn fresh() -> Stored {
                 id: (*id).into(),
                 title: (*title).into(),
                 messages: Vec::new(),
+                reads: BTreeMap::new(),
             })
             .collect(),
         next_server_id: 1,
@@ -340,7 +433,11 @@ fn load(path: &FsPath) -> Result<Stored, DataError> {
     if version > u64::from(DATA_VERSION) {
         return Err(DataError::NewerVersion(path.into(), version as u32));
     }
-    serde_json::from_value(value).map_err(|err| DataError::Corrupt(path.into(), err.to_string()))
+    // Version 1 had no read cursors; serde's defaults fill them in.
+    let mut stored: Stored = serde_json::from_value(value)
+        .map_err(|err| DataError::Corrupt(path.into(), err.to_string()))?;
+    stored.version = DATA_VERSION;
+    Ok(stored)
 }
 
 /// Writes `bytes` to a temporary file next to `path` (owner-only on Unix),
@@ -410,6 +507,27 @@ enum Caller {
     Anonymous,
 }
 
+impl Caller {
+    fn user_id(&self) -> Option<&str> {
+        match self {
+            Self::User { id, .. } => Some(id),
+            Self::Anonymous => None,
+        }
+    }
+}
+
+impl Inner {
+    fn viewer<'a>(&'a self, caller: &Caller) -> Viewer<'a> {
+        match caller
+            .user_id()
+            .and_then(|id| self.users.iter().find(|u| u.id == id))
+        {
+            Some(user) => Viewer::User(user),
+            None => Viewer::Anonymous,
+        }
+    }
+}
+
 /// Resolves the `Authorization` header. A token that is present must be
 /// valid; no token is only allowed with [`AppState::allow_anonymous`].
 /// `Err` is why the caller is refused (answered with 401).
@@ -436,6 +554,20 @@ fn caller(state: &AppState, headers: &HeaderMap) -> Result<Caller, &'static str>
         None if state.allow_anonymous => Ok(Caller::Anonymous),
         None => Err("this server needs an account token"),
     }
+}
+
+fn clean_title(title: &str) -> Result<String, &'static str> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err("title must not be empty");
+    }
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err("title is too long");
+    }
+    if title.chars().any(char::is_control) {
+        return Err("title contains control characters");
+    }
+    Ok(title.to_string())
 }
 
 fn clean_display_name(name: &str) -> Result<String, &'static str> {
@@ -500,18 +632,101 @@ async fn me(State(state): State<AppState>, headers: HeaderMap) -> Response {
 }
 
 async fn list_rooms(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    if let Err(why) = caller(&state, &headers) {
-        return unauthorized(why);
-    }
+    let caller = match caller(&state, &headers) {
+        Ok(caller) => caller,
+        Err(why) => return unauthorized(why),
+    };
     let inner = state.lock();
     Json(
         inner
             .order
             .iter()
-            .map(|id| inner.rooms[id].wire(id))
+            .map(|id| inner.rooms[id].wire(id, inner.viewer(&caller)))
             .collect::<Vec<_>>(),
     )
     .into_response()
+}
+
+/// `POST /rooms`: a new, empty conversation. Needs an account.
+async fn create_room(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateRoomBody>,
+) -> Response {
+    let caller = match caller(&state, &headers) {
+        Ok(caller @ Caller::User { .. }) => caller,
+        Ok(Caller::Anonymous) => return unauthorized("creating a conversation needs an account"),
+        Err(why) => return unauthorized(why),
+    };
+    let title = match clean_title(&body.title) {
+        Ok(title) => title,
+        Err(why) => return (StatusCode::BAD_REQUEST, why).into_response(),
+    };
+    let id = match random_hex(6) {
+        Ok(hex) => format!("r-{hex}"),
+        Err(err) => {
+            eprintln!("error: no randomness for a room id: {err}");
+            return StatusCode::INTERNAL_SERVER_ERROR.into_response();
+        }
+    };
+    let mut inner = state.lock();
+    if inner.order.len() >= MAX_ROOMS {
+        return (
+            StatusCode::CONFLICT,
+            "this server has too many conversations",
+        )
+            .into_response();
+    }
+    inner.order.push(id.clone());
+    inner
+        .rooms
+        .insert(id.clone(), Room::new(title, Vec::new(), BTreeMap::new()));
+    if let Err(err) = inner.save() {
+        inner.order.pop();
+        inner.rooms.remove(&id);
+        return storage_failed(err);
+    }
+    let room = inner.rooms[&id].wire(&id, inner.viewer(&caller));
+    (StatusCode::CREATED, Json(room)).into_response()
+}
+
+/// `POST /rooms/{id}/read`: moves the caller's read cursor forward. Without
+/// an account there is no cursor; the call is accepted and changes nothing.
+async fn mark_read(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Json(body): Json<ReadBody>,
+) -> Response {
+    let user_id = match caller(&state, &headers) {
+        Ok(Caller::User { id, .. }) => id,
+        Ok(Caller::Anonymous) => return Json(ReadAnswer { up_to: body.up_to }).into_response(),
+        Err(why) => return unauthorized(why),
+    };
+    let mut inner = state.lock();
+    let Some(room) = inner.rooms.get_mut(&id) else {
+        return not_found(&id);
+    };
+    let before = room.reads.get(&user_id).copied();
+    let Some(up_to) = room.mark_read(&user_id, body.up_to) else {
+        let current = before.unwrap_or(body.up_to);
+        return Json(ReadAnswer { up_to: current }).into_response();
+    };
+    if let Err(err) = inner.save() {
+        if let Some(room) = inner.rooms.get_mut(&id) {
+            match before {
+                Some(cursor) => room.reads.insert(user_id, cursor),
+                None => room.reads.remove(&user_id),
+            };
+        }
+        return storage_failed(err);
+    }
+    let _ = inner.rooms[&id].events.send(StreamEvent::Read(WireRead {
+        conversation_id: id.clone(),
+        user_id,
+        up_to,
+    }));
+    Json(ReadAnswer { up_to }).into_response()
 }
 
 async fn load_messages(
@@ -584,6 +799,13 @@ async fn post_message(
         sent_at: now_ms().max(last.saturating_add(1)),
     };
     room.messages.push(message.clone());
+    // Writing a message means having read up to it.
+    let read_before = room.reads.get(&message.author_id).copied();
+    let read_moved = if message.author_id.is_empty() {
+        None
+    } else {
+        room.mark_read(&message.author_id, message.sent_at)
+    };
     if used_server_id {
         inner.next_server_id += 1;
     }
@@ -592,6 +814,12 @@ async fn post_message(
     if let Err(err) = inner.save() {
         if let Some(room) = inner.rooms.get_mut(&id) {
             room.messages.pop();
+            if read_moved.is_some() {
+                match read_before {
+                    Some(cursor) => room.reads.insert(message.author_id.clone(), cursor),
+                    None => room.reads.remove(&message.author_id),
+                };
+            }
         }
         if used_server_id {
             inner.next_server_id -= 1;
@@ -601,7 +829,16 @@ async fn post_message(
     let room = &inner.rooms[&id];
     // No subscribers is fine: `send` only fails when nobody listens.
     let _ = room.events.send(StreamEvent::Message(message.clone()));
-    let _ = room.events.send(StreamEvent::Room(room.wire(&id)));
+    let _ = room
+        .events
+        .send(StreamEvent::Room(room.wire(&id, Viewer::Everyone)));
+    if let Some(up_to) = read_moved {
+        let _ = room.events.send(StreamEvent::Read(WireRead {
+            conversation_id: id.clone(),
+            user_id: message.author_id.clone(),
+            up_to,
+        }));
+    }
     (StatusCode::CREATED, Json(message)).into_response()
 }
 
@@ -635,6 +872,7 @@ fn events(
         let event = match receiver.recv().await {
             Ok(StreamEvent::Message(m)) => Event::default().event("message").json_data(m),
             Ok(StreamEvent::Room(r)) => Event::default().event("room").json_data(r),
+            Ok(StreamEvent::Read(r)) => Event::default().event("read").json_data(r),
             Err(_) => return None, // lagged or closed: end the stream
         };
         let event = event.expect("wire types serialise");
@@ -647,7 +885,8 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .route("/accounts", post(register))
         .route("/me", get(me))
-        .route("/rooms", get(list_rooms))
+        .route("/rooms", get(list_rooms).post(create_room))
+        .route("/rooms/{id}/read", post(mark_read))
         .route(
             "/rooms/{id}/messages",
             get(load_messages).post(post_message),
@@ -720,6 +959,65 @@ mod tests {
             std::fs::read_to_string(&path).unwrap(),
             r#"{"version": 99}"#
         );
+    }
+
+    #[test]
+    fn version_1_data_loads_without_read_cursors() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("server.json");
+        std::fs::write(
+            &path,
+            r#"{"version":1,"users":[],"next_server_id":1,"rooms":[{"id":"general","title":"General","messages":[]}]}"#,
+        )
+        .unwrap();
+        let state = AppState::open(&path, DEFAULT_HEARTBEAT).unwrap();
+        assert!(state.lock().rooms["general"].reads.is_empty());
+        let saved: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        assert_eq!(saved["version"], DATA_VERSION);
+    }
+
+    #[test]
+    fn read_cursors_only_move_forward_and_stop_at_the_newest_message() {
+        let mut room = Room::new("R".into(), Vec::new(), BTreeMap::new());
+        assert_eq!(room.mark_read("u", 10), None, "nothing to read yet");
+        for sent_at in [5, 9] {
+            room.messages.push(WireMessage {
+                id: format!("m{sent_at}"),
+                conversation_id: "r".into(),
+                author: "A".into(),
+                author_id: "a".into(),
+                body: "x".into(),
+                sent_at,
+            });
+        }
+        assert_eq!(room.mark_read("u", 100), Some(9));
+        assert_eq!(room.mark_read("u", 5), None);
+        let user = User {
+            id: "u".into(),
+            display_name: "U".into(),
+            token: "t".into(),
+            created_at: 1,
+        };
+        let other = User {
+            id: "o".into(),
+            ..user.clone()
+        };
+        assert_eq!(room.wire("r", Viewer::User(&user)).read_up_to, Some(9));
+        assert_eq!(room.wire("r", Viewer::User(&user)).others_read_up_to, None);
+        assert_eq!(room.wire("r", Viewer::User(&other)).read_up_to, Some(1));
+        assert_eq!(
+            room.wire("r", Viewer::User(&other)).others_read_up_to,
+            Some(9)
+        );
+        assert_eq!(room.wire("r", Viewer::Everyone).read_up_to, None);
+    }
+
+    #[test]
+    fn titles_are_checked() {
+        assert_eq!(clean_title("  Plans ").unwrap(), "Plans");
+        assert!(clean_title(" ").is_err());
+        assert!(clean_title(&"x".repeat(61)).is_err());
     }
 
     #[test]

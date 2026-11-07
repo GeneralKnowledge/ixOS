@@ -121,9 +121,14 @@ fn send_goes_sending_then_sent() {
     };
     assert_eq!(first.status, MessageStatus::Sending);
     assert_eq!(first.id, sent.id);
-    assert_eq!(events[1], status_event(&sent, MessageStatus::Sent));
+    // The list's preview shows the message while it is being sent...
     assert!(
-        matches!(&events[2], ChatEvent::ConversationUpdated(c) if c.last_message_at == Some(sent.sent_at))
+        matches!(&events[1], ChatEvent::ConversationUpdated(c) if c.last_message.as_ref().is_some_and(|m| m.id == sent.id && m.status == MessageStatus::Sending))
+    );
+    assert_eq!(events[2], status_event(&sent, MessageStatus::Sent));
+    // ...and once it is sent.
+    assert!(
+        matches!(&events[3], ChatEvent::ConversationUpdated(c) if c.last_message_at == Some(sent.sent_at) && c.last_message.as_ref() == Some(&sent))
     );
     assert_eq!(h.client.cached_messages("general"), vec![sent]);
     // Our own send does not advance the cursor.
@@ -919,4 +924,199 @@ fn own_messages_are_recognised_by_account_id() {
     );
     assert!(!h.client.config().is_own(&other));
     h.client.shutdown();
+}
+
+// ----- M1: read cursors, previews, mute, marked unread, new rooms ----------
+
+/// A harness whose server keeps read cursors; the client reads as "" (its
+/// `fast_config` account id).
+fn cursor_harness() -> Harness {
+    harness_with(
+        Arc::new(
+            InMemoryRepo::with_rooms(&[("general", "General"), ("random", "Random")])
+                .with_read_cursors(""),
+        ),
+        ChatStore::in_memory(),
+    )
+}
+
+fn conversation(client: &ChatClient, id: &str) -> Conversation {
+    client
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == id)
+        .unwrap()
+}
+
+#[test]
+fn server_cursors_drive_unread_previews_and_mark_read() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.repo.inject("general", "ana", "one");
+    let two = h.repo.inject("general", "ana", "two");
+
+    let listed = h.client.list_conversations().unwrap();
+    let general = listed.iter().find(|c| c.id == "general").unwrap();
+    assert_eq!(general.unread_count, 2);
+    assert!(general.shows_unread());
+    assert_eq!(general.last_message.as_ref().unwrap().body, "two");
+    assert_eq!(general.read_up_to, Some(i64::MIN));
+
+    h.client.mark_read("general").unwrap();
+    let general = conversation(&h.client, "general");
+    assert_eq!(general.unread_count, 0);
+    assert_eq!(general.read_up_to, Some(two.sent_at));
+    assert_eq!(h.repo.read_cursor("general", ""), Some(two.sent_at));
+    // A relaunch or refresh takes the server's word for it.
+    let listed = h.client.list_conversations().unwrap();
+    assert_eq!(listed[0].unread_count, 0);
+    assert!(matches!(
+        h.client.mark_read("nope"),
+        Err(ChatError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn an_open_room_is_marked_read_on_the_server_as_messages_arrive() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.client.subscribe("general").unwrap();
+    h.wait_connected("general");
+    let hello = h.repo.inject("general", "ana", "hello");
+    wait_until("the server has our cursor", || {
+        h.repo.read_cursor("general", "") == Some(hello.sent_at)
+    });
+    h.client.unsubscribe("general").unwrap();
+    assert_eq!(conversation(&h.client, "general").unread_count, 0);
+}
+
+#[test]
+fn others_reading_marks_our_messages_read() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.client.watch("general").unwrap();
+    h.wait_connected("general");
+    let sent = h
+        .client
+        .send_message("general", "did you see this?")
+        .unwrap();
+    assert!(!conversation(&h.client, "general").is_read_by_others(&sent));
+
+    h.repo.inject_read("general", "ana", sent.sent_at);
+    h.wait_for("others read it", |e| {
+        matches!(e, ChatEvent::ConversationUpdated(c) if c.others_read_up_to == Some(sent.sent_at))
+    });
+    assert!(conversation(&h.client, "general").is_read_by_others(&sent));
+    // Our own cursor moved when we wrote it, so it is not unread for us.
+    assert_eq!(
+        conversation(&h.client, "general").read_up_to,
+        Some(sent.sent_at)
+    );
+}
+
+#[test]
+fn reading_on_another_device_clears_unread_here() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.client.watch("general").unwrap();
+    h.wait_connected("general");
+    let hello = h.repo.inject("general", "ana", "hello");
+    h.wait_for(
+        "an unread message",
+        |e| matches!(e, ChatEvent::ConversationUpdated(c) if c.unread_count == 1),
+    );
+    h.client.set_marked_unread("general", true).unwrap();
+    // The same account reads it elsewhere.
+    h.repo.inject_read("general", "", hello.sent_at);
+    h.wait_for("read elsewhere", |e| {
+        matches!(e, ChatEvent::ConversationUpdated(c) if c.unread_count == 0 && !c.marked_unread)
+    });
+}
+
+#[test]
+fn muted_rooms_count_unread_but_do_not_notify() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.client.set_muted("general", true).unwrap();
+    assert!(conversation(&h.client, "general").muted);
+    h.client.watch("general").unwrap();
+    h.wait_connected("general");
+    h.drain();
+    let quiet = h.repo.inject("general", "ana", "shh");
+    let seen = h.wait_for(
+        "the unread count",
+        |e| matches!(e, ChatEvent::ConversationUpdated(c) if c.unread_count == 1),
+    );
+    assert!(seen
+        .iter()
+        .any(|e| matches!(e, ChatEvent::MessageReceived(m) if m.id == quiet.id)));
+    std::thread::sleep(Duration::from_millis(50));
+    assert!(!seen
+        .iter()
+        .chain(h.drain().iter())
+        .any(|e| matches!(e, ChatEvent::Notify(_))));
+
+    h.client.set_muted("general", false).unwrap();
+    let loud = h.repo.inject("general", "ana", "hey");
+    h.wait_for(
+        "a notification",
+        |e| matches!(e, ChatEvent::Notify(m) if m.id == loud.id),
+    );
+}
+
+#[test]
+fn marked_unread_lasts_until_the_room_is_opened() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.client.set_marked_unread("random", true).unwrap();
+    let random = conversation(&h.client, "random");
+    assert!(random.marked_unread && random.shows_unread());
+    assert_eq!(random.unread_count, 0);
+    h.client.subscribe("random").unwrap();
+    assert!(!conversation(&h.client, "random").marked_unread);
+    h.client.set_marked_unread("random", true).unwrap();
+    h.client.mark_read("random").unwrap();
+    assert!(!conversation(&h.client, "random").marked_unread);
+    assert!(matches!(
+        h.client.set_muted("nope", true),
+        Err(ChatError::NotFound { .. })
+    ));
+}
+
+#[test]
+fn new_conversations_are_created_on_the_server_and_listed() {
+    let h = cursor_harness();
+    h.client.list_conversations().unwrap();
+    h.drain();
+    let room = h.client.create_conversation("  Weekend plans ").unwrap();
+    assert_eq!(room.title, "Weekend plans");
+    assert!(matches!(
+        &h.drain()[..],
+        [ChatEvent::ConversationUpdated(c)] if c.id == room.id
+    ));
+    assert_eq!(h.client.cached_conversations().last().unwrap().id, room.id);
+    // It is a real room: messages go through.
+    h.client.send_message(&room.id, "first!").unwrap();
+    let listed = h.client.list_conversations().unwrap();
+    assert_eq!(
+        listed.last().unwrap().last_message.as_ref().unwrap().body,
+        "first!"
+    );
+    for bad in ["", "   ", &"x".repeat(61)] {
+        assert!(matches!(
+            h.client.create_conversation(bad),
+            Err(ChatError::InvalidInput { .. })
+        ));
+    }
+}
+
+#[test]
+fn a_failed_send_shows_in_the_preview() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.repo.set_offline(true);
+    assert!(h.client.send_message("general", "lost").is_err());
+    let preview = conversation(&h.client, "general").last_message.unwrap();
+    assert_eq!(preview.body, "lost");
+    assert_eq!(preview.status, MessageStatus::Failed);
 }

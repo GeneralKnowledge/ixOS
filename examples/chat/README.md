@@ -41,15 +41,24 @@ On a Mac you can also open `Xcode/Chat.xcodeproj`, or run it on the desktop
 with `swift run --package-path examples/chat Chat` (after
 `./scripts/test-swift-host.sh examples/chat` has built the host library).
 
-## What it does today (M0)
+## What it does today (M0 and M1)
 
 - **An account per device, in the Keychain.** First launch creates an account
   on the server. Rust stores it, token included, through `forge-services`'
   Keychain adapter; the token never reaches Swift. Relaunching is signed in at
   once, offline too. If the server forgets the account (its data was deleted),
   the app says so and you can sign out from Settings.
-- **Rooms and messages**: list with unread badges, live updates, sending with
-  Sending / Sent / Failed (tap to retry), catch-up after a dropped connection.
+- **Rooms and messages**: live updates, sending with Sending / Sent / Failed
+  (tap to retry), catch-up after a dropped connection.
+- **A native messaging UI (M1).** Chats and Settings tabs; a list sorted by
+  activity with previews, times and unread dots; swipe to mark read or unread
+  and to mute; bubbles grouped by sender and time with day separators; a
+  composer pinned above the keyboard with haptics on send and failure; new
+  conversations created on the server from the app.
+- **Real read receipts (M1).** The server keeps a read cursor per account and
+  room. Opening a room moves yours, unread counts come from it (so reading on
+  one device clears another), and your messages say Read once someone else's
+  cursor passes them. Mute and "marked unread" stay on the device.
 - **Lifecycle.** In the background Rust closes every room connection; back in
   the foreground it reconnects them and catches up, and the list refreshes.
 - **Local notifications** for new messages in rooms you are not in, while the

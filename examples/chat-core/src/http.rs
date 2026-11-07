@@ -7,18 +7,21 @@
 //! | register | `POST {base}/accounts` `{"display_name"}` | `201` `{"user_id","display_name","token"}` |
 //! | who am I | `GET {base}/me` | `200` `{"user_id","display_name"}` |
 //! | list | `GET {base}/rooms` | `200` `[Room]` |
+//! | create | `POST {base}/rooms` `{"title"}` | `201` `Room` |
+//! | mark read | `POST {base}/rooms/{id}/read` `{"up_to"}` | `200` |
 //! | load | `GET {base}/rooms/{id}/messages[?since=ms]` | `200` `[Message]`, oldest first, `sent_at > since` |
 //! | post | `POST {base}/rooms/{id}/messages` `{"id","author","body"}` | `200`/`201` `Message` (idempotent by `id`) |
 //! | stream | `GET {base}/rooms/{id}/stream` | `200` `text/event-stream` |
 //!
-//! `Room` is `{"id","title","last_message_at"}` and `Message` is
+//! `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`
+//! (all but the first two optional) and `Message` is
 //! `{"id","conversation_id","author","author_id","body","sent_at"}` (times in
 //! Unix ms; `author_id` may be missing, from servers or clients without
 //! accounts). With an account, every request carries
 //! `Authorization: Bearer <token>`; the server then takes the author from
 //! the token, and a `401` is [`ChatError::Unauthorized`].
 //! The stream sends `event: message` / `event: room` with that JSON as
-//! `data`, and `: ping` comment lines as heartbeats (the mock server sends
+//! `data`, `event: read` with `{"user_id","up_to"}`, and `: ping` comment lines as heartbeats (the mock server sends
 //! one every 15 s). Unknown event names and JSON fields are ignored. A `404`
 //! on any room path is [`ChatError::NotFound`].
 
@@ -45,6 +48,48 @@ struct WireRoom {
     title: String,
     #[serde(default)]
     last_message_at: Option<i64>,
+    #[serde(default)]
+    last_message: Option<WireMessage>,
+    #[serde(default)]
+    read_up_to: Option<i64>,
+    #[serde(default)]
+    others_read_up_to: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct WireRead {
+    user_id: String,
+    up_to: i64,
+}
+
+#[derive(Serialize)]
+struct WireReadPost {
+    up_to: i64,
+}
+
+#[derive(Serialize)]
+struct WireCreateRoom<'a> {
+    title: &'a str,
+}
+
+/// Longest conversation title, in characters (the server's limit too).
+pub const MAX_TITLE_CHARS: usize = 60;
+
+/// Trims `title` and checks it is usable as a conversation title.
+pub fn validate_title(title: &str) -> Result<String, ChatError> {
+    let title = title.trim();
+    if title.is_empty() {
+        return Err(ChatError::invalid("title is empty"));
+    }
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(ChatError::invalid(format!(
+            "title is longer than {MAX_TITLE_CHARS} characters"
+        )));
+    }
+    if title.chars().any(char::is_control) {
+        return Err(ChatError::invalid("title contains control characters"));
+    }
+    Ok(title.to_string())
 }
 
 #[derive(Debug, Deserialize)]
@@ -114,6 +159,9 @@ impl From<WireRoom> for RemoteConversation {
             id: room.id,
             title: room.title,
             last_message_at: room.last_message_at,
+            last_message: room.last_message.map(Into::into),
+            read_up_to: room.read_up_to,
+            others_read_up_to: room.others_read_up_to,
         }
     }
 }
@@ -336,6 +384,29 @@ impl ChatRepo for HttpRepo {
         Ok(stored)
     }
 
+    fn mark_read(&self, conversation_id: &str, up_to: i64) -> Result<(), ChatError> {
+        let url = self.room_url(conversation_id, "/read");
+        let body = serde_json::to_vec(&WireReadPost { up_to }).map_err(ChatError::protocol)?;
+        self.send(
+            Request::post(url, body)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json"),
+            Some(conversation_id),
+        )?;
+        Ok(())
+    }
+
+    fn create_conversation(&self, title: &str) -> Result<RemoteConversation, ChatError> {
+        let title = validate_title(title)?;
+        let body =
+            serde_json::to_vec(&WireCreateRoom { title: &title }).map_err(ChatError::protocol)?;
+        let request = Request::post(format!("{}/rooms", self.base_url), body)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json");
+        let response = self.send(request, None)?;
+        Ok(decode::<WireRoom>(&response.body)?.into())
+    }
+
     fn open_stream(
         &self,
         conversation_id: &str,
@@ -396,6 +467,12 @@ impl SseStream {
             ),
             "room" => Some(
                 decode::<WireRoom>(data.as_bytes()).map(|r| RemoteEvent::Conversation(r.into())),
+            ),
+            "read" => Some(
+                decode::<WireRead>(data.as_bytes()).map(|r| RemoteEvent::Read {
+                    user_id: r.user_id,
+                    up_to: r.up_to,
+                }),
             ),
             _ => None,
         }

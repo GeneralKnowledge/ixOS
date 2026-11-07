@@ -653,6 +653,12 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func checkAccount() async throws  -> ChatAccount
     
     /**
+     * Creates a conversation on the server. It is added to the list
+     * (`ConversationUpdated`) and returned, ready to open.
+     */
+    func createConversation(title: String) async throws  -> ChatConversation
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
@@ -671,6 +677,13 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func liveStreams()  -> UInt32
     
     /**
+     * Marks everything in the room read, here at once and then on the
+     * server (other devices and other people see it). Clears "marked
+     * unread". An open room is kept read without this.
+     */
+    func markRead(conversationId: String) async throws 
+    
+    /**
      * The phase last reported with `set_phase`.
      */
     func phase()  -> AppPhase
@@ -686,6 +699,17 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * message, or the error that failed it.
      */
     func sendMessage(conversationId: String, body: String) async throws  -> ChatMessage
+    
+    /**
+     * Shows the room as unread until it is opened or marked read (`true`),
+     * or stops doing so. This device only.
+     */
+    func setMarkedUnread(conversationId: String, marked: Bool) throws 
+    
+    /**
+     * Mutes the room (no notifications) or unmutes it. This device only.
+     */
+    func setMuted(conversationId: String, muted: Bool) throws 
     
     /**
      * The host reports a lifecycle change; cheap, safe to repeat. Going to
@@ -893,6 +917,26 @@ open func checkAccount()async throws  -> ChatAccount  {
 }
     
     /**
+     * Creates a conversation on the server. It is added to the list
+     * (`ConversationUpdated`) and returned, ready to open.
+     */
+open func createConversation(title: String)async throws  -> ChatConversation  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_create_conversation(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(title)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatConversation_lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * A new event stream. Each consumer takes its own and sees every event
      * from now on.
      */
@@ -936,6 +980,27 @@ open func liveStreams() -> UInt32  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Marks everything in the room read, here at once and then on the
+     * server (other devices and other people see it). Clears "marked
+     * unread". An open room is kept read without this.
+     */
+open func markRead(conversationId: String)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_mark_read(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_void,
+            completeFunc: ffi_forge_ffi_rust_future_complete_void,
+            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeChatError_lift
+        )
 }
     
     /**
@@ -988,6 +1053,33 @@ open func sendMessage(conversationId: String, body: String)async throws  -> Chat
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * Shows the room as unread until it is opened or marked read (`true`),
+     * or stops doing so. This device only.
+     */
+open func setMarkedUnread(conversationId: String, marked: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_set_marked_unread(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterBool.lower(marked),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Mutes the room (no notifications) or unmutes it. This device only.
+     */
+open func setMuted(conversationId: String, muted: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_set_muted(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(conversationId),
+        FfiConverterBool.lower(muted),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -2458,9 +2550,31 @@ public struct ChatConversation: Equatable, Hashable {
      */
     public var lastMessageAt: Int64?
     /**
-     * Messages from others that arrived while the room was not open.
+     * Messages from others this account has not read (by the server's read
+     * cursor). 0 while the room is open.
      */
     public var unreadCount: UInt32
+    /**
+     * Show the unread dot: unread messages, or the user marked it unread.
+     */
+    public var showsUnread: Bool
+    /**
+     * The newest message, for the preview line (ours too, while sending).
+     */
+    public var lastMessage: ChatMessage?
+    /**
+     * How far anyone else has read, Unix ms. One of our sent messages with
+     * `sent_at` up to it has been read; `ChatMessage::is_read` says so.
+     */
+    public var othersReadUpTo: Int64?
+    /**
+     * No notifications for this room (this device only).
+     */
+    public var muted: Bool
+    /**
+     * The user swiped it to unread (this device only).
+     */
+    public var markedUnread: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2469,12 +2583,34 @@ public struct ChatConversation: Equatable, Hashable {
          * Newest message the server knows of, Unix ms. `None` for an empty room.
          */lastMessageAt: Int64?, 
         /**
-         * Messages from others that arrived while the room was not open.
-         */unreadCount: UInt32) {
+         * Messages from others this account has not read (by the server's read
+         * cursor). 0 while the room is open.
+         */unreadCount: UInt32, 
+        /**
+         * Show the unread dot: unread messages, or the user marked it unread.
+         */showsUnread: Bool, 
+        /**
+         * The newest message, for the preview line (ours too, while sending).
+         */lastMessage: ChatMessage?, 
+        /**
+         * How far anyone else has read, Unix ms. One of our sent messages with
+         * `sent_at` up to it has been read; `ChatMessage::is_read` says so.
+         */othersReadUpTo: Int64?, 
+        /**
+         * No notifications for this room (this device only).
+         */muted: Bool, 
+        /**
+         * The user swiped it to unread (this device only).
+         */markedUnread: Bool) {
         self.id = id
         self.title = title
         self.lastMessageAt = lastMessageAt
         self.unreadCount = unreadCount
+        self.showsUnread = showsUnread
+        self.lastMessage = lastMessage
+        self.othersReadUpTo = othersReadUpTo
+        self.muted = muted
+        self.markedUnread = markedUnread
     }
 
     
@@ -2496,7 +2632,12 @@ public struct FfiConverterTypeChatConversation: FfiConverterRustBuffer {
                 id: FfiConverterString.read(from: &buf), 
                 title: FfiConverterString.read(from: &buf), 
                 lastMessageAt: FfiConverterOptionInt64.read(from: &buf), 
-                unreadCount: FfiConverterUInt32.read(from: &buf)
+                unreadCount: FfiConverterUInt32.read(from: &buf), 
+                showsUnread: FfiConverterBool.read(from: &buf), 
+                lastMessage: FfiConverterOptionTypeChatMessage.read(from: &buf), 
+                othersReadUpTo: FfiConverterOptionInt64.read(from: &buf), 
+                muted: FfiConverterBool.read(from: &buf), 
+                markedUnread: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -2505,6 +2646,11 @@ public struct FfiConverterTypeChatConversation: FfiConverterRustBuffer {
         FfiConverterString.write(value.title, into: &buf)
         FfiConverterOptionInt64.write(value.lastMessageAt, into: &buf)
         FfiConverterUInt32.write(value.unreadCount, into: &buf)
+        FfiConverterBool.write(value.showsUnread, into: &buf)
+        FfiConverterOptionTypeChatMessage.write(value.lastMessage, into: &buf)
+        FfiConverterOptionInt64.write(value.othersReadUpTo, into: &buf)
+        FfiConverterBool.write(value.muted, into: &buf)
+        FfiConverterBool.write(value.markedUnread, into: &buf)
     }
 }
 
@@ -3004,6 +3150,92 @@ public func FfiConverterTypeAppPhase_lift(_ buf: RustBuffer) throws -> AppPhase 
 #endif
 public func FfiConverterTypeAppPhase_lower(_ value: AppPhase) -> RustBuffer {
     return FfiConverterTypeAppPhase.lower(value)
+}
+
+
+
+/**
+ * Where one of our messages is, as its bubble shows it.
+ */
+
+public enum ChatDelivery: Equatable, Hashable {
+    
+    case sending
+    case sent
+    /**
+     * Someone else in the room has read it (their read cursor passed it).
+     */
+    case read
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ChatDelivery: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatDelivery: FfiConverterRustBuffer {
+    typealias SwiftType = ChatDelivery
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatDelivery {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .sending
+        
+        case 2: return .sent
+        
+        case 3: return .read
+        
+        case 4: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ChatDelivery, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .sending:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .sent:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .read:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatDelivery_lift(_ buf: RustBuffer) throws -> ChatDelivery {
+    return try FfiConverterTypeChatDelivery.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatDelivery_lower(_ value: ChatDelivery) -> RustBuffer {
+    return FfiConverterTypeChatDelivery.lower(value)
 }
 
 
@@ -4080,6 +4312,54 @@ fileprivate struct FfiConverterOptionTypeChatAccount: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeChatConversation: FfiConverterRustBuffer {
+    typealias SwiftType = ChatConversation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatConversation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatConversation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChatMessage: FfiConverterRustBuffer {
+    typealias SwiftType = ChatMessage?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChatMessage.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChatMessage.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeChatEvent: FfiConverterRustBuffer {
     typealias SwiftType = ChatEvent?
 
@@ -4386,6 +4666,20 @@ public func parseDeepLink(url: String)throws  -> DeepLink  {
     )
 })
 }
+/**
+ * The delivery state of `message` in `conversation`: `Read` once another
+ * account's read cursor has passed one of our sent messages. Only
+ * meaningful for our own messages.
+ */
+public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) -> ChatDelivery  {
+    return try!  FfiConverterTypeChatDelivery_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_chat_delivery(
+        FfiConverterTypeChatMessage_lower(message),
+        FfiConverterOptionTypeChatConversation.lower(conversation),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4414,6 +4708,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_parse_deep_link() != 63697) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4426,6 +4723,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_check_account() != 8189) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_create_conversation() != 30017) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_events() != 19610) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4435,6 +4735,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_live_streams() != 15081) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_mark_read() != 49646) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 51598) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4442,6 +4745,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 14155) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_marked_unread() != 12117) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_set_muted() != 25654) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 4202) {
