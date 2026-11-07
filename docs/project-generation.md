@@ -2,24 +2,25 @@
 
 ## Contract
 
-`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>]` creates an app at `<dir>`, or at `examples/<Name>/` inside the Forge checkout when `--path` is left out.
+`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>]` creates an app at `<dir>`. Without `--path` it creates `./<Name>` in the current directory, or `examples/<Name>/` when you run it inside the Forge checkout. It then prints the next commands to run, and the app gets a `README.md` describing its layout.
 
 The app **owns its Rust logic**: `rust/` is its own crate, with its own `Cargo.toml`, lock file and target directory, and `forge.toml` names it (`[rust] path = "rust"`). It depends on Forge's runtime crates (`forge-runtime`, `forge-storage`, `forge-net`) by path, and the Forge checkout supplies the build scripts and `uniffi-bindgen`. So an app is not fully standalone yet: it needs a Forge checkout on the same machine, but nothing of the app lives inside that checkout. See [app-crate.md](app-crate.md) for how to work in the crate.
 
 ### Quick start (Linux)
 
 ```bash
-forge init MyApp --bundle-id org.example.myapp --path ~/projects/MyApp
-cd ~/projects/MyApp
-cargo test --manifest-path rust/Cargo.toml   # the starter's Rust tests
-forge run ios --project .                    # xtool: build, install and launch on a connected iPhone
+cd ~/projects
+forge init MyApp --bundle-id org.example.myapp
+cd MyApp
+forge test       # the starter's Rust tests
+forge run ios    # xtool: build and install on a connected iPhone
 ```
 
-For Android, add `--platform android` and use `forge build android --project . --install` (needs the Android SDK and NDK; see [android-setup.md](android-setup.md)).
+For Android, add `--platform android` and use `forge build android --install` (needs the Android SDK and NDK; see [android-setup.md](android-setup.md)). Inside an app, every command uses the current directory, so `--project` is only needed to point at another app.
 
 ### Finding the Forge checkout
 
-`forge` must find the checkout: run it from inside the checkout, set `FORGE_WORKSPACE`, or use a `forge` installed with `cargo install --path crates/forge-cli` (which remembers its checkout). Relative `--project` paths are resolved against the current directory first, then the checkout, so `--project .` works from inside the app. `forge build` and `forge run` without `--project` use the current directory when it has a `forge.toml`.
+`forge` must find the checkout: run it from inside the checkout, set `FORGE_WORKSPACE`, or use a `forge` installed with `cargo install --path crates/forge-cli` (which remembers its checkout). Relative `--project` paths are resolved against the current directory first, then the checkout, so `--project .` works from inside the app. `forge build`, `forge run`, `forge test` and `forge bindings generate` without `--project` use the current directory when it has a `forge.toml`.
 
 ### Paths written into the app
 
@@ -29,12 +30,12 @@ For Android, add `--platform android` and use `forge build android --project . -
 
 ### iOS (`--platform ios`, default)
 
-- `forge.toml` (app name, bundle ID, version, permissions, entitlements, signing: [app-config.md](app-config.md)), `Package.swift`, `.gitignore`
+- `forge.toml` (app name, bundle ID, version, permissions, entitlements, signing: [app-config.md](app-config.md)), `Package.swift`, `.gitignore`, `README.md`
 - `Info.plist`, `App.entitlements`, `xtool.yml`: generated from `forge.toml`, rewritten by every `forge build ios` / `forge run ios` (`forge config sync`)
 - `rust/`: the app's Rust crate (a notes starter; see [app-crate.md](app-crate.md))
 - `Sources/AppHost/`: the SwiftUI app (notes list, editor, compose and settings screens) and its `@Observable` `NotesModel`, calling the Rust API in `ForgeFFI` directly. See [ios-ui.md](ios-ui.md) for the conventions it follows
 - `Sources/AppHostXtoolApp/`: xtool entry point; `Sources/AppHostLauncher/`: entry point for `swift run` and Xcode
-- `Tests/AppHostTests/`: XCTest suite against the real Rust library (macOS: `forge test --project .`)
+- `Tests/AppHostTests/`: XCTest suite against the real Rust library (macOS: `forge test`)
 - `Xcode/<Name>.xcodeproj`: conventional iOS application host (macOS)
 - `Generated/`: Swift UniFFI output
 
@@ -75,10 +76,10 @@ Template sources use explicit tokens (never substring-replace product names):
 After changing the exported Rust API:
 
 ```bash
-forge bindings generate --project .
+forge bindings generate   # from the app directory, or --project <dir>
 ```
 
-`forge build`, `forge run` and `forge test --project` regenerate them too. Never edit `Generated/` by hand.
+`forge build` and `forge run` regenerate them too, as does `forge test` when it runs host tests (Android, or iOS on macOS). Never edit `Generated/` by hand.
 
 ## Older apps and the bundled examples
 

@@ -79,7 +79,18 @@ pub trait CommandRunner: Send + Sync {
     /// Runs attached to the terminal: output streams live and the child can
     /// prompt on stdin (builds, `xtool dev`, Gradle).
     fn stream(&self, cmd: &Cmd) -> Result<ExitStatus, String>;
+
+    /// Like [`stream`](Self::stream), but also returns the last part of what
+    /// the child printed (stdout and stderr interleaved), so a failure can be
+    /// explained. Output is still forwarded to the terminal as it arrives and
+    /// stdin stays attached, so prompts (xtool's Apple ID login) still work.
+    fn stream_tail(&self, cmd: &Cmd) -> Result<(ExitStatus, String), String> {
+        self.stream(cmd).map(|status| (status, String::new()))
+    }
 }
+
+/// How much of a child's output [`CommandRunner::stream_tail`] keeps.
+pub const TAIL_BYTES: usize = 64 * 1024;
 
 #[derive(Default)]
 pub struct RealRunner;
@@ -99,6 +110,60 @@ impl CommandRunner for RealRunner {
             .stderr(Stdio::inherit())
             .status()
             .map_err(|e| format!("failed to run {}: {e}", cmd.program.to_string_lossy()))
+    }
+
+    fn stream_tail(&self, cmd: &Cmd) -> Result<(ExitStatus, String), String> {
+        use std::io::{Read, Write};
+        use std::sync::{Arc, Mutex};
+
+        let mut child = cmd
+            .to_command()
+            .stdin(Stdio::inherit())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("failed to run {}: {e}", cmd.program.to_string_lossy()))?;
+        let tail = Arc::new(Mutex::new(Vec::<u8>::new()));
+
+        // Forwards each chunk as soon as it is read (not line by line), so a
+        // prompt without a trailing newline still shows.
+        fn pump<R: Read, W: Write>(mut from: R, mut to: W, tail: &Mutex<Vec<u8>>) {
+            let mut buf = [0u8; 8192];
+            while let Ok(n) = from.read(&mut buf) {
+                if n == 0 {
+                    break;
+                }
+                let _ = to.write_all(&buf[..n]);
+                let _ = to.flush();
+                let mut t = tail.lock().unwrap_or_else(|p| p.into_inner());
+                t.extend_from_slice(&buf[..n]);
+                if t.len() > 2 * TAIL_BYTES {
+                    let cut = t.len() - TAIL_BYTES;
+                    t.drain(..cut);
+                }
+            }
+        }
+
+        let out = child.stdout.take().map(|o| {
+            let tail = Arc::clone(&tail);
+            std::thread::spawn(move || pump(o, std::io::stdout(), &tail))
+        });
+        let err = child.stderr.take().map(|e| {
+            let tail = Arc::clone(&tail);
+            std::thread::spawn(move || pump(e, std::io::stderr(), &tail))
+        });
+        let status = child
+            .wait()
+            .map_err(|e| format!("failed to wait for {}: {e}", cmd.program.to_string_lossy()))?;
+        for handle in [out, err].into_iter().flatten() {
+            let _ = handle.join();
+        }
+        let bytes = tail.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        let start = bytes.len().saturating_sub(TAIL_BYTES);
+        Ok((
+            status,
+            String::from_utf8_lossy(&bytes[start..]).into_owned(),
+        ))
     }
 }
 
@@ -170,5 +235,23 @@ impl CommandRunner for MockRunner {
 
     fn stream(&self, cmd: &Cmd) -> Result<ExitStatus, String> {
         self.lookup(cmd).map(|(status, _)| status)
+    }
+
+    fn stream_tail(&self, cmd: &Cmd) -> Result<(ExitStatus, String), String> {
+        self.lookup(cmd)
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn real_stream_tail_keeps_stdout_and_stderr() {
+        let (status, tail) = RealRunner
+            .stream_tail(&Cmd::new("sh").args(["-c", "echo out; echo err >&2; exit 3"]))
+            .unwrap();
+        assert_eq!(status.code(), Some(3));
+        assert!(tail.contains("out") && tail.contains("err"), "{tail}");
     }
 }

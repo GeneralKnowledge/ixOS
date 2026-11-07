@@ -28,18 +28,23 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
 1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/) and [xtool](https://github.com/xtool-org/xtool), then run `xtool setup` with an **Xcode.xip** (Xcode 26) to install the Darwin SDK. See [docs/linux-setup.md](docs/linux-setup.md). For Android, install the SDK, NDK and `cargo-ndk` ([docs/android-setup.md](docs/android-setup.md)).
 2. Install the CLI and check the machine: `cargo install --path crates/forge-cli --locked`, then `forge doctor`. It reports which workflows are ready (Rust, iOS from Linux with xtool, Android) and how to fix each missing piece.
-3. Create an app outside the checkout. It gets its own Rust crate for your logic:
+3. Create an app outside the checkout and run it. It gets its own Rust crate for your logic:
 
    ```bash
-   forge init MyApp --bundle-id org.example.myapp --path ~/projects/MyApp   # add --platform android for Android
-   cd ~/projects/MyApp
-   cargo test --manifest-path rust/Cargo.toml   # your Rust, tested on Linux
-   forge run ios --project .                    # build with xtool, install and launch on a connected iPhone
-   forge build android --project . --install    # (Android app) debug APK on a connected phone
+   cd ~/projects
+   forge init MyApp --bundle-id org.example.myapp   # add --platform android for Android
+   cd MyApp
+   forge run ios                  # build with xtool, sign and install on a connected iPhone; open it from the home screen
+   forge test                     # your Rust tests (plus XCTest on macOS, JVM tests for Android)
+   forge build android --install  # (Android app) debug APK on a connected phone
    ```
+
+   `forge run ios` checks the toolchain, your Apple sign-in and the iPhone before it builds, and a failed build or install ends with what went wrong and how to fix it.
 
 4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screens. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md) for the Rust side and [docs/ios-ui.md](docs/ios-ui.md) for building a native iOS interface.
 5. Set the app's name, version, icon, permission prompts, URL schemes and entitlements in `forge.toml`; Forge writes Info.plist, App.entitlements and xtool.yml from it ([docs/app-config.md](docs/app-config.md)).
+
+New to Forge? [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
 To try the bundled examples instead: `forge run ios --project examples/chat` (start `make mock-chat` first), or `forge build android --project examples/chat-android --install`.
 
@@ -85,7 +90,7 @@ cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an ap
 cargo run -p forge-cli -- bindings generate --out examples/counter/Generated
 cargo run -p forge-cli -- bindings generate --language kotlin --out examples/counter-android/Generated
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
-cargo run -p forge-cli -- run ios --project examples/counter         # build, install and launch (xtool dev run)
+cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/counter-android
 cargo run -p forge-cli -- devices
