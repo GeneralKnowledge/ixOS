@@ -1,3 +1,4 @@
+import Foundation
 @preconcurrency import ForgeFFI
 
 // The Weather payload is used as UniFFI generates it: records become Swift
