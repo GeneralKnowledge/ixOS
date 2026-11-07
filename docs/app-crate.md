@@ -42,6 +42,7 @@ forge build android --install                # debug APK on a connected Android 
 | A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
 | The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase`, `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
 | Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
+| Native iOS services: Keychain, app directories, notifications, permissions, sharing, deep links | `forge_services::native_services!()` adds `crate::native`; the iOS host installs it with `AppServices.install()` | [`forge-services`](../crates/forge-services/src/lib.rs), [native-services.md](native-services.md) |
 
 The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src/main/java/.../NotesViewModel.kt` and `AppLifecycle.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
 
@@ -85,6 +86,8 @@ On the way back from `Background`, Rust sends `PhaseChanged { resumed: true }` o
 In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes. `lifetime()` is cancelled on `Terminated`. `foreground()` is cancelled on `Background` and renewed on resume. Run work that only makes sense on screen under `lifecycle.foreground().child()`, as `check_url` does. Run work that should finish anyway under the lifetime, or keep it short: iOS suspends a backgrounded app within seconds. `lifecycle.subscribe()` lets code on other threads follow changes.
 
 Do not rely on `Terminated` to save anything. iOS sends `willTerminate` only when it ends an app that is still running, not one it has suspended, and either OS may kill a background process without notice. The starter saves before each command returns, so it loses nothing either way.
+
+On Android, `close()` also frees the Kotlin `AppCore`, and UniFFI's Kotlin throws `IllegalStateException` for any later call on a freed object before Rust sees it. So after a suspending call, read the view model's current `core` again rather than reusing the instance the call started with: the app may have closed in between. The starter's `NotesViewModel` does this (`refreshNotes`). Swift frees the object only when the last reference goes, so the same call there reaches Rust and gets `ShutDown`.
 
 What is verified: the Rust, XCTest and JVM tests drive these phases through the real library. Phase changes on a physical device (pressing Home, the app switcher, an incoming call) have not been recorded yet.
 
