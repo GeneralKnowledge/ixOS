@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
+use forge_storage::FileStore;
 use quick_xml::events::{BytesStart, Event};
 
 use crate::epub::{
@@ -119,9 +120,13 @@ impl<R: Read + Seek> EpubText<R> {
         self.chapters.iter().map(|c| c.words).collect()
     }
 
-    /// Chapter `index` as blocks. Its images are written to `image_dir` and
+    /// Chapter `index` as blocks. Its images are saved in `images` and
     /// named by absolute path.
-    pub fn chapter(&mut self, index: u32, image_dir: &Path) -> Result<ReaderChapter, LibraryError> {
+    pub fn chapter(
+        &mut self,
+        index: u32,
+        images: &FileStore,
+    ) -> Result<ReaderChapter, LibraryError> {
         let path = self
             .paths
             .get(index as usize)
@@ -133,13 +138,13 @@ impl<R: Read + Seek> EpubText<R> {
             }
         })?;
         let folder = folder_of(&path).to_string();
-        let mut images = ImageSaver {
+        let mut saver = ImageSaver {
             archive: &mut self.archive,
             folder: &folder,
-            dir: image_dir,
+            images,
             saved: HashMap::new(),
         };
-        let blocks = parse_blocks(&xhtml, &mut |src| images.save(src));
+        let blocks = parse_blocks(&xhtml, &mut |src| saver.save(src));
         Ok(ReaderChapter {
             index,
             title: self.chapters[index as usize].title.clone(),
@@ -152,7 +157,7 @@ impl<R: Read + Seek> EpubText<R> {
 struct ImageSaver<'a, R: Read + Seek> {
     archive: &'a mut Archive<R>,
     folder: &'a str,
-    dir: &'a Path,
+    images: &'a FileStore,
     saved: HashMap<String, Option<PathBuf>>,
 }
 
@@ -185,9 +190,8 @@ impl<R: Read + Seek> ImageSaver<'_, R> {
             .chars()
             .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
             .collect();
-        let file = self.dir.join(format!("{stem}.{extension}"));
-        forge_storage::write_atomic(&file, &bytes).ok()?;
-        Some(file)
+        let name = format!("{stem}.{extension}");
+        self.images.write(&name, &bytes).ok().map(|file| file.path)
     }
 }
 
@@ -905,17 +909,17 @@ mod tests {
         assert_eq!(book.chapter_words(), vec![0, 3, 3, 2]);
 
         let dir = tempfile::tempdir().unwrap();
-        let chapter = book.chapter(2, dir.path()).unwrap();
+        let chapter = book.chapter(2, &FileStore::new(dir.path())).unwrap();
         assert_eq!(texts(&chapter.blocks), vec!["gamma delta epsilon"]);
         assert_eq!(chapter.title, "The Beginning");
-        assert!(book.chapter(4, dir.path()).is_err());
+        assert!(book.chapter(4, &FileStore::new(dir.path())).is_err());
     }
 
     #[test]
     fn cover_page_images_are_saved_for_the_host() {
         let mut book = EpubText::open(Cursor::new(split_epub())).unwrap();
         let dir = tempfile::tempdir().unwrap();
-        let cover = book.chapter(0, dir.path()).unwrap();
+        let cover = book.chapter(0, &FileStore::new(dir.path())).unwrap();
         // The 3-byte "jpg" is a real JPEG signature, so it is saved…
         let [TextBlock {
             kind: TextBlockKind::Image { file, .. },
