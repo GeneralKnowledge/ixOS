@@ -119,8 +119,8 @@ Nothing below is built. It is written down so that #61 and the twin produce one 
 
 After #61 merges and has run on the phone, `forge ui run <scenario>` would:
 
-1. Write its output directory as `.forge/runs/<id>-ui-run/` (today the caller picks it) and put the screenshots it already takes into `screens/`, and the tree it already dumps at a failure into `trees/`.
-2. Write `evidence.json` with `kind = "device"`, `where.device` from the phone, and `build.installed_as` (xtool's renamed bundle id). Instead of `tests`, a device run has `steps`: one entry per scenario step, `{ "n", "action", "locator", "passed", "seconds", "screenshot", "tree" }`, the fields of #61's `Report` plus paths.
+1. Default its `--out` directory to `.forge/runs/<id>-ui-run/`. The files it already writes there stay as they are and are listed under `artifacts`: the script's named screenshots, and at a failed step `failure-stepN.png`, `failure-stepN-tree.json` and `failure-stepN-tree.txt`. (The `screens/` and `trees/` folders in the layout above are for later runs that take a tree at every check.)
+2. Write `evidence.json` with `kind = "device"`, `where.device` from the phone, and `build.installed_as` (xtool's renamed bundle id). Instead of `tests`, a device run has `steps`: one entry per scenario step, `{ "n", "action", "passed", "error", "screenshot", "tree" }`, taken from what `forge ui run --json` already returns (`passed_steps`, `failed_step` with `on_screen` and `tree`, `screenshots`).
 3. Look up which requirements list the scenario under `device`, and set their `device` verdict (`passed` or `failed`). The twin verdict is left out of a device bundle.
 
 The scenario TOML stays as #61 has it. The link between a requirement and a scenario lives only in `requirements.toml`, so neither format has to change when the other does.
