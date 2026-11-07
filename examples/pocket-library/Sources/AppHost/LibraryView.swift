@@ -123,9 +123,8 @@ struct LibraryView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            addMenu
-        }
+        // Declared first, so it sits to the left of Add, which takes the
+        // trailing edge as the primary action (as in Reminders and Books).
         ToolbarItem(placement: .primaryAction) {
             // Filter and sort in one menu, as Mail and Files do.
             Menu {
@@ -148,6 +147,9 @@ struct LibraryView: View {
                         : "line.3.horizontal.decrease.circle.fill"
                 )
             }
+        }
+        ToolbarItem(placement: .primaryAction) {
+            addMenu
         }
     }
 
@@ -214,19 +216,35 @@ struct BookRow: View {
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
-                HStack(spacing: 6) {
-                    Image(systemName: book.status.symbol)
-                        .foregroundStyle(book.status.tint)
+                if typeSize.isAccessibilitySize {
+                    // Full width: the summary on its own line, the bar below.
+                    Label {
+                        Text(book.pageSummary)
+                    } icon: {
+                        Image(systemName: book.status.symbol)
+                            .foregroundStyle(book.status.tint)
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     if book.status == .reading, book.totalPages != nil {
                         ProgressView(value: book.progress)
                             .tint(book.status.tint)
-                            .frame(maxWidth: 90)
                     }
-                    Text(book.pageSummary)
-                        .monospacedDigit()
+                } else {
+                    HStack(spacing: 6) {
+                        Image(systemName: book.status.symbol)
+                            .foregroundStyle(book.status.tint)
+                        if book.status == .reading, book.totalPages != nil {
+                            ProgressView(value: book.progress)
+                                .tint(book.status.tint)
+                                .frame(maxWidth: 90)
+                        }
+                        Text(book.pageSummary)
+                            .monospacedDigit()
+                    }
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             if let rating = book.rating {

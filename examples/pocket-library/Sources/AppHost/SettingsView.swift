@@ -35,18 +35,14 @@ struct SettingsView: View {
                     }
                     if let exportURL {
                         ShareLink(item: exportURL) {
-                            Label("Share Export File", systemImage: "square.and.arrow.up")
+                            Text("Share Export File")
                         }
                     } else {
                         Button {
                             export()
                         } label: {
-                            HStack {
-                                Label("Export Library", systemImage: "doc.text")
-                                if exporting {
-                                    Spacer()
-                                    ProgressView()
-                                }
+                            LabeledContent("Export Library") {
+                                if exporting { ProgressView() }
                             }
                         }
                         .disabled(exporting)
