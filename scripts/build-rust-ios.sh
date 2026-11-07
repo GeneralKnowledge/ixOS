@@ -73,7 +73,13 @@ esac
 echo "[forge] Building ${CRATE_DIR#"$ROOT/"} for ${TARGET} (${CARGO_PROFILE})..."
 # Only the static library is linked into the app. Asking for it alone skips the crate's
 # cdylib, which needs an iOS linker that a Linux host (xtool's Darwin SDK) does not provide.
-cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE"
+# FORGE_RUST_FEATURES: the app crate's features, comma-separated (`forge run
+# ios --devtools` sets `devtools`).
+FEATURES=()
+if [[ -n "${FORGE_RUST_FEATURES:-}" ]]; then
+  FEATURES=(--features "$FORGE_RUST_FEATURES")
+fi
+cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE" ${FEATURES[@]+"${FEATURES[@]}"}
 
 OUT_DIR="$NATIVE_OUT/ios-device/lib"
 mkdir -p "$OUT_DIR"

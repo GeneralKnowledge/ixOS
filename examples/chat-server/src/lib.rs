@@ -15,6 +15,8 @@
 //! - `DELETE /rooms/{id}/messages/{mid}`    → `200` the message, now a tombstone (its author only)
 //! - `POST /rooms/{id}/messages/{mid}/reactions` ← `{"emoji","on"}` → `200` the message (accounts only)
 //! - `GET  /rooms/{id}/stream`              → `text/event-stream`: `event: message`, `event: room`, `event: read`, `:ping`
+//! - `POST /attachments`                    ← the file's bytes → `201` `{"id","size"}` (`200` if already stored)
+//! - `GET  /attachments/{id}`               → the file's bytes
 //!
 //! `Room` is `{"id","title","last_message_at","last_message","read_up_to","others_read_up_to"}`.
 //! `read_up_to` is the caller's read cursor: every message up to that
@@ -44,6 +46,14 @@
 //! `edited_at`, `deleted` (a tombstone: empty body, no reactions) and
 //! `reactions` (`{"👍": ["user id", …]}`).
 //!
+//! Attachments (photos, documents) are uploaded first, on their own, and
+//! stored once under the SHA-256 of their bytes: the hex digest is their
+//! `id`, so an upload is idempotent and a download can be verified. A
+//! message then names them in `attachments` (`[{"id","name","mime","size"}]`,
+//! up to [`MAX_ATTACHMENTS_PER_MESSAGE`], each up to
+//! [`MAX_ATTACHMENT_BYTES`]); its body may then be empty. They live in an
+//! `attachments` folder next to the data file (or in memory).
+//!
 //! A stream subscriber that falls too far behind is disconnected; the client
 //! reconnects and catches up with `since`.
 //!
@@ -60,7 +70,8 @@ use std::path::{Path as FsPath, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use axum::extract::{Path, Query, State};
+use axum::body::Bytes;
+use axum::extract::{DefaultBodyLimit, Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -105,6 +116,15 @@ pub const MAX_TITLE_CHARS: usize = 60;
 pub const MAX_ROOMS: usize = 200;
 
 /// Events buffered per stream subscriber before it is disconnected.
+/// Largest attachment accepted, in bytes (25 MiB).
+pub const MAX_ATTACHMENT_BYTES: usize = 25 * 1024 * 1024;
+
+/// Most attachments one message may carry.
+pub const MAX_ATTACHMENTS_PER_MESSAGE: usize = 10;
+
+/// Longest attachment file name kept, in characters.
+pub const MAX_ATTACHMENT_NAME_CHARS: usize = 200;
+
 const STREAM_BUFFER: usize = 1024;
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -130,6 +150,99 @@ pub struct WireMessage {
     /// Emoji → the accounts that reacted with it, in order.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reactions: BTreeMap<String, Vec<String>>,
+    /// Files sent with the message, in order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<WireAttachment>,
+}
+
+/// A file a message carries. `id` is the SHA-256 of its bytes (lowercase
+/// hex), which is also how to download it.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WireAttachment {
+    pub id: String,
+    /// The file name as the sender had it.
+    pub name: String,
+    /// Its media type, e.g. `image/jpeg` or `application/pdf`.
+    pub mime: String,
+    /// Size in bytes (the server fills it in from what it stored).
+    #[serde(default)]
+    pub size: u64,
+}
+
+#[derive(Serialize)]
+struct UploadAnswer {
+    id: String,
+    size: u64,
+}
+
+/// Where attachment bytes are kept: a folder, or memory.
+enum Blobs {
+    Memory(Mutex<HashMap<String, Bytes>>),
+    Directory(PathBuf),
+}
+
+impl Blobs {
+    fn path(dir: &FsPath, id: &str) -> PathBuf {
+        dir.join(id)
+    }
+
+    /// Stores `bytes` under `id`; `Ok(false)` if they were already there.
+    fn put(&self, id: &str, bytes: Bytes) -> std::io::Result<bool> {
+        match self {
+            Self::Memory(map) => {
+                let mut map = map.lock().unwrap_or_else(|p| p.into_inner());
+                Ok(map.insert(id.to_string(), bytes).is_none())
+            }
+            Self::Directory(dir) => {
+                let path = Self::path(dir, id);
+                if path.exists() {
+                    return Ok(false);
+                }
+                write_private_atomically(&path, &bytes)?;
+                Ok(true)
+            }
+        }
+    }
+
+    fn get(&self, id: &str) -> std::io::Result<Option<Bytes>> {
+        match self {
+            Self::Memory(map) => Ok(map
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get(id)
+                .cloned()),
+            Self::Directory(dir) => match std::fs::read(Self::path(dir, id)) {
+                Ok(bytes) => Ok(Some(Bytes::from(bytes))),
+                Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(err) => Err(err),
+            },
+        }
+    }
+
+    fn size(&self, id: &str) -> Option<u64> {
+        match self {
+            Self::Memory(map) => map
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .get(id)
+                .map(|b| b.len() as u64),
+            Self::Directory(dir) => std::fs::metadata(Self::path(dir, id)).ok().map(|m| m.len()),
+        }
+    }
+}
+
+/// An attachment id is a SHA-256 in lowercase hex; nothing else reaches the
+/// file system.
+fn is_attachment_id(id: &str) -> bool {
+    id.len() == 64 && id.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f'))
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 fn is_false(value: &bool) -> bool {
@@ -183,9 +296,12 @@ struct PostBody {
     /// Only used for anonymous posts; an account's posts carry its name.
     #[serde(default)]
     author: Option<String>,
+    #[serde(default)]
     body: String,
     #[serde(default)]
     reply_to: Option<String>,
+    #[serde(default)]
+    attachments: Vec<WireAttachment>,
 }
 
 #[derive(Deserialize)]
@@ -393,6 +509,7 @@ impl Inner {
 #[derive(Clone)]
 pub struct AppState {
     inner: Arc<Mutex<Inner>>,
+    blobs: Arc<Blobs>,
     heartbeat: Duration,
     allow_anonymous: bool,
 }
@@ -436,7 +553,12 @@ impl AppState {
     pub fn open(data_file: impl Into<PathBuf>, heartbeat: Duration) -> Result<Self, DataError> {
         let data_file = data_file.into();
         let stored = load(&data_file)?;
-        let state = Self::from_stored(stored, Some(data_file.clone()), heartbeat);
+        let mut state = Self::from_stored(stored, Some(data_file.clone()), heartbeat);
+        let attachments = data_file
+            .parent()
+            .unwrap_or_else(|| FsPath::new("."))
+            .join("attachments");
+        state.blobs = Arc::new(Blobs::Directory(attachments));
         state
             .lock()
             .save()
@@ -471,6 +593,7 @@ impl AppState {
                 next_server_id: stored.next_server_id,
                 data_file,
             })),
+            blobs: Arc::new(Blobs::Memory(Mutex::new(HashMap::new()))),
             heartbeat,
             allow_anonymous: false,
         }
@@ -850,9 +973,17 @@ async fn post_message(
         Err(why) => return unauthorized(why),
     };
     let body = post.body.trim().to_string();
-    if body.is_empty() || author.is_empty() {
-        return (StatusCode::BAD_REQUEST, "author and body must not be empty").into_response();
+    if (body.is_empty() && post.attachments.is_empty()) || author.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            "author and body (or an attachment) must not be empty",
+        )
+            .into_response();
     }
+    let attachments = match checked_attachments(&state, post.attachments) {
+        Ok(list) => list,
+        Err(why) => return (StatusCode::BAD_REQUEST, why).into_response(),
+    };
     if body.chars().count() > MAX_BODY_CHARS {
         return (StatusCode::BAD_REQUEST, "body is too long").into_response();
     }
@@ -891,6 +1022,7 @@ async fn post_message(
         edited_at: None,
         deleted: false,
         reactions: BTreeMap::new(),
+        attachments,
     };
     room.messages.push(message.clone());
     // Writing a message means having read up to it.
@@ -1025,6 +1157,7 @@ async fn delete_message(
         message.deleted = true;
         message.body.clear();
         message.reactions.clear();
+        message.attachments.clear();
         Ok(())
     })
 }
@@ -1101,6 +1234,118 @@ fn events(
     })
 }
 
+/// The attachments a new message names, checked against what was uploaded,
+/// with clean names and media types and the stored sizes.
+fn checked_attachments(
+    state: &AppState,
+    attachments: Vec<WireAttachment>,
+) -> Result<Vec<WireAttachment>, &'static str> {
+    if attachments.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+        return Err("too many attachments");
+    }
+    attachments
+        .into_iter()
+        .map(|a| {
+            if !is_attachment_id(&a.id) {
+                return Err("an attachment id is a SHA-256 in lowercase hex");
+            }
+            let size = state
+                .blobs
+                .size(&a.id)
+                .ok_or("an attachment was not uploaded first")?;
+            // Only the last path component, without control characters.
+            let name: String = a
+                .name
+                .rsplit(['/', '\\'])
+                .next()
+                .unwrap_or_default()
+                .chars()
+                .filter(|c| !c.is_control())
+                .take(MAX_ATTACHMENT_NAME_CHARS)
+                .collect::<String>()
+                .trim()
+                .to_string();
+            let name = if name.is_empty() || name == "." || name == ".." {
+                "file".to_string()
+            } else {
+                name
+            };
+            let mime = a.mime.trim();
+            let mime = if mime.is_empty()
+                || mime.len() > 100
+                || !mime.contains('/')
+                || mime.chars().any(|c| c.is_whitespace() || c.is_control())
+            {
+                "application/octet-stream".to_string()
+            } else {
+                mime.to_ascii_lowercase()
+            };
+            Ok(WireAttachment {
+                id: a.id,
+                name,
+                mime,
+                size,
+            })
+        })
+        .collect()
+}
+
+async fn upload_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    bytes: Bytes,
+) -> Response {
+    if let Err(why) = caller(&state, &headers) {
+        return unauthorized(why);
+    }
+    if bytes.is_empty() {
+        return (StatusCode::BAD_REQUEST, "an attachment must not be empty").into_response();
+    }
+    let size = bytes.len() as u64;
+    let blobs = state.blobs.clone();
+    let stored = tokio::task::spawn_blocking(move || {
+        let id = sha256_hex(&bytes);
+        blobs.put(&id, bytes).map(|new| (id, new))
+    })
+    .await;
+    match stored {
+        Ok(Ok((id, new))) => {
+            let status = if new {
+                StatusCode::CREATED
+            } else {
+                StatusCode::OK
+            };
+            (status, Json(UploadAnswer { id, size })).into_response()
+        }
+        Ok(Err(err)) => storage_failed(err),
+        Err(err) => storage_failed(std::io::Error::other(err)),
+    }
+}
+
+async fn download_attachment(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Response {
+    if let Err(why) = caller(&state, &headers) {
+        return unauthorized(why);
+    }
+    if !is_attachment_id(&id) {
+        return (StatusCode::NOT_FOUND, "no such attachment").into_response();
+    }
+    let blobs = state.blobs.clone();
+    match tokio::task::spawn_blocking(move || blobs.get(&id)).await {
+        Ok(Ok(Some(bytes))) => (
+            [(axum::http::header::CONTENT_TYPE, "application/octet-stream")],
+            bytes,
+        )
+            .into_response(),
+        Ok(Ok(None)) => (StatusCode::NOT_FOUND, "no such attachment").into_response(),
+        Ok(Err(err)) => storage_failed(err),
+        Err(err) => storage_failed(std::io::Error::other(err)),
+    }
+}
+
 /// The router, for `main` and for in-process tests.
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -1118,6 +1363,11 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/rooms/{id}/messages/{mid}/reactions", post(react))
         .route("/rooms/{id}/stream", get(stream_room))
+        .route(
+            "/attachments",
+            post(upload_attachment).layer(DefaultBodyLimit::max(MAX_ATTACHMENT_BYTES)),
+        )
+        .route("/attachments/{id}", get(download_attachment))
         .with_state(state)
 }
 
@@ -1239,6 +1489,80 @@ mod tests {
             Some(9)
         );
         assert_eq!(room.wire("r", Viewer::Everyone).read_up_to, None);
+    }
+
+    #[test]
+    fn attachments_are_stored_once_by_content_and_names_are_cleaned() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::open(dir.path().join("server.json"), DEFAULT_HEARTBEAT).unwrap();
+        let id = sha256_hex(b"hello");
+        assert_eq!(
+            id,
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+        assert!(state.blobs.put(&id, Bytes::from_static(b"hello")).unwrap());
+        assert!(!state.blobs.put(&id, Bytes::from_static(b"hello")).unwrap());
+        assert_eq!(
+            std::fs::read(dir.path().join("attachments").join(&id)).unwrap(),
+            b"hello"
+        );
+        assert_eq!(state.blobs.get(&id).unwrap().unwrap(), &b"hello"[..]);
+        assert!(is_attachment_id(&id));
+        assert!(!is_attachment_id("../server.json"));
+        assert!(!is_attachment_id(&id.to_uppercase()));
+
+        let checked = checked_attachments(
+            &state,
+            vec![WireAttachment {
+                id: id.clone(),
+                name: "../../etc/Report\u{7}.pdf".into(),
+                mime: " Application/PDF ".into(),
+                size: 999,
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            checked,
+            [WireAttachment {
+                id: id.clone(),
+                name: "Report.pdf".into(),
+                mime: "application/pdf".into(),
+                size: 5,
+            }]
+        );
+        let odd = checked_attachments(
+            &state,
+            vec![WireAttachment {
+                id: id.clone(),
+                name: "..".into(),
+                mime: "not a type".into(),
+                size: 0,
+            }],
+        )
+        .unwrap();
+        assert_eq!(
+            (odd[0].name.as_str(), odd[0].mime.as_str()),
+            ("file", "application/octet-stream")
+        );
+        assert!(checked_attachments(
+            &state,
+            vec![WireAttachment {
+                id: sha256_hex(b"never uploaded"),
+                ..WireAttachment::default()
+            }]
+        )
+        .is_err());
+        assert!(checked_attachments(
+            &state,
+            vec![
+                WireAttachment {
+                    id,
+                    ..WireAttachment::default()
+                };
+                MAX_ATTACHMENTS_PER_MESSAGE + 1
+            ]
+        )
+        .is_err());
     }
 
     #[test]

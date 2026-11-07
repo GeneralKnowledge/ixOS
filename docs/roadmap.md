@@ -8,6 +8,8 @@ Last reviewed: 2026-11-07.
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
+What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](framework-extraction-audit.md).
+
 ## Platform focus
 
 ### Android — Work in progress

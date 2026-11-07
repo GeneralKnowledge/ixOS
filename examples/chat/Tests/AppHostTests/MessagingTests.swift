@@ -1,5 +1,8 @@
 @testable import AppHost
+import CoreGraphics
 @preconcurrency import ForgeFFI
+import ImageIO
+import UniformTypeIdentifiers
 import XCTest
 
 /// M1 against the real Rust core and the real chat server: read receipts,
@@ -155,6 +158,81 @@ final class MessagingTests: XCTestCase {
         me.close()
         other.close()
     }
+    /// A PNG of `width` × `height` pixels, standing in for a picked photo.
+    private func pngData(width: Int, height: Int) throws -> Data {
+        let context = try XCTUnwrap(
+            CGContext(
+                data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                space: CGColorSpaceCreateDeviceRGB(),
+                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+        context.setFillColor(red: 0.2, green: 0.5, blue: 0.9, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let image = try XCTUnwrap(context.makeImage())
+        let data = NSMutableData()
+        let destination = try XCTUnwrap(
+            CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        XCTAssertTrue(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+
+    /// M3: a photo (shrunk to a JPEG) and a document go from one account to
+    /// the other, which fetches them, thumbnails the photo and opens the
+    /// document under its own name.
+    func testPhotosAndDocumentsBetweenTwoPeople() async throws {
+        let server = try ChatServer.start()
+        defer { server.stop() }
+        let me = try await signedIn("Reuben", on: server)
+        let other = try await signedIn("Laptop", on: server)
+
+        let photo = try await AttachmentFiles.preparePhoto(try pngData(width: 4000, height: 3000))
+        XCTAssertEqual(photo.mime, "image/jpeg")
+        XCTAssertTrue(photo.name.hasPrefix("IMG_") && photo.name.hasSuffix(".jpg"))
+        let shrunk = try XCTUnwrap(
+            CGImageSourceCreateWithURL(photo.url as CFURL, nil).flatMap {
+                CGImageSourceCopyPropertiesAtIndex($0, 0, nil) as? [CFString: Any]
+            })
+        XCTAssertEqual(shrunk[kCGImagePropertyPixelWidth] as? Int, AttachmentFiles.maxPhotoPixels)
+        XCTAssertEqual(shrunk[kCGImagePropertyPixelHeight] as? Int, 1536)
+
+        let picked = FileManager.default.temporaryDirectory
+            .appendingPathComponent("notes-\(UUID().uuidString).txt")
+        try Data("packing list".utf8).write(to: picked)
+        addTeardownBlock { try? FileManager.default.removeItem(at: picked) }
+        let document = try AttachmentFiles.prepareDocument(picked)
+        XCTAssertEqual(document.mime, "text/plain")
+
+        await me.enter("general")
+        await waitUntil("connected") { me.connection["general"] == .connected }
+        await me.send(files: [photo.outgoing, document.outgoing], text: "", to: "general")
+        await waitUntil("sent") { me.messages(in: "general").first?.status == .sent }
+        let sent = try XCTUnwrap(me.messages(in: "general").first)
+        XCTAssertEqual(sent.attachments.map(\.isImage), [true, false])
+        XCTAssertEqual(me.conversation("general")?.lastMessage?.summary, "Photo +1")
+
+        // The laptop gets the message, then the files on demand.
+        await other.enter("general")
+        await waitUntil("the files arrived") {
+            other.messages(in: "general").first?.attachments.count == 2
+        }
+        let received = try XCTUnwrap(other.messages(in: "general").first)
+        let fetched = await other.localFile(for: received.attachments[0])
+        let photoFile = try XCTUnwrap(fetched)
+        let small = await AttachmentFiles.thumbnail(of: photoFile, maxPixels: 440)
+        let thumbnail = try XCTUnwrap(small)
+        XCTAssertEqual(max(thumbnail.width, thumbnail.height), 440)
+
+        let named = await other.previewFile(for: received.attachments[1])
+        let preview = try XCTUnwrap(named)
+        XCTAssertEqual(preview.lastPathComponent, document.name)
+        XCTAssertEqual(try Data(contentsOf: preview), Data("packing list".utf8))
+        XCTAssertNil(other.actionError)
+
+        me.leave("general")
+        other.leave("general")
+        me.close()
+        other.close()
+    }
 }
 
 /// Grouping and separators in the transcript, without a server.
@@ -169,7 +247,7 @@ final class TranscriptTests: XCTestCase {
         ChatMessage(
             id: id, conversationId: "general", author: author, authorId: "id-\(author)",
             isMine: mine, body: id, sentAt: base + minutes * minute, status: status,
-            replyTo: nil, edited: false, deleted: false, reactions: [])
+            replyTo: nil, edited: false, deleted: false, reactions: [], attachments: [])
     }
 
     private func places(_ rows: [Transcript.Row]) -> [String: Transcript.Place] {

@@ -1,5 +1,8 @@
 @preconcurrency import ForgeFFI
+import PhotosUI
+import QuickLook
 import SwiftUI
+import UniformTypeIdentifiers
 
 #if canImport(UIKit)
     import UIKit
@@ -29,6 +32,13 @@ struct ChatView: View {
     @State private var searching = false
     @State private var jumpTarget: String?
     @State private var highlighted: String?
+    /// Photos and documents picked for the next message.
+    @State private var staged: [StagedFile] = []
+    @State private var pickingPhotos = false
+    @State private var photoItems: [PhotosPickerItem] = []
+    @State private var pickingFiles = false
+    /// The attachment open in Quick Look.
+    @State private var previewURL: URL?
     @FocusState private var composing: Bool
 
     private var messages: [ChatMessage] { model.messages(in: conversationId) }
@@ -48,6 +58,7 @@ struct ChatView: View {
                                 .padding(.bottom, 4)
                         case .message(let message, let place):
                             MessageBubble(
+                                model: model,
                                 message: message,
                                 place: place,
                                 delivery: place.showsDelivery ? model.delivery(of: message) : nil,
@@ -94,7 +105,11 @@ struct ChatView: View {
                 focused: $composing,
                 context: composerContext,
                 problem: model.sendError[conversationId],
+                staged: staged,
                 cancel: cancelContext,
+                pickPhotos: { pickingPhotos = true },
+                pickFiles: { pickingFiles = true },
+                unstage: { file in staged.removeAll { $0.id == file.id } },
                 send: send
             )
         }
@@ -136,6 +151,22 @@ struct ChatView: View {
                 Task { await model.delete(message) }
             }
         }
+        .photosPicker(
+            isPresented: $pickingPhotos, selection: $photoItems,
+            maxSelectionCount: MAX_ATTACHMENTS_PER_MESSAGE_SWIFT, matching: .images
+        )
+        .onChange(of: photoItems) { _, items in
+            guard !items.isEmpty else { return }
+            photoItems = []
+            Task { await stagePhotos(items) }
+        }
+        .fileImporter(
+            isPresented: $pickingFiles, allowedContentTypes: [.item],
+            allowsMultipleSelection: true
+        ) { result in
+            stageDocuments(result)
+        }
+        .quickLookPreview($previewURL)
         .sensoryFeedback(.impact(weight: .light), trigger: model.sentCount)
         .sensoryFeedback(.error, trigger: model.failedCount)
         .task {
@@ -189,8 +220,42 @@ struct ChatView: View {
             },
             delete: { deleting = message },
             react: { emoji in Task { await model.toggleReaction(emoji, on: message) } },
-            jump: { jumpTarget = $0 }
+            jump: { jumpTarget = $0 },
+            open: { attachment in
+                Task {
+                    if let url = await model.previewFile(for: attachment) { previewURL = url }
+                }
+            }
         )
+    }
+
+    /// Shrinks picked photos to JPEG files and adds them to the next message.
+    private func stagePhotos(_ items: [PhotosPickerItem]) async {
+        for item in items {
+            guard staged.count < MAX_ATTACHMENTS_PER_MESSAGE_SWIFT else { break }
+            do {
+                guard let data = try await item.loadTransferable(type: Data.self) else { continue }
+                staged.append(try await AttachmentFiles.preparePhoto(data))
+            } catch {
+                model.actionError = String(localized: "That photo couldn't be added (\(error.localizedDescription)).")
+            }
+        }
+    }
+
+    /// Copies picked documents and adds them to the next message.
+    private func stageDocuments(_ result: Result<[URL], Error>) {
+        switch result {
+        case .success(let urls):
+            for url in urls.prefix(MAX_ATTACHMENTS_PER_MESSAGE_SWIFT - staged.count) {
+                do {
+                    staged.append(try AttachmentFiles.prepareDocument(url))
+                } catch {
+                    model.actionError = String(localized: "\(url.lastPathComponent) couldn't be added (\(error.localizedDescription)).")
+                }
+            }
+        case .failure(let error):
+            model.actionError = error.localizedDescription
+        }
     }
 
     private func cancelContext() {
@@ -203,6 +268,15 @@ struct ChatView: View {
 
     private func send() {
         let text = draft
+        if editing == nil && !staged.isEmpty {
+            let files = staged.map(\.outgoing)
+            let replyTo = replyingTo?.id
+            staged = []
+            replyingTo = nil
+            draft = ""
+            Task { await model.send(files: files, text: text, to: conversationId, replyTo: replyTo) }
+            return
+        }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         if let message = editing {
             editing = nil
@@ -218,6 +292,9 @@ struct ChatView: View {
     }
 }
 
+/// Most files one message may carry (Rust's `MAX_ATTACHMENTS_PER_MESSAGE`).
+let MAX_ATTACHMENTS_PER_MESSAGE_SWIFT = 10
+
 /// The reactions offered at the top of a bubble's menu.
 let quickReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"]
 
@@ -230,6 +307,8 @@ struct BubbleActions {
     var react: (String) -> Void
     /// Scrolls to another message (the one a reply quotes).
     var jump: (String) -> Void
+    /// Opens an attachment in Quick Look.
+    var open: (ChatAttachment) -> Void
 }
 
 /// The message a reply answers: `original` is nil when it is not loaded.
@@ -356,10 +435,16 @@ private struct Composer: View {
     var focused: FocusState<Bool>.Binding
     let context: Context?
     let problem: String?
+    let staged: [StagedFile]
     let cancel: () -> Void
+    let pickPhotos: () -> Void
+    let pickFiles: () -> Void
+    let unstage: (StagedFile) -> Void
     let send: () -> Void
 
-    private var empty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    private var empty: Bool {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && (isEditing || staged.isEmpty)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -371,7 +456,22 @@ private struct Composer: View {
             if let context {
                 contextBar(context)
             }
+            if !staged.isEmpty && !isEditing {
+                StagedFilesBar(files: staged, remove: unstage)
+            }
             HStack(alignment: .bottom, spacing: 8) {
+                if !isEditing {
+                    Menu {
+                        Button("Photo", systemImage: "photo.on.rectangle", action: pickPhotos)
+                        Button("Document", systemImage: "doc", action: pickFiles)
+                    } label: {
+                        Label("Attach", systemImage: "plus.circle.fill")
+                            .labelStyle(.iconOnly)
+                            .font(.title)
+                            .foregroundStyle(.secondary)
+                    }
+                    .disabled(staged.count >= MAX_ATTACHMENTS_PER_MESSAGE_SWIFT)
+                }
                 TextField("Message", text: $draft, axis: .vertical)
                     .lineLimit(1...6)
                     .focused(focused)
@@ -406,7 +506,7 @@ private struct Composer: View {
                 case .replying(let message):
                     Text("Replying to \(message.isMine ? String(localized: "yourself") : message.author)")
                         .font(.caption.bold())
-                    Text(message.body).font(.caption).lineLimit(1)
+                    Text(message.summary).font(.caption).lineLimit(1)
                 case .editing(let message):
                     Text("Editing message").font(.caption.bold())
                     Text(message.body).font(.caption).lineLimit(1)
@@ -423,6 +523,7 @@ private struct Composer: View {
 }
 
 private struct MessageBubble: View {
+    let model: ChatModel
     let message: ChatMessage
     let place: Transcript.Place
     let delivery: ChatDelivery?
@@ -502,7 +603,14 @@ private struct MessageBubble: View {
                     QuoteView(quote: quoted, onMine: message.isMine)
                         .onTapGesture { actions.jump(quoted.id) }
                 }
-                Text(message.body)
+                if !message.attachments.isEmpty {
+                    AttachmentsView(
+                        model: model, attachments: message.attachments, onMine: message.isMine,
+                        open: actions.open)
+                }
+                if !message.body.isEmpty {
+                    Text(message.body)
+                }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
@@ -523,8 +631,18 @@ private struct MessageBubble: View {
             .controlGroupStyle(.palette)
             Button("Reply", systemImage: "arrowshape.turn.up.left", action: actions.reply)
         }
-        if !message.deleted {
+        if !message.deleted && !message.body.isEmpty {
             Button("Copy", systemImage: "doc.on.doc") { copy(message.body) }
+        }
+        if !message.deleted {
+            ForEach(Array(message.attachments.enumerated()), id: \.offset) { _, attachment in
+                Button(
+                    attachment.isImage
+                        ? String(localized: "Open Photo")
+                        : String(localized: "Open \(attachment.name)"),
+                    systemImage: attachment.isImage ? "photo" : "doc"
+                ) { actions.open(attachment) }
+            }
         }
         if message.isMine && live {
             Button("Edit", systemImage: "pencil", action: actions.edit)
@@ -554,7 +672,11 @@ private struct MessageBubble: View {
         if let quoted {
             text += ", replying to \(quoted.original?.author ?? String(localized: "a message"))"
         }
-        text += ", \(message.body), \(time)"
+        if !message.body.isEmpty { text += ", \(message.body)" }
+        for attachment in message.attachments {
+            text += attachment.isImage ? ", photo" : ", document \(attachment.name)"
+        }
+        text += ", \(time)"
         if message.edited { text += ", edited" }
         for reaction in message.reactions {
             text += ", \(reaction.emoji) \(reaction.count)"
@@ -596,7 +718,7 @@ private struct QuoteView: View {
 
     private var text: String {
         guard let original = quote.original else { return String(localized: "Original message not loaded") }
-        return original.deleted ? String(localized: "This message was deleted") : original.body
+        return original.deleted ? String(localized: "This message was deleted") : original.summary
     }
 }
 

@@ -153,6 +153,9 @@ pub struct AppCore {
     /// it: requests run under its foreground scope, which the background and
     /// `shutdown` cancel.
     lifecycle: Lifecycle,
+    /// The live connection to `forge device`, in development builds only.
+    #[cfg(feature = "devtools")]
+    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -168,21 +171,23 @@ impl AppCore {
                 reason: "storage directory must not be empty".into(),
             });
         }
-        let file = JsonFile::new(
-            PathBuf::from(storage_directory).join("notes.json"),
-            STORE_VERSION,
-        );
+        let storage_directory = PathBuf::from(storage_directory);
+        let file = JsonFile::new(storage_directory.join("notes.json"), STORE_VERSION);
         let stored: StoredNotes = file.load()?.unwrap_or_default();
         // Logs go to logcat on Android and the system log on iOS (see
         // forge_runtime::logging). Never log note text or other user data.
         forge_runtime::logging::info!("opened with {} notes", stored.notes.len());
+        let state = Arc::new(Mutex::new(State { stored }));
+        let lifecycle = Lifecycle::new();
         Ok(Arc::new(Self {
-            state: Arc::new(Mutex::new(State { stored })),
+            #[cfg(feature = "devtools")]
+            _devtools: devtools::start(&storage_directory, &state, &lifecycle),
+            state,
             file: Arc::new(file),
             events: EventHub::new(),
             http: UreqClient::new(),
             shut_down: Arc::new(AtomicBool::new(false)),
-            lifecycle: Lifecycle::new(),
+            lifecycle,
         }))
     }
 
@@ -402,6 +407,44 @@ fn note_text(text: String) -> Result<String, AppError> {
         });
     }
     Ok(text)
+}
+
+/// What this app shows `forge device` in development builds: probes for
+/// `forge device snapshot` and commands for `forge device cmd`. Add your own;
+/// never expose secrets or user content (note text, tokens).
+#[cfg(feature = "devtools")]
+mod devtools {
+    use super::*;
+    use forge_devtools::{Config, DevTools};
+
+    pub(crate) fn start(
+        storage_directory: &std::path::Path,
+        state: &Arc<Mutex<State>>,
+        lifecycle: &Lifecycle,
+    ) -> Option<DevTools> {
+        // `forge run ios` passes the bundle ID; the pairing lives with the
+        // app's data, so deleting the app forgets it.
+        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
+        let config = Config::new(
+            app,
+            env!("CARGO_PKG_VERSION"),
+            storage_directory.join(".forge-devtools-pairing"),
+        );
+        let tools = match DevTools::start(config, lifecycle.clone()) {
+            Ok(tools) => tools,
+            Err(e) => {
+                forge_runtime::logging::warn!("devtools did not start: {e}");
+                return None;
+            }
+        };
+        let notes = state.clone();
+        tools.probe("notes", move || lock(&notes).stored.notes.len().to_string());
+        tools.command("log", "Writes its arguments to the app's log", |args| {
+            forge_runtime::logging::info!(target: "devtools", "{}", args.join(" "));
+            Ok(String::new())
+        });
+        Some(tools)
+    }
 }
 
 fn newest_first(notes: &[Note]) -> Vec<Note> {

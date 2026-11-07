@@ -352,6 +352,11 @@ uint64_t uniffi_forge_ffi_fn_constructor_chatcore_with_memory_credentials(RustBu
 RustBuffer uniffi_forge_ffi_fn_method_chatcore_account(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ATTACHMENT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ATTACHMENT_FILE
+RustBuffer uniffi_forge_ffi_fn_method_chatcore_attachment_file(uint64_t ptr, RustBuffer attachment_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_CACHED_CONVERSATIONS
 RustBuffer uniffi_forge_ffi_fn_method_chatcore_cached_conversations(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -392,6 +397,11 @@ uint64_t uniffi_forge_ffi_fn_method_chatcore_edit_message(uint64_t ptr, RustBuff
 uint64_t uniffi_forge_ffi_fn_method_chatcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_FETCH_ATTACHMENT
+uint64_t uniffi_forge_ffi_fn_method_chatcore_fetch_attachment(uint64_t ptr, RustBuffer attachment_id
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_LIST_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_LIST_CONVERSATIONS
 uint64_t uniffi_forge_ffi_fn_method_chatcore_list_conversations(uint64_t ptr
@@ -425,6 +435,11 @@ uint64_t uniffi_forge_ffi_fn_method_chatcore_retry_message(uint64_t ptr, RustBuf
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEARCH
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEARCH
 uint64_t uniffi_forge_ffi_fn_method_chatcore_search(uint64_t ptr, RustBuffer query, RustBuffer conversation_id
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_FILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_FILES
+uint64_t uniffi_forge_ffi_fn_method_chatcore_send_files(uint64_t ptr, RustBuffer conversation_id, RustBuffer body, RustBuffer reply_to, RustBuffer files
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_SEND_MESSAGE
@@ -947,6 +962,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_account(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_attachment_file(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_CACHED_CONVERSATIONS
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_cached_conversations(void
@@ -995,6 +1016,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_events(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_FETCH_ATTACHMENT
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_fetch_attachment(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_LIST_CONVERSATIONS
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_list_conversations(void
@@ -1034,6 +1061,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_retry_message(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEARCH
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEARCH
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_search(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_FILES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_SEND_FILES
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_send_files(void
     
 );
 #endif

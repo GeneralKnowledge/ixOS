@@ -95,6 +95,9 @@ pub struct Message {
     /// Emoji → the account ids that reacted with it, in order.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reactions: BTreeMap<String, Vec<String>>,
+    /// Files it carries (M3), in order. Their bytes are fetched separately.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub attachments: Vec<crate::Attachment>,
 }
 
 impl Message {

@@ -1,4 +1,6 @@
 use std::collections::HashMap;
+use std::io::{Read, Write};
+use std::path::Path;
 use std::sync::Mutex;
 
 use crate::cancel::CancelHandle;
@@ -79,6 +81,96 @@ pub trait HttpClient: Send + Sync {
         }
         Ok(response.cancel_on(cancel))
     }
+
+    /// [`send_cancellable`](HttpClient::send_cancellable) with the file at
+    /// `path` as the request body (the request's own `body` is ignored). Use
+    /// it for uploads: attachments, audio, exports.
+    ///
+    /// The default implementation reads the whole file into memory first,
+    /// which is fine for test doubles. A real transport should override it
+    /// and stream the file (`UreqClient` does, with a `Content-Length`).
+    fn send_file(
+        &self,
+        request: &Request,
+        path: &Path,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        let bytes = std::fs::read(path).map_err(|err| file_error(path, &err))?;
+        self.send_cancellable(&request.clone().body(bytes), cancel)
+    }
+}
+
+/// Why a local file could not be used as a body or a destination.
+pub(crate) fn file_error(path: &Path, err: &std::io::Error) -> NetError {
+    NetError::InvalidRequest {
+        reason: format!("{}: {err}", path.display()),
+    }
+}
+
+/// Error bodies of a failed download are kept up to this size.
+const DOWNLOAD_ERROR_BODY_BYTES: u64 = 64 * 1024;
+
+/// Downloads `request`'s response body into `destination` without holding
+/// it in memory: the body streams into a temporary file next to it, which
+/// replaces `destination` only once the whole body has arrived, so an
+/// interrupted download never leaves half a file under that name.
+///
+/// On a 2xx status the returned [`Response`] has an empty `body` (it is in
+/// the file). On any other status nothing is written and the response
+/// carries the start of the server's error body, for diagnostics. `cancel`
+/// stops it at any point ([`NetError::Cancelled`]).
+pub fn download_to_file(
+    client: &dyn HttpClient,
+    request: &Request,
+    destination: &Path,
+    cancel: &CancelHandle,
+) -> Result<Response, NetError> {
+    let mut response = client.open_stream_cancellable(request, cancel)?;
+    if !response.is_success() {
+        let mut body = Vec::new();
+        let _ = (&mut response.body)
+            .take(DOWNLOAD_ERROR_BODY_BYTES)
+            .read_to_end(&mut body);
+        return Ok(Response {
+            status: response.status,
+            headers: response.headers,
+            body,
+        });
+    }
+    let partial = destination.with_file_name(format!(
+        ".{}.part",
+        destination
+            .file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_else(|| "download".into())
+    ));
+    if let Some(dir) = destination.parent().filter(|d| !d.as_os_str().is_empty()) {
+        std::fs::create_dir_all(dir).map_err(|err| file_error(dir, &err))?;
+    }
+    let result = (|| {
+        let mut file = std::fs::File::create(&partial).map_err(|err| file_error(&partial, &err))?;
+        std::io::copy(&mut response.body, &mut file).map_err(|err| {
+            if crate::is_cancelled_io_error(&err) || cancel.is_cancelled() {
+                NetError::Cancelled
+            } else {
+                NetError::Transport {
+                    reason: format!("download interrupted: {err}"),
+                }
+            }
+        })?;
+        file.flush().map_err(|err| file_error(&partial, &err))?;
+        file.sync_all().map_err(|err| file_error(&partial, &err))?;
+        std::fs::rename(&partial, destination).map_err(|err| file_error(destination, &err))
+    })();
+    if result.is_err() {
+        let _ = std::fs::remove_file(&partial);
+    }
+    result?;
+    Ok(Response {
+        status: response.status,
+        headers: response.headers,
+        body: Vec::new(),
+    })
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
@@ -105,6 +197,15 @@ impl<T: HttpClient + ?Sized> HttpClient for std::sync::Arc<T> {
     ) -> Result<StreamingResponse, NetError> {
         (**self).open_stream_cancellable(request, cancel)
     }
+
+    fn send_file(
+        &self,
+        request: &Request,
+        path: &Path,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        (**self).send_file(request, path, cancel)
+    }
 }
 
 impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
@@ -130,6 +231,15 @@ impl<T: HttpClient + ?Sized> HttpClient for Box<T> {
         cancel: &CancelHandle,
     ) -> Result<StreamingResponse, NetError> {
         (**self).open_stream_cancellable(request, cancel)
+    }
+
+    fn send_file(
+        &self,
+        request: &Request,
+        path: &Path,
+        cancel: &CancelHandle,
+    ) -> Result<Response, NetError> {
+        (**self).send_file(request, path, cancel)
     }
 }
 
