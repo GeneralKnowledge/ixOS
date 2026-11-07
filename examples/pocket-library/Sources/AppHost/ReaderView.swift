@@ -1,3 +1,4 @@
+@preconcurrency import AVFoundation
 @preconcurrency import ForgeFFI
 import SwiftUI
 
@@ -35,6 +36,8 @@ struct ReaderView: View {
     @State private var finishedCount = 0
     /// Counts chapter loads: each gets a fresh scroll view.
     @State private var loadCount = 0
+    @State private var readAloud = ReadAloud()
+    @State private var voices: [VoiceOption] = []
 
     var body: some View {
         Group {
@@ -71,7 +74,11 @@ struct ReaderView: View {
             do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
             savePosition()
         }
-        .onDisappear { savePosition() }
+        .onDisappear {
+            savePosition()
+            readAloud.stop()
+            readAloud.removeRemoteCommands()
+        }
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { savePosition() }
         }
@@ -84,8 +91,12 @@ struct ReaderView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     ForEach(Array(chapter.blocks.enumerated()), id: \.offset) { index, block in
-                        ReaderBlockView(block: block, serif: serif)
-                            .id(index)
+                        ReaderBlockView(
+                            block: block,
+                            serif: serif,
+                            spokenWord: readAloud.block == index ? readAloud.word : nil
+                        )
+                        .id(index)
                     }
                     chapterEnd(contents, chapter)
                         .id(chapter.blocks.count)
@@ -108,11 +119,23 @@ struct ReaderView: View {
                 topBlock = target
                 pendingScroll = nil
             }
+            // Follow the voice: the block being read goes to the top.
+            .onChange(of: readAloud.block) { _, block in
+                guard let block, readAloud.state == .playing, pendingScroll == nil else { return }
+                withAnimation { proxy.scrollTo(block, anchor: .top) }
+            }
         }
         // A fresh scroll view per chapter, so each starts at its top.
         .id(loadCount)
         .safeAreaInset(edge: .bottom) {
-            progressBar(contents, chapter)
+            VStack(spacing: 0) {
+                if readAloud.state != .stopped {
+                    player
+                    Divider()
+                }
+                progressBar(contents, chapter)
+            }
+            .background(.bar)
         }
     }
 
@@ -175,7 +198,49 @@ struct ReaderView: View {
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
-        .background(.bar)
+    }
+
+    /// Read-aloud controls: previous and next paragraph, play or pause,
+    /// speed and voice, stop.
+    private var player: some View {
+        HStack(spacing: 28) {
+            Button("Previous Paragraph", systemImage: "backward.fill") { readAloud.skip(by: -1) }
+            Button(
+                readAloud.state == .playing ? "Pause" : "Play",
+                systemImage: readAloud.state == .playing ? "pause.fill" : "play.fill"
+            ) {
+                readAloud.toggle(from: topBlock ?? 0)
+            }
+            .font(.title2)
+            Button("Next Paragraph", systemImage: "forward.fill") { readAloud.skip(by: 1) }
+            Menu {
+                Picker("Speed", selection: $readAloud.speed) {
+                    ForEach(Self.speeds, id: \.self) { speed in
+                        Text(Self.speedLabel(speed)).tag(speed)
+                    }
+                }
+                Picker("Voice", selection: $readAloud.voiceID) {
+                    Text("Default Voice").tag(String?.none)
+                    ForEach(voices) { voice in
+                        Text(voice.label).tag(String?.some(voice.id))
+                    }
+                }
+            } label: {
+                Text(Self.speedLabel(readAloud.speed))
+                    .monospacedDigit()
+                    .accessibilityLabel("Speed and voice")
+            }
+            Button("Stop Reading Aloud", systemImage: "xmark") { readAloud.stop() }
+        }
+        .labelStyle(.iconOnly)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity)
+    }
+
+    private static let speeds: [Double] = [0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3]
+
+    private static func speedLabel(_ speed: Double) -> String {
+        speed.formatted(.number.precision(.fractionLength(0...2))) + "×"
     }
 
     @ToolbarContentBuilder
@@ -200,6 +265,12 @@ struct ReaderView: View {
         ToolbarItem(placement: .primaryAction) {
             Button("Contents", systemImage: "list.bullet") { showingContents = true }
                 .disabled(contents == nil)
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button("Read Aloud", systemImage: "headphones") {
+                readAloud.play(from: topBlock ?? 0)
+            }
+            .disabled(chapter == nil || readAloud.state != .stopped)
         }
     }
 
@@ -231,6 +302,7 @@ struct ReaderView: View {
             let contents = try await model.openReader(bookID)
             self.contents = contents
             lastSaved = contents.start
+            prepareReadAloud(contents)
             await show(chapter: contents.start.chapter, fraction: contents.start.fraction)
         } catch {
             openError = PresentedError(error)
@@ -248,6 +320,11 @@ struct ReaderView: View {
             topBlock = nil
             chapter = loaded
             loadCount += 1
+            // Reading aloud carries on into the new chapter.
+            let wasPlaying = readAloud.state == .playing
+            if readAloud.state == .paused { readAloud.stop() }
+            readAloud.load(loaded)
+            if wasPlaying { readAloud.play(from: pendingScroll ?? 0) }
         } catch {
             if contents == nil || chapter == nil {
                 openError = PresentedError(error)
@@ -257,9 +334,33 @@ struct ReaderView: View {
         }
     }
 
-    private func savePosition() {
+    private func prepareReadAloud(_ contents: ReaderContents) {
+        let book = model.book(id: bookID)
+        readAloud.setBook(title: contents.title, author: book?.author ?? "", coverFile: book?.coverFile)
+        voices = ReadAloud.voices().map { VoiceOption(id: $0.identifier, label: ReadAloud.label(for: $0)) }
+        readAloud.onBlock = { block in
+            // Also runs with the screen locked, so save from here rather
+            // than from the scroll position.
+            topBlock = block
+            savePosition(block: block)
+        }
+        readAloud.onChapterEnd = {
+            Task {
+                guard let chapter, let contents = self.contents,
+                      Int(chapter.index) + 1 < contents.chapters.count else {
+                    readAloud.stop()
+                    return
+                }
+                await show(chapter: chapter.index + 1, fraction: 0)
+            }
+        }
+    }
+
+    private func savePosition(block: Int? = nil) {
         guard let chapter, pendingScroll == nil else { return }
-        let position = ReadingPosition(chapter: chapter.index, fraction: fraction(in: chapter))
+        let fraction = block.map { chapter.blocks.isEmpty ? 0 : min(Double($0) / Double(chapter.blocks.count), 1) }
+            ?? fraction(in: chapter)
+        let position = ReadingPosition(chapter: chapter.index, fraction: fraction)
         guard position != lastSaved else { return }
         lastSaved = position
         Task {
@@ -283,6 +384,11 @@ struct ReaderView: View {
     }
 }
 
+private struct VoiceOption: Identifiable {
+    let id: String
+    let label: String
+}
+
 private struct PositionKey: Hashable {
     let chapter: UInt32?
     let block: Int?
@@ -292,6 +398,8 @@ private struct PositionKey: Hashable {
 struct ReaderBlockView: View {
     let block: TextBlock
     let serif: Bool
+    /// The word being read aloud, if this block is being read.
+    var spokenWord: NSRange?
 
     private var design: Font.Design { serif ? .serif : .default }
 
@@ -361,6 +469,9 @@ struct ReaderBlockView: View {
             if span.monospace { intent.insert(.code) }
             if !intent.isEmpty { part.inlinePresentationIntent = intent }
             text.append(part)
+        }
+        if let spokenWord, let range = Range<AttributedString.Index>(spokenWord, in: text) {
+            text[range].backgroundColor = Color.accentColor.opacity(0.3)
         }
         return text
     }
