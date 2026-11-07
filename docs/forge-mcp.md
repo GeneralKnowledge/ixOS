@@ -301,11 +301,11 @@ The mock social app in M2 is an acceptance exercise for the agent loop, not a ne
 
 ## Open decisions
 
-1. **Agent sandbox bundle id.** Recommend `org.forgemobile.agentlab`, one slot, reused by every agent-made app until a person promotes it. The alternative (new id per app) burns slots and App IDs within a day.
+1. **Agent sandbox bundle id.** Decided (Reuben, 2026-11-07): yes. Recommend `org.forgemobile.agentlab`, one slot, reused by every agent-made app until a person promotes it. The alternative (new id per app) burns slots and App IDs within a day.
 2. **Subprocess now, library later.** Recommend subprocess with `--json` for M0. A library API comes when the JSON shapes have settled and the commands stop printing to stdout.
 3. **Approval route.** Recommend elicitation plus a narrow `--allow` at startup. Some clients don't support elicitation yet; they get a refusal with the command a person can run.
 4. **Ledger as data.** Recommend parsing the existing Markdown tables with a CI test, rather than a new source file.
-5. **Is M0 the next thing after #61 and the dev-loop fixes?** The CLI items in M0's table are already on the dev-loop order. Adding item 7 costs 2–3 days on top.
+5. **Is M0 the next thing after #61 and the dev-loop fixes?** Decided (Reuben, 2026-11-07): yes. The CLI items in M0's table are already on the dev-loop order. Adding item 7 costs 2–3 days on top.
 
 ## Risks
 
