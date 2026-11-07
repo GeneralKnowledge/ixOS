@@ -1,6 +1,6 @@
 # Evidence: proving an app does what it should
 
-Status: format version 1, 2026-11-07. The Linux half (the headless twin) is built and runs in CI for Pocket Library. The device half is a proposal for `forge ui run` once [#61](https://github.com/GeneralKnowledge/ixOS/pull/61) has had its first phone run. `forge verify` is not built.
+Status: format version 1, 2026-11-07. The Linux half (the headless twin) is built and runs in CI for Pocket Library. The device half is a proposal for `forge ui run` ([#61](https://github.com/GeneralKnowledge/ixOS/pull/61), merged) once it has had its first phone run. `forge verify` is not built.
 
 "The build passed" says the code compiles. It does not say the app works. This page defines how a run of Forge records what it proved, so that an agent can show that a feature works instead of saying so, and a person can check the claim in a minute. It is the capability ledger's rule ("an API is not proof") applied to apps, from discoveries D4 and D5 in the [agent capability audit](research/forge-agent-capability-audit.md).
 
@@ -36,7 +36,7 @@ An app lists what it must do in `requirements.toml`, next to `forge.toml`. Each 
 id = "PL-1"
 statement = "Books and reading progress survive closing and reopening the app."
 twin = ["LibraryModelTests.testBooksAndProgressSurviveARelaunch"]
-device = ["uitests/relaunch.toml"]   # a #61 scenario; none exist on main yet
+device = ["uitests/relaunch.toml"]   # a #61 scenario; Pocket Library has uitests/m0.toml
 ```
 
 - `twin` names XCTests as `Class.method`. The class must live in a file of the same name (the convention every app here follows), which is how Forge tells "this test needs Apple's frameworks" from "this test no longer exists".
@@ -115,9 +115,9 @@ Readers must ignore fields they don't know. A change that removes or changes the
 
 ## Device runs (proposed, for `forge ui run`)
 
-Nothing below is built. It is written down so that #61 and the twin produce one format, and it asks nothing of #61's branch before it merges.
+Nothing below is built. It is written down so that #61 and the twin produce one format, and it asked nothing of #61 before it merged.
 
-After #61 merges and has run on the phone, `forge ui run <scenario>` would:
+Once #61 (merged) has run on the phone, `forge ui run <scenario>` would:
 
 1. Default its `--out` directory to `.forge/runs/<id>-ui-run/`. The files it already writes there stay as they are and are listed under `artifacts`: the script's named screenshots, and at a failed step `failure-stepN.png`, `failure-stepN-tree.json` and `failure-stepN-tree.txt`. (The `screens/` and `trees/` folders in the layout above are for later runs that take a tree at every check.)
 2. Write `evidence.json` with `kind = "device"`, `where.device` from the phone, and `build.installed_as` (xtool's renamed bundle id). Instead of `tests`, a device run has `steps`: one entry per scenario step, `{ "n", "action", "passed", "error", "screenshot", "tree" }`, taken from what `forge ui run --json` already returns (`passed_steps`, `failed_step` with `on_screen` and `tree`, `screenshots`).
