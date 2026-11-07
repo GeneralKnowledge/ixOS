@@ -153,7 +153,7 @@ M3 adds photos and documents: the photo picker and the Files picker, photos shru
 | A22 | chat-core: files uploaded before the message and fetched (and checked) by the other account; files sent offline wait in the outbox with their own copy; empty, missing and oversized files refused before the network | automated | Done | `cargo test -p chat-core` (81 tests) |
 | A23 | The app's Rust crate: `send_files`, `attachment_file`, `fetch_attachment` | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (`photos_and_documents_through_the_ffi`) |
 | A24 | chat-cli: `send-file` guesses the type, `download` checks the SHA-256 | automated | Done | `cargo test -p chat-cli` |
-| A25 | SwiftUI: `testPhotosAndDocumentsBetweenTwoPeople` (a 4000×3000 photo shrunk to 2048×1536 JPEG, a text file, sent and fetched between two accounts, thumbnail and named preview copy) | automated (macOS CI) | Pending | `scripts/test-swift-host.sh examples/chat` |
+| A25 | SwiftUI: `testPhotosAndDocumentsBetweenTwoPeople` (a 4000×3000 photo shrunk to 2048×1536 JPEG, a text file, sent and fetched between two accounts, thumbnail and named preview copy) | automated (macOS CI) | Done | Swift host tests job green on PR #56 (commit f668f27; the test passed, not skipped) |
 
 ### On an iPhone (Linux, xtool)
 
