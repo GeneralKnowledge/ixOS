@@ -216,9 +216,22 @@ fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
 /// Waits up to `timeout` until nothing matches `locator`.
 pub fn wait_gone(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) -> Result<()> {
     let deadline = Instant::now() + timeout;
+    let mut stale_before = false;
     loop {
-        if driver.find_all(locator)?.is_empty() {
-            return Ok(());
+        match driver.find_all(locator) {
+            Ok(found) if found.is_empty() => return Ok(()),
+            Ok(_) => stale_before = false,
+            // WDA can answer a search for an element that just went away
+            // with "stale element reference … No matches found" (seen on
+            // iOS 26.3 right after a keyboard closed). Twice in a row means
+            // it is gone; once, ask again.
+            Err(UiError::Stale(_)) if stale_before => return Ok(()),
+            Err(UiError::Stale(_)) => {
+                stale_before = true;
+                std::thread::sleep(POLL);
+                continue;
+            }
+            Err(e) => return Err(e),
         }
         if Instant::now() >= deadline {
             return Err(UiError::Mismatch {
@@ -249,6 +262,8 @@ pub mod fake {
         pub on_tap: Vec<(String, UiNode)>,
         /// The next this-many taps fail as if the element went stale.
         pub stale_taps: usize,
+        /// The next this-many searches fail as if the element went stale.
+        pub stale_finds: usize,
         /// The app in front: set by launch and activate; terminate goes
         /// back to SpringBoard.
         pub front: Option<String>,
@@ -302,6 +317,10 @@ pub mod fake {
             Ok(())
         }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
+            if self.stale_finds > 0 {
+                self.stale_finds -= 1;
+                return Err(UiError::Stale("No matches found".into()));
+            }
             Ok(self
                 .screen
                 .walk()
@@ -375,6 +394,26 @@ mod tests {
             Locator::LabelContains(r#"say "hi" \o/"#.into()).predicate(),
             r#"label CONTAINS "say \"hi\" \\o/""#
         );
+    }
+
+    #[test]
+    fn a_stale_search_twice_counts_as_gone() {
+        let screen = UiNode {
+            kind: "Application".into(),
+            children: vec![UiNode {
+                kind: "Button".into(),
+                identifier: Some("tip.keyboardDone".into()),
+                ..UiNode::default()
+            }],
+            ..UiNode::default()
+        };
+        let done = Locator::Id("tip.keyboardDone".into());
+        let mut driver = fake::FakeDriver::new(screen);
+        driver.stale_finds = 2;
+        assert!(wait_gone(&mut driver, &done, Duration::from_secs(5)).is_ok());
+        // Stale once, then found: still on screen.
+        driver.stale_finds = 1;
+        assert!(wait_gone(&mut driver, &done, Duration::ZERO).is_err());
     }
 
     #[test]
