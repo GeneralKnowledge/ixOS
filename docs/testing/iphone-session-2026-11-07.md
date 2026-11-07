@@ -7,7 +7,7 @@ Nothing here is marked passed until Reuben reports it. Results go back to the ru
 ## The phone and the limits
 
 - **Cati**: iPhone 15 Pro Max (iPhone16,2), iOS 26.3.1 (a), Developer Mode on, free Apple account.
-- **Three sideloaded apps at most, on a free account.** The WebDriverAgent runner for UI testing counts as one. Reuben renewed his paid Apple Developer membership on 2026-11-07; if xtool signs with that paid team, the limit doesn't apply and the slot juggling below can be skipped (see [Paid team](#paid-team-install-side-by-side)). Step 0 finds out which.
+- **Three sideloaded apps at most, on a free account.** The WebDriverAgent runner for UI testing counts as one. Free accounts can also register only 10 new app IDs per 7 days, so tonight's new apps (runner, Chat, Device Lab, Kataster) stay well within that if nothing else is tried. Reuben has not joined the paid Apple Developer Program yet and may decide to tonight; the slot plan below is the default, and [Paid team](#paid-team-install-side-by-side) is the branch to take if he does. Step 0 finds out which applies.
 - **Storage is the blocker for the AI checks.** 496.79 of 512 GB used; the 2B model failed with 1.3 GB usable. iOS's "free" figure includes purgeable space, so the number that matters is the one the AI check app's `start` line prints (`free disk`).
 - **Laptop**: Linux, xtool 1.24.0 (patched `-ixos.1`), Xcode 26 SDK, the ixOS checkout at `/home/red/ixOS`, Remote Control device "create". Keep that checkout untouched; laptop steps use worktrees.
 
@@ -25,7 +25,20 @@ Why this order: UI testing M0 and the Chat checks feed the MCP and agent work, s
 
 ## Paid team: install side by side
 
-Only if step 0 showed a fourth app installs. Then:
+Only if Reuben joins the program **and** step 0 showed a fourth app installs. A new membership can take a while to become active, and xtool must be signed in with that Apple ID; until both are true, use the slot plan.
+
+What paying changes, to help decide:
+
+| | Free Apple ID (now) | Paid Developer Program |
+|---|---|---|
+| Sideloaded apps | 3 at once | No such limit |
+| Signing lasts | 7 days, then reinstall | 1 year |
+| Tonight | Weather deleted, runner deleted after M0, Device Lab or Kataster only if AICheck goes | Everything stays installed; Device Lab and Kataster fit alongside |
+| UI test runner | Reinstalled every week, takes a slot | Stays installed |
+| Paid-only capabilities (from the [ledger](../capability-ledger.md)) | Not available | Become possible later: push notifications (APNs), universal links, Wi-Fi network name, NFC; multicast also needs Apple's approval |
+| Not changed | Developer Disk Image still mounted after each reboot; phone storage is still the limit for the AI models; the check order is the same |
+
+Then:
 
 - **Nothing gets deleted.** Weather stays, AICheck keeps its models, and the WDA runner, Chat and Device Lab go on beside them.
 - **Step 1:** skip "Delete Weather" and "delete the runner". Keep the runner installed for later UI test runs. With a paid team the signing lasts a year instead of seven days, but the Developer Disk Image still has to be mounted after every reboot.
