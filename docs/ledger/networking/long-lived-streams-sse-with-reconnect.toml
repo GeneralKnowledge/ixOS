@@ -1,0 +1,9 @@
+order = 20
+capability = "Long-lived streams (SSE) with reconnect"
+framework = "Yes"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Chat"
+iphone = "Yes: Chat"
+documented = "Yes: chat-demo.md"
+limits = ""

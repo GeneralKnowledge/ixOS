@@ -1,0 +1,6 @@
+order = 40
+step = "Implement Rust application logic"
+docs = "app-crate.md"
+last_run = "Not run"
+time_taken = ""
+findings = ""

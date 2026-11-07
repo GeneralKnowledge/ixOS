@@ -1,0 +1,12 @@
+order = 120
+module = "Local AI"
+layer = "Optional"
+crate = "`forge-ai` (planned, #55 L5)"
+provides = "Model library, download, inference behind a foreign trait, token streaming, cancellation, resource guard"
+native_apis = "Foundation Models, Core ML (CoreML-LLM)"
+dependencies = "Swift packages in the app"
+ios = "Planned: L0 check app in #55"
+android = "No"
+desktop = "No"
+status = "Planned"
+exercised_by = "Chat assistant (planned)"

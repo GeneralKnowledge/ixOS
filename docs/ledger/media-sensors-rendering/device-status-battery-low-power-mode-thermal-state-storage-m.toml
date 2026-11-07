@@ -1,0 +1,9 @@
+order = 100
+capability = "Device status (battery, Low Power Mode, thermal state, storage, memory, model)"
+framework = "Yes: forge-services `device_status`"
+rust_api = "Yes: `DeviceStatusService`, `defer_heavy_work`"
+ios_native = "Yes"
+in_app = "Yes: Device Lab"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Device name is the generic model since iOS 16 (the real name needs an Apple-granted entitlement)"

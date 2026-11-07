@@ -1,0 +1,9 @@
+order = 80
+capability = "Background location"
+framework = "Partial: config"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "Partial"
+limits = "Needs \"always\" permission"

@@ -1,0 +1,9 @@
+order = 60
+capability = "Background work and cancellation in Rust"
+framework = "Yes: forge-runtime"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes"
+iphone = "No"
+documented = "Yes"
+limits = "Stops when iOS suspends the app"

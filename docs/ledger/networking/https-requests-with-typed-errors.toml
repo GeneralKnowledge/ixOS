@@ -1,0 +1,9 @@
+order = 10
+capability = "HTTPS requests with typed errors"
+framework = "Yes: forge-net"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Weather, Chat"
+iphone = "Yes: 2026-11-05 and 2026-11-06"
+documented = "Yes"
+limits = ""

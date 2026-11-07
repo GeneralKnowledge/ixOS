@@ -1,0 +1,9 @@
+order = 40
+capability = "HealthKit"
+framework = "Partial: entitlement in config"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "Partial"
+limits = "Free-team signing unproven (S5)"

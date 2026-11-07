@@ -1,0 +1,6 @@
+order = 50
+step = "Build and install on a physical iPhone"
+docs = "builds.md, ios-signing.md"
+last_run = "Not run"
+time_taken = ""
+findings = ""

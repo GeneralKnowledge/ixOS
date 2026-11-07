@@ -1,0 +1,9 @@
+order = 40
+capability = "Delivery state reconciliation after reconnect"
+framework = "No"
+rust_api = "Partial: `since` catch-up"
+ios_native = "n/a"
+in_app = "Partial: Chat"
+iphone = "No"
+documented = "Partial"
+limits = "No read state on the server yet"

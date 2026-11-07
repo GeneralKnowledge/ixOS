@@ -1,0 +1,9 @@
+order = 10
+capability = "JSON snapshot storage with migration hook"
+framework = "Yes: forge-storage"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Yes: Chat, starter"
+iphone = "Yes: Chat, 2026-11-05"
+documented = "Yes"
+limits = "Rewrites the whole file on every change"

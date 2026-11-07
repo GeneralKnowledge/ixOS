@@ -1,0 +1,6 @@
+order = 60
+metric = "Memory"
+target = "Chat with 10,000 messages under 150 MB; a widget extension under 30 MB"
+how_measured = "Footprint logged by the app"
+first_needed_by = "Chat M3, W9"
+last_recorded = "Not measured"

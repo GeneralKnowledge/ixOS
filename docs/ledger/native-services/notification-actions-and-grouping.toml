@@ -1,0 +1,9 @@
+order = 30
+capability = "Notification actions and grouping"
+framework = "Partial: grouping (`thread_id`), subtitle, tap opens a deep link; no actions"
+rust_api = "Yes"
+ios_native = "Yes"
+in_app = "Yes: Chat groups by room and opens the room on tap"
+iphone = "No"
+documented = "Partial: native-services.md, chat-demo.md"
+limits = "No action buttons or categories yet"

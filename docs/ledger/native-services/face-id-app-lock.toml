@@ -1,0 +1,9 @@
+order = 110
+capability = "Face ID app lock"
+framework = "No"
+rust_api = "No"
+ios_native = "No"
+in_app = "No"
+iphone = "No"
+documented = "Partial: config only"
+limits = ""

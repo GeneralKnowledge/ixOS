@@ -1,0 +1,9 @@
+order = 110
+capability = "Bluetooth on or off"
+framework = "Yes: forge-services `bluetooth`"
+rust_api = "Yes: `BluetoothService`"
+ios_native = "Yes: `CBCentralManager`"
+in_app = "Yes: Device Lab"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "State only: no scanning or connections yet"

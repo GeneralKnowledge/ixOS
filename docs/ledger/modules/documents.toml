@@ -1,0 +1,12 @@
+order = 140
+module = "Documents"
+layer = "Optional"
+crate = "Pocket Library today; `epub` feature later"
+provides = "EPUB metadata, chapters as styled text blocks, positions to pages"
+native_apis = "None"
+dependencies = "`zip`, `quick-xml`"
+ios = "Partial: Pocket Library (#53)"
+android = "No"
+desktop = "No"
+status = "Planned"
+exercised_by = "Pocket Library"

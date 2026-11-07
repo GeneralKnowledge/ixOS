@@ -1,0 +1,12 @@
+order = 90
+module = "Device services"
+layer = "Core, opt-in per app"
+crate = "`forge-services`: `native_services!(connectivity, device_status, motion, location, bluetooth)`; adapters in `swift/optional/`, copied only when selected"
+provides = "Connectivity and a Wi-Fi-only transfer policy; battery, power, thermal, storage, memory and the heavy-work rule; accelerometer, gyroscope, magnetometer, device motion, barometer; location and heading; Bluetooth state; location, motion and Bluetooth permissions"
+native_apis = "Network, UIKit, ProcessInfo, Core Motion, Core Location, Core Bluetooth"
+dependencies = "`uniffi`, `async-trait`"
+ios = "Partial: compiled in CI, not yet run on an iPhone"
+android = "No"
+desktop = "No"
+status = "Experimental"
+exercised_by = "Device Lab; meant for AI downloads (connectivity, heavy-work rule), Chat reconnect, FieldKit"

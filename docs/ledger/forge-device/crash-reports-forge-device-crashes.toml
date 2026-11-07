@@ -1,0 +1,9 @@
+order = 30
+capability = "Crash reports (`forge device crashes`)"
+framework = "Yes: forge-device"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes: any app"
+iphone = "Yes: iPhone, iOS 26.3.1, 2026-11-07 (listed 161, pulled 4)"
+documented = "Partial: forge-device.md"
+limits = "No symbolication yet"

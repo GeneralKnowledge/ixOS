@@ -1,0 +1,9 @@
+order = 30
+capability = "Cancellable requests"
+framework = "Yes"
+rust_api = "Yes"
+ios_native = "Yes: task cancellation"
+in_app = "Yes: starter"
+iphone = "No"
+documented = "Yes"
+limits = ""

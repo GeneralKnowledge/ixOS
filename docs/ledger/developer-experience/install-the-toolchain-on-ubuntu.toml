@@ -1,0 +1,6 @@
+order = 10
+step = "Install the toolchain on Ubuntu"
+docs = "linux-setup.md, getting-started.md"
+last_run = "Not run"
+time_taken = ""
+findings = ""

@@ -1,0 +1,6 @@
+order = 60
+step = "Diagnose a configuration error we introduce on purpose"
+docs = "troubleshooting.md"
+last_run = "Not run"
+time_taken = ""
+findings = ""

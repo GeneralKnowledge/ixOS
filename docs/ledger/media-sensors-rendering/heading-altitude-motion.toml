@@ -1,0 +1,9 @@
+order = 90
+capability = "Heading, altitude, motion"
+framework = "Yes: forge-services `motion` and `location`"
+rust_api = "Yes: `MotionService` (accelerometer, gyroscope, magnetometer, device motion, barometer)"
+ios_native = "Yes: Core Motion, Core Location heading"
+in_app = "Yes: Device Lab"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Foreground only; the barometer needs the Motion & Fitness permission; 10 ms to 10 s intervals"

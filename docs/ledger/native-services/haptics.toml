@@ -1,0 +1,9 @@
+order = 140
+capability = "Haptics"
+framework = "n/a"
+rust_api = "n/a"
+ios_native = "Yes: SwiftUI"
+in_app = "No"
+iphone = "No"
+documented = "No"
+limits = ""
