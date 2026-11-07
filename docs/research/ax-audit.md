@@ -1,6 +1,6 @@
 # Spike: Apple's accessibility audit service from Linux
 
-Status: **stages 1–3 work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). The audit is not yet working, and the run with the DDI mounted is still to do. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
+Status: **reading the screen and pressing by identifier work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). The audit is not yet working, and the run with the DDI mounted is still to do. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
 
 ## Results so far
 
@@ -10,11 +10,11 @@ Run 1 was on Cati (iPhone 15 Pro Max, iOS 26.3.1) on 2026-11-07, with **no DDI m
 |---|---|
 | [1] Start the service | Works. Lockdown answered with `ssl true`, and the TLS-then-plaintext handshake worked. One later run failed the handshake (`InvalidContentType`) straight after a previous run, so the probe now retries once |
 | [2] Capabilities, audit types | Works (`hostApiVersion`, list of audit types) |
-| [3] Element walk | **Works.** 10 elements in 514 ms, 12–24 ms per element including three attribute reads. **SwiftUI identifiers come through:** `library.add`, `library.empty.add`, `library.filter`. Labels and values come through too, for example the search field's placeholder. The tab bar buttons have no identifier, which is a gap in the app, not in the service. With the Claude app in front it read that app's identifiers too (`BackButton`, `thread-checklist-pill`), so the service reads any foreground app, not only our builds |
-| [4] Press | Reported as sent (`pressed library.add`, exit 0). Whether the button reacted on screen was not confirmed |
-| [4] Audit | Not working yet. One run hit the TLS failure above. The other timed out after 60 s with the Claude app in front. The probe now runs the audit before the walk, with app monitoring off as pymobiledevice3 does, waits 120 s, and lists every other event it saw, so the next run tells "no answer" apart from "an answer we didn't recognise" |
+| [3] Element walk | **Works.** 10 elements in 514 ms, 12–24 ms per element including three attribute reads. **SwiftUI identifiers come through:** `library.add`, `library.empty.add`, `library.filter`. Labels and values come through too, for example the search field's placeholder. On an empty library the tab bar buttons had no identifier. With a book in the library they reported their SF Symbol names (`books.vertical`, `chart.bar`, `gearshape`), so tabs need explicit identifiers in the app. With the Claude app in front it read that app's identifiers too (`BackButton`, `thread-checklist-pill`), so the service reads any foreground app, not only our builds |
+| [4] Press | **Works.** `--press library.add` opened Pocket Library's Add menu. The next walk showed `library.add.catalogue`, `library.add.manual`, `library.add.epub` and "Dismiss context menu" |
+| [4] Audit | Not working yet. One run hit the TLS failure above. Two more timed out after 60 s, once on Pocket Library and once on the Claude app. The probe now runs the audit before the walk, with app monitoring off as pymobiledevice3 does, waits 120 s, and lists every other event it saw, so the next run tells "no answer" apart from "an answer we didn't recognise" |
 
-What this means: for reading the screen, no runner, no app slot and no DDI are needed. Walking a screen is fast enough for `forge ui tree` (well under a second for a typical screen). Text entry still needs WDA.
+What this means: reading the screen and pressing controls need no runner, no app slot and no DDI. Walking a screen is fast enough for `forge ui tree` (well under a second for a typical screen). Text entry still needs WDA.
 
 ## Question
 
