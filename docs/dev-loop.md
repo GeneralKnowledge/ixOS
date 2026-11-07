@@ -1,12 +1,31 @@
 # The Linux dev loop for native iOS apps: an assessment
 
-Status: investigation, 2026-11-07. Nothing in this page has been built yet; it proposes small fixes, not a new layer.
+Status: assessment written 2026-11-07; the table below is kept current. The rest of the page is the original assessment and its measurements.
+
+## Where the loop stands
+
+What an agent (or a person) can do at each step today, from Linux. "Phone-verified" means a person saw it work on an iPhone.
+
+| Step | How | State |
+|---|---|---|
+| 1. Edit Swift and Rust | The agent's own tools; rules in the app's AGENTS.md and `forge://conventions` | Built |
+| 2. Check without the iOS SDK | `forge check swift` (model and bindings with plain Swift), `forge test`; `forge_check` in MCP | Built, Linux-verified. SwiftUI views are not compiled: only the xtool build or macOS CI does that |
+| 3. Build | `forge build ios --json`: diagnostics with file, line, column and a stage | Built; needs the Darwin SDK (the laptop) |
+| 4. Sign | Inside `forge run ios` (xtool). `forge doctor` and `run ios` report which team signs, free or paid, and catch a free team with paid-only entitlements | Team detection built, tested on recorded xtool output; not yet run with a paid team |
+| 5. Install | `forge run ios --json`; `forge_install_device` (refused unless the person allows installs) | Built; phone-verified for the starter and Pocket Library |
+| 6. Launch | `launch` step of a UI test file through WebDriverAgent (#61); `forge_launch_app` | In #61, not phone-verified. A runner-free `forge device launch` (fix 3) is not built |
+| 7. Inspect the UI | `forge ui tree`/`screenshot` (#61, WDA); Apple's accessibility service probe (#79, experimental: `ax_probe --json`) | Not phone-verified. Both run in the iPhone session; see [ax-audit.md](research/ax-audit.md) for how they compare |
+| 8. Read logs | `forge device logs --process <App>Xtool --for 20s --json`; Swift logs through ForgeLog (#66); `forge_read_logs` | Built; device logs phone-verified (#50), live-only (no history before the call) |
+| 9. Run UI tests | `forge ui run <file>.toml --json` (#61); `forge_run_ui_test`, `forge_ui_act` | In #61, not phone-verified |
+| 10. Diagnose | `diagnose.rs` hints in every `--json` result, `forge device crashes --pull`, `forge_diagnose` (last failure and its log) | Basic: no correlation of logs, crashes and UI state yet; crashes not symbolicated |
+
+Remaining gaps in the order that matters for an unattended agent: #61's first phone run (launch, tree, tap, type), then `forge device apps` (slots and profile expiry, fix 6), a runner-free launch (fix 3), and runtime correlation in `forge_diagnose`.
 
 The question (Reuben, 2026-11-07): is it easy to **create an app, change its UI, run it on a real iPhone, inspect what happened, diagnose problems and repeat**, from Linux, with Rust as the logic and SwiftUI as the presentation? This page walks that loop step by step with what Forge has on `main` today, measures what can be measured, ranks the gaps by friction and proposes the smallest fix for each.
 
 Short answer: the **Rust half of the loop is fast and solid** (seconds, on Linux, with tests). The **Swift half and the phone half are slow and partly blind**. A Swift mistake surfaces either on the laptop after an xtool build, or, for anyone without the Darwin SDK (every cloud coding session), only after macOS CI, about 35 minutes later. After an install, someone has to tap the icon. Nobody can see the screen from the computer. Swift logs never reach the live stream. Most of the fixes are small and reuse code that already exists in the repo or in open PRs.
 
-The same loop is what an AI agent would drive through a Forge MCP server (being designed separately, `docs/forge-mcp.md`). Each gap below says whether it **blocks an unattended agent**: a step that needs a human's hands or eyes on every iteration.
+The same loop is what an AI agent drives through the Forge MCP server ([forge-mcp.md](forge-mcp.md), M0 built). Each gap below says whether it **blocks an unattended agent**: a step that needs a human's hands or eyes on every iteration.
 
 ## The five areas at a glance
 

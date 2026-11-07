@@ -732,6 +732,7 @@ dependencies = [
  "ns-keyed-archive",
  "plist",
  "rustls",
+ "serde_json",
  "tempfile",
  "thiserror",
  "tokio",
