@@ -269,7 +269,7 @@ mod tests {
             s.sent,
             [
                 r#"POST /session {"capabilities":{"alwaysMatch":{}}}"#,
-                r#"POST /session/S1/elements {"using":"predicate string","value":"identifier == \"bookForm.title\""}"#,
+                r#"POST /session/S1/elements {"using":"predicate string","value":"name == \"bookForm.title\""}"#,
                 "POST /session/S1/element/E7/click {}",
                 r#"POST /session/S1/element/E7/value {"text":"Hi","value":["H","i"]}"#,
                 "GET /session/S1/element/E7/attribute/value",

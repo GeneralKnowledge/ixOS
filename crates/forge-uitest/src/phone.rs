@@ -199,6 +199,7 @@ impl Phone {
     /// Starts the WebDriverAgent runner through testmanagerd and waits until
     /// it answers. It runs until the returned handle is dropped.
     pub fn start_runner(&self, runner_id: &str) -> Result<Runner> {
+        self.stop_stale_wda();
         let provider: Arc<dyn IdeviceProvider> = self.provider.clone();
         let runner_id = runner_id.to_owned();
         // On its own task, so the deadline below holds even when a step
@@ -232,12 +233,38 @@ impl Phone {
         Ok(Runner { handle })
     }
 
+    /// Shuts down a WebDriverAgent left from an earlier command. When a
+    /// `forge ui` command exits, its XCTest session ends and the phone tears
+    /// that runner down, but not at once: a new start would see the old WDA
+    /// answer `/status`, report ready, and then lose it mid-command when the
+    /// phone kills it (seen on Cati as "closed the connection" on every
+    /// request after the first). Asking it to shut down first avoids that.
+    fn stop_stale_wda(&self) {
+        let mut http = self.transport_with_timeout(PROBE_TIMEOUT);
+        if http.request("GET", "/status", None).is_err() {
+            return;
+        }
+        let _ = http.request("GET", "/wda/shutdown", None);
+        let deadline = std::time::Instant::now() + STALE_WDA_GONE;
+        while std::time::Instant::now() < deadline {
+            if http.request("GET", "/status", None).is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
     /// An HTTP transport to WebDriverAgent on the phone.
     pub fn transport(&self) -> UsbHttp {
+        self.transport_with_timeout(REQUEST_TIMEOUT)
+    }
+
+    fn transport_with_timeout(&self, timeout: Duration) -> UsbHttp {
         UsbHttp {
             runtime: self.runtime.clone(),
             provider: self.provider.clone(),
             port: WDA_PORT,
+            timeout,
         }
     }
 }
@@ -262,6 +289,10 @@ fn within_on<T>(
         })
 }
 
+/// A quick "is anything answering?" request.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a stale WDA gets to go away after `/wda/shutdown`.
+const STALE_WDA_GONE: Duration = Duration::from_secs(10);
 /// How long idevice waits for WDA's port once the test runs.
 const WDA_READY: Duration = Duration::from_secs(90);
 /// The whole runner start, from asking testmanagerd to WDA answering.
@@ -285,8 +316,15 @@ fn debug_log_from_env() {
     if std::env::var_os("FORGE_UI_DEBUG").is_none_or(|v| v.is_empty() || v == "0") {
         return;
     }
+    use tracing_subscriber::filter::LevelFilter;
+    // The crate root logs every plist sent and received (installation_proxy
+    // replies are whole Info.plists of every app): info only there. The
+    // services, tunnel and XCTest modules are what's worth reading.
     let only_idevice = tracing_subscriber::filter::Targets::new()
-        .with_target("idevice", tracing_subscriber::filter::LevelFilter::DEBUG);
+        .with_target("idevice", LevelFilter::INFO)
+        .with_target("idevice::services", LevelFilter::DEBUG)
+        .with_target("idevice::services::installation_proxy", LevelFilter::INFO)
+        .with_target("idevice::tcp", LevelFilter::DEBUG);
     let _ = tracing_subscriber::registry()
         .with(
             tracing_subscriber::fmt::layer()
@@ -312,6 +350,8 @@ pub struct UsbHttp {
     runtime: Arc<tokio::runtime::Runtime>,
     provider: Arc<UsbmuxdProvider>,
     port: u16,
+    /// How long one request may take, connect to last byte.
+    timeout: Duration,
 }
 
 impl HttpTransport for UsbHttp {
@@ -345,12 +385,12 @@ impl HttpTransport for UsbHttp {
                 }
                 Ok::<_, std::io::Error>(())
             };
-            match tokio::time::timeout(REQUEST_TIMEOUT, read_all).await {
+            match tokio::time::timeout(self.timeout, read_all).await {
                 Ok(read) => read?,
                 Err(_) => {
                     return Err(UiError::Wda(format!(
                         "{method} {path}: no complete reply after {} s (is the phone locked, or WebDriverAgent stuck?)",
-                        REQUEST_TIMEOUT.as_secs()
+                        self.timeout.as_secs()
                     )))
                 }
             };

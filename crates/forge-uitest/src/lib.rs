@@ -75,9 +75,14 @@ impl std::fmt::Display for Locator {
 
 impl Locator {
     /// The NSPredicate WebDriverAgent evaluates for this locator.
+    /// WebDriverAgent 16 rejects `identifier` ("The attribute 'identifier'
+    /// is unknown", seen on iOS 26.3): it exposes the accessibility
+    /// identifier as `name`. `name` falls back to the label for an element
+    /// without an identifier, so a label that looks like an id could match
+    /// too; ids use `screen.element` dots, which labels don't.
     pub fn predicate(&self) -> String {
         match self {
-            Locator::Id(id) => format!("identifier == {}", quote(id)),
+            Locator::Id(id) => format!("name == {}", quote(id)),
             Locator::Label(label) => format!("label == {}", quote(label)),
             Locator::LabelContains(text) => format!("label CONTAINS {}", quote(text)),
         }
@@ -335,7 +340,7 @@ mod tests {
     fn predicates_quote_and_escape() {
         assert_eq!(
             Locator::Id("library.add".into()).predicate(),
-            r#"identifier == "library.add""#
+            r#"name == "library.add""#
         );
         assert_eq!(
             Locator::LabelContains(r#"say "hi" \o/"#.into()).predicate(),

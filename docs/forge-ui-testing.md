@@ -239,7 +239,7 @@ Everything above is tested on Linux against a fake driver and canned WebDriverAg
 | Front-app check | `/wda/activeAppInfo` names the `XTL-` bundle id of the app in front |
 | `forge ui setup --runner` | `xtool install` signs the unsigned WDA runner, its `XTL-` bundle id is accepted, and it fits in the app slots |
 | Runner start | `idevice`'s XCTest launch through `CoreDeviceProxy` on iOS 26.3, and WDA answering on port 8100 through usbmuxd |
-| `uitests/m0.toml` | SwiftUI identifiers reach WDA (`identifier` predicates), a toolbar `Menu` and its items can be tapped, typing into a vertical `TextField` works, `enabled` reads correctly |
+| `uitests/m0.toml` | SwiftUI identifiers reach WDA (`name == …` predicates; WDA 16 rejects `identifier`), a toolbar `Menu` and its items can be tapped, typing into a vertical `TextField` works, `enabled` reads correctly |
 | `forge ui screenshot` | The PNG arrives intact on Linux |
 
 ## Risks

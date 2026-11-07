@@ -182,7 +182,9 @@ impl UiNode {
         if !self.enabled {
             line.push_str(" (disabled)");
         }
-        if !self.visible {
+        // WDA reports the Application element itself as not visible even
+        // while it is in front.
+        if !self.visible && self.kind != "Application" {
             line.push_str(" (hidden)");
         }
         line
