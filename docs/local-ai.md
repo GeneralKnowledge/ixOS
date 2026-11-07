@@ -161,6 +161,7 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 
 - CoreML-LLM keeps models in `Documents/Models`, which iCloud backs up. The check app marks the folder excluded from backup; the L2 adapter must do the same or move it.
 - `Qwen35MLKVGenerator` compiles each `.mlpackage` chunk into a temporary location on every load (`MLModel.compileModel(at:)` without caching the result), so every launch may pay the compile time. K7 measures it; L2 may need to keep the compiled `.mlmodelc`.
+- Cati is a 512 GB phone with about 15 GB shown free in Settings, yet the app saw only 1.3 GB (`volumeAvailableCapacityForImportantUsage`) when the 2B retry failed. The model library must check what the app can actually use, ask for download plus compile headroom up front, and tell the user how much to free, not rely on the Settings figure.
 - Loading needs free disk for the compiled copy too (about 2 GB for the 2B model), and a failed compile leaves it in `tmp/`. L2's model library must compile once into Application Support, reuse it, clean up after failures, and check free space for download plus compile before starting.
 - Qwen3.5's tokenizer comes from Hugging Face at load time (`AutoTokenizer.from(pretrained:)`), not with the model download. K12 tests whether its cache makes it work offline.
 - CoreML-LLM's own sample app drops system messages for Qwen3.5. The check app sends them through the chat template; K9 shows whether that works for characters.
