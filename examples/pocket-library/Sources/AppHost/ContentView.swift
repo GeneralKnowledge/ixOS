@@ -5,6 +5,10 @@ import SwiftUI
 public struct ContentView: View {
     @State private var model = LibraryModel()
     @Environment(\.scenePhase) private var scenePhase
+    /// The app reopens on the tab it was left on. A launch argument
+    /// (`-selectedTab activity`) overrides it, which is how the screenshot
+    /// job opens each tab without UI automation.
+    @AppStorage("selectedTab") private var selectedTab = "library"
 
     public init() {}
 
@@ -16,13 +20,16 @@ public struct ContentView: View {
             case .failed(let message, let canStartFresh):
                 OpenFailedView(message: message, canStartFresh: canStartFresh, model: model)
             case .open:
-                TabView {
+                TabView(selection: $selectedTab) {
                     LibraryView()
                         .tabItem { Label("Library", systemImage: "books.vertical") }
+                        .tag("library")
                     ActivityView()
                         .tabItem { Label("Activity", systemImage: "chart.bar") }
+                        .tag("activity")
                     SettingsView()
                         .tabItem { Label("Settings", systemImage: "gearshape") }
+                        .tag("settings")
                 }
             }
         }

@@ -1,6 +1,6 @@
 # Pocket Library acceptance report
 
-What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). Nothing here was tested on the iOS Simulator, which Forge does not support.
+What has been checked, where, and what is still to do. Results are kept apart by kind: **automated** (runs in CI on every PR), **local build** (run by hand on a development machine), and **physical device** (an iPhone). Nothing here was tested on the iOS Simulator, which Forge does not support. (macOS CI renders screenshots in the simulator for UI review only, `scripts/pocket-library-screenshots.sh`; they are not acceptance results.)
 
 Status as of 2026-11-07. A step is marked done only when it was actually performed.
 

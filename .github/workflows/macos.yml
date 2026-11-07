@@ -95,3 +95,56 @@ jobs:
             -destination 'generic/platform=iOS' \
             -configuration Debug \
             CODE_SIGNING_ALLOWED=NO
+
+  pocket-library-screenshots:
+    # A review aid, not part of the supported workflow (xtool on Linux, then
+    # an iPhone), and not a device result: renders Pocket Library in the iOS
+    # Simulator with a seeded library, each tab in light and dark mode and at
+    # the largest text size.
+    name: Pocket Library screenshots (iOS Simulator)
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Rust toolchain and simulator target
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          rustup target add aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build Pocket Library for the simulator
+        env:
+          # The Xcode build phase builds the app's Rust crate for this target.
+          FORGE_IOS_TARGET: aarch64-apple-ios-sim
+        run: |
+          # The project targets devices only (the supported path); allow the
+          # simulator in this CI checkout so xcodebuild offers it.
+          sed -i '' 's/SUPPORTED_PLATFORMS = iphoneos;/SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/' \
+            examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
+          xcodebuild build \
+            -project examples/pocket-library/Xcode/PocketLibrary.xcodeproj \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -configuration Debug \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            ARCHS=arm64 ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO
+      - name: Screenshots
+        run: |
+          APP="$(find "$RUNNER_TEMP/dd/Build/Products/Debug-iphonesimulator" -maxdepth 1 -name '*.app' | head -1)"
+          ./scripts/pocket-library-screenshots.sh "$APP" "$RUNNER_TEMP/screenshots"
+      # Reviewers who cannot download artifacts (for example from a sandbox
+      # that blocks the artifact store) can decode these from the job log.
+      - name: Small copies in the log
+        run: |
+          mkdir -p "$RUNNER_TEMP/small"
+          for f in "$RUNNER_TEMP"/screenshots/*.png; do
+            name="$(basename "$f" .png)"
+            sips -Z 900 -s format jpeg -s formatOptions 70 "$f" --out "$RUNNER_TEMP/small/$name.jpg" >/dev/null
+            echo "SCREENSHOT $name $(base64 -i "$RUNNER_TEMP/small/$name.jpg" | tr -d '\n')"
+          done
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: pocket-library-screenshots
+          path: ${{ runner.temp }}/screenshots
+          if-no-files-found: warn
