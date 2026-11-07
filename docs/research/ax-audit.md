@@ -1,6 +1,6 @@
 # Spike: Apple's accessibility audit service from Linux
 
-Status: **probe built, not yet run on a phone** (2026-11-07). This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md), taken one step further: there is now a Rust probe that talks to the service, for the next phone session.
+Status: **probe built, not yet run on a phone** (2026-11-07). Experimental: it is a cargo example behind a feature flag, not a `forge` command. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md), taken one step further: there is now a Rust probe that talks to the service, for the next phone session.
 
 ## Question
 
@@ -60,7 +60,37 @@ It prints one line per stage, so a failure shows how far it got:
 | `[4] pressed …` | Pressing works. Check on the phone that the button actually reacted |
 | `[4] audit: N issues` | Apple's audit ran |
 
-The decoding and archiving are unit-tested on Linux (`cargo test -p forge-device --features ax-probe --example ax_probe`). Nothing here has met a real phone yet.
+The decoding, archiving, report and WDA comparison are unit-tested on Linux (`cargo test -p forge-device --features ax-probe --example ax_probe`). Nothing here has met a real phone yet.
+
+### Recording a run
+
+```bash
+# WDA's view of the same screen first (#61), then the probe with a report:
+forge --json ui tree --app org.forgemobile.pocketlibrary > wda-tree.json
+cargo run -p forge-device --features ax-probe --example ax_probe -- --max 60 --audit \
+  --json ax-report.json --compare-wda wda-tree.json
+```
+
+`ax-report.json` (`forge.ax-probe/1`) holds the stage reached (0–4), the time to start the service, each element in VoiceOver order with its caption, label, identifier, value and time, how the walk ended (`back_to_start`, `max_reached`, `no_focus_events`), whether `--press` worked, the audit issues, and the error if a stage failed. With `--compare-wda`, `compare_wda` lists the identifiers both routes saw, and those only one saw. The file is written even when a stage fails, so a failed run is still evidence. Starting the service has a 20 s limit and every call a 10 s limit, so a silent phone ends the run instead of hanging it.
+
+## Apple's service and WebDriverAgent compared
+
+From the protocol and #61's code; the "Phone" column is what tonight's run must confirm.
+
+| | Accessibility audit service (this probe) | WebDriverAgent (#61) | Phone |
+|---|---|---|---|
+| Setup | Nothing installed on the phone; lockdown over usbmuxd | A signed runner app (one of 3 slots on a free team, re-signed every 7 days) and the Developer Disk Image | Whether the service needs the disk image |
+| Hierarchy | A flat list in VoiceOver order, one element per focus move (`includeContainers` asks for containers too). No parent and child structure, no frames | The whole tree in one call: type, identifier, label, value, enabled, visible, frame, children | Whether containers come back |
+| Identifiers | `Identifier` attribute of the focused element | `identifier` | **Whether SwiftUI's `.accessibilityIdentifier` comes back** |
+| Labels and values | `Label`, `Value`; the caption adds traits ("Add, Button") | `label`, `value` | Yes/no per field |
+| Element types | Only as caption text (the trait), not a type field | `kind` (Button, TextField, Cell, …) | |
+| Speed | About four round trips per element | One call per screen | Measured ms per element |
+| Audit | Apple's own checks (contrast, labels, hit regions, Dynamic Type) | #61's basic audit (no label, no identifier) | Whether `--audit` returns issues |
+| Interaction | Press only (`AXAction-2010`), possibly needs `get-task-allow` | Tap, type, clear, swipe, launch, terminate, background | Whether the press reaches the app |
+| Text entry, screenshots | No | Yes | |
+| Settings | Can read and change accessibility settings such as text size (not tried) | No | |
+
+**They complement each other.** WebDriverAgent stays the route for UI tests, typing, launching and screenshots. If identifiers come back, Apple's service can give `forge ui tree` and an accessibility audit with no runner installed, which matters most on a free team and in every session right after a phone restart. Nothing replaces anything until the phone run says so.
 
 ## What the answers decide
 

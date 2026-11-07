@@ -72,6 +72,177 @@ pub fn xtool_auth(runner: &dyn CommandRunner) -> Option<Auth> {
     }
 }
 
+/// Which kind of Apple team signs the app: it decides the app limit on a
+/// phone, how long a signature lasts and which entitlements Apple provisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TeamKind {
+    /// A free Apple ID's personal team: 3 apps per phone, 7-day profiles.
+    Free,
+    /// An Apple Developer Program team.
+    Paid,
+    /// xtool could not say (the team listing failed or the team was not in it).
+    Unknown,
+}
+
+impl TeamKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TeamKind::Free => "free",
+            TeamKind::Paid => "paid",
+            TeamKind::Unknown => "unknown",
+        }
+    }
+}
+
+/// The team xtool signs with, as `xtool auth status` and `xtool ds teams list`
+/// report it. The Apple ID itself is never kept.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SigningTeam {
+    /// The 10-character team ID (not known for an API key sign-in).
+    pub id: Option<String>,
+    /// The team's name from the team listing.
+    pub name: Option<String>,
+    pub kind: TeamKind,
+    /// `"apple_id"` (password sign-in) or `"api_key"` (App Store Connect key).
+    pub sign_in: &'static str,
+}
+
+impl SigningTeam {
+    /// `Reuben Dennison (ABCDE12345), paid team`.
+    pub fn describe(&self) -> String {
+        let who = match (&self.name, &self.id) {
+            (Some(name), Some(id)) => format!("{name} ({id})"),
+            (None, Some(id)) => id.clone(),
+            (Some(name), None) => name.clone(),
+            (None, None) if self.sign_in == "api_key" => "an App Store Connect API key".into(),
+            (None, None) => "the signed-in Apple ID's team".into(),
+        };
+        let kind = match self.kind {
+            TeamKind::Free => "free personal team",
+            TeamKind::Paid => "paid Apple Developer Program team",
+            TeamKind::Unknown => "team type unknown",
+        };
+        format!("{who}, {kind}")
+    }
+}
+
+/// The team xtool signs with, or `None` when xtool is signed out or cannot
+/// say. For a password sign-in this asks Apple for the team list (`xtool ds
+/// teams list`, bounded by `timeout` where available), so it needs network.
+///
+/// xtool counts a team as paid when one of its memberships is the Apple
+/// Developer Program for iOS (`DeveloperServicesTeam.isFree`); this uses the
+/// same rule on the listing it prints.
+pub fn signing_team(runner: &dyn CommandRunner) -> Option<SigningTeam> {
+    let status = stdout_of(runner, Cmd::new("xtool").args(["auth", "status"]))?;
+    let (sign_in, team_id) = parse_auth_status(&status)?;
+    if sign_in == "api_key" {
+        // App Store Connect API keys exist only for paid memberships.
+        return Some(SigningTeam {
+            id: None,
+            name: None,
+            kind: TeamKind::Paid,
+            sign_in,
+        });
+    }
+    let list = Cmd::new("xtool").args(["ds", "teams", "list"]);
+    let list = if crate::commands::which_program(runner, "timeout") {
+        Cmd::new("timeout")
+            .arg("20")
+            .arg(&list.program)
+            .args(&list.args)
+    } else {
+        list
+    };
+    let teams = stdout_of(runner, list)
+        .map(|out| parse_teams(&out))
+        .unwrap_or_default();
+    let found = team_id
+        .as_deref()
+        .and_then(|id| teams.iter().find(|t| t.id == id));
+    Some(SigningTeam {
+        id: team_id.clone(),
+        name: found.map(|t| t.name.clone()),
+        kind: found.map_or(TeamKind::Unknown, |t| t.kind),
+        sign_in,
+    })
+}
+
+/// `("apple_id", Some(team id))` or `("api_key", None)` from `xtool auth
+/// status`; `None` when signed out.
+fn parse_auth_status(out: &str) -> Option<(&'static str, Option<String>)> {
+    let mut lines = out.lines().map(str::trim).filter(|l| !l.is_empty());
+    if !lines.next()?.to_lowercase().starts_with("logged in") {
+        return None;
+    }
+    let mut team = None;
+    for line in lines {
+        let line = line.trim_start_matches("- ");
+        if line.starts_with("ASC key ID:") {
+            return Some(("api_key", None));
+        }
+        if let Some(id) = line.strip_prefix("Team ID:") {
+            team = Some(id.trim().to_string()).filter(|t| !t.is_empty());
+        }
+    }
+    Some(("apple_id", team))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct ListedTeam {
+    id: String,
+    name: String,
+    kind: TeamKind,
+}
+
+/// `xtool ds teams list`: `Name [status]: TEAMID`, then one
+/// `- Membership name (platform)` line per membership.
+fn parse_teams(out: &str) -> Vec<ListedTeam> {
+    let mut teams: Vec<ListedTeam> = Vec::new();
+    for line in out.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if let Some(membership) = line.strip_prefix("- ") {
+            if let Some(team) = teams.last_mut() {
+                if membership.contains("Apple Developer Program") && membership.ends_with("(ios)") {
+                    team.kind = TeamKind::Paid;
+                }
+            }
+        } else if let Some((head, id)) = line.rsplit_once("]: ") {
+            let name = head.rsplit_once(" [").map_or(head, |(n, _)| n);
+            teams.push(ListedTeam {
+                id: id.trim().to_string(),
+                name: name.trim().to_string(),
+                kind: TeamKind::Free,
+            });
+        }
+    }
+    teams
+}
+
+/// What to say when `forge.toml`'s `[ios.signing] team_type` and the team
+/// xtool actually signs with disagree, or when it is unset. `None` when they
+/// agree or the team's kind is unknown.
+pub fn team_mismatch(configured: Option<&str>, team: &SigningTeam) -> Option<String> {
+    let actual = team.kind;
+    match (configured, actual) {
+        (_, TeamKind::Unknown) => None,
+        (Some("paid"), TeamKind::Free) => Some(format!(
+            "forge.toml says [ios.signing] team_type = \"paid\", but xtool signs with {}. Apps will get the free limits (3 per phone, 7 days) and xtool drops paid-only entitlements. Sign in with the paid team: `xtool auth logout`, then `xtool auth login` and pick it (`xtool ds teams list` shows the teams)",
+            team.describe()
+        )),
+        (Some("free"), TeamKind::Paid) => Some(format!(
+            "xtool signs with {}, but forge.toml says [ios.signing] team_type = \"free\". Set team_type = \"paid\" so Forge allows paid-only entitlements",
+            team.describe()
+        )),
+        (None, kind) => Some(format!(
+            "xtool signs with {}. Set [ios.signing] team_type = \"{}\" in forge.toml so Forge checks entitlements for it",
+            team.describe(),
+            kind.as_str()
+        )),
+        _ => None,
+    }
+}
+
 /// Connected iOS devices as xtool prints them (`Name [usb]: UDID`), or `None`
 /// if the listing failed or timed out (usbmuxd not answering).
 ///
@@ -304,5 +475,88 @@ mod tests {
             darwin_ios_sdk_version(&MockRunner::default(), &|_| None),
             None
         );
+    }
+
+    #[test]
+    fn signing_team_comes_from_auth_status_and_the_team_list() {
+        let mock = MockRunner::default();
+        mock.respond(
+            "xtool auth status",
+            0,
+            "Logged in.\n- Apple ID: someone@example.com\n- Team ID: ABCDE12345\n- Token expiry: 1 Dec 2026\n",
+        )
+        .respond(
+            "xtool ds teams list",
+            0,
+            "Someone [active]: ZZZZZ99999\n- Xcode Free Provisioning Program (ios)\nSomeone Ltd [active]: ABCDE12345\n- Apple Developer Program (ios)\n- Apple Developer Program (mac)\n",
+        );
+        let team = signing_team(&mock).unwrap();
+        assert_eq!(team.id.as_deref(), Some("ABCDE12345"));
+        assert_eq!(team.name.as_deref(), Some("Someone Ltd"));
+        assert_eq!(team.kind, TeamKind::Paid);
+        assert_eq!(team.sign_in, "apple_id");
+        assert!(!format!("{team:?}").contains("someone@example.com"));
+
+        // The personal team of the same Apple ID is free.
+        let mock = MockRunner::default();
+        mock.respond(
+            "xtool auth status",
+            0,
+            "Logged in.\n- Team ID: ZZZZZ99999\n",
+        )
+        .respond(
+            "xtool ds teams list",
+            0,
+            "Someone [active]: ZZZZZ99999\n- Xcode Free Provisioning Program (ios)\n",
+        );
+        assert_eq!(signing_team(&mock).unwrap().kind, TeamKind::Free);
+
+        // The listing failed (no network): the team is known, its kind is not.
+        let mock = MockRunner::default();
+        mock.respond(
+            "xtool auth status",
+            0,
+            "Logged in.\n- Team ID: ZZZZZ99999\n",
+        )
+        .respond("xtool ds teams list", 1, "");
+        let team = signing_team(&mock).unwrap();
+        assert_eq!(
+            (team.id.as_deref(), team.kind),
+            (Some("ZZZZZ99999"), TeamKind::Unknown)
+        );
+
+        // API keys are paid-only; signed out means no team.
+        let mock = MockRunner::default();
+        mock.respond(
+            "xtool auth status",
+            0,
+            "Logged in.\n- ASC key ID: K\n- Issuer ID: I\n",
+        );
+        let team = signing_team(&mock).unwrap();
+        assert_eq!((team.kind, team.sign_in), (TeamKind::Paid, "api_key"));
+        let mock = MockRunner::default();
+        mock.respond("xtool auth status", 0, "Logged out\n");
+        assert_eq!(signing_team(&mock), None);
+    }
+
+    #[test]
+    fn team_type_mismatches_are_explained() {
+        let team = |kind| SigningTeam {
+            id: Some("ABCDE12345".into()),
+            name: Some("Someone".into()),
+            kind,
+            sign_in: "apple_id",
+        };
+        assert!(team_mismatch(Some("paid"), &team(TeamKind::Paid)).is_none());
+        assert!(team_mismatch(Some("free"), &team(TeamKind::Free)).is_none());
+        assert!(team_mismatch(Some("paid"), &team(TeamKind::Unknown)).is_none());
+        let wrong = team_mismatch(Some("paid"), &team(TeamKind::Free)).unwrap();
+        assert!(wrong.contains("free personal team") && wrong.contains("xtool auth login"));
+        assert!(team_mismatch(Some("free"), &team(TeamKind::Paid))
+            .unwrap()
+            .contains("team_type = \"paid\""));
+        assert!(team_mismatch(None, &team(TeamKind::Paid))
+            .unwrap()
+            .contains("Set [ios.signing] team_type = \"paid\""));
     }
 }

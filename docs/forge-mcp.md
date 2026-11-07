@@ -1,6 +1,6 @@
 # Forge MCP: an iOS development environment an AI agent can operate
 
-Status: design, 2026-11-07. Nothing here is built. One throwaway spike was run to answer the SDK question (see [Rust MCP SDK](#rust-mcp-sdk)); it is not in the repository.
+Status: **M0 server built** (`forge mcp`, crate `crates/forge-mcp`), tested on Linux against a fake `forge`; **not yet run by an agent against a phone**. [Using Forge MCP](#using-forge-mcp) says what exists and how it differs from the design below; the rest of the page is the design it follows.
 
 The idea (Reuben, 2026-11-07): Forge becomes an MCP server, so a coding agent can **create, build, install, launch, inspect, test and fix a real native iOS app on a physical iPhone, from Linux, without a person in the loop**. The agent still writes Rust and SwiftUI with its own editing tools. Forge gives it the parts of iOS development an agent can't do alone: the toolchain, the signing, the phone, and eyes on the result.
 
@@ -13,6 +13,47 @@ This page is the MCP layer only. The loop itself (create, change the UI, run on 
 - **Where the agent runs decides how fast it can fix Swift.** On Reuben's laptop, the xtool build reports a SwiftUI error in a minute or two. In a cloud session there is no Darwin SDK, so SwiftUI errors only surface through macOS CI, about 35 minutes later (DL1). M0 therefore runs the agent **on the laptop**, talking to Forge over stdio.
 - **The SDK question is settled.** The official Rust SDK, `rmcp` 3.9.0 (Apache-2.0, MSRV 1.88, protocol 2026-07-28), built inside our toolchain pin, passed the licence list in `deny.toml`, and served a `forge doctor` tool and the capability ledger as a resource to a scripted client in the spike.
 - **Safety is enforced by the server, not by trusting the agent.** Reading and building are free. Anything that spends a scarce phone resource, deletes data or touches the Apple account needs a person's approval, through MCP elicitation, and the server refuses when it can't ask.
+
+## Using Forge MCP
+
+New apps carry it in `.mcp.json` (`forge init` writes `{"forge": {"command": "forge", "args": ["mcp"]}}`), so Claude Code and other MCP clients start it from the app folder. By hand:
+
+```bash
+forge mcp                                                    # root = current folder; installing refused
+forge mcp --allow install --bundle-id org.forgemobile.agentlab   # the M0 run: the agent may install the sandbox app only
+forge mcp --root ~/apps --udid 00008130-…                   # another root; device tools only touch this phone
+```
+
+Built (M0), each tool running `forge <command> --json` in the app folder:
+
+| Tool | Runs | Notes |
+|---|---|---|
+| `forge_doctor` | `doctor` | Includes which Apple team signs, free or paid |
+| `forge_create_app` | `init --bundle-id --path` | Bundle id defaults to the sandbox `org.forgemobile.agentlab`; the folder must be new and inside the root |
+| `forge_inspect_app` | `config show` + a file scan | Swift files as model or view by their imports, accessibility identifiers in use, `uitests/*.toml`, a warning for a `*Model.swift` that imports SwiftUI, the last failure |
+| `forge_configure_app` | `config sync`, then `config check` | After the agent edits `forge.toml` |
+| `forge_check` | `test`, then `check swift` | Says in every result that SwiftUI was not compiled |
+| `forge_build_ios` | `build ios` | Diagnostics with file, line, column |
+| `forge_install_device` | `run ios` | Tier 2: refused unless `--allow install` (and the bundle id is in `--bundle-id`, when given); the refusal carries `person_command` |
+| `forge_device_status` | `device list` + `doctor` | Phones, usbmuxd, sign-in, signing team, team-aware notes |
+| `forge_read_logs` | `device logs --for --limit --process <xtool_product>` | 1–120 s, live only; marked as app output |
+| `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes` | Not symbolicated |
+| `forge_diagnose` | (server state) | The last failed result in the session and the end of its log file |
+| `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (PR #61). Screenshots, and the failure screenshot of a UI run, come back as images |
+
+Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
+
+Enforced by the server: paths stay inside the root (symlinks included); phone tools run one at a time; every child has a timeout, and a timeout or a cancelled call kills its whole process group (xtool and cargo too); a device tool that times out returns `needs_person: true`.
+
+Different from the design below, on purpose for M0:
+
+- **Approval is a standing allowance only.** Elicitation is not built: a tier-2 call without `--allow` is refused with the command a person can run. The 2026-07-28 protocol reworked server-to-client requests, and client support varies, so this waits until a client needs it.
+- **Launch goes through the WebDriverAgent runner** (`launch` and `terminate` steps of a UI test file, #61), not a separate `forge device launch` (DL2). Without `forge ui setup`, nothing launches the app.
+- **No slot or expiry count yet.** `forge_device_status` reports the team and its limits but cannot list installed apps or profile expiry (`forge device apps`, DL5, not built).
+- **`--udid` instead of a device allowlist** in config. `forge_install_device` cannot pass it on: xtool chooses the phone.
+- **Not built:** `forge_ui_audit`, `forge_set_appearance`, `forge_app_state`, `forge_remove_app`, `forge_add_capability` (M1 and later, as planned); screenshot downscaling; a server-side log capture from the last launch; the "no more than two identical failed installs" rule.
+
+Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full MCP session over an in-memory pipe with a fake `forge` script (policy refusals, root escapes, diagnostics in summaries, a hung device call killed with `needs_person`, UI step files). Nothing has run against Cati yet. The first phone check is a short scripted session (doctor, device status, logs, and with #61 a launch, tree and screenshot) once #61 and the dev loop are validated on the phone; the unattended Tipster run comes after that.
 
 ## What Forge MCP is, and what it isn't
 
@@ -223,7 +264,7 @@ More rules:
 
 ## What a paid team would unlock
 
-Everything on this page works on the free Apple ID team Reuben uses today, and that stays the default: Forge must work for anyone with a free Apple ID. A paid Apple Developer Program membership (US$99 a year) is an open decision. This is what it would change for an agent.
+Everything on this page works on a free Apple ID team, and that stays the default: Forge must work for anyone with a free Apple ID. Reuben reported renewing his Apple Developer Program membership on 2026-11-07, but renewing does not switch xtool to the paid team (it signs with the team chosen at `xtool auth login`), so which team signs is confirmed at the phone session with `forge doctor` ([ios-signing.md](ios-signing.md#which-team-is-xtool-using)). This is what a paid team changes for an agent.
 
 | | Free team (today) | Paid team |
 |---|---|---|
@@ -308,7 +349,7 @@ Allowed beforehand: freeing a slot, the one-time trust steps, `forge ui setup` (
 | 4 | `--json` and exit codes on `init`, `build ios`, `run ios`, `device *`, `ui *`, `config show` (DL8, shape above) | Dev-loop order #7, shape from here | 1–2 days |
 | 5 | Bounded logs: `forge device logs --since/--for` | forge-device | Hours |
 | 6 | `forge inspect --json` | forge-cli | Half a day |
-| 7 | The `forge-mcp` crate and `forge mcp`: the M0 tools below, the four resources, two prompts, the tier policy with elicitation and `--allow`, the device lock, timeouts and cancellation; tested against fake CLI results without a phone | New | 2–3 days |
+| 7 | The `forge-mcp` crate and `forge mcp`: the M0 tools below, the four resources, two prompts, the tier policy with elicitation and `--allow`, the device lock, timeouts and cancellation; tested against fake CLI results without a phone | **Built** (without elicitation; see [Using Forge MCP](#using-forge-mcp)) | Done |
 | 8 | A per-app xtool product name in `forge init` (DL4), so logs and crashes can be filtered by app | forge-cli template | Hours |
 
 Items 2–6 and 8 make the CLI better for people with no MCP at all. Item 7 is the only MCP-specific work.
@@ -341,7 +382,7 @@ The mock social app in M2 is an acceptance exercise for the agent loop, not a ne
 3. **Approval route.** Recommend elicitation plus a narrow `--allow` at startup. Some clients don't support elicitation yet; they get a refusal with the command a person can run.
 4. **Ledger as data.** Decided (Reuben, 2026-11-07): one record per capability, with the Markdown tables generated from the records and checked in CI, because many parallel PRs edit the ledger. `forge://capabilities` reads the records.
 5. **Is M0 the next thing after #61 and the dev-loop fixes?** Decided (Reuben, 2026-11-07): yes. The CLI items in M0's table are already on the dev-loop order. Adding item 7 costs 2–3 days on top.
-6. **Paid Apple Developer Program?** Open (Reuben, 2026-11-07: "could be convinced"). The design above assumes the free team. See [What a paid team would unlock](#what-a-paid-team-would-unlock) for the case and the recommendation.
+6. **Paid Apple Developer Program?** Membership renewed (Reuben, 2026-11-07, later message); whether xtool signs with the paid team is checked at the phone session. `forge doctor`, `forge run ios` and `forge_device_status` now report the team and its limits, so the tier and bundle-id rules can follow the paid column once it is confirmed.
 
 ## Risks
 

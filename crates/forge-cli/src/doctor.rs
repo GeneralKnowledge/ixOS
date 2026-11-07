@@ -45,6 +45,10 @@ pub struct IosDevice {
     pub devices: Option<Vec<String>>,
     /// iOS version of the SDK in xtool's Darwin SDK, e.g. `"26.0"`.
     pub ios_sdk_version: Option<String>,
+    /// The team xtool signs with: `id`, `name`, `kind` (`free`, `paid` or
+    /// `unknown`) and `sign_in` (`apple_id` or `api_key`). `null` when signed
+    /// out. Finding the kind asks Apple, so it is `unknown` offline.
+    pub signing_team: Option<ios_env::SigningTeam>,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,6 +222,7 @@ pub fn report(
                 ios_env::ios_devices(runner)
             },
             ios_sdk_version: ios_env::darwin_ios_sdk_version(runner, env_fn),
+            signing_team: ios_env::signing_team(runner),
         }
     } else {
         IosDevice::default()
@@ -450,6 +455,14 @@ pub fn render_text(r: &Report) -> String {
                 None => "could not list".to_string(),
             }
         ));
+        if let Some(team) = &d.signing_team {
+            out.push_str(&format!("Signing team: {}\n", team.describe()));
+            match team.kind {
+                ios_env::TeamKind::Free => out.push_str("  Free team: 3 apps per phone, profiles last 7 days, 10 new App IDs a week, no paid-only entitlements\n"),
+                ios_env::TeamKind::Paid => out.push_str("  Paid team: no 3-app limit, profiles last up to a year (never past the membership)\n"),
+                ios_env::TeamKind::Unknown => out.push_str("  Team type unknown (`xtool ds teams list` failed); free and paid teams have different limits (docs/ios-signing.md)\n"),
+            }
+        }
     }
     out.push('\n');
     for w in workflows(r) {

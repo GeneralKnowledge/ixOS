@@ -112,6 +112,14 @@ pub fn record_failure(step: &str, hints: Vec<JsonHint>, output: &str) {
     });
 }
 
+/// Adds a hint to the failure already recorded (a cause found after the
+/// step's own diagnosis).
+pub fn add_hint(hint: JsonHint) {
+    if let Some(failure) = state().failure.as_mut() {
+        failure.hints.push(hint);
+    }
+}
+
 /// An error in how the command was called: stage `usage`, exit code 2.
 pub fn usage_error(message: &str) -> String {
     state().usage = true;
@@ -451,8 +459,8 @@ pub fn finish(outcome: &Outcome, res: Result<(), String>) -> i32 {
     code
 }
 
-/// `2026-11-07T16-40-12` in UTC, for log file names.
-fn timestamp() -> String {
+/// `2026-11-07T16-40-12` in UTC, for log file names and run ids.
+pub fn timestamp() -> String {
     let secs = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())

@@ -1,12 +1,52 @@
 # The Linux dev loop for native iOS apps: an assessment
 
-Status: investigation, 2026-11-07. Nothing in this page has been built yet; it proposes small fixes, not a new layer.
+Status: assessment written 2026-11-07; the table below is kept current. The rest of the page is the original assessment and its measurements.
+
+## Where the loop stands
+
+What an agent (or a person) can do at each step today, from Linux. "Phone-verified" means a person saw it work on an iPhone.
+
+| Step | How | State |
+|---|---|---|
+| 1. Edit Swift and Rust | The agent's own tools; rules in the app's AGENTS.md and `forge://conventions` | Built |
+| 2. Check without the iOS SDK | `forge check swift` (model and bindings with plain Swift), `forge test`; `forge_check` in MCP | Built, Linux-verified. SwiftUI views are not compiled: only the xtool build or macOS CI does that |
+| 3. Build | `forge build ios --json`: diagnostics with file, line, column and a stage | Built; needs the Darwin SDK (the laptop) |
+| 4. Sign | Inside `forge run ios` (xtool). `forge doctor` and `run ios` report which team signs, free or paid, and catch a free team with paid-only entitlements | Team detection built, tested on recorded xtool output; not yet run with a paid team |
+| 5. Install | `forge run ios --json`; `forge_install_device` (refused unless the person allows installs) | Built; phone-verified for the starter and Pocket Library |
+| 6. Launch | `launch` step of a UI test file through WebDriverAgent (#61); `forge_launch_app` | In #61, not phone-verified. A runner-free `forge device launch` (fix 3) is not built |
+| 7. Inspect the UI | `forge ui tree`/`screenshot` (#61, WDA); Apple's accessibility service probe (#79, experimental: `ax_probe --json`) | Not phone-verified. Both run in the iPhone session; see [ax-audit.md](research/ax-audit.md) for how they compare |
+| 8. Read logs | `forge device logs --process <App>Xtool --for 20s --json`; Swift logs through ForgeLog (#66); `forge_read_logs` | Built; device logs phone-verified (#50), live-only (no history before the call) |
+| 9. Run UI tests | `forge ui run <file>.toml --json` (#61); `forge_run_ui_test`, `forge_ui_act` | In #61, not phone-verified |
+| 10. Diagnose | `diagnose.rs` hints in every `--json` result, `forge device crashes --pull`, `forge_diagnose` (last failure and its log) | Basic: no correlation of logs, crashes and UI state yet; crashes not symbolicated |
+
+### Proving it on the phone
+
+`scripts/iphone-acceptance.sh` runs every hardware-dependent step above in one go, through the same `forge --json` commands, and writes `results.md` (PASS, FAIL or SKIP per step, with the reason) plus each step's raw JSON. It removes nothing from the phone; its only install is the app under test over its existing copy (`forge run ios`).
+
+```bash
+forge ui setup --ddi <CoreDeviceDDIs> --runner <WebDriverAgentRunner-Runner.app>   # once per phone restart (#61)
+scripts/iphone-acceptance.sh --with-ax-probe --with-mcp      # about 5 minutes, phone unlocked throughout
+```
+
+| Step | Kind | Passes when |
+|---|---|---|
+| S1, S2 | mandatory | `forge doctor` sees xtool signed in, and the selected team is the paid one |
+| D1–D3 | mandatory | The phone is listed over USB, with its details, and Developer Mode is on |
+| I0–I3 | mandatory | Pocket Library builds, signs and installs; the embedded provisioning profile's team, lifetime (7 days free, up to a year paid) and entitlements are recorded and match the team |
+| L1 | mandatory | Launch, background for 3 s, terminate (element gone), relaunch (element back), screenshot |
+| U1–U4 | mandatory | The Pocket Library M0 test (tap, type, expect, screenshot) passes; the WDA tree and a screenshot are saved; a step aimed at a missing element fails with `failed_step`, the tree and a screenshot |
+| R1, R2 | mandatory | The app's own log lines arrive while the tests run; crash reports are listed and copied |
+| X1, X2 | optional | Apple's accessibility service probe (`ax-report.json`, compared with the WDA tree); `forge mcp` answers `forge_device_status` from the phone |
+
+Without `forge ui` (#61 not merged), L1 and U1–U4 are SKIP, which counts against the run: a skipped step is never a pass. Run on Linux without a phone, every device step fails with the CLI's own usbmuxd message, which is how the script was checked.
+
+Remaining gaps in the order that matters for an unattended agent: #61's first phone run (launch, tree, tap, type), then `forge device apps` (slots and profile expiry, fix 6), a runner-free launch (fix 3), and runtime correlation in `forge_diagnose`.
 
 The question (Reuben, 2026-11-07): is it easy to **create an app, change its UI, run it on a real iPhone, inspect what happened, diagnose problems and repeat**, from Linux, with Rust as the logic and SwiftUI as the presentation? This page walks that loop step by step with what Forge has on `main` today, measures what can be measured, ranks the gaps by friction and proposes the smallest fix for each.
 
 Short answer: the **Rust half of the loop is fast and solid** (seconds, on Linux, with tests). The **Swift half and the phone half are slow and partly blind**. A Swift mistake surfaces either on the laptop after an xtool build, or, for anyone without the Darwin SDK (every cloud coding session), only after macOS CI, about 35 minutes later. After an install, someone has to tap the icon. Nobody can see the screen from the computer. Swift logs never reach the live stream. Most of the fixes are small and reuse code that already exists in the repo or in open PRs.
 
-The same loop is what an AI agent would drive through a Forge MCP server (being designed separately, `docs/forge-mcp.md`). Each gap below says whether it **blocks an unattended agent**: a step that needs a human's hands or eyes on every iteration.
+The same loop is what an AI agent drives through the Forge MCP server ([forge-mcp.md](forge-mcp.md), M0 built). Each gap below says whether it **blocks an unattended agent**: a step that needs a human's hands or eyes on every iteration.
 
 ## The five areas at a glance
 
