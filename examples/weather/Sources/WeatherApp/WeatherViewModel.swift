@@ -34,7 +34,8 @@ public struct WeatherPage: Identifiable, Equatable, Sendable {
         }
         let age = WeatherFormat.age(seconds: ageSeconds)
         switch problem {
-        case .none: return "Updated \(age) ago."
+        // Shown at launch until the refresh lands; only worth saying when old.
+        case .none: return ageSeconds < 3_600 ? nil : "Updated \(age) ago."
         case .offline: return "Showing weather from \(age) ago: you're offline."
         case .timedOut: return "Showing weather from \(age) ago: the service didn't answer."
         case .serverError: return "Showing weather from \(age) ago: the service is having problems."
