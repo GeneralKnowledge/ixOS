@@ -14,18 +14,23 @@ FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust
 
 ## The loop
 
+With an MCP client, use the `forge` server in `.mcp.json` (`forge mcp`): its tools check, build, install, launch, inspect, test and diagnose, and every result says `ok`, the failing `stage`, compiler `diagnostics` with file and line, and `hints`. Read its `forge://conventions` resource first. On the command line, the same steps are:
+
 ```bash
+forge check swift                            # the model and bindings with plain Swift on Linux, seconds; not the SwiftUI views
 cargo test --manifest-path rust/Cargo.toml   # Rust logic, seconds, no SDK or phone
 forge bindings generate                      # after changing the Rust API
 forge build ios                              # Rust + Swift for iOS (needs xtool and the Darwin SDK)
 forge run ios                                # build, sign and install on the connected iPhone
-forge device logs --grep "<text>"            # the phone's log, live; Ctrl-C stops
+forge device logs --process FORGE_PACKAGE_NAMEXtool --for 20s   # the app's log on the phone
 forge device crashes --pull ./crashes        # crash reports from the phone
 ```
 
-`forge run ios` does not open the app: someone taps its icon on the iPhone. A free Apple account allows 3 sideloaded apps per phone and re-signing every 7 days; check with the person before installing a new app or removing one.
+Add `--json` to any of these for one `forge.result/1` object on stdout instead of prose.
 
-`forge test` runs the Rust tests, and the XCTest suite only on macOS. Without the iOS SDK, Swift is checked only by a Mac or by `forge build ios` on a machine that has the SDK; say so when you report.
+`forge run ios` does not open the app; with the UI testing runner set up (`forge ui setup`), the MCP tool `forge_launch_app` does, otherwise someone taps its icon. Installing is the person's call: `forge mcp` refuses it unless they started it with `--allow install`. `forge doctor` says which Apple team signs: a free team allows 3 sideloaded apps per phone and re-signing every 7 days, a paid team neither. Check with the person before installing a new app or removing one.
+
+`forge test` runs the Rust tests, and the XCTest suite only on macOS. Without the iOS SDK, SwiftUI is checked only by a Mac or by `forge build ios` on a machine that has the SDK; say so when you report.
 
 ## Where to look
 

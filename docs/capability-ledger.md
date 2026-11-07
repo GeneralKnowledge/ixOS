@@ -171,6 +171,7 @@ Developer tooling on the Linux computer, not app capabilities, so "Rust API" and
 | Live connection to a development build: pairing over USB, encrypted session (`forge device pair`, `unpair`) | Yes: forge-devproto, forge-devtools, forge-device | Yes: `forge_devtools::DevTools` | n/a: pure Rust in the app | Yes: starter app (`--devtools`) | No | Yes: forge-device.md | USB only; no QR or Wi-Fi pairing yet |
 | App log and lifecycle stream that survives the background (`forge device connect`) | Yes: forge-devtools, forge-device | Yes | n/a | Yes: starter app | No | Yes: forge-device.md | 2,000-record buffer, older records reported as a gap; Swift-side logs not included |
 | Status, state probes and app commands (`forge device status`, `snapshot`, `cmd`) | Yes: forge-devtools, forge-device | Yes: `DevTools::probe`, `DevTools::command` | n/a | Yes: starter app (`notes` probe, `log` command) | No | Yes: forge-device.md | Chat registers none yet; no built-in reset or test-notification commands |
+| Which Apple team xtool signs with, free or paid (`forge doctor`, `forge run ios`) | Yes: forge-cli | n/a | n/a | n/a | No | Yes: ios-signing.md | Reads `xtool auth status` and `xtool ds teams list` (needs network to tell free from paid); paid detection follows xtool's own rule, never checked against a paid team yet |
 
 ## Performance
 
