@@ -44,7 +44,7 @@ Layers: **Core** (any app may need it), **Optional** (a substantial system an ap
 | Local AI | Optional | `forge-ai` (planned, #55 L5) | Model library, download, inference behind a foreign trait, token streaming, cancellation, resource guard | Foundation Models, Core ML (CoreML-LLM) | Swift packages in the app | Planned: L0 check app in #55 | No | No | Planned | Chat assistant (planned) |
 | Attachments | Optional | chat-core today; generic parts to Managed files and Networking | Upload queue and recovery, on top of Managed files | Photos picker, Quick Look | Managed files, Networking | Partial: Chat M3 (#56) | No | No | Planned | Chat |
 | Documents | Optional | Pocket Library today; `epub` feature later | EPUB metadata, chapters as styled text blocks, positions to pages | None | `zip`, `quick-xml` | Partial: Pocket Library (#53) | No | No | Planned | Pocket Library |
-| Audio | Optional | Pocket Library today (Swift) | Audio session ownership, Now Playing and remote commands, speech synthesis; recording later | AVFoundation, MediaPlayer | None | Partial: read-aloud (#53) | No | No | Planned | Pocket Library; Chat M4 voice next |
+| Audio | Optional | `forge-services`: `native_services!(audio)`; adapter `swift/optional/ForgeServices+Audio.swift` (#60). Pocket Library's read-aloud still in its app | Microphone permission, recording (`ForgeAudioRecorder`), one-at-a-time playback (`ForgeAudioPlayer`), audio session (`ForgeAudioSession`), waveforms and lengths; Now Playing, remote commands and speech synthesis later | AVFoundation, MediaPlayer | None | Partial: compiled and tested in CI (macOS), not yet run on an iPhone | No | No | Experimental | Chat M4 voice; Pocket Library read-aloud to move onto its session |
 
 ## Foundation
 
