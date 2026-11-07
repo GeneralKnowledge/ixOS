@@ -2,8 +2,10 @@ mod app_config;
 mod check;
 mod commands;
 mod config;
+mod diagnose;
 mod doctor;
 mod ios_builder;
+mod ios_env;
 mod runner;
 
 use clap::{Parser, Subcommand};
@@ -37,7 +39,8 @@ enum Commands {
         bundle_id: String,
         #[arg(long, default_value = "ios", value_parser = ["ios", "android"])]
         platform: String,
-        /// Directory to create the app in (default: <workspace>/examples/<NAME>).
+        /// Directory to create the app in (default: ./<NAME>, or
+        /// <workspace>/examples/<NAME> when run inside the Forge checkout).
         /// Relative paths are resolved against the current directory.
         #[arg(long, value_name = "DIR")]
         path: Option<PathBuf>,
@@ -47,13 +50,17 @@ enum Commands {
         #[command(subcommand)]
         cmd: ConfigCommands,
     },
-    /// Run Rust tests and checks; with --project, also that app's host tests
+    /// Run an app's tests: its Rust crate, then its host tests (JVM unit tests,
+    /// or XCTest on macOS). Without an app, Forge's own workspace tests.
     Test {
         #[arg(
             long,
-            help = "Also run this app's host tests (JVM unit tests or XCTest on macOS)"
+            help = "App directory (default: the current directory if it has forge.toml)"
         )]
         project: Option<PathBuf>,
+        /// Also run the Forge workspace's own tests and format check
+        #[arg(long)]
+        workspace: bool,
     },
     /// Generate UniFFI bindings (Swift or Kotlin)
     Bindings {
@@ -214,7 +221,9 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             platform,
             path,
         } => {
-            let path = path.map(|p| absolute_from_cwd(&p));
+            let path = path
+                .map(|p| absolute_from_cwd(&p))
+                .or_else(|| default_init_dest(&root, &name));
             commands::init(runner, &root, &name, &bundle_id, &platform, path.as_deref())
         }
         Commands::Config { cmd } => {
@@ -234,7 +243,10 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
             commands::config(&root, &project, action)
         }
-        Commands::Test { project } => commands::test(runner, &root, project.as_deref()),
+        Commands::Test { project, workspace } => {
+            let project = project.or_else(app_in_cwd);
+            commands::test(runner, &root, project.as_deref(), workspace)
+        }
         Commands::Bindings { cmd } => match cmd {
             BindingsCommands::Generate {
                 project: Some(project),
@@ -249,11 +261,9 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 project: None,
                 out: None,
                 language,
-            } => match project_or_default(None, "") {
-                app if !app.as_os_str().is_empty() => {
-                    commands::bindings_generate_for_project(runner, &root, &app)
-                }
-                _ => commands::bindings_generate(
+            } => match app_in_cwd() {
+                Some(app) => commands::bindings_generate_for_project(runner, &root, &app),
+                None => commands::bindings_generate(
                     runner,
                     &root,
                     std::path::Path::new("examples/counter/Generated"),
@@ -299,10 +309,33 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
 /// (has forge.toml), so `forge build android` works from inside an app;
 /// otherwise the bundled example.
 fn project_or_default(project: Option<PathBuf>, example: &str) -> PathBuf {
-    project.unwrap_or_else(|| match std::env::current_dir() {
-        Ok(cwd) if cwd.join("forge.toml").is_file() => cwd,
-        _ => PathBuf::from(example),
-    })
+    project
+        .or_else(app_in_cwd)
+        .unwrap_or_else(|| PathBuf::from(example))
+}
+
+/// The current directory, if it is an app (has forge.toml).
+fn app_in_cwd() -> Option<PathBuf> {
+    std::env::current_dir()
+        .ok()
+        .filter(|cwd| cwd.join("forge.toml").is_file())
+}
+
+/// `forge init MyApp` outside the Forge checkout creates `./MyApp`, so
+/// `forge init MyApp && cd MyApp && forge run ios` works. Inside the checkout
+/// it keeps creating `examples/MyApp` (`None`).
+fn default_init_dest(root: &std::path::Path, name: &str) -> Option<PathBuf> {
+    let cwd = std::env::current_dir().ok()?;
+    init_dest_for(root, &cwd, name)
+}
+
+fn init_dest_for(root: &std::path::Path, cwd: &std::path::Path, name: &str) -> Option<PathBuf> {
+    let canon = |p: &std::path::Path| p.canonicalize().unwrap_or_else(|_| p.to_path_buf());
+    if canon(cwd).starts_with(canon(root)) {
+        None
+    } else {
+        Some(cwd.join(name))
+    }
 }
 
 fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
@@ -338,6 +371,18 @@ ios_simulator = false
         )
         .unwrap_err();
         assert!(err.contains("bundle_id"));
+    }
+
+    #[test]
+    fn init_defaults_to_the_current_directory_outside_the_checkout() {
+        let root = commands::workspace_root();
+        let elsewhere = tempfile::tempdir().unwrap();
+        assert_eq!(
+            init_dest_for(&root, elsewhere.path(), "MyApp"),
+            Some(elsewhere.path().join("MyApp"))
+        );
+        assert_eq!(init_dest_for(&root, &root, "MyApp"), None);
+        assert_eq!(init_dest_for(&root, &root.join("examples"), "MyApp"), None);
     }
 
     #[test]

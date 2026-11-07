@@ -1,5 +1,7 @@
 # Troubleshooting
 
+Start with `forge doctor`: it lists each missing tool, SDK, sign-in or device with the command that fixes it. `forge build ios` and `forge run ios` run the quick checks again before building (set `FORGE_SKIP_PREFLIGHT=1` to skip them), and when a build or install fails they end with a "What went wrong" section that names the layer (Rust library, Swift build, signing and provisioning, or iPhone) and a fix. The sections below explain those fixes.
+
 ## `SDKROOT is not set` when building Rust for iOS
 
 Install the Darwin SDK:
@@ -52,6 +54,37 @@ ls build/ios-device/lib/libforge_ffi.a
 ```
 
 Packaging scripts call `scripts/native-lib-needs-rebuild.sh` so changing Rust sources or iOS/Android build settings triggers a rebuild instead of reusing a stale `.a` / `.so`. Delete `build/ios-device/lib/libforge_ffi.a` (and its `.forge-build-meta` sidecar) to force a full iOS relink.
+
+## Signing and iPhone problems
+
+These come from the last step of `forge run ios`, when xtool signs the app and installs it. The error names the problem; here is what each one means.
+
+| Message contains | Problem | Fix |
+|------------------|---------|-----|
+| `requires logging in with xtool auth`, `Logged out` | xtool has no Apple sign-in | `xtool auth login`, check with `xtool auth status` |
+| `maximum number of apps for free development profiles` | Free accounts: 3 sideloaded apps per device | Remove another development app from the iPhone |
+| `App ID limit` | Free accounts: 10 new bundle ids per 7 days | Reuse a bundle id (`bundle_id` in forge.toml), or wait |
+| `provisioning profile`, `certificate has been revoked`, `maximum number of certificates` | Apple refused the certificate or profile | `xtool auth logout`, `xtool auth login`; revoke old development certificates at developer.apple.com if at the limit |
+| `Developer Mode` | Developer Mode is off (iOS 16+) | Settings > Privacy & Security > Developer Mode, restart |
+| `has not been explicitly trusted`, `invalid code signature` | Installed, but the profile is not trusted | Settings > General > VPN & Device Management > your Apple ID > Trust |
+| `device is locked`, `PasswordProtected` | The iPhone is locked | Unlock it and keep it unlocked during the install |
+| `InvalidHostID`, `could not connect to lockdownd`, `not paired` | Phone and computer are not paired | Replug, unlock, tap Trust; or `idevicepair pair` |
+| `usbmuxd`, `Resource temporarily unavailable` | usbmuxd is stopped or stuck | `sudo systemctl restart usbmuxd`, replug |
+
+If an app that used to open now closes at launch, its free-account signature has expired (after 7 days): run `forge run ios` again.
+
+## Your Rust does not compile during `forge build ios`
+
+The iOS build compiles your crate for `aarch64-apple-ios`, so a Rust error shows up there first. Fix it with the much faster host check, then build again:
+
+```bash
+cargo check --manifest-path rust/Cargo.toml
+cargo test --manifest-path rust/Cargo.toml
+```
+
+## `undefined symbol: uniffi_...` when linking the app
+
+The Swift bindings and the Rust static library come from different versions of your crate. Delete the app's `build/ios-device` folder and run `forge build ios` (or `forge run ios`) again; it rebuilds both together.
 
 ## Xcode on macOS
 

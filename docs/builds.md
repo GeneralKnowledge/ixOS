@@ -10,10 +10,10 @@ Forge has several ways to build an app. They differ in the host machine, the too
 | `forge run ios` | Linux (or macOS) | xtool (`xtool dev run`) | iPhone, installed and launched | debug | release | Supported, same runs as above |
 | `forge build ios --release`, `forge run ios --release` | Linux (or macOS) | xtool (`xtool dev build -c release`) | iPhone (device) | release | release | Supported. Counter, Weather and Chat built in release with xtool on Linux (2026-11-06); not yet recorded on a device through this flag |
 | `forge build ios --package-only`, then Xcode | macOS | Xcode (`xcodebuild`) | iPhone (device) | Debug or Release, chosen in Xcode | release | Supported. CI does unsigned Debug builds of every Xcode project |
-| `forge test --project <ios app>` | macOS | SwiftPM (`swift test`) | the Mac (host tests) | debug | debug | Supported, CI |
+| `forge test` in an iOS app | Linux or macOS | Cargo, then SwiftPM (`swift test`) on macOS | the host | debug | debug | Supported, CI. The app's Rust tests run everywhere; the XCTest suite only on macOS (skipped with a note on Linux) |
 | `forge build android` | Linux or macOS | Gradle (`assembleDebug`) | Android phone or emulator | debug APK | release | Supported. CI builds the APK; not yet run on a physical phone |
 | `forge build android --install` | Linux or macOS | Gradle (`installDebug`) | connected phone or emulator | debug APK | release | Supported, not yet recorded on a physical phone |
-| `forge test --project <android app>` | Linux or macOS | Gradle (`testDebugUnitTest`) | the JVM (host tests) | debug | debug | Supported, CI |
+| `forge test` in an Android app | Linux or macOS | Cargo, then Gradle (`testDebugUnitTest`) | the JVM (host tests) | debug | debug | Supported, CI |
 | iOS Simulator | macOS | Xcode | Simulator | — | — | **Not supported**: no simulator slice of the Rust library ([roadmap](roadmap.md#ios-simulator-support--open)) |
 | Release / store builds (App Store, Google Play) | — | — | — | — | — | **Not supported** yet ([roadmap](roadmap.md#store-distribution-app-store-google-play--open)) |
 
@@ -27,10 +27,10 @@ Notes:
 
 ## Which one should I use?
 
-- **On Linux with an iPhone:** use `forge run ios --project .`. Run `forge doctor` first: it lists anything missing for "iOS from Linux" along with how to fix it.
-- **On Linux with an Android phone:** use `forge build android --project . --install`.
+- **On Linux with an iPhone:** use `forge run ios` from the app directory. Run `forge doctor` first: it lists anything missing for "iOS from Linux" and "Run on an iPhone" along with how to fix it. `forge run ios` repeats the quick checks before it builds.
+- **On Linux with an Android phone:** use `forge build android --install`.
 - **On a Mac:** both of the above work too. Use Xcode when you want the debugger or Instruments ([ios-xcode.md](ios-xcode.md)).
 - **Changing the app's name, version, permissions or entitlements:** edit `forge.toml`; the next build writes Info.plist, App.entitlements and xtool.yml ([app-config.md](app-config.md)).
-- **No device:** use `forge test --project .` (JVM tests on any host, XCTest on macOS) and `cargo test --manifest-path rust/Cargo.toml`.
+- **No device:** use `forge test` (the app's Rust tests, plus JVM tests on any host or XCTest on macOS). `forge test --workspace` also runs Forge's own tests.
 
 Tested tool versions are in [compatibility.md](compatibility.md).

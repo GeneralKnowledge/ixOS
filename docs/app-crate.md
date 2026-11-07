@@ -18,14 +18,14 @@ MyApp/
 
 ```bash
 cd MyApp
-cargo test --manifest-path rust/Cargo.toml        # Rust tests, no device or SDK needed
-forge bindings generate --project .                # after changing the exported API
-forge test --project .                             # Rust tests + host tests (JVM, or XCTest on macOS)
-forge run ios --project .                          # Linux/xtool: build, install, launch on an iPhone
-forge build android --project . --install          # debug APK on a connected Android phone
+cargo test --manifest-path rust/Cargo.toml   # Rust tests, no device or SDK needed
+forge bindings generate                      # after changing the exported API
+forge test                                   # your crate's tests + host tests (JVM, or XCTest on macOS)
+forge run ios                                # Linux/xtool: build, install, launch on an iPhone
+forge build android --install                # debug APK on a connected Android phone
 ```
 
-`forge build` and `forge run` rebuild the crate and regenerate the bindings every time, so a changed Rust API reaches the host without a separate step. `forge bindings generate --project .` is for when you want the new Swift or Kotlin API in your editor before building.
+`forge build` and `forge run` rebuild the crate and regenerate the bindings every time, so a changed Rust API reaches the host without a separate step. `forge bindings generate` is for when you want the new Swift or Kotlin API in your editor before building.
 
 ## What the starter shows
 
