@@ -7,6 +7,27 @@
 - Async exports use UniFFI's built-in support (no `tokio` feature). The Kotlin bindings then import `kotlinx.coroutines`, so Android hosts depend on `kotlinx-coroutines-core`.
 - Generate Swift or Kotlin with **library mode** from the **host** `libforge_ffi.so` (`libforge_ffi.dylib` on macOS) — never from hand-edited UDL.
 
+## Rust-first rules
+
+Logic lives in Rust; UniFFI is an adapter around it. These rules keep it that way:
+
+1. **Framework crates never depend on UniFFI.** `forge-runtime`, `forge-storage` and `forge-net` are plain Rust. Only app crates and the adapter macros (`forge_runtime::app_shell!`, `forge_services::native_services!`) produce UniFFI code, and the macros emit it in the app's crate.
+2. **No internal Rust types cross the boundary.** Each app exports its own records, enums and errors and converts to and from its domain types. A framework type never appears in generated bindings.
+3. **Large data crosses as file paths or handles**, never as byte arrays in a call: attachments, audio, images, exports.
+4. **High-frequency data does not go through generated bindings or event streams.** Sensor samples, audio frames and frame timing use a narrow C ABI or shared memory, decided per capability (the planned real-time audio path is the first case).
+5. **Communication between machines is a separate, versioned protocol**, never an extension of the FFI. Forge Device talks to the app over its own wire protocol; logs reach a developer through the platform log or a device-protocol sink (`forge_runtime::logging`), not through UniFFI calls.
+
+### The foreign-trait exception: native services
+
+Rust normally never calls Swift (see *Events are pulled, not pushed* below). Native services are the one exception: `forge_services::native_services!` declares UniFFI foreign traits (`with_foreign`) that the iOS host implements in Swift (Keychain, directories, notifications, permissions, sharing, deep links). Rules for those adapters:
+
+- They wrap one OS API each and hold no app logic.
+- They never call back into Rust from inside a call, so a Rust lock held by the caller cannot deadlock.
+- Slow work (a permission prompt, a notification request) is an `async` trait method; synchronous methods return promptly and never block on the main thread.
+- They are installed once at launch (`ForgeServices.install()`); Rust reaches them through `native::NativeServices::installed()` and tests use `NativeServices::for_tests`.
+
+The Android JNI init (`ForgeAndroid.init(context)`) is the only hand-written entry point outside UniFFI, because UniFFI cannot pass the app `Context`.
+
 ## Generated artifacts
 
 - iOS output: each app's own `Generated/` folder (for example `examples/counter/Generated/`), built from that app's Rust crate (`[rust] path` in its `forge.toml`), so it holds only that app's API — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
@@ -85,7 +106,7 @@ Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `Op
 
 **Async calls.** UniFFI 0.32.2's built-in async support is used as is: no tokio feature, no custom executor. Each Rust instance runs its commands on its own serial command thread; an async export sends the command and returns a future that resolves when the thread answers. The foreign side polls that future, so a Swift `await` suspends without holding a thread, and the generated async functions are `nonisolated`, so nothing Rust does runs on the main actor. See [architecture.md](architecture.md#concurrency-and-persistence) for ordering and persistence.
 
-**Events are pulled, not pushed.** UniFFI callback interfaces were considered and not used: they would run Swift code on Rust threads, make Rust hold Swift observers (leaks if never removed), and give no backpressure. Instead each subscription owns a bounded queue (`QUEUE_CAPACITY` = 64). `next()` resolves with the next event or `None` when the subscription has ended. On overflow the oldest events are dropped and the next call returns `EventsDropped { count }` first; the consumer should then re-read `snapshot()`. On the Swift side `CounterEvents` is an `AsyncSequence` whose `next()` awaits Rust directly, so that backpressure is kept (an `AsyncStream` fed by a pump task would buffer without limit or drop silently).
+**Events are pulled, not pushed.** UniFFI callback interfaces were considered and not used for events (native services are the one foreign-trait exception, above): they would run Swift code on Rust threads, make Rust hold Swift observers (leaks if never removed), and give no backpressure. Instead each subscription owns a bounded queue (`QUEUE_CAPACITY` = 64). `next()` resolves with the next event or `None` when the subscription has ended. On overflow the oldest events are dropped and the next call returns `EventsDropped { count }` first; the consumer should then re-read `snapshot()`. On the Swift side `CounterEvents` is an `AsyncSequence` whose `next()` awaits Rust directly, so that backpressure is kept (an `AsyncStream` fed by a pump task would buffer without limit or drop silently).
 
 **Subscription lifetime.** A subscription belongs to whoever called `subscribe()`. It ends when the consumer cancels it (Swift: cancelling the iterating task), when it is released, or when the instance shuts down (queued events are delivered first, then the loop ends). Each subscription supports one consumer at a time. To avoid duplicates, subscribe once per owner: the view model's `open()` is idempotent, so a reappearing view does not subscribe again. `subscription_count()` exposes the number of live subscriptions for tests.
 

@@ -2,6 +2,27 @@
 
 Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
 
+## Layers
+
+| Layer | What lives there | Examples |
+|-------|------------------|----------|
+| Native apps | SwiftUI (and Compose) screens, view models, OS integration that must be native | `examples/*/Sources`, `templates/` hosts |
+| Platform adapters | The thin code that joins Rust to a platform: generated UniFFI bindings, the services adapters, the Android JNI init | `Generated/`, `crates/forge-services/swift`, `ForgeAndroid.kt` |
+| Portable Rust framework | Logic shared by every app, with no UniFFI and no platform code of its own | `forge-runtime`, `forge-storage`, `forge-net` |
+| Independent infrastructure | Developer tooling that runs beside the app, never inside its FFI | `forge-cli`, `xtool`, Forge Device (planned) |
+
+Each app owns one Rust crate (`[rust] path` in `forge.toml`, usually `rust/`), built as `libforge_ffi` with the Swift module `ForgeFFI` and the Kotlin package `uniffi.forge_ffi`. The crate holds the app's domain logic and its UniFFI API; the framework crates supply the plumbing. There is no shared FFI crate: two hosts share a crate only by pointing at the same path (`examples/counter-android` uses `../counter/rust`). See [app-crate.md](app-crate.md) and the rules in [ffi-policy.md](ffi-policy.md#rust-first-rules).
+
+What every app crate gets from `forge-runtime`:
+
+- `background` / `background_cancellable`: blocking work behind an `async` export, no async runtime.
+- `EventHub` / `Subscription`: bounded, pull-based event streams.
+- `Lifecycle`: the phase the host reports, with lifetime and foreground cancellation scopes.
+- `app_shell!`: the UniFFI types every app repeats (its phase enum, a `Cancellation`, its event stream object), emitted under the app's own names. The logic stays in the plain Rust above; the macro only adds wrappers.
+- `logging`: one log pipeline for every build (logcat, the iOS system log, recent records in memory, extra sinks for developer tools, panics logged). Logs stay in Rust and the platform log; they never stream across the FFI.
+
+## Counter, the reference app
+
 **iOS**
 
 ```
@@ -82,7 +103,7 @@ Explicit recovery: Rust exports `recover_counter_app` (Swift: `recoverCounterApp
 The envelope carries `schema_version`. `SnapshotEnvelope::decode` reads only that field first, then:
 
 - **Newer than this build:** `UnsupportedSchemaVersion`. The rest of the file is not parsed, since a newer build may have changed its shape.
-- **Older:** runs the `migrate` hook in `forge-storage/src/json_store.rs`, one version step at a time. The upgraded data is written back on the next successful save.
+- **Older:** runs the `migrate` hook in `examples/counter/rust/src/store.rs`, one version step at a time. The upgraded data is written back on the next successful save.
 
 To change the schema, bump `SCHEMA_VERSION` and add a `migrate` arm for the previous version. Keep the filename (`forge-counter-v1.json`) the same, or newer builds will not find older data.
 
@@ -102,6 +123,8 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 
 | Crate | Role |
 |-------|------|
+| `forge-runtime` | `background`, `EventHub`, `Lifecycle`, `app_shell!`, `logging`, and the Android JNI init. No UniFFI dependency of its own; `app_shell!` emits UniFFI code in the app's crate |
+| `forge-services` | Native services (Keychain, directories, notifications, permissions, sharing, deep links): `native_services!` emits UniFFI foreign traits in the app's crate, and `swift/` holds the iOS adapters. See [native-services.md](native-services.md) |
 | `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations |
 | `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by the Weather example and `chat-core` |
 | `chat-core` (`examples/`) | The Chat demo's domain (exposed as `ForgeChatApp` by `examples/chat-android/rust`, and by the iOS Chat app's own crate): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
