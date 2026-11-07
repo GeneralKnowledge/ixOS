@@ -196,18 +196,24 @@ struct LibraryView: View {
 
 struct BookRow: View {
     let book: Book
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
-        HStack(spacing: 12) {
+        // At accessibility text sizes the cover goes above the text, so
+        // titles get the row's full width instead of a narrow column.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 12))
+        layout {
             CoverImage(title: book.title, file: book.coverFile, url: book.coverUrl, width: 44)
             VStack(alignment: .leading, spacing: 3) {
                 Text(book.title)
                     .font(.headline)
-                    .lineLimit(2)
+                    .lineLimit(typeSize.isAccessibilitySize ? 4 : 2)
                 Text(book.displayAuthor)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
                 HStack(spacing: 6) {
                     Image(systemName: book.status.symbol)
                         .foregroundStyle(book.status.tint)

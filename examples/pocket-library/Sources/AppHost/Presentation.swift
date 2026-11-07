@@ -141,6 +141,7 @@ extension Book {
     var pageSummary: String {
         switch (status, totalPages) {
         case (.finished, _): return "Finished"
+        case (.wantToRead, let total?): return "\(total) pages"
         case (_, let total?): return "Page \(currentPage) of \(total)"
         case (.reading, nil): return currentPage > 0 ? "Page \(currentPage)" : "Started"
         default: return "Not started"
