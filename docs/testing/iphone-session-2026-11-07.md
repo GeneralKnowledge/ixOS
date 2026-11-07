@@ -4,6 +4,8 @@ One ordered plan for every phone check that is queued after today's merges, run 
 
 The order follows Reuben's review of 2026-11-07 18:42. **Part 1 (steps 1–4) settles the tooling questions** that the agent and MCP work depends on: Apple's accessibility service (#79), WebDriverAgent UI testing (#61), which team xtool signs with, and the launch/screenshot/diagnostics loop. **Part 2 (steps 5–8)** is the queued app checks, in the time that's left. Each step says **which app slot** it uses, **what Reuben does on the phone**, **what runs on the laptop** (through Remote Control, run by Claude, never typed by Reuben), and **the evidence** that decides pass or fail.
 
+*Since this plan was written:* #61, #83, #86, #88 and #89 are merged, so the branch worktree in step 0 is no longer needed: build `forge` from `main`. Results so far are recorded in [ax-audit.md](../research/ax-audit.md) (accessibility service), [forge-ui-testing.md](../forge-ui-testing.md) (WDA) and [dev-loop.md](../dev-loop.md#where-the-loop-stands).
+
 Nothing here is marked passed until Reuben reports it. Results go back to the runbook each step names (ACCEPTANCE tables, `local-ai.md`, the ledger), not into this file.
 
 ## The phone and the limits

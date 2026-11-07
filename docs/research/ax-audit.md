@@ -1,6 +1,6 @@
 # Spike: Apple's accessibility audit service from Linux
 
-Status: **reading the screen and pressing by identifier work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). Experimental: it is a cargo example behind a feature flag, not a `forge` command. The audit is not yet working, and the run with the DDI mounted is still to do. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
+Status: **reading the screen and pressing by identifier work on a physical iPhone without the Developer Disk Image** (Cati, iOS 26.3.1, 2026-11-07). Experimental: it is a cargo example behind a feature flag, not a `forge` command. The audit is not yet working, with or without the DDI mounted; the probe fixes for it (#88, merged) still need a run on the phone. This is discovery D1 / action A2 of the [agent capability audit](forge-agent-capability-audit.md).
 
 ## Results so far
 

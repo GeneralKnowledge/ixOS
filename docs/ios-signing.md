@@ -81,7 +81,7 @@ With a paid team:
 - Each connected iPhone is registered with the team. A team can register 100 iPhones a year, and a registration is only freed when the membership renews.
 - Development profiles last a year, but never longer than the membership. If it lapses, every app signed by the team stops opening.
 - An App Store Connect API key is an alternative to the Apple ID sign-in. Keep the key file outside any project.
-- The WebDriverAgent runner for UI tests (`forge ui setup`, PR #61) is signed the same way, so it no longer takes one of three slots or needs reinstalling weekly. With `--team paid` (or `team_type = "paid"`), `forge ui setup` stops the free-team slot warnings.
+- The WebDriverAgent runner for UI tests (`forge ui setup`, #61) is signed the same way, so it no longer takes one of three slots or needs reinstalling weekly. With `--team paid` (or `team_type = "paid"`), `forge ui setup` stops the free-team slot warnings.
 
 Not built: Forge does not make distribution builds, TestFlight uploads or App Store submissions. A paid team makes them allowed by Apple, but nothing in Forge or xtool's development commands produces them.
 

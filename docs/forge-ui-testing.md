@@ -207,7 +207,7 @@ On the Linux machine, with the phone plugged in, unlocked and trusting the compu
 
 1. Get the runner: `WebDriverAgentRunner-Runner.zip` from [Appium's WDA release v16.15.3](https://github.com/appium/WebDriverAgent/releases/tag/v16.15.3). Check its sha256 (above) and unzip it.
 2. Get a personalised Developer Disk Image: clone [doronz88/DeveloperDiskImage](https://github.com/doronz88/DeveloperDiskImage) and use its `PersonalizedImages/Xcode_iOS_DDI_Personalized` folder. Xcode 26.0's `Xcode.xip` has no `CoreDeviceDDIs` folder.
-3. Make room: a free account allows three sideloaded apps, and the runner is one.
+3. Make room: a free account allows three sideloaded apps, and the runner is one. On the phone, turn on **Settings > Developer > Enable UI Automation** (it appears once Developer Mode is on). Without it, launching and every touch fail with WDA error code 41, "Not authorized for performing UI testing actions".
 4. `forge ui setup --ddi <DDI folder> --runner WebDriverAgentRunner-Runner.app` mounts the image, has xtool sign and install the runner, and checks it starts. The first time, the phone may ask you to trust the developer profile again: Settings > General > VPN & Device Management. If the runner never starts, `forge ui setup` stops after 120 seconds and says so; it does not hang.
 5. Install Pocket Library with its identifiers (`forge run ios --project examples/pocket-library`).
 6. `forge ui run examples/pocket-library/uitests/m0.toml` opens the New Book form, types a title, checks the field and the Add button, prints the screen's tree, saves screenshots in `forge-ui-out/`, and cancels.
