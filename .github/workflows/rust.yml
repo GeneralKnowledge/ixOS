@@ -8,9 +8,11 @@ on:
 permissions:
   contents: read
 
+# Pull requests cancel their own superseded runs; every push to main gets its
+# own group so each merge commit is checked in full.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   rust:
@@ -33,6 +35,8 @@ jobs:
       # Cargo workspace, so the steps above do not reach them.
       - name: App-owned crates (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh
+      - name: Kotlin bindings match committed files
+        run: ./scripts/check-bindings.sh
       - name: Templates pin the workspace's UniFFI and verifier versions
         run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
