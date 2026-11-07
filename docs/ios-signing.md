@@ -44,6 +44,24 @@ A free account works for development, with Apple's limits:
 
 A paid membership lifts the first two and extends the last to a year.
 
+### Moving to a paid team
+
+When an Apple ID belongs to a paid Developer Program team as well as its free personal team, xtool signs with whichever team was chosen at sign-in:
+
+```bash
+xtool ds teams list   # the teams this Apple ID can sign with
+xtool auth logout
+xtool auth login      # asks which team to use when there are several: pick the paid one
+```
+
+Then set `team_type = "paid"` in each app's `[ios.signing]`, so Forge stops refusing paid-only entitlements. xtool turns on the matching App ID capability (push notifications, Sign in with Apple, associated domains) from the app's entitlements when it signs; on a free team it drops them instead. App IDs keep xtool's `XTL-<id>.` prefix on either kind of team.
+
+With a paid team:
+
+- Each connected iPhone is registered with the team. A team can register 100 iPhones a year, and a registration is only freed when the membership renews.
+- Development profiles last a year, but never longer than the membership. If it lapses, every app signed by the team stops opening.
+- An App Store Connect API key is an alternative to the Apple ID sign-in. Keep the key file outside any project.
+
 ## The iPhone, the first time
 
 1. **Connect and trust.** USB cable, unlock the phone, tap **Trust** on "Trust This Computer?". `forge devices` lists it (it uses `xtool devices --no-wait`, so it never hangs waiting).
