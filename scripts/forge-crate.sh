@@ -22,7 +22,7 @@ if [[ -n "${FORGE_APP_DIR:-}" ]]; then
   CARGO_TARGET="${CARGO_TARGET_DIR:-$CRATE_DIR/target}"
   NATIVE_OUT="$APP_DIR/build"
   # The app's crate plus the Forge crates it depends on by path.
-  SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage" "$ROOT/crates/forge-core")
+  SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-services" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage" "$ROOT/crates/forge-core")
 else
   CRATE_DIR="$ROOT/crates/forge-ffi"
   CARGO_SELECT=(-p forge-ffi)

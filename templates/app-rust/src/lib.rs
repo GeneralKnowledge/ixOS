@@ -34,6 +34,12 @@ use serde::{Deserialize, Serialize};
 
 uniffi::setup_scaffolding!("forge_ffi");
 
+// Native services the host implements (Keychain, app directories, local
+// notifications, permissions, deep links), as `crate::native`. The iOS host
+// installs them with `ForgeServices.install()`; Rust code uses
+// `native::NativeServices::installed()`. See docs/native-services.md.
+forge_services::native_services!();
+
 /// Schema version of `notes.json`. Bump it (and add a migration) when
 /// [`StoredNotes`] changes shape.
 const STORE_VERSION: u32 = 1;

@@ -62,6 +62,10 @@ Builds are **device-only** today. The Rust library ships as a single `aarch64-ap
 
 Good first project for someone with a Mac.
 
+### Native iOS services (M3) — In progress
+
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: Android implementations of the same interfaces, then camera, photos and location as opt-in permission adapters.
+
 ### Store distribution (App Store, Google Play) — Open
 
 Not in this release. Today the CLI produces development builds (an xtool debug build signed for your own device on iOS, a debug APK for Android; see [builds.md](builds.md)). Release distribution needs:

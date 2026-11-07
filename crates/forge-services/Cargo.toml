@@ -1,0 +1,22 @@
+[package]
+name = "forge-services"
+version = "0.1.0"
+description = "Native platform services for Forge apps (Keychain, files, notifications, sharing, permissions, deep links): Rust interfaces the iOS host implements in Swift"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+# The UniFFI items are emitted into the app's own crate by
+# `forge_services::native_services!()`, so they join the app's `forge_ffi`
+# namespace (one Swift module, one Kotlin package). This crate holds the
+# plain-Rust logic behind them. An app using the macro needs `uniffi` and
+# `async-trait` as direct dependencies, because UniFFI's generated code
+# names both by absolute path.
+[dependencies]
+
+[dev-dependencies]
+uniffi = { workspace = true }
+async-trait = "0.1"
+forge-runtime = { workspace = true }
+tempfile = "3.14"

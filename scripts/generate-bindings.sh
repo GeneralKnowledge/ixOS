@@ -59,6 +59,15 @@ else
   mv "$STAGE/forge_ffiFFI.modulemap" "$OUT/forge_ffiFFI/module.modulemap"
   # Older layout kept everything at the top level, which SwiftPM rejects.
   rm -f "$OUT/forge_ffi.swift" "$OUT/forge_ffiFFI.h" "$OUT/forge_ffiFFI.modulemap"
+  # Native services: when the crate uses `forge_services::native_services!()`,
+  # Forge's Swift adapters (Keychain, notifications, ...) compile in the same
+  # module as the bindings, so they can implement its protocols. Source of
+  # truth: crates/forge-services/swift/. Crates without the macro get none.
+  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift
+  if grep -q 'public func installNativeServices(' "$OUT/ForgeFFI/forge_ffi.swift"; then
+    cp "$ROOT/crates/forge-services/swift/"ForgeServices*.swift "$OUT/ForgeFFI/"
+    echo "[forge] Added the native services Swift adapters."
+  fi
 fi
 
 echo "[forge] Bindings generated."
