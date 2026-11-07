@@ -16,6 +16,9 @@
 //! ```text
 //! cargo run -p forge-device --features ax-probe --example ax_probe -- [--udid U] [--max 40] [--audit] [--press ID] [--app PREFIX]
 //!
+//! `--off` only turns the phone's inspector off (monitoring, highlight),
+//! for when an earlier run was interrupted. Every run turns it off at the end.
+//!
 //! `--app library.` refuses the audit, and any press outside that prefix,
 //! unless an element with an identifier starting `library.` is on screen.
 //! ```
@@ -48,6 +51,7 @@ struct Args {
     audit: bool,
     press: Option<String>,
     app: Option<String>,
+    off: bool,
 }
 
 fn args() -> Args {
@@ -57,6 +61,7 @@ fn args() -> Args {
         audit: false,
         press: None,
         app: None,
+        off: false,
     };
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -66,6 +71,7 @@ fn args() -> Args {
             "--audit" => out.audit = true,
             "--press" => out.press = it.next(),
             "--app" => out.app = it.next(),
+            "--off" => out.off = true,
             other => {
                 eprintln!("unknown argument {other}");
                 std::process::exit(2);
@@ -141,6 +147,24 @@ async fn run(args: Args) -> Result<()> {
     let mut ax = Ax::new(RemoteServerClient::new(socket));
     ax.hello().await?;
 
+    // Messages the daemon sends right after connecting. pymobiledevice3
+    // discards two on iOS 15+; left unread, they shift every reply by one
+    // (run 2 on Cati sent the capabilities list as the audit types).
+    ax.drain(2, Duration::from_millis(500)).await?;
+
+    if args.off {
+        ax.cleanup().await;
+        println!("[off] inspector monitoring, visuals and ignored elements turned off");
+        return Ok(());
+    }
+    // Whatever happens, leave the phone's inspector off: left on, its
+    // highlight keeps moving through whatever app is in front.
+    let result = stages(&mut ax, &args, started).await;
+    ax.cleanup().await;
+    result
+}
+
+async fn stages(ax: &mut Ax, args: &Args, started: Instant) -> Result<()> {
     // Stage 2.
     let caps = ax.call("deviceCapabilities", vec![]).await?;
     println!("[2] capabilities: {}", short(&caps));
@@ -164,6 +188,16 @@ async fn run(args: Args) -> Result<()> {
             Value::Array(a) => a,
             other => vec![other],
         };
+        if !types
+            .iter()
+            .all(|t| t.as_string().is_some_and(|s| s.starts_with("testType")))
+        {
+            return Err(format!(
+                "stage 4: the audit types reply doesn't look like audit types: {}",
+                short(&Value::Array(types))
+            )
+            .into());
+        }
         ax.send("deviceBeginAuditTypes:", vec![arg(Value::Array(types))])
             .await?;
         match ax.wait_event(AUDIT_DONE, Duration::from_secs(120)).await? {
@@ -435,6 +469,42 @@ impl Ax {
             }
         }
         Ok(None)
+    }
+
+    /// Reads up to `count` unsolicited messages, `wait` each, and prints them.
+    async fn drain(&mut self, count: usize, wait: Duration) -> Result<()> {
+        for _ in 0..count {
+            let Some(msg) = self.read(wait).await? else {
+                break;
+            };
+            match notification(&msg) {
+                Some((n, _)) => println!("    initial message {n}"),
+                None => println!(
+                    "    initial message {}",
+                    short(&msg.data.map(deserialize).unwrap_or(Value::Boolean(false)))
+                ),
+            }
+        }
+        Ok(())
+    }
+
+    /// Turns the on-screen inspector off. Errors are only printed: this runs
+    /// on the way out, including after a failure.
+    async fn cleanup(&mut self) {
+        for (selector, value) in [
+            ("deviceSetAppMonitoringEnabled:", Value::Boolean(false)),
+            ("deviceInspectorShowVisuals:", Value::Integer(0.into())),
+            (
+                "deviceInspectorShowIgnoredElements:",
+                Value::Integer(0.into()),
+            ),
+        ] {
+            if let Err(err) = self.send(selector, vec![arg(value)]).await {
+                eprintln!("    cleanup {selector} failed: {err}");
+            }
+        }
+        // Give the writes a moment to leave before the socket closes.
+        tokio::time::sleep(Duration::from_millis(200)).await;
     }
 
     /// Whether the foreground app is the one under test: walks up to 30
