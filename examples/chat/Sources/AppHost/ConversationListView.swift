@@ -199,8 +199,8 @@ private struct ConversationRow: View {
         let who = last.isMine ? "You" : last.author
         if last.deleted { return "\(who): Message deleted" }
         switch last.status {
-        case .failed: return "Not sent: \(last.body)"
-        case .sending, .sent: return "\(who): \(last.body)"
+        case .failed: return "Not sent: \(last.summary)"
+        case .sending, .sent: return "\(who): \(last.summary)"
         }
     }
 

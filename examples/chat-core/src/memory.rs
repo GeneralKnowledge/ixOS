@@ -1,7 +1,7 @@
 //! In-memory [`ChatRepo`]: the test double, and the reference for what the
 //! mock server must do.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -44,6 +44,8 @@ struct State {
     listeners: Vec<(String, Sender<Result<RemoteEvent, ChatError>>)>,
     /// Calls made, for assertions: `"list"`, `"load <id> <since>"`, ...
     calls: Vec<String>,
+    /// Uploaded attachments by id (their SHA-256).
+    blobs: HashMap<String, Vec<u8>>,
 }
 
 #[derive(Default)]
@@ -369,6 +371,7 @@ fn tombstone(message: &mut Message) {
     message.deleted = true;
     message.body.clear();
     message.reactions.clear();
+    message.attachments.clear();
 }
 
 /// Adds or removes `user_id`'s `emoji`, dropping an emoji nobody uses.
@@ -447,8 +450,8 @@ impl ChatRepo for InMemoryRepo {
             return Err(refused(400, "the server refuses new messages"));
         }
         let cursors = state.reader.is_some();
-        let room = state
-            .rooms
+        let State { rooms, blobs, .. } = &mut *state;
+        let room = rooms
             .iter_mut()
             .find(|r| r.id == outgoing.conversation_id)
             .ok_or_else(|| ChatError::NotFound {
@@ -466,8 +469,16 @@ impl ChatRepo for InMemoryRepo {
             sent_at: 0,
             status: MessageStatus::Sent,
             reply_to: outgoing.reply_to.clone(),
+            attachments: outgoing.attachments.clone(),
             ..Message::default()
         };
+        if message
+            .attachments
+            .iter()
+            .any(|a| !blobs.contains_key(&a.id))
+        {
+            return Err(refused(400, "an attachment was not uploaded first"));
+        }
         if let Some(target) = &message.reply_to {
             if !room.messages.iter().any(|m| &m.id == target) {
                 return Err(refused(400, "reply_to is not a message in this room"));
@@ -606,6 +617,41 @@ impl ChatRepo for InMemoryRepo {
         )
     }
 
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let mut state = self.lock();
+        state.calls.push(format!("upload {mime}"));
+        if state.offline {
+            return Err(offline());
+        }
+        let bytes = std::fs::read(path).map_err(|e| ChatError::invalid(e.to_string()))?;
+        let id = {
+            use sha2::Digest;
+            sha2::Sha256::digest(&bytes)
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
+        };
+        state.blobs.insert(id.clone(), bytes);
+        Ok(id)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let mut state = self.lock();
+        state.calls.push(format!("download {id}"));
+        if state.offline {
+            return Err(offline());
+        }
+        let bytes = state
+            .blobs
+            .get(id)
+            .ok_or_else(|| refused(404, "no such attachment"))?;
+        std::fs::write(destination, bytes).map_err(|e| ChatError::invalid(e.to_string()))
+    }
+
     fn open_stream(
         &self,
         conversation_id: &str,
@@ -694,6 +740,7 @@ mod tests {
             author_id: String::new(),
             body: body.into(),
             reply_to: None,
+            attachments: Vec::new(),
         }
     }
 

@@ -293,6 +293,53 @@ impl ChatCore {
         result.map_err(|e| self.rejected(e))
     }
 
+    /// `send_reply` with photos or documents (at most 10, each up to 25 MB).
+    /// Rust copies each file into the app's attachment store before this
+    /// returns its first event, so the originals may be temporary. The body
+    /// may be empty. Offline, the files wait in the outbox with the message.
+    pub async fn send_files(
+        &self,
+        conversation_id: String,
+        body: String,
+        reply_to: Option<String>,
+        files: Vec<ChatOutgoingFile>,
+    ) -> Result<ChatMessage, ChatError> {
+        let (client, user_id) = self.client_and_user()?;
+        let result = background("chat-send-files", move || {
+            let files: Vec<chat_core::OutgoingFile> = files.into_iter().map(Into::into).collect();
+            client
+                .send_with_files(&conversation_id, &body, reply_to.as_deref(), &files)
+                .map(|m| types::message(m, &user_id))
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
+    /// The local file of an attachment, if it is on this iPhone already
+    /// (sent from here, or fetched before). Its name is the attachment id,
+    /// without an extension.
+    pub fn attachment_file(&self, attachment_id: String) -> Option<String> {
+        self.client()
+            .ok()?
+            .attachment_file(&attachment_id)
+            .map(|p| p.to_string_lossy().into_owned())
+    }
+
+    /// The local file of an attachment, downloading it first if needed (and
+    /// checking it against its id). Runs off the caller's thread.
+    pub async fn fetch_attachment(&self, attachment_id: String) -> Result<String, ChatError> {
+        let client = self.client()?;
+        let result = background("chat-fetch", move || {
+            client
+                .fetch_attachment(&attachment_id)
+                .map(|p| p.to_string_lossy().into_owned())
+                .map_err(ChatError::from)
+        })
+        .await;
+        result.map_err(|e| self.rejected(e))
+    }
+
     /// Replaces the text of one of our sent messages, for everyone
     /// (`MessageUpdated`, here and on other devices).
     pub async fn edit_message(

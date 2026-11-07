@@ -36,6 +36,8 @@ platform (the Keychain adapter, notifications, the scene lifecycle).
    make chat-cli ARGS="read general"                 # numbered: @1 is the newest
    make chat-cli ARGS="react general @1 👍"
    make chat-cli ARGS="reply general @2 good point"
+   make chat-cli ARGS="send-file general ~/photo.jpg a caption"
+   make chat-cli ARGS="download general @1 /tmp"     # checked against its SHA-256
    ```
 
 The full device check is [ACCEPTANCE.md](ACCEPTANCE.md).
@@ -44,7 +46,7 @@ On a Mac you can also open `Xcode/Chat.xcodeproj`, or run it on the desktop
 with `swift run --package-path examples/chat Chat` (after
 `./scripts/test-swift-host.sh examples/chat` has built the host library).
 
-## What it does today (M0 to M2)
+## What it does today (M0 to M3)
 
 - **An account per device, in the Keychain.** First launch creates an account
   on the server. Rust stores it, token included, through `forge-services`'
@@ -77,6 +79,15 @@ with `swift run --package-path examples/chat Chat` (after
 - **SQLite storage (M2).** The phone's chats are in a SQLite database
   through forge-storage, with migrations and recovery from a damaged file;
   Settings shows the SQLite version.
+- **Photos and documents (M3).** The + button next to the text field adds
+  photos (the system photo picker, no permission prompt) or documents (the
+  Files picker), with an optional caption. Photos are shrunk on the phone to
+  a 2048-pixel JPEG without their location. Files wait in the outbox with
+  the message and are uploaded first; the server and the phone keep each file
+  once, named by its SHA-256. Photos show as thumbnails, other files as rows
+  with their size; tap one to open it in Quick Look, which also shares it.
+  Files from others are downloaded when shown and checked before they are
+  kept. Up to 10 files of 25 MB each per message.
 - **Lifecycle.** In the background Rust closes every room connection; back in
   the foreground it reconnects them and catches up, and the list refreshes.
 - **Local notifications** for new messages in rooms you are not in, while the
@@ -92,6 +103,7 @@ with `swift run --package-path examples/chat Chat` (after
 | Rust tests, against the real chat server in process | `rust/src/tests.rs` (`cargo test --manifest-path examples/chat/rust/Cargo.toml`) |
 | Presentation state; applies Rust events | `Sources/AppHost/ChatModel.swift` |
 | Screens | `Sources/AppHost/ContentView.swift`, `SignUpView.swift`, `ConversationListView.swift`, `ChatView.swift`, `SettingsView.swift` |
+| Picking, shrinking, thumbnails and previews of attachments | `Sources/AppHost/Attachments.swift` |
 | Swift tests, against the real chat server | `Tests/AppHostTests/` (`scripts/test-swift-host.sh examples/chat`, macOS) |
 | App settings (bundle id, permissions) | `forge.toml` (Forge writes Info.plist, App.entitlements and xtool.yml from it) |
 

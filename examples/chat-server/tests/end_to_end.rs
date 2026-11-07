@@ -139,6 +139,7 @@ fn rooms_messages_and_errors_over_http() {
             author: "me".into(),
             author_id: String::new(),
             reply_to: None,
+            attachments: Vec::new(),
             body: "different".into(),
         },
     )
@@ -381,6 +382,7 @@ fn accounts_sign_every_call_and_own_the_author() {
             author: "Ben".into(),
             author_id: ben.user_id.clone(),
             reply_to: None,
+            attachments: Vec::new(),
             body: "hi Ben".into(),
         },
     )
@@ -598,4 +600,132 @@ fn message_changes_between_two_accounts() {
     let before_edit = q.sent_at;
     let changed = chat_core::ChatRepo::load_messages(&again, "general", Some(before_edit)).unwrap();
     assert!(changed.iter().any(|m| m.id == question.id));
+}
+
+/// M3: a photo and a document from one account to another over real
+/// sockets: uploaded once by content, carried by a message, downloaded and
+/// checked, and still there after a server restart.
+#[test]
+fn attachments_between_two_accounts() {
+    no_proxy();
+    let dir = tempfile::tempdir().unwrap();
+    let data = dir.path().join("server.json");
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let base = format!("http://{addr}");
+    let signup = HttpRepo::with_ureq(&base);
+    let ana = signup.register("Ana").unwrap();
+    let ben = signup.register("Ben").unwrap();
+    let (ana_client, _ana_events) = account_client(&base, &ana);
+    let (ben_client, ben_events) = account_client(&base, &ben);
+    ana_client.list_conversations().unwrap();
+    ben_client.list_conversations().unwrap();
+    ben_client.subscribe("general").unwrap();
+    wait_for(&ben_events, "Ben connected", connected);
+
+    // A 3 MB "photo" (bigger than one read buffer) and a small document.
+    let photo_bytes: Vec<u8> = (0..3_000_000u32).map(|i| (i * 7 % 251) as u8).collect();
+    std::fs::write(dir.path().join("IMG_0042.jpg"), &photo_bytes).unwrap();
+    std::fs::write(dir.path().join("Plan.pdf"), b"%PDF-1.7 the plan").unwrap();
+    let files = [
+        chat_core::OutgoingFile {
+            path: dir.path().join("IMG_0042.jpg"),
+            name: "IMG_0042.jpg".into(),
+            mime: "image/jpeg".into(),
+        },
+        chat_core::OutgoingFile {
+            path: dir.path().join("Plan.pdf"),
+            name: "Plan.pdf".into(),
+            mime: "application/pdf".into(),
+        },
+    ];
+    let sent = ana_client
+        .send_with_files("general", "the plan", None, &files)
+        .unwrap();
+    assert_eq!(sent.status, MessageStatus::Sent);
+    assert_eq!(sent.attachments[0].size, 3_000_000);
+
+    // Ben's live stream brings the message with its attachments.
+    wait_for(
+        &ben_events,
+        "Ben gets the files",
+        |e| matches!(e, ChatEvent::MessageReceived(m) if m.id == sent.id && m.attachments.len() == 2),
+    );
+    let photo = ben_client
+        .fetch_attachment(&sent.attachments[0].id)
+        .unwrap();
+    assert_eq!(std::fs::read(&photo).unwrap(), photo_bytes);
+    let pdf = ben_client
+        .fetch_attachment(&sent.attachments[1].id)
+        .unwrap();
+    assert_eq!(std::fs::read(&pdf).unwrap(), b"%PDF-1.7 the plan");
+
+    // Uploading the same bytes again is harmless and gives the same id.
+    let again = HttpRepo::with_ureq(&base).with_token(&ben.token);
+    assert_eq!(
+        chat_core::ChatRepo::upload_attachment(
+            &again,
+            &dir.path().join("Plan.pdf"),
+            "application/pdf"
+        )
+        .unwrap(),
+        sent.attachments[1].id
+    );
+    // A message may only name uploaded files, and downloads need an id.
+    let bogus = chat_core::ChatRepo::post_message(
+        &again,
+        &chat_core::OutgoingMessage {
+            id: "bogus".into(),
+            conversation_id: "general".into(),
+            author: "Ben".into(),
+            author_id: ben.user_id.clone(),
+            body: String::new(),
+            reply_to: None,
+            attachments: vec![chat_core::Attachment {
+                id: "0".repeat(64),
+                name: "x".into(),
+                mime: "text/plain".into(),
+                size: 1,
+            }],
+        },
+    );
+    assert!(
+        matches!(bogus, Err(ChatError::Http { status: 400, .. })),
+        "{bogus:?}"
+    );
+    let missing = chat_core::ChatRepo::download_attachment(
+        &again,
+        &"0".repeat(64),
+        &dir.path().join("nothing"),
+    );
+    assert!(missing.is_err());
+    assert!(!dir.path().join("nothing").exists());
+    // Without a token: refused.
+    let anonymous = HttpRepo::with_ureq(&base);
+    assert!(matches!(
+        chat_core::ChatRepo::download_attachment(
+            &anonymous,
+            &sent.attachments[1].id,
+            &dir.path().join("x")
+        ),
+        Err(ChatError::Unauthorized { .. })
+    ));
+    ana_client.shutdown();
+    ben_client.shutdown();
+
+    // The files are on disk next to the data file and survive a restart.
+    drop(server);
+    assert!(dir
+        .path()
+        .join("attachments")
+        .join(&sent.attachments[0].id)
+        .is_file());
+    let state = AppState::open(&data, Duration::from_millis(100)).unwrap();
+    let (_server, addr) = Server::start(state, "127.0.0.1:0".parse().unwrap());
+    let after = HttpRepo::with_ureq(format!("http://{addr}")).with_token(&ana.token);
+    let target = dir.path().join("after.pdf");
+    chat_core::ChatRepo::download_attachment(&after, &sent.attachments[1].id, &target).unwrap();
+    assert_eq!(std::fs::read(&target).unwrap(), b"%PDF-1.7 the plan");
+    let messages = chat_core::ChatRepo::load_messages(&after, "general", None).unwrap();
+    assert_eq!(messages[0].attachments, sent.attachments);
 }

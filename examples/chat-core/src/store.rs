@@ -343,6 +343,16 @@ impl ChatStore {
         }
     }
 
+    /// Where this store keeps attachment files: an `attachments` folder
+    /// next to the database, or a fresh temporary folder for a store in
+    /// memory. Signing out (deleting the account's folder) removes them.
+    pub fn attachments(&self) -> crate::AttachmentStore {
+        match &self.directory {
+            Some(directory) => crate::AttachmentStore::new(directory.join("attachments")),
+            None => crate::AttachmentStore::temporary(),
+        }
+    }
+
     /// The database file, or `None` in memory.
     pub fn path(&self) -> Option<PathBuf> {
         self.directory.as_ref().map(|d| d.join(DATABASE_FILENAME))
@@ -626,12 +636,22 @@ fn write_snapshot(
                 message.conversation_id,
                 message.sent_at,
                 message.deleted,
-                message.body,
+                searchable_text(message),
                 encode(*message)?
             ],
         )?;
     }
     Ok(())
+}
+
+/// What search finds a message by: its text and its attachments' names.
+fn searchable_text(message: &Message) -> String {
+    let mut text = message.body.clone();
+    for attachment in &message.attachments {
+        text.push('\n');
+        text.push_str(&attachment.name);
+    }
+    text
 }
 
 #[cfg(test)]

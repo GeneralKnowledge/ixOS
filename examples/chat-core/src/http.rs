@@ -111,6 +111,8 @@ struct WireMessage {
     deleted: bool,
     #[serde(default)]
     reactions: std::collections::BTreeMap<String, Vec<String>>,
+    #[serde(default)]
+    attachments: Vec<crate::Attachment>,
 }
 
 #[derive(Serialize)]
@@ -120,7 +122,17 @@ struct WirePost<'a> {
     body: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
     reply_to: Option<&'a str>,
+    #[serde(skip_serializing_if = "<[_]>::is_empty")]
+    attachments: &'a [crate::Attachment],
 }
+
+#[derive(Deserialize)]
+struct WireUpload {
+    id: String,
+}
+
+/// Uploads may take longer than ordinary calls: at least this long.
+const UPLOAD_TIMEOUT: Duration = Duration::from_secs(300);
 
 #[derive(Serialize)]
 struct WireEdit<'a> {
@@ -204,6 +216,7 @@ impl From<WireMessage> for Message {
             edited_at: m.edited_at,
             deleted: m.deleted,
             reactions: m.reactions,
+            attachments: m.attachments,
         }
     }
 }
@@ -423,6 +436,7 @@ impl ChatRepo for HttpRepo {
             author: &message.author,
             body: &message.body,
             reply_to: message.reply_to.as_deref(),
+            attachments: &message.attachments,
         })
         .map_err(ChatError::protocol)?;
         let response = self.send(
@@ -439,6 +453,42 @@ impl ChatRepo for HttpRepo {
             )));
         }
         Ok(stored)
+    }
+
+    fn upload_attachment(&self, path: &std::path::Path, mime: &str) -> Result<String, ChatError> {
+        let request = self
+            .authorised(
+                Request::post(format!("{}/attachments", self.base_url), Vec::new())
+                    .header("Content-Type", mime)
+                    .header("Accept", "application/json"),
+            )
+            .timeout(self.timeout.max(UPLOAD_TIMEOUT));
+        let response = self
+            .client
+            .send_file(&request, path, &forge_net::CancelHandle::new())?;
+        check_status(response.status, &response.body, None)?;
+        Ok(decode::<WireUpload>(&response.body)?.id)
+    }
+
+    fn download_attachment(
+        &self,
+        id: &str,
+        destination: &std::path::Path,
+    ) -> Result<(), ChatError> {
+        let request = self
+            .authorised(Request::get(format!(
+                "{}/attachments/{}",
+                self.base_url,
+                encode_path_segment(id)
+            )))
+            .timeout(self.timeout);
+        let response = forge_net::download_to_file(
+            &*self.client,
+            &request,
+            destination,
+            &forge_net::CancelHandle::new(),
+        )?;
+        check_status(response.status, &response.body, None)
     }
 
     fn mark_read(&self, conversation_id: &str, up_to: i64) -> Result<(), ChatError> {
@@ -776,6 +826,7 @@ mod tests {
             author_id: String::new(),
             body: "hi".into(),
             reply_to: None,
+            attachments: Vec::new(),
         };
         let stored = repo.post_message(&out).unwrap();
         assert_eq!(stored.sent_at, 42);

@@ -635,6 +635,13 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func account()  -> ChatAccount?
     
     /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+    func attachmentFile(attachmentId: String)  -> String?
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
     func cachedConversations()  -> [ChatConversation]
@@ -683,6 +690,12 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
     func events() throws  -> ChatEvents
     
     /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+    func fetchAttachment(attachmentId: String) async throws  -> String
+    
+    /**
      * Lists conversations from the server, prefetching new messages for
      * rooms that are not open (they count as unread).
      */
@@ -722,6 +735,14 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * conversation, or in all with `None`. Newest first, at most 100.
      */
     func search(query: String, conversationId: String?) async throws  -> [ChatMessage]
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+    func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile]) async throws  -> ChatMessage
     
     /**
      * Sends a message. It is announced as `Sending` at once, then becomes
@@ -920,6 +941,21 @@ open func account() -> ChatAccount?  {
 }
     
     /**
+     * The local file of an attachment, if it is on this iPhone already
+     * (sent from here, or fetched before). Its name is the attachment id,
+     * without an extension.
+     */
+open func attachmentFile(attachmentId: String) -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_chatcore_attachment_file(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(attachmentId),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Conversations as stored, for a first render before the network.
      */
 open func cachedConversations() -> [ChatConversation]  {
@@ -1054,6 +1090,26 @@ open func events()throws  -> ChatEvents  {
 }
     
     /**
+     * The local file of an attachment, downloading it first if needed (and
+     * checking it against its id). Runs off the caller's thread.
+     */
+open func fetchAttachment(attachmentId: String)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_fetch_attachment(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(attachmentId)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
      * Lists conversations from the server, prefetching new messages for
      * rooms that are not open (they count as unread).
      */
@@ -1167,6 +1223,28 @@ open func search(query: String, conversationId: String?)async throws  -> [ChatMe
             completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
             freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeChatMessage.lift,
+            errorHandler: FfiConverterTypeChatError_lift
+        )
+}
+    
+    /**
+     * `send_reply` with photos or documents (at most 10, each up to 25 MB).
+     * Rust copies each file into the app's attachment store before this
+     * returns its first event, so the originals may be temporary. The body
+     * may be empty. Offline, the files wait in the outbox with the message.
+     */
+open func sendFiles(conversationId: String, body: String, replyTo: String?, files: [ChatOutgoingFile])async throws  -> ChatMessage  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_chatcore_send_files(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo),FfiConverterSequenceTypeChatOutgoingFile.lower(files)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
 }
@@ -2733,6 +2811,99 @@ public func FfiConverterTypeChatAccount_lower(_ value: ChatAccount) -> RustBuffe
 
 
 /**
+ * A file a message carries.
+ */
+public struct ChatAttachment: Equatable, Hashable {
+    /**
+     * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+     */
+    public var id: String
+    /**
+     * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+     */
+    public var name: String
+    /**
+     * Its media type, e.g. `image/jpeg` or `application/pdf`.
+     */
+    public var mime: String
+    public var size: UInt64
+    /**
+     * A picture the app can show inline.
+     */
+    public var isImage: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The SHA-256 of its bytes (lowercase hex): how to fetch it.
+         */id: String, 
+        /**
+         * The file name as the sender had it, e.g. `IMG_0042.jpg`.
+         */name: String, 
+        /**
+         * Its media type, e.g. `image/jpeg` or `application/pdf`.
+         */mime: String, size: UInt64, 
+        /**
+         * A picture the app can show inline.
+         */isImage: Bool) {
+        self.id = id
+        self.name = name
+        self.mime = mime
+        self.size = size
+        self.isImage = isImage
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatAttachment: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatAttachment: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatAttachment {
+        return
+            try ChatAttachment(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                isImage: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatAttachment, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterBool.write(value.isImage, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lift(_ buf: RustBuffer) throws -> ChatAttachment {
+    return try FfiConverterTypeChatAttachment.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatAttachment_lower(_ value: ChatAttachment) -> RustBuffer {
+    return FfiConverterTypeChatAttachment.lower(value)
+}
+
+
+/**
  * One conversation as the list shows it.
  */
 public struct ChatConversation: Equatable, Hashable {
@@ -2906,6 +3077,11 @@ public struct ChatMessage: Equatable, Hashable {
      * Reactions, most popular first (then by emoji).
      */
     public var reactions: [ChatReaction]
+    /**
+     * Photos and documents it carries, in order (M3). Fetch the bytes with
+     * `ChatCore::fetch_attachment`.
+     */
+    public var attachments: [ChatAttachment]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -2939,7 +3115,11 @@ public struct ChatMessage: Equatable, Hashable {
          */deleted: Bool, 
         /**
          * Reactions, most popular first (then by emoji).
-         */reactions: [ChatReaction]) {
+         */reactions: [ChatReaction], 
+        /**
+         * Photos and documents it carries, in order (M3). Fetch the bytes with
+         * `ChatCore::fetch_attachment`.
+         */attachments: [ChatAttachment]) {
         self.id = id
         self.conversationId = conversationId
         self.author = author
@@ -2952,6 +3132,7 @@ public struct ChatMessage: Equatable, Hashable {
         self.edited = edited
         self.deleted = deleted
         self.reactions = reactions
+        self.attachments = attachments
     }
 
     
@@ -2981,7 +3162,8 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
                 replyTo: FfiConverterOptionString.read(from: &buf), 
                 edited: FfiConverterBool.read(from: &buf), 
                 deleted: FfiConverterBool.read(from: &buf), 
-                reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf)
+                reactions: FfiConverterSequenceTypeChatReaction.read(from: &buf), 
+                attachments: FfiConverterSequenceTypeChatAttachment.read(from: &buf)
         )
     }
 
@@ -2998,6 +3180,7 @@ public struct FfiConverterTypeChatMessage: FfiConverterRustBuffer {
         FfiConverterBool.write(value.edited, into: &buf)
         FfiConverterBool.write(value.deleted, into: &buf)
         FfiConverterSequenceTypeChatReaction.write(value.reactions, into: &buf)
+        FfiConverterSequenceTypeChatAttachment.write(value.attachments, into: &buf)
     }
 }
 
@@ -3014,6 +3197,87 @@ public func FfiConverterTypeChatMessage_lift(_ buf: RustBuffer) throws -> ChatMe
 #endif
 public func FfiConverterTypeChatMessage_lower(_ value: ChatMessage) -> RustBuffer {
     return FfiConverterTypeChatMessage.lower(value)
+}
+
+
+/**
+ * A file the user picked to send.
+ */
+public struct ChatOutgoingFile: Equatable, Hashable {
+    /**
+     * Where it is now (Rust copies it at once; it may be deleted after
+     * `send_files` returns).
+     */
+    public var path: String
+    /**
+     * The name to show; empty takes the file name.
+     */
+    public var name: String
+    /**
+     * Its media type; empty means `application/octet-stream`.
+     */
+    public var mime: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Where it is now (Rust copies it at once; it may be deleted after
+         * `send_files` returns).
+         */path: String, 
+        /**
+         * The name to show; empty takes the file name.
+         */name: String, 
+        /**
+         * Its media type; empty means `application/octet-stream`.
+         */mime: String) {
+        self.path = path
+        self.name = name
+        self.mime = mime
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChatOutgoingFile: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChatOutgoingFile: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChatOutgoingFile {
+        return
+            try ChatOutgoingFile(
+                path: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                mime: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChatOutgoingFile, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.mime, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lift(_ buf: RustBuffer) throws -> ChatOutgoingFile {
+    return try FfiConverterTypeChatOutgoingFile.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChatOutgoingFile_lower(_ value: ChatOutgoingFile) -> RustBuffer {
+    return FfiConverterTypeChatOutgoingFile.lower(value)
 }
 
 
@@ -4739,6 +5003,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeChatAttachment: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatAttachment]
+
+    public static func write(_ value: [ChatAttachment], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatAttachment.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatAttachment] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatAttachment]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatAttachment.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeChatConversation: FfiConverterRustBuffer {
     typealias SwiftType = [ChatConversation]
 
@@ -4781,6 +5070,31 @@ fileprivate struct FfiConverterSequenceTypeChatMessage: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChatMessage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChatOutgoingFile: FfiConverterRustBuffer {
+    typealias SwiftType = [ChatOutgoingFile]
+
+    public static func write(_ value: [ChatOutgoingFile], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChatOutgoingFile.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChatOutgoingFile] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChatOutgoingFile]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChatOutgoingFile.read(from: &buf))
         }
         return seq
     }
@@ -5083,6 +5397,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_attachment_file() != 40106) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_cached_conversations() != 29095) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5107,6 +5424,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_chatcore_events() != 19610) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_chatcore_fetch_attachment() != 52675) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_chatcore_list_conversations() != 48436) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5126,6 +5446,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_search() != 1934) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_chatcore_send_files() != 20430) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 46048) {

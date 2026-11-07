@@ -42,6 +42,7 @@
 //!   answer was lost is never duplicated.
 
 use std::collections::{HashMap, HashSet};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, Weak};
 use std::thread;
@@ -49,6 +50,7 @@ use std::time::Duration;
 
 use forge_net::CancelHandle;
 
+use crate::attachments::{AttachmentStore, OutgoingFile, MAX_ATTACHMENTS_PER_MESSAGE};
 use crate::now_ms;
 use crate::repo::{ChatRepo, OutgoingMessage, RemoteConversation, RemoteEvent};
 use crate::store::{ChatSnapshot, ChatStore, StoreError, Upsert};
@@ -129,6 +131,8 @@ struct Inner {
     started_at: i64,
     /// Wakes the outbox thread.
     outbox: Arc<OutboxSignal>,
+    /// Attachment files on this device.
+    attachments: AttachmentStore,
 }
 
 /// The outbox thread's doorbell.
@@ -179,6 +183,9 @@ struct State {
     /// Ids of messages being posted right now (by a command or the outbox),
     /// so one message is never posted twice at once.
     in_flight: HashSet<String>,
+    /// Attachments this client has uploaded, so a retry does not send the
+    /// bytes again.
+    uploaded: HashSet<String>,
 }
 
 struct Subscription {
@@ -227,9 +234,11 @@ impl ChatClient {
             Err(err @ StoreError::UnsupportedVersion { .. }) => return Err(err),
             Err(err) => (ChatSnapshot::new(), Some(err)),
         };
+        let attachments = store.attachments();
         let client = Self {
             inner: Arc::new(Inner {
                 repo,
+                attachments,
                 store,
                 config,
                 sink: Box::new(sink),
@@ -242,6 +251,7 @@ impl ChatClient {
                     shut_down: false,
                     store_error,
                     in_flight: HashSet::new(),
+                    uploaded: HashSet::new(),
                 }),
                 live_pumps: AtomicUsize::new(0),
                 next_id: AtomicU64::new(0),
@@ -435,10 +445,29 @@ impl ChatClient {
         body: &str,
         reply_to: Option<&str>,
     ) -> Result<Message, ChatError> {
+        self.send_with_files(conversation_id, body, reply_to, &[])
+    }
+
+    /// [`send_reply`](Self::send_reply) with files (photos, documents).
+    /// Each file is copied into this device's attachment store at once, so
+    /// the original may go away; the outbox uploads them before the message.
+    /// The body may be empty when there are files.
+    pub fn send_with_files(
+        &self,
+        conversation_id: &str,
+        body: &str,
+        reply_to: Option<&str>,
+        files: &[OutgoingFile],
+    ) -> Result<Message, ChatError> {
         validate_room(conversation_id)?;
         let body = body.trim();
-        if body.is_empty() {
+        if body.is_empty() && files.is_empty() {
             return Err(ChatError::invalid("message body is empty"));
+        }
+        if files.len() > MAX_ATTACHMENTS_PER_MESSAGE {
+            return Err(ChatError::invalid(format!(
+                "a message carries at most {MAX_ATTACHMENTS_PER_MESSAGE} files"
+            )));
         }
         if body.chars().count() > MAX_BODY_CHARS {
             return Err(ChatError::invalid(format!(
@@ -454,6 +483,10 @@ impl ChatClient {
             sent_at: now_ms(),
             status: MessageStatus::Sending,
             reply_to: reply_to.map(str::to_string),
+            attachments: files
+                .iter()
+                .map(|file| self.inner.attachments.import(file))
+                .collect::<Result<_, _>>()?,
             ..Message::default()
         };
         {
@@ -480,6 +513,39 @@ impl ChatClient {
             self.inner.persist(&mut state);
         }
         self.inner.deliver(message)
+    }
+
+    /// The local file of an attachment, if it is on this device (ours, or
+    /// downloaded before).
+    pub fn attachment_file(&self, attachment_id: &str) -> Option<PathBuf> {
+        self.inner.attachments.local_file(attachment_id)
+    }
+
+    /// The local file of an attachment, downloading it first if needed. The
+    /// bytes are checked against the id before they are kept. Blocks for
+    /// the download: call it from a worker thread.
+    pub fn fetch_attachment(&self, attachment_id: &str) -> Result<PathBuf, ChatError> {
+        self.inner.ensure_running()?;
+        if !crate::is_attachment_id(attachment_id) {
+            return Err(ChatError::invalid(format!(
+                "not an attachment id: {attachment_id:?}"
+            )));
+        }
+        if let Some(path) = self.inner.attachments.local_file(attachment_id) {
+            return Ok(path);
+        }
+        let store = &self.inner.attachments;
+        std::fs::create_dir_all(store.directory()).map_err(|err| ChatError::UnsupportedOnHost {
+            detail: format!("cannot create {}: {err}", store.directory().display()),
+        })?;
+        let partial = store.download_path(attachment_id);
+        self.inner
+            .repo
+            .download_attachment(attachment_id, &partial)
+            .inspect_err(|_| {
+                let _ = std::fs::remove_file(&partial);
+            })?;
+        store.accept_download(attachment_id, &partial)
     }
 
     /// Sends a `Failed` message again, with the same id (the server ignores
@@ -1304,13 +1370,16 @@ impl Inner {
     /// Posts a message that is already stored as `Sending`, then records the
     /// outcome.
     fn deliver(&self, message: Message) -> Result<Message, ChatError> {
-        let result = self.repo.post_message(&OutgoingMessage {
-            id: message.id.clone(),
-            conversation_id: message.conversation_id.clone(),
-            author: message.author.clone(),
-            author_id: message.author_id.clone(),
-            body: message.body.clone(),
-            reply_to: message.reply_to.clone(),
+        let result = self.upload_attachments(&message).and_then(|()| {
+            self.repo.post_message(&OutgoingMessage {
+                id: message.id.clone(),
+                conversation_id: message.conversation_id.clone(),
+                author: message.author.clone(),
+                author_id: message.author_id.clone(),
+                body: message.body.clone(),
+                reply_to: message.reply_to.clone(),
+                attachments: message.attachments.clone(),
+            })
         });
         let mut state = self.lock();
         state.in_flight.remove(&message.id);
@@ -1378,6 +1447,28 @@ impl Inner {
                 Err(err)
             }
         }
+    }
+
+    /// Uploads a message's attachments that this client has not uploaded
+    /// yet, checking the server stored each under the id we computed.
+    fn upload_attachments(&self, message: &Message) -> Result<(), ChatError> {
+        for attachment in &message.attachments {
+            if self.lock().uploaded.contains(&attachment.id) {
+                continue;
+            }
+            let path = self.attachments.local_file(&attachment.id).ok_or_else(|| {
+                ChatError::invalid(format!("{} is no longer on this device", attachment.name))
+            })?;
+            let stored = self.repo.upload_attachment(&path, &attachment.mime)?;
+            if stored != attachment.id {
+                return Err(ChatError::protocol(format!(
+                    "uploaded {} as {stored}, expected {}",
+                    attachment.name, attachment.id
+                )));
+            }
+            self.lock().uploaded.insert(stored);
+        }
+        Ok(())
     }
 
     /// Runs `f` under the lock only if `subscription` is still the room's
