@@ -98,6 +98,8 @@ UniFFI records are already `Equatable`, `Hashable` and `Sendable`. To use them i
 extension Note: Identifiable {}   // no @retroactive: ForgeFFI is in the same package
 ```
 
+Name Rust types so they don't collide with Apple's: a record called `Settings`, `SortOrder`, `Text` or `Image` shadows the SwiftUI or Foundation type in every file that imports ForgeFFI. Prefix them with the app's domain instead (`LibrarySettings`, `LibrarySort`).
+
 Display helpers belong in the same Swift extension: a `Date` built from Rust's milliseconds, or a title taken from the first line. If a helper encodes a rule that Android needs too, move it into Rust.
 
 ### Commands, errors and validation
