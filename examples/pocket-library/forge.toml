@@ -1,5 +1,7 @@
 [app]
 name = "PocketLibrary"
+# Home-screen name (read by forge.toml app config from PR #31; Info.plist matches it).
+display_name = "Pocket Library"
 bundle_id = "org.forgemobile.pocketlibrary"
 minimum_ios = "17.0"
 
