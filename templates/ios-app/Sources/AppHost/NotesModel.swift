@@ -198,7 +198,7 @@ public final class NotesModel {
         switch error {
         case .InvalidInput(let reason): return "Check your input: \(reason)"
         case .NotFound: return "That note no longer exists."
-        case .Storage(let reason): return "Your notes could not be saved: \(reason)"
+        case .Storage(let reason): return "Your notes couldn't be read or saved (\(reason))."
         case .Offline: return "You appear to be offline."
         case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
         case .Timeout: return "The request timed out."

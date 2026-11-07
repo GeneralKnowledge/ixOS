@@ -37,7 +37,7 @@ struct NoteListView: View {
             .searchable(text: $model.searchText, prompt: "Search")
             .toolbar {
                 ToolbarItem(placement: .navigation) {
-                    Button("Settings", systemImage: "gear") { isShowingSettings = true }
+                    Button("Settings", systemImage: "gearshape") { isShowingSettings = true }
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button("New Note", systemImage: "square.and.pencil") { isComposing = true }
@@ -71,16 +71,21 @@ struct NoteListView: View {
 
 private struct NoteRow: View {
     let note: Note
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
+        // At accessibility text sizes there is no room for the date and the
+        // preview side by side, so they stack and the title may wrap.
+        let large = dynamicTypeSize.isAccessibilitySize
+        let details = large ? AnyLayout(VStackLayout(alignment: .leading)) : AnyLayout(HStackLayout())
         VStack(alignment: .leading) {
             Text(note.title)
                 .font(.headline)
-                .lineLimit(1)
-            HStack {
+                .lineLimit(large ? 3 : 1)
+            details {
                 Text(note.createdAt, format: .dateTime.day().month().year())
                 Text(note.preview ?? "No additional text")
-                    .lineLimit(1)
+                    .lineLimit(large ? 2 : 1)
             }
             .font(.subheadline)
             .foregroundStyle(.secondary)
