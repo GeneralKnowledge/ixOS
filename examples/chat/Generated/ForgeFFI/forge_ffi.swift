@@ -4306,8 +4306,9 @@ public func FfiConverterTypeChatMessageStatus_lower(_ value: ChatMessageStatus) 
 
 /**
  * A permission the app can ask the user for. More cases (camera,
- * photos, location) are added as their adapters are; see
- * docs/native-services.md.
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
  */
 
 public enum NativePermission: Equatable, Hashable {
@@ -4316,6 +4317,19 @@ public enum NativePermission: Equatable, Hashable {
      * Alerts, sounds and badges from local notifications.
      */
     case notifications
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    case location
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    case motion
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    case bluetooth
 
 
 
@@ -4339,6 +4353,12 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case 1: return .notifications
         
+        case 2: return .location
+        
+        case 3: return .motion
+        
+        case 4: return .bluetooth
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4349,6 +4369,18 @@ public struct FfiConverterTypeNativePermission: FfiConverterRustBuffer {
         
         case .notifications:
             writeInt(&buf, Int32(1))
+        
+        
+        case .location:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .motion:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .bluetooth:
+            writeInt(&buf, Int32(4))
         
         }
     }

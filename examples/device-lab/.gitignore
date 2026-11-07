@@ -1,0 +1,7 @@
+# Rust build output and staged native libraries
+/rust/target/
+/build/
+# SwiftPM / xtool
+/.build/
+/xtool/
+*.xcuserstate
