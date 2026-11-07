@@ -160,9 +160,7 @@ final class ReadAloud: NSObject {
             synthesizer.stopSpeaking(at: .immediate)
         }
         clearNowPlaying()
-        #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
+        ForgeAudioSession.deactivate()
     }
 
     // MARK: Voices
@@ -261,12 +259,12 @@ final class ReadAloud: NSObject {
 
     // MARK: System integration
 
+    /// Spoken-audio playback: plays with the ring switch on silent, pauses
+    /// other apps' audio, and (with the `audio` background mode) carries on
+    /// with the screen locked. The lock-screen controls below stay here
+    /// until a second app needs them.
     private func activateAudioSession() {
-        #if os(iOS)
-        let session = AVAudioSession.sharedInstance()
-        try? session.setCategory(.playback, mode: .spokenAudio)
-        try? session.setActive(true)
-        #endif
+        try? ForgeAudioSession.activate(.playback)
     }
 
     private func addRemoteCommands() {

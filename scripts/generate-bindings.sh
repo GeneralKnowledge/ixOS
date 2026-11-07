@@ -78,9 +78,10 @@ else
     cp "$ROOT/crates/forge-runtime/swift/ForgeLog.swift" "$OUT/ForgeFFI/ForgeLog.swift"
     echo "[forge] Added ForgeLog (Swift logging into the Rust log pipeline)."
   fi
-  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift "$OUT/ForgeFFI"/ForgeImages.swift
+  rm -f "$OUT/ForgeFFI"/ForgeServices*.swift "$OUT/ForgeFFI"/ForgeImages.swift \
+    "$OUT/ForgeFFI"/ForgeAudioSession.swift
   # Swift helpers with no Rust side and no privacy-sensitive framework
-  # (ImageIO thumbnails), for every app. Source of truth:
+  # (ImageIO thumbnails, the audio session), for every app. Source of truth:
   # crates/forge-services/swift/helpers/.
   cp "$ROOT/crates/forge-services/swift/helpers/"*.swift "$OUT/ForgeFFI/"
   if grep -q 'public func installNativeServices(' "$OUT/ForgeFFI/forge_ffi.swift"; then

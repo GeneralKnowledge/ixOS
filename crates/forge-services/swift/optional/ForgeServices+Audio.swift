@@ -102,38 +102,6 @@ public enum ForgeAudioError: LocalizedError, Equatable {
     }
 }
 
-/// The app's audio session: what kind of audio it is making now. On iOS
-/// this sets `AVAudioSession`; elsewhere it does nothing.
-public enum ForgeAudioSession {
-    public enum Use {
-        /// Playing speech, even with the ring/silent switch on silent, and
-        /// pausing other apps' audio.
-        case playback
-        /// Recording from the microphone, playing through the speaker.
-        case record
-    }
-
-    public static func activate(_ use: Use) throws {
-        #if os(iOS)
-            let session = AVAudioSession.sharedInstance()
-            switch use {
-            case .playback:
-                try session.setCategory(.playback, mode: .spokenAudio)
-            case .record:
-                try session.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            }
-            try session.setActive(true)
-        #endif
-    }
-
-    /// Lets other apps' audio resume.
-    public static func deactivate() {
-        #if os(iOS)
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        #endif
-    }
-}
-
 /// The microphone, for `ForgePermissions`.
 struct MicrophonePermissionAdapter: ForgePermissionAdapter {
     func status() async -> PermissionStatus {
