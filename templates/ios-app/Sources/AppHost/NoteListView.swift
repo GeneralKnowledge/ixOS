@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import SwiftUI
 
 /// Screen 1: every note, newest first, with search, swipe-to-delete and a

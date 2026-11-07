@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import SwiftUI
 
 /// Screen 2: one note, edited in place. Changes are saved when you tap Done

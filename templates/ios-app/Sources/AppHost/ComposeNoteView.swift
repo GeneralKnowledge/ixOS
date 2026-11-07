@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import SwiftUI
 
 /// The New Note sheet: a form with Cancel and Add. The keyboard opens at

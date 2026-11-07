@@ -1,3 +1,4 @@
+@preconcurrency import ForgeFFI
 import SwiftUI
 
 /// The app's root. It owns the model, opens the Rust core once, and shows

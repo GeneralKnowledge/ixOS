@@ -6,8 +6,8 @@ import Foundation
 // what a note may contain stay in Rust.
 
 // UniFFI records are Equatable and Hashable already; `id` is the Rust id.
-// `@retroactive`: the type and the protocol both come from other modules.
-extension Note: @retroactive Identifiable {}
+// No `@retroactive`: ForgeFFI is a target of this same package.
+extension Note: Identifiable {}
 
 extension Note {
     public var createdAt: Date {

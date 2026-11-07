@@ -95,7 +95,7 @@ After a command succeeds, also read the state directly (`notes = core.notes()`).
 UniFFI records are already `Equatable`, `Hashable` and `Sendable`. To use them in `ForEach`, `List(selection:)` and `navigationDestination` without an `id:` argument, add `Identifiable` in Swift:
 
 ```swift
-extension Note: @retroactive Identifiable {}
+extension Note: Identifiable {}   // no @retroactive: ForgeFFI is in the same package
 ```
 
 Display helpers belong in the same Swift extension: a `Date` built from Rust's milliseconds, or a title taken from the first line. If a helper encodes a rule that Android needs too, move it into Rust.
