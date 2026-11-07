@@ -113,12 +113,36 @@ fi
 step I0 mandatory "app configuration (forge config show)" -- config show --project "$APP"
 product="$(json "$OUT/steps/I0.json" 'r["data"]["xtool_product"]')"
 bundle="$(json "$OUT/steps/I0.json" 'r["data"]["bundle_id"]')"
-marker="$OUT/steps/.before-install"
-touch "$marker"
 if step I1 mandatory "build, sign and install (forge run ios)" -- run ios --project "$APP"; then
   # The signing identity and entitlements xtool used: the provisioning
-  # profile it embedded in the app it just built.
-  profile="$(find "$APP" -name embedded.mobileprovision -newer "$marker" 2>/dev/null | head -1)"
+  # profile it installed for this app. xtool signs a temporary copy of the
+  # .app and deletes it, so no embedded.mobileprovision stays on the laptop;
+  # read the profile back from the phone instead (misagent, through
+  # libimobiledevice's ideviceprovision), and pick the newest one whose
+  # application-identifier ends with the app's bundle id.
+  profile=""
+  if command -v ideviceprovision >/dev/null; then
+    mkdir -p "$OUT/profiles"
+    if timeout 30 ideviceprovision copy "$OUT/profiles" > "$OUT/steps/I2.stderr" 2>&1; then
+      profile="$(python3 - "$OUT/profiles" "$bundle" <<'PY'
+import plistlib, sys, pathlib
+best = None
+for f in pathlib.Path(sys.argv[1]).glob("*.mobileprovision"):
+    raw = f.read_bytes()
+    start, end = raw.find(b"<?xml"), raw.find(b"</plist>")
+    try:
+        p = plistlib.loads(raw[start:end + len(b"</plist>")])
+    except Exception:
+        continue
+    app_id = p.get("Entitlements", {}).get("application-identifier", "")
+    if sys.argv[2] and app_id.endswith("." + sys.argv[2]):
+        if best is None or p["CreationDate"] > best[0]:
+            best = (p["CreationDate"], f)
+print(best[1] if best else "")
+PY
+)"
+    fi
+  fi
   if [[ -n "$profile" ]]; then
     python3 - "$profile" "$OUT/steps/I2.json" <<'PY'
 import plistlib, sys, json, re
@@ -144,7 +168,11 @@ PY
       record I3 mandatory PASS "profile lifetime ($days days) matches the $kind team"
     fi
   else
-    skip I2 mandatory "no embedded.mobileprovision newer than this run under $APP: check where xtool put the .app"
+    if command -v ideviceprovision >/dev/null; then
+      skip I2 mandatory "no provisioning profile for $bundle on the phone (ideviceprovision copy; steps/I2.stderr, profiles/)"
+    else
+      skip I2 mandatory "reading the app's provisioning profile from the phone needs ideviceprovision (libimobiledevice-utils)"
+    fi
   fi
 fi
 
