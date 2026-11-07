@@ -45,6 +45,10 @@ const PORTABLE_MODULES: &[&str] = &[
 /// native services' Swift adapters, which wrap Apple frameworks.
 const BINDINGS_FILE: &str = "forge_ffi.swift";
 
+/// Portable helpers copied next to the bindings when the app's crate opts
+/// in (`forge_runtime::log_export!()` copies `ForgeLog.swift`).
+const PORTABLE_HELPERS: &[&str] = &["ForgeLog.swift"];
+
 const STAGE: &str = ".forge/swift-check";
 
 /// The modules a Swift file imports outside `#if` blocks.
@@ -228,6 +232,12 @@ pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, St
         ));
     }
     link(&bindings, &gen.join("ForgeFFI").join(BINDINGS_FILE)).map_err(io("link", &bindings))?;
+    for name in PORTABLE_HELPERS {
+        let helper = app.join("Generated/ForgeFFI").join(name);
+        if helper.is_file() {
+            link(&helper, &gen.join("ForgeFFI").join(name)).map_err(io("link", &helper))?;
+        }
+    }
     for (files, dir) in [
         (&sel.sources, st.join("Sources/AppHost")),
         (&sel.tests, st.join("Tests/AppHostTests")),
