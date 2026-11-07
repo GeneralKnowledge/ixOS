@@ -13,7 +13,7 @@ scripts/make-services-check-app.sh ~/forge-services-check
 forge run ios --project ~/forge-services-check
 ```
 
-The script runs `forge init`. It then adds the Rust checks to `rust/src/lib.rs` (`services_self_check`) and puts the check screen in place of the starter screen. If your `forge.toml` supports `[ios] url_schemes`, it also registers `forgecheck://`. Finally it runs the app's Rust tests.
+The script runs `forge init`. It then adds the Rust checks to `rust/src/lib.rs` (`services_self_check`) and puts the check screen in place of the starter screen. It also registers the `forgecheck://` URL scheme in `forge.toml`. Finally it runs the app's Rust tests.
 
 If the install hangs, unplug the iPhone, plug it back in and unlock it.
 
@@ -35,7 +35,7 @@ On the iPhone, open **Services check** and tap **Run checks**. Allow notificatio
 About five seconds after the run, a **Forge services check** banner appears. It shows whether the app is open or the phone is locked. Tap it.
 
 - Section 2 should show `PASS forgecheck://check/notification?from=tap → route ["check", "notification"]`.
-- Bonus, if the scheme was registered: open Safari, type `forgecheck://check/url` and allow the switch to the app. A second `PASS` line appears.
+- Open Safari, type `forgecheck://check/url` and allow the switch to the app. A second `PASS` line appears.
 
 ## 4. Share and import
 

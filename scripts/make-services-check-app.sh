@@ -22,7 +22,7 @@ export FORGE_WORKSPACE="$ROOT"
 cat "$ROOT/crates/forge-services/device-check/services_check.rs" >>"$APP/rust/src/lib.rs"
 cp "$ROOT/crates/forge-services/device-check/ContentView.swift" "$APP/Sources/AppHost/ContentView.swift"
 
-# Register the forgecheck:// scheme when forge.toml supports [ios] url_schemes.
+# Register the forgecheck:// scheme (forge.toml [ios] url_schemes).
 if grep -q 'url_schemes' "$APP/forge.toml"; then
   if grep -q '^\[ios\]$' "$APP/forge.toml"; then
     awk '{ print } /^\[ios\]$/ { print "url_schemes = [\"forgecheck\"]" }' "$APP/forge.toml" >"$APP/forge.toml.new"
@@ -31,6 +31,9 @@ if grep -q 'url_schemes' "$APP/forge.toml"; then
     printf '\n[ios]\nurl_schemes = ["forgecheck"]\n' >>"$APP/forge.toml"
   fi
 fi
+
+# Rewrite Info.plist and xtool.yml from forge.toml (forge run does this too).
+"$ROOT/target/debug/forge" config sync --project "$APP"
 
 cargo test -q --manifest-path "$APP/rust/Cargo.toml"
 "$ROOT/target/debug/forge" bindings generate --project "$APP"
