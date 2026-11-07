@@ -57,6 +57,8 @@ ITSAppUsesNonExemptEncryption = false
 
 Forge checks every value when it reads `forge.toml`, so a typo fails the next command with the fix rather than failing on the phone. For example: `[ios.permissions] unknown permission "camra". Use one of: bluetooth, calendars, camera, ...`.
 
+Forge also warns, without stopping the build, when the app's Rust crate selects an [optional native service](native-services.md#optional-services) that needs a permission (`location`, `motion`, `bluetooth`) and `[ios.permissions]` has no text for it. It reads the selection from `Generated/ForgeFFI/ForgeServices+Selected.swift`, so the check starts working once bindings have been generated.
+
 ## Reference
 
 ### `[app]`

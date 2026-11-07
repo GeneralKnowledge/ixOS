@@ -85,6 +85,7 @@ Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_f
 - iOS: storage directory provided at init from Swift (`Application Support/<App>`).
 - Android: storage directory provided at init from Kotlin (`filesDir` subfolder).
 - Linux tests use temporary directories.
+- Files the app owns (attachments, covers, downloaded models) go in a `forge_storage::files::FileStore` under that directory: the app saves the store's relative names, never absolute paths, and calls `sweep` at launch to drop files no record refers to.
 
 ### Action + persistence contract
 
@@ -151,7 +152,7 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 |-------|------|
 | `forge-runtime` | `background`, `EventHub`, `Lifecycle`, `app_shell!`, `logging`, and the Android JNI init. No UniFFI dependency of its own; `app_shell!` emits UniFFI code in the app's crate |
 | `forge-services` | Native services (Keychain, directories, notifications, permissions, sharing, deep links): `native_services!` emits UniFFI foreign traits in the app's crate, and `swift/` holds the iOS adapters. See [native-services.md](native-services.md) |
-| `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations, and with the `sqlite` feature `Database` (bundled SQLite: migrations, transactions, FTS5, recovery of a damaged file). Used by Chat since M2 |
+| `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations, `FileStore` for app-managed files (SHA-256 naming and verified downloads with the `hash` feature), and with the `sqlite` feature `Database` (bundled SQLite: migrations, transactions, FTS5, recovery of a damaged file). Used by Chat since M2 |
 | `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by the Weather example and `chat-core` |
 | `chat-core` (`examples/`) | The Chat demo's domain (exposed as `ForgeChatApp` by `examples/chat-android/rust`, and by the iOS Chat app's own crate): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
 | App crates (`examples/*/rust`) | Each app's UniFFI exports, built as `libforge_ffi`: Counter (command thread, events, cancellable operations), Weather, Chat, Pocket Library |

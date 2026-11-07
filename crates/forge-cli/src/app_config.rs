@@ -785,6 +785,11 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
     {
         out.push("background_modes has \"processing\"; list your task identifiers in [ios.info] BGTaskSchedulerPermittedIdentifiers".into());
     }
+    for (service, permission) in selected_services_missing_permissions(cfg, app_dir) {
+        out.push(format!(
+            "the Rust crate selects the {service} service in native_services!(...), but forge.toml has no [ios.permissions] {permission}; iOS needs that text to ask, so the service will report Unsupported"
+        ));
+    }
     if let Some(icon) = &ios.icon {
         if let Ok(Some((w, h, alpha))) = png_info(&app_dir.join(icon)) {
             if (w, h) != (1024, 1024) {
@@ -800,6 +805,57 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
         }
     }
     out
+}
+
+/// Optional native services whose Swift adapter asks for a permission, and
+/// the `[ios.permissions]` name that permission needs. The names are the
+/// `ForgeServices+<Name>.swift` adapters in crates/forge-services/swift/optional/.
+pub const SERVICE_PERMISSIONS: &[(&str, &str)] = &[
+    ("Bluetooth", "bluetooth"),
+    ("Location", "location_when_in_use"),
+    ("Motion", "motion"),
+];
+
+/// Where `scripts/generate-bindings.sh` lists the optional services the app's
+/// crate selects.
+pub const SELECTED_SERVICES: &str = "Generated/ForgeFFI/ForgeServices+Selected.swift";
+
+/// The optional services listed in the app's generated
+/// `ForgeServices+Selected.swift`, or none before bindings are generated.
+pub fn selected_services(app_dir: &Path) -> Vec<String> {
+    let Ok(text) = fs::read_to_string(app_dir.join(SELECTED_SERVICES)) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let rest = line.trim_start().strip_prefix("(\"")?;
+            let (name, _) = rest.split_once('"')?;
+            Some(name.to_string())
+        })
+        .collect()
+}
+
+/// Selected services whose permission text is missing from forge.toml, as
+/// (service, permission name) pairs.
+fn selected_services_missing_permissions(
+    cfg: &ForgeConfig,
+    app_dir: &Path,
+) -> Vec<(String, &'static str)> {
+    let ios = ios(cfg);
+    let has = |want: &str| {
+        ios.permissions
+            .keys()
+            .any(|n| permission_key(n) == permission_key(want))
+    };
+    selected_services(app_dir)
+        .into_iter()
+        .filter_map(|service| {
+            let (_, permission) = SERVICE_PERMISSIONS
+                .iter()
+                .find(|(name, _)| *name == service)?;
+            (!has(permission)).then_some((service, *permission))
+        })
+        .collect()
 }
 
 /// Width, height and whether the PNG has an alpha channel; `None` if the
@@ -1402,6 +1458,48 @@ LSApplicationQueriesSchemes = ["maps"]
         assert!(w.contains("associated domains"), "{w}");
         assert!(w.contains("push_notifications"), "{w}");
         assert!(w.contains("BGTaskSchedulerPermittedIdentifiers"), "{w}");
+    }
+
+    #[test]
+    fn warns_when_a_selected_service_has_no_permission_text() {
+        let (tmp, c) = app("[ios.permissions]\nmotion = \"Barometer.\"\n");
+        assert!(warnings(&c, tmp.path()).is_empty());
+        let selected = tmp.path().join(SELECTED_SERVICES);
+        fs::create_dir_all(selected.parent().unwrap()).unwrap();
+        fs::write(
+            &selected,
+            "public let forgeSelectedServices: [(name: String, install: @Sendable () throws -> Void)] = [\n    (\"Connectivity\", ForgeServices.installConnectivity),\n    (\"Location\", ForgeServices.installLocation),\n    (\"Motion\", ForgeServices.installMotion),\n]\n",
+        )
+        .unwrap();
+        assert_eq!(
+            selected_services(tmp.path()),
+            ["Connectivity", "Location", "Motion"]
+        );
+        let w = warnings(&c, tmp.path()).join("\n");
+        assert!(w.contains("Location service"), "{w}");
+        assert!(w.contains("location_when_in_use"), "{w}");
+        assert!(!w.contains("Motion"), "{w}");
+        assert!(!w.contains("Connectivity"), "{w}");
+    }
+
+    #[test]
+    fn service_permissions_name_real_adapters_and_permissions() {
+        let optional =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../forge-services/swift/optional");
+        for (service, permission) in SERVICE_PERMISSIONS {
+            assert!(
+                optional
+                    .join(format!("ForgeServices+{service}.swift"))
+                    .is_file(),
+                "no adapter for {service}"
+            );
+            assert!(lookup(PERMISSIONS, permission).is_some(), "{permission}");
+        }
+        // Device Lab selects all three and declares every text.
+        let lab = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/device-lab");
+        let cfg = ForgeConfig::parse(&fs::read_to_string(lab.join("forge.toml")).unwrap()).unwrap();
+        assert!(selected_services(&lab).len() >= 3);
+        assert!(selected_services_missing_permissions(&cfg, &lab).is_empty());
     }
 
     #[test]
