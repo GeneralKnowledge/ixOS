@@ -1,9 +1,9 @@
 order = 10
 capability = "Audio session handling"
-framework = "Yes: forge-services `audio` (optional)"
+framework = "Yes: forge-services Swift helper, in every app (no permission needed)"
 rust_api = "n/a"
 ios_native = "Yes: `ForgeAudioSession`"
-in_app = "Partial: Chat M4"
+in_app = "Partial: Chat M4 voice, Pocket Library read-aloud"
 iphone = "No"
 documented = "Partial: native-services.md"
 limits = "Record and spoken playback only; no mixing or ducking options yet"
