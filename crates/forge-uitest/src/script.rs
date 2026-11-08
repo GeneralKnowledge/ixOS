@@ -26,6 +26,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 
+use crate::policy::{self, Action, Gate};
 use crate::{ensure_front, wait_for, wait_gone, Driver, Locator, Result, UiError};
 
 #[derive(Debug, Deserialize)]
@@ -307,13 +308,27 @@ pub struct Report {
 
 /// Runs `script` against `driver` with `app` as the installed bundle id.
 /// Progress goes to `out`; screenshots, and the tree and a screenshot at a
-/// failure, are written to `out_dir`.
+/// failure, are written to `out_dir`. For the developer's own app: nothing
+/// is gated.
 pub fn run(
     script: &Script,
     app: &str,
     driver: &mut dyn Driver,
     out_dir: &Path,
     out: &mut dyn Write,
+) -> Result<Report> {
+    run_gated(script, app, driver, out_dir, out, &mut Gate::own(app))
+}
+
+/// [`run`], with every step checked by `gate` first (another developer's
+/// app: docs/research/general-device-control.md#safety).
+pub fn run_gated(
+    script: &Script,
+    app: &str,
+    driver: &mut dyn Driver,
+    out_dir: &Path,
+    out: &mut dyn Write,
+    gate: &mut Gate,
 ) -> Result<Report> {
     std::fs::create_dir_all(out_dir)?;
     let timeout = Duration::from_secs_f64(script.timeout.max(0.0));
@@ -322,7 +337,7 @@ pub fn run(
     for (index, step) in script.steps.iter().enumerate() {
         let number = index + 1;
         let started = Instant::now();
-        let result = run_step(step, app, driver, timeout, out_dir, out, &mut report);
+        let result = run_step(step, app, driver, timeout, out_dir, out, &mut report, gate);
         let took = started.elapsed().as_secs_f64();
         match result {
             Ok(()) => {
@@ -339,7 +354,13 @@ pub fn run(
                     "  FAIL  {number:>2}. {}\n        {error}",
                     step.describe()
                 )?;
-                record_failure(driver, number, out_dir, out, &mut report);
+                // In another app, keep only what the bound app showed:
+                // never capture whatever else came to the front.
+                let capture = !gate.is_foreign()
+                    || driver.foreground().ok().flatten().as_deref() == Some(app);
+                if capture {
+                    record_failure(driver, number, out_dir, out, &mut report);
+                }
                 report.failed = Some((number, error.to_string()));
                 report.failed_step = Some(step.describe());
                 return Ok(report);
@@ -350,6 +371,7 @@ pub fn run(
     Ok(report)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_step(
     step: &Step,
     app: &str,
@@ -358,8 +380,27 @@ fn run_step(
     out_dir: &Path,
     out: &mut dyn Write,
     report: &mut Report,
+    gate: &mut Gate,
 ) -> Result<()> {
     let locate = |t: &Target| t.locator().map_err(UiError::Device);
+    let allow = |gate: &mut Gate, action: Action| gate.check(&action).map_err(UiError::Refused);
+    // The coarse check before anything happens; taps and typing are checked
+    // again below once the element (its label and kind) is known.
+    let coarse = if step.launch.is_some() {
+        Action::Launch
+    } else if step.activate.is_some() {
+        Action::Activate
+    } else if step.terminate.is_some() {
+        Action::Terminate
+    } else if step.background.is_some() {
+        Action::Background
+    } else if step.scroll.is_some() {
+        Action::Scroll
+    } else {
+        // Reading; or a tap, typing or clear, checked with its element below.
+        Action::Read
+    };
+    allow(gate, coarse)?;
     if let Some(launch) = &step.launch {
         // Launching an app that is already running only brings it to the
         // front, and its launch arguments are silently dropped. Stop it first
@@ -385,12 +426,32 @@ fn run_step(
     let gone = step.expect.as_ref().is_some_and(|e| e.gone);
     if step.screenshot.is_none() && !gone {
         ensure_front(driver, app, timeout)?;
+    } else if gate.is_foreign() {
+        // In another app a screenshot is only of that app (or the home
+        // screen after it was stopped), never of whatever else is open.
+        let front = driver.foreground()?;
+        if !matches!(front.as_deref(), Some(f) if f == app || f == policy::SPRINGBOARD) {
+            return Err(UiError::Refused(format!(
+                "{} is in front, not {app}; Forge won't read another app's screen",
+                front.as_deref().unwrap_or("an unknown app")
+            )));
+        }
     }
     if let Some(target) = &step.tap {
-        return tap(driver, &locate(target)?, timeout);
+        return tap(driver, &locate(target)?, timeout, gate);
     }
     if let Some(typing) = &step.type_text {
+        let mut checked = false;
         return act(driver, &locate(&typing.target)?, timeout, &mut |d, e| {
+            if !checked && gate.wants_targets() {
+                let action = Action::Type {
+                    target: target_of(d, e)?,
+                    chars: typing.text.chars().count(),
+                    presses_return: typing.text.contains(['\n', '\r']),
+                };
+                allow(gate, action)?;
+                checked = true;
+            }
             if typing.clear {
                 d.clear(e)?;
             }
@@ -398,7 +459,14 @@ fn run_step(
         });
     }
     if let Some(target) = &step.clear {
-        return act(driver, &locate(target)?, timeout, &mut |d, e| d.clear(e));
+        let mut checked = false;
+        return act(driver, &locate(target)?, timeout, &mut |d, e| {
+            if !checked && gate.wants_targets() {
+                allow(gate, Action::Clear(target_of(d, e)?))?;
+                checked = true;
+            }
+            d.clear(e)
+        });
     }
     if let Some(scroll) = &step.scroll {
         return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
@@ -460,10 +528,29 @@ const TAP_GONE_SETTLE: Duration = Duration::from_secs(2);
 /// the right effect is for the next step's expectation to check. If the
 /// element is still there, the screen re-rendered under the tap, so it is
 /// found and tapped again, once, like any other action.
-fn tap(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) -> Result<()> {
+fn tap(
+    driver: &mut dyn Driver,
+    locator: &Locator,
+    timeout: Duration,
+    gate: &mut Gate,
+) -> Result<()> {
     let mut retried = false;
+    // Asked once per step, not again when a re-render makes the tap retry.
+    let mut checked = !gate.wants_targets();
     loop {
         let element = wait_for(driver, locator, timeout)?;
+        if !checked {
+            let target = match target_of(driver, &element) {
+                // Re-rendered before it could be read: find it again, once.
+                Err(UiError::Stale(_)) if !retried => {
+                    retried = true;
+                    continue;
+                }
+                other => other?,
+            };
+            gate.check(&Action::Tap(target)).map_err(UiError::Refused)?;
+            checked = true;
+        }
         // A stale reply from wait_hittable means the element went away
         // before the tap: found again below, like any action.
         let result = wait_hittable(driver, &element, timeout).and_then(|()| {
@@ -485,6 +572,16 @@ fn tap(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) -> Result<
             other => return other,
         }
     }
+}
+
+/// What the policy needs to know about an element: its label, identifier
+/// and kind, as WebDriverAgent reports them.
+fn target_of(driver: &mut dyn Driver, element: &crate::ElementRef) -> Result<policy::Target> {
+    Ok(policy::Target {
+        label: driver.attribute(element, "label")?,
+        identifier: driver.attribute(element, "name")?,
+        kind: driver.attribute(element, "type")?,
+    })
 }
 
 /// Waits (up to `timeout`) until WDA says a tap would reach the element.
@@ -558,7 +655,8 @@ fn mismatch(
     for (attribute, wanted) in [("value", &expect.value), ("label", &expect.has_label)] {
         if let Some(wanted) = wanted {
             let found = driver.attribute(element, attribute)?;
-            if found.as_deref() != Some(wanted.as_str()) {
+            // An empty field reports no value at all: that is "".
+            if found.as_deref().unwrap_or("") != wanted.as_str() {
                 mismatch = Some((
                     format!("{attribute} {wanted:?}"),
                     found
@@ -697,6 +795,181 @@ mod tests {
         [[step]]
         screenshot = "form"
     "#;
+
+    /// The Claude app's chat screen, as G0 read it on Cati.
+    fn chat() -> UiNode {
+        UiNode {
+            kind: "Application".into(),
+            children: vec![
+                node("TextView", "chat-input", "Write your prompt to Claude"),
+                node("Button", "Send", "Send"),
+                UiNode {
+                    kind: "SecureTextField".into(),
+                    identifier: Some("pin".into()),
+                    enabled: true,
+                    visible: true,
+                    ..UiNode::default()
+                },
+            ],
+            ..UiNode::default()
+        }
+    }
+
+    const CHAT: &str = r#"
+        name = "Say hello"
+        app = "com.anthropic.claude"
+        timeout = 0
+
+        [[step]]
+        activate = {}
+        [[step]]
+        type = { id = "chat-input", text = "Hello" }
+        [[step]]
+        tap = { id = "Send" }
+    "#;
+
+    fn foreign_run(level: policy::Level, script: &str) -> (Report, FakeDriver, String) {
+        let script = Script::parse(script).unwrap();
+        let mut driver = FakeDriver::new(chat());
+        driver.front = Some("com.anthropic.claude".into());
+        let dir = tempfile::tempdir().unwrap();
+        let journal = policy::Journal::create(dir.path()).unwrap();
+        let path = journal.path.clone();
+        let mut gate = Gate::foreign(
+            "com.anthropic.claude",
+            level,
+            Box::new(policy::NoApprover),
+            Some(journal),
+        );
+        let mut out = Vec::new();
+        let report = run_gated(
+            &script,
+            "com.anthropic.claude",
+            &mut driver,
+            dir.path(),
+            &mut out,
+            &mut gate,
+        )
+        .unwrap();
+        drop(gate);
+        let journal = std::fs::read_to_string(path).unwrap();
+        (report, driver, journal)
+    }
+
+    #[test]
+    fn another_app_types_but_never_sends_without_approval() {
+        let (report, driver, journal) = foreign_run(policy::Level::Operate, CHAT);
+        assert_eq!(report.passed, 2);
+        let (step, why) = report.failed.unwrap();
+        assert_eq!(step, 3);
+        assert!(why.contains("needs the person's approval"), "{why}");
+        assert!(!driver.calls.iter().any(|c| c.starts_with("tap")));
+        assert!(driver
+            .calls
+            .iter()
+            .any(|c| c.starts_with("type chat-input")));
+        // The journal has the length of what was typed, never the text.
+        assert!(journal.contains("\"typed_chars\":5"), "{journal}");
+        assert!(!journal.contains("Hello"), "{journal}");
+        assert!(journal.contains("\"refused\""), "{journal}");
+    }
+
+    #[test]
+    fn observe_reads_but_does_not_type() {
+        let (report, driver, _) = foreign_run(policy::Level::Observe, CHAT);
+        let (step, why) = report.failed.unwrap();
+        assert_eq!(step, 2);
+        assert!(why.contains("`operate`"), "{why}");
+        assert!(!driver.calls.iter().any(|c| c.starts_with("type")));
+        // The bound app is in front, so the failure's tree and screenshot
+        // are kept as usual.
+        assert!(report.tree_file.is_some());
+    }
+
+    #[test]
+    fn return_and_secure_fields_are_gated_in_another_app() {
+        let script = r#"
+            name = "x"
+            app = "com.anthropic.claude"
+            timeout = 0
+            [[step]]
+            type = { id = "chat-input", text = "Hi\n" }
+        "#;
+        let (report, driver, _) = foreign_run(policy::Level::Operate, script);
+        assert!(report.failed.unwrap().1.contains("Return"));
+        assert!(!driver.calls.iter().any(|c| c.starts_with("type")));
+        let script = r#"
+            name = "x"
+            app = "com.anthropic.claude"
+            timeout = 0
+            [[step]]
+            type = { id = "pin", text = "1234" }
+        "#;
+        let (report, _, _) = foreign_run(policy::Level::Full, script);
+        assert!(report.failed.unwrap().1.contains("secure field"));
+        // Full: sending is allowed.
+        let (report, driver, _) = foreign_run(policy::Level::Full, CHAT);
+        assert!(report.failed.is_none());
+        assert!(driver.calls.iter().any(|c| c == "tap Send"));
+    }
+
+    #[test]
+    fn another_app_never_screenshots_what_else_is_in_front() {
+        let script = Script::parse(
+            r#"
+            name = "x"
+            app = "com.anthropic.claude"
+            timeout = 0
+            [[step]]
+            screenshot = "chat"
+        "#,
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(chat());
+        driver.front = Some("com.example.bank".into());
+        let dir = tempfile::tempdir().unwrap();
+        let mut gate = Gate::foreign(
+            "com.anthropic.claude",
+            policy::Level::Operate,
+            Box::new(policy::NoApprover),
+            None,
+        );
+        let report = run_gated(
+            &script,
+            "com.anthropic.claude",
+            &mut driver,
+            dir.path(),
+            &mut Vec::new(),
+            &mut gate,
+        )
+        .unwrap();
+        assert!(report
+            .failed
+            .unwrap()
+            .1
+            .contains("com.example.bank is in front"));
+        assert!(report.screenshots.is_empty());
+        assert!(report.tree_file.is_none());
+        assert!(!driver.calls.iter().any(|c| c == "screenshot"));
+    }
+
+    #[test]
+    fn an_empty_field_matches_an_empty_value() {
+        let script = Script::parse(
+            r#"
+            name = "x"
+            app = "a"
+            timeout = 0
+            [[step]]
+            expect = { id = "bookForm.title", value = "" }
+        "#,
+        )
+        .unwrap();
+        let mut driver = in_front(form());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+    }
 
     #[test]
     fn runs_the_m0_steps() {

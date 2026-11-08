@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use forge_uitest::baseline::{self, Mode};
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
+use forge_uitest::policy::{self, Access, Gate, Journal, Policy, Scope, TerminalApprover};
 use forge_uitest::script::{self, Script};
 use forge_uitest::wda::WdaDriver;
 use forge_uitest::{ensure_front, Driver};
@@ -251,16 +252,42 @@ fn start(
     Ok((runner, driver))
 }
 
+/// Bundle ids of the developer's own apps: the forge.toml apps in `dirs`.
+fn own_apps(dirs: &[&Path]) -> Vec<String> {
+    dirs.iter()
+        .filter_map(|d| std::fs::read_to_string(d.join("forge.toml")).ok())
+        .filter_map(|text| crate::config::ForgeConfig::parse(&text).ok())
+        .map(|cfg| cfg.app.bundle_id)
+        .collect()
+}
+
 /// `forge ui tree`: the accessibility tree of the screen, plus an audit.
-pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Result<(), String> {
+pub fn tree(
+    udid: Option<&str>,
+    app: Option<&str>,
+    any_app: bool,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let policy = Policy::load()?;
+    let own = own_apps(&[Path::new(".")]);
+    let scope = Scope {
+        any_app,
+        own: &own,
+        policy: &policy,
+    };
     let (_phone, apps, _runner, mut driver) = connect(udid)?;
     if let Some(app) = app {
         let app = resolve_app(&apps, app)?;
+        // Decided before the app is even brought to the front.
+        scope.access(app, &mut TerminalApprover)?;
         driver.activate(app).map_err(err)?;
         // Never audit whatever else happens to be open.
         ensure_front(&mut driver, app, Duration::from_secs(10)).map_err(err)?;
     }
     let front = driver.foreground().map_err(err)?;
+    if app.is_none() {
+        scope.may_read(front.as_deref(), &mut TerminalApprover)?;
+    }
     let tree = driver.tree().map_err(err)?;
     writeln!(
         out,
@@ -288,9 +315,22 @@ pub fn tree(udid: Option<&str>, app: Option<&str>, out: &mut dyn Write) -> Resul
 }
 
 /// `forge ui screenshot`
-pub fn screenshot(udid: Option<&str>, path: &Path, out: &mut dyn Write) -> Result<(), String> {
+pub fn screenshot(
+    udid: Option<&str>,
+    path: &Path,
+    any_app: bool,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let policy = Policy::load()?;
+    let own = own_apps(&[Path::new(".")]);
+    let scope = Scope {
+        any_app,
+        own: &own,
+        policy: &policy,
+    };
     let (_phone, _apps, _runner, mut driver) = connect(udid)?;
     let front = driver.foreground().map_err(err)?;
+    scope.may_read(front.as_deref(), &mut TerminalApprover)?;
     let png = driver.screenshot().map_err(err)?;
     std::fs::write(path, &png).map_err(|e| format!("{}: {e}", path.display()))?;
     report::set_data(serde_json::json!({ "path": path, "bytes": png.len(), "app": front }));
@@ -311,27 +351,74 @@ pub fn run(
     udid: Option<&str>,
     file: &Path,
     out_dir: Option<&Path>,
+    any_app: bool,
     visual: Option<Mode>,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let script = Script::load(file)?;
+    let policy = Policy::load()?;
     // Inside an app, the run is an evidence bundle (docs/evidence.md):
     // <app>/.forge/runs/<id>-ui-run/ unless --out says otherwise.
-    let app_dir = crate::evidence::app_of(file);
+    let mut app_dir = crate::evidence::app_of(file);
     let id = report::timestamp();
-    let out_dir: PathBuf = match (out_dir, &app_dir) {
-        (Some(d), _) => d.to_path_buf(),
-        (None, Some(app)) => app.join(".forge/runs").join(format!("{id}-ui-run")),
-        (None, None) => PathBuf::from("forge-ui-out"),
+    let own = {
+        let mut dirs: Vec<&Path> = vec![Path::new(".")];
+        if let Some(dir) = app_dir.as_deref() {
+            dirs.push(dir);
+        }
+        own_apps(&dirs)
+    };
+    let scope = Scope {
+        any_app,
+        own: &own,
+        policy: &policy,
+    };
+    // Settled before the phone is touched where the file alone decides it.
+    if let Some(why) = policy::never(&script.app) {
+        return Err(why);
+    }
+    let started = std::time::Instant::now();
+    let (phone, apps, _runner, mut driver) = connect(udid)?;
+    let app = resolve_app(&apps, &script.app)?.to_owned();
+    let mut session = None;
+    let mut gate = match scope.access(&app, &mut TerminalApprover)? {
+        Access::Own => Gate::own(&app),
+        Access::Foreign(level) => {
+            // Another developer's app: its screens are the person's data.
+            // They go to a folder outside every project, never into an
+            // app's evidence (docs/research/general-device-control.md#safety).
+            app_dir = None;
+            let dir = match out_dir {
+                Some(d) => d.to_path_buf(),
+                None => policy::session_root()
+                    .ok_or("no home folder for the any-app session; pass --out")?
+                    .join(format!("{id}-ui-run")),
+            };
+            let journal = Journal::create(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+            writeln!(
+                out,
+                "{app} is not a Forge app: acting at the `{}` level from {}. Screens and the journal go to {}",
+                level.name(),
+                policy.where_(),
+                dir.display()
+            )
+            .map_err(err)?;
+            session = Some(dir);
+            Gate::foreign(&app, level, Box::new(TerminalApprover), Some(journal))
+        }
+    };
+    let out_dir: PathBuf = match (session, out_dir, &app_dir) {
+        (Some(d), _, _) => d,
+        (None, Some(d), _) => d.to_path_buf(),
+        (None, None, Some(app)) => app.join(".forge/runs").join(format!("{id}-ui-run")),
+        (None, None, None) => PathBuf::from("forge-ui-out"),
     };
     // Read before the run, so the bundle names the code that was tested.
     let build = app_dir
         .as_deref()
         .map(|a| crate::evidence::provenance(runner, a));
-    let started = std::time::Instant::now();
-    let (phone, apps, _runner, mut driver) = connect(udid)?;
-    let app = resolve_app(&apps, &script.app)?.to_owned();
-    let report = script::run(&script, &app, &mut driver, &out_dir, out).map_err(err)?;
+    let report =
+        script::run_gated(&script, &app, &mut driver, &out_dir, out, &mut gate).map_err(err)?;
     // Visual regression runs on Linux, after the phone part: the screenshots
     // taken before a failed step are still compared.
     let visual = match visual {
@@ -430,6 +517,11 @@ pub fn run(
         "visual": visual,
         "out": out_dir.display().to_string(),
         "evidence": evidence.map(|p| p.display().to_string()),
+        // Another developer's app: the level it ran at and its journal.
+        "any_app": gate.is_foreign().then(|| serde_json::json!({
+            "level": gate.level().name(),
+            "journal": out_dir.join("journal.jsonl"),
+        })),
     }));
     if !report.screenshots.is_empty() {
         writeln!(out, "Screenshots: {}", out_dir.display()).map_err(err)?;

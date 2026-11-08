@@ -191,6 +191,10 @@ enum UiCommands {
         /// Bring this app (its forge.toml bundle id) to the front first
         #[arg(long, value_name = "BUNDLE_ID")]
         app: Option<String>,
+        /// Also read apps Forge didn't build, as far as
+        /// ~/.config/forge/device-control.toml allows
+        #[arg(long)]
+        any_app: bool,
     },
     /// Save a screenshot of the phone's screen here
     Screenshot {
@@ -199,6 +203,10 @@ enum UiCommands {
         /// Where to save the PNG
         #[arg(default_value = "screenshot.png")]
         path: PathBuf,
+        /// Also when an app Forge didn't build is in front, as far as
+        /// ~/.config/forge/device-control.toml allows
+        #[arg(long)]
+        any_app: bool,
     },
     /// Run a UI test file (TOML steps) against its app
     Run {
@@ -211,6 +219,11 @@ enum UiCommands {
         /// else forge-ui-out)
         #[arg(long, value_name = "DIR")]
         out: Option<PathBuf>,
+        /// Allow a test file that names an app Forge didn't build. What it
+        /// may do there comes from ~/.config/forge/device-control.toml;
+        /// taps that send, post, pay or delete ask each time
+        #[arg(long)]
+        any_app: bool,
         /// Screenshots against their baselines (uitests/baselines/<test>/):
         /// `check` fails the run when one changed, `record` makes every
         /// screenshot the baseline, `off` skips it (docs/visual-regression.md)
@@ -761,12 +774,13 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         &mut out,
                     )
                 }
-                UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
-                UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
+                UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
+                UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
                 UiCommands::Run {
                     udid,
                     file,
                     out: dir,
+                    any_app,
                     visual,
                 } => {
                     let visual = match visual.as_str() {
@@ -774,7 +788,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         "off" => None,
                         _ => Some(forge_uitest::baseline::Mode::Check),
                     };
-                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), visual, &mut out)
+                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, &mut out)
                 }
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)

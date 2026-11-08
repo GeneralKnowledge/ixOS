@@ -11,12 +11,14 @@
 //!   [`http::HttpTransport`]; [`phone::Phone`] supplies the real transport,
 //!   mounts the Developer Disk Image and starts the runner.
 //! - [`script`] runs steps from a TOML file against any [`Driver`].
+//! - [`policy`] decides what a run may do in an app Forge didn't build.
 //! - [`visual`] and [`baseline`] compare a run's screenshots with approved
 //!   ones (visual regression), on Linux.
 
 pub mod baseline;
 pub mod http;
 pub mod phone;
+pub mod policy;
 pub mod script;
 pub mod tree;
 pub mod visual;
@@ -43,6 +45,10 @@ pub enum UiError {
     /// Another app is in front, so acting would touch the wrong app.
     #[error("{expected} is not in front ({found} is); refusing to act on another app")]
     WrongApp { expected: String, found: String },
+    /// The device-control policy said no (another developer's app; see
+    /// [`policy`]). Never retried.
+    #[error("refused by the device-control policy: {0}")]
+    Refused(String),
     #[error("WebDriverAgent: {0}")]
     Wda(String),
     #[error("{0}")]

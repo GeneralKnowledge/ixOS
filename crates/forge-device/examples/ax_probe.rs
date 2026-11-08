@@ -19,7 +19,15 @@
 //! ```
 //!
 //! `--off` only turns the phone's inspector off (monitoring, highlight),
-//! for when an earlier run was interrupted. Every run turns it off at the end.
+//! for when an earlier run was killed. Every run turns it off at the end,
+//! including after an error or Ctrl-C.
+//!
+//! Privacy: while app monitoring is on, the service reports every app on the
+//! phone moving to the foreground or background, not only the one being
+//! read (seen on Cati, 2026-11-08). So monitoring is on only for the walk
+//! (and `--app`'s check), switched off straight after, and those reports
+//! are dropped unread: the probe counts them and never prints or keeps
+//! which apps they name.
 //!
 //! `--app library.` refuses the audit, and any press outside that prefix,
 //! unless an element with an identifier starting `library.` is on screen.
@@ -297,8 +305,13 @@ async fn run(args: &Args, report: &mut Report) -> Result<()> {
         return Ok(());
     }
     // Whatever happens, leave the phone's inspector off: left on, its
-    // highlight keeps moving through whatever app is in front.
-    let result = stages(&mut ax, args, report, started).await;
+    // highlight keeps moving through whatever app is in front, and app
+    // monitoring keeps reporting every app's comings and goings. Ctrl-C
+    // stops the stages and still cleans up.
+    let result = tokio::select! {
+        result = stages(&mut ax, args, report, started) => result,
+        _ = tokio::signal::ctrl_c() => Err("interrupted (Ctrl-C)".into()),
+    };
     ax.cleanup().await;
     result
 }
@@ -469,6 +482,12 @@ async fn stages(ax: &mut Ax, args: &Args, report: &mut Report, started: Instant)
         seen.push(element);
         ax.move_focus(4).await?;
     }
+    // Monitoring only while reading the screen.
+    ax.send(
+        "deviceSetAppMonitoringEnabled:",
+        vec![arg(Value::Boolean(false))],
+    )
+    .await?;
     println!(
         "[3] walked {} elements in {} ms",
         seen.len(),
@@ -600,6 +619,8 @@ impl Ax {
                 .await?
                 .ok_or_else(|| format!("{selector}: no reply within 10 s"))?;
             match notification(&msg) {
+                // Other apps' activity: never kept (see the top of the file).
+                Some((n, _)) if n == APP_STATE => self.others.push(n),
                 Some(event) => self.events.push_back(event),
                 None => {
                     return Ok(match (msg.data, msg.raw_data) {
@@ -626,12 +647,9 @@ impl Ax {
             };
             match notification(&msg) {
                 Some((n, args)) if n == name => return Ok(Some(payload(args))),
-                Some((n, args)) => {
-                    if n == APP_STATE {
-                        println!("    app state changed: {}", short(&payload(args)));
-                    }
-                    self.others.push(n)
-                }
+                // Named and counted only: an app state change can be about
+                // any app on the phone.
+                Some((n, _)) => self.others.push(n),
                 None => self.others.push(format!(
                     "reply {}",
                     short(&msg.data.unwrap_or(Value::Boolean(false)))

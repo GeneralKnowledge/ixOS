@@ -169,10 +169,12 @@ M0 has these (built):
 
 ```
 forge ui setup [--ddi DIR] [--runner APP]   mount the DDI if needed, install the runner with xtool, check it starts
-forge ui tree  [--app BUNDLE]               the accessibility tree of the screen, plus unlabelled controls
-forge ui screenshot [out.png]               save a screenshot on Linux
-forge ui run FILE [--out DIR]               run a test file; screenshots and failure details go to DIR
+forge ui tree  [--app BUNDLE] [--any-app]   the accessibility tree of the screen, plus unlabelled controls
+forge ui screenshot [out.png] [--any-app]   save a screenshot on Linux
+forge ui run FILE [--out DIR] [--any-app]   run a test file; screenshots and failure details go to DIR
 ```
+
+`--any-app` lets these reach apps Forge didn't build, under the person's policy ([below](#apps-forge-didnt-build)).
 
 Later milestones add:
 
@@ -240,6 +242,41 @@ After the phone restarts, run `forge ui setup --ddi …` again (the image is unm
 ### Only the app under test
 
 A test acts only on its own app. Before every tap, typing, expectation and tree read, `forge ui run` asks WebDriverAgent which app is in front (`GET /wda/activeAppInfo`). It waits up to the step timeout for the test's app, then fails with "`<app>` is not in front (`<other>` is); refusing to act on another app". There are two exceptions. `expect = { ..., gone = true }` also passes after the app was terminated, and a screenshot is taken whatever is in front. `forge ui tree --app <bundle id>` activates the app and makes the same check. Without `--app`, `ui tree` and `ui screenshot` say which app was in front, and so does their `--json` (`data.app`). A future runner-free driver (M2.5) must make the same check before it presses or audits anything.
+
+### Apps Forge didn't build
+
+WebDriverAgent drives any installed app, so a test file can name an App Store app (G0 typed and sent a message in the Claude app on Cati this way, 2026-11-08). Forge doesn't let that happen by accident. The design is in [general-device-control.md](research/general-device-control.md#safety); the code is `forge-uitest`'s `policy` module, which `forge ui` uses and the MCP server reaches through it.
+
+**Your own apps are unchanged.** An app is yours when its installed id has xtool's `XTL-` prefix (free team), or the `forge.toml` in the current folder or in the app folder holding the test file names it, or your policy file marks it `full`. Everything works as before for these.
+
+**Every other app needs `--any-app`.** Without it, `forge ui run` refuses a test file that names one, and `ui tree` and `ui screenshot` refuse to read the screen while one is in front (the home screen is fine). The MCP server never passes `--any-app`, so an agent can't reach another app through it.
+
+**Then a per-app level, from a file you write:** `~/.config/forge/device-control.toml` (or under `$XDG_CONFIG_HOME`). It is outside every project, so an agent editing a project can't loosen it.
+
+```toml
+default = "ask"                     # apps not listed (also the default with no file)
+
+[apps]
+"com.apple.weather" = "operate"
+"com.example.bank" = "observe"
+"org.forgemobile.agentlab" = "full"
+```
+
+| Level | Allows |
+|---|---|
+| `deny` | Nothing |
+| `observe` | Launch, bring to the front, background, tree, screenshot, scroll, expectations |
+| `operate` | Also tap, type, clear, stop. **Commits ask every time** |
+| `full` | Everything except the hard refusals. Counts as your own app |
+| `ask` | Forge asks at the terminal which level to use for this run (deny, observe or operate). With no terminal (an agent, a script), refused |
+
+**The commit gate.** At `operate`, before a tap Forge reads the target's label, identifier and kind. If a word in them is a commit (send, post, reply, share, publish, submit, pay, buy, purchase, order, checkout, subscribe, transfer, donate, delete, remove, erase, block, report, call, invite, follow, like, allow…, with plain endings such as *sends*, *deleting*), Forge asks "Allow it? [y/N]" on the terminal. Typing text with a newline counts too, because Return sends in many apps. Tapping a text field only focuses it and is never a commit. With nobody at a terminal, a commit is refused, and the step fails with the reason. The list will miss some words, which is why money and messaging apps should stay at `observe`.
+
+**Never, at any level:** Settings, Wallet and the Apple Pay sheet, Passwords, the App Store and its purchase sheet, Find My, Phone, FaceTime, and the Face ID and passcode prompt; typing into secure fields (passwords, passcodes, codes) of another app.
+
+**Privacy.** A run in another app writes its screenshots, failure trees and journal to `~/.cache/forge/any-app/<UTC>-ui-run/` (or `--out`), never into an app's `.forge/runs/`, and writes no evidence bundle. The journal, `journal.jsonl`, has one line per decision: time, app, action, the target's label, identifier and kind, and allowed, approved or refused with the reason. Typed text is recorded only as its length. On a failure, the tree and screenshot are saved only if the app under test is still in front, never whatever else came up. Apple's accessibility service (`ax_probe`) switches app monitoring on only for its walk and drops its reports about other apps.
+
+Checked on Cati (iPhone 15 Pro Max, iOS 26.3.1) on 2026-11-08 with the Claude app at `operate`. Typing worked. Send stopped at the prompt and was refused when the answer was n. With no terminal it was refused outright, and without `--any-app` nothing ran. The journal recorded the Send as refused, with the typed text's length only. Pocket Library's M0 still passed 11/11 without the flag. Not yet shown on the phone: `ax_probe` cleaning up after a Ctrl-C in the middle of a walk (the interrupt landed before the walk began).
 
 ### What a failing run gives an agent
 
