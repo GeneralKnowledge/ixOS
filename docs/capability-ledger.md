@@ -123,7 +123,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Face ID app lock | No | No | No | No | No | Partial: config only | |
 | Background refresh and processing tasks | Partial: config key | No | No | No | No | Partial | iOS decides when they run |
 | Recurring schedules | No | No | n/a | No | No | No | |
-| Haptics | n/a | n/a | Yes: SwiftUI | No | No | No | |
+| Haptics | n/a | n/a | Yes: SwiftUI | Yes: Good Dog (session saved, stopwatch, result picked) | No | No | |
 
 ## Media, sensors and rendering (W5, W6, W8)
 

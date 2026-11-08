@@ -49,3 +49,26 @@ fn every_reference_points_at_something_that_exists() {
         assert!(ids.contains(id), "calm exercise {id} is in the library");
     }
 }
+
+#[test]
+fn topics_and_glossary_parse_and_cover_the_content() {
+    use good_dog_core::dog_training::{bundled_glossary, bundled_topics};
+    let topics = bundled_topics();
+    assert_eq!(topics.len(), 6);
+    for e in bundled_exercises() {
+        assert!(
+            topics.iter().any(|t| t.id == e.topic_group),
+            "{} has a topic",
+            e.core.id
+        );
+    }
+    let glossary = bundled_glossary();
+    assert!(glossary.terms.len() >= 40);
+    for t in &glossary.terms {
+        assert!(
+            glossary.categories.iter().any(|c| c.id == t.category),
+            "{}: category",
+            t.id
+        );
+    }
+}
