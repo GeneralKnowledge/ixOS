@@ -49,6 +49,12 @@ for app in FreshIos FreshMini FreshDroid; do
     fail "$app still has template placeholders (files above)"
   fi
   grep -q '^path = "rust"' "$dir/forge.toml" || fail "$app forge.toml does not name its crate"
+  if [[ "$app" == FreshMini ]]; then
+    # The minimal starter has no native services or lifecycle: nothing may still use them.
+    if grep -rlE 'AppServices|receivesDeepLinks|forgeLifecycle|NotesModel' --include='*.swift' "$dir/Sources" "$dir/Xcode" "$dir/Tests"; then
+      fail "FreshMini still refers to the full starter (files above)"
+    fi
+  fi
 
   step "$app: the app's own crate (cargo test, clippy, fmt)"
   manifest="$dir/rust/Cargo.toml"
