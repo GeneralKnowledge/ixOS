@@ -19,6 +19,7 @@ use good_dog_core::dog_training::{
     ExerciseContent, GlossaryTerm,
 };
 
+mod goals;
 mod guided;
 mod model;
 #[cfg(test)]
@@ -47,7 +48,19 @@ forge_runtime::log_export!();
 
 /// Schema version of `gooddog.json`. Bump it, and add a migration, when
 /// [`Stored`] changes shape.
-const STORE_VERSION: u32 = 1;
+const STORE_VERSION: u32 = 2;
+
+/// Upgrades an older `gooddog.json`. Version 1 (GD1) had no goals.
+fn migrate(from: u32, mut data: serde_json::Value) -> Result<serde_json::Value, StorageError> {
+    if from < 2 {
+        if let Some(object) = data.as_object_mut() {
+            object
+                .entry("goals")
+                .or_insert_with(|| serde_json::Value::Array(Vec::new()));
+        }
+    }
+    Ok(data)
+}
 
 /// Something the host may want to react to.
 #[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
@@ -108,35 +121,7 @@ impl AppCore {
     /// Fails with `Storage` if the saved data can't be used; it is left untouched.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
-        forge_runtime::logging::init();
-        if storage_directory.is_empty() {
-            return Err(AppError::InvalidInput {
-                reason: "storage directory must not be empty".into(),
-            });
-        }
-        let storage_directory = PathBuf::from(storage_directory);
-        std::fs::create_dir_all(&storage_directory).map_err(|e| AppError::Storage {
-            reason: e.to_string(),
-        })?;
-        let file = JsonFile::new(storage_directory.join("gooddog.json"), STORE_VERSION);
-        let stored: Stored = file.load()?.unwrap_or_default();
-        // Never log the dog's name or anything the owner typed.
-        forge_runtime::logging::info!(
-            "opened: profile {}, {} sessions",
-            stored.dog.is_some(),
-            stored.sessions.len()
-        );
-        let state = Arc::new(Mutex::new(stored));
-        let lifecycle = Lifecycle::new();
-        Ok(Arc::new(Self {
-            #[cfg(feature = "devtools")]
-            _devtools: devtools::start(&storage_directory, &state, &lifecycle),
-            state,
-            file: Arc::new(file),
-            events: EventHub::new(),
-            shut_down: Arc::new(AtomicBool::new(false)),
-            lifecycle,
-        }))
+        Self::open(storage_directory, goals::Pathways::default())
     }
 
     // MARK: The dog
@@ -238,6 +223,102 @@ impl AppCore {
         .await
     }
 
+    // MARK: Goals
+
+    /// The goals the owner can start: pathways that suit the dog's age.
+    /// Empty until DogResearch publishes pathways.
+    pub fn pathways(&self) -> Vec<PathwaySummary> {
+        lock(&self.state).pathway_summaries()
+    }
+
+    /// Goals matching what the owner typed, best first. Empty when nothing
+    /// matches; show the full list then, never a guess.
+    pub fn suggest_goals(&self, own_words: String) -> Vec<PathwaySummary> {
+        lock(&self.state).suggest_pathways(&own_words)
+    }
+
+    /// The owner's goals: active first, then paused, finished, set aside.
+    pub fn goals(&self) -> Vec<GoalSummary> {
+        lock(&self.state).goal_summaries()
+    }
+
+    /// One goal in full.
+    pub fn goal(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
+        lock(&self.state).goal_detail(goal_id, now)
+    }
+
+    /// Starts working on a pathway, at most three at once. Starting one the
+    /// owner already has picks it up again instead. Today's plan, if not
+    /// started, is rebuilt around it.
+    pub async fn start_goal(
+        &self,
+        pathway_id: String,
+        own_words: Option<String>,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("start-goal", move |stored| {
+            let id = stored.start_goal(&pathway_id, own_words, now)?;
+            stored.goal_detail(id, now)
+        })
+        .await
+    }
+
+    /// Stops a goal for now; its stage and history are kept.
+    pub async fn pause_goal(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
+        self.change("pause-goal", move |stored| {
+            stored.pause_goal(goal_id, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
+    /// Picks a paused or set-aside goal up again where it was.
+    pub async fn resume_goal(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
+        self.change("resume-goal", move |stored| {
+            stored.resume_goal(goal_id, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
+    /// Stops working on a goal without deleting anything.
+    pub async fn set_goal_aside(
+        &self,
+        goal_id: u64,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("set-goal-aside", move |stored| {
+            stored.set_goal_aside(goal_id, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
+    /// The owner's answer to the current stage's question. "Yes" moves on,
+    /// unless a welfare rest or "making it easier" holds the stage
+    /// (`InvalidInput` with the reason); "not yet" is noted.
+    pub async fn answer_gate(
+        &self,
+        goal_id: u64,
+        met: bool,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("answer-gate", move |stored| {
+            stored.answer_gate(goal_id, met, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
+    /// Goes back one stage. Normal, not a failure.
+    pub async fn step_back(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
+        self.change("step-back", move |stored| {
+            stored.step_back(goal_id, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
     // MARK: Guided session
 
     /// Starts a guided session of an exercise on its "get ready" card. It
@@ -313,7 +394,10 @@ impl AppCore {
     /// Deletes the profile, plans, sessions and progress.
     pub async fn erase_all(&self) -> Result<(), AppError> {
         self.change("erase-all", |stored| {
-            *stored = Stored::default();
+            *stored = Stored {
+                pathways: stored.pathways,
+                ..Stored::default()
+            };
             Ok(())
         })
         .await
@@ -523,11 +607,56 @@ impl AppCore {
     }
 }
 
+impl AppCore {
+    /// Like `new`, with other pathways than the bundled ones (tests).
+    #[cfg(test)]
+    pub(crate) fn with_pathways(
+        storage_directory: String,
+        pathways: &'static [good_dog_core::dog_training::Pathway],
+    ) -> Result<Arc<Self>, AppError> {
+        Self::open(storage_directory, goals::Pathways(pathways))
+    }
+
+    fn open(storage_directory: String, pathways: goals::Pathways) -> Result<Arc<Self>, AppError> {
+        forge_runtime::logging::init();
+        if storage_directory.is_empty() {
+            return Err(AppError::InvalidInput {
+                reason: "storage directory must not be empty".into(),
+            });
+        }
+        let storage_directory = PathBuf::from(storage_directory);
+        std::fs::create_dir_all(&storage_directory).map_err(|e| AppError::Storage {
+            reason: e.to_string(),
+        })?;
+        let file = JsonFile::new(storage_directory.join("gooddog.json"), STORE_VERSION)
+            .with_migration(migrate);
+        let mut stored: Stored = file.load()?.unwrap_or_default();
+        stored.pathways = pathways;
+        // Never log the dog's name or anything the owner typed.
+        forge_runtime::logging::info!(
+            "opened: profile {}, {} sessions",
+            stored.dog.is_some(),
+            stored.sessions.len()
+        );
+        let state = Arc::new(Mutex::new(stored));
+        let lifecycle = Lifecycle::new();
+        Ok(Arc::new(Self {
+            #[cfg(feature = "devtools")]
+            _devtools: devtools::start(&storage_directory, &state, &lifecycle),
+            state,
+            file: Arc::new(file),
+            events: EventHub::new(),
+            shut_down: Arc::new(AtomicBool::new(false)),
+            lifecycle,
+        }))
+    }
+}
+
 fn minutes(e: &ExerciseContent) -> u32 {
     e.core.estimated_minutes.max(0) as u32
 }
 
-fn exercise_summary(e: &ExerciseContent) -> ExerciseSummary {
+pub(crate) fn exercise_summary(e: &ExerciseContent) -> ExerciseSummary {
     ExerciseSummary {
         id: e.core.id.clone(),
         title: e.title.clone(),

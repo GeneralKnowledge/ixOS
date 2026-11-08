@@ -117,6 +117,113 @@ pub struct TodayPlan {
     pub can_shorten: bool,
     /// A first plan, built from gentle starter exercises.
     pub starter: bool,
+    /// The active goal today's plan works towards most, when there is one.
+    pub goal_focus: Option<GoalFocus>,
+}
+
+/// Which goal today's plan serves, and why, for the top of Today.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalFocus {
+    pub goal_id: u64,
+    pub goal_title: String,
+    pub stage_title: String,
+    /// Rust's wording: why this stage matters now.
+    pub why: String,
+}
+
+/// Where a goal stands.
+#[derive(uniffi::Enum, Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[serde(rename_all = "snake_case")]
+pub enum GoalStatus {
+    Active,
+    Paused,
+    /// Every stage passed; the skill is kept up with occasional practice.
+    Finished,
+    /// The owner stopped working on it. Its history stays.
+    SetAside,
+}
+
+/// A goal the owner can start.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct PathwaySummary {
+    pub id: String,
+    pub title: String,
+    pub summary: String,
+    pub stage_count: u32,
+}
+
+/// One of the owner's goals, for a list.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalSummary {
+    pub id: u64,
+    pub pathway_id: String,
+    pub title: String,
+    pub status: GoalStatus,
+    /// The stage being worked on (the last one once finished).
+    pub stage_title: String,
+    /// 1-based.
+    pub stage_number: u32,
+    pub stage_count: u32,
+    /// What the owner wrote when they started it, if anything.
+    pub own_words: Option<String>,
+}
+
+/// Where a stage is on the owner's route.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StageState {
+    Passed,
+    Current,
+    Upcoming,
+}
+
+/// One stage of a goal, explained.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalStage {
+    pub id: String,
+    pub title: String,
+    pub state: StageState,
+    pub what_it_means: String,
+    pub why_it_matters: String,
+    pub exercises: Vec<ExerciseSummary>,
+    pub everyday_practice: String,
+    /// What "ready" looks like, in words.
+    pub ready_when: String,
+    pub if_it_is_hard: String,
+    /// For passed stages: how to keep the skill.
+    pub maintenance: String,
+}
+
+/// Whether the current stage's gate can be asked.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GateStatus {
+    /// The app's evidence is there: ask the owner `question`.
+    pub ready_for_check: bool,
+    /// A welfare rest or "making it easier" holds the stage. Moving on is
+    /// refused until it ends.
+    pub held: bool,
+    /// The gate as a question to the owner, with the dog's name.
+    pub question: String,
+    /// Rust's plain-English note on where things stand.
+    pub note: String,
+}
+
+/// Something that happened to a goal, worded by Rust.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalEvent {
+    pub at_ms: i64,
+    pub text: String,
+}
+
+/// A goal in full.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalDetail {
+    pub summary: GoalSummary,
+    pub pathway_summary: String,
+    pub stages: Vec<GoalStage>,
+    /// `None` once the goal is finished.
+    pub gate: Option<GateStatus>,
+    /// Newest first.
+    pub history: Vec<GoalEvent>,
 }
 
 /// A short row for an exercise.

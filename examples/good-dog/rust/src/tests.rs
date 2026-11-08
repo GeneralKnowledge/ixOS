@@ -370,6 +370,317 @@ fn shutdown_refuses_new_work_and_ends_streams() {
     assert_eq!(block_on(app.today(at(NINE_AM))), Err(AppError::ShutDown));
 }
 
+// MARK: Goals (GD2a)
+
+use good_dog_core::dog_training::{parse_pathways, Pathway};
+
+/// The sample pathways from good-dog-core's tests, plus two copies so the
+/// three-goal limit can be reached.
+fn sample_pathways() -> &'static [Pathway] {
+    static SAMPLE: std::sync::OnceLock<Vec<Pathway>> = std::sync::OnceLock::new();
+    SAMPLE.get_or_init(|| {
+        let mut pathways = parse_pathways(include_str!(
+            "../../../good-dog-core/tests/fixtures/pathways-sample.json"
+        ))
+        .unwrap();
+        for n in 1..=2 {
+            let mut copy = pathways[1].clone();
+            copy.id = format!("path-copy-{n}");
+            copy.title = format!("Copy {n}");
+            copy.match_phrases.clear();
+            pathways.push(copy);
+        }
+        pathways
+    })
+}
+
+fn open_with_goals(dir: &std::path::Path) -> Arc<AppCore> {
+    AppCore::with_pathways(dir.to_string_lossy().into_owned(), sample_pathways()).unwrap()
+}
+
+fn onboarded_with_goals(dir: &std::path::Path) -> Arc<AppCore> {
+    let app = open_with_goals(dir);
+    block_on(app.save_dog(moss(), at(NINE_AM))).unwrap();
+    app
+}
+
+#[test]
+fn gd1_data_is_migrated_and_keeps_everything() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let app = onboarded(dir.path());
+        block_on(app.today(at(NINE_AM))).unwrap();
+        app.shutdown();
+    }
+    // Rewrite the file as GD1 saved it: schema 1, no `goals`.
+    let path = dir.path().join("gooddog.json");
+    let mut file: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    file["schema_version"] = 1.into();
+    file["data"].as_object_mut().unwrap().remove("goals");
+    std::fs::write(&path, file.to_string()).unwrap();
+
+    let app = open_with_goals(dir.path());
+    assert_eq!(app.dog().unwrap().name, "Moss");
+    assert!(app.goals().is_empty());
+    let plan = block_on(app.today(at(NINE_AM))).unwrap();
+    assert!(!plan.activities.is_empty());
+    block_on(app.start_goal("path-recall".into(), None, at(NINE_AM))).unwrap();
+    app.shutdown();
+    let saved: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    assert_eq!(saved["schema_version"], 2);
+}
+
+#[test]
+fn the_bundled_app_offers_no_goals_until_dogresearch_publishes_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    assert!(app.pathways().is_empty());
+    assert!(matches!(
+        block_on(app.start_goal("path-recall".into(), None, at(NINE_AM))),
+        Err(AppError::NotFound { .. })
+    ));
+    assert_eq!(block_on(app.today(at(NINE_AM))).unwrap().goal_focus, None);
+}
+
+#[test]
+fn a_new_goal_starts_at_its_first_stage_and_steers_today() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    assert_eq!(app.pathways().len(), 4);
+    assert_eq!(
+        app.suggest_goals("she pulls on the lead".into())
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        ["path-loose-lead"]
+    );
+    assert!(app.suggest_goals("barks at the postman".into()).is_empty());
+
+    let goal = block_on(app.start_goal(
+        "path-recall".into(),
+        Some("  runs off   at the park ".into()),
+        at(NINE_AM),
+    ))
+    .unwrap();
+    assert_eq!(goal.summary.status, GoalStatus::Active);
+    assert_eq!(goal.summary.stage_number, 1);
+    assert_eq!(goal.summary.stage_count, 2);
+    assert_eq!(
+        goal.summary.own_words.as_deref(),
+        Some("runs off at the park")
+    );
+    assert_eq!(
+        goal.stages.iter().map(|s| s.state).collect::<Vec<_>>(),
+        [StageState::Current, StageState::Upcoming]
+    );
+    let gate = goal.gate.unwrap();
+    assert!(!gate.ready_for_check && !gate.held);
+    assert!(gate.question.contains("Moss"), "{}", gate.question);
+    assert!(!gate.question.contains("{dog}"));
+
+    // Today's plan (not started yet) is rebuilt around the goal.
+    let today = block_on(app.today(at(NINE_AM))).unwrap();
+    let focus = today.goal_focus.expect("goal focus");
+    assert_eq!(focus.goal_id, goal.summary.id);
+    assert_eq!(focus.stage_title, "Turning to their name");
+    assert!(
+        today
+            .activities
+            .iter()
+            .any(|a| a.exercise_id == "ex-name-response"),
+        "{:?}",
+        today.activities
+    );
+
+    // Starting it again returns the same goal.
+    let again = block_on(app.start_goal("path-recall".into(), None, at(NINE_AM))).unwrap();
+    assert_eq!(again.summary.id, goal.summary.id);
+    assert_eq!(app.goals().len(), 1);
+}
+
+#[test]
+fn pausing_resuming_and_setting_aside_keep_the_stage_and_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    let id = block_on(app.start_goal("path-recall".into(), None, at(NINE_AM)))
+        .unwrap()
+        .summary
+        .id;
+    block_on(app.answer_gate(id, true, at(NINE_AM))).unwrap();
+
+    let paused = block_on(app.pause_goal(id, at(NINE_AM + 1000))).unwrap();
+    assert_eq!(paused.summary.status, GoalStatus::Paused);
+    assert_eq!(paused.summary.stage_number, 2);
+    assert!(!paused.gate.as_ref().unwrap().note.is_empty());
+    // A paused goal no longer steers the plan.
+    let tomorrow = at(NINE_AM + DAY_MS);
+    assert_eq!(block_on(app.today(tomorrow)).unwrap().goal_focus, None);
+
+    let aside = block_on(app.set_goal_aside(id, tomorrow)).unwrap();
+    assert_eq!(aside.summary.status, GoalStatus::SetAside);
+    let resumed = block_on(app.resume_goal(id, tomorrow)).unwrap();
+    assert_eq!(resumed.summary.status, GoalStatus::Active);
+    assert_eq!(resumed.summary.stage_number, 2, "kept its stage");
+    let history: Vec<&str> = resumed.history.iter().map(|e| e.text.as_str()).collect();
+    assert_eq!(
+        history,
+        [
+            "Picked up again",
+            "Set aside",
+            "Paused",
+            "Moved on from \u{201c}Turning to their name\u{201d}",
+            "Started this goal"
+        ]
+    );
+
+    // All of it survives a relaunch.
+    app.shutdown();
+    let app = open_with_goals(dir.path());
+    let again = app.goal(id, tomorrow).unwrap();
+    assert_eq!(again.summary.stage_number, 2);
+    assert_eq!(again.history.len(), 5);
+}
+
+#[test]
+fn at_most_three_goals_are_active() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    let start = |id: &str| block_on(app.start_goal(id.into(), None, at(NINE_AM)));
+    let first = start("path-recall").unwrap().summary.id;
+    start("path-loose-lead").unwrap();
+    start("path-copy-1").unwrap();
+    assert!(matches!(
+        start("path-copy-2"),
+        Err(AppError::InvalidInput { .. })
+    ));
+    block_on(app.pause_goal(first, at(NINE_AM))).unwrap();
+    start("path-copy-2").unwrap();
+    assert!(matches!(
+        block_on(app.resume_goal(first, at(NINE_AM))),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let statuses: Vec<GoalStatus> = app.goals().iter().map(|g| g.status).collect();
+    assert_eq!(
+        statuses,
+        [
+            GoalStatus::Active,
+            GoalStatus::Active,
+            GoalStatus::Active,
+            GoalStatus::Paused
+        ]
+    );
+}
+
+#[test]
+fn the_gate_moves_on_finishes_and_steps_back() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    let id = block_on(app.start_goal("path-recall".into(), None, at(NINE_AM)))
+        .unwrap()
+        .summary
+        .id;
+
+    let not_yet = block_on(app.answer_gate(id, false, at(NINE_AM))).unwrap();
+    assert_eq!(not_yet.summary.stage_number, 1);
+    assert!(not_yet.history[0].text.starts_with("Not quite there"));
+
+    let second = block_on(app.answer_gate(id, true, at(NINE_AM))).unwrap();
+    assert_eq!(second.summary.stage_number, 2);
+    assert_eq!(second.stages[0].state, StageState::Passed);
+
+    let done = block_on(app.answer_gate(id, true, at(NINE_AM))).unwrap();
+    assert_eq!(done.summary.status, GoalStatus::Finished);
+    assert!(done.gate.is_none());
+    assert!(done.stages.iter().all(|s| s.state == StageState::Passed));
+    assert!(matches!(
+        block_on(app.pause_goal(id, at(NINE_AM))),
+        Err(AppError::InvalidInput { .. })
+    ));
+
+    // Going back is always allowed, and reopens a finished goal.
+    let back = block_on(app.step_back(id, at(NINE_AM))).unwrap();
+    assert_eq!(back.summary.status, GoalStatus::Active);
+    assert_eq!(back.summary.stage_number, 1);
+    assert!(matches!(
+        block_on(app.step_back(id, at(NINE_AM))),
+        Err(AppError::InvalidInput { .. })
+    ));
+}
+
+#[test]
+fn evidence_opens_the_gate_and_welfare_holds_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    let id = block_on(app.start_goal("path-recall".into(), None, at(NINE_AM)))
+        .unwrap()
+        .summary
+        .id;
+    let record = |day: i64, result: SessionResult, welfare: bool| {
+        block_on(app.record_session(
+            "ex-name-response".into(),
+            None,
+            result,
+            welfare,
+            at(NINE_AM + day * DAY_MS),
+        ))
+        .unwrap()
+    };
+    // Good results on several days make the skill consistent.
+    for day in 0..4 {
+        record(day, SessionResult::Easy, false);
+    }
+    let gate = app
+        .goal(id, at(NINE_AM + 4 * DAY_MS))
+        .unwrap()
+        .gate
+        .unwrap();
+    assert!(gate.ready_for_check, "{gate:?}");
+
+    // A welfare concern holds the stage: "yes" is refused, nothing moves.
+    record(4, SessionResult::GettingThere, true);
+    let later = at(NINE_AM + 4 * DAY_MS + 1000);
+    let gate = app.goal(id, later).unwrap().gate.unwrap();
+    assert!(gate.held && !gate.ready_for_check, "{gate:?}");
+    assert!(gate.note.contains("welfare"), "{}", gate.note);
+    match block_on(app.answer_gate(id, true, later)) {
+        Err(AppError::InvalidInput { reason }) => assert!(reason.contains("welfare"), "{reason}"),
+        other => panic!("expected a refusal, got {other:?}"),
+    }
+    assert_eq!(app.goal(id, later).unwrap().summary.stage_number, 1);
+
+    // After the rest, the stage stays held while the skill is made easier...
+    let gate = app
+        .goal(id, at(NINE_AM + 8 * DAY_MS))
+        .unwrap()
+        .gate
+        .unwrap();
+    assert!(gate.held && !gate.note.contains("welfare"), "{gate:?}");
+    assert!(gate.note.contains("made easier"), "{}", gate.note);
+
+    // ...and opens again once it goes well.
+    for day in 8..12 {
+        record(day, SessionResult::Easy, false);
+    }
+    let gate = app
+        .goal(id, at(NINE_AM + 12 * DAY_MS))
+        .unwrap()
+        .gate
+        .unwrap();
+    assert!(!gate.held && gate.ready_for_check, "{gate:?}");
+}
+
+#[test]
+fn erasing_clears_goals() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded_with_goals(dir.path());
+    block_on(app.start_goal("path-recall".into(), None, at(NINE_AM))).unwrap();
+    block_on(app.erase_all()).unwrap();
+    assert!(app.goals().is_empty());
+    assert_eq!(app.pathways().len(), 4, "the offered pathways stay");
+}
+
 // MARK: Guided session (GD-7)
 
 /// Steps through a guided session to its outcome card.

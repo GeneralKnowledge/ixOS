@@ -10,10 +10,11 @@ use good_dog_core::coaching::{
     RecentSession, SkillState, DAY_MS, MAX_REPLACES_PER_ITEM,
 };
 use good_dog_core::dog_training::{
-    bundled_exercises, bundled_learning_objectives, DogSubject, DogTrainingPolicy, ExerciseContent,
+    bundled_exercises, bundled_learning_objectives, DogSubject, ExerciseContent, GoalFocusPolicy,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::goals::{Pathways, StoredGoal};
 use crate::model::*;
 use crate::AppError;
 
@@ -33,6 +34,13 @@ pub(crate) struct Stored {
     pub sessions: Vec<StoredSession>,
     /// Skill progress by learning objective id.
     pub progress: BTreeMap<String, ProgressSnapshot>,
+    /// The owner's goals, including paused, finished and set-aside ones.
+    /// Added in schema version 2.
+    #[serde(default)]
+    pub goals: Vec<StoredGoal>,
+    /// The pathways goals refer to (not saved).
+    #[serde(skip)]
+    pub pathways: Pathways,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -70,6 +78,16 @@ pub(crate) struct StoredSession {
 
 pub(crate) fn local_day(now: LocalTime) -> i64 {
     (now.ms + i64::from(now.utc_offset_minutes) * 60_000).div_euclid(DAY_MS)
+}
+
+fn recent_session(s: &StoredSession) -> RecentSession {
+    RecentSession {
+        exercise_id: s.exercise_id.clone(),
+        learning_objective_id: s.learning_objective_id.clone(),
+        completed_at: s.completed_at_ms,
+        outcome: s.result.into(),
+        welfare_concern: s.welfare_concern,
+    }
 }
 
 pub(crate) fn exercise(id: &str) -> Option<&'static ExerciseContent> {
@@ -140,14 +158,18 @@ impl Stored {
         self.sessions
             .iter()
             .filter(|s| now.ms - s.completed_at_ms < RECENT_DAYS * DAY_MS)
-            .map(|s| RecentSession {
-                exercise_id: s.exercise_id.clone(),
-                learning_objective_id: s.learning_objective_id.clone(),
-                completed_at: s.completed_at_ms,
-                outcome: s.result.into(),
-                welfare_concern: s.welfare_concern,
-            })
+            .map(recent_session)
             .collect()
+    }
+
+    /// Every recorded session, for evidence that looks further back than
+    /// the planner does.
+    pub(crate) fn all_sessions(&self) -> Vec<RecentSession> {
+        self.sessions.iter().map(recent_session).collect()
+    }
+
+    pub(crate) fn progress_map_for_goals(&self) -> HashMap<String, ProgressSnapshot> {
+        self.progress_map()
     }
 
     fn progress_map(&self) -> HashMap<String, ProgressSnapshot> {
@@ -179,8 +201,11 @@ impl Stored {
         let subject = self.subject()?;
         let progress = self.progress_map();
         let recent = self.recent_sessions(now);
+        let focus = self.focus_exercise_ids();
         let plan = generate_daily_plan(&PlanRequest {
-            policy: &DogTrainingPolicy,
+            policy: &GoalFocusPolicy {
+                focus_exercise_ids: &focus,
+            },
             subject: &subject,
             exercises: bundled_exercises(),
             progress_by_objective: &progress,
@@ -235,7 +260,9 @@ impl Stored {
             })
             .collect();
         let done_count = activities.iter().filter(|a| a.result.is_some()).count() as u32;
+        let planned: Vec<&str> = activities.iter().map(|a| a.exercise_id.as_str()).collect();
         Some(TodayPlan {
+            goal_focus: self.goal_focus(&planned),
             total_minutes: activities.iter().map(|a| a.minutes).sum(),
             done_count,
             short_plan: plan.short_plan,
@@ -293,9 +320,12 @@ impl Stored {
             .collect();
         let progress = self.progress_map();
         let recent = self.recent_sessions(now);
+        let focus = self.focus_exercise_ids();
         let pick = pick_plan_item_replacement(
             &PlanRequest {
-                policy: &DogTrainingPolicy,
+                policy: &GoalFocusPolicy {
+                    focus_exercise_ids: &focus,
+                },
                 subject: &subject,
                 exercises: bundled_exercises(),
                 progress_by_objective: &progress,
@@ -414,6 +444,12 @@ impl Stored {
     /// dropped, so the next look at Today fits the new details.
     pub fn set_profile(&mut self, profile: DogProfile, now: LocalTime) {
         self.dog = Some(profile);
+        self.drop_unstarted_plan(now);
+    }
+
+    /// Forgets today's plan if nothing in it has been practised, so the next
+    /// read builds one that reflects a changed profile or goal.
+    pub(crate) fn drop_unstarted_plan(&mut self, now: LocalTime) {
         if let Some(index) = self.today_index(now) {
             if self.plans[index]
                 .activities

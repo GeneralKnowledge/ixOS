@@ -1,0 +1,73 @@
+[
+  {
+    "id": "path-recall",
+    "title": "Coming back when called",
+    "summary": "From turning to their name to coming back on a long line.",
+    "ownerQuestionCategoryIds": ["oq-recall"],
+    "matchPhrases": ["come back", "come when called", "recall", "runs off", "won't come"],
+    "lifeStages": ["older_puppy", "adolescent", "adult", "senior"],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "recall-name",
+        "title": "Turning to their name",
+        "whatItMeans": "Your dog looks your way when they hear their name, said once.",
+        "whyItMatters": "Every recall starts with your dog turning towards you.",
+        "exerciseIds": ["ex-name-response"],
+        "lessonIds": ["lesson-name-attention"],
+        "everydayPractice": "Say their name once when they are already about to look at you, and reward the look.",
+        "gate": {
+          "summary": "Orients within 2 seconds of their name, said once, in low distraction.",
+          "metricIds": ["metric-name-latency-2s"],
+          "ownerCheck": "In a quiet room, does {dog} look at you within a couple of seconds of hearing their name once?"
+        },
+        "ifGateFails": "Shorten the game, drop distractions and use a reward your dog loves.",
+        "maintenance": "Reward a few name responses on ordinary days."
+      },
+      {
+        "id": "recall-near",
+        "title": "Coming back nearby",
+        "whatItMeans": "One recall word, and your dog comes to you in a quiet, enclosed space.",
+        "whyItMatters": "A recall that always pays off at home is the base for every place after it.",
+        "exerciseIds": ["ex-recall-foundation"],
+        "lessonIds": ["lesson-recall-basics"],
+        "everydayPractice": "Call once when your dog is already heading your way, and make arriving worth it.",
+        "opensAfter": ["recall-name"],
+        "gate": {
+          "summary": "Returns to arm's reach on a 5 m long line in low distraction.",
+          "metricIds": ["metric-recall-long-line-5m"],
+          "ownerCheck": "On a 5 metre long line somewhere quiet, does {dog} come back to arm's reach when called once?"
+        },
+        "ifGateFails": "Go back to the name game and shorten the distance. Don't repeat the recall word if your dog is unlikely to come.",
+        "safetyRuleIds": ["safe-002-recall-management", "safe-003-no-punish-return"],
+        "maintenance": "A few rewarded recalls on ordinary walks each week."
+      }
+    ]
+  },
+  {
+    "id": "path-loose-lead",
+    "title": "Walking nicely on the lead",
+    "summary": "From getting used to the lead to checking in on walks.",
+    "ownerQuestionCategoryIds": ["oq-stay-leave-lead"],
+    "matchPhrases": ["pulls", "pulling", "lead", "leash", "walk"],
+    "lifeStages": ["older_puppy", "adolescent", "adult", "senior"],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "lead-comfort",
+        "title": "Comfortable on the lead",
+        "whatItMeans": "Your dog is relaxed wearing the lead and walks a few steps beside you at home.",
+        "whyItMatters": "A dog who is comfortable on the lead can learn where the reward is.",
+        "exerciseIds": ["ex-lead-intro"],
+        "everydayPractice": "Clip the lead on for a moment at home, reward, and take it off again.",
+        "gate": {
+          "summary": "Walks ten steps on a loose lead indoors.",
+          "metricIds": ["metric-loose-lead-10-steps"],
+          "ownerCheck": "Indoors, can {dog} walk ten steps beside you with the lead loose?"
+        },
+        "ifGateFails": "Fewer steps, more rewards at your side, and a quieter room.",
+        "maintenance": "Reward walking at your side now and then on walks."
+      }
+    ]
+  }
+]
