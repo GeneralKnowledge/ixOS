@@ -38,6 +38,9 @@ pub struct UiNode {
     pub children: Vec<UiNode>,
 }
 
+/// Element types that take typed text.
+pub const TEXT_INPUTS: &[&str] = &["TextField", "SecureTextField", "TextView", "SearchField"];
+
 /// Element types a person can act on; the accessibility audit expects each
 /// of them to have a label.
 const INTERACTIVE: &[&str] = &[
