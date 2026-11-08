@@ -1,0 +1,25 @@
+# A starter UI test: launch, find controls by accessibility identifier, type,
+# check the screen reacted. Replace it as the app changes.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+# Format: docs/forge-ui-testing.md.
+
+name = "Smoke: the add button follows the text field"
+app = "FORGE_BUNDLE_ID"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = {}
+
+[[step]]
+expect = { id = "items.add", enabled = false }
+
+[[step]]
+type = { id = "items.newTitle", text = "Hello from Forge" }
+
+[[step]]
+expect = { id = "items.add", enabled = true }
+
+[[step]]
+screenshot = "1-typed"

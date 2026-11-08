@@ -74,6 +74,11 @@ enum Commands {
         /// Relative paths are resolved against the current directory.
         #[arg(long, value_name = "DIR")]
         path: Option<PathBuf>,
+        /// Start from the minimal starter: one screen, a list saved on the
+        /// phone, nothing else (iOS). Without it you get the full starter,
+        /// which shows every pattern a larger app needs
+        #[arg(long)]
+        minimal: bool,
     },
     /// iOS app configuration from forge.toml: Info.plist, App.entitlements, xtool.yml
     Config {
@@ -995,11 +1000,20 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             bundle_id,
             platform,
             path,
+            minimal,
         } => {
             let path = path
                 .map(|p| absolute_from_cwd(&p))
                 .or_else(|| default_init_dest(&root, &name));
-            commands::init(runner, &root, &name, &bundle_id, &platform, path.as_deref())
+            commands::init_with(
+                runner,
+                &root,
+                &name,
+                &bundle_id,
+                &platform,
+                path.as_deref(),
+                minimal,
+            )
         }
         Commands::Config { cmd } => {
             let (project, action) = match cmd {

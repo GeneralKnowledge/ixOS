@@ -52,7 +52,7 @@ forge init MyApp --bundle-id org.example.myapp
 cd MyApp
 ```
 
-`forge init` prints the next steps. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
+`forge init` prints the next steps. For your first app, add `--minimal`: you get one screen and a list saved on the phone, and [first-app.md](first-app.md) walks you through adding a feature to it. Without it you get the full starter described below, which shows every pattern a bigger app needs. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
 
 The app has its own Rust crate in `rust/`, a SwiftUI screen in `Sources/AppHost/`, and a `README.md` that maps out the rest. See [app-crate.md](app-crate.md) for the Rust side.
 
@@ -117,6 +117,7 @@ For scripts and coding agents, add `--json` to any command: stdout then carries 
 
 ## Next
 
+- [first-app.md](first-app.md): add a feature to the minimal starter, touching Rust, the view model and the screen once each.
 - [builds.md](builds.md): every way to build, debug and release, and what is not supported yet.
 - [first-app-store-release.md](first-app-store-release.md): publishing. Forge doesn't do App Store builds yet; this is the plan, including the steps that need a Mac.
 - [ios-signing.md](ios-signing.md): Apple accounts, signing and devices in more depth.

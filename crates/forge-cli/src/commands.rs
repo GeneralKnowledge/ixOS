@@ -15,6 +15,26 @@ const PLACEHOLDER_SUPPORT_DIR: &str = "FORGE_APP_SUPPORT_DIR";
 const PLACEHOLDER_JAVA_PACKAGE: &str = "FORGE_JAVA_PACKAGE";
 /// The starter Rust crate every new app gets as `rust/`.
 const RUST_TEMPLATE: &str = "templates/app-rust";
+/// `forge init --minimal`: laid over templates/ios-app (and app-rust as
+/// `rust/`), after removing [`MINIMAL_REMOVES`].
+const MINIMAL_TEMPLATE: &str = "templates/ios-minimal";
+/// Files of the full iOS starter that the minimal one doesn't have: the notes
+/// screens and model, the lifecycle (it needs the full crate's `AppPhase`)
+/// and native services (the minimal crate doesn't export them).
+const MINIMAL_REMOVES: &[&str] = &[
+    "Sources/AppHost/AppLifecycle.swift",
+    "Sources/AppHost/AppServices.swift",
+    "Sources/AppHost/ComposeNoteView.swift",
+    "Sources/AppHost/ErrorAlert.swift",
+    "Sources/AppHost/Note+Display.swift",
+    "Sources/AppHost/NoteDetailView.swift",
+    "Sources/AppHost/NoteListView.swift",
+    "Sources/AppHost/NotesModel.swift",
+    "Sources/AppHost/SettingsView.swift",
+    "Tests/AppHostTests/AppLifecycleTests.swift",
+    "Tests/AppHostTests/NativeServicesTests.swift",
+    "Tests/AppHostTests/NotesModelTests.swift",
+];
 
 /// Absolute path to an app package directory (SwiftPM or Gradle + forge.toml).
 ///
@@ -121,6 +141,7 @@ fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
     ForgeConfig::parse(&content)
 }
 
+#[cfg(test)]
 pub fn init(
     runner: &dyn CommandRunner,
     root: &Path,
@@ -129,6 +150,22 @@ pub fn init(
     platform: &str,
     path: Option<&Path>,
 ) -> Result<(), String> {
+    init_with(runner, root, name, bundle_id, platform, path, false)
+}
+
+/// `forge init`, with `minimal` for the one-screen starter (iOS only).
+pub fn init_with(
+    runner: &dyn CommandRunner,
+    root: &Path,
+    name: &str,
+    bundle_id: &str,
+    platform: &str,
+    path: Option<&Path>,
+    minimal: bool,
+) -> Result<(), String> {
+    if minimal && platform != "ios" {
+        return Err("--minimal is for iOS apps only (Android is work in progress)".into());
+    }
     if !config::is_valid_project_name(name) {
         return Err(
             "invalid project name: use ASCII letters, digits, hyphen, underscore; must start with a letter".into(),
@@ -196,6 +233,14 @@ android = true
     if !root.join(RUST_TEMPLATE).join("Cargo.toml").is_file() {
         return Err(format!("template missing at {RUST_TEMPLATE}"));
     }
+    if minimal
+        && !root
+            .join(MINIMAL_TEMPLATE)
+            .join("rust/src/lib.rs")
+            .is_file()
+    {
+        return Err(format!("template missing at {MINIMAL_TEMPLATE}"));
+    }
     if platform == "ios" {
         validate_ios_template(&template)?;
     } else {
@@ -211,7 +256,7 @@ android = true
         fs::remove_dir_all(&staging).map_err(|e| e.to_string())?;
     }
     let result = populate_app(
-        runner, root, &template, &staging, name, bundle_id, platform, &workspace,
+        runner, root, &template, &staging, name, bundle_id, platform, &workspace, minimal,
     )
     .and_then(|()| fs::rename(&staging, &dest).map_err(|e| e.to_string()));
     if let Err(err) = result {
@@ -234,6 +279,9 @@ android = true
         "{}",
         next_steps(&dest, platform, std::env::current_dir().ok().as_deref())
     );
+    if minimal {
+        println!("This is the minimal starter: rust/src/lib.rs, Sources/AppHost/ItemsModel.swift and ContentView.swift are the whole app. docs/first-app.md adds a feature to it.");
+    }
     Ok(())
 }
 
@@ -277,12 +325,35 @@ fn populate_app(
     bundle_id: &str,
     platform: &str,
     workspace: &WorkspaceRef,
+    minimal: bool,
 ) -> Result<(), String> {
     copy_template(template, dir)?;
     // The app's own Rust crate, with the workspace's lock file and toolchain
     // pin so it starts on exactly the versions Forge is tested with.
     let rust = dir.join("rust");
     copy_template(&root.join(RUST_TEMPLATE), &rust)?;
+    if minimal {
+        for rel in MINIMAL_REMOVES {
+            let file = dir.join(rel);
+            if file.is_file() {
+                fs::remove_file(&file).map_err(|e| e.to_string())?;
+            }
+        }
+        copy_template(&root.join(MINIMAL_TEMPLATE), dir)?;
+        let agents = dir.join("AGENTS.md");
+        if let Ok(text) = fs::read_to_string(&agents) {
+            let text = text
+                .replace(
+                    "Sources/AppHost/NotesModel.swift",
+                    "Sources/AppHost/ItemsModel.swift",
+                )
+                .replace(
+                    "`notes.add`, `compose.save`",
+                    "`items.add`, `items.newTitle`",
+                );
+            fs::write(&agents, text).map_err(|e| e.to_string())?;
+        }
+    }
     for file in ["Cargo.lock", "rust-toolchain.toml"] {
         let src = root.join(file);
         if src.is_file() {
@@ -2023,6 +2094,36 @@ ios_device = true
             .join("examples")
             .join(format!(".{name}.forge-init"))
             .exists());
+    }
+
+    #[test]
+    fn minimal_starter_removes_only_files_the_full_template_has() {
+        let root = workspace_root();
+        for rel in MINIMAL_REMOVES {
+            assert!(
+                root.join("templates/ios-app").join(rel).is_file(),
+                "{rel} is not in templates/ios-app: update MINIMAL_REMOVES"
+            );
+        }
+        // The overlay must not bring back a file it removes.
+        for rel in MINIMAL_REMOVES {
+            assert!(!root.join(MINIMAL_TEMPLATE).join(rel).exists(), "{rel}");
+        }
+    }
+
+    #[test]
+    fn minimal_is_ios_only() {
+        let err = init_with(
+            &crate::runner::MockRunner::default(),
+            &workspace_root(),
+            "MiniDroid",
+            "org.example.minidroid",
+            "android",
+            None,
+            true,
+        )
+        .unwrap_err();
+        assert!(err.contains("iOS"), "{err}");
     }
 
     #[test]

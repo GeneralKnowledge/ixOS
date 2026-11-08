@@ -33,11 +33,12 @@ export FORGE_WORKSPACE="$ROOT"
 before="$(git -C "$ROOT" status --porcelain)"
 
 cd "$WORK"
-step "forge init (iOS and Android) in $WORK"
+step "forge init (iOS, minimal iOS and Android) in $WORK"
 "$FORGE" init FreshIos --bundle-id org.example.freshios --path "$WORK/FreshIos"
+"$FORGE" init FreshMini --minimal --bundle-id org.example.freshmini --path "$WORK/FreshMini"
 "$FORGE" init FreshDroid --platform android --bundle-id org.example.freshdroid --path "$WORK/FreshDroid"
 
-for app in FreshIos FreshDroid; do
+for app in FreshIos FreshMini FreshDroid; do
   dir="$WORK/$app"
   step "$app: files and placeholders"
   for f in forge.toml rust/Cargo.toml rust/Cargo.lock rust/src/lib.rs Generated; do
@@ -80,7 +81,7 @@ after="$(git -C "$ROOT" status --porcelain)"
 $(diff <(echo "$before") <(echo "$after") || true)"
 
 step "Changing the Rust API reaches the bindings (forge bindings generate --project)"
-for app in FreshIos FreshDroid; do
+for app in FreshIos FreshMini FreshDroid; do
   cat >>"$WORK/$app/rust/src/lib.rs" <<'RUST'
 
 /// Added by check-fresh-app.sh: a new export must appear in the bindings.
@@ -101,6 +102,7 @@ grep -q 'fun `freshWordCount`(`text`: kotlin.String)' "$WORK/FreshDroid/Generate
 if [[ -n "${FORGE_SWIFT_DOCKER:-}" ]] || command -v swift >/dev/null 2>&1; then
   step "forge check swift: the view model and bindings compile, and their tests pass, without the iOS SDK"
   "$FORGE" check swift --project "$WORK/FreshIos"
+  "$FORGE" check swift --project "$WORK/FreshMini"
   step "forge check swift catches a Swift call that no longer matches the Rust API (exit 11)"
   model="$WORK/FreshIos/Sources/AppHost/NotesModel.swift"
   cp "$model" "$model.orig"
