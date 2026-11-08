@@ -128,6 +128,10 @@ enum Commands {
         /// The only phone device tools may touch
         #[arg(long)]
         udid: Option<String>,
+        /// Leave out every tool that touches a phone (install, launch,
+        /// screenshots, logs, UI tests), even if one is plugged in
+        #[arg(long, conflicts_with_all = ["allow", "udid"])]
+        no_device: bool,
     },
     /// Drive an app on a connected iPhone from Linux: find elements by
     /// accessibility identifier, tap, type, read the screen, take screenshots
@@ -437,9 +441,10 @@ fn main() {
         allow,
         bundle_ids,
         udid,
+        no_device,
     } = cli.command
     {
-        if let Err(err) = serve_mcp(root, allow, bundle_ids, udid, cli.json) {
+        if let Err(err) = serve_mcp(root, allow, bundle_ids, udid, no_device, cli.json) {
             eprintln!("error: {err}");
             std::process::exit(1);
         }
@@ -740,6 +745,7 @@ fn serve_mcp(
     allow: Vec<String>,
     bundle_ids: Vec<String>,
     udid: Option<String>,
+    no_device: bool,
     json: bool,
 ) -> Result<(), String> {
     if json {
@@ -757,7 +763,9 @@ fn serve_mcp(
     eprintln!(
         "forge mcp: serving {} on stdio (install {})",
         root.display(),
-        if allow.iter().any(|a| a == "install") {
+        if no_device {
+            "refused, no phone tools"
+        } else if allow.iter().any(|a| a == "install") {
             "allowed"
         } else {
             "refused"
@@ -770,6 +778,7 @@ fn serve_mcp(
         allow_install: allow.iter().any(|a| a == "install"),
         bundle_ids,
         udid,
+        no_device,
     })
 }
 

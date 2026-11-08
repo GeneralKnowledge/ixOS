@@ -75,6 +75,10 @@ struct Client {
 
 impl Client {
     async fn start(fx: &Fixture, allow_install: bool, ui: bool) -> Client {
+        Client::start_with(fx, allow_install, ui, false).await
+    }
+
+    async fn start_with(fx: &Fixture, allow_install: bool, ui: bool, no_device: bool) -> Client {
         std::env::set_var("FAKE_LOG", &fx.log);
         if ui {
             std::env::set_var("FAKE_UI", "1");
@@ -88,6 +92,7 @@ impl Client {
             allow_install,
             bundle_ids: vec!["org.forgemobile.agentlab".into()],
             udid: Some("0000".into()),
+            no_device,
         };
         let (server_io, client_io) = tokio::io::duplex(1 << 20);
         tokio::spawn(async move {
@@ -207,6 +212,35 @@ async fn tools_resources_and_prompts_are_listed() {
         .as_str()
         .unwrap()
         .contains("forge_create_app"));
+}
+
+#[tokio::test]
+async fn no_device_leaves_out_and_refuses_phone_tools() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start_with(&fx, false, true, true).await;
+    let tools = c.request("tools/list", json!({})).await;
+    let names: Vec<&str> = tools["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["name"].as_str().unwrap())
+        .collect();
+    assert!(names.contains(&"forge_build_ios") && names.contains(&"forge_check"));
+    for phone in [
+        "forge_install_device",
+        "forge_device_status",
+        "forge_screenshot",
+        "forge_run_ui_test",
+    ] {
+        assert!(!names.contains(&phone), "{phone} listed: {names:?}");
+    }
+    let r = c
+        .call("forge_screenshot", json!({"project": "Tipster"}))
+        .await;
+    assert_eq!(r["structuredContent"]["stage"], "policy", "{r}");
+    // Only the startup probe for `forge ui` ran: nothing touched a phone.
+    assert_eq!(calls(&fx), vec!["ui --help".to_string()]);
 }
 
 #[tokio::test]
