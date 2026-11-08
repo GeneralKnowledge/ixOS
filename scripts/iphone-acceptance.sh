@@ -35,6 +35,9 @@ while [[ $# -gt 0 ]]; do
 done
 [[ "$APP" = /* ]] || APP="$ROOT/$APP"
 OUT="${OUT:-$PWD/iphone-acceptance-$(date -u +%Y%m%dT%H%M%SZ)}"
+[[ "$OUT" = /* ]] || OUT="$PWD/$OUT"
+# Absolute, so `forge ui` steps can run from the app's folder.
+[[ "$FORGE" != */* || "$FORGE" = /* ]] || FORGE="$PWD/$FORGE"
 mkdir -p "$OUT/steps"
 RESULTS="$OUT/results.tsv"
 : > "$RESULTS"
@@ -64,7 +67,14 @@ record() {
 step() {
   local id="$1" kind="$2" name="$3"; shift 4
   local file="$OUT/steps/$id.json"
-  "$FORGE" --json "$@" > "$file" 2> "$OUT/steps/$id.stderr"
+  # `forge ui` from the app's folder: its forge.toml marks the app as the
+  # developer's own, which a paid team's install (no XTL- prefix) needs
+  # (docs/forge-ui-testing.md#apps-forge-didnt-build).
+  if [[ "$1" == ui ]]; then
+    (cd "$APP" && "$FORGE" --json "$@") > "$file" 2> "$OUT/steps/$id.stderr"
+  else
+    "$FORGE" --json "$@" > "$file" 2> "$OUT/steps/$id.stderr"
+  fi
   local ok stage err
   ok="$(json "$file" 'r.get("ok")')"
   stage="$(json "$file" 'r.get("stage")')"
@@ -232,7 +242,7 @@ timeout = 3
 [[step]]
 tap = { id = "acceptance.does-not-exist" }
 EOF
-  "$FORGE" --json ui run "$OUT/steps/must-fail.toml" --out "$OUT/must-fail" > "$OUT/steps/U4.json" 2> "$OUT/steps/U4.stderr"
+  (cd "$APP" && "$FORGE" --json ui run "$OUT/steps/must-fail.toml" --out "$OUT/must-fail") > "$OUT/steps/U4.json" 2> "$OUT/steps/U4.stderr"
   if [[ "$(json "$OUT/steps/U4.json" 'r.get("ok")')" == "False" && -n "$(json "$OUT/steps/U4.json" 'r["data"]["failed_step"]')" ]]; then
     record U4 mandatory PASS "a missing element fails with failed_step, tree and screenshot (steps/U4.json, must-fail/)"
   else

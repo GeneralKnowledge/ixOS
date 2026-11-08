@@ -29,7 +29,7 @@ forge-devproto = { path = "../forge-devproto" }
 
 [features]
 # Spike: probe Apple's accessibility audit service (docs/research/ax-audit.md).
-ax-probe = ["idevice/dvt", "dep:ns-keyed-archive", "dep:rustls", "dep:tokio-rustls"]
+ax-probe = ["idevice/dvt", "dep:ns-keyed-archive", "dep:rustls", "dep:tokio-rustls", "tokio/signal", "tokio/macros"]
 
 [[example]]
 name = "ax_probe"

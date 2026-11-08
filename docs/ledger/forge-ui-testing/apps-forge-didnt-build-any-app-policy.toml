@@ -1,0 +1,9 @@
+order = 25
+capability = "Act in apps Forge didn't build, under a per-app policy (`forge ui --any-app`, `~/.config/forge/device-control.toml`)"
+framework = "Yes: forge-uitest `policy`"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Yes: the Claude app (com.anthropic.claude, App Store) at `operate`, and Pocket Library unchanged"
+iphone = "Yes: iPhone16,2, iOS 26.3.1, 2026-11-08 (Reuben present): Pocket Library m0 11/11 without --any-app; Claude app typed, then Send stopped at the [y/N] prompt and was refused on n (journal: refused, presses_return false); refused with no terminal; refused without --any-app before any action. ax_probe Ctrl-C exited cleanly, but before the walk started, so cleanup mid-walk is unproven"
+documented = "Partial: forge-ui-testing.md (Apps Forge didn't build), research/general-device-control.md"
+limits = "Commit gate matches words in labels and identifiers, so it can miss commits; approval only at a terminal (MCP and scripts are refused); MCP has no --any-app yet; system apps (com.apple.*) aren't resolved until the app inventory lands; the hard-refusal list is by bundle id and unchecked on a phone"
