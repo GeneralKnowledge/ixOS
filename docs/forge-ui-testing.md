@@ -1,6 +1,6 @@
 # Forge UI Testing: driving a real iPhone from Linux
 
-Status: 2026-11-07. M0 is built (`crates/forge-uitest`, `forge ui`) and **partly working on a phone**. On Cati (iPhone 15 Pro Max, iOS 26.3.1), with #90's fix for a tokio panic in `ui setup`: the disk image mounts, the runner starts, and launch (Pocket Library came to the front by itself, confirmed by Reuben), `ui tree` and `ui screenshot` work. That needed **Settings > Developer > Enable UI Automation** on the phone; without it WDA answers code 41, "Not authorized for performing UI testing actions". Still open: finding by identifier uses an attribute WDA 16 rejects, and the runner dies when the `forge` process exits, so `m0.toml` has not passed. The accessibility service (route 6) did read Pocket Library's identifiers on Cati. Everything else on this page is tested on Linux only, unless it says so.
+Status: 2026-11-07. **M0 passed on a physical iPhone**: Cati (iPhone 15 Pro Max, iOS 26.3.1, free Apple team), WebDriverAgent 16.15.2, `forge --json ui run examples/pocket-library/uitests/m0.toml` with 11 of 11 steps in 10 s, two 1290x2796 screenshots, run from Linux over USB and watched by Reuben. The phone needed Settings > Developer > Enable UI Automation turned on. Step times: launch 0.1 s, screenshot 0.3 s, taps 0.6 s, typing 1.8 s, expectations 0.5–0.7 s, tree 2.3 s. Later milestones are plans.
 
 Forge UI Testing lets a Linux machine drive an ixOS app on a physical iPhone the way a person would: launch it, find controls by their accessibility identifier, tap, type, read what is on screen, and take screenshots. It is a framework capability, like [Forge Device](forge-device.md), so every demo (Chat, Pocket Library, Weather and the ones that follow) gets it without building its own test harness.
 
@@ -142,7 +142,7 @@ expect = { id = "library.row", label_contains = "Hello from Forge" }
 screenshot = "after-add"
 ```
 
-Steps cover: `launch`, `tap`, `type`, `clear`, `swipe`, `scroll_to`, `expect` (exists, gone, label, value, enabled), `alert` (accept or dismiss), `background` (seconds), `relaunch`, `screenshot`, `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
+Built steps: `launch`, `activate`, `terminate`, `background` (seconds), `tap`, `type`, `clear`, `scroll`, `expect` (exists, gone, `has_label`, `value`, `enabled`), `screenshot` and `tree`. `scroll = { id = "…" }` scrolls until that element is on screen; `scroll = { id = "list", direction = "down" }` scrolls the scroll view `list` (`up`, `down`, `left`, `right`). When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Planned: `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 
 ### CLI
 
@@ -224,18 +224,25 @@ A test acts only on its own app. Before every tap, typing, expectation and tree 
 
 `forge ui run` exits non-zero on the first failing step and never reports success for a step it could not check. For each failure it prints the step, the error (for a missing element, the locator; for a wrong value, what was expected and what was found), and the elements on screen that a test could target instead. It also saves the screen as `failure-stepN-tree.txt` and `failure-stepN-tree.json`, and a screenshot as `failure-stepN.png`. With `forge --json`, the result's `data` has the same: `failed_step.{step, action, error, on_screen, tree}` and the screenshot paths. `forge --json ui tree` returns the whole tree as JSON nodes (`kind`, `identifier`, `label`, `value`, `enabled`, `visible`, `frame`, `children`) plus the audit findings.
 
-### What still needs the phone
+### When the phone refuses
 
-Everything above is tested on Linux against a fake driver and canned WebDriverAgent replies. These parts have only been checked against the source of `idevice` and WDA, and need a run on Cati:
+- **`Not authorized for performing UI testing actions` (XCTDaemonErrorDomain 41)** on every action while `forge ui setup` reports WDA ready: turn on Settings > Developer > Enable UI Automation on the phone (iOS 17 and later).
+- To see what the phone's test daemon answered, run any `forge ui` command with `FORGE_UI_DEBUG=1`. It prints `idevice`'s debug log to stderr, including `authorize_test reply: …` for the runner's UI testing authorisation. `idevice` treats any answer other than `false` there as success.
 
-| Part | What the run proves |
+### Checked on the phone
+
+Everything above is also tested on Linux against a fake driver and canned WebDriverAgent replies. On 2026-11-07 these parts were checked on Cati (iPhone 15 Pro Max, iOS 26.3.1):
+
+| Part | Result |
 |---|---|
-| `forge ui setup --ddi` | Personalised DDI mounting through `idevice` and Apple's TSS on iOS 26.3 |
-| Front-app check | `/wda/activeAppInfo` names the `XTL-` bundle id of the app in front |
-| `forge ui setup --runner` | `xtool install` signs the unsigned WDA runner, its `XTL-` bundle id is accepted, and it fits in the app slots |
-| Runner start | `idevice`'s XCTest launch through `CoreDeviceProxy` on iOS 26.3, and WDA answering on port 8100 through usbmuxd |
-| `uitests/m0.toml` | SwiftUI identifiers reach WDA (`identifier` predicates), a toolbar `Menu` and its items can be tapped, typing into a vertical `TextField` works, `enabled` reads correctly |
-| `forge ui screenshot` | The PNG arrives intact on Linux |
+| `forge ui setup --ddi` | Mounted a personalised DDI from the doronz88 mirror through `idevice` and Apple's TSS |
+| `forge ui setup --runner` | `xtool install` signed the unsigned WDA 16.15.2 runner under the free team as `XTL-<team>.com.facebook.WebDriverAgentRunner.xctrunner` |
+| Runner start | `idevice`'s XCTest launch through `CoreDeviceProxy`; WDA ready in about 3 s. A runner left by the previous command is shut down first |
+| Front-app check | `/wda/activeAppInfo` names the `XTL-` bundle id |
+| `uitests/m0.toml` | 11 of 11 steps in 10 s: identifiers through `name == …` predicates (WDA 16 rejects `identifier`), the toolbar `Menu` and its item, typing into a vertical `TextField`, `enabled` |
+| Screenshots | 1290x2796 PNGs, intact on Linux |
+
+Not yet checked on a phone: a paid team, the 7-day expiry and `--reinstall`, other apps' test files, and the accessibility audit beyond missing labels and identifiers.
 
 ## Risks
 

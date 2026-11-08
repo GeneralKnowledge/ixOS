@@ -29,6 +29,8 @@ serde_json = { workspace = true }
 toml = "1.1"
 base64 = "0.22"
 thiserror = { workspace = true }
+# `FORGE_UI_DEBUG=1`: idevice's own debug log on stderr (testmanagerd replies).
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry"] }
 
 [dev-dependencies]
 tempfile = "3.14"

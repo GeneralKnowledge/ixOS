@@ -55,6 +55,7 @@ pub struct DdiFiles {
 impl Phone {
     /// The phone with this UDID, or the only one connected.
     pub fn open(udid: Option<&str>) -> Result<Phone> {
+        debug_log_from_env();
         let backend =
             forge_device::UsbBackend::new().map_err(|e| UiError::Device(e.to_string()))?;
         let device = forge_device::pick_device(&backend, udid)
@@ -88,14 +89,7 @@ impl Phone {
         limit: Duration,
         work: impl std::future::Future<Output = Result<T>>,
     ) -> Result<T> {
-        self.runtime
-            .block_on(tokio::time::timeout(limit, work))
-            .unwrap_or_else(|_| {
-                Err(UiError::Device(format!(
-                    "{what}: the phone did not answer within {} s (is it unlocked and still plugged in?)",
-                    limit.as_secs()
-                )))
-            })
+        within_on(&self.runtime, what, limit, work)
     }
 
     async fn lockdown(&self) -> Result<LockdownClient> {
@@ -205,6 +199,7 @@ impl Phone {
     /// Starts the WebDriverAgent runner through testmanagerd and waits until
     /// it answers. It runs until the returned handle is dropped.
     pub fn start_runner(&self, runner_id: &str) -> Result<Runner> {
+        self.stop_stale_wda();
         let provider: Arc<dyn IdeviceProvider> = self.provider.clone();
         let runner_id = runner_id.to_owned();
         // On its own task, so the deadline below holds even when a step
@@ -238,16 +233,66 @@ impl Phone {
         Ok(Runner { handle })
     }
 
+    /// Shuts down a WebDriverAgent left from an earlier command. When a
+    /// `forge ui` command exits, its XCTest session ends and the phone tears
+    /// that runner down, but not at once: a new start would see the old WDA
+    /// answer `/status`, report ready, and then lose it mid-command when the
+    /// phone kills it (seen on Cati as "closed the connection" on every
+    /// request after the first). Asking it to shut down first avoids that.
+    fn stop_stale_wda(&self) {
+        let mut http = self.transport_with_timeout(PROBE_TIMEOUT);
+        if http.request("GET", "/status", None).is_err() {
+            return;
+        }
+        let _ = http.request("GET", "/wda/shutdown", None);
+        let deadline = std::time::Instant::now() + STALE_WDA_GONE;
+        while std::time::Instant::now() < deadline {
+            if http.request("GET", "/status", None).is_err() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(500));
+        }
+    }
+
     /// An HTTP transport to WebDriverAgent on the phone.
     pub fn transport(&self) -> UsbHttp {
+        self.transport_with_timeout(REQUEST_TIMEOUT)
+    }
+
+    fn transport_with_timeout(&self, timeout: Duration) -> UsbHttp {
         UsbHttp {
             runtime: self.runtime.clone(),
             provider: self.provider.clone(),
             port: WDA_PORT,
+            timeout,
         }
     }
 }
 
+/// Runs `work` on `runtime` with a deadline. The timeout is created inside
+/// the runtime: `tokio::time::timeout` registers with the timer of the
+/// runtime it is created in, and panics ("no reactor running") when it is
+/// created on a plain thread, which is where the CLI calls from.
+fn within_on<T>(
+    runtime: &tokio::runtime::Runtime,
+    what: &str,
+    limit: Duration,
+    work: impl std::future::Future<Output = Result<T>>,
+) -> Result<T> {
+    runtime
+        .block_on(async move { tokio::time::timeout(limit, work).await })
+        .unwrap_or_else(|_| {
+            Err(UiError::Device(format!(
+                "{what}: the phone did not answer within {} s (is it unlocked and still plugged in?)",
+                limit.as_secs()
+            )))
+        })
+}
+
+/// A quick "is anything answering?" request.
+const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+/// How long a stale WDA gets to go away after `/wda/shutdown`.
+const STALE_WDA_GONE: Duration = Duration::from_secs(10);
 /// How long idevice waits for WDA's port once the test runs.
 const WDA_READY: Duration = Duration::from_secs(90);
 /// The whole runner start, from asking testmanagerd to WDA answering.
@@ -261,6 +306,32 @@ pub fn sideloaded(apps: &[String]) -> Vec<String> {
         .filter(|id| id.starts_with("XTL-"))
         .cloned()
         .collect()
+}
+
+/// With `FORGE_UI_DEBUG=1`, prints idevice's debug log (lockdown,
+/// testmanagerd and XCTest replies, e.g. the answer to the runner's UI
+/// testing authorisation) to stderr. Off by default: it is noisy.
+fn debug_log_from_env() {
+    use tracing_subscriber::prelude::*;
+    if std::env::var_os("FORGE_UI_DEBUG").is_none_or(|v| v.is_empty() || v == "0") {
+        return;
+    }
+    use tracing_subscriber::filter::LevelFilter;
+    // The crate root logs every plist sent and received (installation_proxy
+    // replies are whole Info.plists of every app): info only there. The
+    // services, tunnel and XCTest modules are what's worth reading.
+    let only_idevice = tracing_subscriber::filter::Targets::new()
+        .with_target("idevice", LevelFilter::INFO)
+        .with_target("idevice::services", LevelFilter::DEBUG)
+        .with_target("idevice::services::installation_proxy", LevelFilter::INFO)
+        .with_target("idevice::tcp", LevelFilter::DEBUG);
+    let _ = tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_writer(std::io::stderr)
+                .with_filter(only_idevice),
+        )
+        .try_init();
 }
 
 /// A running WebDriverAgent; stops when dropped.
@@ -279,6 +350,8 @@ pub struct UsbHttp {
     runtime: Arc<tokio::runtime::Runtime>,
     provider: Arc<UsbmuxdProvider>,
     port: u16,
+    /// How long one request may take, connect to last byte.
+    timeout: Duration,
 }
 
 impl HttpTransport for UsbHttp {
@@ -312,12 +385,12 @@ impl HttpTransport for UsbHttp {
                 }
                 Ok::<_, std::io::Error>(())
             };
-            match tokio::time::timeout(REQUEST_TIMEOUT, read_all).await {
+            match tokio::time::timeout(self.timeout, read_all).await {
                 Ok(read) => read?,
                 Err(_) => {
                     return Err(UiError::Wda(format!(
                         "{method} {path}: no complete reply after {} s (is the phone locked, or WebDriverAgent stuck?)",
-                        REQUEST_TIMEOUT.as_secs()
+                        self.timeout.as_secs()
                     )))
                 }
             };
@@ -420,6 +493,38 @@ mod tests {
 
     fn ids(list: &[&str]) -> Vec<String> {
         list.iter().map(|s| s.to_string()).collect()
+    }
+
+    fn runtime() -> tokio::runtime::Runtime {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(1)
+            .enable_all()
+            .build()
+            .unwrap()
+    }
+
+    // Called from a plain thread, as the CLI does; this panicked with "no
+    // reactor running" when the timeout was built outside the runtime.
+    #[test]
+    fn within_runs_from_a_plain_thread() {
+        let rt = runtime();
+        let got = std::thread::spawn(move || {
+            within_on(&rt, "test", Duration::from_secs(5), async { Ok(7) })
+        })
+        .join()
+        .unwrap();
+        assert_eq!(got.unwrap(), 7);
+    }
+
+    #[test]
+    fn within_gives_up_after_the_limit() {
+        let rt = runtime();
+        let got: Result<()> = within_on(&rt, "waiting", Duration::from_millis(50), async {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+            Ok(())
+        });
+        let err = got.unwrap_err().to_string();
+        assert!(err.contains("waiting: the phone did not answer"), "{err}");
     }
 
     #[test]

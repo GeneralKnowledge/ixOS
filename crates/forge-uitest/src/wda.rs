@@ -4,7 +4,7 @@
 //! `POST /session`, `POST /session/:s/elements` with a predicate,
 //! `.../element/:e/click`, `.../element/:e/value`, `.../element/:e/clear`,
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
-//! `POST .../wda/deactivateApp`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
+//! `POST .../wda/deactivateApp`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
 
 use base64::Engine as _;
 use serde_json::{json, Value};
@@ -91,6 +91,16 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
                     .ok_or_else(|| UiError::Wda("element without an id".into()))
             })
             .collect()
+    }
+
+    fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+        let body = if direction == "visible" {
+            json!({ "toVisible": true })
+        } else {
+            json!({ "direction": direction })
+        };
+        self.post(&format!("/wda/element/{}/scroll", element.0), body)?;
+        Ok(())
     }
 
     fn tap(&mut self, element: &ElementRef) -> Result<()> {
@@ -269,7 +279,7 @@ mod tests {
             s.sent,
             [
                 r#"POST /session {"capabilities":{"alwaysMatch":{}}}"#,
-                r#"POST /session/S1/elements {"using":"predicate string","value":"identifier == \"bookForm.title\""}"#,
+                r#"POST /session/S1/elements {"using":"predicate string","value":"name == \"bookForm.title\""}"#,
                 "POST /session/S1/element/E7/click {}",
                 r#"POST /session/S1/element/E7/value {"text":"Hi","value":["H","i"]}"#,
                 "GET /session/S1/element/E7/attribute/value",

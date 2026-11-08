@@ -75,9 +75,14 @@ impl std::fmt::Display for Locator {
 
 impl Locator {
     /// The NSPredicate WebDriverAgent evaluates for this locator.
+    /// WebDriverAgent 16 rejects `identifier` ("The attribute 'identifier'
+    /// is unknown", seen on iOS 26.3): it exposes the accessibility
+    /// identifier as `name`. `name` falls back to the label for an element
+    /// without an identifier, so a label that looks like an id could match
+    /// too; ids use `screen.element` dots, which labels don't.
     pub fn predicate(&self) -> String {
         match self {
-            Locator::Id(id) => format!("identifier == {}", quote(id)),
+            Locator::Id(id) => format!("name == {}", quote(id)),
             Locator::Label(label) => format!("label == {}", quote(label)),
             Locator::LabelContains(text) => format!("label CONTAINS {}", quote(text)),
         }
@@ -127,6 +132,10 @@ pub trait Driver {
     fn terminate(&mut self, bundle_id: &str) -> Result<()>;
     /// Send the app on screen to the background for `seconds`, then bring it back.
     fn background(&mut self, seconds: f64) -> Result<()>;
+    /// Scroll: `direction` is `up`, `down`, `left` or `right` to scroll the
+    /// scroll view `element`, or `visible` to scroll until `element` itself
+    /// is on screen.
+    fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()>;
     /// Every element matching the locator, visible or not, in tree order.
     fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>>;
     /// A real tap on the element's centre, as a finger would.
@@ -178,8 +187,9 @@ pub fn wait_for(
 ) -> Result<ElementRef> {
     let deadline = Instant::now() + timeout;
     loop {
-        if let Some(first) = driver.find_all(locator)?.into_iter().next() {
-            return Ok(first);
+        let found = driver.find_all(locator)?;
+        if !found.is_empty() {
+            return pick(driver, found);
         }
         if Instant::now() >= deadline {
             return Err(UiError::NotFound(locator.clone()));
@@ -188,12 +198,63 @@ pub fn wait_for(
     }
 }
 
+/// Of several matches, the one a tap would reach: SwiftUI can put a
+/// modifier's identifier on a wrapper as well as on the control (Tipster's
+/// keyboard toolbar: an `Other` and a `Button`, both `tip.keyboardDone`).
+/// Ranked by: hittable and a control (Button, field…), then hittable, then
+/// a control, then the first match.
+fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
+    if found.len() == 1 {
+        return Ok(found.into_iter().next().expect("one"));
+    }
+    let mut best = (0, 0);
+    let mut seen = Vec::new();
+    for (i, element) in found.iter().enumerate() {
+        let kind = driver.attribute(element, "type")?.unwrap_or_default();
+        let hittable = driver.attribute(element, "hittable")?.as_deref() == Some("true");
+        let score = 2 * usize::from(hittable) + usize::from(tree::is_interactive_kind(&kind));
+        let kind = kind
+            .strip_prefix("XCUIElementType")
+            .unwrap_or(&kind)
+            .to_owned();
+        seen.push(if hittable {
+            kind
+        } else {
+            format!("{kind} (not hittable)")
+        });
+        if score > best.0 {
+            best = (score, i);
+        }
+    }
+    // On stderr, so a test log shows which element a duplicate id reached.
+    eprintln!(
+        "          {} elements match: {}; using #{}",
+        found.len(),
+        seen.join(", "),
+        best.1 + 1
+    );
+    Ok(found[best.1].clone())
+}
+
 /// Waits up to `timeout` until nothing matches `locator`.
 pub fn wait_gone(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) -> Result<()> {
     let deadline = Instant::now() + timeout;
+    let mut stale_before = false;
     loop {
-        if driver.find_all(locator)?.is_empty() {
-            return Ok(());
+        match driver.find_all(locator) {
+            Ok(found) if found.is_empty() => return Ok(()),
+            Ok(_) => stale_before = false,
+            // WDA can answer a search for an element that just went away
+            // with "stale element reference … No matches found" (seen on
+            // iOS 26.3 right after a keyboard closed). Twice in a row means
+            // it is gone; once, ask again.
+            Err(UiError::Stale(_)) if stale_before => return Ok(()),
+            Err(UiError::Stale(_)) => {
+                stale_before = true;
+                std::thread::sleep(POLL);
+                continue;
+            }
+            Err(e) => return Err(e),
         }
         if Instant::now() >= deadline {
             return Err(UiError::Mismatch {
@@ -224,6 +285,8 @@ pub mod fake {
         pub on_tap: Vec<(String, UiNode)>,
         /// The next this-many taps fail as if the element went stale.
         pub stale_taps: usize,
+        /// The next this-many searches fail as if the element went stale.
+        pub stale_finds: usize,
         /// The app in front: set by launch and activate; terminate goes
         /// back to SpringBoard.
         pub front: Option<String>,
@@ -268,7 +331,19 @@ pub mod fake {
             self.calls.push(format!("background {seconds}"));
             Ok(())
         }
+        fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+            let id = self.node(element)?.identifier.clone();
+            self.calls.push(format!(
+                "scroll {} {direction}",
+                id.as_deref().unwrap_or("?")
+            ));
+            Ok(())
+        }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
+            if self.stale_finds > 0 {
+                self.stale_finds -= 1;
+                return Err(UiError::Stale("No matches found".into()));
+            }
             Ok(self
                 .screen
                 .walk()
@@ -311,6 +386,8 @@ pub mod fake {
                 "value" => node.value.clone(),
                 "identifier" | "name" => node.identifier.clone(),
                 "enabled" => Some(node.enabled.to_string()),
+                "type" => Some(format!("XCUIElementType{}", node.kind)),
+                "hittable" => Some((node.visible && node.enabled).to_string()),
                 _ => None,
             })
         }
@@ -335,12 +412,32 @@ mod tests {
     fn predicates_quote_and_escape() {
         assert_eq!(
             Locator::Id("library.add".into()).predicate(),
-            r#"identifier == "library.add""#
+            r#"name == "library.add""#
         );
         assert_eq!(
             Locator::LabelContains(r#"say "hi" \o/"#.into()).predicate(),
             r#"label CONTAINS "say \"hi\" \\o/""#
         );
+    }
+
+    #[test]
+    fn a_stale_search_twice_counts_as_gone() {
+        let screen = UiNode {
+            kind: "Application".into(),
+            children: vec![UiNode {
+                kind: "Button".into(),
+                identifier: Some("tip.keyboardDone".into()),
+                ..UiNode::default()
+            }],
+            ..UiNode::default()
+        };
+        let done = Locator::Id("tip.keyboardDone".into());
+        let mut driver = fake::FakeDriver::new(screen);
+        driver.stale_finds = 2;
+        assert!(wait_gone(&mut driver, &done, Duration::from_secs(5)).is_ok());
+        // Stale once, then found: still on screen.
+        driver.stale_finds = 1;
+        assert!(wait_gone(&mut driver, &done, Duration::ZERO).is_err());
     }
 
     #[test]
