@@ -1,0 +1,92 @@
+# Good Dog GD1 journey on a real iPhone: onboard a dog, open today's first
+# activity, record how it went, check Today and My Dog, browse Learn and a
+# glossary term, then relaunch and check the plan is still there.
+# Runs on throwaway data (-ForgeUITestData), never the owner's real dog.
+#   forge ui run examples/good-dog/uitests/journey.toml
+
+name = "GD1: onboard, practise, record, learn, relaunch"
+app = "org.forgemobile.gooddog"
+
+[[step]]
+launch = { args = ["-ForgeUITestData"] }
+
+[[step]]
+screenshot = "1-onboarding"
+
+[[step]]
+type = { id = "dogForm.name", text = "Moss" }
+
+[[step]]
+expect = { id = "onboarding.start", enabled = true }
+
+[[step]]
+tap = { id = "onboarding.start" }
+
+[[step]]
+expect = { id = "today.progress" }
+
+[[step]]
+screenshot = "2-today"
+
+[[step]]
+tap = { id = "today.activity.0" }
+
+[[step]]
+expect = { id = "exercise.step.0" }
+
+[[step]]
+screenshot = "3-exercise"
+
+[[step]]
+tap = { id = "exercise.record" }
+
+[[step]]
+expect = { id = "record.save", enabled = false }
+
+[[step]]
+tap = { id = "record.result.easy" }
+
+[[step]]
+tap = { id = "record.save" }
+
+[[step]]
+tap = { id = "feedback.ok" }
+
+[[step]]
+expect = { id = "exercise.done" }
+
+[[step]]
+screenshot = "4-recorded"
+
+[[step]]
+tap = { id = "tab.dog" }
+
+[[step]]
+expect = { id = "dog.sessionsThisWeek" }
+
+[[step]]
+screenshot = "5-my-dog"
+
+[[step]]
+tap = { id = "tab.learn" }
+
+[[step]]
+tap = { id = "learn.glossary" }
+
+[[step]]
+tap = { id = "glossary.term.positive-reinforcement" }
+
+[[step]]
+screenshot = "6-term"
+
+# A relaunch with -ForgeUITestData starts on fresh data, and one without it
+# would open the owner's real dog, so the relaunch check is the twin's (GD-2).
+# Here the app goes to the background and comes back.
+[[step]]
+background = 3
+
+[[step]]
+tap = { id = "tab.today" }
+
+[[step]]
+expect = { id = "today.progress" }

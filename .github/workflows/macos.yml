@@ -6,7 +6,7 @@ name: macOS
 # requests: it runs weekly, and by hand on any branch (Actions tab -> macOS ->
 # Run workflow) when you want a Mac's opinion on a Swift change. Leave "apps"
 # empty to check every app, or name some: counter weather chat
-# pocket-library device-lab template services-check.
+# pocket-library good-dog device-lab template services-check.
 on:
   schedule:
     - cron: "0 6 * * 1"

@@ -10,7 +10,7 @@
 #   scripts/ci-macos.sh <app>...            named apps
 #   scripts/ci-macos.sh --list affected <base-sha>   print the selection and stop
 #
-# Apps: counter weather chat pocket-library device-lab template services-check.
+# Apps: counter weather chat pocket-library good-dog device-lab template services-check.
 # "template" is a fresh `forge init` app outside the checkout; "services-check"
 # is the native services device-check app (docs/native-services-device-check.md).
 set -euo pipefail
@@ -18,7 +18,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-ALL=(counter weather chat pocket-library device-lab template services-check)
+ALL=(counter weather chat pocket-library good-dog device-lab template services-check)
 
 LIST_ONLY=0
 if [[ "${1:-}" == "--list" ]]; then
@@ -43,6 +43,7 @@ affected() {
       examples/counter/*) pick[counter]=1 ;;
       examples/weather/*) pick[weather]=1 ;;
       examples/pocket-library/*) pick[pocket-library]=1 ;;
+      examples/good-dog/* | examples/good-dog-core/*) pick[good-dog]=1 ;;
       examples/device-lab/*) pick[device-lab]=1 ;;
       crates/forge-cli/* | templates/*) pick[template]=1 ;;
       crates/forge-services/* | scripts/make-services-check-app.sh)
@@ -96,7 +97,7 @@ for app in "${APPS[@]}"; do
       ./scripts/test-swift-host.sh "examples/$app"
       endgroup
       ;;
-    chat | pocket-library | device-lab)
+    chat | pocket-library | good-dog | device-lab)
       project="$(find "examples/$app/Xcode" -maxdepth 1 -name '*.xcodeproj' | head -1)"
       group "$app: Swift host tests"
       ./scripts/test-swift-host.sh "examples/$app"

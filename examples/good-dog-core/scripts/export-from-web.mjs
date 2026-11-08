@@ -3,7 +3,8 @@
 import fs from "node:fs";
 
 const [dir, out] = process.argv.slice(2);
-const { EXERCISE_LIBRARY } = await import(`${dir}/dog-training/content/exercises.ts`);
+const { EXERCISE_LIBRARY, TOPIC_GROUPS } = await import(`${dir}/dog-training/content/exercises.ts`);
+const { GLOSSARY, GLOSSARY_CATEGORIES } = await import(`${dir}/dog-training/content/glossary.ts`);
 const { LEARNING_OBJECTIVES } = await import(`${dir}/dog-training/content/learning-objectives.ts`);
 const { buildGoldenScenarios, GOLDEN_NOW } = await import(`${dir}/dog-training/golden-scenarios.ts`);
 const { dogTrainingPolicy } = await import(`${dir}/dog-training/policy.ts`);
@@ -12,6 +13,10 @@ const { generateDailyPlan, pickPlanItemReplacement, applyOutcomeToProgress, DEFA
 
 fs.writeFileSync(`${out}/content/exercises.json`, `${JSON.stringify(EXERCISE_LIBRARY, null, 1)}\n`);
 fs.writeFileSync(`${out}/content/learning-objectives.json`, `${JSON.stringify(LEARNING_OBJECTIVES, null, 1)}\n`);
+fs.writeFileSync(`${out}/content/topics.json`, `${JSON.stringify(TOPIC_GROUPS, null, 1)}\n`);
+// Published terms only, without the editorial fields the web app never shows.
+const glossary = GLOSSARY.filter((t) => t.published).map(({ editorialNotes, needsQualifiedReview, published, ...term }) => term);
+fs.writeFileSync(`${out}/content/glossary.json`, `${JSON.stringify({ categories: GLOSSARY_CATEGORIES, terms: glossary }, null, 1)}\n`);
 
 // FNV-1a 64 over UTF-8, as in tests/common/mod.rs.
 function fnv(text) {
