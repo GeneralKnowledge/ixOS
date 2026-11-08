@@ -167,7 +167,7 @@ The first four pathways need recall metrics (which exist), loose-lead metrics (o
 
 ### Where M6 fits
 
-M6.5 (the agent demonstration in [forge-m6.md](forge-m6.md)) takes its task from these milestones. The proposal is that the agent builds **pausing, resuming and setting aside a goal** once GD2a has landed. That task crosses Rust state, storage, SwiftUI, interaction and accessibility, has a clear "history is kept" check, and needs no new capability. The goal screen's journey view (part of GD2b) is the fallback task.
+M6.5 (the agent demonstration in [forge-m6.md](forge-m6.md)) builds a **guided exercise session** on the current app (Reuben, 2026-11-08 17:54): an exercise's steps become cards the owner follows one at a time, recorded through the existing outcome choice, as requirement GD-7. It needs no GD2a. Pausing, resuming and setting aside a goal, after GD2a, is a candidate for M6.6, with the goal journey view (part of GD2b) as its fallback.
 
 ### Open questions for Reuben
 

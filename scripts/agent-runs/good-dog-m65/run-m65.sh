@@ -13,7 +13,7 @@
 #   bash run-m65.sh summary
 #
 # Afterwards the owner reviews the app on the phone and records acceptance in
-# their own terminal: forge verify --project examples/good-dog --accept GD-6 --note "..."
+# their own terminal: forge verify --project examples/good-dog --accept GD-7 --note "..."
 # Phone stages install org.forgemobile.gooddog over the build already there.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)

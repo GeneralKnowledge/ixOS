@@ -9,4 +9,4 @@ Good Dog's exercises read as lists. An exercise screen shows its preparation, st
 
 Keep the session's state and rules in Rust (which card is showing, moving next and back, what may be recorded and when); SwiftUI only presents it. Every new control gets an accessibility identifier named screen.element and a label a VoiceOver user understands. The guided session must work at the largest text size and in dark mode.
 
-Add a requirement for it to requirements.toml (GD-6), with a Rust or Swift model test as its twin evidence and a UI test file in uitests/ as its device check.
+Add a requirement for it to requirements.toml (GD-7), with a Rust or Swift model test as its twin evidence and a UI test file in uitests/ as its device check.
