@@ -11,6 +11,20 @@ pub struct ForgeConfig {
     /// xtool.yml (see `app_config.rs` and docs/app-config.md).
     #[serde(default)]
     pub ios: Option<crate::app_config::IosSection>,
+    /// How UI tests and `forge ui explore` run the app (docs/forge-explore.md).
+    #[serde(default)]
+    pub ui_test: Option<UiTestSection>,
+}
+
+/// `[ui_test]`: what UI automation needs to know about the app.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct UiTestSection {
+    /// Launch arguments that start the app on fresh, throwaway data instead
+    /// of the person's own (Pocket Library: `["-ForgeUITestData"]`).
+    /// `forge ui explore` refuses to change data without them.
+    #[serde(default)]
+    pub test_data_args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

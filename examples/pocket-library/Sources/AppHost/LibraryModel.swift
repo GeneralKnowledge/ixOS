@@ -264,10 +264,25 @@ public final class LibraryModel {
         return Int64(start.timeIntervalSince1970 * 1000)
     }
 
+    /// The launch argument that starts the app on throwaway test data
+    /// (`[ui_test] test_data_args` in forge.toml): `forge ui explore` and UI
+    /// tests pass it so they never touch the person's own library.
+    public static let testDataArgument = "-ForgeUITestData"
+
+    /// Whether this launch uses throwaway test data; it is emptied once per
+    /// launch.
+    static let usesTestData = ProcessInfo.processInfo.arguments.contains(testDataArgument)
+    private static var testDataCleared = false
+
     private static func defaultDirectory() throws -> String {
+        let name = usesTestData ? "PocketLibrary-UITest" : "PocketLibrary"
         let base = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-            .appendingPathComponent("PocketLibrary", isDirectory: true)
+            .appendingPathComponent(name, isDirectory: true)
+        if usesTestData && !testDataCleared {
+            testDataCleared = true
+            try? FileManager.default.removeItem(at: base)
+        }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.path
     }

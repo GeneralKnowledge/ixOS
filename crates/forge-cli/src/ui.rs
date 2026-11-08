@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use forge_uitest::baseline::{self, Mode};
+use forge_uitest::explore;
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
 use forge_uitest::policy::{self, Access, Gate, Journal, Policy, Scope, TerminalApprover};
 use forge_uitest::script::{self, Script};
@@ -679,9 +680,224 @@ fn scenario_of(run_dir: &Path) -> Result<PathBuf, String> {
     Ok(app.join(rel))
 }
 
+/// `forge ui explore`'s options, as given on the command line.
+pub struct ExploreOptions {
+    pub actions: usize,
+    pub minutes: f64,
+    pub seed: Option<u64>,
+    /// `IDENTIFIER=TEXT`
+    pub texts: Vec<String>,
+    pub skip: Vec<String>,
+    pub allow_destructive: bool,
+    /// Explore the app on the person's own data, looking only.
+    pub real_data: bool,
+    pub largest_text: bool,
+    pub per_screen: usize,
+    pub screenshots: bool,
+}
+
+/// The explorer's settings for the app in `project` (its forge.toml bundle
+/// id), before the phone says what it is installed as.
+pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explore::Config, String> {
+    let forge_toml = project.join("forge.toml");
+    let text = std::fs::read_to_string(&forge_toml).map_err(|e| {
+        format!(
+            "{}: {e} (forge ui explore works on Forge apps: pass --project <app>)",
+            forge_toml.display()
+        )
+    })?;
+    let forge = crate::config::ForgeConfig::parse(&text)?;
+    let bundle_id = forge.app.bundle_id;
+    let test_data_args = forge.ui_test.map(|u| u.test_data_args).unwrap_or_default();
+    // Never change the person's data: either the app starts on throwaway
+    // data, or the walk only looks (seen on Cati 2026-11-08: a walk on a
+    // real library rated a book and saved entries).
+    let test_data = !options.real_data && !test_data_args.is_empty();
+    if !test_data && !options.real_data {
+        return Err(format!(
+            "{} has no test-data mode, so exploring would change the data on the phone. \
+             Add `[ui_test] test_data_args = [\"-ForgeUITestData\"]` to its forge.toml once the app \
+             starts on throwaway data with that argument (see docs/forge-explore.md), or pass \
+             --real-data to only look around without changing anything",
+            forge_toml.display()
+        ));
+    }
+    if !test_data && options.allow_destructive {
+        return Err(
+            "--allow-destructive needs the app's test-data mode; it is never used with --real-data"
+                .into(),
+        );
+    }
+    let mut fixtures = std::collections::HashMap::new();
+    for pair in &options.texts {
+        let (id, text) = pair
+            .split_once('=')
+            .ok_or_else(|| format!("--text {pair:?}: write IDENTIFIER=TEXT"))?;
+        fixtures.insert(id.to_owned(), text.to_owned());
+    }
+    if !(options.minutes > 0.0 && options.minutes.is_finite()) {
+        return Err("--minutes must be more than 0".into());
+    }
+    let seed = options.seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1)
+    });
+    Ok(explore::Config {
+        app: bundle_id.clone(),
+        script_app: bundle_id,
+        max_actions: options.actions,
+        budget: Duration::from_secs_f64(options.minutes * 60.0),
+        seed,
+        launch_args: {
+            let mut args = if test_data {
+                test_data_args
+            } else {
+                Vec::new()
+            };
+            if options.largest_text {
+                args.extend(explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
+            }
+            args
+        },
+        test_data,
+        fixtures,
+        allow_destructive: options.allow_destructive,
+        skip: options.skip.clone(),
+        per_screen: options.per_screen.max(1),
+        screenshots: options.screenshots,
+        ..explore::Config::default()
+    })
+}
+
+/// `forge ui explore`: walk a Forge app's screens and report what is wrong.
+/// Fails when the walk found an error (a crash, an unlabelled control).
+pub fn explore(
+    udid: Option<&str>,
+    project: &Path,
+    options: ExploreOptions,
+    out_dir: Option<&Path>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let mut config = explore_config(project, &options)?;
+    let out_dir = out_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        project
+            .join(".forge/runs")
+            .join(format!("{}-ui-explore", report::timestamp()))
+    });
+    // Reuses a running `forge ui start` session's runner when there is one.
+    let (phone, mut apps, held, mut driver) = connect(udid, out)?;
+    config.app = resolve(&phone, &mut apps, &held, &config.script_app)?;
+    let report = explore::run(&config, &mut driver, Some(&out_dir), out).map_err(err)?;
+    writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
+    report::set_data(serde_json::json!({
+        "app": report.app,
+        "seed": report.seed,
+        "stopped": report.stopped,
+        "actions": report.actions,
+        "screens": report.screens.len(),
+        "issues": report.issues,
+        "report": out_dir.join("explore.json"),
+    }));
+    match report.errors() {
+        0 => Ok(()),
+        n => Err(format!(
+            "exploring found {n} error(s); each has a replay file under {}",
+            out_dir.join("repro").display()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn options() -> ExploreOptions {
+        ExploreOptions {
+            actions: 60,
+            minutes: 10.0,
+            seed: Some(3),
+            texts: vec!["bookForm.title=Dune".into()],
+            skip: vec![],
+            allow_destructive: false,
+            real_data: false,
+            largest_text: true,
+            per_screen: 15,
+            screenshots: true,
+        }
+    }
+
+    fn pocket_library() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/pocket-library")
+    }
+
+    #[test]
+    fn explore_reads_the_bundle_id_and_options() {
+        let config = explore_config(&pocket_library(), &options()).unwrap();
+        assert_eq!(config.script_app, "org.forgemobile.pocketlibrary");
+        assert_eq!(config.seed, 3);
+        assert_eq!(config.fixtures["bookForm.title"], "Dune");
+        assert!(config.test_data);
+        assert_eq!(
+            config.launch_args,
+            [
+                "-ForgeUITestData",
+                explore::LARGEST_TEXT_ARGS[0],
+                explore::LARGEST_TEXT_ARGS[1]
+            ]
+        );
+        assert_eq!(config.budget, Duration::from_secs(600));
+        // --real-data: no test-data argument, and the walk only looks.
+        let real = ExploreOptions {
+            real_data: true,
+            largest_text: false,
+            ..options()
+        };
+        let config = explore_config(&pocket_library(), &real).unwrap();
+        assert!(!config.test_data);
+        assert!(config.launch_args.is_empty());
+        let reckless = ExploreOptions {
+            allow_destructive: true,
+            ..real
+        };
+        assert!(explore_config(&pocket_library(), &reckless).is_err());
+    }
+
+    #[test]
+    fn explore_refuses_an_app_without_test_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let forge = std::fs::read_to_string(pocket_library().join("forge.toml")).unwrap();
+        let without = forge.split("\n# UI automation.").next().unwrap();
+        assert!(!without.contains("[ui_test]"));
+        std::fs::write(dir.path().join("forge.toml"), without).unwrap();
+        let err = explore_config(dir.path(), &options()).unwrap_err();
+        assert!(err.contains("test-data mode"), "{err}");
+        assert!(err.contains("--real-data"), "{err}");
+        let real = ExploreOptions {
+            real_data: true,
+            ..options()
+        };
+        assert!(!explore_config(dir.path(), &real).unwrap().test_data);
+    }
+
+    #[test]
+    fn explore_needs_a_forge_app_and_well_formed_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = explore_config(dir.path(), &options()).unwrap_err();
+        assert!(err.contains("--project"), "{err}");
+        let bad = ExploreOptions {
+            texts: vec!["no-equals".into()],
+            ..options()
+        };
+        let err = explore_config(&pocket_library(), &bad).unwrap_err();
+        assert!(err.contains("IDENTIFIER=TEXT"), "{err}");
+        let bad = ExploreOptions {
+            minutes: 0.0,
+            ..options()
+        };
+        assert!(explore_config(&pocket_library(), &bad).is_err());
+    }
 
     fn apps(n: usize) -> Vec<String> {
         (0..n).map(|i| format!("XTL-1.app{i}")).collect()

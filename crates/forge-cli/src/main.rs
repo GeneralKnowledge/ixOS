@@ -266,6 +266,57 @@ enum UiCommands {
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
     },
+    /// Explore an app without a script: visit its screens, try each safe
+    /// control once, and report crashes, error alerts, dead ends and
+    /// accessibility problems, each with a `forge ui run` file that replays
+    /// it (docs/forge-explore.md)
+    Explore {
+        #[arg(long)]
+        udid: Option<String>,
+        /// The app to explore: its folder with forge.toml (only Forge apps
+        /// for now; the any-app policy is not wired in yet)
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        /// Stop after this many actions
+        #[arg(long, default_value_t = 60)]
+        actions: usize,
+        /// Stop after this many minutes, whatever is left
+        #[arg(long, default_value_t = 10.0)]
+        minutes: f64,
+        /// Fixes the order controls are tried in (default: from the clock;
+        /// printed, so a walk can be repeated)
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Text for a field, as IDENTIFIER=TEXT (repeatable); other fields
+        /// get "Forge"
+        #[arg(long = "text", value_name = "ID=TEXT")]
+        texts: Vec<String>,
+        /// Never touch this identifier or label (repeatable)
+        #[arg(long, value_name = "ID_OR_LABEL")]
+        skip: Vec<String>,
+        /// Also tap delete, remove, reset, sign out and the like (test data
+        /// only). Send, pay, share and the like are never tapped
+        #[arg(long)]
+        allow_destructive: bool,
+        /// Explore the app on the data already on the phone, only looking:
+        /// nothing that saves, edits, rates, types or changes a setting is
+        /// touched. Without it the app needs `[ui_test] test_data_args`
+        #[arg(long)]
+        real_data: bool,
+        /// Launch with the largest accessibility text size
+        #[arg(long)]
+        largest_text: bool,
+        /// At most this many controls tried per screen
+        #[arg(long, default_value_t = 15)]
+        per_screen: usize,
+        /// Don't save a screenshot of every new screen
+        #[arg(long)]
+        no_screenshots: bool,
+        /// Where explore.json, screens and replay files go (default:
+        /// <app>/.forge/runs/<UTC>-ui-explore/)
+        #[arg(long, value_name = "DIR")]
+        out: Option<PathBuf>,
+    },
     /// Keep one WebDriverAgent runner running in the background, so later
     /// `forge ui` commands skip starting it (about 2 s each). Stops on
     /// `forge ui stop` or after --idle-minutes without a command
@@ -585,7 +636,7 @@ fn main() {
         // usbmuxd missing, no phone, not paired, the app not listening.
         Commands::Device { .. } | Commands::Devices => "device",
         Commands::Ui {
-            cmd: UiCommands::Run { .. },
+            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
         } => "test",
         Commands::Ui {
             cmd: UiCommands::Accept { .. },
@@ -661,6 +712,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
+            UiCommands::Explore { .. } => "ui explore",
             UiCommands::Start { .. } => "ui start",
             UiCommands::Stop { .. } => "ui stop",
             UiCommands::Status { .. } => "ui status",
@@ -887,6 +939,35 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 }
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)
+                }
+                UiCommands::Explore {
+                    udid,
+                    project,
+                    actions,
+                    minutes,
+                    seed,
+                    texts,
+                    skip,
+                    allow_destructive,
+                    real_data,
+                    largest_text,
+                    per_screen,
+                    no_screenshots,
+                    out: dir,
+                } => {
+                    let options = ui::ExploreOptions {
+                        actions,
+                        minutes,
+                        seed,
+                        texts,
+                        skip,
+                        allow_destructive,
+                        real_data,
+                        largest_text,
+                        per_screen,
+                        screenshots: !no_screenshots,
+                    };
+                    ui::explore(udid.as_deref(), &project, options, dir.as_deref(), &mut out)
                 }
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
                 UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),

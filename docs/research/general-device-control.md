@@ -89,6 +89,8 @@ UI Testing's exploratory tester ([M5](../forge-ui-testing.md#milestones)) and th
 
 First on Forge's own apps (Pocket Library, Murmur), where it can be checked against the source, then on an app Reuben picks.
 
+**Update, 2026-11-08:** the first version is `forge ui explore` ([forge-explore.md](../forge-explore.md)), for Forge apps only until the policy above lands. It is built and tested on Linux; not yet run on an iPhone.
+
 ## Evidence: what the agent actually inspected and tested
 
 [evidence.md](../evidence.md) already defines `forge.evidence/1` and proposes device runs for `forge ui run`. Extend it rather than invent a format: an exploration or an any-app task writes a bundle with every step (action, target, route used, app in front, result), the trees and screenshots it looked at, audit findings, A3 measurements and crash reports. A report's claims ("the Save button has no label") link to the step and screenshot that show it, so Reuben can check a claim in a minute. For other developers' apps the bundle is personal data: it stays in a local folder outside any project and is never committed ([Privacy](#safety)).
