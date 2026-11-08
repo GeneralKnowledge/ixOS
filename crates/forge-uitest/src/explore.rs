@@ -19,13 +19,14 @@
 //!   (delete, sign out…) unless allowed.
 //! - It stops at the action or time budget, whichever comes first.
 
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 
+use crate::focus::{Focus, Route, Strength};
 use crate::{wait_for, Driver, Locator, Result, UiError, UiNode};
 
 /// What an exploration may do and how long it may take.
@@ -65,6 +66,13 @@ pub struct Config {
     pub find_timeout: Duration,
     /// Save a screenshot and the tree of every new screen.
     pub screenshots: bool,
+    /// What the walk is aimed at (M6.2): tried first, reached by known
+    /// routes, and reported on. Empty: the plain seeded walk.
+    pub focus: Focus,
+    /// After the walk, replay up to this many issues once more to see
+    /// whether they reproduce (errors first, then warnings on the focus).
+    /// These replays are not counted in `max_actions`.
+    pub verify: usize,
 }
 
 impl Default for Config {
@@ -84,6 +92,8 @@ impl Default for Config {
             per_screen: 15,
             find_timeout: Duration::from_secs(5),
             screenshots: true,
+            focus: Focus::default(),
+            verify: 0,
         }
     }
 }
@@ -113,7 +123,7 @@ impl Action {
     }
 
     /// The action as a `forge ui run` step.
-    fn toml_step(&self, launch_args: &[String]) -> String {
+    pub fn toml_step(&self, launch_args: &[String]) -> String {
         let target = |locator: &Locator| locator.toml_fields();
         match self {
             Action::Launch if launch_args.is_empty() => "launch = {}".into(),
@@ -146,6 +156,8 @@ struct Candidate {
     key: String,
     /// A back or dismiss control: tried last, and used to leave the screen.
     exit: bool,
+    /// How strongly it is tied to the change being explored.
+    strength: Strength,
 }
 
 /// A control the explorer chose not to touch, and why.
@@ -595,7 +607,17 @@ fn consider(
         && (node.identifier.as_deref() == Some("BackButton")
             || EXIT_LABELS.contains(&label.as_str())
             || back_button);
-    found.push(Candidate { action, key, exit });
+    let strength = node
+        .identifier
+        .as_deref()
+        .map(|id| config.focus.strength(id))
+        .unwrap_or(Strength::None);
+    found.push(Candidate {
+        action,
+        key,
+        exit,
+        strength,
+    });
 }
 
 /// Words in a field's identifier or label that ask for a number.
@@ -677,6 +699,23 @@ pub struct Issue {
     /// The `forge ui run` file that replays it, relative to the output folder.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub repro_file: Option<String>,
+    /// `repro` as `forge ui run` steps, so a later walk can replay it.
+    pub route: Vec<String>,
+    /// `observed` or `heuristic` ([`crate::focus::confidence`]).
+    pub confidence: String,
+    /// How it is tied to the change explored: `direct`, `entry`, `screen`
+    /// or `none` (also when the walk had no focus).
+    pub focus: String,
+    /// The changed files it is tied to and how; empty when there is no
+    /// link (not "unrelated": no link could be established).
+    pub changed_files: Vec<serde_json::Value>,
+    /// The screen's tree and screenshot, relative to the output folder.
+    pub evidence: serde_json::Value,
+    /// Replayed once after the walk: did it happen again? `None` when it
+    /// wasn't replayed (not asked, out of time, or a kind a replay can't
+    /// check, such as an audit finding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reproduced: Option<bool>,
     #[serde(skip)]
     actions: Vec<Action>,
 }
@@ -685,6 +724,9 @@ pub struct Issue {
 #[derive(Debug, Clone, Serialize)]
 pub struct StepRecord {
     pub step: usize,
+    /// `explore`, `route` (following a known way to the focus), `recheck`
+    /// (an earlier walk's issue) or `verify` (replaying this walk's issue).
+    pub phase: String,
     pub from: String,
     pub action: String,
     /// The screen it led to, `app_closed`, `left_app:<bundle id>`,
@@ -711,6 +753,12 @@ pub struct ScreenSummary {
     pub skipped: Vec<Skipped>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub screenshot: Option<String>,
+    /// The identifiers on it: what a later walk's focus is matched with.
+    pub identifiers: Vec<String>,
+    /// `path` as `forge ui run` steps, for a later walk to follow.
+    pub route: Vec<String>,
+    /// It holds identifiers declared by (or leading to) the change.
+    pub focus: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -724,6 +772,10 @@ pub struct Report {
     pub screens: Vec<ScreenSummary>,
     pub issues: Vec<Issue>,
     pub journal: Vec<StepRecord>,
+    /// With a focus: what of it was reached and tried, what wasn't, and
+    /// the routes followed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub focus: Option<serde_json::Value>,
 }
 
 impl Report {
@@ -744,6 +796,9 @@ struct Screen {
     skipped: BTreeSet<Skipped>,
     has_exit: bool,
     screenshot: Option<String>,
+    identifiers: BTreeSet<String>,
+    /// The shortest known way here without no-op taps.
+    route: Vec<Action>,
 }
 
 /// Where an action left the app.
@@ -771,8 +826,26 @@ struct Explorer<'a> {
     tree: UiNode,
     /// The actions since the last launch.
     trail: Vec<Action>,
+    /// The trail without taps that left the screen as it was: the route a
+    /// later walk follows (`ScreenSummary::route`).
+    route_trail: Vec<Action>,
     /// Exit controls used in a row to leave exhausted screens.
     exits_in_row: usize,
+    /// What the actions now are for (the journal's `phase`).
+    phase: &'static str,
+    /// Routes still to follow.
+    routes: VecDeque<Route>,
+    /// Routes followed: kind, target, where they ended, focus seen there.
+    routes_done: Vec<serde_json::Value>,
+    /// Direct focus identifiers seen, and the first screen each was on.
+    focus_seen: BTreeMap<String, String>,
+    /// Focus identifiers acted on, and the step that first did.
+    focus_tried: BTreeMap<String, usize>,
+    /// While replaying an issue: record nothing new.
+    quiet: bool,
+    /// The last action's outcome, and whether it left the tree as it was.
+    last_outcome: String,
+    last_unchanged: bool,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -805,7 +878,16 @@ pub fn run(
         current: String::new(),
         tree: UiNode::default(),
         trail: Vec::new(),
+        route_trail: Vec::new(),
         exits_in_row: 0,
+        phase: "explore",
+        routes: config.focus.routes.iter().cloned().collect(),
+        routes_done: Vec::new(),
+        focus_seen: BTreeMap::new(),
+        focus_tried: BTreeMap::new(),
+        quiet: false,
+        last_outcome: String::new(),
+        last_unchanged: false,
     };
     writeln!(
         explorer.out,
@@ -815,6 +897,14 @@ pub fn run(
         config.max_actions,
         config.budget.as_secs()
     )?;
+    if !config.focus.is_empty() {
+        writeln!(
+            explorer.out,
+            "Aimed at the change: {} identifier(s) or prefixes, {} route(s) from earlier walks",
+            config.focus.links.len(),
+            config.focus.routes.len()
+        )?;
+    }
     explorer.relaunch()?;
     explorer.root = Some(explorer.current.clone());
     let stopped = loop {
@@ -828,6 +918,7 @@ pub fn run(
             break "explored";
         }
     };
+    explorer.verify_issues(deadline)?;
     explorer.finish(stopped, started)
 }
 
@@ -835,36 +926,145 @@ impl Explorer<'_> {
     /// Does one thing; false when nothing reachable is left to try.
     fn step(&mut self) -> Result<bool> {
         let here = self.index[&self.current];
-        if let Some(candidate) = self.next_untried(here) {
-            self.screens[here].tried += 1;
-            self.screens[here].tried_keys.insert(candidate.key.clone());
-            self.exits_in_row = 0;
-            self.perform(candidate.action, true)?;
+        if !self.config.focus.is_empty() {
+            // The change first: its own controls here, then the known ways
+            // to it (earlier issues to recheck first), then the ways in
+            // from here, then the nearest screen with focus controls left.
+            self.phase = "explore";
+            if let Some(candidate) = self.next_untried(here, Strength::Direct) {
+                self.try_candidate(here, candidate)?;
+                return Ok(true);
+            }
+            while let Some(route) = self.routes.pop_front() {
+                // A way to a screen this walk already took adds nothing;
+                // an earlier issue is always checked again.
+                let done = route.kind != "recheck"
+                    && route.actions.iter().all(|a| {
+                        let a = a.describe();
+                        self.journal.iter().any(|s| s.action == a)
+                    });
+                if done {
+                    self.routes_done.push(serde_json::json!({
+                        "kind": route.kind, "target": route.target, "ended": "skipped: already walked",
+                    }));
+                    continue;
+                }
+                self.follow(route)?;
+                return Ok(true);
+            }
+            if let Some(candidate) = self.next_untried(here, Strength::Entry) {
+                self.try_candidate(here, candidate)?;
+                return Ok(true);
+            }
+            if let Some(target) = self.frontier(Strength::Entry) {
+                self.go_to(target)?;
+                return Ok(true);
+            }
+        }
+        if let Some(candidate) = self.next_untried(here, Strength::None) {
+            self.try_candidate(here, candidate)?;
             return Ok(true);
         }
         // Nothing left here. Is anything left anywhere?
-        let Some(target) = self.nearest_frontier() else {
+        let Some(target) = self.frontier(Strength::None) else {
             return Ok(false);
         };
-        // Leave through a back or dismiss control if the screen has one,
-        // twice in a row at most (two exhausted screens can point at each
-        // other); otherwise relaunch and replay the way to the target.
-        match self.exit_action() {
-            Some(action) if Some(&self.current) != self.root.as_ref() && self.exits_in_row < 2 => {
-                self.exits_in_row += 1;
-                self.perform(action, false)?;
-            }
-            _ => {
-                self.exits_in_row = 0;
-                self.replay(target)?;
-            }
-        }
+        self.go_to(target)?;
         Ok(true)
     }
 
-    /// The next control to try on screen `here`. Controls that appeared
-    /// since the first visit (a button enabled by typing) are added.
-    fn next_untried(&mut self, here: usize) -> Option<Candidate> {
+    fn try_candidate(&mut self, here: usize, candidate: Candidate) -> Result<()> {
+        self.screens[here].tried += 1;
+        self.screens[here].tried_keys.insert(candidate.key.clone());
+        self.exits_in_row = 0;
+        self.perform(candidate.action, true)
+    }
+
+    /// Heads for screen `target`: leaves through a back or dismiss control
+    /// if the screen has one, twice in a row at most (two exhausted screens
+    /// can point at each other); otherwise relaunches and replays the way.
+    fn go_to(&mut self, target: usize) -> Result<()> {
+        match self.exit_action() {
+            Some(action) if Some(&self.current) != self.root.as_ref() && self.exits_in_row < 2 => {
+                self.exits_in_row += 1;
+                self.perform(action, false)
+            }
+            _ => {
+                self.exits_in_row = 0;
+                self.replay(target)
+            }
+        }
+    }
+
+    /// Follows a route from an earlier walk: relaunch, then its actions,
+    /// stopping at the first that can't be done.
+    fn follow(&mut self, route: Route) -> Result<()> {
+        self.phase = if route.kind == "recheck" {
+            "recheck"
+        } else {
+            "route"
+        };
+        writeln!(
+            self.out,
+            "          following {}: {}",
+            route.kind, route.target
+        )?;
+        if Some(&self.current) != self.root.as_ref() {
+            self.relaunch()?;
+        } else {
+            self.trail.clear();
+            self.route_trail.clear();
+        }
+        let mut ended = "followed";
+        for action in &route.actions {
+            if self.actions >= self.config.max_actions {
+                ended = "budget";
+                break;
+            }
+            // A control the route uses counts as tried where it is.
+            if let Some(&here) = self.index.get(&self.current) {
+                let screen = &mut self.screens[here];
+                if let Some(at) = screen.untried.iter().position(|c| c.action == *action) {
+                    let c = screen.untried.remove(at);
+                    screen.tried_keys.insert(c.key);
+                    screen.tried += 1;
+                }
+            }
+            self.perform(action.clone(), true)?;
+            if self.last_outcome == "not_found" || self.last_outcome == "failed" {
+                ended = "broken";
+                break;
+            }
+            if self.last_outcome == "app_closed" || self.last_outcome.starts_with("left_app") {
+                ended = "left";
+                break;
+            }
+        }
+        let focus_here = self
+            .index
+            .get(&self.current)
+            .map(|&i| {
+                self.screens[i]
+                    .identifiers
+                    .iter()
+                    .any(|id| self.config.focus.strength(id) >= Strength::Entry)
+            })
+            .unwrap_or(false);
+        self.routes_done.push(serde_json::json!({
+            "kind": route.kind,
+            "target": route.target,
+            "ended": ended,
+            "last_outcome": self.last_outcome,
+            "on_focus_screen": focus_here,
+        }));
+        self.phase = "explore";
+        Ok(())
+    }
+
+    /// The next control to try on screen `here`, if it is tied to the
+    /// change at least `min`. Controls that appeared since the first visit
+    /// (a button enabled by typing) are added, focus ones in front.
+    fn next_untried(&mut self, here: usize, min: Strength) -> Option<Candidate> {
         let (fresh, skipped) = candidates(&self.tree, self.config);
         let screen = &mut self.screens[here];
         screen.skipped.extend(skipped);
@@ -873,18 +1073,22 @@ impl Explorer<'_> {
                 || screen.untried.iter().any(|c| c.key == candidate.key);
             if !known && screen.tried + screen.untried.len() < self.config.per_screen {
                 screen.has_exit |= candidate.exit;
-                // New controls go in front of the exits.
-                let at = screen.untried.iter().position(|c| c.exit);
+                // New controls go in front of the exits, and in front of
+                // weaker ties to the change.
+                let at = screen
+                    .untried
+                    .iter()
+                    .position(|c| c.exit || (!candidate.exit && c.strength < candidate.strength));
                 match at {
                     Some(at) if !candidate.exit => screen.untried.insert(at, candidate),
                     _ => screen.untried.push(candidate),
                 }
             }
         }
-        if screen.untried.is_empty() {
-            return None;
+        match screen.untried.first() {
+            Some(c) if c.strength >= min => Some(screen.untried.remove(0)),
+            _ => None,
         }
-        Some(screen.untried.remove(0))
     }
 
     /// The back or dismiss control of the screen in front.
@@ -893,12 +1097,13 @@ impl Explorer<'_> {
         found.into_iter().find(|c| c.exit).map(|c| c.action)
     }
 
-    /// The screen with something left to try that is quickest to reach.
-    fn nearest_frontier(&self) -> Option<usize> {
+    /// The screen quickest to reach with something left to try, tied to
+    /// the change at least `min`.
+    fn frontier(&self, min: Strength) -> Option<usize> {
         self.screens
             .iter()
             .enumerate()
-            .filter(|(_, s)| !s.untried.is_empty())
+            .filter(|(_, s)| s.untried.iter().any(|c| c.strength >= min))
             .min_by_key(|(_, s)| s.path.len())
             .map(|(i, _)| i)
     }
@@ -913,6 +1118,7 @@ impl Explorer<'_> {
             self.relaunch()?;
         } else {
             self.trail.clear();
+            self.route_trail.clear();
         }
         let path = self.screens[target].path.clone();
         for action in path {
@@ -936,6 +1142,7 @@ impl Explorer<'_> {
 
     fn relaunch(&mut self) -> Result<()> {
         self.trail.clear();
+        self.route_trail.clear();
         // Stop it first so launch arguments always apply.
         let _ = self.driver.terminate(&self.config.app);
         self.perform(Action::Launch, false)
@@ -981,9 +1188,23 @@ impl Explorer<'_> {
         };
         if !matches!(action, Action::Launch) && outcome.as_deref() != Some("not_found") {
             self.trail.push(action.clone());
+            self.route_trail.push(action.clone());
         }
         let landed = self.observe(step)?;
+        // A tap that left the screen as it was isn't part of a route.
+        if matches!(&landed, Landed::Screen(id) if *id == from)
+            && matches!(action, Action::Tap(_))
+            && self.route_trail.last() == Some(&action)
+        {
+            self.route_trail.pop();
+        }
         let ms = started.elapsed().as_millis() as u64;
+        self.last_unchanged = self.tree == before;
+        if let Some(id) = crate::focus::action_id(&action) {
+            if self.config.focus.strength(id) >= Strength::Entry {
+                self.focus_tried.entry(id.to_owned()).or_insert(step);
+            }
+        }
         let mut recover = None;
         match &landed {
             Landed::Screen(id) => {
@@ -1041,9 +1262,11 @@ impl Explorer<'_> {
                 // Coming back lands where the action started, so later
                 // replays leave it out (it would stop at the other app).
                 self.trail.pop();
+                self.route_trail.pop();
             }
         }
         let outcome = outcome.unwrap_or_default();
+        self.last_outcome = outcome.clone();
         writeln!(
             self.out,
             "  {step:>3}. {:<10} {} -> {outcome} ({:.1} s)",
@@ -1053,12 +1276,14 @@ impl Explorer<'_> {
         )?;
         self.journal.push(StepRecord {
             step,
+            phase: self.phase.into(),
             from,
             action: action.describe(),
             outcome,
             ms,
         });
-        match recover {
+        let (outcome_was, unchanged_was) = (self.last_outcome.clone(), self.last_unchanged);
+        let recovered = match recover {
             None => Ok(()),
             // The app closed: start it again.
             Some(None) if matches!(action, Action::Launch) => Err(UiError::Device(format!(
@@ -1077,7 +1302,11 @@ impl Explorer<'_> {
                     self.relaunch()
                 }
             }
-        }
+        };
+        // What this action did, not the relaunch that followed it.
+        self.last_outcome = outcome_was;
+        self.last_unchanged = unchanged_was;
+        recovered
     }
 
     /// Finds the element and acts on it, finding it again once if the
@@ -1117,6 +1346,13 @@ impl Explorer<'_> {
             _ => return Ok(Landed::Closed),
         }
         let id = fingerprint(&tree);
+        for seen in tree.walk().filter_map(|n| n.identifier.as_deref()) {
+            if self.config.focus.strength(seen) == Strength::Direct {
+                self.focus_seen
+                    .entry(seen.to_owned())
+                    .or_insert_with(|| id.clone());
+            }
+        }
         self.tree = tree;
         self.current = id.clone();
         if !self.index.contains_key(&id) {
@@ -1126,6 +1362,9 @@ impl Explorer<'_> {
             let i = self.index[&id];
             if self.trail.len() < self.screens[i].path.len() {
                 self.screens[i].path = self.trail.clone();
+            }
+            if self.route_trail.len() < self.screens[i].route.len() {
+                self.screens[i].route = self.route_trail.clone();
             }
         }
         self.check_alerts(&id, step);
@@ -1145,6 +1384,8 @@ impl Explorer<'_> {
             }
         });
         self.rng.shuffle(&mut found);
+        // The change first; the seeded order holds within each tie.
+        found.sort_by_key(|c| std::cmp::Reverse(c.strength));
         let has_exit = !exits.is_empty();
         found.extend(exits);
         let over_limit = found.len().saturating_sub(self.config.per_screen);
@@ -1175,6 +1416,7 @@ impl Explorer<'_> {
             id: id.to_owned(),
             title: title(&self.tree),
             path: self.trail.clone(),
+            route: self.route_trail.clone(),
             untried: found,
             tried_keys: HashSet::new(),
             tried: 0,
@@ -1183,6 +1425,11 @@ impl Explorer<'_> {
             skipped: skipped.into_iter().collect(),
             has_exit,
             screenshot,
+            identifiers: self
+                .tree
+                .walk()
+                .filter_map(|n| n.identifier.clone())
+                .collect(),
         });
         self.check_screen(id, step);
         Ok(())
@@ -1275,6 +1522,9 @@ impl Explorer<'_> {
         step: Option<usize>,
         actions: Vec<Action>,
     ) {
+        if self.quiet {
+            return;
+        }
         let key = format!("{issue}\u{0}{message}");
         if !self.seen_issues.insert(key) {
             return;
@@ -1290,6 +1540,15 @@ impl Explorer<'_> {
             step,
             repro: actions.iter().map(Action::describe).collect(),
             repro_file: None,
+            route: actions
+                .iter()
+                .map(|a| a.toml_step(&self.config.launch_args))
+                .collect(),
+            confidence: String::new(),
+            focus: "none".into(),
+            changed_files: Vec::new(),
+            evidence: serde_json::Value::Null,
+            reproduced: None,
             actions,
         });
     }
@@ -1318,6 +1577,7 @@ impl Explorer<'_> {
                 path,
             );
         }
+        self.annotate_issues();
         if let Some(dir) = self.out_dir {
             for issue in &mut self.issues {
                 let name = format!("repro/issue-{}-{}.toml", issue.number, issue.issue);
@@ -1340,8 +1600,19 @@ impl Explorer<'_> {
                 exits: s.exits.iter().cloned().collect(),
                 skipped: s.skipped.iter().cloned().collect(),
                 screenshot: s.screenshot.clone(),
+                identifiers: s.identifiers.iter().cloned().collect(),
+                route: s
+                    .route
+                    .iter()
+                    .map(|a| a.toml_step(&self.config.launch_args))
+                    .collect(),
+                focus: s
+                    .identifiers
+                    .iter()
+                    .any(|id| self.config.focus.strength(id) >= Strength::Entry),
             })
             .collect();
+        let focus = (!self.config.focus.is_empty()).then(|| self.focus_report());
         let report = Report {
             app: self.config.app.clone(),
             seed: self.config.seed,
@@ -1351,6 +1622,7 @@ impl Explorer<'_> {
             screens,
             issues: self.issues,
             journal: self.journal,
+            focus,
         };
         if let Some(dir) = self.out_dir {
             std::fs::write(
@@ -1369,6 +1641,180 @@ impl Explorer<'_> {
             count("info"),
         )?;
         Ok(report)
+    }
+}
+
+impl Explorer<'_> {
+    /// Fills in each issue's confidence, its tie to the change, the files
+    /// behind that tie and the screen evidence.
+    fn annotate_issues(&mut self) {
+        let focus = &self.config.focus;
+        let screens: HashMap<&str, &Screen> =
+            self.screens.iter().map(|s| (s.id.as_str(), s)).collect();
+        for issue in &mut self.issues {
+            issue.confidence = crate::focus::confidence(issue).into();
+            let screen = screens.get(issue.screen.as_str());
+            let action_id = issue.actions.last().and_then(crate::focus::action_id);
+            let action_strength = action_id
+                .map(|id| focus.strength(id))
+                .unwrap_or(Strength::None);
+            // The screen's own tie: direct identifiers on it.
+            let on_screen: Vec<&String> = screen
+                .map(|s| {
+                    s.identifiers
+                        .iter()
+                        .filter(|id| focus.strength(id) == Strength::Direct)
+                        .collect()
+                })
+                .unwrap_or_default();
+            let strength = action_strength.max(if on_screen.is_empty() {
+                Strength::None
+            } else {
+                Strength::Screen
+            });
+            issue.focus = match strength {
+                Strength::Direct => "direct",
+                Strength::Entry => "entry",
+                Strength::Screen => "screen",
+                Strength::None => "none",
+            }
+            .into();
+            let mut files = action_id.map(|id| focus.files_for(id)).unwrap_or_default();
+            if files.is_empty() {
+                for id in on_screen.iter().take(3) {
+                    files.extend(focus.files_for(id));
+                }
+            }
+            let mut seen = HashSet::new();
+            files.retain(|f| seen.insert(f["file"].to_string()));
+            issue.changed_files = files;
+            issue.evidence = serde_json::json!({
+                "screen_tree": self.config.screenshots.then(|| format!("screens/{}.json", issue.screen)),
+                "screenshot": screen.and_then(|s| s.screenshot.clone()),
+                "step": issue.step,
+            });
+        }
+    }
+
+    fn focus_report(&self) -> serde_json::Value {
+        let focus = &self.config.focus;
+        let targets = focus.direct_targets();
+        let reached = |t: &String| match t.strip_suffix('*') {
+            Some(prefix) => self.focus_seen.keys().any(|k| k.starts_with(prefix)),
+            None => self.focus_seen.contains_key(t),
+        };
+        let not_reached: Vec<&String> = targets.iter().filter(|t| !reached(t)).collect();
+        let first_direct = self
+            .focus_tried
+            .iter()
+            .filter(|(id, _)| focus.strength(id) == Strength::Direct)
+            .map(|(_, step)| *step)
+            .min();
+        serde_json::json!({
+            "targets": targets,
+            "seen": self.focus_seen,
+            "tried": self.focus_tried,
+            "first_direct_action": first_direct,
+            "not_reached": not_reached,
+            "not_reached_note": (!not_reached.is_empty()).then_some(
+                "Never on screen during the walk: behind data the test-data mode doesn't create, below the fold (scrolling isn't built), behind a skipped control, or out of budget. Not checked, so not passed."
+            ),
+            "routes": self.routes_done,
+            "routes_not_followed": self.routes.len(),
+        })
+    }
+
+    /// Replays issues once more to see whether they come back: errors
+    /// first, then warnings on the focus, up to `config.verify`, while
+    /// there is time. Kinds a replay can't check keep `reproduced: None`.
+    fn verify_issues(&mut self, deadline: Instant) -> Result<()> {
+        const CHECKABLE: &[&str] = &[
+            "app_closed",
+            "left_app",
+            "action_failed",
+            "error_alert",
+            "no_effect",
+        ];
+        let mut order: Vec<usize> = (0..self.issues.len())
+            .filter(|&i| CHECKABLE.contains(&self.issues[i].issue.as_str()))
+            .filter(|&i| {
+                self.issues[i].severity == "error"
+                    || (self.issues[i].severity == "warning"
+                        && self.issues[i]
+                            .actions
+                            .last()
+                            .and_then(crate::focus::action_id)
+                            .is_some_and(|id| self.config.focus.strength(id) >= Strength::Entry))
+            })
+            .collect();
+        order.sort_by_key(|&i| (self.issues[i].severity != "error", i));
+        order.truncate(self.config.verify);
+        if order.is_empty() {
+            return Ok(());
+        }
+        writeln!(
+            self.out,
+            "Replaying {} issue(s) to see whether they come back",
+            order.len()
+        )?;
+        self.phase = "verify";
+        self.quiet = true;
+        for i in order {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let actions = self.issues[i].actions.clone();
+            if actions.is_empty() {
+                continue;
+            }
+            self.relaunch()?;
+            let mut done = true;
+            for action in &actions {
+                self.perform(action.clone(), false)?;
+                if self.last_outcome == "not_found" {
+                    done = false;
+                    break;
+                }
+            }
+            let issue = &self.issues[i];
+            let again = done
+                && match issue.issue.as_str() {
+                    "app_closed" => self.last_outcome == "app_closed",
+                    "left_app" => self.last_outcome.starts_with("left_app"),
+                    "action_failed" => self.last_outcome == "failed",
+                    "no_effect" => self.last_unchanged && self.last_outcome == issue.screen,
+                    "error_alert" => {
+                        let text = issue
+                            .message
+                            .split_once('"')
+                            .map(|(_, t)| t.trim_end_matches('"'))
+                            .unwrap_or("");
+                        self.tree.walk().any(|n| {
+                            n.kind == "Alert"
+                                && n.walk()
+                                    .filter_map(|c| c.label.as_deref())
+                                    .collect::<Vec<_>>()
+                                    .join(" ")
+                                    == text
+                        })
+                    }
+                    _ => false,
+                };
+            writeln!(
+                self.out,
+                "          issue {}: {}",
+                issue.number,
+                if again {
+                    "came back"
+                } else {
+                    "did not come back"
+                }
+            )?;
+            self.issues[i].reproduced = Some(again);
+        }
+        self.quiet = false;
+        self.phase = "explore";
+        Ok(())
     }
 }
 
@@ -2086,5 +2532,204 @@ mod tests {
         assert!(gated("library.add", "Add Book").is_none());
         // Whole words only: "Settings" is not "set", "Postcode" is not "post".
         assert!(gated("form.postcode", "Postcode").is_none());
+    }
+
+    fn detail_focus() -> Focus {
+        use crate::focus::Link;
+        let link = |id: &str, strength, how: &str| Link {
+            id: id.trim_end_matches('*').into(),
+            prefix: id.ends_with('*'),
+            strength,
+            file: "examples/pocket-library/Sources/AppHost/BookDetailView.swift".into(),
+            how: how.into(),
+        };
+        Focus {
+            links: vec![
+                link(
+                    "detail.read",
+                    Strength::Direct,
+                    "declared in BookDetailView.swift",
+                ),
+                link(
+                    "detail.sync",
+                    Strength::Direct,
+                    "declared in BookDetailView.swift",
+                ),
+                link(
+                    "detail.web",
+                    Strength::Direct,
+                    "declared in BookDetailView.swift",
+                ),
+                link(
+                    "library.book.*",
+                    Strength::Entry,
+                    "LibraryView.swift presents BookDetailView",
+                ),
+            ],
+            routes: vec![],
+        }
+    }
+
+    #[test]
+    fn a_focused_walk_reaches_the_changed_screen_first_and_ties_findings_to_the_change() {
+        for seed in 1..=8 {
+            let plain = Config { seed, ..config() };
+            let (plain, _) = explore(&plain, None);
+            let focused = Config {
+                seed,
+                focus: detail_focus(),
+                ..config()
+            };
+            let (report, _) = explore(&focused, None);
+            let focus_first = report.focus.as_ref().unwrap()["first_direct_action"]
+                .as_u64()
+                .unwrap() as usize;
+            // Launch, open a book (an entry control), then a detail control.
+            assert!(focus_first <= 3, "seed {seed}: {focus_first}");
+            let plain_first = plain
+                .journal
+                .iter()
+                .find(|s| s.action.contains("detail."))
+                .map(|s| s.step)
+                .unwrap();
+            assert!(focus_first <= plain_first, "seed {seed}");
+        }
+        let (report, _) = explore(
+            &Config {
+                seed: 3,
+                focus: detail_focus(),
+                ..config()
+            },
+            None,
+        );
+        let crash = issue(&report, "app_closed");
+        assert_eq!(crash.focus, "direct");
+        assert_eq!(crash.confidence, "observed");
+        assert_eq!(
+            crash.changed_files[0]["file"],
+            "examples/pocket-library/Sources/AppHost/BookDetailView.swift"
+        );
+        assert_eq!(
+            crash.route.last().unwrap(),
+            r#"tap = { id = "detail.read" }"#
+        );
+        // An issue away from the change has no tie, and says so.
+        let off = report
+            .issues
+            .iter()
+            .find(|i| i.focus == "none")
+            .expect("an issue off the focus");
+        assert!(off.changed_files.is_empty());
+        let focus = report.focus.unwrap();
+        assert_eq!(focus["not_reached"], serde_json::json!([]));
+        assert!(focus["tried"]["detail.read"].is_number());
+    }
+
+    #[test]
+    fn the_same_seed_and_focus_walk_the_same_way() {
+        let run = || {
+            let config = Config {
+                seed: 11,
+                focus: detail_focus(),
+                verify: 2,
+                ..config()
+            };
+            let (report, model) = explore(&config, None);
+            (
+                report
+                    .journal
+                    .iter()
+                    .map(|s| format!("{} {} {} {}", s.phase, s.from, s.action, s.outcome))
+                    .collect::<Vec<_>>(),
+                model.log,
+            )
+        };
+        assert_eq!(run(), run());
+    }
+
+    #[test]
+    fn issues_are_replayed_and_said_to_come_back() {
+        let focused = Config {
+            seed: 2,
+            focus: detail_focus(),
+            verify: 3,
+            ..config()
+        };
+        let (report, _) = explore(&focused, None);
+        let crash = issue(&report, "app_closed");
+        assert_eq!(crash.reproduced, Some(true));
+        let opened = issue(&report, "left_app");
+        assert_eq!(opened.reproduced, Some(true));
+        assert!(report.journal.iter().any(|s| s.phase == "verify"));
+        // Audit findings aren't replayed.
+        assert!(report
+            .issues
+            .iter()
+            .filter(|i| i.issue == "no_label" || i.issue == "clipped")
+            .all(|i| i.reproduced.is_none()));
+        // Without a focus or `verify`, nothing is replayed.
+        let (plain, _) = explore(&config(), None);
+        assert!(plain.issues.iter().all(|i| i.reproduced.is_none()));
+        assert!(plain.focus.is_none());
+    }
+
+    #[test]
+    fn a_later_walk_follows_known_routes_and_rechecks_earlier_issues() {
+        let dir = tempfile::tempdir().unwrap();
+        let (first, _) = explore(&config(), Some(dir.path()));
+        let previous: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("explore.json")).unwrap())
+                .unwrap();
+        let mut focus = detail_focus();
+        focus.routes = crate::focus::routes_from(&previous, &focus, 5);
+        assert!(focus.routes.iter().any(|r| r.kind == "recheck"));
+        assert!(focus.routes.iter().any(|r| r.kind == "focus_screen"));
+        let later = Config {
+            seed: 99,
+            max_actions: 12,
+            focus,
+            ..config()
+        };
+        let (second, model) = explore(&later, None);
+        // Rechecks come first: the crash's own replay is the walk's start.
+        assert_eq!(second.journal[1].phase, "recheck");
+        assert!(model.log.iter().any(|l| l == "tap detail.read"));
+        let compared = crate::focus::compare(&previous, "previous/explore.json", &second);
+        let still: Vec<&str> = compared["still_present"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["issue"].as_str().unwrap())
+            .collect();
+        assert!(still.contains(&"app_closed"), "{compared:#}");
+        // Twelve actions can't recheck everything the first walk found.
+        assert!(
+            !compared["not_rechecked"].as_array().unwrap().is_empty()
+                || first.issues.len() == still.len()
+        );
+    }
+
+    #[test]
+    fn a_fixed_issue_is_gone_only_when_its_action_was_done_again() {
+        let dir = tempfile::tempdir().unwrap();
+        explore(&config(), Some(dir.path()));
+        let previous: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("explore.json")).unwrap())
+                .unwrap();
+        // "Fix" the crash: Read now stays on the screen.
+        let mut model = ModelApp::pocket_library();
+        model.taps.remove(&("detail", "detail.read"));
+        let mut focus = detail_focus();
+        focus.routes = crate::focus::routes_from(&previous, &focus, 5);
+        let later = Config { focus, ..config() };
+        let report = run(&later, &mut model, None, &mut Vec::new()).unwrap();
+        let compared = crate::focus::compare(&previous, "p", &report);
+        let gone: Vec<&str> = compared["gone"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["issue"].as_str().unwrap())
+            .collect();
+        assert!(gone.contains(&"app_closed"), "{compared:#}");
     }
 }

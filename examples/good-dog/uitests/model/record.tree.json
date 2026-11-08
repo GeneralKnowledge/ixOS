@@ -1,0 +1,145 @@
+{
+ "kind": "Application",
+ "label": "Good Dog",
+ "enabled": true,
+ "visible": true,
+ "frame": {
+  "x": 0.0,
+  "y": 0.0,
+  "width": 430.0,
+  "height": 932.0
+ },
+ "children": [
+  {
+   "kind": "Window",
+   "enabled": true,
+   "visible": true,
+   "frame": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 430.0,
+    "height": 932.0
+   },
+   "children": [
+    {
+     "kind": "Other",
+     "enabled": true,
+     "visible": true,
+     "frame": {
+      "x": 16.0,
+      "y": 200.0,
+      "width": 398.0,
+      "height": 44.0
+     },
+     "children": [
+      {
+       "kind": "NavigationBar",
+       "enabled": true,
+       "visible": true,
+       "identifier": "How Did It Go?",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       },
+       "children": [
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "record.cancel",
+         "label": "Cancel",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        },
+        {
+         "kind": "Button",
+         "enabled": false,
+         "visible": true,
+         "identifier": "record.save",
+         "label": "Save",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        }
+       ]
+      },
+      {
+       "kind": "StaticText",
+       "enabled": true,
+       "visible": true,
+       "label": "Practise responding to their name",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "record.result.easy",
+       "label": "Went well",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "record.result.gettingThere",
+       "label": "Getting there",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "record.result.tooDifficult",
+       "label": "Too difficult",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Switch",
+       "enabled": true,
+       "visible": true,
+       "identifier": "record.welfare",
+       "label": "My dog seemed worried, sore or uncomfortable",
+       "value": "0",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

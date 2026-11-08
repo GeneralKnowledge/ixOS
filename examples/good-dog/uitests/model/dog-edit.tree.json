@@ -1,0 +1,107 @@
+{
+ "kind": "Application",
+ "label": "Good Dog",
+ "enabled": true,
+ "visible": true,
+ "frame": {
+  "x": 0.0,
+  "y": 0.0,
+  "width": 430.0,
+  "height": 932.0
+ },
+ "children": [
+  {
+   "kind": "Window",
+   "enabled": true,
+   "visible": true,
+   "frame": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 430.0,
+    "height": 932.0
+   },
+   "children": [
+    {
+     "kind": "Other",
+     "enabled": true,
+     "visible": true,
+     "frame": {
+      "x": 16.0,
+      "y": 200.0,
+      "width": 398.0,
+      "height": 44.0
+     },
+     "children": [
+      {
+       "kind": "NavigationBar",
+       "enabled": true,
+       "visible": true,
+       "identifier": "Edit Moss",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       },
+       "children": [
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "dogForm.cancel",
+         "label": "Cancel",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        },
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "dogForm.save",
+         "label": "Save",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        }
+       ]
+      },
+      {
+       "kind": "TextField",
+       "enabled": true,
+       "visible": true,
+       "identifier": "dogForm.name",
+       "label": "Dog's name",
+       "value": "Moss",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "dogForm.lifeStage",
+       "label": "Age, Adult",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

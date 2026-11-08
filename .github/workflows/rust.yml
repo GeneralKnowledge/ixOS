@@ -103,6 +103,12 @@ jobs:
             found=$((found + 1))
           done
           [ "$found" -gt 0 ] || { echo "no app has a requirements.toml"; exit 1; }
+      # Forge M6.2: exploration aimed at a change, on a model of Good Dog
+      # built from its recorded screens (no phone). Fails if the aimed walk
+      # stops finding the planted crash, a seed stops repeating, or the
+      # fixed crash isn't rechecked.
+      - name: Change-aware exploration demo
+        run: scripts/demo-m6.2.sh "$RUNNER_TEMP/m6.2-demo"
       - name: Keep the evidence bundles
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

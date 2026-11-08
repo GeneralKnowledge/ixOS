@@ -17,7 +17,9 @@
 
 pub mod baseline;
 pub mod explore;
+pub mod focus;
 pub mod http;
+pub mod model;
 pub mod phone;
 pub mod policy;
 pub mod script;

@@ -68,6 +68,9 @@ Every run that executes tests writes a directory:
   <name>.tree.json     device runs: the accessibility tree saved with it
   visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
   device.log           device runs: the app's own log lines during the run (`+<ms>` from its start)
+  watch.json           a device run that broke off: what the watch collected before it
+  focus.json           an aimed walk (M6.2): the change's identifiers and links, the routes from the previous walk
+  compare.json         an aimed walk with a previous one: issues gone, still there, new, not rechecked
   crashes/             device runs: the app's crash reports written during the run, symbolicated (`<report>.ips.txt`)
   explore.json, screens/, repro/   `forge ui explore`: the walk, each screen, a replay file per issue
 ```
@@ -109,7 +112,7 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 
 | Field | Means |
 |---|---|
-| `kind` | `linux-twin` or `device`. Decides which verdict a run may set |
+| `kind` | `linux-twin`, `device`, or `fixture` (an explore walk on a model of the app, `--fixture`: it shows how Forge explored, never how the app behaves, and sets no verdict). Decides which verdict a run may set |
 | `ok` | No test failed and no requirement is `failed` or `missing` |
 | `where.device` | `null` on Linux. On a device run: `{ "udid", "name", "ios" }` |
 | `build.commit`, `build.dirty` | The commit the run was built from, and whether the app folder had uncommitted changes |

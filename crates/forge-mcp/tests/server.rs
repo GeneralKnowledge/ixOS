@@ -524,8 +524,53 @@ async fn explore_runs_on_test_data_and_never_allows_destructive_taps() {
         "--skip tip.reset",
         "--largest-text",
         "--udid 0000",
+        // Aimed at the session's changes by default, issues replayed.
+        "--since ",
+        "--verify 3",
     ] {
         assert!(line.contains(part), "{part} missing: {line}");
     }
     assert!(!line.contains("--allow-destructive") && !line.contains("--real-data"));
+    assert!(!line.contains("--no-previous"));
+    // A plain walk when asked, with a given focus and no history.
+    c.call(
+        "forge_ui_explore",
+        json!({"project": "Tipster", "focus_changes": false, "previous": false, "verify": 0, "focus": ["tip.*"]}),
+    )
+    .await;
+    let line = calls(&fx)
+        .into_iter()
+        .rev()
+        .find(|l| l.starts_with("--json ui explore "))
+        .unwrap();
+    assert!(!line.contains("--since"), "{line}");
+    for part in ["--no-previous", "--verify 0", "--focus tip.*"] {
+        assert!(line.contains(part), "{part} missing: {line}");
+    }
+}
+
+#[tokio::test]
+async fn focus_reads_the_session_changes_or_named_files_without_the_phone() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start(&fx, false, true).await;
+    c.call("forge_ui_focus", json!({"project": "Tipster"}))
+        .await;
+    c.call(
+        "forge_ui_focus",
+        json!({"project": "Tipster", "changed": ["Sources/AppHost/TipView.swift"]}),
+    )
+    .await;
+    let lines: Vec<String> = calls(&fx)
+        .into_iter()
+        .filter(|l| l.starts_with("--json ui focus "))
+        .collect();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].contains("--since "), "{}", lines[0]);
+    assert!(
+        lines[1].contains("--changed Sources/AppHost/TipView.swift")
+            && !lines[1].contains("--since"),
+        "{}",
+        lines[1]
+    );
 }

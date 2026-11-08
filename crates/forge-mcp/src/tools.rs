@@ -259,7 +259,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_ui_explore",
         title: "Explore the app for problems",
-        description: "Walks the app's screens on the phone without a script: tries each safe control once and reports crashes (app_closed), error alerts, dead ends, controls with no effect and accessibility problems (no_label, duplicate or missing identifiers). Each issue comes with a forge ui run file under data.out/repro/ that replays it: run it with forge_run_ui_test, and copy it into the app's uitests/ to keep it as a regression test. Runs on the app's test data (forge.toml [ui_test] test_data_args), or with real_data only looks. Never taps send, pay, share and the like, never types into secure fields, never touches the keyboard or system services, and never taps delete or reset (a person can allow that from the terminal). Writes an evidence bundle to <app>/.forge/runs/<UTC>-ui-explore/.",
+        description: "Walks the app's screens on the phone without a script: tries each safe control once and reports crashes (app_closed), error alerts, dead ends, controls with no effect and accessibility problems (no_label, duplicate or missing identifiers). Each issue comes with a forge ui run file under data.out/repro/ that replays it: run it with forge_run_ui_test, and copy it into the app's uitests/ to keep it as a regression test. Runs on the app's test data (forge.toml [ui_test] test_data_args), or with real_data only looks. Never taps send, pay, share and the like, never types into secure fields, never touches the keyboard or system services, and never taps delete or reset (a person can allow that from the terminal). Writes an evidence bundle to <app>/.forge/runs/<UTC>-ui-explore/. Aimed at your change by default (M6.2): the controls the files changed since this server started declare, and the ways into them, are tried first; routes the previous walk found and its issues are followed first; data.focus says what of the change was reached and tried and what wasn't; each issue says its tie to the change (focus, changed_files, or none), its confidence (observed or heuristic) and, after a replay, whether it came back (reproduced); data.compare says which earlier issues are gone (only when this walk did what showed them), still there, new, or not rechecked. See forge_ui_focus for the mapping alone.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
@@ -270,7 +270,22 @@ pub const SPECS: &[Spec] = &[
             "skip": {"type": "array", "items": {"type": "string"}, "description": "Identifiers or labels never to touch"},
             "largest_text": {"type": "boolean", "description": "Launch at the largest accessibility text size"},
             "real_data": {"type": "boolean", "description": "Explore the data already on the phone, only looking (for an app without a test-data mode)"},
-            "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"}
+            "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"},
+            "focus_changes": {"type": "boolean", "description": "Aim at the files changed since this server started (default true; false is the plain seeded walk)"},
+            "focus": {"type": "array", "items": {"type": "string"}, "description": "Also aim at these identifiers (record.save), or prefixes (record.result.*)"},
+            "previous": {"type": "boolean", "description": "Learn from the app's latest earlier walk: follow its routes to the change, recheck its issues and compare (default true)"},
+            "verify": {"type": "integer", "minimum": 0, "maximum": 5, "description": "Replay up to this many issues after the walk to see whether they come back (default 3, not counted in actions)"}
+        }), &[]),
+    },
+    Spec {
+        name: "forge_ui_focus",
+        title: "Which screens a change touches",
+        description: "Reads the source to say which screens and controls the files changed since this server started (or the files you name) touch: identifiers the changed Swift files declare (direct), identifiers of the views that present them or call into changed Rust through the model (entry, with the chain of calls), the UI tests that use them, persistence and navigation code changed, and every changed file with no link and why. Textual, not a compiler: it guides where to look and what forge_ui_explore tries first; it proves nothing about the app. Needs no phone.",
+        tier: Tier::Observe,
+        device: false,
+        needs_ui: true,
+        schema: || schema(json!({
+            "changed": {"type": "array", "items": {"type": "string"}, "description": "These files instead of git's changes (relative to the app or the root)"}
         }), &[]),
     },
     Spec {
@@ -789,6 +804,32 @@ impl crate::Server {
                 if args.bool("real_data") {
                     inv = inv.arg("--real-data");
                 }
+                if args.0.get("focus_changes").and_then(Value::as_bool) != Some(false) {
+                    inv = inv
+                        .arg("--since")
+                        .arg(self.start_commit.clone().unwrap_or_else(|| "HEAD".into()));
+                }
+                for id in args
+                    .0
+                    .get("focus")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    inv = inv.arg("--focus").arg(id);
+                }
+                if args.0.get("previous").and_then(Value::as_bool) == Some(false) {
+                    inv = inv.arg("--no-previous");
+                }
+                inv = inv.arg("--verify").arg(
+                    args.0
+                        .get("verify")
+                        .and_then(Value::as_u64)
+                        .unwrap_or(3)
+                        .min(5)
+                        .to_string(),
+                );
                 let mut result = self.forge(self.with_udid(inv), cancel).await;
                 keep_out(&mut result, &rel(&root, &out), &out);
                 Answer {
@@ -796,6 +837,29 @@ impl crate::Server {
                     untrusted: true,
                     image: None,
                 }
+            }
+            "forge_ui_focus" => {
+                let app = app_or_fail!();
+                let mut inv = Invocation::new(&["ui", "focus"], &app.dir, secs(MIN), "forge")
+                    .arg("--project")
+                    .arg(app.dir.display().to_string());
+                let changed: Vec<&str> = args
+                    .0
+                    .get("changed")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                    .collect();
+                if changed.is_empty() {
+                    inv = inv
+                        .arg("--since")
+                        .arg(self.start_commit.clone().unwrap_or_else(|| "HEAD".into()));
+                }
+                for c in changed {
+                    inv = inv.arg("--changed").arg(c);
+                }
+                Answer::of(self.forge(inv, cancel).await)
             }
             "forge_accept_screenshots" => {
                 let app = app_or_fail!();
