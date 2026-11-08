@@ -5,7 +5,15 @@
 //! the symbolicated place it crashed.
 //!
 //! Best effort: a phone that won't stream its log or list its reports
-//! doesn't fail the run; the bundle says what couldn't be collected.
+//! doesn't fail the run. What couldn't be collected is said, never left to
+//! look like a quiet app: the `watch` object has a `log` status
+//! (`collected`, `empty`, `unavailable`) and a `crash_reports` status
+//! (`not_checked`, `none_new`, `found`, `unavailable`), and a run that
+//! wasn't watched at all says why ([`not_watched`]).
+//!
+//! A [`Watch`] stops its log reader when it is finished or dropped, so a run
+//! that ends with an error doesn't leave a thread holding the phone's log
+//! service; the reader is given [`STOP_WAIT`] to notice, never more.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -31,8 +39,8 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
 const MAX_LINES: usize = 5000;
 /// Lines of the log end attached to a failure.
 pub const TAIL: usize = 20;
-/// How long `finish` waits for the log thread to notice it should stop.
-const STOP_WAIT: Duration = Duration::from_secs(2);
+/// How long `finish` waits for the log reader to stop.
+pub const STOP_WAIT: Duration = Duration::from_secs(2);
 
 pub struct Watch {
     connect: Connect,
@@ -69,10 +77,7 @@ impl Watch {
                     let device =
                         pick_device(backend.as_ref(), Some(&udid)).map_err(|e| e.to_string())?;
                     backend
-                        .syslog(&device, &mut |line| {
-                            if stop.load(Ordering::Relaxed) {
-                                return false;
-                            }
+                        .syslog_while(&device, &stop, &mut |line| {
                             if filter.matches(line) {
                                 let ms = started.elapsed().as_millis();
                                 let mut lines = lines.lock().unwrap_or_else(|p| p.into_inner());
@@ -105,25 +110,16 @@ impl Watch {
     /// app's new crash reports into `dir/crashes/` and symbolicates them
     /// against the app's build. Returns the `watch` object of the bundle.
     pub fn finish(mut self, dir: &Path, crashes: bool) -> Finished {
-        self.stop.store(true, Ordering::Relaxed);
         let mut notes = Vec::new();
-        if let Some(thread) = self.thread.take() {
-            // The thread notices on the next line; a silent phone may never
-            // send one, so don't wait for it longer than STOP_WAIT.
-            let deadline = Instant::now() + STOP_WAIT;
-            while !thread.is_finished() && Instant::now() < deadline {
-                std::thread::sleep(Duration::from_millis(50));
+        let reader = self.stop_reader();
+        let log_status = match &reader {
+            Err(e) => {
+                notes.push(format!("app log not read: {e}"));
+                "unavailable"
             }
-            if thread.is_finished() {
-                match thread.join() {
-                    Ok(Err(e)) => notes.push(format!("app log not read: {e}")),
-                    Err(_) => notes.push("app log not read: the log reader stopped".into()),
-                    Ok(Ok(())) => {}
-                }
-            }
-        } else {
-            notes.push("app log not read: could not start the log reader".into());
-        }
+            Ok(()) if self.line_count() == 0 => "empty",
+            Ok(()) => "collected",
+        };
         let lines: Vec<String> = self
             .lines
             .lock()
@@ -138,7 +134,9 @@ impl Watch {
         }
         let tail: Vec<String> = lines.iter().rev().take(TAIL).rev().cloned().collect();
         let mut crash_list = Vec::new();
-        if crashes {
+        let crash_status = if !crashes {
+            "not_checked"
+        } else {
             match self.new_crashes(dir) {
                 Ok(found) => {
                     for (file, entry) in found {
@@ -147,17 +145,28 @@ impl Watch {
                         }
                         crash_list.push(entry);
                     }
+                    if crash_list.is_empty() {
+                        "none_new"
+                    } else {
+                        "found"
+                    }
                 }
-                Err(e) => notes.push(format!("crash reports not checked: {e}")),
+                Err(e) => {
+                    notes.push(format!("crash reports not checked: {e}"));
+                    "unavailable"
+                }
             }
-        }
+        };
         let value = json!({
+            "status": "watched",
             "process": self.process,
             "seconds": self.started.elapsed().as_secs_f64(),
             "log": "device.log",
+            "log_status": log_status,
             "log_lines": lines.len(),
             "log_tail": tail,
-            "crashes_checked": crashes,
+            "crash_reports": crash_status,
+            "crashes_checked": crash_status == "none_new" || crash_status == "found",
             "crashes": crash_list,
             "notes": notes,
         });
@@ -168,8 +177,41 @@ impl Watch {
         }
     }
 
+    fn line_count(&self) -> usize {
+        self.lines.lock().unwrap_or_else(|p| p.into_inner()).len()
+    }
+
+    /// Tells the log reader to stop and waits up to [`STOP_WAIT`] for it.
+    /// `Err` says why the log can't be trusted as complete.
+    fn stop_reader(&mut self) -> Result<(), String> {
+        self.stop.store(true, Ordering::Relaxed);
+        let Some(thread) = self.thread.take() else {
+            return Err("could not start the log reader".into());
+        };
+        let deadline = Instant::now() + STOP_WAIT;
+        while !thread.is_finished() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        if !thread.is_finished() {
+            // Dropping the handle detaches it; it ends on the phone's next
+            // line. What it read so far is kept.
+            return Err(format!(
+                "the log reader didn't stop within {} s; the lines read before are kept",
+                STOP_WAIT.as_secs()
+            ));
+        }
+        match thread.join() {
+            Ok(Ok(())) => Ok(()),
+            Ok(Err(e)) => Err(e),
+            Err(_) => Err("the log reader stopped".into()),
+        }
+    }
+
     fn new_crashes(&self, dir: &Path) -> Result<Vec<(PathBuf, Value)>, String> {
-        let before = self.before.clone()?;
+        let before = self
+            .before
+            .clone()
+            .map_err(|e| format!("listing them before the run failed: {e}"))?;
         let backend = (self.connect)()?;
         let device = pick_device(backend.as_ref(), Some(&self.udid)).map_err(|e| e.to_string())?;
         let now = crash_names(backend.as_ref(), &self.udid, &self.process)?;
@@ -186,14 +228,67 @@ impl Watch {
             files.push(file);
         }
         let options = crate::crash::options(Some(&self.project), &[], false);
-        Ok(crate::crash::analyze_pulled(&files, &options)
+        let analysed = crate::crash::analyze_pulled(&files, &options);
+        // A pulled file that isn't `.ips` isn't analysed: still say so.
+        let mut entries: Vec<(PathBuf, Value)> = analysed
             .into_iter()
             .map(|(file, analysis)| {
-                let entry = crate::crash::entry(&file, &analysis);
+                let mut entry = crate::crash::entry(&file, &analysis);
+                entry["symbolicated"] = json!(symbolication(&entry));
                 (file, entry)
             })
-            .collect())
+            .collect();
+        for file in files {
+            if !entries.iter().any(|(f, _)| *f == file) {
+                let entry = json!({
+                    "file": file.display().to_string(),
+                    "error": "not an .ips report; not analysed",
+                    "symbolicated": "unreadable",
+                });
+                entries.push((file, entry));
+            }
+        }
+        Ok(entries)
     }
+}
+
+impl Drop for Watch {
+    /// A run that returned early never called `finish`: the reader still
+    /// stops, so it doesn't keep the phone's log service busy.
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+/// How far a crash entry could be read: `matched` (the build that crashed
+/// is here: file and line are right), `other_build` (frames point at
+/// today's code, not the crashed one), `no_local_build`, `unknown`, or
+/// `unreadable` (the report couldn't be analysed at all).
+pub fn symbolication(entry: &Value) -> &'static str {
+    if entry.get("error").is_some() {
+        return "unreadable";
+    }
+    match entry["build"]["status"].as_str() {
+        Some("matched") => "matched",
+        Some("other_build") => "other_build",
+        Some("not_found") => "no_local_build",
+        _ => "unknown",
+    }
+}
+
+/// The `watch` object of a run that wasn't watched, and why. Nothing was
+/// collected, so nothing in it can read as "the app logged nothing".
+pub fn not_watched(reason: &str) -> Value {
+    json!({
+        "status": "not_watched",
+        "reason": reason,
+        "log_status": "unavailable",
+        "crash_reports": "not_checked",
+        "crashes_checked": false,
+        "crashes": [],
+        "log_tail": [],
+        "notes": [reason],
+    })
 }
 
 /// What a watch collected.
@@ -216,11 +311,13 @@ fn crash_names(
     Ok(app_crash_reports(&all, process))
 }
 
-/// The app's executable name from its forge.toml, when it has one.
-pub fn product(app_dir: &Path) -> Option<String> {
-    let text = std::fs::read_to_string(app_dir.join("forge.toml")).ok()?;
-    let config = crate::config::ForgeConfig::parse(&text).ok()?;
-    Some(crate::app_config::xtool_product(&config))
+/// The app's executable name from its forge.toml, or why it can't be read.
+pub fn product(app_dir: &Path) -> Result<String, String> {
+    let file = app_dir.join("forge.toml");
+    let text = std::fs::read_to_string(&file).map_err(|e| format!("{}: {e}", file.display()))?;
+    let config =
+        crate::config::ForgeConfig::parse(&text).map_err(|e| format!("{}: {e}", file.display()))?;
+    Ok(crate::app_config::xtool_product(&config))
 }
 
 #[cfg(test)]
@@ -316,5 +413,146 @@ mod tests {
             .exists());
         let kinds: Vec<&str> = done.artifacts.iter().map(|(k, _)| *k).collect();
         assert_eq!(kinds, vec!["device_log", "crash"]);
+        assert_eq!(v["log_status"], "collected");
+        assert_eq!(v["crash_reports"], "found");
+        // The fake report can't be analysed: said, not hidden.
+        assert_eq!(crashes[0]["symbolicated"], "unreadable");
+    }
+
+    /// A phone that logs nothing for the app and can stop waiting.
+    struct Silent;
+    static SILENT_ENDED: AtomicBool = AtomicBool::new(false);
+
+    impl DeviceBackend for Silent {
+        fn devices(&self) -> Result<Vec<DeviceRef>> {
+            Fake.devices()
+        }
+        fn info(&self, device: &DeviceRef) -> Result<DeviceInfo> {
+            Fake.info(device)
+        }
+        fn syslog(&self, _: &DeviceRef, _: &mut dyn FnMut(&str) -> bool) -> Result<()> {
+            unreachable!("the watch uses syslog_while")
+        }
+        fn syslog_while(
+            &self,
+            _: &DeviceRef,
+            stop: &AtomicBool,
+            _: &mut dyn FnMut(&str) -> bool,
+        ) -> Result<()> {
+            while !stop.load(Ordering::Relaxed) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            SILENT_ENDED.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+        fn crash_reports(&self, _: &DeviceRef) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn pull_crash_report(&self, _: &DeviceRef, _: &str) -> Result<Vec<u8>> {
+            unreachable!("no new reports")
+        }
+    }
+
+    fn silent() -> std::result::Result<Box<dyn DeviceBackend>, String> {
+        Ok(Box::new(Silent))
+    }
+
+    #[test]
+    fn a_quiet_app_is_empty_not_missing_and_the_reader_stops_at_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let watch = Watch::start(silent, "0000", "GoodDogXtool", tmp.path());
+        let t = Instant::now();
+        let done = watch.finish(tmp.path(), true);
+        assert!(t.elapsed() < STOP_WAIT, "{:?}", t.elapsed());
+        assert_eq!(done.value["log_status"], "empty");
+        assert_eq!(done.value["crash_reports"], "none_new");
+        assert_eq!(done.value["crashes_checked"], true);
+        assert_eq!(done.value["notes"], json!([]));
+    }
+
+    /// A run that returned early (an error before `finish`): dropping the
+    /// watch still stops the reader.
+    #[test]
+    fn dropping_an_unfinished_watch_stops_its_reader() {
+        let tmp = tempfile::tempdir().unwrap();
+        SILENT_ENDED.store(false, Ordering::SeqCst);
+        let watch = Watch::start(silent, "0000", "GoodDogXtool", tmp.path());
+        std::thread::sleep(Duration::from_millis(30));
+        assert!(!SILENT_ENDED.load(Ordering::SeqCst));
+        drop(watch);
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while !SILENT_ENDED.load(Ordering::SeqCst) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(SILENT_ENDED.load(Ordering::SeqCst));
+    }
+
+    /// A backend that only checks `stop` on a line, on a phone that sends
+    /// none: finish gives up after STOP_WAIT and says the log is incomplete.
+    struct Stuck;
+
+    impl DeviceBackend for Stuck {
+        fn devices(&self) -> Result<Vec<DeviceRef>> {
+            Fake.devices()
+        }
+        fn info(&self, device: &DeviceRef) -> Result<DeviceInfo> {
+            Fake.info(device)
+        }
+        fn syslog(&self, _: &DeviceRef, _: &mut dyn FnMut(&str) -> bool) -> Result<()> {
+            std::thread::sleep(STOP_WAIT + Duration::from_secs(1));
+            Ok(())
+        }
+        fn crash_reports(&self, _: &DeviceRef) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn pull_crash_report(&self, _: &DeviceRef, _: &str) -> Result<Vec<u8>> {
+            unreachable!("no new reports")
+        }
+    }
+
+    fn stuck() -> std::result::Result<Box<dyn DeviceBackend>, String> {
+        Ok(Box::new(Stuck))
+    }
+
+    #[test]
+    fn a_reader_that_wont_stop_is_left_after_the_wait_and_reported() {
+        let tmp = tempfile::tempdir().unwrap();
+        let watch = Watch::start(stuck, "0000", "GoodDogXtool", tmp.path());
+        let t = Instant::now();
+        let done = watch.finish(tmp.path(), false);
+        assert!(t.elapsed() < STOP_WAIT + Duration::from_millis(500));
+        assert_eq!(done.value["log_status"], "unavailable");
+        assert!(done.value["notes"][0]
+            .as_str()
+            .unwrap()
+            .contains("didn't stop"));
+        assert_eq!(done.value["crash_reports"], "not_checked");
+    }
+
+    fn unplugged() -> std::result::Result<Box<dyn DeviceBackend>, String> {
+        Err("usbmuxd: connection refused".into())
+    }
+
+    #[test]
+    fn a_phone_that_cant_be_reached_is_unavailable_evidence_not_a_quiet_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let watch = Watch::start(unplugged, "0000", "GoodDogXtool", tmp.path());
+        let done = watch.finish(tmp.path(), true);
+        let v = &done.value;
+        assert_eq!(v["log_status"], "unavailable");
+        assert_eq!(v["crash_reports"], "unavailable");
+        assert_eq!(v["crashes_checked"], false);
+        let notes = v["notes"].to_string();
+        assert!(notes.contains("app log not read: usbmuxd"), "{notes}");
+        assert!(notes.contains("crash reports not checked"), "{notes}");
+    }
+
+    #[test]
+    fn a_run_without_a_watch_says_why() {
+        let v = not_watched("--no-watch");
+        assert_eq!(v["status"], "not_watched");
+        assert_eq!(v["log_status"], "unavailable");
+        assert_eq!(v["crashes_checked"], false);
+        assert!(product(Path::new("/nonexistent")).is_err());
     }
 }

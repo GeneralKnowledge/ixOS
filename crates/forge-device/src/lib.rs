@@ -131,6 +131,21 @@ pub trait DeviceBackend {
         }
     }
 
+    /// Like [`syslog`](Self::syslog), but also stops soon after `stop` is
+    /// set, even when the phone logs nothing (the watch during a UI run,
+    /// which must not outlive the run). The default only checks `stop` when
+    /// a line arrives; backends that can wait with a timeout override it.
+    fn syslog_while(
+        &self,
+        device: &DeviceRef,
+        stop: &std::sync::atomic::AtomicBool,
+        on_line: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<()> {
+        self.syslog(device, &mut |line| {
+            !stop.load(std::sync::atomic::Ordering::Relaxed) && on_line(line)
+        })
+    }
+
     /// Names of the crash reports on the phone (paths relative to the crash
     /// report folder).
     fn crash_reports(&self, device: &DeviceRef) -> Result<Vec<String>>;

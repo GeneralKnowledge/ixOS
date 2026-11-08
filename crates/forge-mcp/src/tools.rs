@@ -790,9 +790,7 @@ impl crate::Server {
                     inv = inv.arg("--real-data");
                 }
                 let mut result = self.forge(self.with_udid(inv), cancel).await;
-                if let Some(data) = result.get_mut("data").and_then(Value::as_object_mut) {
-                    data.entry("out").or_insert_with(|| json!(rel(&root, &out)));
-                }
+                keep_out(&mut result, &rel(&root, &out), &out);
                 Answer {
                     result,
                     untrusted: true,
@@ -979,8 +977,12 @@ impl crate::Server {
             .as_str()
             .map(PathBuf::from)
             .unwrap_or_else(|| self.opts.root.clone());
-        let changed = crate::correlate::changed_files(&app_dir, self.start_commit.as_deref());
-        let correlation = crate::correlate::correlate(&failure, &changed);
+        let changes = crate::correlate::Changes::read(
+            &app_dir,
+            self.start_commit.as_deref(),
+            &self.dirty_at_start,
+        );
+        let correlation = crate::correlate::correlate(&failure, &changes);
         json!({
             "schema": "forge.result/1",
             "command": "diagnose",
@@ -993,7 +995,7 @@ impl crate::Server {
                 "last_failure": failure,
                 "log_tail": log_tail,
                 "correlation": correlation,
-                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person. For a UI or explore failure, correlation says which step, the app's log just before, the crash and whether it is in a file changed in this session.",
+                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person. For a UI or explore failure, correlation says which step, the app's log just before, the crash and whether its source file (matched by repository path, never by name) changed in this session; collection says what the run couldn't collect, and null means unknown, not no.",
             }
         })
     }
@@ -1053,7 +1055,8 @@ impl crate::Server {
             inv = inv.arg("--no-watch");
         }
         let inv = self.with_udid(inv);
-        let result = self.forge(inv, cancel).await;
+        let mut result = self.forge(inv, cancel).await;
+        keep_out(&mut result, &out.display().to_string(), out);
         // On failure, show the screen at the failed step; when only the
         // pictures changed, the first diff (changes in red, areas outlined).
         let image = result["data"]["failed_step"]["step"]
@@ -1072,6 +1075,31 @@ impl crate::Server {
             untrusted: true,
             image,
         }
+    }
+}
+
+/// Makes sure a UI run's result names its output folder, also when the run
+/// was stopped (timeout, cancelled) before it printed a result: what it
+/// wrote until then (screenshots, trees, the app's log) is still there.
+fn keep_out(result: &mut Value, shown: &str, out: &Path) {
+    let stopped = result.get("stopped").is_some();
+    if !result["data"].is_object() {
+        result["data"] = json!({});
+    }
+    let data = result["data"].as_object_mut().expect("object");
+    data.entry("out").or_insert_with(|| json!(shown));
+    if stopped {
+        let partial = std::fs::read_dir(out)
+            .map(|d| d.count() > 0)
+            .unwrap_or(false);
+        data.insert(
+            "partial".into(),
+            json!(if partial {
+                "The run was stopped before it finished: the files in out are from before that, and there is no evidence.json for it."
+            } else {
+                "The run was stopped before it wrote anything."
+            }),
+        );
     }
 }
 
@@ -1209,6 +1237,25 @@ fn to_toml(value: &Value) -> toml::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stopped_run_still_names_its_folder_and_says_it_is_partial() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("run");
+        std::fs::create_dir_all(out.join("screens")).unwrap();
+        let mut r = json!({"ok": false, "stopped": "timeout", "data": null});
+        keep_out(&mut r, "Good/.forge/runs/x", &out);
+        assert_eq!(r["data"]["out"], "Good/.forge/runs/x");
+        assert!(r["data"]["partial"]
+            .as_str()
+            .unwrap()
+            .contains("no evidence.json"));
+        // A finished run keeps its own out.
+        let mut r = json!({"ok": true, "data": {"out": "/abs/run"}});
+        keep_out(&mut r, "rel", &out);
+        assert_eq!(r["data"]["out"], "/abs/run");
+        assert!(r["data"].get("partial").is_none());
+    }
 
     fn args(v: Value) -> Map<String, Value> {
         v.as_object().unwrap().clone()

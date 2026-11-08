@@ -234,6 +234,40 @@ impl DeviceBackend for UsbBackend {
         })
     }
 
+    fn syslog_while(
+        &self,
+        device: &DeviceRef,
+        stop: &std::sync::atomic::AtomicBool,
+        on_line: &mut dyn FnMut(&str) -> bool,
+    ) -> Result<()> {
+        use std::sync::atomic::Ordering;
+        let provider = self.provider(device)?;
+        self.runtime.block_on(async {
+            let mut relay: SyslogRelayClient = connect(&provider).await?;
+            let stopped = async {
+                while !stop.load(Ordering::Relaxed) {
+                    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+                }
+            };
+            tokio::pin!(stopped);
+            loop {
+                // Dropping a half-read line is fine here: the stream ends.
+                let next = tokio::select! {
+                    next = relay.next() => next,
+                    () = &mut stopped => return Ok(()),
+                };
+                let line = match next {
+                    Ok(line) => line,
+                    Err(IdeviceError::UnexpectedResponse(_)) => return Ok(()),
+                    Err(err) => return Err(service_error(err)),
+                };
+                if !on_line(line.trim_end_matches(['\n', '\0'])) {
+                    return Ok(());
+                }
+            }
+        })
+    }
+
     fn crash_reports(&self, device: &DeviceRef) -> Result<Vec<String>> {
         let provider = self.provider(device)?;
         self.runtime.block_on(async {

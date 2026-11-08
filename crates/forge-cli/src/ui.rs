@@ -408,6 +408,40 @@ pub fn screenshot(
     .map_err(err)
 }
 
+/// A run that broke off with `error` before it finished: stops the watch,
+/// keeps what it collected in `out_dir` (`device.log`, `crashes/`,
+/// `watch.json`) and puts it in the result, so the evidence gathered before
+/// the failure isn't lost with it.
+fn broke_off(
+    error: String,
+    watcher: Result<crate::watch::Watch, String>,
+    out_dir: &Path,
+) -> String {
+    let value = match watcher {
+        Ok(w) => w.finish(out_dir, true).value,
+        Err(why) => crate::watch::not_watched(&why),
+    };
+    let _ = std::fs::create_dir_all(out_dir);
+    let saved = std::fs::write(
+        out_dir.join("watch.json"),
+        serde_json::to_vec_pretty(&value).unwrap_or_default(),
+    )
+    .is_ok();
+    report::set_data(serde_json::json!({
+        "broke_off": error,
+        "out": out_dir.display().to_string(),
+        "watch": value,
+    }));
+    if saved {
+        format!(
+            "{error}. The app's log and any new crash report from before it are in {}",
+            out_dir.display()
+        )
+    } else {
+        error
+    }
+}
+
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
 /// `visual` `Some(Check)`) if a screenshot differs from its baseline.
 #[allow(clippy::too_many_arguments)]
@@ -486,14 +520,29 @@ pub fn run(
     // The app's own log and crash reports, for a Forge app only: another
     // developer's app logs the person's data.
     let watcher = match (&app_dir, watch) {
-        (Some(dir), true) => crate::watch::product(dir).map(|product| {
-            crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, dir)
-        }),
-        _ => None,
+        (Some(dir), true) => crate::watch::product(dir)
+            .map(|product| {
+                crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, dir)
+            })
+            .map_err(|e| format!("the app's executable name isn't known ({e})")),
+        (Some(_), false) => Err("--no-watch".to_string()),
+        (None, _) => Err("not a Forge app: its log would hold the person's data".to_string()),
     };
-    let report =
-        script::run_gated(&script, &app, &mut driver, &out_dir, out, &mut gate).map_err(err)?;
-    let watched = watcher.map(|w| w.finish(&out_dir, report.failed.is_some()));
+    let report = match script::run_gated(&script, &app, &mut driver, &out_dir, out, &mut gate) {
+        Ok(report) => report,
+        // The run broke off (the phone or WebDriverAgent stopped answering):
+        // keep what the watch saw, and say where it is.
+        Err(e) => return Err(broke_off(err(e), watcher, &out_dir)),
+    };
+    let watched = match watcher {
+        Ok(w) => w.finish(&out_dir, report.failed.is_some()),
+        Err(why) => crate::watch::Finished {
+            value: crate::watch::not_watched(&why),
+            tail: Vec::new(),
+            artifacts: Vec::new(),
+        },
+    };
+    let watched = Some(watched);
     // Visual regression runs on Linux, after the phone part: the screenshots
     // taken before a failed step are still compared.
     let visual = match visual {
@@ -528,6 +577,10 @@ pub fn run(
         // What the app logged just before, and where it crashed if it did.
         if let Some(w) = &watched {
             failed["log_tail"] = serde_json::json!(w.tail);
+            // `found`, `none_new`, `unavailable` or `not_checked`: no
+            // `crash` below is only "didn't crash" when this says none_new.
+            failed["crash_reports"] = w.value["crash_reports"].clone();
+            failed["log_status"] = w.value["log_status"].clone();
             if let Some(crash) = w.value["crashes"].as_array().and_then(|c| c.first()) {
                 failed["crash"] = crash.clone();
             }
@@ -770,6 +823,12 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             .ok_or_else(|| format!("--text {pair:?}: write IDENTIFIER=TEXT"))?;
         fixtures.insert(id.to_owned(), text.to_owned());
     }
+    if options.actions < 2 {
+        return Err(
+            "--actions must be at least 2: the launch is one, and the walk needs another to try anything"
+                .into(),
+        );
+    }
     if !(options.minutes > 0.0 && options.minutes.is_finite()) {
         return Err("--minutes must be more than 0".into());
     }
@@ -828,12 +887,24 @@ pub fn explore(
     // Reuses a running `forge ui start` session's runner when there is one.
     let (phone, mut apps, held, mut driver) = connect(udid, out)?;
     config.app = resolve(&phone, &mut apps, &held, &config.script_app)?;
-    let watcher = crate::watch::product(project).map(|product| {
-        crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, project)
-    });
-    let report = explore::run(&config, &mut driver, Some(&out_dir), out).map_err(err)?;
+    let watcher = crate::watch::product(project)
+        .map(|product| {
+            crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, project)
+        })
+        .map_err(|e| format!("the app's executable name isn't known ({e})"));
+    let report = match explore::run(&config, &mut driver, Some(&out_dir), out) {
+        Ok(report) => report,
+        Err(e) => return Err(broke_off(err(e), watcher, &out_dir)),
+    };
     let closed = report.issues.iter().any(|i| i.issue == "app_closed");
-    let watched = watcher.map(|w| w.finish(&out_dir, closed));
+    let watched = Some(match watcher {
+        Ok(w) => w.finish(&out_dir, closed),
+        Err(why) => crate::watch::Finished {
+            value: crate::watch::not_watched(&why),
+            tail: Vec::new(),
+            artifacts: Vec::new(),
+        },
+    });
     writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
     let summary = serde_json::json!({
         "app": report.app,
@@ -844,6 +915,11 @@ pub fn explore(
         "issues": report.issues,
     });
     build["installed_as"] = serde_json::json!(config.app);
+    let tried = report
+        .journal
+        .iter()
+        .filter(|s| s.action != "launch")
+        .count();
     let evidence = crate::evidence::write_explore_bundle(
         &crate::evidence::ExploreRun {
             build,
@@ -854,7 +930,8 @@ pub fn explore(
             explore: summary.clone(),
             watch: watched.as_ref().map(|w| w.value.clone()),
             artifacts: watched.map(|w| w.artifacts).unwrap_or_default(),
-            ok: report.errors() == 0,
+            // A walk that tried nothing checked nothing: never a pass.
+            ok: report.errors() == 0 && tried > 0,
             duration_ms: started.elapsed().as_millis() as u64,
         },
         &out_dir,
@@ -866,12 +943,6 @@ pub fn explore(
     data["out"] = serde_json::json!(out_dir.display().to_string());
     data["evidence"] = serde_json::json!(evidence.display().to_string());
     report::set_data(data);
-    // A walk that tried nothing checked nothing: never a pass.
-    let tried = report
-        .journal
-        .iter()
-        .filter(|s| s.action != "launch")
-        .count();
     if tried == 0 {
         return Err(format!(
             "exploring tried no control: {} screen(s) seen, every control skipped or unreachable (see skipped in {}). Nothing was checked",
@@ -905,6 +976,38 @@ mod tests {
             per_screen: 15,
             screenshots: true,
         }
+    }
+
+    fn unplugged() -> Result<Box<dyn forge_device::DeviceBackend>, String> {
+        Err("usbmuxd: connection refused".into())
+    }
+
+    #[test]
+    fn a_run_that_breaks_off_keeps_its_watch_and_says_where() {
+        let tmp = tempfile::tempdir().unwrap();
+        let out = tmp.path().join("run");
+        let watch = crate::watch::Watch::start(unplugged, "0000", "GoodDogXtool", tmp.path());
+        let msg = broke_off("WebDriverAgent stopped answering".into(), Ok(watch), &out);
+        assert!(
+            msg.starts_with("WebDriverAgent stopped answering."),
+            "{msg}"
+        );
+        assert!(msg.contains(&out.display().to_string()), "{msg}");
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("watch.json")).unwrap())
+                .unwrap();
+        // Nothing could be collected, and the file says so.
+        assert_eq!(saved["log_status"], "unavailable");
+        assert_eq!(saved["crash_reports"], "unavailable");
+        assert!(out.join("device.log").is_file());
+        // Not watched at all: the reason is kept.
+        let msg = broke_off("stopped".into(), Err("--no-watch".into()), &out);
+        assert!(msg.contains("stopped"));
+        let saved: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(out.join("watch.json")).unwrap())
+                .unwrap();
+        assert_eq!(saved["status"], "not_watched");
+        assert_eq!(saved["reason"], "--no-watch");
     }
 
     fn pocket_library() -> PathBuf {
@@ -941,6 +1044,26 @@ mod tests {
             ..real
         };
         assert!(explore_config(&pocket_library(), &reckless).is_err());
+    }
+
+    #[test]
+    fn explore_refuses_options_that_would_check_nothing() {
+        for bad in [
+            ExploreOptions {
+                actions: 1,
+                ..options()
+            },
+            ExploreOptions {
+                minutes: 0.0,
+                ..options()
+            },
+            ExploreOptions {
+                texts: vec!["no-equals".into()],
+                ..options()
+            },
+        ] {
+            assert!(explore_config(&pocket_library(), &bad).is_err());
+        }
     }
 
     #[test]

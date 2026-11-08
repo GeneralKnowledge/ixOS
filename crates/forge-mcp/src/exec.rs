@@ -134,6 +134,9 @@ pub async fn run(
             )
         };
         let mut result = made_up(inv, inv.stage, &why, "", started);
+        // Said in a field too, so a client can tell it from a failure the
+        // command reported: nothing it would have printed was read.
+        result["stopped"] = json!(if cancelled { "cancelled" } else { "timeout" });
         if !cancelled && inv.stage == "device" {
             let obj = result.as_object_mut().expect("object");
             obj.insert("needs_person".into(), json!(true));
@@ -280,5 +283,49 @@ mod tests {
         assert_eq!(command_name(&inv.args), "run ios");
         assert_eq!(tail("one\ntwo\nthree\n", 8), "three\n");
         assert_eq!(tail("short", 100), "short");
+    }
+
+    fn script(dir: &Path, body: &str) -> PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let file = dir.join("forge");
+        std::fs::write(&file, format!("#!/bin/sh\n{body}\n")).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755)).unwrap();
+        file
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_timeout_or_a_cancel_is_a_failure_that_says_which() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = script(tmp.path(), "sleep 30");
+        let inv = Invocation::new(
+            &["ui", "run"],
+            tmp.path(),
+            Duration::from_millis(300),
+            "test",
+        );
+        let r = run(&forge, tmp.path(), &inv, &CancellationToken::new()).await;
+        assert_eq!(r["ok"], false);
+        assert_eq!(r["stopped"], "timeout");
+        let cancel = CancellationToken::new();
+        cancel.cancel();
+        let inv = Invocation::new(&["ui", "run"], tmp.path(), Duration::from_secs(30), "test");
+        let r = run(&forge, tmp.path(), &inv, &cancel).await;
+        assert_eq!(r["ok"], false);
+        assert_eq!(r["stopped"], "cancelled");
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn ok_from_a_child_that_exits_non_zero_is_a_failure() {
+        let tmp = tempfile::tempdir().unwrap();
+        let forge = script(
+            tmp.path(),
+            r#"echo '{"schema":"forge.result/1","ok":true,"stage":"ok"}'; exit 3"#,
+        );
+        let inv = Invocation::new(&["ui", "run"], tmp.path(), Duration::from_secs(10), "test");
+        let r = run(&forge, tmp.path(), &inv, &CancellationToken::new()).await;
+        assert_eq!(r["ok"], false);
+        assert!(r["error"].as_str().unwrap().contains("exited 3"));
     }
 }
