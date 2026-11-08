@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08, decisions taken the same day. M6.1 is in progress. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built and Linux-tested; its phone checks are pending. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 
@@ -92,6 +92,20 @@ Infrastructure (M6.1–M6.4) and the Good Dog work (M6.0, M6.5) are separate PRs
 
 **iPhone:** Device Lab's Crash Test buttons in a UI scenario: the bundle must name the step, `crash_test.rs:24` and the log lines before it. Then one explore walk on Pocket Library test data writing a bundle. Proves correlation on real reports and real timing.
 
+**Built (2026-11-08, Linux-tested only; not yet run on the iPhone):**
+
+| Piece | Where |
+|---|---|
+| `forge_ui_explore` (no destructive taps, no agent-typed text; `data.out` is the run folder) | `crates/forge-mcp/src/tools.rs` |
+| Explore bundle: `evidence.json` with `command = "ui explore"`, `explore`, `watch`, and artifacts `explore_report`, `screenshot`, `ui_tree`, `repro`, `device_log`, `crash`. A walk that tried no control fails | `evidence.rs` `write_explore_bundle`, `ui.rs` |
+| The watch: the app's own log lines during `forge ui run` and `forge ui explore` (`device.log`), and its new crash reports, pulled and symbolicated when a step fails or the app closes. The failed step gets `log_tail` and `crash`. `--no-watch` (one-step MCP actions use it) | `crates/forge-cli/src/watch.rs` |
+| `forge_diagnose` `data.correlation`: layer, failed step, explore errors with replay files, crash with its app frame, log tail, files changed since the session started, and whether the crash is in one of them | `crates/forge-mcp/src/correlate.rs` |
+| `forge device apps`: installed apps, profile team, lifetime and days left, free-team slots in use; `forge_device_status` adds them with a note when every slot is taken or a profile expired | `forge-device` (installation_proxy, misagent), `device.rs` |
+| `forge run ios --wait-for-device MINUTES` builds Rust and Swift first, then waits for the phone; every run writes `<app>/.forge/status/run-ios.json` (phase, pid, heartbeat every 10 s, the error when it fails) | `commands.rs`, `status.rs` |
+| `forge check swift`: `swiftc -parse` of the view files, Docker-not-running named | `swift_check.rs` |
+
+What the phone has to show, in the next coordinated sitting: the syslog stream and WDA running together without either dropping; a Device Lab crash named in the failed step with `crash_test.rs:24`; `forge device apps` matching what Settings shows (including whether the WebDriverAgent runner holds a free slot); and the misagent profile read on iOS 26.3.1.
+
 ### M6.2 Exploration aimed at the change
 
 **What:**
@@ -163,22 +177,48 @@ Not a planted bug. If the run finds no genuine problem, the record says so and M
 
 **iPhone:** yes, one more set of staged sittings.
 
+### Silent failures
+
+Reuben (2026-11-08): silent failures break unattended automation, so look for all of them. The trigger was Good Dog pain point 18: a laptop request was refused at 13:07, nobody noticed, and he waited 20 minutes at the phone believing it was building. The sweep covered the forge CLI and MCP server, device and WebDriverAgent calls, the build and CI scripts, and the workflows, looking for swallowed errors, ignored exit codes, timeouts that end as success, and empty results treated as passes.
+
+| Found | Effect | Status |
+|---|---|---|
+| A request to the laptop that never starts looks the same as one that is building | A person waits at the phone for nothing (pain point 18) | Fixed: `forge run ios` writes `.forge/status/run-ios.json` at once and a heartbeat every 10 s. Whoever sends a laptop run (a person, an agent, Remote Control) reads it within a minute and says "building" only after seeing `phase: building` |
+| `forge run ios` asks for the phone before anything is built | The phone waits on the build (pain point 17) | Fixed: `--wait-for-device` |
+| `ci-macos.sh affected`: a base commit that can't be fetched made `git diff` fail inside a process substitution, which reads as "no files changed" | No Swift CI at all, reported as "Nothing to check" | Fixed: a failed diff checks every app |
+| `ci-macos.sh`: an example not in its hand-kept list (Good Dog) fell into the shared-code branch | A change to Good Dog's Swift built the template and Device Lab, never Good Dog (pain point 11) | Fixed: apps with `forge.toml` and an Xcode project are discovered |
+| `rust.yml` ran the headless twin for Pocket Library only | A new app's `requirements.toml` was never checked in CI (pain point 11) | Fixed: every `examples/*/requirements.toml` |
+| `forge check swift`: `swift test` that exited 0 but whose results couldn't be parsed | Reported "passed" with nothing proved | Fixed: fails and says so |
+| `forge check swift` with `FORGE_SWIFT_DOCKER` and Docker stopped | An unexplained Docker error (pain point 10) | Fixed: named, with the fix |
+| A UI test file with no steps (for example a typo in `[[step]]`) | Passed, and set its requirements' device verdict to passed | Fixed: refused when loaded |
+| `forge ui explore` that tried no control (all skipped or unreachable) | Exit 0, an empty walk read as clean | Fixed: fails |
+| `forge run ios` stopping xtool after `[Installing] 100%` | `ok: true` with only `data.verified: false` | Fixed: a hint in the result as well |
+| `forge mcp`: a child that printed `ok: true` and then exited non-zero | Trusted as a success | Fixed: becomes a failure naming the exit code |
+| `forge run ios --wait-for-device` when `xtool devices` itself fails | Would have said "no iPhone connected" | Fixed: says the listing failed (usbmuxd) |
+| A Rust enum case added without the Swift picker noticing (UniFFI enums aren't `CaseIterable`) | A missing option, no error (pain point 6) | Open, in M6.P |
+| `forge_run_ui_test` with a screenshot that has no baseline yet | `ok: true`, verdict `new` | Kept: by design, and `data.visual` says `new`; M6.4's run record lists it under not proven |
+| A screenshot step whose tree can't be saved | The visual check notes "no accessibility tree was saved" | Kept: reported, not silent |
+| Remote Control requests refused by the session layer | Not visible to Forge at all | Process: the status file above is the check; the iPhone session thread and agent run scripts read it before saying anything is building |
+
+Checks for each fix are Linux tests (`cargo test`), plus a real `forge check swift` on Pocket Library in Docker that syntax-checked 13 view files and caught a planted syntax error. The workflow changes run on this PR's CI.
+
 ### Good Dog pain points in M6
 
 Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-dog-pain-points.md`, in #121) to be fixed as part of M6. Each item goes where it helps the loop, and the rest form one cleanup milestone. Framework extractions (`Store<T>`, test data, `LocalTime`) start only after #121 merges, because rule 1 extracts from merged code.
 
 | Log item | Where in M6 | What |
 |---|---|---|
-| 1, 9: SwiftUI views not type-checked on Linux | M6.1 (cheap part), M6.P (the rest) | `forge check swift` adds `swiftc -parse` of the view files now. Type-checking against SwiftUI stubs is a spike in M6.P; if it isn't feasible, the laptop xtool build stays the check (decision 1) |
+| 1, 9: SwiftUI views not type-checked on Linux | M6.1 (cheap part, done), M6.P (the rest) | `forge check swift` syntax-checks the view files with `swiftc -parse`. Type-checking against SwiftUI stubs is a spike in M6.P; if it isn't feasible, the laptop xtool build stays the check (decision 1) |
 | 5, 13: test-data and clock code copied between apps; no way to keep test data across a relaunch | M6.2 | `ForgeTestData.directory(app:)` with the keep-data flag in the template, and `forge_runtime::LocalTime` with an injectable clock. Pocket Library and Good Dog move onto them |
 | 12: `expect` can't combine an id with a label check | M6.2 | `id` plus `label_contains` in one target in `forge ui run` |
 | 14: a requirement can't say its device check isn't written yet | M6.4 | `device = []` with a `pending` note; `forge verify` lists it as open with the note, so the run record names it under not run |
-| 15: no view of app slots | M6.1 | `forge device apps` (already planned there) |
-| 17: the phone was asked for before the laptop had built the app | M6.1 | `forge run ios` builds first and waits for the phone only for the install. Phone sittings are booked once the build has passed (`forge_build_ios` before `forge_install_device` in the run scripts) |
-| 10: Docker not running gives a confusing error | M6.1 | `forge check swift` and `forge doctor` say Docker isn't running and how to start it |
+| 15: no view of app slots | M6.1 (done) | `forge device apps` |
+| 18: a refused laptop request went unnoticed for 20 minutes | M6.1 (done) | The status marker and heartbeat; see Silent failures |
+| 17: the phone was asked for before the laptop had built the app | M6.1 (done) | `forge run ios` builds first and waits for the phone only for the install. Phone sittings are booked once the build has passed (`forge_build_ios` before `forge_install_device` in the run scripts) |
+| 10: Docker not running gives a confusing error | M6.1 (done in `forge check swift`) | `forge check swift` names it and the fix |
 | 2, 3: `forge init` gives a notes app to delete; generated README and AGENTS name the starter's files | M6.P | `forge init --blank`: an empty `AppCore` with lifecycle, events and logging wired, one screen, one model test, docs listing what is actually there |
 | 4: `forge_storage::Store<T>` (save, then publish) | M6.P | Extracted from Good Dog's `change` helper and Pocket Library's `store.rs` (the second use) |
-| 4, 11: adding an app to CI takes five hand edits | M6.P | `ci-macos.sh` and one twin step discover apps from `examples/*/forge.toml` |
+| 4, 11: adding an app to CI takes five hand edits | M6.1 (done, as a silent failure) | `ci-macos.sh` and the twin step discover apps; the Xcode project validation and cache list in `rust.yml` are still per app (M6.P) |
 | 6, 7: UniFFI enums aren't `CaseIterable`; error case casing | M6.P | `forge bindings generate` adds `CaseIterable` to field-less enums; the casing is documented in ios-ui.md |
 | 1 (prebuilt bindgen), 8, 16: slow first `forge init`, bundled content, shared core crate | M6.P (docs), later (prebuilt bindgen) | Document bundled content and a shared core crate in app-crate.md. A prebuilt `uniffi-bindgen` waits until the first-run time matters to an agent run |
 

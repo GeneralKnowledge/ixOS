@@ -81,20 +81,32 @@ jobs:
         env:
           FORGE_SWIFT_DOCKER: swift:6.2
         run: ./scripts/check-fresh-app.sh "$RUNNER_TEMP/fresh-app"
-      # The headless twin (docs/evidence.md): Pocket Library's real view
-      # model against its real Rust core, on Linux, judged against the app's
-      # requirements.toml. Fails on a failed test or a requirement whose test
-      # no longer exists. The evidence bundle is kept as an artifact.
-      - name: Pocket Library headless twin
+      # The headless twin (docs/evidence.md): each app's real view model
+      # against its real Rust core, on Linux, judged against the app's
+      # requirements.toml. Every example with a requirements.toml is found,
+      # not listed, so a new app can't silently skip it (Good Dog pain point
+      # 11). Fails on a failed test or a requirement whose test no longer
+      # exists. The evidence bundles are kept as an artifact.
+      - name: Headless twins
         env:
           FORGE_SWIFT_DOCKER: swift:6.2
-        run: ./target/debug/forge check swift --project examples/pocket-library
-      - name: Keep the evidence bundle
+        run: |
+          set -euo pipefail
+          found=0
+          for req in examples/*/requirements.toml; do
+            app="$(dirname "$req")"
+            echo "::group::$app headless twin"
+            ./target/debug/forge check swift --project "$app"
+            echo "::endgroup::"
+            found=$((found + 1))
+          done
+          [ "$found" -gt 0 ] || { echo "no app has a requirements.toml"; exit 1; }
+      - name: Keep the evidence bundles
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: pocket-library-evidence
-          path: examples/pocket-library/.forge/runs/
+          name: twin-evidence
+          path: examples/*/.forge/runs/
           include-hidden-files: true
           if-no-files-found: ignore
 

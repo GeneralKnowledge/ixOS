@@ -67,10 +67,12 @@ Every run that executes tests writes a directory:
   <name>.png           device runs: each screenshot step's picture
   <name>.tree.json     device runs: the accessibility tree saved with it
   visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
-  device.log           device runs: the app's log lines for the run, from Forge Device     (proposed)
+  device.log           device runs: the app's own log lines during the run (`+<ms>` from its start)
+  crashes/             device runs: the app's crash reports written during the run, symbolicated (`<report>.ips.txt`)
+  explore.json, screens/, repro/   `forge ui explore`: the walk, each screen, a replay file per issue
 ```
 
-`<id>` is the UTC start time (`2026-11-07T18-48-25`), the same stamp as `.forge/logs/`. `.forge/` is git-ignored; CI keeps Pocket Library's bundle as the `pocket-library-evidence` artifact on every run of the Rust workflow.
+`<id>` is the UTC start time (`2026-11-07T18-48-25`), the same stamp as `.forge/logs/`. `.forge/` is git-ignored; CI runs the twin of every app with a `requirements.toml` and keeps the bundles as the `twin-evidence` artifact on every run of the Rust workflow.
 
 The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the-result-contract)) stays the short answer and points at the bundle: `data.evidence` is the path of `evidence.json`, `data.requirements` lists each id with its verdict, and `data.results` counts the tests. An agent reads the result; a person, or `forge verify`, reads the bundle.
 
@@ -128,7 +130,8 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
 1. Writes to `<app>/.forge/runs/<id>-ui-run/` unless `--out` names another folder. Outside an app it still defaults to `forge-ui-out` and writes no bundle. The files it writes there are unchanged: the script's named screenshots, and at a failed step `failure-stepN.png`, `failure-stepN-tree.json` and `failure-stepN-tree.txt`.
 2. Writes `evidence.json` there with `kind = "device"`, `where.device` (`udid`, `ios_major`), `build` (read before the run, plus `installed_as`), `scenario` (relative to the app) and, instead of `tests`, `steps`: `{ "passed": N, "failed": null | { "step", "action", "error", "on_screen", "tree" } }`. Screenshots and the failure tree are listed under `artifacts`.
 3. Lists only the requirements whose `device` names this scenario, each with `device.verdict` `passed` or `failed`. Twin verdicts are left out of a device bundle.
-4. Compares each screenshot with the scenario's baseline (`uitests/baselines/<test>/`) and records the result under `visual`. A changed screen, or one with a new accessibility finding, fails the run and its requirements like a failed step, with a note naming the screen ([visual-regression.md](visual-regression.md)). `--visual off` skips this.
+4. Records `watch` (M6.1): the app's own log lines while the run lasted (`device.log`) and, when a step failed, its crash reports written during the run, pulled and symbolicated. The failed step carries `log_tail` and `crash`. `--no-watch` skips it.
+5. Compares each screenshot with the scenario's baseline (`uitests/baselines/<test>/`) and records the result under `visual`. A changed screen, or one with a new accessibility finding, fails the run and its requirements like a failed step, with a note naming the screen ([visual-regression.md](visual-regression.md)). `--visual off` skips this.
 
 `forge_run_ui_test` in `forge mcp` writes to the same place, so an agent's UI tests count as evidence. `forge_ui_act`'s one-step files don't: they live in `.forge/mcp/` and no requirement names them.
 

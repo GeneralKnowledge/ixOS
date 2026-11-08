@@ -623,7 +623,10 @@ mod tests {
     fn view_files_are_parsed_not_compiled() {
         let a = PathBuf::from("/app/Sources/AppHost/TodayView.swift");
         let line = swiftc_parse(Path::new("/app"), &[&a]).display();
-        assert!(line.contains("swiftc -parse /app/Sources/AppHost/TodayView.swift"), "{line}");
+        assert!(
+            line.contains("swiftc -parse /app/Sources/AppHost/TodayView.swift"),
+            "{line}"
+        );
     }
 
     #[test]

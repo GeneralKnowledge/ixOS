@@ -218,6 +218,11 @@ impl Script {
 
     pub fn parse(text: &str) -> std::result::Result<Script, String> {
         let script: Script = toml::from_str(text).map_err(|e| e.to_string())?;
+        // A test with no steps would pass having checked nothing (a typo
+        // such as `[[steps]]` for `[[step]]` does that).
+        if script.steps.is_empty() {
+            return Err("no steps: write each one as a [[step]] table".into());
+        }
         for (i, step) in script.steps.iter().enumerate() {
             step.check().map_err(|e| format!("step {}: {e}", i + 1))?;
         }

@@ -1,0 +1,9 @@
+order = 37
+capability = "Installed apps, profile expiry and free-team slots (`forge device apps`, in `forge_device_status`)"
+framework = "Yes: forge-device (installation_proxy, misagent)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a"
+iphone = "No"
+documented = "Yes: forge-device.md, forge-m6.md"
+limits = "Slots are counted from the provisioning profiles' lifetime (7 days or less means a free team), which is an estimate of Apple's rule; removing an app is still done by a person on the phone"

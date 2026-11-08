@@ -1006,11 +1006,18 @@ fn run_ios_steps(
         );
         let deadline = std::time::Instant::now() + limit;
         loop {
-            match crate::ios_env::ios_devices(runner) {
-                Some(devices) if !devices.is_empty() => break,
+            let listed = crate::ios_env::ios_devices(runner);
+            match listed {
+                Some(ref devices) if !devices.is_empty() => break,
                 _ if std::time::Instant::now() >= deadline => {
+                    // Say which: no phone, or phones couldn't be listed.
+                    let why = if listed.is_none() {
+                        "the phones couldn't be listed (`xtool devices --no-wait` failed or timed out: usbmuxd may be stuck; `sudo systemctl restart usbmuxd`)"
+                    } else {
+                        "no iPhone was connected"
+                    };
                     return Err(format!(
-                        "The app is built, but no iPhone was connected within {} min. Connect it, unlock it, and run `forge run ios --project {}` again (the build is reused).",
+                        "The app is built, but {why} within {} min. Connect it, unlock it, and run `forge run ios --project {}` again (the build is reused).",
                         limit.as_secs().div_ceil(60),
                         project_dir.display()
                     ));
@@ -1598,7 +1605,10 @@ ios_device = true
             Some(std::time::Duration::from_secs(0)),
         )
         .unwrap_err();
-        assert!(err.contains("The app is built, but no iPhone"), "{err}");
+        assert!(
+            err.contains("The app is built, but no iPhone was connected"),
+            "{err}"
+        );
         let calls = mock.call_lines();
         let build = calls
             .iter()

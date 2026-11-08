@@ -113,3 +113,9 @@ Expected — Rust returns `ForgeAppError.WouldUnderflow`; the UI should show a m
 ## Persistence shows “Could not save counter state”
 
 Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.
+
+## Did the laptop run start?
+
+A `forge run ios` started from somewhere else (Remote Control, an agent, a script over SSH) may be refused before it runs, and nothing on the phone says so. Every run writes `<app>/.forge/status/run-ios.json` the moment it starts: its `phase` (`starting`, `building`, `waiting_for_device`, `installing`, then `done` or `failed` with the `error`), the `pid`, and `updated`, which moves every 10 seconds while it runs. Read it within a minute of asking. If there is no file newer than the request, nothing started. If `updated` is more than a minute old and the phase isn't `done` or `failed`, the process died.
+
+Ask for the phone only when it is needed: `forge run ios --wait-for-device 20` builds the Rust and Swift first and then waits up to 20 minutes for the iPhone, and its status says `waiting_for_device` at that point.

@@ -866,6 +866,19 @@ pub fn explore(
     data["out"] = serde_json::json!(out_dir.display().to_string());
     data["evidence"] = serde_json::json!(evidence.display().to_string());
     report::set_data(data);
+    // A walk that tried nothing checked nothing: never a pass.
+    let tried = report
+        .journal
+        .iter()
+        .filter(|s| s.action != "launch")
+        .count();
+    if tried == 0 {
+        return Err(format!(
+            "exploring tried no control: {} screen(s) seen, every control skipped or unreachable (see skipped in {}). Nothing was checked",
+            report.screens.len(),
+            out_dir.join("explore.json").display()
+        ));
+    }
     match report.errors() {
         0 => Ok(()),
         n => Err(format!(
