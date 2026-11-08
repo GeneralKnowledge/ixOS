@@ -240,10 +240,15 @@ enum UiCommands {
         /// Never touch this identifier or label (repeatable)
         #[arg(long, value_name = "ID_OR_LABEL")]
         skip: Vec<String>,
-        /// Also tap delete, remove, reset, sign out and the like. Send,
-        /// pay, share and the like are never tapped
+        /// Also tap delete, remove, reset, sign out and the like (test data
+        /// only). Send, pay, share and the like are never tapped
         #[arg(long)]
         allow_destructive: bool,
+        /// Explore the app on the data already on the phone, only looking:
+        /// nothing that saves, edits, rates, types or changes a setting is
+        /// touched. Without it the app needs `[ui_test] test_data_args`
+        #[arg(long)]
+        real_data: bool,
         /// Launch with the largest accessibility text size
         #[arg(long)]
         largest_text: bool,
@@ -800,6 +805,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     texts,
                     skip,
                     allow_destructive,
+                    real_data,
                     largest_text,
                     per_screen,
                     no_screenshots,
@@ -812,6 +818,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         texts,
                         skip,
                         allow_destructive,
+                        real_data,
                         largest_text,
                         per_screen,
                         screenshots: !no_screenshots,

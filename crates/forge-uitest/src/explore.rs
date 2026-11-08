@@ -51,6 +51,12 @@ pub struct Config {
     /// Also tap destructive controls (delete, remove, sign out…). Controls
     /// that act outside the phone (send, pay, share…) are never tapped.
     pub allow_destructive: bool,
+    /// The app was launched on throwaway test data (its `[ui_test]
+    /// test_data_args`), so the explorer may change data: save, add, edit,
+    /// rate, type into forms. Without it the walk only looks around: it
+    /// never touches anything that could change the person's own data, and
+    /// destructive controls stay off whatever `allow_destructive` says.
+    pub test_data: bool,
     /// Identifiers or labels never to touch.
     pub skip: Vec<String>,
     /// At most this many controls tried per screen.
@@ -73,6 +79,7 @@ impl Default for Config {
             fixtures: HashMap::new(),
             default_text: "Forge".into(),
             allow_destructive: false,
+            test_data: false,
             skip: Vec::new(),
             per_screen: 15,
             find_timeout: Duration::from_secs(5),
@@ -189,6 +196,69 @@ const DESTRUCTIVE: &[&str] = &[
 /// Two-word forms of the above.
 const DESTRUCTIVE_PAIRS: &[(&str, &str)] = &[("sign", "out"), ("log", "out")];
 
+/// Words that mark a control changing the app's data. Without test data
+/// the explorer never touches them. Seen on Cati (2026-11-08): a walk on a
+/// real Pocket Library rated a book (`star`), changed its status
+/// (`checkmark.circle`), opened it through Continue Reading and saved
+/// "Explored Book" entries.
+const DATA_CHANGING: &[&str] = &[
+    "save",
+    "add",
+    "create",
+    "new",
+    "edit",
+    "update",
+    "rename",
+    "set",
+    "apply",
+    "confirm",
+    "done",
+    "rate",
+    "rating",
+    "star",
+    "favorite",
+    "favourite",
+    "like",
+    "heart",
+    "bookmark",
+    "flag",
+    "pin",
+    "mark",
+    "checkmark",
+    "status",
+    "progress",
+    "finish",
+    "finished",
+    "complete",
+    "read",
+    "reading",
+    "continue",
+    "resume",
+    "start",
+    "import",
+    "export",
+    "move",
+    "archive",
+    "restore",
+    "upload",
+    "download",
+    "record",
+    "sync",
+    "refresh",
+];
+
+/// Element kinds that change a setting or a value as soon as they are
+/// touched.
+const DATA_KINDS: &[&str] = &[
+    "Switch",
+    "Toggle",
+    "Slider",
+    "Stepper",
+    "Picker",
+    "PickerWheel",
+    "SegmentedControl",
+];
+
 /// Labels of controls that leave a screen.
 const EXIT_LABELS: &[&str] = &["back", "cancel", "close", "done", "dismiss", "ok"];
 
@@ -230,6 +300,25 @@ fn gate(node: &UiNode, config: &Config) -> Option<String> {
     }
     if let Some(word) = all.iter().find(|w| EXTERNAL.contains(&w.as_str())) {
         return Some(format!("acts outside the phone (\"{word}\")"));
+    }
+    if !config.test_data {
+        const WHY: &str = "the app is on the person's own data";
+        let destructive = all.iter().any(|w| DESTRUCTIVE.contains(&w.as_str()))
+            || all
+                .windows(2)
+                .any(|w| DESTRUCTIVE_PAIRS.contains(&(w[0].as_str(), w[1].as_str())));
+        if destructive {
+            return Some(format!("destructive; never on {WHY}"));
+        }
+        if let Some(word) = all.iter().find(|w| DATA_CHANGING.contains(&w.as_str())) {
+            return Some(format!("may change data (\"{word}\"); {WHY}"));
+        }
+        if DATA_KINDS.contains(&node.kind.as_str()) {
+            return Some(format!("{} changes a setting; {WHY}", node.kind));
+        }
+        if TYPEABLE.contains(&node.kind.as_str()) && node.kind != "SearchField" {
+            return Some(format!("typing may be saved; {WHY}"));
+        }
     }
     if config.allow_destructive {
         return None;
@@ -1432,8 +1521,75 @@ mod tests {
             max_actions: 200,
             find_timeout: Duration::ZERO,
             fixtures: HashMap::from([("bookForm.title".into(), "Dune".into())]),
+            test_data: true,
             ..Config::default()
         }
+    }
+
+    #[test]
+    fn on_the_persons_own_data_it_only_looks_around() {
+        let config = Config {
+            test_data: false,
+            allow_destructive: true,
+            ..config()
+        };
+        let (report, model) = explore(&config, None);
+        // No saving, adding, typing or deleting; reading the library,
+        // opening a book and going back are fine.
+        for touched in &model.log {
+            assert!(
+                ![
+                    "tap library.add",
+                    "type",
+                    "tap library.deleteAll",
+                    "tap bookForm"
+                ]
+                .iter()
+                .any(|f| touched.starts_with(f)),
+                "{touched} in {:?}",
+                model.log
+            );
+        }
+        assert!(model.log.iter().any(|l| l.starts_with("tap library.book.")));
+        let reasons: Vec<_> = report
+            .screens
+            .iter()
+            .flat_map(|s| &s.skipped)
+            .map(|s| s.reason.as_str())
+            .collect();
+        assert!(reasons
+            .iter()
+            .any(|r| r.starts_with("may change data (\"add\")")));
+        assert!(reasons.iter().any(|r| r.starts_with("destructive; never")));
+    }
+
+    #[test]
+    fn ratings_status_and_reading_count_as_data_changes() {
+        let config = Config::default();
+        for (id, label) in [
+            ("star.fill", "Rate 5 stars"),
+            ("checkmark.circle", "Mark as finished"),
+            ("library.continue", "Continue Reading"),
+            ("bookForm.save", "Save"),
+        ] {
+            assert!(
+                gate(&node("Button", Some(id), Some(label)), &config).is_some(),
+                "{id}"
+            );
+        }
+        let switch = node(
+            "Switch",
+            Some("settings.catalogue"),
+            Some("Online catalogue search"),
+        );
+        assert!(gate(&switch, &config).is_some());
+        let search = node(
+            "SearchField",
+            Some("library.search"),
+            Some("Title or author"),
+        );
+        assert!(gate(&search, &config).is_none());
+        assert!(gate(&node("Cell", Some("library.book.1"), Some("Dune")), &config).is_none());
     }
 
     fn explore(config: &Config, dir: Option<&Path>) -> (Report, ModelApp) {
@@ -1644,7 +1800,10 @@ mod tests {
     fn words_split_identifiers_and_labels() {
         assert_eq!(words("library.deleteAll"), ["library", "delete", "all"]);
         assert_eq!(words("Sign Out"), ["sign", "out"]);
-        let config = Config::default();
+        let config = Config {
+            test_data: true,
+            ..Config::default()
+        };
         let gated = |id: &str, label: &str| gate(&node("Button", Some(id), Some(label)), &config);
         assert!(gated("account.signOut", "Sign Out").is_some());
         assert!(gated("chat.send", "Send").is_some());
