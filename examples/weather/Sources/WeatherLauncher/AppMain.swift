@@ -6,6 +6,7 @@ struct WeatherLauncher: App {
     var body: some Scene {
         WindowGroup {
             WeatherView()
+                .forgeLaunchAppearance()
         }
     }
 }

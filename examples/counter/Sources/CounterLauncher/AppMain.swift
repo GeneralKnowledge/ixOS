@@ -6,6 +6,7 @@ struct CounterLauncher: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .forgeLaunchAppearance()
         }
     }
 }

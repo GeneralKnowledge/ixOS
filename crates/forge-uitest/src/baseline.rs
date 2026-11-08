@@ -9,14 +9,24 @@
 //! ```
 //!
 //! The size is part of the name, so one scenario can hold baselines for
-//! several phones. A run's screenshots are compared after the run, on Linux;
-//! nothing here needs the phone. See docs/visual-regression.md.
+//! several phones. So is the variant the screenshot was taken in (M6.3):
+//! the appearance and text size the app was launched with, from the launch
+//! step before it, so one scenario run in dark mode at the largest text
+//! size keeps its own baselines:
+//!
+//! ```text
+//! uitests/baselines/m0/1-library@1290x2796-dark-ax5.png
+//! ```
+//!
+//! A run's screenshots are compared after the run, on Linux; nothing here
+//! needs the phone. See docs/visual-regression.md.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 
-use crate::script::{Target, Visual};
+use crate::script::{Script, Target, Visual};
 use crate::tree::UiNode;
 use crate::visual::{self, Comparison, Options, PixelRect, Region, TreeChange};
 
@@ -41,6 +51,84 @@ pub fn dir_for(scenario: &Path) -> PathBuf {
         .unwrap_or(Path::new("."))
         .join("baselines")
         .join(stem)
+}
+
+/// The part of a baseline's name that says how the app was launched:
+/// `-dark` or `-light` (`-ForgeAppearance`), then the text size
+/// (`-UIPreferredContentSizeCategoryName`: `-xs` to `-xxxl`, and `-ax1` to
+/// `-ax5` for the accessibility sizes, Apple's AX1–AX5). Empty for the
+/// phone's own settings. The size L is the default and adds nothing.
+pub fn variant(launch_args: &[String]) -> String {
+    let value_of = |flag: &str| {
+        launch_args
+            .iter()
+            .position(|a| a == flag)
+            .and_then(|i| launch_args.get(i + 1))
+            .map(String::as_str)
+    };
+    let mut out = String::new();
+    match value_of("-ForgeAppearance") {
+        Some(mode @ ("dark" | "light")) => {
+            out.push('-');
+            out.push_str(mode);
+        }
+        Some(other) => {
+            out.push('-');
+            out.push_str(&clean(other));
+        }
+        None => {}
+    }
+    if let Some(category) = value_of("-UIPreferredContentSizeCategoryName") {
+        let size = category
+            .strip_prefix("UICTContentSizeCategory")
+            .unwrap_or(category);
+        let short = match size {
+            "L" => String::new(),
+            "AccessibilityM" => "ax1".into(),
+            "AccessibilityL" => "ax2".into(),
+            "AccessibilityXL" => "ax3".into(),
+            "AccessibilityXXL" => "ax4".into(),
+            "AccessibilityXXXL" => "ax5".into(),
+            other => clean(other),
+        };
+        if !short.is_empty() {
+            out.push('-');
+            out.push_str(&short);
+        }
+    }
+    out
+}
+
+fn clean(text: &str) -> String {
+    text.chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
+}
+
+/// Each screenshot's variant in a scenario: the launch arguments of the
+/// launch step before it.
+pub fn variants(script: &Script) -> HashMap<String, String> {
+    let mut current = String::new();
+    let mut out = HashMap::new();
+    for step in &script.steps {
+        if let Some(launch) = &step.launch {
+            current = variant(&launch.args);
+        }
+        if let Some(name) = &step.screenshot {
+            out.insert(name.clone(), current.clone());
+        }
+    }
+    out
+}
+
+/// The variants of the scenario file; none when there is no file (a run
+/// put together by a tool, not a scenario).
+fn variants_of(scenario: &Path) -> Result<HashMap<String, String>, String> {
+    if !scenario.is_file() {
+        return Ok(HashMap::new());
+    }
+    Ok(variants(&Script::load(scenario)?))
 }
 
 /// The tree saved next to a screenshot: `form.png` → `form.tree.json`.
@@ -170,15 +258,26 @@ pub fn compare_run(
     mode: Mode,
 ) -> Result<Report, String> {
     let base_dir = dir_for(scenario);
+    let variants = variants_of(scenario)?;
     let mut screens = Vec::new();
     for png in compared(screenshots) {
-        screens.push(one(&png, &base_dir, settings, run_dir, mode)?);
+        let variant = variants
+            .get(&stem_of(&png))
+            .map(String::as_str)
+            .unwrap_or("");
+        screens.push(one(&png, &base_dir, variant, settings, run_dir, mode)?);
     }
     Ok(Report {
         mode,
         baselines: base_dir.display().to_string(),
         screens,
     })
+}
+
+fn stem_of(png: &Path) -> String {
+    png.file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 fn rel(path: &Path, to: &Path) -> String {
@@ -197,6 +296,7 @@ fn load_tree(path: &Path) -> Option<UiNode> {
 fn one(
     png: &Path,
     base_dir: &Path,
+    variant: &str,
     settings: &Visual,
     run_dir: &Path,
     mode: Mode,
@@ -208,7 +308,7 @@ fn one(
     let bytes = read(png)?;
     let (width, height) =
         visual::png_size(&bytes).map_err(|e| format!("{}: {e}", png.display()))?;
-    let stem = format!("{name}@{width}x{height}");
+    let stem = format!("{name}@{width}x{height}{variant}");
     let base_png = base_dir.join(format!("{stem}.png"));
     let base_tree = base_dir.join(format!("{stem}.tree.json"));
     let mut screen = Screen {
@@ -238,7 +338,7 @@ fn one(
             "no baseline yet: look at the screenshot, then `forge ui accept <run>`".into()
         } else {
             format!(
-                "no baseline at {width}x{height} (there is one at {}): another phone?",
+                "no baseline at {width}x{height}{variant} (there is one at {}): another phone, appearance or text size?",
                 others.join(", ")
             )
         });
@@ -331,6 +431,7 @@ fn store(png: &Path, base_png: &Path) -> Result<(), String> {
 /// those named in `only`. Returns the baselines written.
 pub fn accept(scenario: &Path, run_dir: &Path, only: &[String]) -> Result<Vec<PathBuf>, String> {
     let base_dir = dir_for(scenario);
+    let variants = variants_of(scenario)?;
     let mut pngs: Vec<PathBuf> = std::fs::read_dir(run_dir)
         .map_err(|e| format!("{}: {e}", run_dir.display()))?
         .filter_map(|e| e.ok().map(|e| e.path()))
@@ -358,7 +459,8 @@ pub fn accept(scenario: &Path, run_dir: &Path, only: &[String]) -> Result<Vec<Pa
         .filter(|p| only.is_empty() || only.contains(&name(p)))
     {
         let (w, h) = visual::png_size(&read(png)?)?;
-        let base = base_dir.join(format!("{}@{w}x{h}.png", name(png)));
+        let variant = variants.get(&name(png)).map(String::as_str).unwrap_or("");
+        let base = base_dir.join(format!("{}@{w}x{h}{variant}.png", name(png)));
         store(png, &base)?;
         written.push(base);
     }
@@ -369,6 +471,104 @@ pub fn accept(scenario: &Path, run_dir: &Path, only: &[String]) -> Result<Vec<Pa
         ));
     }
     Ok(written)
+}
+
+/// Each screen of a walk against the same screen in an earlier clean walk
+/// launched the same way (M6.3): `match` or `changed`, with the changed
+/// areas and the elements in them, and a diff image under `dir/visual/`.
+/// A difference is a change, not a defect: this is information for whoever
+/// reads the walk, never an issue. `dir` and `earlier_dir` are the walks'
+/// folders (screens/<id>.png and screens/<id>.json); `earlier` is the
+/// earlier walk's explore.json.
+pub fn compare_walks(
+    dir: &Path,
+    screens: &[(String, Option<String>)],
+    earlier_dir: &Path,
+    earlier: &serde_json::Value,
+) -> serde_json::Value {
+    let theirs: HashMap<&str, &str> = earlier["screens"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|s| Some((s["id"].as_str()?, s["screenshot"].as_str()?)))
+        .collect();
+    let mut out = Vec::new();
+    let mut not_in_earlier = 0;
+    let mut unreadable = Vec::new();
+    for (id, shot) in screens {
+        let Some(shot) = shot else { continue };
+        let Some(old) = theirs.get(id.as_str()) else {
+            not_in_earlier += 1;
+            continue;
+        };
+        match compare_pair(dir, id, shot, &earlier_dir.join(old)) {
+            Ok(entry) => out.push(entry),
+            Err(e) => unreadable.push(serde_json::json!({"screen": id, "error": e})),
+        }
+    }
+    let changed = out.iter().filter(|e| e["verdict"] == "changed").count();
+    serde_json::json!({
+        "against": earlier_dir.display().to_string(),
+        "note": "Compared with the last clean walk launched the same way. A difference is a change, not a defect: look at the diff and decide. Never counted as an issue.",
+        "compared": out.len(),
+        "changed": changed,
+        "not_in_earlier": not_in_earlier,
+        "screens": out,
+        "unreadable": unreadable,
+    })
+}
+
+fn compare_pair(
+    dir: &Path,
+    id: &str,
+    shot: &str,
+    old_png: &Path,
+) -> Result<serde_json::Value, String> {
+    let new_png = dir.join(shot);
+    let actual = visual::decode_png(&read(&new_png)?)?;
+    let before = visual::decode_png(&read(old_png)?)?;
+    let tree = load_tree(&dir.join(format!("screens/{id}.json")));
+    let scale = visual::scale_of(actual.width, tree.as_ref());
+    let mut opts = Options {
+        scale,
+        ..Options::default()
+    };
+    opts.masks
+        .push(visual::status_bar(actual.width, actual.height, scale));
+    let comparison = visual::compare(&before, &actual, &opts);
+    let mut entry = serde_json::json!({
+        "screen": id,
+        "verdict": if comparison.changed() { "changed" } else { "match" },
+        "changed_ratio": (comparison.changed_ratio() * 10_000.0).round() / 10_000.0,
+        "earlier": old_png.display().to_string(),
+    });
+    if comparison.changed() {
+        let mut regions = comparison.regions.clone();
+        if let Some(t) = &tree {
+            for r in &mut regions {
+                r.locate(t);
+            }
+        }
+        entry["areas"] = serde_json::json!(regions
+            .iter()
+            .map(|r| serde_json::json!({
+                "points": r.rect,
+                "elements": r.elements,
+            }))
+            .collect::<Vec<_>>());
+        if comparison.size_changed {
+            entry["size_changed"] = serde_json::json!(true);
+        }
+        if let Some(diff) = &comparison.diff {
+            let vdir = dir.join("visual");
+            std::fs::create_dir_all(&vdir).map_err(|e| format!("{}: {e}", vdir.display()))?;
+            let path = vdir.join(format!("{id}.diff.png"));
+            std::fs::write(&path, visual::encode_png(diff)?)
+                .map_err(|e| format!("{}: {e}", path.display()))?;
+            entry["diff"] = serde_json::json!(format!("visual/{id}.diff.png"));
+        }
+    }
+    Ok(entry)
 }
 
 fn other_sizes(base_dir: &Path, name: &str) -> Vec<String> {
@@ -483,6 +683,147 @@ mod tests {
         let dir = f.root.join(format!(".forge/runs/{n}-ui-run"));
         std::fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn the_variant_names_the_appearance_and_text_size() {
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(variant(&[]), "");
+        assert_eq!(variant(&args(&["-ForgeUITestData"])), "");
+        assert_eq!(variant(&args(&["-ForgeAppearance", "dark"])), "-dark");
+        assert_eq!(
+            variant(&args(&[
+                "-ForgeUITestData",
+                "-ForgeAppearance",
+                "dark",
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryAccessibilityXXXL"
+            ])),
+            "-dark-ax5"
+        );
+        assert_eq!(
+            variant(&args(&[
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryXXXL"
+            ])),
+            "-xxxl"
+        );
+        // L is the default size: the same baseline as none.
+        assert_eq!(
+            variant(&args(&[
+                "-UIPreferredContentSizeCategoryName",
+                "UICTContentSizeCategoryL"
+            ])),
+            ""
+        );
+        assert_eq!(variant(&args(&["-ForgeAppearance", "light"])), "-light");
+    }
+
+    #[test]
+    fn a_dark_run_keeps_its_own_baselines() {
+        let f = fixture();
+        // The same screen, launched twice: light, then dark at AX5.
+        std::fs::write(
+            &f.scenario,
+            r#"
+name = "form"
+app = "org.example.form"
+[[step]]
+launch = {}
+[[step]]
+screenshot = "form"
+[[step]]
+launch = { args = ["-ForgeAppearance", "dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+[[step]]
+screenshot = "form-dark"
+"#,
+        )
+        .unwrap();
+        let run1 = run_dir(&f, 1);
+        let light = Image::new(300, 600, WHITE);
+        let dark = Image::new(300, 600, BLACK);
+        let shots = vec![
+            shoot(&run1, "form", &light, &tree("Save")),
+            shoot(&run1, "form-dark", &dark, &tree("Save")),
+        ];
+        let written = accept(&f.scenario, &run1, &[]).unwrap();
+        let base = f.root.join("uitests/baselines/form");
+        assert_eq!(
+            written,
+            vec![
+                base.join("form-dark@300x600-dark-ax5.png"),
+                base.join("form@300x600.png")
+            ]
+        );
+        // Run again: each compares with its own, so neither changed.
+        let report =
+            compare_run(&f.scenario, &Visual::default(), &shots, &run1, Mode::Check).unwrap();
+        let verdicts: Vec<(&str, &str)> = report
+            .screens
+            .iter()
+            .map(|s| (s.name.as_str(), s.verdict))
+            .collect();
+        assert_eq!(verdicts, [("form", "match"), ("form-dark", "match")]);
+        assert!(report.screens[1]
+            .baseline
+            .ends_with("form-dark@300x600-dark-ax5.png"));
+    }
+
+    #[test]
+    fn a_walk_says_which_screens_look_different_from_the_last_clean_one() {
+        let tmp = tempfile::tempdir().unwrap();
+        let (earlier, now) = (tmp.path().join("earlier"), tmp.path().join("now"));
+        let save = |dir: &Path, id: &str, image: &Image| {
+            std::fs::create_dir_all(dir.join("screens")).unwrap();
+            std::fs::write(
+                dir.join(format!("screens/{id}.png")),
+                encode_png(image).unwrap(),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join(format!("screens/{id}.json")),
+                serde_json::to_vec(&tree("Save")).unwrap(),
+            )
+            .unwrap();
+        };
+        let white = Image::new(300, 600, WHITE);
+        let mut redrawn = white.clone();
+        // The Save button (y 100-120 pt at 3x) drawn differently.
+        redrawn.fill(
+            PixelRect {
+                x: 45,
+                y: 310,
+                width: 60,
+                height: 40,
+            },
+            BLACK,
+        );
+        save(&earlier, "aaaa", &white);
+        save(&earlier, "bbbb", &white);
+        save(&now, "aaaa", &white);
+        save(&now, "bbbb", &redrawn);
+        save(&now, "cccc", &white);
+        let earlier_report = serde_json::json!({"screens": [
+            {"id": "aaaa", "screenshot": "screens/aaaa.png"},
+            {"id": "bbbb", "screenshot": "screens/bbbb.png"},
+        ]});
+        let screens = vec![
+            ("aaaa".to_string(), Some("screens/aaaa.png".to_string())),
+            ("bbbb".to_string(), Some("screens/bbbb.png".to_string())),
+            ("cccc".to_string(), Some("screens/cccc.png".to_string())),
+        ];
+        let v = compare_walks(&now, &screens, &earlier, &earlier_report);
+        assert_eq!(v["compared"], 2, "{v}");
+        assert_eq!(v["changed"], 1, "{v}");
+        assert_eq!(v["not_in_earlier"], 1);
+        let changed = &v["screens"][1];
+        assert_eq!(changed["verdict"], "changed");
+        assert_eq!(
+            changed["areas"][0]["elements"][0],
+            "Button id=form.save \"Save\""
+        );
+        assert!(now.join("visual/bbbb.diff.png").is_file());
+        assert!(v["note"].as_str().unwrap().contains("not a defect"));
     }
 
     #[test]

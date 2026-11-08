@@ -51,6 +51,20 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
 
 /// Lines kept from one run; the oldest go first.
 const MAX_LINES: usize = 5000;
+/// Libraries that log inside the app's process for the test runner, not
+/// for the app: WebDriverAgent's attribute queries go through
+/// XCTAutomationSupport, thousands of lines a run on Cati (2026-11-08),
+/// which pushed the app's own lines out of the kept log.
+const RUNNER_LIBRARIES: &[&str] = &["XCTAutomationSupport"];
+
+/// The library of a syslog relay line, `UIKitCore` in
+/// `GoodDogXtool(UIKitCore)[9] <Notice>: ...`.
+fn log_library(line: &str) -> Option<&str> {
+    let head = &line[..line.find(" <")?];
+    let field = head.rsplit(' ').next()?;
+    let (_, rest) = field.split_once('(')?;
+    rest.split_once(')').map(|(lib, _)| lib)
+}
 /// Lines of the log end attached to a failure.
 pub const TAIL: usize = 20;
 /// How long `finish` and drop wait for the log reader to stop.
@@ -64,6 +78,10 @@ pub struct Watch {
     project: PathBuf,
     started: Instant,
     lines: Arc<Mutex<VecDeque<String>>>,
+    /// Lines dropped from the front once [`MAX_LINES`] were kept.
+    dropped: Arc<std::sync::atomic::AtomicUsize>,
+    /// The test runner's own lines in the app's process, left out.
+    runner_lines: Arc<std::sync::atomic::AtomicUsize>,
     stop: Arc<AtomicBool>,
     thread: Option<std::thread::JoinHandle<Result<(), String>>>,
     /// Crash reports for the app already on the phone before the run.
@@ -75,10 +93,17 @@ impl Watch {
     pub fn start(connect: Connect, udid: &str, process: &str, project: &Path) -> Watch {
         let before = connect().and_then(|b| crash_names(b.as_ref(), udid, process));
         let lines = Arc::new(Mutex::new(VecDeque::new()));
+        let dropped = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let runner_lines = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let stop = Arc::new(AtomicBool::new(false));
         let started = Instant::now();
         let thread = {
-            let (lines, stop) = (lines.clone(), stop.clone());
+            let (lines, dropped, runner_lines, stop) = (
+                lines.clone(),
+                dropped.clone(),
+                runner_lines.clone(),
+                stop.clone(),
+            );
             let udid = udid.to_owned();
             let filter = LogFilter {
                 process: Some(process.to_owned()),
@@ -92,11 +117,16 @@ impl Watch {
                         pick_device(backend.as_ref(), Some(&udid)).map_err(|e| e.to_string())?;
                     backend
                         .syslog_while(&device, &stop, &mut |line| {
-                            if filter.matches(line) {
+                            if filter.matches(line)
+                                && log_library(line).is_some_and(|l| RUNNER_LIBRARIES.contains(&l))
+                            {
+                                runner_lines.fetch_add(1, Ordering::Relaxed);
+                            } else if filter.matches(line) {
                                 let ms = started.elapsed().as_millis();
                                 let mut lines = lines.lock().unwrap_or_else(|p| p.into_inner());
                                 if lines.len() == MAX_LINES {
                                     lines.pop_front();
+                                    dropped.fetch_add(1, Ordering::Relaxed);
                                 }
                                 lines.push_back(format!("+{ms}ms {line}"));
                             }
@@ -113,6 +143,8 @@ impl Watch {
             project: project.to_path_buf(),
             started,
             lines,
+            dropped,
+            runner_lines,
             stop,
             thread,
             before,
@@ -134,6 +166,12 @@ impl Watch {
             Ok(()) if self.line_count() == 0 => "empty",
             Ok(()) => "collected",
         };
+        let dropped = self.dropped.load(Ordering::Relaxed);
+        if dropped > 0 {
+            notes.push(format!(
+                "the app logged more than {MAX_LINES} lines: the first {dropped} were dropped, so device.log starts part-way through the run"
+            ));
+        }
         let lines: Vec<String> = self
             .lines
             .lock()
@@ -179,6 +217,11 @@ impl Watch {
             "log_status": log_status,
             "reader": reader_state.as_str(),
             "log_lines": lines.len(),
+            // More than MAX_LINES arrived: the oldest were dropped, so the
+            // log starts part-way through the run.
+            "log_lines_dropped": dropped,
+            // WebDriverAgent's lines in the app's process (XCTAutomationSupport).
+            "runner_lines_skipped": self.runner_lines.load(Ordering::Relaxed),
             "log_tail": tail,
             "crash_reports": crash_status,
             "crashes_checked": crash_status == "none_new" || crash_status == "found",
@@ -436,6 +479,77 @@ mod tests {
 
     fn fake() -> std::result::Result<Box<dyn DeviceBackend>, String> {
         Ok(Box::new(Fake))
+    }
+
+    /// An app that logs more than the watch keeps, then goes quiet.
+    struct Chatty;
+
+    impl DeviceBackend for Chatty {
+        fn devices(&self) -> Result<Vec<DeviceRef>> {
+            Fake.devices()
+        }
+        fn info(&self, device: &DeviceRef) -> Result<DeviceInfo> {
+            Fake.info(device)
+        }
+        fn syslog(&self, _: &DeviceRef, on_line: &mut dyn FnMut(&str) -> bool) -> Result<()> {
+            for n in 0..MAX_LINES + 7 {
+                // The runner's queries, which never count against the app.
+                if !on_line("Nov  8 13:00:01 iPhone GoodDogXtool(XCTAutomationSupport)[9] <Notice>: Got attributes") {
+                    return Ok(());
+                }
+                if !on_line(&format!(
+                    "Nov  8 13:00:01 iPhone GoodDogXtool(libforge_ffi.dylib)[9] <Notice>: line {n}"
+                )) {
+                    return Ok(());
+                }
+            }
+            while on_line("Nov  8 13:00:03 iPhone backboardd[3] <Notice>: tick") {
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
+        }
+        fn crash_reports(&self, _: &DeviceRef) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn pull_crash_report(&self, _: &DeviceRef, _: &str) -> Result<Vec<u8>> {
+            Ok(vec![])
+        }
+    }
+
+    #[test]
+    fn a_log_over_the_limit_says_how_many_lines_were_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        let watch = Watch::start(|| Ok(Box::new(Chatty)), "0000", "GoodDogXtool", tmp.path());
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while watch.dropped.load(Ordering::Relaxed) < 7 && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        let done = watch.finish(tmp.path(), false);
+        let v = &done.value;
+        assert_eq!(v["log_lines"], MAX_LINES, "{v}");
+        assert_eq!(v["log_lines_dropped"], 7, "{v}");
+        assert!(
+            v["runner_lines_skipped"].as_u64().unwrap() >= MAX_LINES as u64,
+            "{v}"
+        );
+        assert_eq!(
+            log_library("x GoodDogXtool(UIKitCore)[9] <Notice>: y"),
+            Some("UIKitCore")
+        );
+        assert_eq!(log_library("x GoodDogXtool[9] <Notice>: y"), None);
+        assert!(
+            v["notes"][0]
+                .as_str()
+                .unwrap()
+                .contains("first 7 were dropped"),
+            "{v}"
+        );
+        let log = std::fs::read_to_string(tmp.path().join("device.log")).unwrap();
+        assert!(
+            log.lines().next().unwrap().ends_with("line 7"),
+            "{}",
+            &log[..200]
+        );
     }
 
     #[test]

@@ -818,10 +818,15 @@ mod tests {
                 "added Button \"Share\"",
             ]
         );
-        // The Share button has no identifier: a new accessibility finding.
+        // The Share button has no identifier and is 30 x 20 pt: two new
+        // accessibility findings.
         let worse = new_findings(&before, &after);
-        assert_eq!(worse.len(), 1);
+        assert_eq!(worse.len(), 2, "{worse:?}");
         assert!(worse[0].starts_with("no identifier"), "{worse:?}");
+        assert!(
+            worse[1].starts_with("tap target too small (30 x 20 pt"),
+            "{worse:?}"
+        );
         assert!(tree_changes(&before, &before).is_empty());
     }
 }
