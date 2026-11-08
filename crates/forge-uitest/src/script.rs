@@ -346,7 +346,10 @@ fn run_step(
         ensure_front(driver, app, timeout)?;
     }
     if let Some(target) = &step.tap {
-        return act(driver, &locate(target)?, timeout, &mut |d, e| d.tap(e));
+        return act(driver, &locate(target)?, timeout, &mut |d, e| {
+            wait_hittable(d, e, timeout)?;
+            d.tap(e)
+        });
     }
     if let Some(typing) = &step.type_text {
         return act(driver, &locate(&typing.target)?, timeout, &mut |d, e| {
@@ -394,6 +397,26 @@ fn act(
             action(driver, &element)
         }
         other => other,
+    }
+}
+
+/// Waits (up to `timeout`) until WDA says a tap would reach the element.
+/// An element can be in the tree before it can take a tap: a keyboard
+/// toolbar's button while the keyboard is still sliding in ignored a tap
+/// on Cati. If WDA doesn't report `hittable`, or it stays false, the tap
+/// goes ahead and the next step's expectation decides.
+fn wait_hittable(
+    driver: &mut dyn Driver,
+    element: &crate::ElementRef,
+    timeout: Duration,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        match driver.attribute(element, "hittable")?.as_deref() {
+            Some("true") | None => return Ok(()),
+            _ if Instant::now() >= deadline => return Ok(()),
+            _ => std::thread::sleep(crate::POLL),
+        }
     }
 }
 
