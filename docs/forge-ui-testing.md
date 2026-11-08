@@ -184,6 +184,8 @@ The exploratory tester is a separate command (`forge explore ios`). It never tak
 
 ## Milestones
 
+The same milestones serve apps Forge didn't build: [any app on the iPhone](research/general-device-control.md) adds a per-app policy, a few `Driver` calls and locators for apps without identifiers, not a second stack.
+
 | | Goal | Done when |
 |---|---|---|
 | **M0** | Prove the five basics on Cati | From Linux: launch an installed app, find a SwiftUI button by accessibility identifier, tap it and enter text, read the resulting UI state, and save a screenshot on Linux. Recorded in the ledger by Reuben's run |

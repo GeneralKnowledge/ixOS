@@ -6,6 +6,8 @@ The question (Reuben, 2026-11-07): what would it take for an AI agent, told "Bui
 
 **Update, 2026-11-07 evening.** The capability ledger is becoming one record per capability, with its Markdown generated (A12, decided by Reuben). The Apple account is still a free team; what a paid team would unlock for agents, and when to pay, is now in [forge-mcp.md](../forge-mcp.md#what-a-paid-team-would-unlock).
 
+**Update, 2026-11-08.** A2, A3, the crawler and A4 are also the plan for operating and testing apps Forge didn't build; see [general-device-control.md](general-device-control.md).
+
 How claims are marked:
 
 | Mark | Means |
