@@ -174,6 +174,7 @@ Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-d
 | 12: `expect` can't combine an id with a label check | M6.2 | `id` plus `label_contains` in one target in `forge ui run` |
 | 14: a requirement can't say its device check isn't written yet | M6.4 | `device = []` with a `pending` note; `forge verify` lists it as open with the note, so the run record names it under not run |
 | 15: no view of app slots | M6.1 | `forge device apps` (already planned there) |
+| 17: the phone was asked for before the laptop had built the app | M6.1 | `forge run ios` builds first and waits for the phone only for the install. Phone sittings are booked once the build has passed (`forge_build_ios` before `forge_install_device` in the run scripts) |
 | 10: Docker not running gives a confusing error | M6.1 | `forge check swift` and `forge doctor` say Docker isn't running and how to start it |
 | 2, 3: `forge init` gives a notes app to delete; generated README and AGENTS name the starter's files | M6.P | `forge init --blank`: an empty `AppCore` with lifecycle, events and logging wired, one screen, one model test, docs listing what is actually there |
 | 4: `forge_storage::Store<T>` (save, then publish) | M6.P | Extracted from Good Dog's `change` helper and Pocket Library's `store.rs` (the second use) |
