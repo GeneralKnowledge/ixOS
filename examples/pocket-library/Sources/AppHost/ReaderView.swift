@@ -152,6 +152,7 @@ struct ReaderView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(loadingChapter)
+                .accessibilityIdentifier("reader.nextChapterEnd")
             } else {
                 Text("The End")
                     .font(.headline)
@@ -162,6 +163,7 @@ struct ReaderView: View {
                         Label("Mark as Finished", systemImage: "checkmark.circle")
                     }
                     .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("reader.markFinished")
                 }
             }
         }
@@ -179,6 +181,7 @@ struct ReaderView: View {
             }
             .labelStyle(.iconOnly)
             .disabled(index == 0 || loadingChapter)
+            .accessibilityIdentifier("reader.previousChapter")
             Spacer()
             VStack(spacing: 2) {
                 ProgressView(value: bookFraction(contents, chapter))
@@ -195,6 +198,7 @@ struct ReaderView: View {
             }
             .labelStyle(.iconOnly)
             .disabled(index + 1 >= count || loadingChapter)
+            .accessibilityIdentifier("reader.nextChapter")
         }
         .padding(.horizontal)
         .padding(.vertical, 8)
@@ -261,16 +265,19 @@ struct ReaderView: View {
             } label: {
                 Label("Text Settings", systemImage: "textformat.size")
             }
+            .accessibilityIdentifier("reader.textSettings")
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Contents", systemImage: "list.bullet") { showingContents = true }
                 .disabled(contents == nil)
+                .accessibilityIdentifier("reader.contents")
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Read Aloud", systemImage: "headphones") {
                 readAloud.play(from: topBlock ?? 0)
             }
             .disabled(chapter == nil || readAloud.state != .stopped)
+            .accessibilityIdentifier("reader.readAloud")
         }
     }
 
@@ -538,6 +545,7 @@ private struct ReaderContentsSheet: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("contents.chapter.\(entry.index)")
                 }
                 .onAppear {
                     if let currentEntry { proxy.scrollTo(currentEntry, anchor: .center) }
@@ -548,6 +556,7 @@ private struct ReaderContentsSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .accessibilityIdentifier("contents.done")
                 }
             }
         }

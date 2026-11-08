@@ -85,6 +85,7 @@ private struct StatRow: View {
                 Text(label)
             } icon: {
                 Image(systemName: symbol).foregroundStyle(tint)
+                    .accessibilityHidden(true)
             }
         }
     }
@@ -100,6 +101,8 @@ struct ActivityRow: View {
             Image(systemName: symbol)
                 .foregroundStyle(tint)
                 .frame(width: 22)
+                // Decorative; its symbol name would be its identifier.
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
                 Text(summary)
                 if showTitle {
