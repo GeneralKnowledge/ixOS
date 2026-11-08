@@ -6,7 +6,12 @@
 name = "M0: launch, find by identifier, tap, type, read state, screenshot"
 app = "org.forgemobile.pocketlibrary"
 
-# 1. Launch the installed app (restarts it if it is running).
+# 1. Start the installed app fresh. `launch` alone only brings a running app
+# to the front, on whatever screen it was left (a New Book form from an
+# earlier run made the library screenshot differ by 90%), so quit it first.
+[[step]]
+terminate = {}
+
 [[step]]
 launch = {}
 
