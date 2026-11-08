@@ -1,6 +1,6 @@
 # Visual regression: noticing when a screen got worse
 
-Status: 2026-11-08. Built and tested on Linux (`forge-uitest`'s `visual` and `baseline` modules, `forge ui run --visual`, `forge ui accept`, the `forge_accept_screenshots` MCP tool). **Not yet run on an iPhone**: no baseline has been recorded from a real `forge ui run` yet, and the thresholds below are chosen from the screen geometry, not tuned on real screenshots.
+Status: 2026-11-08. Built and tested on Linux (`forge-uitest`'s `visual` and `baseline` modules, `forge ui run --visual`, `forge ui accept`, the `forge_accept_screenshots` MCP tool). First phone run 2026-11-08 on Cati (iPhone16,2, iOS 26.3.1): Pocket Library's `m0.toml` recorded its two baselines, then two unchanged runs both matched. The form screenshot had one changed area too small to count (the text cursor, changed ratio 0.0001), which is the rule working. Not yet tried: a deliberate change, and a person confirming the run.
 
 A UI test that passes says the controls are there and respond. It does not say the screen still looks right: a button pushed off screen by a long label, a list that lost its padding, a dark-mode colour that went unreadable, a toolbar that vanished. An agent changing SwiftUI needs to see that, without a person comparing pictures. This page is item A9 of the [agent capability audit](research/forge-agent-capability-audit.md) and the screenshot half of [Forge UI Testing M4](forge-ui-testing.md#milestones).
 
@@ -117,7 +117,8 @@ A changed screen (or a new accessibility finding) makes `ok` false and sets the 
 
 ## Limits and next steps
 
-- **Not run on a phone yet.** The first device run should record Pocket Library's baselines, run `m0.toml` twice more unchanged (expect `match` both times; this is the check that the cursor, status bar and animation rules hold on real screenshots), then make one deliberate change and expect `changed` on the right element. That run needs Cati and belongs in the coordinated iPhone session.
+- **Phone check left:** make one deliberate change and expect `changed` on the right element. Pocket Library's baselines are not committed: they show the library on Reuben's phone, which is personal data in a public repository; record them from seeded data first.
+- **Cost of the tree.** Saving the accessibility tree with each screenshot takes about 2.5 s per screenshot step on Cati (the screenshot alone is about 0.1 s). It is what names changed elements and finds masks, so it stays on; skipping it under `--visual off` is a possible follow-up.
 - **Timing.** A screenshot taken mid-animation differs from the baseline. Put an `expect` before each screenshot step so the screen has settled; WebDriverAgent waits for idle, but SwiftUI transitions can outlast it.
 - **Build kind.** Linux xtool builds may render in iOS 26's compatibility mode ([ios-ui.md](ios-ui.md)); baselines must come from the same kind of build as the runs compared with them.
 - **Appearance matrix.** Light, dark and the largest text are separate screenshots today (launch arguments in separate scenarios). A matrix that produces all of them per screen (audit item A5) would feed straight into this.
