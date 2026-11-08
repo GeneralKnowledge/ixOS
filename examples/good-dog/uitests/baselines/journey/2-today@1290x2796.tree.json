@@ -1,0 +1,1402 @@
+{
+  "kind": "Application",
+  "label": "Good Dog",
+  "enabled": true,
+  "visible": true,
+  "frame": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 430.0,
+    "height": 932.0
+  },
+  "children": [
+    {
+      "kind": "Window",
+      "enabled": true,
+      "visible": true,
+      "frame": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 430.0,
+        "height": 932.0
+      },
+      "children": [
+        {
+          "kind": "Other",
+          "enabled": true,
+          "visible": true,
+          "frame": {
+            "x": 0.0,
+            "y": 0.0,
+            "width": 430.0,
+            "height": 932.0
+          },
+          "children": [
+            {
+              "kind": "Other",
+              "enabled": true,
+              "visible": true,
+              "frame": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 430.0,
+                "height": 932.0
+              },
+              "children": [
+                {
+                  "kind": "Other",
+                  "enabled": true,
+                  "visible": true,
+                  "frame": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 430.0,
+                    "height": 932.0
+                  },
+                  "children": [
+                    {
+                      "kind": "Other",
+                      "enabled": true,
+                      "visible": true,
+                      "frame": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": 430.0,
+                        "height": 932.0
+                      },
+                      "children": [
+                        {
+                          "kind": "Other",
+                          "enabled": true,
+                          "visible": true,
+                          "frame": {
+                            "x": 0.0,
+                            "y": 0.0,
+                            "width": 430.0,
+                            "height": 932.0
+                          },
+                          "children": [
+                            {
+                              "kind": "Other",
+                              "enabled": true,
+                              "visible": true,
+                              "frame": {
+                                "x": 0.0,
+                                "y": 0.0,
+                                "width": 430.0,
+                                "height": 932.0
+                              },
+                              "children": [
+                                {
+                                  "kind": "Other",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "width": 430.0,
+                                    "height": 932.0
+                                  },
+                                  "children": [
+                                    {
+                                      "kind": "Other",
+                                      "enabled": true,
+                                      "visible": true,
+                                      "frame": {
+                                        "x": 0.0,
+                                        "y": 0.0,
+                                        "width": 430.0,
+                                        "height": 932.0
+                                      },
+                                      "children": [
+                                        {
+                                          "kind": "Other",
+                                          "enabled": true,
+                                          "visible": true,
+                                          "frame": {
+                                            "x": 0.0,
+                                            "y": 0.0,
+                                            "width": 430.0,
+                                            "height": 932.0
+                                          },
+                                          "children": [
+                                            {
+                                              "kind": "Other",
+                                              "enabled": true,
+                                              "visible": true,
+                                              "frame": {
+                                                "x": 0.0,
+                                                "y": 0.0,
+                                                "width": 430.0,
+                                                "height": 932.0
+                                              },
+                                              "children": [
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 0.0,
+                                                    "y": 0.0,
+                                                    "width": 430.0,
+                                                    "height": 932.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "NavigationBar",
+                                                      "identifier": "Today",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 0.0,
+                                                        "y": 53.0,
+                                                        "width": 430.0,
+                                                        "height": 97.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "StaticText",
+                                                          "label": "Today",
+                                                          "value": "Today",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 19.0,
+                                                            "y": 102.0,
+                                                            "width": 94.0,
+                                                            "height": 40.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 0.0,
+                                                        "y": 0.0,
+                                                        "width": 430.0,
+                                                        "height": 932.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 0.0,
+                                                            "y": 0.0,
+                                                            "width": 430.0,
+                                                            "height": 932.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 0.0,
+                                                                "y": 0.0,
+                                                                "width": 430.0,
+                                                                "height": 932.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Other",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 0.0,
+                                                                    "y": 0.0,
+                                                                    "width": 430.0,
+                                                                    "height": 932.0
+                                                                  },
+                                                                  "children": [
+                                                                    {
+                                                                      "kind": "CollectionView",
+                                                                      "enabled": true,
+                                                                      "visible": true,
+                                                                      "frame": {
+                                                                        "x": 0.0,
+                                                                        "y": 0.0,
+                                                                        "width": 430.0,
+                                                                        "height": 932.0
+                                                                      },
+                                                                      "children": [
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": -20.0,
+                                                                            "y": -1715.0,
+                                                                            "width": 470.0,
+                                                                            "height": 1969.0
+                                                                          }
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 149.0,
+                                                                            "width": 390.0,
+                                                                            "height": 87.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 149.0,
+                                                                                "width": 390.0,
+                                                                                "height": 87.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 149.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 87.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 149.0,
+                                                                                "width": 390.0,
+                                                                                "height": 87.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 149.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 87.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 149.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 87.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "ProgressIndicator",
+                                                                                          "identifier": "today.progress",
+                                                                                          "label": "8 minutes with Moss, Activities done, A gentle start while you both get used to training.",
+                                                                                          "value": "0 of 3",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 149.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 87.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "8 minutes with Moss",
+                                                                                              "value": "8 minutes with Moss",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 40.0,
+                                                                                                "y": 164.0,
+                                                                                                "width": 156.0,
+                                                                                                "height": 20.0
+                                                                                              }
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "ProgressIndicator",
+                                                                                              "label": "Activities done",
+                                                                                              "value": "0 of 3",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 40.0,
+                                                                                                "y": 192.0,
+                                                                                                "width": 350.0,
+                                                                                                "height": 4.0
+                                                                                              },
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "kind": "ProgressIndicator",
+                                                                                                  "value": "0%",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 40.0,
+                                                                                                    "y": 182.0,
+                                                                                                    "width": 350.0,
+                                                                                                    "height": 24.0
+                                                                                                  }
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "A gentle start while you both get used to training.",
+                                                                                              "value": "A gentle start while you both get used to training.",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 40.0,
+                                                                                                "y": 204.0,
+                                                                                                "width": 319.0,
+                                                                                                "height": 17.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": -20.0,
+                                                                            "y": 253.0,
+                                                                            "width": 470.0,
+                                                                            "height": 364.0
+                                                                          }
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 253.0,
+                                                                            "width": 390.0,
+                                                                            "height": 38.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 253.0,
+                                                                                "width": 390.0,
+                                                                                "height": 38.0
+                                                                              }
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 253.0,
+                                                                                "width": 390.0,
+                                                                                "height": 38.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 253.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 38.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 253.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 38.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "StaticText",
+                                                                                          "label": "TODAY'S PLAN",
+                                                                                          "value": "TODAY'S PLAN",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 253.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 38.0
+                                                                                          }
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 291.0,
+                                                                            "width": 390.0,
+                                                                            "height": 92.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 291.0,
+                                                                                "width": 390.0,
+                                                                                "height": 92.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 291.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 92.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 291.0,
+                                                                                "width": 390.0,
+                                                                                "height": 92.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 291.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 92.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 291.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 92.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "Button",
+                                                                                          "identifier": "today.activity.0",
+                                                                                          "label": "Practise responding to their name, Warm-up · 2 min, A gentle warm-up to help Moss tune in.",
+                                                                                          "value": "Not done yet",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 291.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 92.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "Practise responding to their name, Warm-up · 2 min, A gentle warm-up to help Moss tune in.",
+                                                                                              "value": "Not done yet",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 41.0,
+                                                                                                "y": 306.0,
+                                                                                                "width": 290.0,
+                                                                                                "height": 62.0
+                                                                                              },
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "kind": "Image",
+                                                                                                  "identifier": "circle",
+                                                                                                  "label": "circle",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 41.0,
+                                                                                                    "y": 307.0,
+                                                                                                    "width": 20.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Practise responding to their name",
+                                                                                                  "value": "Practise responding to their name",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 306.0,
+                                                                                                    "width": 257.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Warm-up · 2 min",
+                                                                                                  "value": "Warm-up · 2 min",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 329.0,
+                                                                                                    "width": 108.0,
+                                                                                                    "height": 18.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "A gentle warm-up to help Moss tune in.",
+                                                                                                  "value": "A gentle warm-up to help Moss tune in.",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 350.0,
+                                                                                                    "width": 255.0,
+                                                                                                    "height": 18.0
+                                                                                                  }
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "Image",
+                                                                                              "identifier": "chevron.forward",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 380.0,
+                                                                                                "y": 331.0,
+                                                                                                "width": 8.0,
+                                                                                                "height": 12.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 382.0,
+                                                                            "width": 390.0,
+                                                                            "height": 92.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 382.0,
+                                                                                "width": 390.0,
+                                                                                "height": 92.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 382.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 92.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 382.0,
+                                                                                "width": 390.0,
+                                                                                "height": 92.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 382.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 92.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 382.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 92.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "Button",
+                                                                                          "identifier": "today.activity.1",
+                                                                                          "label": "Settle on a mat, Main skill · 3 min, A practical next step for Moss today.",
+                                                                                          "value": "Not done yet",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 382.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 92.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "Settle on a mat, Main skill · 3 min, A practical next step for Moss today.",
+                                                                                              "value": "Not done yet",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 41.0,
+                                                                                                "y": 397.0,
+                                                                                                "width": 269.0,
+                                                                                                "height": 62.0
+                                                                                              },
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "kind": "Image",
+                                                                                                  "identifier": "circle",
+                                                                                                  "label": "circle",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 41.0,
+                                                                                                    "y": 398.0,
+                                                                                                    "width": 20.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Settle on a mat",
+                                                                                                  "value": "Settle on a mat",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 397.0,
+                                                                                                    "width": 114.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Main skill · 3 min",
+                                                                                                  "value": "Main skill · 3 min",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 420.0,
+                                                                                                    "width": 108.0,
+                                                                                                    "height": 18.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "A practical next step for Moss today.",
+                                                                                                  "value": "A practical next step for Moss today.",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 441.0,
+                                                                                                    "width": 236.0,
+                                                                                                    "height": 18.0
+                                                                                                  }
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "Image",
+                                                                                              "identifier": "chevron.forward",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 380.0,
+                                                                                                "y": 422.0,
+                                                                                                "width": 8.0,
+                                                                                                "height": 12.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 74.0,
+                                                                            "y": 381.0,
+                                                                            "width": 336.0,
+                                                                            "height": 1.0
+                                                                          }
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 473.0,
+                                                                            "width": 390.0,
+                                                                            "height": 111.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 473.0,
+                                                                                "width": 390.0,
+                                                                                "height": 111.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 473.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 111.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 473.0,
+                                                                                "width": 390.0,
+                                                                                "height": 111.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 473.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 111.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 473.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 111.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "Button",
+                                                                                          "identifier": "today.activity.2",
+                                                                                          "label": "Build comfortable handling, Everyday · 3 min, An easy activity that fits naturally into home life with Moss.",
+                                                                                          "value": "Not done yet",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 473.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 111.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "Build comfortable handling, Everyday · 3 min, An easy activity that fits naturally into home life with Moss.",
+                                                                                              "value": "Not done yet",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 41.0,
+                                                                                                "y": 488.0,
+                                                                                                "width": 320.0,
+                                                                                                "height": 81.0
+                                                                                              },
+                                                                                              "children": [
+                                                                                                {
+                                                                                                  "kind": "Image",
+                                                                                                  "identifier": "circle",
+                                                                                                  "label": "circle",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 41.0,
+                                                                                                    "y": 489.0,
+                                                                                                    "width": 20.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Build comfortable handling",
+                                                                                                  "value": "Build comfortable handling",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 488.0,
+                                                                                                    "width": 204.0,
+                                                                                                    "height": 20.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "Everyday · 3 min",
+                                                                                                  "value": "Everyday · 3 min",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 511.0,
+                                                                                                    "width": 107.0,
+                                                                                                    "height": 18.0
+                                                                                                  }
+                                                                                                },
+                                                                                                {
+                                                                                                  "kind": "StaticText",
+                                                                                                  "label": "An easy activity that fits naturally into home life with Moss.",
+                                                                                                  "value": "An easy activity that fits naturally into home life with Moss.",
+                                                                                                  "enabled": true,
+                                                                                                  "visible": true,
+                                                                                                  "frame": {
+                                                                                                    "x": 74.0,
+                                                                                                    "y": 533.0,
+                                                                                                    "width": 287.0,
+                                                                                                    "height": 36.0
+                                                                                                  }
+                                                                                                }
+                                                                                              ]
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "Image",
+                                                                                              "identifier": "chevron.forward",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 380.0,
+                                                                                                "y": 523.0,
+                                                                                                "width": 8.0,
+                                                                                                "height": 12.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 74.0,
+                                                                            "y": 473.0,
+                                                                            "width": 336.0,
+                                                                            "height": 1.0
+                                                                          }
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 584.0,
+                                                                            "width": 390.0,
+                                                                            "height": 33.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 584.0,
+                                                                                "width": 390.0,
+                                                                                "height": 33.0
+                                                                              }
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 584.0,
+                                                                                "width": 390.0,
+                                                                                "height": 33.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 584.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 33.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 584.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 33.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "StaticText",
+                                                                                          "label": "Swipe left on an activity to try something else.",
+                                                                                          "value": "Swipe left on an activity to try something else.",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 584.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 33.0
+                                                                                          }
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": -20.0,
+                                                                            "y": 615.0,
+                                                                            "width": 470.0,
+                                                                            "height": 1947.0
+                                                                          }
+                                                                        },
+                                                                        {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 633.0,
+                                                                            "width": 390.0,
+                                                                            "height": 45.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 633.0,
+                                                                                "width": 390.0,
+                                                                                "height": 45.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 633.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 45.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 633.0,
+                                                                                "width": 390.0,
+                                                                                "height": 45.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 633.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 45.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 633.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 45.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "Button",
+                                                                                          "identifier": "today.shorten",
+                                                                                          "label": "Only a Few Minutes Today",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 633.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 45.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "Image",
+                                                                                              "identifier": "timer",
+                                                                                              "label": "Timer",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 43.0,
+                                                                                                "y": 645.0,
+                                                                                                "width": 21.0,
+                                                                                                "height": 22.0
+                                                                                              }
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "Only a Few Minutes Today",
+                                                                                              "value": "Only a Few Minutes Today",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 43.0,
+                                                                                                "y": 645.0,
+                                                                                                "width": 229.0,
+                                                                                                "height": 21.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "label": "Vertical scroll bar, 1 page",
+                                                                          "value": "0%",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 397.0,
+                                                                            "y": 103.0,
+                                                                            "width": 30.0,
+                                                                            "height": 746.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 424.0,
+                                                                                "y": 838.0,
+                                                                                "width": 3.0,
+                                                                                "height": 8.0
+                                                                              }
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "label": "Vertical scroll bar, 1 page",
+                                                                          "value": "0%",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 397.0,
+                                                                            "y": 103.0,
+                                                                            "width": 30.0,
+                                                                            "height": 746.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 424.0,
+                                                                                "y": 838.0,
+                                                                                "width": 3.0,
+                                                                                "height": 8.0
+                                                                              }
+                                                                            }
+                                                                          ]
+                                                                        }
+                                                                      ]
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "TabBar",
+                              "label": "Tab Bar",
+                              "enabled": true,
+                              "visible": true,
+                              "frame": {
+                                "x": 0.0,
+                                "y": 849.0,
+                                "width": 430.0,
+                                "height": 83.0
+                              },
+                              "children": [
+                                {
+                                  "kind": "Button",
+                                  "identifier": "tab.today",
+                                  "label": "Today",
+                                  "value": "1",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 2.0,
+                                    "y": 850.0,
+                                    "width": 139.0,
+                                    "height": 48.0
+                                  },
+                                  "children": [
+                                    {
+                                      "kind": "Image",
+                                      "identifier": "sun.max.fill",
+                                      "label": "brightness higher",
+                                      "enabled": true,
+                                      "visible": true,
+                                      "frame": {
+                                        "x": 56.0,
+                                        "y": 852.0,
+                                        "width": 30.0,
+                                        "height": 30.0
+                                      }
+                                    }
+                                  ]
+                                },
+                                {
+                                  "kind": "Button",
+                                  "identifier": "tab.learn",
+                                  "label": "Learn",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 144.0,
+                                    "y": 850.0,
+                                    "width": 142.0,
+                                    "height": 48.0
+                                  }
+                                },
+                                {
+                                  "kind": "Button",
+                                  "identifier": "tab.dog",
+                                  "label": "My Dog",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 289.0,
+                                    "y": 850.0,
+                                    "width": 139.0,
+                                    "height": 48.0
+                                  }
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "kind": "Window",
+      "enabled": true,
+      "visible": false,
+      "frame": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 430.0,
+        "height": 932.0
+      },
+      "children": [
+        {
+          "kind": "Other",
+          "enabled": true,
+          "visible": false,
+          "frame": {
+            "x": 0.0,
+            "y": 0.0,
+            "width": 430.0,
+            "height": 932.0
+          },
+          "children": [
+            {
+              "kind": "Other",
+              "enabled": true,
+              "visible": false,
+              "frame": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 430.0,
+                "height": 932.0
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
