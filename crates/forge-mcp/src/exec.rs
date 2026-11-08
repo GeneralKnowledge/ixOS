@@ -67,6 +67,24 @@ impl Invocation {
 
 /// Runs `forge` (the binary at `forge`) with `--json` and returns its
 /// `forge.result/1` object, real or made up for a run that never produced one.
+/// Starts the command, trying again for a moment while the executable is
+/// still open for writing somewhere ("Text file busy"): a binary just
+/// rebuilt, or, in this crate's tests, a script another thread's fork still
+/// holds between its fork and exec.
+async fn spawn(cmd: &mut tokio::process::Command) -> std::io::Result<tokio::process::Child> {
+    const TEXT_FILE_BUSY: i32 = 26;
+    let mut tries = 0;
+    loop {
+        match cmd.spawn() {
+            Err(e) if e.raw_os_error() == Some(TEXT_FILE_BUSY) && tries < 10 => {
+                tries += 1;
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+            other => return other,
+        }
+    }
+}
+
 pub async fn run(
     forge: &Path,
     workspace: &Path,
@@ -89,7 +107,7 @@ pub async fn run(
         .kill_on_drop(true);
     #[cfg(unix)]
     cmd.process_group(0);
-    let mut child = match cmd.spawn() {
+    let mut child = match spawn(&mut cmd).await {
         Ok(child) => child,
         Err(e) => {
             return made_up(
@@ -309,7 +327,7 @@ mod tests {
         );
         let r = run(&forge, tmp.path(), &inv, &CancellationToken::new()).await;
         assert_eq!(r["ok"], false);
-        assert_eq!(r["stopped"], "timeout");
+        assert_eq!(r["stopped"], "timeout", "{r}");
         let cancel = CancellationToken::new();
         cancel.cancel();
         let inv = Invocation::new(&["ui", "run"], tmp.path(), Duration::from_secs(30), "test");
@@ -329,6 +347,6 @@ mod tests {
         let inv = Invocation::new(&["ui", "run"], tmp.path(), Duration::from_secs(10), "test");
         let r = run(&forge, tmp.path(), &inv, &CancellationToken::new()).await;
         assert_eq!(r["ok"], false);
-        assert!(r["error"].as_str().unwrap().contains("exited 3"));
+        assert!(r["error"].as_str().unwrap().contains("exited 3"), "{r}");
     }
 }
