@@ -21,7 +21,7 @@ Wi-Fi, installing builds with verification, and over-the-air updates come later.
 | `forge device logs --process ChatXtool` | Streams the system log, keeping only lines from Chat's process (`ChatXtool`). Ctrl-C stops |
 | `forge device logs --grep "[chat]" --limit 20` | Lines containing some text; stop after 20 |
 | `forge device logs --process MyAppXtool --for 30s` | Stop after 30 seconds, even if the phone logs nothing |
-| `forge device apps` | The apps you installed, their provisioning profile's team and days left, and how many of a free team's 3 slots are in use (an estimate from the profiles' 7-day lifetime) |
+| `forge device apps` | The apps you installed, their provisioning profile's team and days left, and how many of a free team's 3 slots are in use (an estimate from the profiles' 7-day lifetime). Apps with no provisioning profile (from the App Store) are counted but not listed; `--all` lists them |
 | `forge device crashes --app ChatXtool` | Chat's crash reports on the phone, newest first |
 | `forge device crashes --app ChatXtool --pull crashes/ --limit 3` | Copies the newest three into `crashes/` and symbolicates them ([Crash reports](#crash-reports)) |
 | `forge crash crashes/ChatXtool-*.ips` | Reads reports already on this computer; no phone needed |

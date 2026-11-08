@@ -466,6 +466,9 @@ enum DeviceCommands {
         /// Which phone, when several are connected
         #[arg(long)]
         udid: Option<String>,
+        /// Also list apps with no provisioning profile (the App Store's)
+        #[arg(long)]
+        all: bool,
     },
     /// Stream the phone's system log; Ctrl-C stops
     Logs {
@@ -1255,7 +1258,7 @@ fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
         let data = match &cmd {
             DeviceCommands::List => Some(device::list_data(&backend)?),
             DeviceCommands::Info { udid } => Some(device::info_data(&backend, udid.as_deref())?),
-            DeviceCommands::Apps { udid } => Some(device::apps_data(&backend, udid.as_deref(), now_secs())?),
+            DeviceCommands::Apps { udid, all } => Some(device::apps_data(&backend, udid.as_deref(), now_secs(), *all)?),
             DeviceCommands::Crashes {
                 udid,
                 app,
@@ -1315,7 +1318,9 @@ fn run_device_command(
     match cmd {
         DeviceCommands::List => device::list(backend, out),
         DeviceCommands::Info { udid } => device::info(backend, udid.as_deref(), out),
-        DeviceCommands::Apps { udid } => device::apps(backend, udid.as_deref(), now_secs(), out),
+        DeviceCommands::Apps { udid, all } => {
+            device::apps(backend, udid.as_deref(), now_secs(), all, out)
+        }
         DeviceCommands::Logs {
             udid,
             process,
