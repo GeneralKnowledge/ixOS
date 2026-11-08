@@ -222,6 +222,12 @@ impl IosBuilder for XtoolBuilder {
                 INSTALL_GRACE.as_secs()
             );
             INSTALL_UNVERIFIED.store(true, std::sync::atomic::Ordering::Relaxed);
+            // Not a silent success: the result says it wasn't verified.
+            crate::report::add_hint(crate::report::JsonHint::new(
+                crate::diagnose::Stage::Device,
+                "xtool was stopped after [Installing] 100% without verifying the install (data.verified: false).",
+                "Check the app opens and is the new build (`forge device apps` shows its version); if not, run the install again.",
+            ));
             return Ok(());
         }
         if status.success() {

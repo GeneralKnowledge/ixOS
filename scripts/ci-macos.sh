@@ -10,7 +10,8 @@
 #   scripts/ci-macos.sh <app>...            named apps
 #   scripts/ci-macos.sh --list affected <base-sha>   print the selection and stop
 #
-# Apps: counter weather chat pocket-library device-lab template services-check.
+# Apps: counter weather chat pocket-library device-lab template services-check,
+# plus any other examples/<app> with forge.toml and an Xcode project.
 # "template" is a fresh `forge init` app outside the checkout; "services-check"
 # is the native services device-check app (docs/native-services-device-check.md).
 set -euo pipefail
@@ -19,6 +20,13 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 ALL=(counter weather chat pocket-library device-lab template services-check)
+# Any other example app with an Xcode project is found, not listed: a new
+# app must never silently get no Swift CI (Good Dog pain point 11).
+for manifest in examples/*/forge.toml; do
+  name="$(basename "$(dirname "$manifest")")"
+  [[ " ${ALL[*]} " == *" $name "* ]] && continue
+  compgen -G "examples/$name/Xcode/*.xcodeproj" >/dev/null && ALL+=("$name")
+done
 
 LIST_ONLY=0
 if [[ "${1:-}" == "--list" ]]; then
@@ -34,7 +42,15 @@ fi
 affected() {
   local base="$1" head="${2:-HEAD}" file
   local -A pick=()
+  local files
   git fetch -q --depth=1 origin "$base" 2>/dev/null || true
+  # A diff that can't be computed (the base wasn't fetched) must not look
+  # like "nothing changed": check everything instead, and say why.
+  if ! files="$(git diff --name-only "$base" "$head")"; then
+    echo "[ci-macos] warning: cannot diff $base..$head; checking every app" >&2
+    printf '%s\n' "${ALL[@]}"
+    return 0
+  fi
   while IFS= read -r file; do
     case "$file" in
       *.md | docs/* | LICENSE* | examples/*-android/* | templates/android-app/* \
@@ -47,9 +63,15 @@ affected() {
       crates/forge-cli/* | templates/*) pick[template]=1 ;;
       crates/forge-services/* | scripts/make-services-check-app.sh)
         pick[template]=1; pick[device-lab]=1; pick[services-check]=1 ;;
+      examples/*/*)
+        # Another example: itself when it has a Swift app, else (a Rust-only
+        # crate shared by apps) what everything shared gets.
+        local name="${file#examples/}"; name="${name%%/*}"
+        if [[ " ${ALL[*]} " == *" $name "* ]]; then pick[$name]=1
+        else pick[template]=1; pick[device-lab]=1; fi ;;
       *) pick[template]=1; pick[device-lab]=1 ;;
     esac
-  done < <(git diff --name-only "$base" "$head")
+  done <<< "$files"
   local app
   for app in "${ALL[@]}"; do
     [[ -n "${pick[$app]:-}" ]] && echo "$app"
@@ -128,8 +150,18 @@ for app in "${APPS[@]}"; do
       endgroup
       ;;
     *)
-      echo "error: unknown app '$app' (known: ${ALL[*]})" >&2
-      exit 2
+      if [[ " ${ALL[*]} " != *" $app "* ]]; then
+        echo "error: unknown app '$app' (known: ${ALL[*]})" >&2
+        exit 2
+      fi
+      # A discovered example app: host tests and an unsigned device build.
+      project="$(find "examples/$app/Xcode" -maxdepth 1 -name '*.xcodeproj' | head -1)"
+      group "$app: Swift host tests"
+      ./scripts/test-swift-host.sh "examples/$app"
+      endgroup
+      group "$app: iOS device build (unsigned)"
+      xcode_build "$project"
+      endgroup
       ;;
   esac
 done

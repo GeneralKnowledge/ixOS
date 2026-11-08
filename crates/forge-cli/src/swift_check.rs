@@ -295,6 +295,49 @@ fn swift_cmd(st: &Path, app: &Path, args: &[&str]) -> Cmd {
     }
 }
 
+/// `swiftc -parse` of `files` (syntax only, no SDK), on this computer or in
+/// the `FORGE_SWIFT_DOCKER` image.
+fn swiftc_parse(app: &Path, files: &[&PathBuf]) -> Cmd {
+    let cmd = match std::env::var("FORGE_SWIFT_DOCKER") {
+        Ok(image) if !image.is_empty() => {
+            let mount = format!("{0}:{0}", app.display());
+            Cmd::new("docker")
+                .args(["run", "--rm", "-v", &mount])
+                .arg(image)
+                .arg("swiftc")
+        }
+        _ => Cmd::new("swiftc"),
+    };
+    let mut cmd = cmd.arg("-parse");
+    for f in files {
+        cmd = cmd.arg(f.as_path());
+    }
+    cmd
+}
+
+/// With `FORGE_SWIFT_DOCKER`, Docker must be running, or the check fails
+/// with a message that doesn't say why (Good Dog pain point 10).
+fn docker_running(runner: &dyn CommandRunner) -> Result<(), String> {
+    let ok = runner
+        .capture(&Cmd::new("docker").args(["info", "--format", "{{.ServerVersion}}"]))
+        .is_ok_and(|o| o.status.success());
+    if ok {
+        return Ok(());
+    }
+    let problem = "FORGE_SWIFT_DOCKER is set, but Docker isn't running (or isn't installed).";
+    let fix = "Start it (`sudo systemctl start docker`, or `sudo dockerd &` where there is no systemd), or install Swift 6.2 and unset FORGE_SWIFT_DOCKER.";
+    crate::report::record_failure(
+        "docker info",
+        vec![crate::report::JsonHint {
+            stage: "test",
+            problem: problem.into(),
+            fix: fix.into(),
+        }],
+        "",
+    );
+    Err(format!("{problem}\n  Fix: {fix}"))
+}
+
 /// The host build of the app's Rust library: `<target>/debug/libforge_ffi.a`.
 fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, String> {
     let manifest = app.join("rust/Cargo.toml");
@@ -349,6 +392,11 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
             "Swift is not installed. Install Swift 6.2 for Linux (docs/linux-setup.md), or set FORGE_SWIFT_DOCKER=swift:6.2 to run it in Docker"
                 .into(),
         );
+    }
+    if let Ok(image) = std::env::var("FORGE_SWIFT_DOCKER") {
+        if !image.is_empty() {
+            docker_running(runner)?;
+        }
     }
     let lib = host_library(runner, &app)?;
     let sel = select(&app);
@@ -474,6 +522,40 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
             &text,
         ));
     }
+    // `swift test` that passed but whose results couldn't be read proved
+    // nothing: never report that as a pass.
+    if args[0] == "test" && tests.is_empty() {
+        return Err(format!(
+            "swift test finished, but no test result could be read from its output ({} test file(s) were compiled). Nothing was proved; the log has the output.",
+            sel.tests.len()
+        ));
+    }
+    // A cheap syntax check of the files Linux can't compile (SwiftUI views):
+    // catches a stray brace now instead of 35 minutes later on macOS CI.
+    // Type errors still need `forge build ios` (Good Dog pain point 9).
+    let views: Vec<&PathBuf> = sel
+        .skipped
+        .iter()
+        .filter(|p| p.starts_with(app.join("Sources")))
+        .collect();
+    if !views.is_empty() {
+        let parse = swiftc_parse(&app, &views);
+        let out = runner.capture(&parse)?;
+        if !out.status.success() {
+            let text = format!(
+                "{}{}",
+                String::from_utf8_lossy(&out.stdout),
+                String::from_utf8_lossy(&out.stderr)
+            );
+            crate::report::log_bytes(format!("$ {}\n{text}", parse.display()).as_bytes());
+            print!("{text}");
+            return Err(crate::diagnose::explain("swiftc -parse", out.status, &text));
+        }
+        println!(
+            "[forge] Syntax-checked {} view file(s) (not type-checked: that needs the iOS SDK)",
+            views.len()
+        );
+    }
     let missing: Vec<String> = reqs
         .iter()
         .zip(&verdicts)
@@ -526,6 +608,23 @@ fn build_info(runner: &dyn CommandRunner, app: &Path) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stopped_docker_is_named() {
+        let mock = crate::runner::MockRunner::default();
+        mock.respond("docker info", 1, "");
+        let err = docker_running(&mock).unwrap_err();
+        assert!(err.contains("Docker isn't running"), "{err}");
+        mock.respond("docker info", 0, "27.0.1\n");
+        assert!(docker_running(&mock).is_ok());
+    }
+
+    #[test]
+    fn view_files_are_parsed_not_compiled() {
+        let a = PathBuf::from("/app/Sources/AppHost/TodayView.swift");
+        let line = swiftc_parse(Path::new("/app"), &[&a]).display();
+        assert!(line.contains("swiftc -parse /app/Sources/AppHost/TodayView.swift"), "{line}");
+    }
 
     #[test]
     fn imports_outside_if_blocks_decide() {
