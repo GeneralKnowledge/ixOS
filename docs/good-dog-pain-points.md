@@ -30,6 +30,7 @@ Reuben asked for a running log of friction found while building Good Dog GD1 ([g
 | 14 | Requirements | `requirements.toml` can't say "this requirement needs a device check that isn't written yet", so the journey stands in for several requirements | Coarse device evidence | Allow `device = []` with a note, or per-step evidence |
 | 15 | Free team | A new demo is a new app slot (3 on a free team), so installing Good Dog means removing something from the phone first | A question for Reuben before every install | `forge device apps` showing slots and expiry (dev-loop.md fix 6), and a `forge run ios --replace <bundle id>` that removes one app on purpose |
 | 16 | Workspace layout | The app crate has its own Cargo workspace but depends on `good-dog-core`, a member of the main workspace that uses `edition.workspace`. That works, but it isn't documented, and two `target/` directories build the same crate twice | Extra build time | Document "a shared core crate for an app" in app-crate.md, as Chat does with chat-core |
+| 17 | Phone runs | Reuben was asked to free a slot and plug in Cati before the laptop had built the app. He then waited through the first full Swift compile. This has happened several times | Reuben waiting at the phone | Build ahead: start `forge build ios` on the laptop as soon as a PR needs a device run, and only ask for the phone once the build passes. `forge run ios` could also build first and only then wait for the device (`--wait-for-device`), so the person is needed only for the install |
 
 ## What went well
 
