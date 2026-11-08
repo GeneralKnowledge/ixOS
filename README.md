@@ -28,7 +28,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 ## Quick start (Linux)
 
 1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/) and [xtool](https://github.com/xtool-org/xtool), then run `xtool setup` with an **Xcode.xip** (Xcode 26) to install the Darwin SDK. See [docs/linux-setup.md](docs/linux-setup.md). Android is work in progress; if you want to try it anyway, install the SDK, NDK and `cargo-ndk` ([docs/android-setup.md](docs/android-setup.md)).
-2. Install the CLI and check the machine: `cargo install --path crates/forge-cli --locked`, then `forge doctor`. It reports which workflows are ready (Rust, iOS from Linux with xtool, and the work-in-progress Android path) and how to fix each missing piece.
+2. Clone this repository (`git clone https://github.com/GeneralKnowledge/ixOS.git ~/src/forge`; ixOS is the repository, Forge is the tool), install the CLI from it and check the machine: `cargo install --path ~/src/forge/crates/forge-cli --locked`, then `forge doctor`. It reports which workflows are ready (Rust, iOS from Linux with xtool, and the work-in-progress Android path) and how to fix each missing piece.
 3. Create an app outside the checkout and run it. It gets its own Rust crate for your logic:
 
    ```bash
@@ -119,7 +119,7 @@ An agent edits Rust and SwiftUI with its own tools; Forge gives it the toolchain
 
 New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
 
-Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. New apps go under the workspace's `examples/` unless you pass `--path <dir>`; an app created outside the checkout points its build files at the checkout by absolute path.
+Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. `forge init` creates the app in `./<NAME>`, or under the workspace's `examples/` when run inside the checkout, unless you pass `--path <dir>`; an app created outside the checkout points its build files at the checkout by absolute path.
 
 ## Configuration
 
@@ -134,7 +134,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 ## Known limitations
 
 - iOS builds are device-only: no iOS Simulator support yet. Linux iOS builds need xtool's Darwin SDK (from an Xcode.xip).
-- Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)).
+- Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)). The plan for the first App Store release, and which of its steps need a Mac, is [docs/first-app-store-release.md](docs/first-app-store-release.md).
 - Apps need a Forge checkout on the same machine: the runtime crates are not published to crates.io yet.
 - Android is work in progress: it has not been validated on a physical phone, gets no new features, and has none of the `forge-services` native services. CI still builds the APK and runs the JVM tests when Android or shared Rust code changes.
 - Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example ([examples/chat](examples/chat/README.md); the frozen Android twin is [examples/chat-android](examples/chat-android/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
