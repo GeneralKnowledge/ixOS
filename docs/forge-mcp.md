@@ -43,6 +43,8 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 
 Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
 
+**Client timeouts.** Some clients stop waiting for a tool long before Forge's own limits (30 min for a build, 8 min for an install, 5 min for `forge_create_app`). Claude Code gives up after 60 s by default (found in the Murmur dry run, 2026-11-08: `forge_create_app` "timed out" three times while `forge init` was still running, and the agent finished the folder by hand), so start it with `MCP_TOOL_TIMEOUT=1900000`. Other clients have their own setting.
+
 Enforced by the server: paths stay inside the root (symlinks included); phone tools run one at a time; every child has a timeout, and a timeout or a cancelled call kills its whole process group (xtool and cargo too); a device tool that times out returns `needs_person: true`.
 
 Different from the design below, on purpose for M0:

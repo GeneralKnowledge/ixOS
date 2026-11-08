@@ -18,6 +18,10 @@ SRC=${SRC:-$(cd "$HERE/../../.." && pwd)}   # the Forge checkout this script is 
 LAB=${LAB:-$HOME/agentlab}                  # folder the agent works in
 OUT=${OUT:-$HOME/forge-uitest/murmur-m2}
 FORGE=$SRC/target/debug/forge
+# Claude Code gives up on an MCP tool call after 60 s unless told otherwise,
+# while forge mcp allows a build 30 min and an install 8 min. Without this the
+# agent sees a timeout while the build still runs, and starts it again.
+export MCP_TOOL_TIMEOUT=${MCP_TOOL_TIMEOUT:-1900000}
 TOOLS="mcp__forge,Read,Edit,Write,Glob,Grep,Bash(cargo:*),Bash(ls:*),Bash(cat:*)"
 
 phone_check() {
