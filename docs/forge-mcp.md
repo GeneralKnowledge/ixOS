@@ -397,16 +397,27 @@ Choices, and why:
 
 - **No server.** A laptop server like Chat's would add Wi-Fi, IP and uptime failures that say nothing about the agent loop. The simulated accounts give the feed something to refresh.
 - **Free team.** No push, no Sign in with Apple, one sandbox slot (it installs over Tipster). Nothing in the app needs a paid team, so paying is not a prerequisite for this run.
-- **Follow-ups in the same session.** After the first prompt, two more are sent with `claude -p --resume`: "the timeline feels cramped" and "add bookmarks". This checks the agent can change an app it built, which a single prompt doesn't.
+- **Short phone stages, one agent session.** Reuben (2026-11-08) didn't want one 90-minute unattended run: the phone is tied up all that time, and any Forge fix it shows has to wait for the end. So the run is staged. Everything that doesn't need the phone runs first, as long as it needs, with installing refused by the server: the agent writes the app, makes `forge_check` and `forge_build_ios` (SwiftUI on the laptop) pass and writes the UI test. Each phone stage is then 15–20 minutes at most. Every stage resumes the same session (`claude -p --resume`), so the agent keeps what it learned, and Forge can be fixed and rebuilt between stages.
+- **Two changes after it works.** "The timeline feels cramped" and "add bookmarks", each made without the phone and then checked on it. This checks the agent can change an app it built.
 - **No `forge_ui_audit`.** It isn't built (M1). The agent checks the main screens with `text_size: largest`; the accessibility audit (`ax_probe`) runs by hand afterwards if wanted.
 
-Prompts and the laptop script: [`scripts/agent-runs/murmur/`](../scripts/agent-runs/murmur/) (`run-murmur.sh prep|run|followup 1|followup 2|summary`).
+| Stage | Phone | Limit | What the agent does |
+|---|---|---|---|
+| `a-build` | No | 60 min | Reads the resources, creates Murmur, writes Rust and SwiftUI, `forge_check` and `forge_build_ios` pass, writes the UI test |
+| `b-look` | Yes | 20 min | Installs, launches, screenshots and tree of the main screens at the default and largest text size, logs; fixes what they show |
+| `c-test` | Yes | 15 min | Runs the UI test until it passes |
+| `change-1` | No | 30 min | Less cramped timeline |
+| `check-1` | Yes | 15 min | Install, look, UI test |
+| `change-2` | No | 30 min | Bookmarks, and the UI test extended |
+| `check-2` | Yes | 15 min | Install, look, UI test |
 
-Passes when, with no person touching the phone or terminal during each agent run:
+At most about 65 minutes of phone time in four sittings, usually less: a stage ends when its work is done. Prompts and the laptop script: [`scripts/agent-runs/murmur/`](../scripts/agent-runs/murmur/) (`run-murmur.sh prep`, then one stage at a time, `summary`).
+
+Passes when, with no person touching the phone or terminal during any stage:
 
 1. Everything Forge does goes through Forge MCP tools: create, check, build, install, launch, screenshots and the tree.
 2. At least one real problem found from device evidence is fixed and checked again.
-3. A UI test passes on the phone covering sign up, post (top of the timeline), like (count), reply (in the thread view), and a terminate and relaunch with the post still there; after follow-up 2 it also covers bookmarks.
+3. A UI test passes on the phone covering sign up, post (top of the timeline), like (count), reply (in the thread view), and a terminate and relaunch with the post still there; after change 2 it also covers bookmarks.
 4. The main screens are usable at the largest text size in the agent's screenshots.
 5. Reuben looks at the app on the phone, including a photo post, and agrees it works.
 

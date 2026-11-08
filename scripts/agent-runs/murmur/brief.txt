@@ -8,9 +8,3 @@ Build a small social app called Murmur, in the spirit of a microblogging timelin
 - Profiles: tapping an author opens their profile (name, bio, follower and following counts, their posts) with a Follow / Unfollow button. The signed-in account has its own profile tab.
 
 Keep all state and rules in Rust (accounts, posts, likes, replies, follows, the simulated accounts), persisted with SQLite through forge-storage, so everything survives the app being terminated and relaunched. SwiftUI only presents it. Make sure the main screens work at the largest text size.
-
-Use the forge MCP tools for everything Forge does: read forge://conventions and forge://capabilities first, create the app with forge_create_app, then check, build, install, launch and inspect it on the iPhone that is plugged in. You may install it (as org.forgemobile.agentlab, the default). Nobody will touch the phone or the terminal until you finish, so look at the app yourself: screenshots, the accessibility tree, logs, and the app at text_size largest. Fix every real problem you find from that device evidence, rebuild, reinstall and look again.
-
-Write a UI test in uitests/ that signs up a new account, writes a post and checks it is at the top of the timeline, likes it and checks the count, replies to it and checks the reply in the thread view, then terminates and relaunches the app and checks the post is still there. Find everything by accessibility identifier. Run it with forge_run_ui_test until it passes. If a result says needs_person, stop.
-
-At the end write REPORT.md in the app folder: what you built, each problem you found on the phone and how you fixed it (with the tool result that showed it), the UI test result, and anything a person should check by eye (the photo picker, for example, which a UI test cannot drive).

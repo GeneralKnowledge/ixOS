@@ -1,1 +1,0 @@
-The timeline feels cramped. Give the posts more room: clearer separation between posts, the author's name and handle on one line with the time, and like and reply controls that are easy to hit, at every text size. Check it on the phone with screenshots at the default and the largest text size, keep the UI test passing, and add what you changed to REPORT.md.
