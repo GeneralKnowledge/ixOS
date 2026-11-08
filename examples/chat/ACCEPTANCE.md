@@ -208,3 +208,33 @@ Before you start: the M1 setup, this branch (or main once merged), `forge run io
 | H12 | `forge run ios --project examples/chat --release` | Builds, installs, and H3 and H4 still work | Not yet run |
 
 Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
+
+## L1: On-device assistant
+
+L1 adds the Assistant (design: [local-ai.md](../../docs/local-ai.md), "L1 as built"): private conversations with Apple's on-device model through Foundation Models, with the plain assistant or the test characters Leo and Mia, streaming, a Stop that ends the model's work, and history kept on the phone in `assistant.db`. It needs no account and no chat server. Device results are Reuben's reports; nothing here is marked done until he reported it.
+
+### Automated and local
+
+| # | Check | Kind | Status | Evidence |
+|---|-------|------|--------|----------|
+| A30 | `AssistantCore` with a fake engine: characters and opening lines, streaming and coalescing (200 pieces in fewer than 50 deliveries), the pinned character and reminder, trimming to the context, Stop keeps the text and the engine computes nothing after it, an engine that ignores Stop, one answer at a time, catching up mid-answer, unavailable/no engine/bad input, refusals and failures, history across a relaunch, `Interrupted` after a kill, delete and shutdown stop the answer, the engine off the caller's thread | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml assistant` (18 tests) |
+| A31 | `ChatCore`: the assistant works signed out and keeps its chats through sign-up, sign-out and a relaunch | automated | Done | `the_assistant_works_signed_out_and_survives_sign_out` |
+| A32 | SwiftUI host compiles with the Foundation Models adapter; `AssistantModelTests` (scripted Swift engine: streaming signed out, Stop, no engine) | automated (macOS CI) | Done | macOS run 42459470174 on 5cd6fa2: the 3 `AssistantModelTests` and the other 16 Swift tests passed; unsigned iOS device build OK |
+
+### On an iPhone (Linux, xtool)
+
+Before you start: Chat installed from this branch (`forge run ios --project examples/chat --release`; a free account allows 3 sideloaded apps). Settings → Apple Intelligence & Siri: Apple Intelligence on and its model downloaded (it was on Cati for L0). No server, no extra disk: Foundation Models uses the model iOS already has. On the laptop, `forge device logs --grep assistant` records each answer's timings (never its text).
+
+| # | Step | Expected | Status |
+|---|------|----------|--------|
+| AS1 | Open Chat. Signed out: tap the sparkles button on the sign-up screen. Signed in: the **Assistant** tab | "No Assistant Chats" and no warning above it. A warning means Foundation Models is unavailable; note its text | Not yet run |
+| AS2 | **Start a Chat** → **🙋‍♀️ Mia** | Mia's opening line. The title is Mia; the line under it says "Apple Intelligence · on this iPhone, offline" | Not yet run |
+| AS3 | Send "I had a long day at work" | A spinner, then the answer appears as it is written; the send arrow is a stop button meanwhile. Under the answer: "First words x s · y s". Note both numbers | Not yet run |
+| AS4 | Keep chatting with Mia for about five messages, then New → Leo for three | Do they stay in character (warm, short, ask about your day)? Note any refusals ("Apple Intelligence declined…") | Not yet run |
+| AS5 | New → 💬 Assistant, send "Write a long story about a lighthouse keeper", press the stop button after two or three lines | The text stops growing at once, "Stopped" under it, the send arrow returns, and you can send again straight away. `forge device logs` shows `answer Stopped … pieces_after_stop=0` | Not yet run |
+| AS6 | Force-quit Chat (app switcher) and open it again | The Assistant list shows the three conversations, newest first, with previews; each opens with its whole history | Not yet run |
+| AS7 | Send another long request and force-quit while it is being written; open Chat again | That answer says "Interrupted when the app closed"; sending works | Not yet run |
+| AS8 | Airplane Mode on (Wi-Fi off too); send a message to Mia | It answers as before: nothing leaves the phone | Not yet run |
+| AS9 | Optional: Settings → Apple Intelligence & Siri → off, back to Chat | The Assistant shows "Turn on Apple Intelligence in Settings…", and sending says the same. Turn it back on (the model may take a while to come back) | Not yet run |
+
+Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.

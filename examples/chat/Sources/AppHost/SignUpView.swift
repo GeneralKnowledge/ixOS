@@ -9,6 +9,7 @@ struct SignUpView: View {
     @State private var displayName = ""
     @State private var isWorking = false
     @State private var error: String?
+    @State private var showingAssistant = false
 
     private var canSubmit: Bool {
         !isWorking && !displayName.trimmingCharacters(in: .whitespaces).isEmpty
@@ -56,6 +57,20 @@ struct SignUpView: View {
                 }
             }
             .navigationTitle("Welcome to Chat")
+            .toolbar {
+                // The assistant runs on the phone and needs no account.
+                if model.assistant != nil {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Assistant", systemImage: "sparkles") { showingAssistant = true }
+                            .accessibilityIdentifier("signUp.assistant")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAssistant) {
+                if let assistant = model.assistant {
+                    AssistantTab(model: assistant)
+                }
+            }
             .errorAlert("Couldn't Create the Account", message: $error)
         }
     }

@@ -7,7 +7,9 @@ public struct ContentView: View {
     @State private var model: ChatModel
 
     public init() {
-        _model = State(initialValue: ChatModel(notifier: LocalChatNotifier.shared))
+        _model = State(
+            initialValue: ChatModel(
+                notifier: LocalChatNotifier.shared, assistantEngine: FoundationModelsEngine()))
     }
 
     public var body: some View {
@@ -37,13 +39,14 @@ public struct ContentView: View {
     }
 }
 
-/// Chats and Settings, each with its own navigation stack.
+/// Chats, the on-device Assistant and Settings, each with its own
+/// navigation stack.
 struct MainTabs: View {
     let model: ChatModel
     @State private var tab = Tab.chats
     @State private var chatPath: [ChatRoute] = []
 
-    enum Tab: Hashable { case chats, settings }
+    enum Tab: Hashable { case chats, assistant, settings }
 
     var body: some View {
         TabView(selection: $tab) {
@@ -51,6 +54,12 @@ struct MainTabs: View {
                 .tabItem { Label("Chats", systemImage: "bubble.left.and.bubble.right") }
                 .badge(model.unreadConversationCount)
                 .tag(Tab.chats)
+
+            if let assistant = model.assistant {
+                AssistantTab(model: assistant)
+                    .tabItem { Label("Assistant", systemImage: "sparkles") }
+                    .tag(Tab.assistant)
+            }
 
             NavigationStack {
                 SettingsView(model: model)

@@ -97,6 +97,13 @@ with `swift run --package-path examples/chat Chat` (after
   and playback are Forge's optional audio module, not Chat code.
 - **Lifecycle.** In the background Rust closes every room connection; back in
   the foreground it reconnects them and catches up, and the list refreshes.
+- **A private assistant on the phone (L1, [local-ai.md](../../docs/local-ai.md)).**
+  The Assistant tab (and a button on the sign-up screen, so no account is
+  needed) chats with Apple's on-device model through Foundation Models: the
+  plain assistant, or the test characters Leo and Mia. Answers stream in, Stop
+  really stops the model, and the history stays on the phone in
+  `assistant.db`, through sign-out and relaunch. Needs iOS 26 with Apple
+  Intelligence on; otherwise the screen says why.
 - **Local notifications** for new messages in rooms you are not in, while the
   app runs. There is no remote push (APNs), so nothing alerts you while the app
   is suspended or closed.
@@ -111,6 +118,8 @@ with `swift run --package-path examples/chat Chat` (after
 | Presentation state; applies Rust events | `Sources/AppHost/ChatModel.swift` |
 | Screens | `Sources/AppHost/ContentView.swift`, `SignUpView.swift`, `ConversationListView.swift`, `ChatView.swift`, `SettingsView.swift` |
 | Picking, shrinking, thumbnails and previews of attachments | `Sources/AppHost/Attachments.swift` |
+| The on-device assistant: conversations, characters, prompt, `assistant.db`, the engine interface | `rust/src/assistant/` |
+| The assistant's Swift side: Foundation Models adapter, model, screens | `Sources/AppHost/FoundationModelsEngine.swift`, `AssistantModel.swift`, `AssistantViews.swift` |
 | Swift tests, against the real chat server | `Tests/AppHostTests/` (`scripts/test-swift-host.sh examples/chat`, macOS) |
 | App settings (bundle id, permissions) | `forge.toml` (Forge writes Info.plist, App.entitlements and xtool.yml from it) |
 
