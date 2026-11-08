@@ -95,6 +95,7 @@ This answers most of "what does a Linux build lack" without paying.
 
 - Device acceptance and accessibility evidence come from M6 (`forge verify`, the run record, `--accept`). Storage, migration and recovery come from the foundation review. Release-specific additions:
   - **An update test:** install version N with real data, update to N+1 through TestFlight, and check the data survives. This needs the iPhone.
+  - Pocket Library stores its data in JSON, so two findings from the foundation review (PR #129, `docs/foundation-review.md`) apply before release. S6: `JsonFile::save` silently overwrites a file it couldn't parse. S7: keep a fixture from each released schema, so Linux tests prove that version N's file opens in N+1. Those fixtures don't replace the device update test above, which stays a check for every release.
   - Clean first launch on a phone that has never had the app, and with no network.
   - No placeholders, debug screens or developer-only settings visible.
 - A privacy policy page (GitHub Pages is enough), App Store description, keywords, support URL, age rating, and the App Privacy questions.
