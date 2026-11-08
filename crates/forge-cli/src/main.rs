@@ -967,7 +967,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         per_screen,
                         screenshots: !no_screenshots,
                     };
-                    ui::explore(udid.as_deref(), &project, options, dir.as_deref(), &mut out)
+                    ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out)
                 }
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
                 UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),

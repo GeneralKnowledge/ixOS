@@ -24,6 +24,7 @@ case "$1 $2" in
   "build ios") echo "[forge] building"; echo '{"schema":"forge.result/1","command":"build ios","ok":false,"stage":"swift","duration_ms":7,"error":"xtool dev build failed","diagnostics":[{"severity":"error","source":"swiftc","file":"Sources/AppHost/TipView.swift","line":12,"column":5,"message":"cannot find tipModel in scope"}],"hints":[],"log":null}'; exit 11 ;;
   "ui start") [ -n "$FAKE_UI_START_FAILS" ] && { echo '{"schema":"forge.result/1","command":"ui start","ok":false,"stage":"device","duration_ms":4,"error":"no runner","diagnostics":[],"hints":[]}'; exit 1; }
     echo '{"schema":"forge.result/1","command":"ui start","ok":true,"stage":"ok","duration_ms":4,"diagnostics":[],"hints":[],"data":{"pid":1}}' ;;
+  "ui explore") echo '{"schema":"forge.result/1","command":"ui explore","ok":false,"stage":"test","duration_ms":3,"error":"exploring found 1 error(s)","diagnostics":[],"hints":[],"data":{"seed":7,"issues":[{"number":1,"issue":"app_closed","severity":"error"}]}}'; exit 14 ;;
   "ui run") echo '{"schema":"forge.result/1","command":"ui run","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":1}}' ;;
   "config show") echo 'not json at all'; exit 3 ;;
   *) echo "error: unrecognized subcommand '$1'" >&2; exit 2 ;;
@@ -234,6 +235,7 @@ async fn no_device_leaves_out_and_refuses_phone_tools() {
         "forge_device_status",
         "forge_screenshot",
         "forge_run_ui_test",
+        "forge_ui_explore",
     ] {
         assert!(!names.contains(&phone), "{phone} listed: {names:?}");
     }
@@ -461,4 +463,58 @@ async fn a_failed_ui_session_start_is_not_retried_at_once() {
     let starts = calls.iter().filter(|l| l.contains(" ui start ")).count();
     let runs = calls.iter().filter(|l| l.contains(" ui run ")).count();
     assert_eq!((starts, runs), (1, 2), "{calls:?}");
+}
+
+#[tokio::test]
+async fn explore_runs_on_test_data_and_never_allows_destructive_taps() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start(&fx, false, true).await;
+    let r = c
+        .call(
+            "forge_ui_explore",
+            json!({"project": "Tipster", "actions": 500, "seed": 7, "skip": ["tip.reset"], "largest_text": true, "allow_destructive": true}),
+        )
+        .await;
+    // allow_destructive isn't in the schema: refused as an unknown argument
+    // or ignored, never passed on.
+    let line = calls(&fx)
+        .into_iter()
+        .find(|l| l.starts_with("--json ui explore "))
+        .unwrap_or_default();
+    assert!(!line.contains("--allow-destructive"), "{line}");
+    if line.is_empty() {
+        assert_eq!(r["structuredContent"]["stage"], "usage", "{r}");
+    }
+    let r = c
+        .call(
+            "forge_ui_explore",
+            json!({"project": "Tipster", "actions": 500, "seed": 7, "skip": ["tip.reset"], "largest_text": true}),
+        )
+        .await;
+    assert_eq!(r["isError"], true, "{r}");
+    let s = &r["structuredContent"];
+    assert_eq!(s["stage"], "test");
+    assert_eq!(s["data"]["issues"][0]["issue"], "app_closed");
+    let out = s["data"]["out"].as_str().unwrap();
+    assert!(
+        out.starts_with("Tipster/.forge/runs/") && out.ends_with("-ui-explore"),
+        "{out}"
+    );
+    let line = calls(&fx)
+        .into_iter()
+        .find(|l| l.starts_with("--json ui explore "))
+        .unwrap();
+    for part in [
+        "--actions 200",
+        "--minutes 5",
+        "--per-screen 15",
+        "--seed 7",
+        "--skip tip.reset",
+        "--largest-text",
+        "--udid 0000",
+    ] {
+        assert!(line.contains(part), "{part} missing: {line}");
+    }
+    assert!(!line.contains("--allow-destructive") && !line.contains("--real-data"));
 }

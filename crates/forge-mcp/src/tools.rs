@@ -257,6 +257,23 @@ pub const SPECS: &[Spec] = &[
         }), &["file"]),
     },
     Spec {
+        name: "forge_ui_explore",
+        title: "Explore the app for problems",
+        description: "Walks the app's screens on the phone without a script: tries each safe control once and reports crashes (app_closed), error alerts, dead ends, controls with no effect and accessibility problems (no_label, duplicate or missing identifiers). Each issue comes with a forge ui run file under data.out/repro/ that replays it: run it with forge_run_ui_test, and copy it into the app's uitests/ to keep it as a regression test. Runs on the app's test data (forge.toml [ui_test] test_data_args), or with real_data only looks. Never taps send, pay, share and the like, never types into secure fields, never touches the keyboard or system services, and never taps delete or reset (a person can allow that from the terminal). Writes an evidence bundle to <app>/.forge/runs/<UTC>-ui-explore/.",
+        tier: Tier::Project,
+        device: true,
+        needs_ui: true,
+        schema: || schema(json!({
+            "actions": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Stop after this many actions (default 40)"},
+            "minutes": {"type": "integer", "minimum": 1, "maximum": 15, "description": "Hard time limit (default 5)"},
+            "seed": {"type": "integer", "minimum": 0, "description": "Repeat an earlier walk: the same seed tries controls in the same order (data.seed of that walk)"},
+            "skip": {"type": "array", "items": {"type": "string"}, "description": "Identifiers or labels never to touch"},
+            "largest_text": {"type": "boolean", "description": "Launch at the largest accessibility text size"},
+            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, only looking (for an app without a test-data mode)"},
+            "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"}
+        }), &[]),
+    },
+    Spec {
         name: "forge_accept_screenshots",
         title: "Approve a run's screenshots as baselines",
         description: "Makes the screenshots of a forge_run_ui_test run (its data.out folder) the baselines its test is compared with, in uitests/baselines/<test>/ (PNG plus accessibility tree, committed with the app). Only after looking at them: for a new screen, that it is right; for a changed one, that the change is the one you meant. Then run the test again so the evidence passes.",
@@ -722,6 +739,65 @@ impl crate::Server {
                     .join("runs")
                     .join(format!("{}-ui-run", crate::journal::timestamp()));
                 self.ui_run(&app, &file, &out, true, cancel).await
+            }
+            "forge_ui_explore" => {
+                let app = app_or_fail!();
+                let minutes = args.int("minutes", 5, 15);
+                let out = app
+                    .dir
+                    .join(".forge")
+                    .join("runs")
+                    .join(format!("{}-ui-explore", crate::journal::timestamp()));
+                // No --allow-destructive and no typed text from the agent:
+                // destructive taps stay a person's choice at the terminal.
+                let mut inv = Invocation::new(
+                    &["ui", "explore"],
+                    &app.dir,
+                    secs((minutes + 3) * MIN),
+                    "test",
+                )
+                .arg("--project")
+                .arg(app.dir.display().to_string())
+                .arg("--actions")
+                .arg(args.int("actions", 40, 200).to_string())
+                .arg("--minutes")
+                .arg(minutes.to_string())
+                .arg("--per-screen")
+                .arg(args.int("per_screen", 15, 50).to_string())
+                .arg("--out")
+                .arg(out.display().to_string())
+                .opt(
+                    "--seed",
+                    args.0
+                        .get("seed")
+                        .and_then(Value::as_u64)
+                        .map(|s| s.to_string()),
+                );
+                for skip in args
+                    .0
+                    .get("skip")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    inv = inv.arg("--skip").arg(skip);
+                }
+                if args.bool("largest_text") {
+                    inv = inv.arg("--largest-text");
+                }
+                if args.bool("real_data") {
+                    inv = inv.arg("--real-data");
+                }
+                let mut result = self.forge(self.with_udid(inv), cancel).await;
+                if let Some(data) = result.get_mut("data").and_then(Value::as_object_mut) {
+                    data.entry("out").or_insert_with(|| json!(rel(&root, &out)));
+                }
+                Answer {
+                    result,
+                    untrusted: true,
+                    image: None,
+                }
             }
             "forge_accept_screenshots" => {
                 let app = app_or_fail!();

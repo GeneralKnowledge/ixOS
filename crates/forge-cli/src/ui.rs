@@ -774,6 +774,7 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
 /// `forge ui explore`: walk a Forge app's screens and report what is wrong.
 /// Fails when the walk found an error (a crash, an unlabelled control).
 pub fn explore(
+    runner: &dyn CommandRunner,
     udid: Option<&str>,
     project: &Path,
     options: ExploreOptions,
@@ -786,20 +787,43 @@ pub fn explore(
             .join(".forge/runs")
             .join(format!("{}-ui-explore", report::timestamp()))
     });
+    let started = std::time::Instant::now();
+    // Read before the walk, so the bundle names the code that was explored.
+    let mut build = crate::evidence::provenance(runner, project);
     // Reuses a running `forge ui start` session's runner when there is one.
     let (phone, mut apps, held, mut driver) = connect(udid, out)?;
     config.app = resolve(&phone, &mut apps, &held, &config.script_app)?;
     let report = explore::run(&config, &mut driver, Some(&out_dir), out).map_err(err)?;
     writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
-    report::set_data(serde_json::json!({
+    let summary = serde_json::json!({
         "app": report.app,
         "seed": report.seed,
         "stopped": report.stopped,
         "actions": report.actions,
         "screens": report.screens.len(),
         "issues": report.issues,
-        "report": out_dir.join("explore.json"),
-    }));
+    });
+    build["installed_as"] = serde_json::json!(config.app);
+    let evidence = crate::evidence::write_explore_bundle(
+        &crate::evidence::ExploreRun {
+            build,
+            device: serde_json::json!({
+                "udid": phone.udid,
+                "ios_major": phone.ios_major().ok(),
+            }),
+            explore: summary.clone(),
+            ok: report.errors() == 0,
+            duration_ms: started.elapsed().as_millis() as u64,
+        },
+        &out_dir,
+        &report::timestamp(),
+    )?;
+    writeln!(out, "Evidence: {}", evidence.display()).map_err(err)?;
+    let mut data = summary;
+    data["report"] = serde_json::json!(out_dir.join("explore.json"));
+    data["out"] = serde_json::json!(out_dir.display().to_string());
+    data["evidence"] = serde_json::json!(evidence.display().to_string());
+    report::set_data(data);
     match report.errors() {
         0 => Ok(()),
         n => Err(format!(
