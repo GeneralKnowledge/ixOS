@@ -1,0 +1,9 @@
+order = 50
+capability = "Exploratory UI testing: walk an app's screens without a script and report crashes, error alerts, dead ends and accessibility problems with replay files (`forge ui explore`)"
+framework = "Yes: forge-uitest (`explore`)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: tested on Linux against a model of Pocket Library only"
+iphone = "No: not run on an iPhone yet"
+documented = "Yes: forge-explore.md"
+limits = "Forge apps only until the any-app policy lands; no scrolling below the fold; one row per list; no invariants, performance or crash-report checks during the walk; no MCP tool yet (agents use `forge --json ui explore`)"

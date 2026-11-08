@@ -212,6 +212,52 @@ enum UiCommands {
         #[arg(long, value_name = "DIR")]
         out: Option<PathBuf>,
     },
+    /// Explore an app without a script: visit its screens, try each safe
+    /// control once, and report crashes, error alerts, dead ends and
+    /// accessibility problems, each with a `forge ui run` file that replays
+    /// it (docs/forge-explore.md)
+    Explore {
+        #[arg(long)]
+        udid: Option<String>,
+        /// The app to explore: its folder with forge.toml (only Forge apps
+        /// for now; other apps wait for the any-app policy)
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        /// Stop after this many actions
+        #[arg(long, default_value_t = 60)]
+        actions: usize,
+        /// Stop after this many minutes, whatever is left
+        #[arg(long, default_value_t = 10.0)]
+        minutes: f64,
+        /// Fixes the order controls are tried in (default: from the clock;
+        /// printed, so a walk can be repeated)
+        #[arg(long)]
+        seed: Option<u64>,
+        /// Text for a field, as IDENTIFIER=TEXT (repeatable); other fields
+        /// get "Forge"
+        #[arg(long = "text", value_name = "ID=TEXT")]
+        texts: Vec<String>,
+        /// Never touch this identifier or label (repeatable)
+        #[arg(long, value_name = "ID_OR_LABEL")]
+        skip: Vec<String>,
+        /// Also tap delete, remove, reset, sign out and the like. Send,
+        /// pay, share and the like are never tapped
+        #[arg(long)]
+        allow_destructive: bool,
+        /// Launch with the largest accessibility text size
+        #[arg(long)]
+        largest_text: bool,
+        /// At most this many controls tried per screen
+        #[arg(long, default_value_t = 15)]
+        per_screen: usize,
+        /// Don't save a screenshot of every new screen
+        #[arg(long)]
+        no_screenshots: bool,
+        /// Where explore.json, screens and replay files go (default:
+        /// <app>/.forge/runs/<UTC>-ui-explore/)
+        #[arg(long, value_name = "DIR")]
+        out: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -486,7 +532,7 @@ fn main() {
         // usbmuxd missing, no phone, not paired, the app not listening.
         Commands::Device { .. } | Commands::Devices => "device",
         Commands::Ui {
-            cmd: UiCommands::Run { .. },
+            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
         } => "test",
         // No DDI, no runner, WebDriverAgent not answering.
         Commands::Ui { .. } => "device",
@@ -558,6 +604,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
+            UiCommands::Explore { .. } => "ui explore",
         },
     };
     sub.into()
@@ -744,6 +791,33 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
                 UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
                 UiCommands::Run { udid, file, out: dir } => ui::run(runner, udid.as_deref(), &file, dir.as_deref(), &mut out),
+                UiCommands::Explore {
+                    udid,
+                    project,
+                    actions,
+                    minutes,
+                    seed,
+                    texts,
+                    skip,
+                    allow_destructive,
+                    largest_text,
+                    per_screen,
+                    no_screenshots,
+                    out: dir,
+                } => {
+                    let options = ui::ExploreOptions {
+                        actions,
+                        minutes,
+                        seed,
+                        texts,
+                        skip,
+                        allow_destructive,
+                        largest_text,
+                        per_screen,
+                        screenshots: !no_screenshots,
+                    };
+                    ui::explore(udid.as_deref(), &project, options, dir.as_deref(), &mut out)
+                }
             }
         }
         Commands::Device { cmd } => device_command(cmd, cli.json),

@@ -12,6 +12,7 @@
 //!   mounts the Developer Disk Image and starts the runner.
 //! - [`script`] runs steps from a TOML file against any [`Driver`].
 
+pub mod explore;
 pub mod http;
 pub mod phone;
 pub mod script;
@@ -53,7 +54,7 @@ pub type Result<T> = std::result::Result<T, UiError>;
 /// copy and layout changes. Labels are what VoiceOver reads, so finding by
 /// label also checks that the element has one. There is deliberately no
 /// coordinate locator.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Locator {
     /// `.accessibilityIdentifier(...)`, matched exactly.
     Id(String),

@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use forge_uitest::explore;
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
 use forge_uitest::script::{self, Script};
 use forge_uitest::wda::WdaDriver;
@@ -399,9 +400,156 @@ pub fn run(
     }
 }
 
+/// `forge ui explore`'s options, as given on the command line.
+pub struct ExploreOptions {
+    pub actions: usize,
+    pub minutes: f64,
+    pub seed: Option<u64>,
+    /// `IDENTIFIER=TEXT`
+    pub texts: Vec<String>,
+    pub skip: Vec<String>,
+    pub allow_destructive: bool,
+    pub largest_text: bool,
+    pub per_screen: usize,
+    pub screenshots: bool,
+}
+
+/// The explorer's settings for the app in `project` (its forge.toml bundle
+/// id), before the phone says what it is installed as.
+pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explore::Config, String> {
+    let forge_toml = project.join("forge.toml");
+    let text = std::fs::read_to_string(&forge_toml).map_err(|e| {
+        format!(
+            "{}: {e} (forge ui explore works on Forge apps: pass --project <app>)",
+            forge_toml.display()
+        )
+    })?;
+    let bundle_id = crate::config::ForgeConfig::parse(&text)?.app.bundle_id;
+    let mut fixtures = std::collections::HashMap::new();
+    for pair in &options.texts {
+        let (id, text) = pair
+            .split_once('=')
+            .ok_or_else(|| format!("--text {pair:?}: write IDENTIFIER=TEXT"))?;
+        fixtures.insert(id.to_owned(), text.to_owned());
+    }
+    if !(options.minutes > 0.0 && options.minutes.is_finite()) {
+        return Err("--minutes must be more than 0".into());
+    }
+    let seed = options.seed.unwrap_or_else(|| {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(1)
+    });
+    Ok(explore::Config {
+        app: bundle_id.clone(),
+        script_app: bundle_id,
+        max_actions: options.actions,
+        budget: Duration::from_secs_f64(options.minutes * 60.0),
+        seed,
+        launch_args: if options.largest_text {
+            explore::LARGEST_TEXT_ARGS
+                .iter()
+                .map(|a| a.to_string())
+                .collect()
+        } else {
+            Vec::new()
+        },
+        fixtures,
+        allow_destructive: options.allow_destructive,
+        skip: options.skip.clone(),
+        per_screen: options.per_screen.max(1),
+        screenshots: options.screenshots,
+        ..explore::Config::default()
+    })
+}
+
+/// `forge ui explore`: walk a Forge app's screens and report what is wrong.
+/// Fails when the walk found an error (a crash, an unlabelled control).
+pub fn explore(
+    udid: Option<&str>,
+    project: &Path,
+    options: ExploreOptions,
+    out_dir: Option<&Path>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let mut config = explore_config(project, &options)?;
+    let out_dir = out_dir.map(Path::to_path_buf).unwrap_or_else(|| {
+        project
+            .join(".forge/runs")
+            .join(format!("{}-ui-explore", report::timestamp()))
+    });
+    let (_phone, apps, _runner, mut driver) = connect(udid)?;
+    config.app = resolve_app(&apps, &config.script_app)?.to_owned();
+    let report = explore::run(&config, &mut driver, Some(&out_dir), out).map_err(err)?;
+    writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
+    report::set_data(serde_json::json!({
+        "app": report.app,
+        "seed": report.seed,
+        "stopped": report.stopped,
+        "actions": report.actions,
+        "screens": report.screens.len(),
+        "issues": report.issues,
+        "report": out_dir.join("explore.json"),
+    }));
+    match report.errors() {
+        0 => Ok(()),
+        n => Err(format!(
+            "exploring found {n} error(s); each has a replay file under {}",
+            out_dir.join("repro").display()
+        )),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn options() -> ExploreOptions {
+        ExploreOptions {
+            actions: 60,
+            minutes: 10.0,
+            seed: Some(3),
+            texts: vec!["bookForm.title=Dune".into()],
+            skip: vec![],
+            allow_destructive: false,
+            largest_text: true,
+            per_screen: 15,
+            screenshots: true,
+        }
+    }
+
+    fn pocket_library() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/pocket-library")
+    }
+
+    #[test]
+    fn explore_reads_the_bundle_id_and_options() {
+        let config = explore_config(&pocket_library(), &options()).unwrap();
+        assert_eq!(config.script_app, "org.forgemobile.pocketlibrary");
+        assert_eq!(config.seed, 3);
+        assert_eq!(config.fixtures["bookForm.title"], "Dune");
+        assert_eq!(config.launch_args, explore::LARGEST_TEXT_ARGS);
+        assert_eq!(config.budget, Duration::from_secs(600));
+    }
+
+    #[test]
+    fn explore_needs_a_forge_app_and_well_formed_options() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = explore_config(dir.path(), &options()).unwrap_err();
+        assert!(err.contains("--project"), "{err}");
+        let bad = ExploreOptions {
+            texts: vec!["no-equals".into()],
+            ..options()
+        };
+        let err = explore_config(&pocket_library(), &bad).unwrap_err();
+        assert!(err.contains("IDENTIFIER=TEXT"), "{err}");
+        let bad = ExploreOptions {
+            minutes: 0.0,
+            ..options()
+        };
+        assert!(explore_config(&pocket_library(), &bad).is_err());
+    }
 
     fn apps(n: usize) -> Vec<String> {
         (0..n).map(|i| format!("XTL-1.app{i}")).collect()
