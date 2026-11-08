@@ -22,6 +22,7 @@ New apps carry it in `.mcp.json` (`forge init` writes `{"forge": {"command": "fo
 forge mcp                                                    # root = current folder; installing refused
 forge mcp --allow install --bundle-id org.forgemobile.agentlab   # the M0 run: the agent may install the sandbox app only
 forge mcp --root ~/apps --udid 00008130-…                   # another root; device tools only touch this phone
+forge mcp --no-device                                        # no phone tools at all, even with a phone plugged in
 ```
 
 Built (M0), each tool running `forge <command> --json` in the app folder:
@@ -397,7 +398,7 @@ Choices, and why:
 
 - **No server.** A laptop server like Chat's would add Wi-Fi, IP and uptime failures that say nothing about the agent loop. The simulated accounts give the feed something to refresh.
 - **Free team.** No push, no Sign in with Apple, one sandbox slot (it installs over Tipster). Nothing in the app needs a paid team, so paying is not a prerequisite for this run.
-- **Short phone stages, one agent session.** Reuben (2026-11-08) didn't want one 90-minute unattended run: the phone is tied up all that time, and any Forge fix it shows has to wait for the end. So the run is staged. Everything that doesn't need the phone runs first, as long as it needs, with installing refused by the server: the agent writes the app, makes `forge_check` and `forge_build_ios` (SwiftUI on the laptop) pass and writes the UI test. Each phone stage is then 15–20 minutes at most. Every stage resumes the same session (`claude -p --resume`), so the agent keeps what it learned, and Forge can be fixed and rebuilt between stages.
+- **Short phone stages, one agent session.** Reuben (2026-11-08) didn't want one 90-minute unattended run: the phone is tied up all that time, and any Forge fix it shows has to wait for the end. So the run is staged. Everything that doesn't need the phone runs first, as long as it needs, with the server started with `--no-device`, so no phone tool is offered even if a phone is plugged in: the agent writes the app, makes `forge_check` and `forge_build_ios` (SwiftUI on the laptop) pass and writes the UI test. Each phone stage is then 15–20 minutes at most. Every stage resumes the same session (`claude -p --resume`), so the agent keeps what it learned, and Forge can be fixed and rebuilt between stages.
 - **Two changes after it works.** "The timeline feels cramped" and "add bookmarks", each made without the phone and then checked on it. This checks the agent can change an app it built.
 - **No `forge_ui_audit`.** It isn't built (M1). The agent checks the main screens with `text_size: largest`; the accessibility audit (`ax_probe`) runs by hand afterwards if wanted.
 

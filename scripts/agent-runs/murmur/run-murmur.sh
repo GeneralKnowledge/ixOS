@@ -37,9 +37,9 @@ phone_check() {
   fi
 }
 
-# mcp_config phone|nophone: only phone stages may install.
+# mcp_config phone|nophone: only phone stages get the phone tools and may install.
 mcp_config() {
-  local allow=""
+  local allow='"--no-device",'
   [[ $1 == phone ]] && allow='"--allow","install","--bundle-id","org.forgemobile.agentlab",'
   mkdir -p "$LAB" "$OUT"
   cat > "$OUT/mcp.json" <<JSON
