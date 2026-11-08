@@ -1,0 +1,22 @@
+[package]
+name = "forge-crash"
+version = "0.1.0"
+description = "Reads iPhone crash reports (.ips) on Linux: symbolicates the app's Swift and Rust frames against the local build, demangles them and says what kind of crash it was"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+# DWARF line tables and the symbol table of Mach-O binaries, dSYM bundles and
+# the object files a debug build's debug map points at (static Rust archives
+# included). Pure Rust: no Xcode, no atos, no llvm tools.
+addr2line = { version = "0.27", default-features = false, features = ["std", "loader"] }
+object = { version = "0.40", default-features = false, features = ["std", "read_core", "macho"] }
+rustc-demangle = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3.14"

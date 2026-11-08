@@ -50,7 +50,7 @@ Swift: SwiftUI compiles only with the Darwin SDK (xtool on a Linux laptop that h
 
 ## Device tools
 
-On a machine with an iPhone over USB: `forge device list|info|logs|crashes`, and for a development build (`forge run ios --devtools`) `forge device pair|status|snapshot|cmd|connect`. See [forge-device.md](docs/forge-device.md). The agent-facing design of the dev loop and the MCP server is in [dev-loop.md](docs/dev-loop.md) and [forge-mcp.md](docs/forge-mcp.md).
+On a machine with an iPhone over USB: `forge device list|info|logs|crashes` (`crashes --pull <dir>` symbolicates; `forge crash <file.ips>` reads a report offline), and for a development build (`forge run ios --devtools`) `forge device pair|status|snapshot|cmd|connect`. See [forge-device.md](docs/forge-device.md). The agent-facing design of the dev loop and the MCP server is in [dev-loop.md](docs/dev-loop.md) and [forge-mcp.md](docs/forge-mcp.md).
 
 ## Docs to read for a task
 
