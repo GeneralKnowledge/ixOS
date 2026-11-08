@@ -1,6 +1,6 @@
 order = 40
 metric = "Database queries"
-target = "Full-text search over 100,000 messages under 50 ms; a month's budget totals under 20 ms"
+target = "Full-text search over 100,000 messages under 50 ms; today's plan from a year of training sessions under 20 ms"
 how_measured = "Timed in Rust and logged"
-first_needed_by = "Chat M2, Pocket Ledger"
+first_needed_by = "Chat M2, Good Dog GD1"
 last_recorded = "Not measured"
