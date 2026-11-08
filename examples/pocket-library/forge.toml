@@ -21,3 +21,9 @@ ios_simulator = false
 orientations = ["portrait"]
 # Read-aloud keeps speaking when the screen locks or the app is in the background.
 background_modes = ["audio"]
+
+# UI automation. This launch argument starts the app on an empty, throwaway
+# library (Application Support/PocketLibrary-UITest), so `forge ui explore`
+# never changes the person's own books. docs/forge-explore.md
+[ui_test]
+test_data_args = ["-ForgeUITestData"]
