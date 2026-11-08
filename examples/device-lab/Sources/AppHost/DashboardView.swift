@@ -27,6 +27,16 @@ struct DashboardView: View {
             } footer: {
                 Text("Wi-Fi name, device name, carrier, signal strength and more.")
             }
+            Section {
+                NavigationLink {
+                    CrashTestView(model: model)
+                } label: {
+                    Label("Crash Test", systemImage: "exclamationmark.triangle")
+                }
+                .accessibilityIdentifier("dashboard.crashTest")
+            } footer: {
+                Text("For developers: crash the app on purpose to check crash reports.")
+            }
         }
         .groupedList()
         .navigationTitle("Device Lab")
