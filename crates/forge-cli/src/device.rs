@@ -167,7 +167,10 @@ pub fn crashes(
             }
         }
         Some(dir) => {
-            let files = pull_reports(backend, &device, &names, dir)?;
+            let (files, skipped) = pull_reports(backend, &device, &names, dir)?;
+            for (name, e) in &skipped {
+                writeln!(out, "not copied: {name}: {e}").map_err(err)?;
+            }
             let analyses = crate::crash::analyze_pulled(&files, &query.symbols());
             for file in &files {
                 writeln!(out, "{}", file.display()).map_err(err)?;
@@ -212,7 +215,13 @@ pub fn crashes_data(backend: &dyn DeviceBackend, query: &CrashQuery) -> Result<V
     let (device, names) = crash_names(backend, query.udid, query.app, query.limit)?;
     let mut data = json!({ "reports": names });
     if let Some(dir) = query.pull {
-        let files = pull_reports(backend, &device, &names, dir)?;
+        let (files, skipped) = pull_reports(backend, &device, &names, dir)?;
+        if !skipped.is_empty() {
+            data["skipped"] = json!(skipped
+                .iter()
+                .map(|(name, e)| json!({ "name": name, "error": e }))
+                .collect::<Vec<_>>());
+        }
         data["pulled"] = json!(files
             .iter()
             .map(|f| f.display().to_string())
@@ -250,21 +259,38 @@ fn crash_names(
     Ok((device, names))
 }
 
+/// Reports copied, and the ones the phone wouldn't give (`name`, reason).
+/// One unreadable entry (a folder, a report being written) doesn't stop the
+/// rest; seen on Cati, 2026-11-08, as `afc error: Unknown error`.
+type Pulled = (Vec<std::path::PathBuf>, Vec<(String, String)>);
+
 fn pull_reports(
     backend: &dyn DeviceBackend,
     device: &forge_device::DeviceRef,
     names: &[String],
     dir: &Path,
-) -> Result<Vec<std::path::PathBuf>, String> {
+) -> Result<Pulled, String> {
     std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     let mut files = Vec::new();
+    let mut skipped = Vec::new();
     for name in names {
-        let bytes = backend.pull_crash_report(device, name).map_err(err)?;
+        let bytes = match backend.pull_crash_report(device, name) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                skipped.push((name.clone(), e.to_string()));
+                continue;
+            }
+        };
         let file = dir.join(name.rsplit('/').next().unwrap_or(name));
         std::fs::write(&file, bytes).map_err(|e| format!("write {}: {e}", file.display()))?;
         files.push(file);
     }
-    Ok(files)
+    if files.is_empty() {
+        if let Some((name, e)) = skipped.first() {
+            return Err(format!("could not copy any report ({name}: {e})"));
+        }
+    }
+    Ok((files, skipped))
 }
 
 #[cfg(test)]
@@ -317,6 +343,11 @@ mod tests {
             ])
         }
         fn pull_crash_report(&self, _: &DeviceRef, name: &str) -> Result<Vec<u8>> {
+            if name.starts_with("Mail") {
+                return Err(forge_device::DeviceError::Service(
+                    "afc error: Unknown error".into(),
+                ));
+            }
             if name.starts_with("Crashy") {
                 return Ok(std::fs::read(crash_fixtures().join(name)).unwrap());
             }
@@ -430,6 +461,24 @@ mod tests {
             .as_str()
             .unwrap()
             .ends_with("Crashy-2026-11-08-101500.ips"));
+    }
+
+    #[test]
+    fn one_unreadable_report_does_not_stop_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let q = CrashQuery {
+            pull: Some(dir.path()),
+            ..CrashQuery::default()
+        };
+        let shown = text(|out| crashes(&Fake, &q, out));
+        assert!(
+            shown.contains("not copied: Mail-2026-11-07-120000.ips: "),
+            "{shown}"
+        );
+        assert!(dir.path().join("Chat-2026-11-07-120000.ips").is_file());
+        let data = crashes_data(&Fake, &q).unwrap();
+        assert_eq!(data["skipped"][0]["name"], "Mail-2026-11-07-120000.ips");
+        assert_eq!(data["pulled"].as_array().unwrap().len(), 2);
     }
 
     #[test]
