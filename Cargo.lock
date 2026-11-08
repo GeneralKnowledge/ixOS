@@ -1144,6 +1144,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "good-dog-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "half"
 version = "2.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

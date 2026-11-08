@@ -19,7 +19,10 @@ struct SettingsView: View {
                             Text(order.label).tag(order)
                         }
                     }
+                    .accessibilityIdentifier("settings.sort")
                     Toggle("Online catalogue search", isOn: catalogueBinding)
+                    .accessibilityLabel("Online catalogue search")
+                    .accessibilityIdentifier("settings.onlineCatalogue")
                 } header: {
                     Text("Preferences")
                 } footer: {
@@ -40,6 +43,7 @@ struct SettingsView: View {
                         ShareLink(item: exportURL) {
                             Text("Share Export File")
                         }
+                        .accessibilityIdentifier("settings.shareExport")
                     } else {
                         Button {
                             export()
@@ -49,8 +53,10 @@ struct SettingsView: View {
                             }
                         }
                         .disabled(exporting)
+                        .accessibilityIdentifier("settings.export")
                     }
                     Button("Erase Library…", role: .destructive) { confirmErase = true }
+                        .accessibilityIdentifier("settings.erase")
                 } header: {
                     Text("Your Data")
                 } footer: {

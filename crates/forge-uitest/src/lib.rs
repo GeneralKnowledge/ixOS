@@ -168,6 +168,15 @@ pub trait Driver {
     fn dismiss_keyboard(&mut self) -> Result<()> {
         Ok(())
     }
+    /// Whether a search should also say what it found (type, label and
+    /// identifier), so that [`Driver::attribute`] answers those without
+    /// asking the phone again. Each such read costs WebDriverAgent a fresh
+    /// snapshot of the whole app, which in a big app (a long chat) is most
+    /// of a step's time. Runs that check every tap and typing against the
+    /// any-app policy turn it on; a driver that can't simply ignores it.
+    fn describe_matches(&mut self, _on: bool) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// Waits up to `timeout` for `bundle_id` to be the app in front, and fails
@@ -450,6 +459,13 @@ pub mod fake {
             self.calls.push("screenshot".into());
             Ok(b"\x89PNG fake".to_vec())
         }
+        fn describe_matches(&mut self, on: bool) -> Result<()> {
+            if on {
+                self.calls.push("describe matches".into());
+            }
+            Ok(())
+        }
+
         fn foreground(&mut self) -> Result<Option<String>> {
             Ok(self.front.clone())
         }

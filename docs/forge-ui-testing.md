@@ -157,9 +157,20 @@ Steps that work today, one action per step (unknown keys are rejected):
 | `screenshot` | a name |
 | `tree` | `true`: save the accessibility tree |
 
-A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
+A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container. `forge ui tree` reports a `duplicate_identifier` warning for two separate elements with one identifier, but not for a wrapper around an element with the same identifier, which the app can't avoid. Likewise the unlabelled UIKit switch inside a labelled SwiftUI `Toggle` isn't reported as `no_label`. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
 
 Each step costs one or more round trips to WebDriverAgent of a few hundred milliseconds: the front-app check, finding the element, and for a tap the hittable check and the tap itself (about 2 s per tap on Cati). To keep a run fast, don't tap a field before `type`: typing focuses it. Identifiers are found with WDA's `accessibility id` strategy (XCTest's own identifier query) rather than a predicate over the whole tree.
+
+Most of a step's time in a big app (the Claude app's chat, a long list) is WebDriverAgent taking a fresh snapshot of the whole app: every element search does, and so does every attribute read, because WDA resolves the element again each time. A run in another app (`--any-app`) reads the label, identifier and type of each target for the [commit gate](#apps-forge-didnt-build), which used to be three more snapshots per tap or `type`. Such runs now ask the search to return those three with its matches (WDA's `shouldUseCompactResponses` and `elementResponseAttributes` settings), so the gate reads them without asking the phone again; what it decides is unchanged. Anything that can change the screen (a tap, typing, a scroll, a launch) drops what a search said, so later reads ask the phone. Typing itself is WDA's: if the field doesn't have keyboard focus, WDA taps it, takes another snapshot and types. On Cati (2026-11-08, the Claude app, one UI session) a type step went from 2.4 s to 1.3 s and a clear step from 1.2 s to 0.5 s. Waiting less for the app to settle (`waitForIdleTimeout` 1 s instead of 10 s) made no difference.
+
+To see where a run's time goes, set `FORGE_UI_TIMINGS=1`: each WebDriverAgent request is printed to stderr with its time, without element ids or typed text:
+
+```text
+          wda   412 ms  POST /elements
+          wda  2310 ms  POST /element/:e/value
+```
+
+For measuring only, `FORGE_UI_WDA_SETTINGS` adds WDA settings to the ones Forge sets at the start of a run, as a JSON object, for example `FORGE_UI_WDA_SETTINGS='{"waitForIdleTimeout": 1}'` to wait less for the app to settle before each event. It is not a supported option. A setting stays on the runner until it is set again or the runner stops, so set it back (`{"waitForIdleTimeout": 10}`, WDA's default) or run `forge ui stop` after measuring.
 
 Planned, not built (a test using them fails to parse): `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 

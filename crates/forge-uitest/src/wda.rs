@@ -6,6 +6,9 @@
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
 //! `POST .../wda/deactivateApp`, `POST .../wda/keyboard/dismiss`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
 
+use std::collections::HashMap;
+use std::time::Instant;
+
 use base64::Engine as _;
 use serde_json::{json, Value};
 
@@ -15,9 +18,25 @@ use crate::{Driver, ElementRef, Locator, Result, UiError, UiNode};
 /// The W3C WebDriver key that carries an element id.
 const ELEMENT_KEY: &str = "element-6066-11e4-a52e-4f735466cecf";
 
+/// The attributes a search answers with when [`Driver::describe_matches`]
+/// is on, as WDA's `elementResponseAttributes` setting names them, and the
+/// attribute each one stands for. `attribute/name` is the identifier: in an
+/// element reply WDA's plain `name` field is the W3C tag name (the type).
+const DESCRIBED: [(&str, &str); 3] = [
+    ("type", "type"),
+    ("label", "label"),
+    ("attribute/name", "name"),
+];
+
 pub struct WdaDriver<T: HttpTransport> {
     transport: T,
     session: String,
+    /// What the last search said about each element it found: type, label
+    /// and identifier, read from the snapshot WDA took for the search.
+    /// Emptied by every search and by anything that can change the screen.
+    described: HashMap<String, HashMap<&'static str, Option<String>>>,
+    /// Print each request's time to stderr (`FORGE_UI_TIMINGS=1`).
+    timings: bool,
 }
 
 impl<T: HttpTransport> WdaDriver<T> {
@@ -31,7 +50,14 @@ impl<T: HttpTransport> WdaDriver<T> {
             .and_then(Value::as_str)
             .ok_or_else(|| UiError::Wda("no session id in reply".into()))?
             .to_owned();
-        Ok(Self { transport, session })
+        let timings =
+            std::env::var_os("FORGE_UI_TIMINGS").is_some_and(|v| !v.is_empty() && v != "0");
+        Ok(Self {
+            transport,
+            session,
+            described: HashMap::new(),
+            timings,
+        })
     }
 
     /// WDA's `/status`: build info, and whether it is ready.
@@ -41,17 +67,67 @@ impl<T: HttpTransport> WdaDriver<T> {
 
     fn post(&mut self, path: &str, body: Value) -> Result<Value> {
         let path = format!("/session/{}{path}", self.session);
-        value(call(&mut self.transport, "POST", &path, Some(&body))?)
+        self.timed("POST", &path, Some(&body))
     }
 
     fn get(&mut self, path: &str) -> Result<Value> {
         let path = format!("/session/{}{path}", self.session);
-        value(call(&mut self.transport, "GET", &path, None)?)
+        self.timed("GET", &path, None)
+    }
+
+    /// One request, timed on stderr when `FORGE_UI_TIMINGS` is set. Element
+    /// ids are left out of the line; typed text never appears in it.
+    fn timed(&mut self, method: &str, path: &str, body: Option<&Value>) -> Result<Value> {
+        let started = Instant::now();
+        let result = call(&mut self.transport, method, path, body).and_then(value);
+        if self.timings {
+            let route = route_of(path, &self.session);
+            let ms = started.elapsed().as_millis();
+            let outcome = if result.is_ok() { "" } else { " (error)" };
+            eprintln!("          wda {ms:>5} ms  {method} {route}{outcome}");
+        }
+        result
+    }
+
+    /// Something may have changed on screen: forget what searches said.
+    fn changed(&mut self) {
+        self.described.clear();
+    }
+}
+
+/// A request path without its session and element ids, for timing lines:
+/// `/session/S/element/E/value` → `/element/:e/value`.
+fn route_of(path: &str, session: &str) -> String {
+    let path = path
+        .strip_prefix(&format!("/session/{session}"))
+        .unwrap_or(path);
+    let mut parts: Vec<&str> = path.split('/').collect();
+    for i in 1..parts.len() {
+        if parts[i - 1] == "element" && !parts[i].is_empty() {
+            parts[i] = ":e";
+        }
+    }
+    let route = parts.join("/");
+    if route.is_empty() {
+        "/".into()
+    } else {
+        route
+    }
+}
+
+/// An attribute as [`Driver::attribute`] returns it: empty text is no text.
+fn attribute_text(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(s) if s.is_empty() => None,
+        Value::String(s) => Some(s.clone()),
+        other => Some(other.to_string()),
     }
 }
 
 impl<T: HttpTransport> Driver for WdaDriver<T> {
     fn launch(&mut self, bundle_id: &str, args: &[String]) -> Result<()> {
+        self.changed();
         self.post(
             "/wda/apps/launch",
             json!({ "bundleId": bundle_id, "arguments": args, "environment": {} }),
@@ -60,11 +136,13 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn activate(&mut self, bundle_id: &str) -> Result<()> {
+        self.changed();
         self.post("/wda/apps/activate", json!({ "bundleId": bundle_id }))?;
         Ok(())
     }
 
     fn terminate(&mut self, bundle_id: &str) -> Result<()> {
+        self.changed();
         self.post("/wda/apps/terminate", json!({ "bundleId": bundle_id }))?;
         Ok(())
     }
@@ -76,6 +154,7 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn background(&mut self, seconds: f64) -> Result<()> {
+        self.changed();
         self.post("/wda/deactivateApp", json!({ "duration": seconds }))?;
         Ok(())
     }
@@ -98,18 +177,54 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
         let list = found
             .as_array()
             .ok_or_else(|| UiError::Wda("element list is not an array".into()))?;
+        self.described.clear();
         list.iter()
             .map(|item| {
-                item.get(ELEMENT_KEY)
+                let id = item
+                    .get(ELEMENT_KEY)
                     .or_else(|| item.get("ELEMENT"))
                     .and_then(Value::as_str)
-                    .map(|id| ElementRef(id.to_owned()))
-                    .ok_or_else(|| UiError::Wda("element without an id".into()))
+                    .ok_or_else(|| UiError::Wda("element without an id".into()))?;
+                // Kept only if the reply has every described field: a
+                // compact reply (describing off) has none of them.
+                let described: Option<HashMap<_, _>> = DESCRIBED
+                    .iter()
+                    .map(|(field, attribute)| {
+                        item.get(*field).map(|v| (*attribute, attribute_text(v)))
+                    })
+                    .collect();
+                if let Some(described) = described {
+                    self.described.insert(id.to_owned(), described);
+                }
+                Ok(ElementRef(id.to_owned()))
             })
             .collect()
     }
 
+    fn describe_matches(&mut self, on: bool) -> Result<()> {
+        let fields: Vec<&str> = DESCRIBED.iter().map(|(field, _)| *field).collect();
+        let mut settings = json!({ "shouldUseCompactResponses": !on });
+        if on {
+            settings["elementResponseAttributes"] = json!(fields.join(","));
+        }
+        // For measuring on a phone: more WDA settings to try, such as
+        // `{"waitForIdleTimeout": 1}`. Not a supported knob.
+        if let Some(extra) = std::env::var_os("FORGE_UI_WDA_SETTINGS") {
+            match serde_json::from_str::<Value>(&extra.to_string_lossy()) {
+                Ok(Value::Object(extra)) => {
+                    for (key, value) in extra {
+                        settings[key] = value;
+                    }
+                }
+                _ => eprintln!("          FORGE_UI_WDA_SETTINGS is not a JSON object; ignored"),
+            }
+        }
+        self.post("/appium/settings", json!({ "settings": settings }))?;
+        Ok(())
+    }
+
     fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+        self.changed();
         let body = if direction == "visible" {
             json!({ "toVisible": true })
         } else {
@@ -120,11 +235,13 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn tap(&mut self, element: &ElementRef) -> Result<()> {
+        self.changed();
         self.post(&format!("/element/{}/click", element.0), json!({}))?;
         Ok(())
     }
 
     fn type_text(&mut self, element: &ElementRef, text: &str) -> Result<()> {
+        self.changed();
         let chars: Vec<String> = text.chars().map(String::from).collect();
         self.post(
             &format!("/element/{}/value", element.0),
@@ -134,18 +251,19 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn clear(&mut self, element: &ElementRef) -> Result<()> {
+        self.changed();
         self.post(&format!("/element/{}/clear", element.0), json!({}))?;
         Ok(())
     }
 
     fn attribute(&mut self, element: &ElementRef, name: &str) -> Result<Option<String>> {
+        // Type, label and identifier as the search that found the element
+        // saw them: no round trip, and no second snapshot of the whole app.
+        if let Some(known) = self.described.get(&element.0).and_then(|d| d.get(name)) {
+            return Ok(known.clone());
+        }
         let value = self.get(&format!("/element/{}/attribute/{name}", element.0))?;
-        Ok(match value {
-            Value::Null => None,
-            Value::String(s) if s.is_empty() => None,
-            Value::String(s) => Some(s),
-            other => Some(other.to_string()),
-        })
+        Ok(attribute_text(&value))
     }
 
     fn foreground(&mut self) -> Result<Option<String>> {
@@ -158,17 +276,12 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn tree(&mut self) -> Result<UiNode> {
-        let source = value(call(
-            &mut self.transport,
-            "GET",
-            "/source?format=json",
-            None,
-        )?)?;
+        let source = self.timed("GET", "/source?format=json", None)?;
         Ok(UiNode::from_wda(&source))
     }
 
     fn screenshot(&mut self) -> Result<Vec<u8>> {
-        let encoded = value(call(&mut self.transport, "GET", "/screenshot", None)?)?;
+        let encoded = self.timed("GET", "/screenshot", None)?;
         let encoded = encoded
             .as_str()
             .ok_or_else(|| UiError::Wda("screenshot is not a string".into()))?;
@@ -301,6 +414,99 @@ mod tests {
                 "GET /session/S1/element/E7/attribute/value",
             ]
         );
+    }
+
+    #[test]
+    fn searches_describe_matches_so_policy_reads_need_no_round_trip() {
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (200, json!({ "value": {} })),
+            (
+                200,
+                json!({ "value": [{
+                    ELEMENT_KEY: "E7",
+                    "type": "XCUIElementTypeTextView",
+                    "label": "",
+                    "attribute/name": "chat.input",
+                }] }),
+            ),
+            (200, json!({ "value": null })),
+            (200, json!({ "value": "Write a message" })),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        driver.describe_matches(true).unwrap();
+        let found = driver.find_all(&Locator::Id("chat.input".into())).unwrap();
+        let e = &found[0];
+        // Answered from the search: no requests.
+        assert_eq!(
+            driver.attribute(e, "type").unwrap().as_deref(),
+            Some("XCUIElementTypeTextView")
+        );
+        assert_eq!(driver.attribute(e, "label").unwrap(), None);
+        assert_eq!(
+            driver.attribute(e, "name").unwrap().as_deref(),
+            Some("chat.input")
+        );
+        // Typing can change the screen: the label is asked for again.
+        driver.type_text(e, "Hi").unwrap();
+        assert_eq!(
+            driver.attribute(e, "label").unwrap().as_deref(),
+            Some("Write a message")
+        );
+        drop(driver);
+        assert_eq!(
+            s.sent,
+            [
+                r#"POST /session {"capabilities":{"alwaysMatch":{}}}"#,
+                r#"POST /session/S1/appium/settings {"settings":{"elementResponseAttributes":"type,label,attribute/name","shouldUseCompactResponses":false}}"#,
+                r#"POST /session/S1/elements {"using":"accessibility id","value":"chat.input"}"#,
+                r#"POST /session/S1/element/E7/value {"text":"Hi","value":["H","i"]}"#,
+                "GET /session/S1/element/E7/attribute/label",
+            ]
+        );
+    }
+
+    #[test]
+    fn compact_replies_and_other_attributes_still_ask_the_phone() {
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (200, json!({ "value": {} })),
+            // A runner that ignored the setting: ids only.
+            (200, json!({ "value": [{ ELEMENT_KEY: "E1" }] })),
+            (200, json!({ "value": "Send" })),
+            (200, json!({ "value": true })),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        driver.describe_matches(false).unwrap();
+        let found = driver.find_all(&Locator::Id("chat.send".into())).unwrap();
+        assert_eq!(
+            driver.attribute(&found[0], "label").unwrap().as_deref(),
+            Some("Send")
+        );
+        assert_eq!(
+            driver.attribute(&found[0], "hittable").unwrap().as_deref(),
+            Some("true")
+        );
+        drop(driver);
+        assert_eq!(
+            s.sent[1],
+            r#"POST /session/S1/appium/settings {"settings":{"shouldUseCompactResponses":true}}"#
+        );
+        assert_eq!(s.sent.len(), 5);
+    }
+
+    #[test]
+    fn timing_lines_leave_out_ids() {
+        assert_eq!(
+            route_of("/session/S1/element/E7/value", "S1"),
+            "/element/:e/value"
+        );
+        assert_eq!(
+            route_of("/session/S1/wda/element/E7/scroll", "S1"),
+            "/wda/element/:e/scroll"
+        );
+        assert_eq!(route_of("/session/S1/elements", "S1"), "/elements");
+        assert_eq!(route_of("/status", "S1"), "/status");
     }
 
     #[test]
