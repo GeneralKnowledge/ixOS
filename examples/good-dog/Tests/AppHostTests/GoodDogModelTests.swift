@@ -138,6 +138,110 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertNotEqual(tomorrow.today?.activities.first?.id, today.activities.first?.id)
     }
 
+    /// GD-7: a guided session shows one card at a time, moves only where
+    /// Rust allows, and records exactly as the exercise screen does.
+    @MainActor
+    func testAGuidedSessionStepsThroughAndRecordsLikeTheExerciseScreen() async throws {
+        let guidedModel = await openModel(try makeDirectory())
+        let plainModel = await openModel(try makeDirectory())
+        try await guidedModel.saveDog(moss)
+        try await plainModel.saveDog(moss)
+        let activity = try XCTUnwrap(guidedModel.today?.activities.first)
+        XCTAssertEqual(plainModel.today?.activities.first, activity)
+        let exercise = try XCTUnwrap(guidedModel.exercise(id: activity.exerciseId))
+        let stepCount = exercise.steps.count
+        XCTAssertGreaterThan(stepCount, 1)
+
+        let guided = try guidedModel.startGuidedSession(exerciseId: activity.exerciseId, activityId: activity.id)
+        XCTAssertEqual(guided.title, exercise.title)
+        XCTAssertEqual(guided.ifDifficult, exercise.ifDifficult)
+        XCTAssertEqual(guided.card.kind, .getReady)
+        XCTAssertEqual(guided.card.heading, "Get ready")
+        XCTAssertEqual(guided.card.text, exercise.preparation)
+        XCTAssertFalse(guided.card.canGoBack)
+        guided.back()  // refused at the start, and harmless
+        XCTAssertEqual(guided.card.kind, .getReady)
+
+        for number in 1...stepCount {
+            guided.next()
+            XCTAssertEqual(guided.card.heading, "Step \(number) of \(stepCount)")
+            XCTAssertEqual(guided.card.text, exercise.steps[number - 1])
+            XCTAssertFalse(guided.card.canRecord)
+        }
+        // Too early to record on the last step: Rust refuses, nothing saved.
+        do {
+            _ = try await guided.record(result: .gettingThere, welfareConcern: false)
+            XCTFail("recording before the outcome card should fail")
+        } catch let error as AppError {
+            guard case .InvalidInput = error else { return XCTFail("unexpected \(error)") }
+        }
+        XCTAssertTrue(guidedModel.history.isEmpty)
+
+        guided.next()
+        XCTAssertEqual(guided.card.kind, .outcome)
+        XCTAssertEqual(guided.card.text, exercise.lookFor)
+        guided.back()
+        XCTAssertEqual(guided.card.heading, "Step \(stepCount) of \(stepCount)")
+        guided.next()
+        XCTAssertTrue(guided.card.canRecord)
+        XCTAssertFalse(guided.card.canGoNext)
+
+        let fromGuided = try await guided.record(result: .gettingThere, welfareConcern: false)
+        let fromScreen = try await plainModel.record(
+            exerciseId: activity.exerciseId, activityId: activity.id, result: .gettingThere, welfareConcern: false
+        )
+        XCTAssertEqual(fromGuided, fromScreen)
+        XCTAssertEqual(guidedModel.today, plainModel.today)
+        XCTAssertEqual(guidedModel.today?.activities.first?.result, .gettingThere)
+        XCTAssertEqual(guidedModel.history, plainModel.history)
+        XCTAssertEqual(guidedModel.progress, plainModel.progress)
+        XCTAssertEqual(guidedModel.sessionCount, 1)
+        XCTAssertTrue(guided.card.recorded)
+        XCTAssertFalse(guided.card.canRecord)
+
+        // Once only, and a done activity starts no new session.
+        do {
+            _ = try await guided.record(result: .easy, welfareConcern: false)
+            XCTFail("a second record should fail")
+        } catch is AppError {}
+        XCTAssertEqual(guidedModel.history.count, 1)
+        XCTAssertThrowsError(
+            try guidedModel.startGuidedSession(exerciseId: activity.exerciseId, activityId: activity.id)
+        )
+    }
+
+    /// GD-7: closing a guided session part way, or the app ending, records
+    /// nothing, and the next session starts from "get ready".
+    @MainActor
+    func testLeavingAGuidedSessionPartWayRecordsNothing() async throws {
+        let dir = try makeDirectory()
+        let model = await openModel(dir)
+        try await model.saveDog(moss)
+        let activity = try XCTUnwrap(model.today?.activities.first)
+
+        var guided: GuidedSessionModel? = try model.startGuidedSession(
+            exerciseId: activity.exerciseId, activityId: activity.id
+        )
+        guided?.next()
+        guided?.next()
+        XCTAssertEqual(guided?.card.kind, .step)
+        guided = nil  // closed
+        XCTAssertTrue(model.history.isEmpty)
+        XCTAssertNil(model.today?.activities.first?.result)
+
+        let again = try model.startGuidedSession(exerciseId: activity.exerciseId, activityId: activity.id)
+        again.next()
+        model.setPhase(.terminated)  // the app ends part way
+
+        let reopened = await openModel(dir)
+        XCTAssertTrue(reopened.history.isEmpty)
+        XCTAssertEqual(reopened.progress?.sessionsTotal, 0)
+        XCTAssertNil(reopened.today?.activities.first?.result)
+        let fresh = try reopened.startGuidedSession(exerciseId: activity.exerciseId, activityId: activity.id)
+        XCTAssertEqual(fresh.card.kind, .getReady)
+        XCTAssertEqual(fresh.card.position, 0)
+    }
+
     /// `-ForgeUITestSampleDog` starts past onboarding, and never replaces a
     /// dog that already exists.
     @MainActor

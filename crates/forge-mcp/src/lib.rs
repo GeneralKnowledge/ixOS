@@ -125,6 +125,14 @@ impl Server {
         self.journal.started()
     }
 
+    /// When the run started, if it began before this server: a staged run
+    /// starts a new server (and journal) for every stage, so the person's
+    /// run script sets `FORGE_RUN_START` to the first stage's start, and the
+    /// record then covers every stage, not only the last.
+    pub fn run_start(&self) -> Option<String> {
+        earlier_run_start(std::env::var("FORGE_RUN_START").ok(), self.started())
+    }
+
     fn last_failure(&self) -> Option<Value> {
         self.last_failure
             .lock()
@@ -523,4 +531,42 @@ where
         .map_err(|e| e.to_string())?;
     running.waiting().await.map_err(|e| e.to_string())?;
     Ok(())
+}
+
+/// `FORGE_RUN_START` when it is a run id (`2026-11-08T18-06-43`) at or before
+/// this server's start; anything else is ignored.
+fn earlier_run_start(env: Option<String>, started: &str) -> Option<String> {
+    let v = env?.trim().to_string();
+    let shape = v.len() == 19
+        && v.char_indices().all(|(i, c)| match i {
+            4 | 7 | 13 | 16 => c == '-',
+            10 => c == 'T',
+            _ => c.is_ascii_digit(),
+        });
+    (shape && v.as_str() <= started).then_some(v)
+}
+
+#[cfg(test)]
+mod run_start_tests {
+    use super::earlier_run_start;
+
+    #[test]
+    fn a_staged_run_keeps_its_first_start() {
+        let started = "2026-11-08T18-36-31";
+        assert_eq!(
+            earlier_run_start(Some("2026-11-08T18-06-43".into()), started).as_deref(),
+            Some("2026-11-08T18-06-43")
+        );
+        assert_eq!(earlier_run_start(None, started), None);
+        assert_eq!(earlier_run_start(Some("yesterday".into()), started), None);
+        assert_eq!(
+            earlier_run_start(Some("2026-11-08 18:06:43".into()), started),
+            None
+        );
+        // A start after this server's own is a mistake, not a run.
+        assert_eq!(
+            earlier_run_start(Some("2026-11-09T00-00-00".into()), started),
+            None
+        );
+    }
 }

@@ -1528,6 +1528,19 @@ mod example_files {
         assert_eq!(script.steps.len(), 12);
     }
 
+    /// Good Dog's journey (GD1) and guided session (GD-7) tests.
+    #[test]
+    fn good_dog_tests_parse() {
+        for (file, steps) in [("journey.toml", 29), ("guided.toml", 36)] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../../examples/good-dog/uitests")
+                .join(file);
+            let script = super::Script::load(&path).unwrap();
+            assert_eq!(script.app, "org.forgemobile.gooddog", "{file}");
+            assert_eq!(script.steps.len(), steps, "{file}");
+        }
+    }
+
     /// The starter's test, which `forge init` copies with the bundle id filled in.
     #[test]
     fn starter_smoke_parses() {
