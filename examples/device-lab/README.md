@@ -18,6 +18,7 @@ It exists to prove Forge's optional native services ([docs/native-services.md](.
 | **Location** | Latitude, longitude, accuracy, altitude, speed, course, floor, distance travelled, top speed, Precise Location, a link to Maps | Location permission, while in use |
 | **Device** | Model identifier, iOS version, cores, screen size, uptime | Nothing |
 | **What iOS Keeps from Apps** | Wi-Fi name (paid team), the phone's own name (Apple approval), carrier, signal strength, the light sensor, MAC addresses, background sensors | |
+| **Crash Test** | For developers: crashes the app on purpose with a Swift force unwrap or a Rust panic, to check `forge device crashes --pull` down to the file and line ([forge-device.md](../../docs/forge-device.md#crash-reports)) | |
 
 Nothing asks for a permission until you tap its button. Everything stops when the app goes to the background, and nothing leaves the phone. All of it works with a free Apple account: the app has no entitlements.
 
@@ -64,3 +65,4 @@ Not yet run on a device. When it is, check:
 5. Barometer: allow Motion & Fitness; lift the phone from floor to ceiling for a height change of about 2 m.
 6. Location: allow, walk 100 m, and check Travelled.
 7. Battery: plug in and out; turn on Low Power Mode.
+8. Crash Test: tap Crash in Swift, then on the laptop `forge device crashes --app AppHostXtool --pull crashes/ --limit 1 --project examples/device-lab`. Expect `swift_runtime_error` with the culprit at `LabModel.swift`. Open the app again, tap Crash in Rust, pull again: `rust_panic`, culprit `on_reading` in `rust/src/crash_test.rs` (Rust aborts at the callback that couldn't unwind; `forge device logs --grep panic` running at the time shows the message and line of the `expect`).
