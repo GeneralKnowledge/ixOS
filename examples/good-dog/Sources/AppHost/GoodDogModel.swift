@@ -48,11 +48,23 @@ public final class GoodDogModel {
     ///   - clock: the time now with the phone's UTC offset; tests fix it.
     public init(
         storageDirectory: String? = nil,
-        clock: @escaping @Sendable () -> LocalTime = LocalTime.now
+        clock: (@Sendable () -> LocalTime)? = nil
     ) {
         self.storageDirectory = storageDirectory
-        self.clock = clock
+        if let clock {
+            self.clock = clock
+        } else if Self.usesTestData {
+            self.clock = { LocalTime.uiTest }
+        } else {
+            self.clock = { LocalTime.now() }
+        }
     }
+
+    /// Whether this launch uses throwaway test data (`-ForgeUITestData`, as
+    /// `forge ui run` and `forge ui explore` pass it). Such a launch also
+    /// runs on a fixed clock, so dates and times on screen don't change
+    /// between runs and screenshots stay comparable.
+    static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
 
     public var maxNameLength: Int { Int(core?.maxNameLength() ?? 40) }
 
@@ -223,7 +235,7 @@ public final class GoodDogModel {
     /// launched with `-ForgeUITestData` (forge.toml), so UI tests never touch
     /// the owner's real data.
     private static func defaultDirectory() throws -> String {
-        let testData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+        let testData = usesTestData
         let base = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent(testData ? "GoodDog-UITest" : "GoodDog", isDirectory: true)
@@ -234,6 +246,10 @@ public final class GoodDogModel {
 }
 
 extension LocalTime {
+    /// The fixed time of a launch on test data: Monday 9 November 2026,
+    /// 09:30 UTC, with no offset.
+    public static let uiTest = LocalTime(ms: 1794216600000, utcOffsetMinutes: 0)
+
     /// The time now, with the phone's current offset from UTC.
     public static func now() -> LocalTime {
         LocalTime(

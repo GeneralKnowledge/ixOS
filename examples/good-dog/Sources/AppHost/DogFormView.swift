@@ -24,11 +24,15 @@ struct DogFormFields: View {
         }
         Section {
             Picker("Age", selection: $lifeStage) {
-                ForEach(DogLifeStage.allCases) { Text($0.title).tag($0) }
+                ForEach(DogLifeStage.allCases) {
+                    Text($0.title).tag($0).accessibilityIdentifier("dogForm.lifeStage.\($0.key)")
+                }
             }
             .accessibilityIdentifier("dogForm.lifeStage")
             Picker("Time Most Days", selection: $dailyTime) {
-                ForEach(DailyTime.allCases) { Text($0.title).tag($0) }
+                ForEach(DailyTime.allCases) {
+                    Text($0.title).tag($0).accessibilityIdentifier("dogForm.dailyTime.\($0.key)")
+                }
             }
             .accessibilityIdentifier("dogForm.dailyTime")
         } footer: {
@@ -36,13 +40,17 @@ struct DogFormFields: View {
         }
         Section("What would help most?") {
             Picker("Goal", selection: $goal) {
-                ForEach(TrainingGoal.allCases) { Text($0.title).tag($0) }
+                ForEach(TrainingGoal.allCases) {
+                    Text($0.title).tag($0).accessibilityIdentifier("dogForm.goal.\($0.key)")
+                }
             }
             .pickerStyle(.inline)
             .labelsHidden()
             .accessibilityIdentifier("dogForm.goal")
             Picker("Experience", selection: $experience) {
-                ForEach(OwnerExperience.allCases) { Text($0.title).tag($0) }
+                ForEach(OwnerExperience.allCases) {
+                    Text($0.title).tag($0).accessibilityIdentifier("dogForm.experience.\($0.key)")
+                }
             }
             .accessibilityIdentifier("dogForm.experience")
         }
