@@ -6,6 +6,11 @@
 name = "Smoke: open the compose sheet, type, cancel"
 app = "FORGE_BUNDLE_ID"
 
+# Quit first: `launch` alone brings a running app to the front on whatever
+# screen it was left, and the screenshots are compared with baselines.
+[[step]]
+terminate = {}
+
 [[step]]
 launch = {}
 

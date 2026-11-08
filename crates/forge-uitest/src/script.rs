@@ -1257,7 +1257,7 @@ mod example_files {
             .join("../../examples/pocket-library/uitests/m0.toml");
         let script = super::Script::load(&path).unwrap();
         assert_eq!(script.app, "org.forgemobile.pocketlibrary");
-        assert_eq!(script.steps.len(), 11);
+        assert_eq!(script.steps.len(), 12);
     }
 
     /// The starter's test, which `forge init` copies with the bundle id filled in.
@@ -1267,6 +1267,6 @@ mod example_files {
             .join("../../templates/ios-app/uitests/smoke.toml");
         let script = super::Script::load(&path).unwrap();
         assert_eq!(script.app, "FORGE_BUNDLE_ID");
-        assert_eq!(script.steps.len(), 8);
+        assert_eq!(script.steps.len(), 9);
     }
 }
