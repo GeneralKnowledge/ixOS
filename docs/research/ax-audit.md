@@ -132,6 +132,8 @@ During run 1 the probe sometimes read the Claude app, which Reuben had open on t
 
 ## Leaving the phone clean
 
-Run 1 left the inspector on. Each walk enables app monitoring and moves the focus, and the probe never turned monitoring off. Reuben saw the highlight keep moving through whatever app was in front, especially while the session polled the probe every ~11 s. Every run now ends, including after an error, by sending `deviceSetAppMonitoringEnabled:` false, `deviceInspectorShowVisuals:` 0 and `deviceInspectorShowIgnoredElements:` 0. `--off` sends only those, to clear an interrupted run. An interrupted process (Ctrl-C) still can't clean up, so run `--off` afterwards.
+Run 1 left the inspector on. Each walk enables app monitoring and moves the focus, and the probe never turned monitoring off. Reuben saw the highlight keep moving through whatever app was in front, especially while the session polled the probe every ~11 s. Every run now ends, including after an error, by sending `deviceSetAppMonitoringEnabled:` false, `deviceInspectorShowVisuals:` 0 and `deviceInspectorShowIgnoredElements:` 0. `--off` sends only those, to clear a killed run. Ctrl-C now also cleans up (since 2026-11-08); only a killed process needs `--off` afterwards.
+
+App monitoring is also a privacy point. While it is on, the service reports every app on the phone moving to the foreground or background, not just the one being read (G0, P3, 2026-11-08). The probe now switches monitoring on only for the walk (and `--app`'s check), off straight after the walk, and drops those reports unread: it counts them but never prints or keeps which app they name. An `AxDriver` must do the same.
 
 A future `AxDriver` should do both: launch or activate by bundle id, confirm the foreground app, then act, and refuse otherwise.
