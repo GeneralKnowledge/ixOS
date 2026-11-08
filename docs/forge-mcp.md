@@ -424,7 +424,7 @@ Passes when, with no person touching the phone or terminal during any stage:
 
 #### Result (2026-11-08)
 
-All seven stages passed in one agent session (Claude Code, `claude -p --resume`), on Cati, with nobody touching the phone or the terminal during a stage. Phone time was about 22 minutes in total, all on the laptop's own timer.
+All seven stages passed in one agent session (Claude Code, `claude -p --resume`), on Cati, with nobody touching the phone or the terminal during a stage. Phone time was about 19 minutes over the four phone stages.
 
 | Stage | Time | Turns | What happened |
 |---|---|---|---|
