@@ -736,6 +736,24 @@ mod tests {
         )
         .unwrap();
         assert_eq!(picked, crate::ElementRef("2".into()));
+
+        // A control a tap can't reach loses to a wrapper it can.
+        let mut wrapper = node("Other", "tip.keyboardDone", "Done");
+        let mut button = node("Button", "tip.keyboardDone", "Done");
+        button.visible = false;
+        wrapper.children = vec![button];
+        let mut driver = in_front(UiNode {
+            kind: "Application".into(),
+            children: vec![wrapper],
+            ..UiNode::default()
+        });
+        let picked = crate::wait_for(
+            &mut driver,
+            &Locator::Id("tip.keyboardDone".into()),
+            Duration::ZERO,
+        )
+        .unwrap();
+        assert_eq!(picked, crate::ElementRef("1".into()));
         assert!(Script::parse(
             "name='x'\napp='a'\n[[step]]\nscroll={id='a', direction='sideways'}\n"
         )

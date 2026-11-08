@@ -198,19 +198,42 @@ pub fn wait_for(
     }
 }
 
-/// Of several matches, the first a person can act on (a Button, a field…)
-/// rather than a container that carries the same identifier: SwiftUI can
-/// put a modifier's identifier on a wrapper as well as on the control.
+/// Of several matches, the one a tap would reach: SwiftUI can put a
+/// modifier's identifier on a wrapper as well as on the control (Tipster's
+/// keyboard toolbar: an `Other` and a `Button`, both `tip.keyboardDone`).
+/// Ranked by: hittable and a control (Button, field…), then hittable, then
+/// a control, then the first match.
 fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
-    if found.len() > 1 {
-        for element in &found {
-            let kind = driver.attribute(element, "type")?.unwrap_or_default();
-            if tree::is_interactive_kind(&kind) {
-                return Ok(element.clone());
-            }
+    if found.len() == 1 {
+        return Ok(found.into_iter().next().expect("one"));
+    }
+    let mut best = (0, 0);
+    let mut seen = Vec::new();
+    for (i, element) in found.iter().enumerate() {
+        let kind = driver.attribute(element, "type")?.unwrap_or_default();
+        let hittable = driver.attribute(element, "hittable")?.as_deref() == Some("true");
+        let score = 2 * usize::from(hittable) + usize::from(tree::is_interactive_kind(&kind));
+        let kind = kind
+            .strip_prefix("XCUIElementType")
+            .unwrap_or(&kind)
+            .to_owned();
+        seen.push(if hittable {
+            kind
+        } else {
+            format!("{kind} (not hittable)")
+        });
+        if score > best.0 {
+            best = (score, i);
         }
     }
-    Ok(found.into_iter().next().expect("not empty"))
+    // On stderr, so a test log shows which element a duplicate id reached.
+    eprintln!(
+        "          {} elements match: {}; using #{}",
+        found.len(),
+        seen.join(", "),
+        best.1 + 1
+    );
+    Ok(found[best.1].clone())
 }
 
 /// Waits up to `timeout` until nothing matches `locator`.
@@ -364,6 +387,7 @@ pub mod fake {
                 "identifier" | "name" => node.identifier.clone(),
                 "enabled" => Some(node.enabled.to_string()),
                 "type" => Some(format!("XCUIElementType{}", node.kind)),
+                "hittable" => Some((node.visible && node.enabled).to_string()),
                 _ => None,
             })
         }
