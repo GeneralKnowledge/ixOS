@@ -374,6 +374,13 @@ pub fn run_gated(
     std::fs::create_dir_all(out_dir)?;
     let timeout = Duration::from_secs_f64(script.timeout.max(0.0));
     let mut report = Report::default();
+    // The policy reads each target's label, identifier and type: have the
+    // search that finds it say them. Set either way, since the setting
+    // lives in the runner, which a UI session shares between runs. Best
+    // effort: without it the reads are asked for one by one, as before.
+    if let Err(e) = driver.describe_matches(gate.wants_targets()) {
+        eprintln!("          (searches won't describe their matches: {e})");
+    }
     writeln!(out, "{}", script.name)?;
     for (index, step) in script.steps.iter().enumerate() {
         let number = index + 1;
@@ -962,10 +969,17 @@ mod tests {
         let (report, driver) = deepseek_run(send, Box::new(Yes));
         assert!(report.failed.is_none(), "{:?}", report.failed);
         // The app's button (label "Send"), not the keyboard's `Send` key.
-        assert_eq!(driver.calls, ["type TextView \"Hello\"", "tap \"Send\""]);
+        assert_eq!(
+            driver.calls,
+            [
+                "describe matches",
+                "type TextView \"Hello\"",
+                "tap \"Send\""
+            ]
+        );
         let (report, driver) = deepseek_run(r#"label = "Send""#, Box::new(Yes));
         assert!(report.failed.is_none(), "{:?}", report.failed);
-        assert_eq!(driver.calls[1], "tap \"Send\"");
+        assert_eq!(driver.calls.last().unwrap(), "tap \"Send\"");
         let (report, driver) = deepseek_run(send, Box::new(policy::NoApprover));
         let (step, why) = report.failed.unwrap();
         assert_eq!(step, 2);
@@ -1016,6 +1030,11 @@ mod tests {
             .calls
             .iter()
             .any(|c| c.starts_with("type chat-input")));
+        // The policy's reads come with the search, not one by one.
+        assert_eq!(
+            driver.calls.first().map(String::as_str),
+            Some("describe matches")
+        );
         // The journal has the length of what was typed, never the text.
         assert!(journal.contains("\"typed_chars\":5"), "{journal}");
         assert!(!journal.contains("Hello"), "{journal}");

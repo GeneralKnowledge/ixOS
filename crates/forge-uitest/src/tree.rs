@@ -212,15 +212,41 @@ impl UiNode {
             .collect()
     }
 
+    /// Visible elements with an identifier, leaving out those inside an
+    /// element with the same identifier.
+    fn outermost_with_identifier(&self) -> Vec<&UiNode> {
+        fn go<'a>(node: &'a UiNode, inside: Option<&str>, out: &mut Vec<&'a UiNode>) {
+            let id = node.identifier.as_deref();
+            let nested = id.is_some() && id == inside;
+            if node.visible && id.is_some() && !nested {
+                out.push(node);
+            }
+            let inside = if node.visible && id.is_some() {
+                id
+            } else {
+                inside
+            };
+            for child in &node.children {
+                go(child, inside, out);
+            }
+        }
+        let mut out = Vec::new();
+        go(self, None, &mut out);
+        out
+    }
+
     /// Visible interactive elements that VoiceOver has no name for, and
     /// those a test cannot find by identifier. The full audit is M3; this is
     /// the part every screen needs.
     pub fn audit(&self) -> Vec<Finding> {
         let mut findings = Vec::new();
         // One identifier on two visible elements: a test that finds it may
-        // get the wrong one (seen with a toolbar wrapper and its Button).
+        // get the wrong one. SwiftUI also puts a control's identifier on
+        // wrappers around it (a toolbar item, a keyboard toolbar); the app
+        // can't avoid that and `forge ui` taps the control, so an element
+        // inside another with the same identifier is not a duplicate.
         let mut seen = std::collections::HashSet::new();
-        for node in self.walk().filter(|n| n.visible) {
+        for node in self.outermost_with_identifier() {
             if let Some(id) = &node.identifier {
                 if !seen.insert(id.as_str()) {
                     findings.push(Finding {
@@ -236,7 +262,24 @@ impl UiNode {
                 }
             }
         }
-        for node in self.walk().filter(|n| n.visible && n.is_interactive()) {
+        // A SwiftUI Toggle is a labelled Switch with UIKit's switch inside
+        // it, unlabelled; VoiceOver reads the outer one only.
+        let mut inner: Vec<*const UiNode> = Vec::new();
+        for outer in self
+            .walk()
+            .filter(|n| n.is_interactive() && n.label.is_some())
+        {
+            for child in outer.walk().skip(1) {
+                if child.kind == outer.kind && child.label.is_none() {
+                    inner.push(child);
+                }
+            }
+        }
+        for node in self
+            .walk()
+            .filter(|n| n.visible && n.is_interactive())
+            .filter(|n| !inner.contains(&(*n as *const UiNode)))
+        {
             let element = || ElementSummary {
                 kind: node.kind.clone(),
                 identifier: node.identifier.clone(),
@@ -379,19 +422,51 @@ mod tests {
 
     #[test]
     fn audit_flags_duplicate_identifiers() {
+        // Pocket Library's five rating stars, before they had their own ids.
+        let star = || json!({"type": "XCUIElementTypeButton", "rawIdentifier": "star", "label": "Favorite"});
+        let root = UiNode::from_wda(&json!({
+            "type": "XCUIElementTypeApplication",
+            "children": [star(), star(), star()]
+        }));
+        let findings = root.audit();
+        assert_eq!(findings.len(), 2);
+        assert_eq!(findings[0].issue, "duplicate_identifier");
+        assert_eq!(
+            findings[0].to_string(),
+            "identifier used by more than one element: Button id=star \"Favorite\""
+        );
+    }
+
+    #[test]
+    fn audit_skips_the_switch_inside_a_labelled_toggle() {
+        // Pocket Library's "Online catalogue search" Toggle as WDA saw it.
+        let root = UiNode::from_wda(&json!({
+            "type": "XCUIElementTypeApplication",
+            "children": [{"type": "XCUIElementTypeSwitch", "rawIdentifier": "settings.onlineCatalogue",
+                "label": "Online catalogue search", "value": "1", "children": [
+                {"type": "XCUIElementTypeStaticText", "label": "Online catalogue search"},
+                {"type": "XCUIElementTypeSwitch", "value": "1"}
+            ]}]
+        }));
+        assert!(root.audit().is_empty());
+        // An unlabelled Switch on its own is still an error.
+        let root = UiNode::from_wda(&json!({
+            "type": "XCUIElementTypeApplication",
+            "children": [{"type": "XCUIElementTypeSwitch", "rawIdentifier": "x.on", "value": "1"}]
+        }));
+        assert_eq!(root.audit()[0].issue, "no_label");
+    }
+
+    #[test]
+    fn audit_allows_a_wrapper_sharing_its_controls_identifier() {
+        // SwiftUI puts a toolbar Button's identifier on its wrapper too.
         let root = UiNode::from_wda(&json!({
             "type": "XCUIElementTypeApplication",
             "children": [{"type": "XCUIElementTypeOther", "rawIdentifier": "tip.done", "children": [
                 {"type": "XCUIElementTypeButton", "rawIdentifier": "tip.done", "label": "Done"}
             ]}]
         }));
-        let findings = root.audit();
-        assert_eq!(findings.len(), 1);
-        assert_eq!(findings[0].issue, "duplicate_identifier");
-        assert_eq!(
-            findings[0].to_string(),
-            "identifier used by more than one element: Button id=tip.done \"Done\""
-        );
+        assert!(root.audit().is_empty());
     }
 
     #[test]

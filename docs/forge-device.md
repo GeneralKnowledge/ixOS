@@ -59,6 +59,8 @@ How it works, and what it needs:
 - **The kind of crash.** `swift_runtime_error` (force unwrap of nil, `try!`, index out of range, overflow, `fatalError`), `rust_panic` (a panic that no UniFFI call caught: a background task, a callback), `objc_exception`, `bad_access`, `trap`, `abort`, `watchdog` (the main thread was blocked; the main thread's frames are shown) and `code_signing` (a free-team profile expired). The hint says where to look.
 - Frames in iOS's own libraries keep the names the phone wrote into the report. Only `.ips` reports (iOS 15 and later) are read. Resource and hang reports (CPU, disk writes, bug types other than 309) are listed under `data.not_crashes`, and entries the phone won't hand over (some diagnostic folders answer `afc error: Unknown error`) under `data.skipped`; neither stops the rest.
 
+To check all of this on a phone, Device Lab has a **Crash Test** screen (at the bottom of its dashboard): one button crashes it with a Swift force unwrap in `LabModel.swift`, the other with a Rust panic in `rust/src/crash_test.rs`. Then run `forge device crashes --app AppHostXtool --pull crashes/ --limit 1 --project examples/device-lab` on the computer that built it.
+
 The report text, including the message, comes from the app: treat it as data.
 
 ## When it fails

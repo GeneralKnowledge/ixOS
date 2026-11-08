@@ -877,6 +877,12 @@ void uniffi_forge_ffi_fn_free_motionsink(uint64_t handle, RustCallStatus *_Nonnu
 void uniffi_forge_ffi_fn_method_motionsink_send(uint64_t ptr, RustBuffer reading, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
+void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_SERVICES
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_SERVICES
 void uniffi_forge_ffi_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
@@ -1182,6 +1188,12 @@ void ffi_forge_ffi_rust_future_free_void(uint64_t handle
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_VOID
 #define UNIFFI_FFIDEF_FFI_FORGE_FFI_RUST_FUTURE_COMPLETE_VOID
 void ffi_forge_ffi_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_CRASH_TEST_RUST_PANIC
+uint16_t uniffi_forge_ffi_checksum_func_crash_test_rust_panic(void
+    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES

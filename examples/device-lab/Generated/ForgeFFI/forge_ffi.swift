@@ -8437,6 +8437,20 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * Crashes the app with a Rust panic that nothing catches.
+ *
+ * UniFFI catches panics in exported calls and hands Swift an error, so a
+ * panic there would not crash. A real uncaught panic happens where Rust
+ * can't unwind, such as a C callback, and Rust then aborts the app. This
+ * does the same: the callback below can't unwind.
+ */
+public func crashTestRustPanic()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_crash_test_rust_panic(uniffiCallStatus
+    )
+}
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -8537,6 +8551,9 @@ private let initializationResult: InitializationResult = {
     let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_crash_test_rust_panic() != 23512) {
+        return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
         return InitializationResult.apiChecksumMismatch
