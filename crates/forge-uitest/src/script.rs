@@ -346,10 +346,7 @@ fn run_step(
         ensure_front(driver, app, timeout)?;
     }
     if let Some(target) = &step.tap {
-        return act(driver, &locate(target)?, timeout, &mut |d, e| {
-            wait_hittable(d, e, timeout)?;
-            d.tap(e)
-        });
+        return tap(driver, &locate(target)?, timeout);
     }
     if let Some(typing) = &step.type_text {
         return act(driver, &locate(&typing.target)?, timeout, &mut |d, e| {
@@ -400,6 +397,45 @@ fn act(
     }
 }
 
+/// How long a tap whose reply says the element went stale waits for the
+/// element to finish leaving (a sheet or keyboard animating away).
+const TAP_GONE_SETTLE: Duration = Duration::from_secs(2);
+
+/// Taps the element. A tap often makes its own element go away: Done
+/// closes the keyboard and its toolbar, Save dismisses the sheet. WDA can
+/// then answer the tap with "stale element reference", because the element
+/// no longer exists once the tap has landed. If the element is gone after
+/// such a reply, the tap did its job and the step passes; whether it had
+/// the right effect is for the next step's expectation to check. If the
+/// element is still there, the screen re-rendered under the tap, so it is
+/// found and tapped again, once, like any other action.
+fn tap(driver: &mut dyn Driver, locator: &Locator, timeout: Duration) -> Result<()> {
+    let mut retried = false;
+    loop {
+        let element = wait_for(driver, locator, timeout)?;
+        // A stale reply from wait_hittable means the element went away
+        // before the tap: found again below, like any action.
+        let result = wait_hittable(driver, &element, timeout).and_then(|()| {
+            let why = match driver.tap(&element) {
+                Err(UiError::Stale(why)) => why,
+                other => return other,
+            };
+            match wait_gone(driver, locator, TAP_GONE_SETTLE) {
+                Ok(()) => {
+                    eprintln!("          the tap took {locator} off the screen");
+                    Ok(())
+                }
+                Err(UiError::Mismatch { .. }) => Err(UiError::Stale(why)),
+                Err(e) => Err(e),
+            }
+        });
+        match result {
+            Err(UiError::Stale(_)) if !retried => retried = true,
+            other => return other,
+        }
+    }
+}
+
 /// Waits (up to `timeout`) until WDA says a tap would reach the element.
 /// An element can be in the tree before it can take a tap: a keyboard
 /// toolbar's button while the keyboard is still sliding in ignored a tap
@@ -438,30 +474,15 @@ fn check(
             locator,
             deadline.saturating_duration_since(Instant::now()),
         )?;
-        let mut mismatch = None;
-        for (attribute, wanted) in [("value", &expect.value), ("label", &expect.has_label)] {
-            if let Some(wanted) = wanted {
-                let found = driver.attribute(&element, attribute)?;
-                if found.as_deref() != Some(wanted.as_str()) {
-                    mismatch = Some((
-                        format!("{attribute} {wanted:?}"),
-                        found
-                            .map(|v| format!("{v:?}"))
-                            .unwrap_or_else(|| format!("no {attribute}")),
-                    ));
-                }
+        let mismatch = match mismatch(driver, expect, &element) {
+            Ok(mismatch) => mismatch,
+            // Re-rendered between the find and the read: read again.
+            Err(UiError::Stale(_)) if Instant::now() < deadline => {
+                std::thread::sleep(crate::POLL);
+                continue;
             }
-        }
-        if let Some(wanted) = expect.enabled {
-            let found = driver.attribute(&element, "enabled")?;
-            let is = matches!(found.as_deref(), Some("true") | Some("1"));
-            if is != wanted {
-                mismatch = Some((
-                    if wanted { "enabled" } else { "disabled" }.into(),
-                    if is { "enabled" } else { "disabled" }.into(),
-                ));
-            }
-        }
+            Err(e) => return Err(e),
+        };
         match mismatch {
             None => return Ok(()),
             Some((expected, found)) if Instant::now() >= deadline => {
@@ -474,6 +495,39 @@ fn check(
             Some(_) => std::thread::sleep(crate::POLL),
         }
     }
+}
+
+/// What differs from the expectation, as (expected, found), if anything.
+fn mismatch(
+    driver: &mut dyn Driver,
+    expect: &Expect,
+    element: &crate::ElementRef,
+) -> Result<Option<(String, String)>> {
+    let mut mismatch = None;
+    for (attribute, wanted) in [("value", &expect.value), ("label", &expect.has_label)] {
+        if let Some(wanted) = wanted {
+            let found = driver.attribute(element, attribute)?;
+            if found.as_deref() != Some(wanted.as_str()) {
+                mismatch = Some((
+                    format!("{attribute} {wanted:?}"),
+                    found
+                        .map(|v| format!("{v:?}"))
+                        .unwrap_or_else(|| format!("no {attribute}")),
+                ));
+            }
+        }
+    }
+    if let Some(wanted) = expect.enabled {
+        let found = driver.attribute(element, "enabled")?;
+        let is = matches!(found.as_deref(), Some("true") | Some("1"));
+        if is != wanted {
+            mismatch = Some((
+                if wanted { "enabled" } else { "disabled" }.into(),
+                if is { "enabled" } else { "disabled" }.into(),
+            ));
+        }
+    }
+    Ok(mismatch)
 }
 
 /// Saves what was on screen when a step failed. Best effort: the failure
@@ -676,6 +730,59 @@ mod tests {
         driver.stale_taps = 2;
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
         assert!(report.failed.unwrap().1.starts_with("element went stale"));
+    }
+
+    #[test]
+    fn a_tap_that_takes_its_element_away_passes() {
+        // Save closes the form: WDA answers the tap with "stale element
+        // reference" because the button no longer exists.
+        let script = Script::parse(
+            "name='g'\napp='a'\ntimeout=0\n[[step]]\ntap={id='bookForm.save'}\n\
+             [[step]]\nexpect={id='library.add'}\n",
+        )
+        .unwrap();
+        let mut driver = in_front(form());
+        driver.on_tap.push(("bookForm.save".into(), library()));
+        driver.stale_after_tap = 1;
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(report.passed, 2);
+        // Tapped once, not again.
+        assert_eq!(driver.calls, ["tap bookForm.save"]);
+    }
+
+    #[test]
+    fn a_stale_tap_on_an_element_still_there_taps_again_once() {
+        // The reply was stale but the button is still on screen (the view
+        // re-rendered): tap it again; twice is a failure, as before.
+        let script =
+            Script::parse("name='s'\napp='a'\ntimeout=0\n[[step]]\ntap={id='library.add'}\n")
+                .unwrap();
+        let mut driver = in_front(library());
+        driver.stale_after_tap = 1;
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(driver.calls, ["tap library.add", "tap library.add"]);
+
+        let mut driver = in_front(library());
+        driver.stale_after_tap = 2;
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.unwrap().1.starts_with("element went stale"));
+    }
+
+    #[test]
+    fn an_expectation_reads_again_after_a_stale_read() {
+        let script = Script::parse(
+            "name='v'\napp='a'\ntimeout=1\n[[step]]\nexpect={id='library.add', has_label='Add Book'}\n",
+        )
+        .unwrap();
+        let mut driver = in_front(library());
+        driver.stale_reads = 1;
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
     }
 
     #[test]

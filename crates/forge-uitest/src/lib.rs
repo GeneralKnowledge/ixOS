@@ -207,11 +207,29 @@ fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
     if found.len() == 1 {
         return Ok(found.into_iter().next().expect("one"));
     }
-    let mut best = (0, 0);
+    // (score, index) of the best match that answered.
+    let mut best: Option<(usize, usize)> = None;
     let mut seen = Vec::new();
+    let mut stale = None;
     for (i, element) in found.iter().enumerate() {
-        let kind = driver.attribute(element, "type")?.unwrap_or_default();
-        let hittable = driver.attribute(element, "hittable")?.as_deref() == Some("true");
+        // A copy that goes away while the others are read (SwiftUI
+        // re-rendered) doesn't make the rest unusable: skip it.
+        let read = driver.attribute(element, "type").and_then(|kind| {
+            let hittable = driver.attribute(element, "hittable")?;
+            Ok((
+                kind.unwrap_or_default(),
+                hittable.as_deref() == Some("true"),
+            ))
+        });
+        let (kind, hittable) = match read {
+            Ok(read) => read,
+            Err(UiError::Stale(why)) => {
+                seen.push("(gone)".to_owned());
+                stale = Some(why);
+                continue;
+            }
+            Err(e) => return Err(e),
+        };
         let score = 2 * usize::from(hittable) + usize::from(tree::is_interactive_kind(&kind));
         let kind = kind
             .strip_prefix("XCUIElementType")
@@ -222,18 +240,22 @@ fn pick(driver: &mut dyn Driver, found: Vec<ElementRef>) -> Result<ElementRef> {
         } else {
             format!("{kind} (not hittable)")
         });
-        if score > best.0 {
-            best = (score, i);
+        if best.is_none_or(|(top, _)| score > top) {
+            best = Some((score, i));
         }
     }
+    let Some((_, index)) = best else {
+        // Every copy went away: the caller finds again.
+        return Err(UiError::Stale(stale.unwrap_or_default()));
+    };
     // On stderr, so a test log shows which element a duplicate id reached.
     eprintln!(
         "          {} elements match: {}; using #{}",
         found.len(),
         seen.join(", "),
-        best.1 + 1
+        index + 1
     );
-    Ok(found[best.1].clone())
+    Ok(found[index].clone())
 }
 
 /// Waits up to `timeout` until nothing matches `locator`.
@@ -287,6 +309,12 @@ pub mod fake {
         pub stale_taps: usize,
         /// The next this-many searches fail as if the element went stale.
         pub stale_finds: usize,
+        /// The next this-many taps land, then fail as if the element went
+        /// stale: WDA's answer when the tap made the element go away.
+        pub stale_after_tap: usize,
+        /// The next this-many attribute reads fail as if the element went
+        /// stale.
+        pub stale_reads: usize,
         /// The app in front: set by launch and activate; terminate goes
         /// back to SpringBoard.
         pub front: Option<String>,
@@ -365,6 +393,10 @@ pub mod fake {
                     self.screen = self.on_tap.remove(pos).1;
                 }
             }
+            if self.stale_after_tap > 0 {
+                self.stale_after_tap -= 1;
+                return Err(UiError::Stale("tap".into()));
+            }
             Ok(())
         }
         fn type_text(&mut self, element: &ElementRef, text: &str) -> Result<()> {
@@ -380,6 +412,10 @@ pub mod fake {
             Ok(())
         }
         fn attribute(&mut self, element: &ElementRef, name: &str) -> Result<Option<String>> {
+            if self.stale_reads > 0 {
+                self.stale_reads -= 1;
+                return Err(UiError::Stale("read".into()));
+            }
             let node = self.node(element)?;
             Ok(match name {
                 "label" => node.label.clone(),
@@ -438,6 +474,37 @@ mod tests {
         // Stale once, then found: still on screen.
         driver.stale_finds = 1;
         assert!(wait_gone(&mut driver, &done, Duration::ZERO).is_err());
+    }
+
+    #[test]
+    fn a_duplicate_that_goes_stale_is_skipped() {
+        let button = |kind: &str| UiNode {
+            kind: kind.into(),
+            identifier: Some("tip.keyboardDone".into()),
+            visible: true,
+            enabled: true,
+            ..UiNode::default()
+        };
+        let screen = UiNode {
+            kind: "Application".into(),
+            children: vec![button("Other"), button("Button")],
+            ..UiNode::default()
+        };
+        let done = Locator::Id("tip.keyboardDone".into());
+        let mut driver = fake::FakeDriver::new(screen);
+        // The wrapper's first read goes stale; the button still answers.
+        driver.stale_reads = 1;
+        let element = wait_for(&mut driver, &done, Duration::ZERO).unwrap();
+        assert_eq!(
+            driver.attribute(&element, "type").unwrap().unwrap(),
+            "XCUIElementTypeButton"
+        );
+        // Every copy stale: the caller finds again.
+        driver.stale_reads = 4;
+        assert!(matches!(
+            wait_for(&mut driver, &done, Duration::ZERO),
+            Err(UiError::Stale(_))
+        ));
     }
 
     #[test]
