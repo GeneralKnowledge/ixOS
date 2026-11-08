@@ -20,7 +20,11 @@ struct VoiceSettingsSection: View {
                     Text(VoiceChoice.label(for: voice)).tag(String?.some(voice.id))
                 }
             }
+            #if os(iOS)
+            // A pushed list on the phone; macOS (the host tests) has no
+            // navigation-link picker style.
             .pickerStyle(.navigationLink)
+            #endif
             .accessibilityIdentifier("settings.voice")
 
             Button(sampler.playing ? "Stop Sample" : "Play Sample") {
