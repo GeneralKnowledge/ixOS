@@ -1,6 +1,6 @@
 # Good Dog demo: plan
 
-Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan. GD0 (the Rust engine, [`examples/good-dog-core`](../examples/good-dog-core/README.md)) is built, and GD1 (the app, [`examples/good-dog`](../examples/good-dog/README.md)) is built and passed its journey on an iPhone (2026-11-08). The rest is not built.
+Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan. GD0 (the Rust engine, [`examples/good-dog-core`](../examples/good-dog-core/README.md)) is built, and GD1 (the app, [`examples/good-dog`](../examples/good-dog/README.md)) is built and passed its journey on an iPhone (2026-11-08). On 2026-11-08 Reuben set a product direction: Good Dog becomes a goal-led training companion rather than an exercise list. The milestones after GD1 now follow that direction (see [Product direction](#product-direction)). None of them is built.
 
 Good Dog already exists as a web app ([GeneralKnowledge/Good-Dog](https://github.com/GeneralKnowledge/Good-Dog), Next.js and SQLite). It helps ordinary UK dog owners train their dog through short, reward-based activities: open the app, see what to practise today, follow the steps, say how it went, and get a better plan tomorrow. The native version keeps that product and rebuilds it the ixOS way: Rust owns the plan engine, the content and the data, and SwiftUI presents them.
 
@@ -51,7 +51,7 @@ Version one runs on the phone only, like Murmur. There is one local dog profile,
 - **Exercise**: preparation, steps, what to look for, and what to do if it's hard. It has a session timer, a haptic marker tap, and the outcome buttons (easy, getting there, too difficult), plus a welfare concern option.
 - **Learn**: exercises by topic, guides, and a searchable glossary with tap-to-define terms.
 - **My dog**: profile, plain-English progress with charts, reminder settings, and history export.
-- **Ask**: search over the approved answers. Answering on the device is GD5, and only if Reuben approves it.
+- **Ask**: search over the approved answers. Answering on the device is GD7, and only if Reuben approves it.
 
 Accessibility identifiers follow `screen.element` (`today.item.0`, `exercise.outcome.easy`, `dog.reminders.toggle`).
 
@@ -69,21 +69,70 @@ These are the ledger rows Good Dog would move. Today each is **No** in the [capa
 | Live Activities | A running session on the Lock Screen and in the Dynamic Island | Same extension | W9 |
 | CSV import and export, Report export | The training history as CSV and a one-page PDF to share with a trainer | forge-storage export plus the share sheet | W2 |
 | Haptics | A marker tap during an exercise | SwiftUI, documented | W8 |
-| Apple Foundation Models (GD5, optional) | Ask answered on the device, grounded only in approved answers and guides, with the web app's safety filters applied in Rust | `forge-ai` once it exists | Local AI |
+| Apple Foundation Models (GD7, optional) | Ask answered on the device, grounded only in approved answers and guides, with the web app's safety filters applied in Rust | `forge-ai` once it exists | Local AI |
+
+## Product direction
+
+Reuben's brief (2026-11-08) asks for Good Dog to change from an exercise library with a daily planner into a personalised training companion. Owners should open it because they want help with something in their dog's life, not to browse exercises. The brief has ten ideas in four phases:
+
+1. Goals become central.
+2. Training becomes adaptive.
+3. Good Dog understands the individual dog.
+4. Beyond formal exercises.
+
+It also sets seven principles. Welfare comes first. Difficulty means making the next step easier. Teach why. Reward real-life progress. AI stays inside welfare-conscious bounds. No forms, streaks or noise. Build on what works.
+
+Its test for every feature: *does this help an owner understand their dog, make a better decision, improve everyday life or recognise meaningful progress?*
+
+### What GD1 already gives us
+
+- **An engine that already responds to evidence.** Each skill moves through `NotIntroduced`, `Introduced`, `Practising`, `BecomingConsistent` and `ReadyToIncrease`, and drops to `NeedsEasier` on a "too difficult" or a welfare concern. One easy result never moves a skill on. Exercises have prerequisites and easier and harder variations. A welfare concern rests that skill for three days.
+- **A domain-neutral planner.** It takes a `CoachingPolicy`, so a new policy can steer it without touching the engine. The web app's 100 golden plans keep passing.
+- **Goals that are only a keyword.** GD1's six goals are a closed list that boosts one exercise category. Nothing is remembered per goal, and there are no stages, no "why this matters", and no way to pause.
+- **Content that is the real limit.** There are 28 exercises across 20 skills. Recall (5 exercises), loose-lead walking (3 plus check-ins), settling (3) and greeting visitors (sit, wait, door and greeting) can each become a pathway from what exists. Handling has 1 exercise, and confidence has 2, both for puppies only. A pathway for either needs new content first.
+
+### How the brief maps onto the app
+
+| Brief | Design | Owned by |
+|---|---|---|
+| Goals as the starting point; several at once; pause, change or abandon without losing history | A `Goal` is an owner's instance of a pathway: active, paused, finished or set aside, with its own history. At most three are active, so Today stays calm. Setting a goal aside keeps its sessions and stages | Rust (`goals.rs` in the app crate) |
+| Natural-language goals | Suggested challenges first, plus "in your own words". The words are kept and matched to suggested pathways, which the owner confirms. Rust matches the keywords and nothing is guessed silently. Matching the words with Ask comes later, in GD7 | Rust |
+| Structured pathways: stages, explanations, exercises, real-world practice | Pathways are versioned content (`content/pathways.json`), like exercises. Each stage has a plain explanation, "why it matters", the exercises it uses, one real-life practice idea and a "ready when" rule. Sessions record the pathway's `contentVersion` too | Content, loaded by `good-dog-core` |
+| Respond to evidence of learning, not completion counts | "Ready when" is a structured rule over the skill states and recent outcomes, for example "becoming consistent, no welfare concern in 7 days, and easy on 2 different days". From GD3 it also counts different contexts. The owner can always say "we're there" or "let's go back a step": progress doesn't have to be linear | Rust |
+| Easier alternatives; maintenance after a skill is learned | The easier variations and `NeedsEasier` already exist. A passed stage becomes *maintenance* and appears now and then, never as a chore | Rust |
+| Welfare before pathways; AI kept inside the rules | Welfare rules stay structured Rust that no text can override: no stage moves forward during a welfare cooldown, signs of stress step the pathway back and rest it, and repeated fear or reactivity signs show the referral guidance (vet or qualified behaviourist). Ask (GD7) may explain these decisions but never change them | Rust |
+| Today: one next step, everyday idea, "not today", no failure | Today leads with the most relevant goal's next step and why. It offers one small everyday idea and a different activity if this one isn't practical. "Not today" is recorded as a choice, never as a missed day. There are no streaks. The planner's plan stays as "more practice" | Rust decides, SwiftUI shows it |
+| Keep the library and planner | Learn and the planner stay. A new `GoalPolicy` steers the existing planner toward the active goals' current stages through `affinity_score`. The engine and the golden tests don't change | `good-dog-core` |
+
+**One deliberate split from the web app.** Goals and pathways exist only in the native app at first. The golden fixture keeps proving the shared planner. The goal layer sits on top and has its own tests. If the web app adopts pathways later, `pathways.json` is the contract, just as the golden fixture is for plans.
 
 ## Milestones
 
-Each milestone ends with something the phone can show. Agent runs use the staged pattern from the Murmur run ([forge-mcp.md](forge-mcp.md)).
+The product phases form the spine. The ixOS capabilities from the original plan (reminders, charts, export, widget, Ask) attach to the phase where the product needs them. Old numbers are shown in brackets.
 
 | Milestone | What | Needs the iPhone? |
 |---|---|---|
 | GD0 | Rust port of the engine, policy and content; the golden fixture passes 100 out of 100. **Done** (2026-11-08): also matches all 900 scenarios with swaps and 315 simulated weeks | No |
 | GD1 | Native app: onboarding, Today, exercise runner, Learn, My dog, all on forge-storage; UI test journey. **Done** (2026-11-08): Rust and model tests pass on Linux; macOS CI and the laptop compiled the SwiftUI. On Cati (iPhone 15 Pro Max, iOS 26.3.1) the `journey.toml` UI test passed 29 of 29 steps, and Reuben checked dark mode | Yes: install, run the journey, and check dark mode |
-| GD2 | Daily reminders that skip finished days, notification actions, and the day rollover in the background | Yes: a reminder arrives, "Start now" opens Today, and no reminder comes after practice |
-| GD3 | Progress charts, and CSV and PDF export through the share sheet | Yes: charts read with VoiceOver, and the export opens in Files |
-| GD4 | Spike S2, then the widget and the Live Activity | Yes: the widget shows today's plan, and the Live Activity follows a session |
-| GD5 | On-device Ask (optional, only with Reuben's go-ahead) | Yes: answers stay grounded, and refusals are handled |
-| GD6 | iPhone acceptance run and a framework gap report; ledger updated | Yes |
+| GD2a | **Goals in Rust** (phase 1). Goal and pathway model; `pathways.json` for recall, loose-lead walking, settling and greeting visitors, drafted from existing exercises; stage rules; `GoalPolicy`; goal management (start, pause, resume, set aside, "we're there", "go back"). The data file moves from version 1 to 2 with a forge-storage migration, so GD1's data survives. Tests: every pathway references real exercises and life stages, stage rules, welfare holds, history kept across pause and set aside, and the migration | No |
+| GD2b | **Goals on the phone** (phase 1). Onboarding picks one to three challenges. A goal screen shows the journey: where the dog is, what this stage means and why, what "ready" looks like in words, and what comes next. Today leads with a goal's next step, adds an everyday idea, and has "not today". Pause and set aside are on the goal screen | Yes: the journey test grows to cover goals; data from GD1 survives the update |
+| GD3 | **Reflections and adaptive steps** (phase 2). After a session there's a quick record (one tap still works) plus an optional reflection: where it happened (home, garden, street, park, with other dogs or visitors), signs of stress or switching off chosen from a list, and the owner's own words. At most one follow-up question, and only when the answer changes the next step. "What this changes" explains the next step. Stage rules count contexts. Owner-reported changes appear on the goal | Yes: reflections recorded; a stress sign steps the pathway back |
+| GD4 [GD3] | **Meaningful progress** (phases 2 and 4). Progress for each goal with Swift Charts: the contexts practised, learned compared with reliable, skills in maintenance. A summary to share with a trainer as CSV and PDF through the share sheet | Yes: charts read with VoiceOver; export opens in Files |
+| GD5 [GD2] | **Calm reminders** (phase 1 Today). One optional daily nudge at the owner's time. It's skipped when today's practice is done or the owner said "not today". Its actions are "Start now" and "Not today". The day rolls over in the background | Yes: a reminder arrives; "Start now" opens Today; none after practice or "not today" |
+| GD6 [GD4] | Spike S2, then the widget (the goal's next step) and the Live Activity (a running session) | Yes |
+| GD7 [GD5] | **Good Dog knows the dog** (phase 3). A richer profile built up gradually (motivators, sensitivities, health notes the owner chooses to give, routines), each item asked when it becomes relevant. Contextual troubleshooting from the history. On-device Ask grounded in the dog's goals and history, which the owner can correct, with transparent memory. **Ask needs Reuben's go-ahead** | Yes: answers stay grounded; welfare rules can't be argued past |
+| GD8 | **Everyday life** (phase 4). Guides and activities for walks, rest, enrichment, handling, visitors, travel and confidence. Management and giving space count as valid outcomes. Needs new content, and qualified review where it calls for it | Yes |
+| GD9 [GD6] | iPhone acceptance against the brief's test, a framework gap report, and the ledger updated | Yes |
+
+### Where M6 fits
+
+M6.5 (the agent demonstration in [forge-m6.md](forge-m6.md)) takes its task from these milestones. The proposal is that the agent builds **pausing, resuming and setting aside a goal** once GD2a has landed. That task crosses Rust state, storage, SwiftUI, interaction and accessibility, has a clear "history is kept" check, and needs no new capability. The goal screen's journey view (part of GD2b) is the fallback task.
+
+### Open questions for Reuben
+
+- **Where new pathway content is written.** The proposal is to draft `pathways.json` here from existing exercises and mark it as a draft for his review, then move it to DogResearch later if the web app adopts it. The other choice is to write it in DogResearch first. That keeps one source, but GD2a would wait for it.
+- **Handling and confidence pathways** need new exercises (adult confidence and grooming handling) before they can be offered. Who writes them, and whether they need qualified review.
+- **GD3's reflection list** (contexts and signs of stress) should be reviewed for welfare wording before it ships.
 
 ## Where the native app departs from the web app
 
