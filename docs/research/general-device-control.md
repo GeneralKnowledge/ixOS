@@ -1,10 +1,10 @@
 # Any app on the iPhone: growing Forge UI Testing beyond Forge's own apps
 
-Status: design, 2026-11-08, revised the same day after Reuben's review. **Nothing here is built.** The current milestone (Forge End-to-End Validation, then the Murmur social app) adds no large features.
+Status: design, 2026-11-08, revised the same day after Reuben's review, with the first phone results ([Spikes on Cati](#spikes-on-cati), 2026-11-08). **Nothing here is built.** The current milestone (Forge End-to-End Validation, then the Murmur social app) adds no large features.
 
 **What this is not:** a separate phone-control workstream or a second automation stack. Forge already has the architecture: [Forge UI Testing](../forge-ui-testing.md) (`forge-uitest`'s `Driver`, `UiNode` and `Locator`), and the [agent capability audit](forge-agent-capability-audit.md) of 2026-11-07 already proposed the missing routes: A2 (Apple's accessibility service), A3 (the rest of `idevice`), the exploratory crawler, and evidence bundles (A4). This page applies those plans to apps Forge didn't build, and makes "any app" a first-class use of the same system.
 
-**What Forge can't claim yet:** that it tests arbitrary third-party apps end to end. Tipster proved the agent loop on a physical iPhone for an app Forge built. Every route below still needs its own validation on other developers' apps. And controlling the screen does not give access to another app's private data: its container, logs and state stay out of reach, and only what the screen shows is readable.
+**What Forge can't claim yet:** that it tests arbitrary third-party apps end to end. Tipster proved the agent loop on a physical iPhone for an app Forge built. On another developer's app, Forge has so far read the screen and, once, typed and sent one message with Reuben watching ([spikes](#spikes-on-cati)); that is a working route, not a tested app. Every route below still needs its own validation on other developers' apps. And controlling the screen does not give access to another app's private data: its container, logs and state stay out of reach, and only what the screen shows is readable.
 
 ## The idea
 
@@ -15,7 +15,7 @@ Reuben's proposal (2026-11-08): the machinery that builds, installs and drives F
 | Level | What the agent can do | Where Forge is |
 |---|---|---|
 | **Observe** | Read the screen's accessibility structure, labels and values; screenshots; which app is in front; performance and operating conditions | WDA reads any foreground app today; Apple's accessibility service read another developer's app (the Claude app) on Cati with no runner. A3's performance services aren't wired yet |
-| **Operate** | Tap, scroll, swipe, type, navigate between apps, handle alerts | Works for Forge's own apps (Pocket Library, Tipster on Cati). For other apps, deliberately blocked by the front-app guard, and missing a few calls (below) |
+| **Operate** | Tap, scroll, swipe, type, navigate between apps, handle alerts | Works for Forge's own apps (Pocket Library, Tipster on Cati). **Worked once in an App Store app** (2026-11-08: typed into the Claude app's `chat-input` and tapped `Send`, and the message arrived). Missing a few calls and a policy (below) |
 | **Understand and verify** | Explore workflows, recognise failures and dead ends, decide whether an app behaves correctly, and show the evidence | Not built. The crawler (UI Testing M5) and evidence bundles ([evidence.md](../evidence.md)) are the pieces. **The biggest opportunity** |
 
 ## One device model, several routes
@@ -38,17 +38,17 @@ From the code on `main` and the phone runs of 2026-11-07.
 | Capability | Today | Gap |
 |---|---|---|
 | List installed apps | `Phone::user_apps()` via `installation_proxy` (bundle ids of App Store and sideloaded apps) | No display names, no Apple system apps, not a command or tool |
-| Launch or switch to an app | `Driver::launch`/`activate` (WDA) take any bundle id | `resolve_app` only knows user apps, so `com.apple.*` is refused; the MCP tool only launches the project's app |
+| Launch or switch to an app | `Driver::launch`/`activate` (WDA) take any bundle id; `forge ui tree --app com.anthropic.claude` was accepted on Cati (P2) | `resolve_app` only knows user apps, so `com.apple.*` is expected to be refused (untested: Weather isn't on Cati); the MCP tool only launches the project's app |
 | Which app is in front | `Driver::foreground` (`/wda/activeAppInfo`) | Not a tool of its own |
-| Accessibility tree | `forge ui tree` reads whatever is in front | Speed on long feeds unknown (spike P1) |
-| Runner-free reading (A2) | `ax_probe` read the Claude app's identifiers (`BackButton`, `thread-checklist-pill`) | Experimental; flat list; moves the VoiceOver focus visibly |
+| Accessibility tree | `forge ui tree` reads whatever is in front: **the Claude app on Cati gave 160 elements, 38 labelled, 15 with identifiers (`chat-input`, `chat-model-picker`, `Send`, `Stop`, `BackButton`…) in 4 s** (P1) | 4 s includes starting the runner; a long feed is still unmeasured |
+| Runner-free reading (A2) | `ax_probe` read the Claude app: 20 elements in VoiceOver order, all labelled, 5 with identifiers (P3) | Experimental; flat list; moves the VoiceOver focus visibly |
 | Screenshot | `forge ui screenshot`, any app | None |
-| Tap, type, scroll | `Driver` by identifier, label or label substring | Blocked by the guard for other apps; apps without identifiers need better locators |
-| Runner-free press (A2) | `ax_probe --press` in a dev-signed app | Unknown on an app without `get-task-allow` (spike P3) |
+| Tap, type, scroll | `Driver` by identifier, label or label substring. **`forge ui run` with a test file naming the Claude app typed into `chat-input` and tapped `Send` on Cati**; about 10 s for the run, mostly about 2 s of runner start-up per step | No policy: see below. Apps without identifiers need better locators |
+| Runner-free press (A2) | `ax_probe --press` in a dev-signed app | Still unknown on an app without `get-task-allow`: P3 walked but didn't press |
 | Swipe, back, Home, alerts, open URL | No (`background` only) | WDA has each; iOS has no system back, so back means the navigation bar's button or an edge swipe |
 | Another app's internal state | Devtools, own apps only | Not possible, by design |
 
-`XCUIApplication(bundleIdentifier:)` is Apple's documented way for one UI test to drive several installed apps, Apple's included; WDA is a long-running XCTest that exposes it over HTTP. The block today is Forge's own guard (`UiError::WrongApp`, [Only the app under test](../forge-ui-testing.md#only-the-app-under-test)). The design replaces "only my app" with a policy a person writes; it doesn't remove the check.
+`XCUIApplication(bundleIdentifier:)` is Apple's documented way for one UI test to drive several installed apps, Apple's included; WDA is a long-running XCTest that exposes it over HTTP. Forge's guard (`UiError::WrongApp`, [Only the app under test](../forge-ui-testing.md#only-the-app-under-test)) only checks that the app *named in the test file* is in front, and a test file can name any user-installed app. **So the CLI can already act inside any App Store app, with no policy at all**, as the Claude app run showed; only the MCP server limits itself to the project's app. That makes the policy below the first thing to build before any wider use, not a later refinement. The design replaces "the app the file names" with a policy a person writes; it doesn't remove the check.
 
 ## A3 services, and which are app-independent
 
@@ -70,7 +70,7 @@ The audit's A3 table, read for apps Forge didn't build. These are app-independen
 All on existing crates; no new runner, no Appium, no new device stack.
 
 1. **App inventory.** `forge device apps [--all]`: bundle id, display name, version, sideloaded or not, from `installation_proxy` (`User` and `System`). From a USB host this is the official lockdown service, so Forge doesn't need the private `LSApplicationWorkspace` call on-device tools rely on. `resolve_app` learns system apps and names ("Weather" → `com.apple.weather`).
-2. **A long-lived runner session.** Each `forge ui` command now starts the runner (about 3 s) and the runner dies when `forge` exits; each MCP UI call is a child `forge` process that pays this again. An exploring agent makes hundreds of calls. One session (`forge ui serve`, or held by `forge mcp`) keeps one runner, one WDA connection and the device lock. This also fixes the open "runner dies when forge exits" bug for UI tests.
+2. **A long-lived runner session.** Each `forge ui` command now starts the runner (about 2 s per step measured on Cati on 2026-11-08, most of a 10 s two-step run) and the runner dies when `forge` exits; each MCP UI call is a child `forge` process that pays this again. An exploring agent makes hundreds of calls. One session (`forge ui serve`, or held by `forge mcp`) keeps one runner, one WDA connection and the device lock. This also fixes the open "runner dies when forge exits" bug for UI tests.
 3. **`Driver` additions**: `swipe`, `tap_point` with a hit test against the last tree (which element the point landed on), `home`, `alert`, `open_url`, `back`. One WDA request each.
 4. **Locators for apps without identifiers.** Keep `id`, `label`, `label_contains`. Add `kind` + `label`, `kind` + `index` in a container, and `ref`: a handle from the last tree, re-resolved at action time and refused if the screen no longer matches. Coordinates only through `tap_point`, and only where policy allows. [AGENTS.md](../../AGENTS.md) rule 4 (never coordinates) stays for Forge's own apps and tests.
 5. **Bounded reads.** Visible elements only by default, using WDA's `snapshotMaxDepth`, `waitForIdleTimeout` and `animationCoolOffTimeout` settings.
@@ -124,7 +124,7 @@ default = "ask"                     # apps not listed: ask once per session
 
 **Untrusted content.** Text and screenshots from other apps are someone else's content. They are returned as data, never instructions; because the gates are in the server, injected text can at worst make the agent ask for a commit.
 
-**Privacy.** Screens of the person's apps are personal data, and AGENTS.md rule 5 says never log user content. Trees, screenshots and bundles go to `~/.cache/forge/any-app/<session>/`, are deleted at the end of the session unless the person keeps them, and never enter Forge's command logs. What the agent reads is also sent to its model provider, like any tool result; the person should know that before pointing it at a banking app.
+**Privacy.** Screens of the person's apps are personal data, and AGENTS.md rule 5 says never log user content. Trees, screenshots and bundles go to `~/.cache/forge/any-app/<session>/`, are deleted at the end of the session unless the person keeps them, and never enter Forge's command logs. Apple's accessibility service adds one more: while its app monitoring is on, it reports every app on the phone moving to the foreground or background (seen on Cati, P3), so an `AxDriver` must switch monitoring on only for the walk, off straight after (as `ax_probe --off` does), and drop events about other apps. What the agent reads is also sent to its model provider, like any tool result; the person should know that before pointing it at a banking app.
 
 **Journal and stop.** Every action is journalled (time, app, action, target label, approved or not; typed text as its length only). `forge ui stop` or closing the MCP server ends the runner at once. A locked phone stops everything; Forge never enters the passcode.
 
@@ -142,8 +142,8 @@ default = "ask"                     # apps not listed: ask once per session
 | Custom-rendered UIs | Games expose nothing; web views and Flutter expose part | The agent reads the screenshot; OCR on Linux later if needed |
 | Secure fields, biometrics, payments | Hidden values; Face ID and Apple Pay need the person | The person does those steps; policy refuses them anyway |
 | Automation detection | Apps can use heuristics | No evasion: report and stop |
-| Long feeds | WDA serialises off-screen rows, possibly seconds per read | Bounded reads (spike P1 measures) |
-| XCTest attachments | iCTRL found XCTest recordings piling up as "System Data" after long runs | Check on Cati, whose storage is nearly full (spike P4) |
+| Long feeds | WDA serialises off-screen rows, possibly seconds per read. A chat screen took 4 s including runner start-up | Bounded reads; measure a real feed once the long-lived session removes start-up from the figure |
+| XCTest attachments | iCTRL found XCTest recordings piling up as "System Data" after long runs | Check on Cati, whose storage is nearly full (spike P4, not done yet) |
 | Interruptions | Calls and notifications change the app in front | Every result names the app in front; actions refuse on another app |
 
 ## iCTRL
@@ -166,10 +166,10 @@ Updated from the audit's order now that Tipster has proved the agent loop on a p
 
 | | Work | Builds on | Proves |
 |---|---|---|---|
-| 0 | Spikes P1–P4 on Cati (below) | Today's code | Whether WDA and A2 behave on other developers' apps |
-| 1 | Driver seam: long-lived session, `AxDriver` (A2), locators without identifiers, swipe/back/home/alert/open URL, app inventory | UI Testing M2.5, `Phone` | Observe and operate on any app, route chosen per operation |
-| 2 | A3 commands, selectively: network, location, perf, rotate, process list | `Phone`, audit A3 | Conditions and measurements around any app |
-| 3 | Policy, commit gate, journal, `--any-app` | `ensure_front` | Safe operation outside the project |
+| 0 | Spikes P1–P4 on Cati (below) | Today's code | **Done 2026-11-08**, except P4, a runner-free press and an Apple app: WDA reads and operates an App Store app |
+| 1 | Policy, commit gate, journal, `--any-app` (the CLI has no policy today, see above) | `ensure_front` | Safe operation outside the project |
+| 2 | Driver seam: long-lived session, `AxDriver` (A2), locators without identifiers, swipe/back/home/alert/open URL, app inventory | UI Testing M2.5, `Phone` | Observe and operate on any app, route chosen per operation |
+| 3 | A3 commands, selectively: network, location, perf, rotate, process list | `Phone`, audit A3 | Conditions and measurements around any app |
 | 4 | Crawler | 1–3, UI Testing M5 | Understand and verify, first on Forge's apps |
 | 5 | Evidence bundles for device runs and explorations | evidence.md, `forge.evidence/1` | What the agent actually inspected and tested |
 
@@ -177,14 +177,17 @@ Updated from the audit's order now that Tipster has proved the agent loop on a p
 
 ### Spikes on Cati
 
-No code and no new installs: the WDA runner and apps already on Cati. Queued with the iPhone session plan; Reuben only unlocks the phone and opens a harmless app.
+Run on 2026-11-08 in the iPhone session, with no code changes and no new installs: forge at c03549d, the WDA runner already on Cati, and the Claude app (`com.anthropic.claude`, from the App Store) as the third-party app, with Reuben watching. Evidence (JSON, trees, screenshots) is on the laptop in `~/forge-uitest/g0/`.
 
-| Spike | Laptop runs | Proves |
+| Spike | Ran | Result |
 |---|---|---|
-| P1 | With a third-party App Store app in front (for example YouTube's home feed), then Apple's Weather: `forge --json ui tree` and `forge --json ui screenshot` | WDA reads other developers' apps on iOS 26.3.1; how many elements carry labels or identifiers; how long a long feed takes |
-| P2 | `forge --json ui tree --app <that bundle id>`, then `--app com.apple.weather` | Activating another app works; the system-app lookup gap is real (the second should be refused today) |
-| P3 | `ax_probe` walk and `--press` on a tab in the same App Store app, then `--off` | Whether the runner-free press works without `get-task-allow` |
-| P4 | Settings > General > iPhone Storage > System Data, before and after the session | Whether WDA leaves XCTest recordings behind on a nearly full phone |
+| P1 | `forge --json ui tree` and `ui screenshot` with the Claude app in front | **Works.** 160 elements, 38 labelled, 15 identifiers (`chat-input`, `chat-model-picker`, `Send`, `Stop`, `BackButton`…), 4 s including runner start-up. Screenshot fine. Apple's Weather isn't installed on Cati, so no Apple-app result |
+| P2 | `forge --json ui tree --app com.anthropic.claude` | **Works**: an App Store app is accepted and activated. The system-app case (`com.apple.*`) is still to try with an Apple app that is installed |
+| P3 | `ax_probe` walk on the Claude app, then `--off` | **Walk works**: 20 elements, all labelled, 5 identifiers. The service also reported every app's foreground and background changes while monitoring was on (a privacy point, see [Safety](#safety)). `--off` cleaned up. **No press tried**, so the `get-task-allow` question stays open |
+| Extra, at Reuben's request | A `forge ui run` file naming the Claude app: type into `chat-input`, tap `Send` once | **Works.** The message "Hello from Forge on Linux: typed and sent by WebDriverAgent over USB, no app installed." arrived in the conversation, sent as Reuben, at 09:59. About 10 s of forge time, mostly runner start-up (about 2 s per step). `Send` is replaced by `Stop` while the assistant answers, so a test must wait for `Send` to come back |
+| P4 | System Data before and after | Not done |
+
+What they settle: WDA reads and operates another developer's app on iOS 26.3.1 with the free team and nothing extra installed, and that app exposes enough identifiers and labels to find its main controls without coordinates. What they show needs doing first: today's CLI has no policy for other apps, the per-call runner start-up dominates the time, and A2 monitoring leaks other apps' activity unless switched off. Still open: a runner-free press on an App Store app, an Apple system app, a long feed, and System Data.
 
 ## Open decisions
 
