@@ -23,7 +23,9 @@ struct LibraryView: View {
                 .navigationDestination(for: UInt64.self) { id in
                     BookDetailView(bookID: id)
                 }
-                .searchable(text: bindable.searchText, prompt: "Title or author")
+                // The system's own "Search" prompt: Apple's accessibility audit on
+                // an iPhone found "Title or author" clipped in the search field.
+                .searchable(text: bindable.searchText, prompt: "Search")
                 .toolbar { toolbar }
         }
         .onAppear(perform: openReaderFromLaunchArgument)
