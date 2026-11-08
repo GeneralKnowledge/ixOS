@@ -1,0 +1,13 @@
+[package]
+name = "good-dog-core"
+version = "0.1.0"
+description = "Domain core of the Good Dog demo: the coaching plan engine, the dog-training policy and the bundled exercise content"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

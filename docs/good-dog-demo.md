@@ -1,6 +1,6 @@
 # Good Dog demo: plan
 
-Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan: nothing below is built yet.
+Good Dog is the second demo in the core sequence, after Chat. It replaced Pocket Ledger on 2026-11-08 (Reuben's decision). This page is a plan. GD0 (the Rust engine) is built in [`examples/good-dog-core`](../examples/good-dog-core/README.md); the rest is not.
 
 Good Dog already exists as a web app ([GeneralKnowledge/Good-Dog](https://github.com/GeneralKnowledge/Good-Dog), Next.js and SQLite). It helps ordinary UK dog owners train their dog through short, reward-based activities: open the app, see what to practise today, follow the steps, say how it went, and get a better plan tomorrow. The native version keeps that product and rebuilds it the ixOS way: Rust owns the plan engine, the content and the data, and SwiftUI presents them.
 
@@ -36,7 +36,7 @@ Pocket Ledger mostly reused what Chat and Pocket Library already exercise. Good 
 
 Version one runs on the phone only, like Murmur. There is one local dog profile, no account, no server, no shop and no remote AI.
 
-**Rust** (`examples/good-dog/rust`):
+**Rust** (the engine is in `examples/good-dog-core`, GD0; the app crate will be `examples/good-dog/rust`):
 
 - `coaching`: the engine ported from TypeScript. Keep the same split and the rule that it never mentions dogs. If a second coaching app ever appears, the engine is the candidate to move into the framework ([architecture.md](architecture.md#framework-principles)).
 - `dog_training`: the policy, the safety rules and the content loader.
@@ -77,7 +77,7 @@ Each milestone ends with something the phone can show. Agent runs use the staged
 
 | Milestone | What | Needs the iPhone? |
 |---|---|---|
-| GD0 | Rust port of the engine, policy and content; the golden fixture passes 100 out of 100 | No |
+| GD0 | Rust port of the engine, policy and content; the golden fixture passes 100 out of 100. **Done** (2026-11-08): also matches all 900 scenarios with swaps and 315 simulated weeks | No |
 | GD1 | Native app: onboarding, Today, exercise runner, Learn, My dog, all on forge-storage; UI test journey | Yes: install, run the journey, and check largest text and dark mode |
 | GD2 | Daily reminders that skip finished days, notification actions, and the day rollover in the background | Yes: a reminder arrives, "Start now" opens Today, and no reminder comes after practice |
 | GD3 | Progress charts, and CSV and PDF export through the share sheet | Yes: charts read with VoiceOver, and the export opens in Files |
@@ -89,5 +89,5 @@ Each milestone ends with something the phone can show. Agent runs use the staged
 
 - **Free team.** The widget extension needs its own App ID, and Good Dog takes one of the three app slots on the phone. Spike S2 must check whether a free team can use an App Group. If it can't, the Live Activity still works because the app pushes its state, but the widget would need another route or the paid team.
 - **Two copies of the engine.** The web app stays in TypeScript. The golden fixture is the contract between them. A plan change in one copy means regenerating the fixture and porting the change. Running the Rust engine on the web through WebAssembly is possible later, but it is out of scope.
-- **Content source.** Exercises live in `exercises.ts` in the web repo, not in JSON. GD0 needs a one-off export to JSON, or a small export script in the Good-Dog repo, which is a change outside ixOS.
+- **Content source.** Exercises live in `exercises.ts` in the web repo, not in JSON. `examples/good-dog-core/scripts/export-from-web.sh` exports them from a web checkout without changing the web repo. The export found three exercises whose learning objective has no label in the web app (see `content/SOURCE.md`).
 - **Welfare and claims.** Keep the web app's wording rules: general guidance, not veterinary advice, and no claims of professional endorsement.
