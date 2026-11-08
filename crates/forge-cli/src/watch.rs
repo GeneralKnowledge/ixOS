@@ -11,9 +11,23 @@
 //! (`not_checked`, `none_new`, `found`, `unavailable`), and a run that
 //! wasn't watched at all says why ([`not_watched`]).
 //!
-//! A [`Watch`] stops its log reader when it is finished or dropped, so a run
-//! that ends with an error doesn't leave a thread holding the phone's log
-//! service; the reader is given [`STOP_WAIT`] to notice, never more.
+//! # Who owns the log reader, and when it has stopped
+//!
+//! A [`Watch`] owns one thread, the log reader. [`Watch::finish`] and
+//! dropping the watch (a run that returned early) both set the stop flag
+//! and then join the thread, waiting at most [`STOP_WAIT`]. When the join
+//! succeeds the reader has ended and its connection to the phone is closed:
+//! `watch.reader` says `stopped`. The wait is bounded so a stuck phone
+//! can't hang the run, and Rust can't kill a thread, so a reader that
+//! doesn't end in time is detached instead, and that is said, never
+//! hidden: `watch.reader` is `detached`, with a note, and it ends when the
+//! phone sends its next line, the connection drops, or the `forge` process
+//! exits (each command is one process).
+//!
+//! Whether a backend stops within the wait is its own contract
+//! ([`DeviceBackend::syslog_while`]): the USB backend (usbmuxd) checks the
+//! flag every 100 ms even on a silent phone, so it always stops in time;
+//! the trait's default checks it only when a line arrives.
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -39,7 +53,7 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
 const MAX_LINES: usize = 5000;
 /// Lines of the log end attached to a failure.
 pub const TAIL: usize = 20;
-/// How long `finish` waits for the log reader to stop.
+/// How long `finish` and drop wait for the log reader to stop.
 pub const STOP_WAIT: Duration = Duration::from_secs(2);
 
 pub struct Watch {
@@ -111,7 +125,7 @@ impl Watch {
     /// against the app's build. Returns the `watch` object of the bundle.
     pub fn finish(mut self, dir: &Path, crashes: bool) -> Finished {
         let mut notes = Vec::new();
-        let reader = self.stop_reader();
+        let (reader_state, reader) = self.stop_reader();
         let log_status = match &reader {
             Err(e) => {
                 notes.push(format!("app log not read: {e}"));
@@ -163,6 +177,7 @@ impl Watch {
             "seconds": self.started.elapsed().as_secs_f64(),
             "log": "device.log",
             "log_status": log_status,
+            "reader": reader_state.as_str(),
             "log_lines": lines.len(),
             "log_tail": tail,
             "crash_reports": crash_status,
@@ -181,30 +196,41 @@ impl Watch {
         self.lines.lock().unwrap_or_else(|p| p.into_inner()).len()
     }
 
-    /// Tells the log reader to stop and waits up to [`STOP_WAIT`] for it.
-    /// `Err` says why the log can't be trusted as complete.
-    fn stop_reader(&mut self) -> Result<(), String> {
+    /// Tells the log reader to stop and joins it, waiting at most
+    /// [`STOP_WAIT`]. Returns what became of the reader and, as `Err`, why
+    /// the log can't be trusted as complete.
+    fn stop_reader(&mut self) -> (Reader, Result<(), String>) {
         self.stop.store(true, Ordering::Relaxed);
         let Some(thread) = self.thread.take() else {
-            return Err("could not start the log reader".into());
+            return (
+                Reader::NotStarted,
+                Err("could not start the log reader".into()),
+            );
         };
         let deadline = Instant::now() + STOP_WAIT;
         while !thread.is_finished() && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(Duration::from_millis(5));
         }
         if !thread.is_finished() {
-            // Dropping the handle detaches it; it ends on the phone's next
-            // line. What it read so far is kept.
-            return Err(format!(
-                "the log reader didn't stop within {} s; the lines read before are kept",
-                STOP_WAIT.as_secs()
-            ));
+            // Rust can't stop a thread from outside: dropping the handle
+            // detaches it. It ends on the phone's next line, when the
+            // connection drops, or when this process exits. What it read
+            // so far is kept.
+            return (
+                Reader::Detached,
+                Err(format!(
+                    "the log reader didn't stop within {} s and was left to end on its own (on the phone's next line, a disconnect, or when forge exits); the lines read before are kept",
+                    STOP_WAIT.as_secs()
+                )),
+            );
         }
-        match thread.join() {
+        // Finished: the join returns at once and the thread is gone.
+        let result = match thread.join() {
             Ok(Ok(())) => Ok(()),
             Ok(Err(e)) => Err(e),
-            Err(_) => Err("the log reader stopped".into()),
-        }
+            Err(_) => Err("the log reader panicked".into()),
+        };
+        (Reader::Stopped, result)
     }
 
     fn new_crashes(&self, dir: &Path) -> Result<Vec<(PathBuf, Value)>, String> {
@@ -253,10 +279,38 @@ impl Watch {
 }
 
 impl Drop for Watch {
-    /// A run that returned early never called `finish`: the reader still
-    /// stops, so it doesn't keep the phone's log service busy.
+    /// A run that returned early never called `finish`: the reader is
+    /// stopped and joined the same way, so it doesn't keep the phone's log
+    /// service busy. A drop has no result to put a note in, so a reader
+    /// that doesn't stop in time is said on stderr.
     fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
+        if self.thread.is_none() {
+            return;
+        }
+        if let (Reader::Detached, Err(e)) = self.stop_reader() {
+            eprintln!("forge: {e}");
+        }
+    }
+}
+
+/// What became of the log reader when the watch ended (`watch.reader`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reader {
+    /// Joined: the thread has ended and closed its connection.
+    Stopped,
+    /// Still running after [`STOP_WAIT`]; left to end on its own.
+    Detached,
+    /// The thread couldn't be started.
+    NotStarted,
+}
+
+impl Reader {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Reader::Stopped => "stopped",
+            Reader::Detached => "detached",
+            Reader::NotStarted => "not_started",
+        }
     }
 }
 
@@ -283,6 +337,7 @@ pub fn not_watched(reason: &str) -> Value {
         "status": "not_watched",
         "reason": reason,
         "log_status": "unavailable",
+        "reader": "not_started",
         "crash_reports": "not_checked",
         "crashes_checked": false,
         "crashes": [],
@@ -419,11 +474,17 @@ mod tests {
         assert_eq!(crashes[0]["symbolicated"], "unreadable");
     }
 
-    /// A phone that logs nothing for the app and can stop waiting.
-    struct Silent;
-    static SILENT_ENDED: AtomicBool = AtomicBool::new(false);
+    /// A phone that logs nothing for the app, on a backend that honours the
+    /// stop flag. Each test uses its own `N`, so the "has ended" flags of
+    /// tests running side by side don't mix.
+    struct Silent<const N: usize>;
+    static SILENT_ENDED: [AtomicBool; 3] = [
+        AtomicBool::new(false),
+        AtomicBool::new(false),
+        AtomicBool::new(false),
+    ];
 
-    impl DeviceBackend for Silent {
+    impl<const N: usize> DeviceBackend for Silent<N> {
         fn devices(&self) -> Result<Vec<DeviceRef>> {
             Fake.devices()
         }
@@ -442,7 +503,10 @@ mod tests {
             while !stop.load(Ordering::Relaxed) {
                 std::thread::sleep(Duration::from_millis(5));
             }
-            SILENT_ENDED.store(true, Ordering::SeqCst);
+            // Give the join something to wait for: a reader that takes a
+            // moment to close its connection.
+            std::thread::sleep(Duration::from_millis(30));
+            SILENT_ENDED[N].store(true, Ordering::SeqCst);
             Ok(())
         }
         fn crash_reports(&self, _: &DeviceRef) -> Result<Vec<String>> {
@@ -453,17 +517,23 @@ mod tests {
         }
     }
 
-    fn silent() -> std::result::Result<Box<dyn DeviceBackend>, String> {
-        Ok(Box::new(Silent))
+    fn silent<const N: usize>() -> std::result::Result<Box<dyn DeviceBackend>, String> {
+        Ok(Box::new(Silent::<N>))
     }
 
     #[test]
-    fn a_quiet_app_is_empty_not_missing_and_the_reader_stops_at_once() {
+    fn a_quiet_app_is_empty_not_missing_and_the_reader_has_ended_when_finish_returns() {
         let tmp = tempfile::tempdir().unwrap();
-        let watch = Watch::start(silent, "0000", "GoodDogXtool", tmp.path());
+        let watch = Watch::start(silent::<0>, "0000", "GoodDogXtool", tmp.path());
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(!SILENT_ENDED[0].load(Ordering::SeqCst));
         let t = Instant::now();
         let done = watch.finish(tmp.path(), true);
         assert!(t.elapsed() < STOP_WAIT, "{:?}", t.elapsed());
+        // Joined, not merely told: the reader's last act happened before
+        // finish returned, checked once with no waiting.
+        assert!(SILENT_ENDED[0].load(Ordering::SeqCst));
+        assert_eq!(done.value["reader"], "stopped");
         assert_eq!(done.value["log_status"], "empty");
         assert_eq!(done.value["crash_reports"], "none_new");
         assert_eq!(done.value["crashes_checked"], true);
@@ -471,20 +541,15 @@ mod tests {
     }
 
     /// A run that returned early (an error before `finish`): dropping the
-    /// watch still stops the reader.
+    /// watch stops and joins the reader before the drop returns.
     #[test]
-    fn dropping_an_unfinished_watch_stops_its_reader() {
+    fn dropping_an_unfinished_watch_joins_its_reader() {
         let tmp = tempfile::tempdir().unwrap();
-        SILENT_ENDED.store(false, Ordering::SeqCst);
-        let watch = Watch::start(silent, "0000", "GoodDogXtool", tmp.path());
-        std::thread::sleep(Duration::from_millis(30));
-        assert!(!SILENT_ENDED.load(Ordering::SeqCst));
+        let watch = Watch::start(silent::<1>, "0000", "GoodDogXtool", tmp.path());
+        std::thread::sleep(Duration::from_millis(20));
+        assert!(!SILENT_ENDED[1].load(Ordering::SeqCst));
         drop(watch);
-        let deadline = Instant::now() + Duration::from_secs(1);
-        while !SILENT_ENDED.load(Ordering::SeqCst) && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(5));
-        }
-        assert!(SILENT_ENDED.load(Ordering::SeqCst));
+        assert!(SILENT_ENDED[1].load(Ordering::SeqCst));
     }
 
     /// A backend that only checks `stop` on a line, on a phone that sends
@@ -522,6 +587,8 @@ mod tests {
         let done = watch.finish(tmp.path(), false);
         assert!(t.elapsed() < STOP_WAIT + Duration::from_millis(500));
         assert_eq!(done.value["log_status"], "unavailable");
+        // Said, not passed off as stopped.
+        assert_eq!(done.value["reader"], "detached");
         assert!(done.value["notes"][0]
             .as_str()
             .unwrap()
@@ -540,6 +607,8 @@ mod tests {
         let done = watch.finish(tmp.path(), true);
         let v = &done.value;
         assert_eq!(v["log_status"], "unavailable");
+        // The thread ran and ended at once: it couldn't connect.
+        assert_eq!(v["reader"], "stopped");
         assert_eq!(v["crash_reports"], "unavailable");
         assert_eq!(v["crashes_checked"], false);
         let notes = v["notes"].to_string();

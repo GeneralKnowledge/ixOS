@@ -133,8 +133,14 @@ pub trait DeviceBackend {
 
     /// Like [`syslog`](Self::syslog), but also stops soon after `stop` is
     /// set, even when the phone logs nothing (the watch during a UI run,
-    /// which must not outlive the run). The default only checks `stop` when
-    /// a line arrives; backends that can wait with a timeout override it.
+    /// which must not outlive the run).
+    ///
+    /// The contract: an override returns, with its connection closed,
+    /// within about 100 ms of `stop` being set, whether or not lines arrive
+    /// (the USB backend does). The default can't promise that: it only
+    /// checks `stop` when a line arrives, so on a silent phone it returns
+    /// on the next line or a disconnect. The watch waits a bounded time
+    /// for either and reports a reader that didn't stop as `detached`.
     fn syslog_while(
         &self,
         device: &DeviceRef,

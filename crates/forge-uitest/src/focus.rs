@@ -37,6 +37,25 @@ pub enum Strength {
     Direct,
 }
 
+impl Strength {
+    /// What a tie of this strength rests on: `declared` (the changed file
+    /// contains the identifier, so the control's code changed; which screen
+    /// shows it is not proven), `inferred` (names matched as words along a
+    /// chain, or the same screen part as a declared control: a lead to
+    /// check, not a proven dependency) or `none`. See [`BASIS_NOTE`].
+    pub fn basis(self) -> &'static str {
+        match self {
+            Strength::Direct => "declared",
+            Strength::Entry | Strength::Screen => "inferred",
+            Strength::None => "none",
+        }
+    }
+}
+
+/// Said wherever a tie to the change is reported, so a reader (a person or
+/// an agent) doesn't take a link for a proven dependency.
+pub const BASIS_NOTE: &str = "Ties to the change are read from the source as text, not compiled, and prove nothing about the running app. declared: the changed file contains the identifier, so that control's code changed (the screen it appears on is not proven). inferred: names matched as whole words along a chain (a view that uses the changed code, a model method that calls changed Rust) or the same screen part as a declared control; a lead to check, not a proven dependency.";
+
 /// One identifier (or identifier prefix, from `"record.result.\(key)"`)
 /// tied to a changed file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -115,7 +134,7 @@ impl Focus {
                 link.id == id
             };
             if hit {
-                out.push(json!({"file": link.file, "how": link.how, "via": id, "strength": link.strength}));
+                out.push(json!({"file": link.file, "how": link.how, "via": id, "strength": link.strength, "basis": link.strength.basis()}));
             }
         }
         out

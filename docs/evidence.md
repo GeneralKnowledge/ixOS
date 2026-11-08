@@ -135,6 +135,7 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
 3. Lists only the requirements whose `device` names this scenario, each with `device.verdict` `passed` or `failed`. Twin verdicts are left out of a device bundle.
 4. Records `watch` (M6.1): the app's own log lines while the run lasted (`device.log`) and, when a step failed, its crash reports written during the run, pulled and symbolicated. The failed step carries `log_tail`, `crash`, `log_status` and `crash_reports`. `--no-watch` skips it. What couldn't be collected is never left to look like a quiet app:
    - `log_status`: `collected`, `empty` (the reader ran and the app logged nothing), or `unavailable` (the reader couldn't start, failed, or didn't stop in time; `notes` says which).
+   - `reader`: what became of the log reader thread at the end. `stopped` means it was joined and its connection to the phone is closed; `detached` means it didn't stop within 2 s and was left to end on its own (the log is then `unavailable`); `not_started` means there was no reader.
    - `crash_reports`: `not_checked` (the run passed), `none_new`, `found`, or `unavailable` (the phone's reports couldn't be listed or pulled). Only `none_new` means the app didn't crash.
    - Each crash has `symbolicated`: `matched`, `other_build` (frames point at today's code, not the code that crashed), `no_local_build`, `unknown`, or `unreadable`.
    - A run that wasn't watched has `status: not_watched` and a `reason` (`--no-watch`, another developer's app, an unreadable forge.toml).

@@ -85,7 +85,20 @@ impl Impact {
             .map(|l| forge_uitest::focus::screen_part(&l.id))
             .filter(|s| !s.is_empty())
             .collect();
+        let links: Vec<Value> = self
+            .links
+            .iter()
+            .map(|l| {
+                let mut v = serde_json::to_value(l).unwrap_or(Value::Null);
+                v["basis"] = json!(l.strength.basis());
+                v
+            })
+            .collect();
         json!({
+            // Read first: what every link below rests on.
+            "method": "textual",
+            "proves": "nothing about the running app: these are leads for where to look first",
+            "basis_note": forge_uitest::focus::BASIS_NOTE,
             "since": self.since,
             "changed": self.changed,
             "direct": direct,
@@ -93,7 +106,7 @@ impl Impact {
             "entry": by(Strength::Entry).into_iter().filter(|e| !direct.contains(e)).collect::<Vec<_>>(),
             "screens": screens,
             "screens_note": "Screen names come from the identifiers' `screen.element` naming rule (AGENTS.md), not from the running app.",
-            "links": self.links,
+            "links": links,
             "unmapped": self.unmapped.iter().map(|(f, why)| json!({"file": f, "why": why})).collect::<Vec<_>>(),
             "tests": self.tests.iter().map(|(f, ids)| json!({"file": f, "uses": ids})).collect::<Vec<_>>(),
             "signals": self.signals,
@@ -842,19 +855,51 @@ pub fn show(
         .map_err(err)?;
         return Ok(());
     }
+    writeln!(
+        out,
+        "Read from the source as text, not compiled: leads for where to look, not proven dependencies."
+    )
+    .map_err(err)?;
     writeln!(out, "Changed: {}", impact.changed.join(", ")).map_err(err)?;
-    for (label, key) in [
-        ("Declared by the change", "direct"),
-        ("Ways into it", "entry"),
-    ] {
-        let ids: Vec<&str> = value[key]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(Value::as_str)
-            .collect();
-        if !ids.is_empty() {
-            writeln!(out, "{label}: {}", ids.join(", ")).map_err(err)?;
+    let direct: Vec<&str> = value["direct"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if !direct.is_empty() {
+        writeln!(
+            out,
+            "Declared in the changed files (their code changed; the screen they show on is not proven): {}",
+            direct.join(", ")
+        )
+        .map_err(err)?;
+    }
+    // Inferred ways in, grouped by the reason, so each can be checked.
+    let mut entry: BTreeMap<&str, BTreeSet<String>> = BTreeMap::new();
+    for link in impact
+        .links
+        .iter()
+        .filter(|l| l.strength == Strength::Entry)
+    {
+        let id = if link.prefix {
+            format!("{}*", link.id)
+        } else {
+            link.id.clone()
+        };
+        if !direct.contains(&id.as_str()) {
+            entry.entry(link.how.as_str()).or_default().insert(id);
+        }
+    }
+    if !entry.is_empty() {
+        writeln!(
+            out,
+            "Inferred ways into it (names matched as words; not every control of such a view leads there):"
+        )
+        .map_err(err)?;
+        for (how, ids) in &entry {
+            let ids: Vec<&str> = ids.iter().map(String::as_str).collect();
+            writeln!(out, "  {}: {how}", ids.join(", ")).map_err(err)?;
         }
     }
     for (file, why) in &impact.unmapped {
@@ -962,6 +1007,41 @@ pub struct SessionFeedback { pub text: String }
             .how
             .clone();
         assert!(how.contains("TodayView.swift uses ExerciseView"), "{how}");
+        // Every link says what it rests on, and the result says first that
+        // none of it is proof.
+        assert_eq!(v["method"], "textual");
+        assert!(v["basis_note"]
+            .as_str()
+            .unwrap()
+            .contains("not a proven dependency"));
+        let basis = |id: &str| {
+            v["links"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|l| l["id"] == id)
+                .unwrap()["basis"]
+                .clone()
+        };
+        assert_eq!(basis("record.save"), "declared");
+        assert_eq!(basis("today.activity."), "inferred");
+        let mut text = Vec::new();
+        show(
+            &repo().join("examples/good-dog"),
+            None,
+            &["Sources/AppHost/ExerciseView.swift".into()],
+            &mut text,
+        )
+        .unwrap();
+        let text = String::from_utf8(text).unwrap();
+        assert!(
+            text.starts_with("Read from the source as text, not compiled"),
+            "{text}"
+        );
+        assert!(
+            text.contains("  today.activity.*, today.progress, today.shorten: TodayView.swift uses ExerciseView"),
+            "{text}"
+        );
         // The journey test taps record.save.
         assert!(impact
             .tests

@@ -706,6 +706,9 @@ pub struct Issue {
     /// How it is tied to the change explored: `direct`, `entry`, `screen`
     /// or `none` (also when the walk had no focus).
     pub focus: String,
+    /// What that tie rests on: `declared`, `inferred` or `none`
+    /// ([`Strength::basis`]). Read from the source as text: never proof.
+    pub focus_basis: String,
     /// The changed files it is tied to and how; empty when there is no
     /// link (not "unrelated": no link could be established).
     pub changed_files: Vec<serde_json::Value>,
@@ -1546,6 +1549,7 @@ impl Explorer<'_> {
                 .collect(),
             confidence: String::new(),
             focus: "none".into(),
+            focus_basis: "none".into(),
             changed_files: Vec::new(),
             evidence: serde_json::Value::Null,
             reproduced: None,
@@ -1679,6 +1683,7 @@ impl Explorer<'_> {
                 Strength::None => "none",
             }
             .into();
+            issue.focus_basis = strength.basis().into();
             let mut files = action_id.map(|id| focus.files_for(id)).unwrap_or_default();
             if files.is_empty() {
                 for id in on_screen.iter().take(3) {
@@ -1721,6 +1726,7 @@ impl Explorer<'_> {
             ),
             "routes": self.routes_done,
             "routes_not_followed": self.routes.len(),
+            "basis_note": crate::focus::BASIS_NOTE,
         })
     }
 

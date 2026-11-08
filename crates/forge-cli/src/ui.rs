@@ -886,6 +886,7 @@ fn explore_focus(
     project: &Path,
     options: &ExploreOptions,
     out_dir: &Path,
+    kind: &str,
     out: &mut dyn Write,
 ) -> Result<
     (
@@ -936,12 +937,21 @@ fn explore_focus(
     }
     // Learning from the previous walk: its routes to the focus, and its
     // issues to check again.
+    // Only a walk of the same kind: a model's issues say nothing about the
+    // phone, and the phone's say nothing about a model.
     let previous = if options.no_previous {
         None
     } else if let Some(p) = &options.previous {
+        let theirs = walk_kind(p);
+        if theirs != kind {
+            return Err(format!(
+                "--previous {} is a {theirs} walk and this is a {kind} walk: their issues can't be compared (a fixture walk shows how Forge explores, not how the app behaves on the phone)",
+                p.display()
+            ));
+        }
         Some(p.clone())
     } else {
-        latest_walk(project, out_dir)
+        latest_walk(project, out_dir, kind)
     };
     let previous = match previous {
         Some(path) => {
@@ -980,7 +990,20 @@ fn explore_focus(
 }
 
 /// The app's latest walk with an `explore.json`, other than `out_dir`.
-fn latest_walk(project: &Path, out_dir: &Path) -> Option<PathBuf> {
+/// `device` or `fixture`, from the `evidence.json` next to a walk's
+/// `explore.json`; `unknown` without one.
+fn walk_kind(explore_json: &Path) -> String {
+    explore_json
+        .parent()
+        .map(|d| d.join("evidence.json"))
+        .and_then(|p| std::fs::read_to_string(p).ok())
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
+        .and_then(|v| v["kind"].as_str().map(str::to_owned))
+        .unwrap_or_else(|| "unknown".into())
+}
+
+/// The newest earlier walk of the same kind (`device` or `fixture`).
+fn latest_walk(project: &Path, out_dir: &Path, kind: &str) -> Option<PathBuf> {
     let runs = project.join(".forge/runs");
     let mut walks: Vec<PathBuf> = std::fs::read_dir(&runs)
         .ok()?
@@ -991,6 +1014,7 @@ fn latest_walk(project: &Path, out_dir: &Path) -> Option<PathBuf> {
                 .is_some_and(|n| n.to_string_lossy().ends_with("-ui-explore"))
         })
         .filter(|p| p != out_dir && p.join("explore.json").is_file())
+        .filter(|p| walk_kind(&p.join("explore.json")) == kind)
         .collect();
     walks.sort();
     walks.pop().map(|p| p.join("explore.json"))
@@ -1012,13 +1036,18 @@ pub fn explore(
             .join(".forge/runs")
             .join(format!("{}-ui-explore", report::timestamp()))
     });
-    let (focus, previous) = explore_focus(project, &options, &out_dir, out)?;
+    let kind = if options.fixture.is_some() {
+        "fixture"
+    } else {
+        "device"
+    };
+    let (focus, previous) = explore_focus(project, &options, &out_dir, kind, out)?;
     config.focus = focus;
     config.verify = options.verify;
     let started = std::time::Instant::now();
     // Read before the walk, so the bundle names the code that was explored.
     let mut build = crate::evidence::provenance(runner, project);
-    let (report, watched, device, kind) = match &options.fixture {
+    let (report, watched, device) = match &options.fixture {
         // A model of the app: no phone, no watch, and the bundle says so.
         Some(model) => {
             let mut app = forge_uitest::model::Model::load(model)?;
@@ -1051,7 +1080,7 @@ pub fn explore(
                 tail: Vec::new(),
                 artifacts: Vec::new(),
             };
-            (report, watched, device, "fixture")
+            (report, watched, device)
         }
         None => {
             // Reuses a running `forge ui start` session's runner when there
@@ -1080,14 +1109,17 @@ pub fn explore(
                 "udid": phone.udid,
                 "ios_major": phone.ios_major().ok(),
             });
-            (report, watched, device, "device")
+            (report, watched, device)
         }
     };
     writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
     // What changed since the previous walk: new, still there, gone (only
     // when this walk did what showed it), not rechecked.
     let compared = previous.as_ref().map(|(value, path)| {
-        forge_uitest::focus::compare(value, &path.display().to_string(), &report)
+        let mut c = forge_uitest::focus::compare(value, &path.display().to_string(), &report);
+        // Both walks are of this kind (see explore_focus).
+        c["kind"] = serde_json::json!(kind);
+        c
     });
     if let Some(c) = &compared {
         let n = |k: &str| c[k].as_array().map_or(0, Vec::len);
@@ -1116,8 +1148,16 @@ pub fn explore(
             f["first_direct_action"]
         )
         .map_err(err)?;
+        writeln!(
+            out,
+            "  Ties to the change are read from the source as text: each issue's focus_basis says declared or inferred, never proven"
+        )
+        .map_err(err)?;
     }
     let summary = serde_json::json!({
+        // `fixture`: a model of the app, no phone. It shows how Forge
+        // explores and reports, never how the app behaves.
+        "kind": kind,
         "app": report.app,
         "seed": report.seed,
         "stopped": report.stopped,
@@ -1149,8 +1189,14 @@ pub fn explore(
         &report::timestamp(),
     )?;
     writeln!(out, "Evidence: {}", evidence.display()).map_err(err)?;
+    if kind == "fixture" {
+        writeln!(
+            out,
+            "Fixture walk: this shows how Forge explores and reports on a model, not how the app behaves on a phone. Its bundle is kind \"fixture\" and never counts as a device result."
+        )
+        .map_err(err)?;
+    }
     let mut data = summary;
-    data["kind"] = serde_json::json!(kind);
     data["report"] = serde_json::json!(out_dir.join("explore.json"));
     data["out"] = serde_json::json!(out_dir.display().to_string());
     data["evidence"] = serde_json::json!(evidence.display().to_string());
@@ -1409,5 +1455,49 @@ mod tests {
             .starts_with("Sideloaded apps: 2 of 3 on a free account"));
         assert!(Team::Unknown.apps_line(&apps(1)).contains("--team paid"));
         assert!(!Team::Paid.expiry_hint().contains("7 days"));
+    }
+
+    #[test]
+    fn a_walk_learns_only_from_walks_of_its_own_kind() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runs = tmp.path().join(".forge/runs");
+        let walk = |name: &str, kind: Option<&str>| {
+            let dir = runs.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            std::fs::write(dir.join("explore.json"), "{}").unwrap();
+            if let Some(kind) = kind {
+                std::fs::write(
+                    dir.join("evidence.json"),
+                    serde_json::json!({"kind": kind}).to_string(),
+                )
+                .unwrap();
+            }
+            dir
+        };
+        let device = walk("2026-11-08T10-00-00-ui-explore", Some("device"));
+        // Newer, but a model of the app: never the previous of a phone walk.
+        let fixture = walk("2026-11-08T11-00-00-ui-explore", Some("fixture"));
+        walk("2026-11-08T12-00-00-ui-explore", None);
+        let now = runs.join("2026-11-08T13-00-00-ui-explore");
+        assert_eq!(
+            latest_walk(tmp.path(), &now, "device"),
+            Some(device.join("explore.json"))
+        );
+        assert_eq!(
+            latest_walk(tmp.path(), &now, "fixture"),
+            Some(fixture.join("explore.json"))
+        );
+        assert_eq!(walk_kind(&fixture.join("explore.json")), "fixture");
+        // Named by hand, a walk of the other kind is refused, not compared.
+        let options = ExploreOptions {
+            previous: Some(fixture.join("explore.json")),
+            ..options()
+        };
+        let mut out = Vec::new();
+        let refused = explore_focus(tmp.path(), &options, &now, "device", &mut out).unwrap_err();
+        assert!(
+            refused.contains("is a fixture walk and this is a device walk"),
+            "{refused}"
+        );
     }
 }

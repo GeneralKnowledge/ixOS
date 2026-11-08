@@ -19,7 +19,9 @@
 #   6. After the fix, the aimed walk rechecks the earlier crash: gone.
 #
 # A model proves how Forge explores and reports, not how Good Dog behaves:
-# every bundle it writes says kind = "fixture".
+# every bundle it writes says kind = "fixture", `forge verify` never counts
+# it as a device result, and a walk on the phone never learns from it or
+# compares with it.
 #
 #   scripts/demo-m6.2.sh [OUT_DIR]
 set -euo pipefail
@@ -71,7 +73,7 @@ import json, sys
 r = json.load(open(sys.argv[1]))
 c = next(i for i in r["issues"] if i["issue"] == "app_closed")
 print(f"  crash found at step {c['step']}: {c['message']}")
-print(f"  tie to the change: {c['focus']}; files: {[f['file'] + ' (' + f['how'] + ')' for f in c['changed_files']]}")
+print(f"  tie to the change: {c['focus']}, {c['focus_basis']} (read from the source as text, not proof); files: {[f['file'] + ' (' + f['how'] + ')' for f in c['changed_files']]}")
 print(f"  confidence: {c['confidence']}; came back on replay: {c['reproduced']}")
 print(f"  replay file: {c['repro_file']}; screen tree: {c['evidence']['screen_tree']}")
 f = r["focus"]
