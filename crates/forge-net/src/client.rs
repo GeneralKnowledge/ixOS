@@ -107,6 +107,9 @@ pub(crate) fn file_error(path: &Path, err: &std::io::Error) -> NetError {
     }
 }
 
+/// Numbers the temporary files of downloads in this process.
+static DOWNLOADS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Error bodies of a failed download are kept up to this size.
 const DOWNLOAD_ERROR_BODY_BYTES: u64 = 64 * 1024;
 
@@ -119,11 +122,21 @@ const DOWNLOAD_ERROR_BODY_BYTES: u64 = 64 * 1024;
 /// the file). On any other status nothing is written and the response
 /// carries the start of the server's error body, for diagnostics. `cancel`
 /// stops it at any point ([`NetError::Cancelled`]).
+///
+/// `max_bytes` bounds the body: a download that grows past it stops, its
+/// partial file is removed, and the call fails with
+/// [`NetError::Transport`]. Pass `None` only for a server you control.
+///
+/// The temporary file is named `.partial-<pid>-<n>`, the convention
+/// `forge_storage::FileStore::sweep` cleans up, so a download killed with
+/// the app inside a file store's folder does not leave a file behind for
+/// ever.
 pub fn download_to_file(
     client: &dyn HttpClient,
     request: &Request,
     destination: &Path,
     cancel: &CancelHandle,
+    max_bytes: Option<u64>,
 ) -> Result<Response, NetError> {
     let mut response = client.open_stream_cancellable(request, cancel)?;
     if !response.is_success() {
@@ -138,26 +151,31 @@ pub fn download_to_file(
         });
     }
     let partial = destination.with_file_name(format!(
-        ".{}.part",
-        destination
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "download".into())
+        ".partial-{}-net{}",
+        std::process::id(),
+        DOWNLOADS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
     if let Some(dir) = destination.parent().filter(|d| !d.as_os_str().is_empty()) {
         std::fs::create_dir_all(dir).map_err(|err| file_error(dir, &err))?;
     }
     let result = (|| {
         let mut file = std::fs::File::create(&partial).map_err(|err| file_error(&partial, &err))?;
-        std::io::copy(&mut response.body, &mut file).map_err(|err| {
-            if crate::is_cancelled_io_error(&err) || cancel.is_cancelled() {
-                NetError::Cancelled
-            } else {
-                NetError::Transport {
-                    reason: format!("download interrupted: {err}"),
+        let limit = max_bytes.map_or(u64::MAX, |max| max.saturating_add(1));
+        let copied =
+            std::io::copy(&mut (&mut response.body).take(limit), &mut file).map_err(|err| {
+                if crate::is_cancelled_io_error(&err) || cancel.is_cancelled() {
+                    NetError::Cancelled
+                } else {
+                    NetError::Transport {
+                        reason: format!("download interrupted: {err}"),
+                    }
                 }
-            }
-        })?;
+            })?;
+        if let Some(max) = max_bytes.filter(|&max| copied > max) {
+            return Err(NetError::Transport {
+                reason: format!("the download is larger than {max} bytes"),
+            });
+        }
         file.flush().map_err(|err| file_error(&partial, &err))?;
         file.sync_all().map_err(|err| file_error(&partial, &err))?;
         std::fs::rename(&partial, destination).map_err(|err| file_error(destination, &err))

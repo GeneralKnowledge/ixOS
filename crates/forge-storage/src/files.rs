@@ -235,6 +235,19 @@ impl FileStore {
         usage
     }
 
+    /// Deletes only the temporaries an earlier process left behind (a write
+    /// or download killed with the app), never a named file. For stores
+    /// whose records cannot be listed cheaply at launch. Returns how many
+    /// were deleted.
+    pub fn sweep_temporaries(&self) -> u64 {
+        let mut doomed = Vec::new();
+        collect_temporaries(&self.root, &std::process::id().to_string(), &mut doomed);
+        doomed
+            .iter()
+            .filter(|path| fs::remove_file(path).is_ok())
+            .count() as u64
+    }
+
     /// Deletes every file `keep` says no to, and temporaries left by a crash.
     /// Returns how many files were deleted. Call it at launch, after loading
     /// the records that name the files, to clean up after a crash between

@@ -134,6 +134,15 @@ fn a_json_file_survives_a_kill_mid_write() {
         last = doc.n.max(last);
     }
     assert!(last > 0);
+    // The next save clears the temporaries the killed writers left.
+    file.save(&Doc::new(0)).unwrap();
+    let leftovers: Vec<_> = std::fs::read_dir(dir.path())
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().into_owned())
+        .filter(|n| n.starts_with("doc.json.tmp"))
+        .collect();
+    assert!(leftovers.is_empty(), "stale temporaries: {leftovers:?}");
 }
 
 // ---------------------------------------------------------------- SQLite
@@ -291,15 +300,12 @@ fn files_and_records_stay_consistent_across_kills() {
 
 // ------------------------------------------------------------ known gaps
 
-/// GAP (finding S1): `Database::open` treats any failure of its quick check
-/// as damage, including "database is locked". Another connection holding
-/// the file (a second instance, an app extension, a backup in progress) or
-/// a file iOS has not unlocked yet makes it move the user's data aside and
-/// start an empty database. A transient condition should be an error, never
-/// a recovery.
+/// Finding S1 (fixed): a locked database is an error, never a recovery.
+/// Another connection holding the file (a second instance, an app
+/// extension, a backup in progress) or a file iOS has not unlocked yet used
+/// to make `Database::open` move the user's data aside.
 #[test]
-#[ignore = "known gap S1: a locked database is treated as corrupt"]
-fn gap_a_locked_database_is_not_recovered() {
+fn a_locked_database_is_not_recovered() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("app.db");
     {
@@ -319,22 +325,28 @@ fn gap_a_locked_database_is_not_recovered() {
         .unwrap();
     let outcome = Database::open(&path, SCHEMA);
     let moved_aside = matches!(outcome, Ok((_, Opened::Recovered { .. })));
-    drop(holder);
     assert!(
         !moved_aside,
         "a locked but healthy database was moved aside: {outcome:?}"
     );
+    assert!(outcome.is_err(), "a locked database opened: {outcome:?}");
+    drop(holder);
+    let (db, opened) = Database::open(&path, SCHEMA).unwrap();
+    assert_eq!(opened, Opened::Existing);
+    let rows: i64 = db
+        .connection()
+        .query_row("SELECT count(*) FROM rows", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(rows, 1, "the data is still there once the lock is gone");
 }
 
-/// GAP (finding S2): `write_atomic` uses one fixed temporary name per
-/// target (`<name>.tmp`), so two writers of the same file share it: one
-/// renames the temporary the other is still filling, and the other's rename
-/// then fails. In the review run 167 of 400 writes failed; no torn read was
-/// seen, but the window for one exists. Nothing stops two writers (two
-/// instances on one directory, two threads of one app) from doing this.
+/// Finding S2 (fixed): two writers of the same file used to share one
+/// temporary name (`<name>.tmp`), so one renamed the temporary the other
+/// was still filling and the other's rename failed (167 of 400 writes in
+/// the review run). Each write now has its own temporary: every write
+/// succeeds, and a reader only ever sees one writer's whole file.
 #[test]
-#[ignore = "known gap S2: concurrent write_atomic calls can publish a torn file"]
-fn gap_concurrent_atomic_writes_never_tear() {
+fn concurrent_atomic_writes_never_tear() {
     const SIZE: usize = 512 * 1024;
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shared.bin");
@@ -402,4 +414,25 @@ fn gap_a_hash_name_always_matches_its_bytes() {
         replaced.is_err() && served == b"the real bytes",
         "a content-addressed name now serves bytes that do not match it"
     );
+}
+
+/// Finding N3 (fixed): a download killed with the app used to leave a
+/// hidden `.<name>.part` that no sweep matched and `usage()` did not count.
+/// Downloads now use the store's own temporary names, so
+/// `sweep_temporaries` (or `sweep`) removes them at the next launch, and
+/// named files are never touched.
+#[test]
+fn temporaries_from_a_dead_process_are_swept() {
+    let dir = tempfile::tempdir().unwrap();
+    let files = FileStore::new(dir.path());
+    files.write("kept", b"bytes").unwrap();
+    // What a killed process leaves: a store temporary and a download's.
+    std::fs::write(dir.path().join(".partial-999999999-0"), b"half").unwrap();
+    std::fs::write(dir.path().join(".partial-999999999-net3"), b"half").unwrap();
+    // This process's own temporaries may be in use: left alone.
+    let mine = files.partial_path().unwrap();
+    std::fs::write(&mine, b"in progress").unwrap();
+    assert_eq!(files.sweep_temporaries(), 2);
+    assert!(mine.exists());
+    assert_eq!(files.names(), vec!["kept".to_string()]);
 }

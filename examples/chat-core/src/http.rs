@@ -487,6 +487,7 @@ impl ChatRepo for HttpRepo {
             &request,
             destination,
             &forge_net::CancelHandle::new(),
+            Some(crate::attachments::MAX_ATTACHMENT_BYTES),
         )?;
         check_status(response.status, &response.body, None)
     }

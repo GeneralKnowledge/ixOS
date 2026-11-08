@@ -9,10 +9,12 @@
 //! - **Transactions** ([`Database::transaction`]): all or nothing.
 //! - **Full-text search.** SQLite is built with FTS5, so an app can declare
 //!   `CREATE VIRTUAL TABLE … USING fts5(…)` in a migration.
-//! - **Recovery.** A file SQLite cannot read, or one that fails its integrity
-//!   check, is moved aside (kept, never deleted) and a fresh database is
-//!   created; [`Opened::Recovered`] says so, so the app can tell the user and
-//!   refill it from its server.
+//! - **Recovery.** A file SQLite reports as damaged (not a database,
+//!   corrupt, or failing its quick check) is moved aside (kept, never
+//!   deleted) and a fresh database is created; [`Opened::Recovered`] says
+//!   so, so the app can tell the user and refill it from its server. A file
+//!   that is only locked by another connection or unreadable for now is an
+//!   error, never a recovery.
 //!
 //! SQLite is compiled from source (rusqlite's `bundled` feature), so it needs
 //! no system library on iOS or Android. Apps use the re-exported
@@ -32,8 +34,10 @@ pub enum Opened {
     Created,
     /// The file was there and readable (and is now up to date).
     Existing,
-    /// The file was unreadable or damaged. It was moved to `moved_to` and a
-    /// new, empty database was created in its place.
+    /// SQLite reported the file as damaged (not a database, corrupt, or a
+    /// failed quick check). It was moved to `moved_to` and a new, empty
+    /// database was created in its place. A file that is only locked or
+    /// unreadable for now is never recovered: `open` returns an error.
     Recovered { moved_to: PathBuf, reason: String },
 }
 
@@ -69,13 +73,10 @@ impl Database {
             let database = Self::open_file(&path, migrations)?;
             return Ok((database, Opened::Created));
         }
-        match Self::check(&path) {
-            Ok(()) => {}
-            Err(reason) => {
-                let moved_to = Self::move_aside(&path)?;
-                let database = Self::open_file(&path, migrations)?;
-                return Ok((database, Opened::Recovered { moved_to, reason }));
-            }
+        if let Check::Damaged(reason) = Self::check(&path)? {
+            let moved_to = Self::move_aside(&path)?;
+            let database = Self::open_file(&path, migrations)?;
+            return Ok((database, Opened::Recovered { moved_to, reason }));
         }
         let database = Self::open_file(&path, migrations)?;
         Ok((database, Opened::Existing))
@@ -201,17 +202,24 @@ impl Database {
             .map_err(|e| StorageError::write("commit a migration", e))
     }
 
-    /// Whether the file at `path` is a readable, consistent database.
-    fn check(path: &Path) -> Result<(), String> {
-        let connection = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
-            .map_err(|e| e.to_string())?;
-        let result: String = connection
-            .query_row("PRAGMA quick_check", [], |row| row.get(0))
-            .map_err(|e| e.to_string())?;
-        if result == "ok" {
-            Ok(())
-        } else {
-            Err(result)
+    /// Whether the file at `path` is damaged. Only SQLite's own verdict
+    /// counts as damage: `SQLITE_CORRUPT`, `SQLITE_NOTADB`, or a failed
+    /// quick check. Anything else (the file is locked by another
+    /// connection, unreadable for now, or the disk failed) is an error, so
+    /// a transient condition never moves the user's data aside.
+    fn check(path: &Path) -> Result<Check, StorageError> {
+        let connection = match Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_WRITE)
+        {
+            Ok(connection) => connection,
+            Err(err) => return Check::classify(err),
+        };
+        connection
+            .busy_timeout(CHECK_BUSY_TIMEOUT)
+            .map_err(|e| StorageError::read("check the database", e))?;
+        match connection.query_row("PRAGMA quick_check", [], |row| row.get::<_, String>(0)) {
+            Ok(result) if result == "ok" => Ok(Check::Healthy),
+            Ok(result) => Ok(Check::Damaged(result)),
+            Err(err) => Check::classify(err),
         }
     }
 
@@ -231,6 +239,29 @@ impl Database {
             }
         }
         Ok(moved_to)
+    }
+}
+
+/// How long the damage check waits for another connection's lock before
+/// reporting it as an error.
+const CHECK_BUSY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// What [`Database::check`] found.
+enum Check {
+    Healthy,
+    Damaged(String),
+}
+
+impl Check {
+    /// Damage only when SQLite itself says the file is not a usable
+    /// database; every other failure is returned as an error.
+    fn classify(err: rusqlite::Error) -> Result<Self, StorageError> {
+        match err.sqlite_error_code() {
+            Some(rusqlite::ErrorCode::DatabaseCorrupt | rusqlite::ErrorCode::NotADatabase) => {
+                Ok(Self::Damaged(err.to_string()))
+            }
+            _ => Err(StorageError::read("check the database", err)),
+        }
     }
 }
 

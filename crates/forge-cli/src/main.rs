@@ -648,8 +648,9 @@ enum BuildCommands {
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
         /// Include the live connection to `forge device` (pair, connect,
-        /// status, snapshot, cmd). For development only
-        #[arg(long)]
+        /// status, snapshot, cmd). For development only, so never in a
+        /// release build
+        #[arg(long, conflicts_with = "release")]
         devtools: bool,
     },
     /// Build an Android app (work in progress: no new features while Forge focuses on iOS)
@@ -698,8 +699,9 @@ enum RunCommands {
         #[arg(long)]
         release: bool,
         /// Include the live connection to `forge device` (pair, connect,
-        /// status, snapshot, cmd). For development only
-        #[arg(long)]
+        /// status, snapshot, cmd). For development only, so never in a
+        /// release build
+        #[arg(long, conflicts_with = "release")]
         devtools: bool,
         /// Build first (Rust and Swift), then wait up to this many minutes
         /// for the iPhone: ask for the phone only when the status says
@@ -1400,6 +1402,20 @@ fn with_target(
 mod tests {
     use super::*;
     use crate::runner::MockRunner;
+
+    #[test]
+    fn devtools_is_refused_in_release_builds() {
+        use clap::Parser;
+        for args in [
+            &["forge", "build", "ios", "--release", "--devtools"][..],
+            &["forge", "run", "ios", "--release", "--devtools"][..],
+        ] {
+            assert!(Cli::try_parse_from(args).is_err(), "{args:?}");
+        }
+        assert!(Cli::try_parse_from(["forge", "build", "ios", "--devtools"]).is_ok());
+        assert!(Cli::try_parse_from(["forge", "build", "ios", "--release"]).is_ok());
+        assert!(Cli::try_parse_from(["forge", "run", "ios", "--devtools"]).is_ok());
+    }
 
     #[test]
     fn config_rejects_invalid_bundle_id() {
