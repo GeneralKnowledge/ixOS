@@ -44,7 +44,8 @@ The explorer is `forge_uitest::explore`. It drives any `Driver`, so the same cod
 
 - **A screen is its structure, not its pixels or data.** Its id is a hash of the visible identifiers (with data parts such as row ids and UUIDs replaced by `*`, so `library.book.42` and `library.book.43` are one control), the kinds and labels of controls without identifiers, and whether an alert, sheet, navigation bar or tab bar is showing. Values, frames and the keyboard are left out. The same detail screen for two different books is one screen.
 - **Each control once.** On a new screen it lists the visible, enabled controls (buttons, cells, links, tabs, switches, menu items, text fields), shuffles them with the seed, and puts back and dismiss controls last. Rows of a list count once. Controls with neither an identifier nor a label are not tapped: Forge never uses coordinates (AGENTS.md rule 4), and the audit reports them.
-- **Typing** uses `--text` for that identifier, else `Forge`.
+- **Typing** uses `--text` for that identifier, else a value that fits the field: digits for a field that shows a number or is named like one (pages, goal, amount, year…), an address for email, a URL for web, a phone number for phone, else `Forge`. WebDriverAgent's tree doesn't give the keyboard type, so this goes by identifier, label and current value. Then it puts the keyboard away (WebDriverAgent's `/wda/keyboard/dismiss`).
+- **Only the app's own part of the screen.** The keyboard, its keys and the panels a keyboard extension puts above them (anything from 100 pt above the top of the keys down) are cut from every tree before the walk looks at it, so they are never tapped, never fingerprinted and never audited, even when the keyboard can't be dismissed.
 - **Moving on.** When a screen has nothing left to try, the explorer leaves through its back or dismiss control (twice in a row at most), or relaunches the app and replays the shortest known path to the nearest screen with something left. If a path no longer leads where it did, that screen's remaining controls are dropped rather than looped on.
 - **Stopping.** At the action or time budget, or when nothing reachable is left (`stopped` in the report says which). Every wait is bounded (`find_timeout`, 5 s per control); there is no polling loop beyond the existing bounded `wait_for`.
 
@@ -85,6 +86,7 @@ Without either, the command stops and says which to add. The word list errs towa
 The explorer touches the app the way a curious person would, so it has a floor of rules that no option removes:
 
 - **Only Forge apps for now.** `--project` names an app folder with a `forge.toml`; there is no bundle id option. Other developers' apps come next: the any-app policy (`forge_uitest::policy`, merged in #107) exists, and the explorer has to ask its gate before each action, as `forge ui run --any-app` does, before it gets a bundle id option.
+- **Never** starts a system service: dictation (it turns the microphone on), the camera, the keyboard switcher (Next keyboard, globe, emoji) or the system file picker (import), which is another app's interface. This is matched as whole words in every mode.
 - **Never** types into secure fields, and **never** taps a control whose identifier or label (as whole words, camelCase split) says it acts outside the phone or on someone else: send, post, reply, pay, buy, purchase, checkout, subscribe, transfer, share, call, publish, submit, invite, follow, report, block, donate.
 - **Never changes the person's data**: see [Test data](#test-data).
 - **Skips destructive controls** (delete, remove, erase, reset, clear, wipe, discard, trash, sign out, log out) unless `--allow-destructive`, which only works with test data.
@@ -112,6 +114,10 @@ Three walks on Pocket Library: seed 1 (79 s, 40 actions, 27 screens, 44 issues, 
 - **Real findings to confirm:** controls with no label (a "10" text field, the "Online catalogue search" switch, an unlabelled button, the book form's title and author fields at the largest text size); duplicate identifiers (`star` ×5, the book form's save and cancel on a wrapper and the button); controls without identifiers (Edit, More, Continue Reading, Erase Library…, a settings switch, the tab buttons as WDA sees them); `tab.activity` with no visible effect; 2 dead ends.
 - **Determinism failed** and a replay file failed at step 4, both for the same reason: the first walk had changed the library, so the next launch began on different data.
 - **It changed Reuben's library**, which led to [Test data](#test-data).
+
+### Second run, 2026-11-08 (Cati, c467e0d plus #116, test data)
+
+On test data, with Pocket Library's own labels fixed by #116: 0 `no_label` errors in the app itself. But after typing in the library search the walk carried on in the keyboard. It tapped Next keyboard into third-party keyboards (Czech, GIF Keyboard's "Search Tenor", Grammarly's panel), typed on their keys, opened the EPUB import picker, and tapped `dictation`, which **turned the microphone on**. Most of the 73 issues were keyboard keys. In the second walk, WebDriverAgent closed the connection right after `dictation` and the phone dropped off USB, so no journal was saved and determinism is still unproven. Fixed by the keyboard cut, keyboard dismissal and the system-service list above; not yet re-run on the phone.
 
 ### Still to run
 
