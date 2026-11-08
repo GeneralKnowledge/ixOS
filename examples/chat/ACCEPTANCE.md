@@ -219,7 +219,7 @@ L1 adds the Assistant (design: [local-ai.md](../../docs/local-ai.md), "L1 as bui
 |---|-------|------|--------|----------|
 | A30 | `AssistantCore` with a fake engine: characters and opening lines, streaming and coalescing (200 pieces in fewer than 50 deliveries), the pinned character and reminder, trimming to the context, Stop keeps the text and the engine computes nothing after it, an engine that ignores Stop, one answer at a time, catching up mid-answer, unavailable/no engine/bad input, refusals and failures, history across a relaunch, `Interrupted` after a kill, delete and shutdown stop the answer, the engine off the caller's thread | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml assistant` (18 tests) |
 | A31 | `ChatCore`: the assistant works signed out and keeps its chats through sign-up, sign-out and a relaunch | automated | Done | `the_assistant_works_signed_out_and_survives_sign_out` |
-| A32 | SwiftUI host compiles with the Foundation Models adapter; `AssistantModelTests` (scripted Swift engine: streaming signed out, Stop, no engine) | automated (macOS CI) | Pending | macOS workflow, run on demand |
+| A32 | SwiftUI host compiles with the Foundation Models adapter; `AssistantModelTests` (scripted Swift engine: streaming signed out, Stop, no engine) | automated (macOS CI) | Done | macOS run 42459470174 on 5cd6fa2: the 3 `AssistantModelTests` and the other 16 Swift tests passed; unsigned iOS device build OK |
 
 ### On an iPhone (Linux, xtool)
 
