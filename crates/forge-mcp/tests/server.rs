@@ -22,6 +22,8 @@ case "$1 $2" in
   "device logs") sleep 90 ;;
   "run ios") echo '{"schema":"forge.result/1","command":"run ios","ok":true,"stage":"ok","duration_ms":9,"diagnostics":[],"hints":[],"data":{"installed":true,"launched":false}}' ;;
   "build ios") echo "[forge] building"; echo '{"schema":"forge.result/1","command":"build ios","ok":false,"stage":"swift","duration_ms":7,"error":"xtool dev build failed","diagnostics":[{"severity":"error","source":"swiftc","file":"Sources/AppHost/TipView.swift","line":12,"column":5,"message":"cannot find tipModel in scope"}],"hints":[],"log":null}'; exit 11 ;;
+  "ui start") [ -n "$FAKE_UI_START_FAILS" ] && { echo '{"schema":"forge.result/1","command":"ui start","ok":false,"stage":"device","duration_ms":4,"error":"no runner","diagnostics":[],"hints":[]}'; exit 1; }
+    echo '{"schema":"forge.result/1","command":"ui start","ok":true,"stage":"ok","duration_ms":4,"diagnostics":[],"hints":[],"data":{"pid":1}}' ;;
   "ui run") echo '{"schema":"forge.result/1","command":"ui run","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":1}}' ;;
   "config show") echo 'not json at all'; exit 3 ;;
   *) echo "error: unrecognized subcommand '$1'" >&2; exit 2 ;;
@@ -419,8 +421,44 @@ async fn ui_actions_run_as_one_step_test_files() {
         .collect();
     assert_eq!(lines[0]["schema"], "forge.journal/1");
     assert_eq!(lines[0]["allow_install"], false);
+    // The server kept one runner for both calls, tied to its own life.
+    let starts: Vec<String> = calls(&fx)
+        .into_iter()
+        .filter(|l| l.starts_with("--json ui start "))
+        .collect();
+    assert_eq!(starts.len(), 2, "{starts:?}");
+    assert_eq!(
+        starts[0],
+        format!(
+            "--json ui start --idle-minutes 30 --exit-with {} --udid 0000",
+            std::process::id()
+        )
+    );
     assert_eq!(lines[1]["tool"], "forge_ui_act");
     assert_eq!(lines[1]["ok"], true);
     assert_eq!(lines[1]["args"]["text"]["chars"], 2);
     assert_eq!(lines[2]["stage"], "usage");
+}
+
+#[tokio::test]
+async fn a_failed_ui_session_start_is_not_retried_at_once() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    std::env::set_var("FAKE_UI_START_FAILS", "1");
+    let mut c = Client::start(&fx, false, true).await;
+    for _ in 0..2 {
+        let r = c
+            .call(
+                "forge_ui_act",
+                json!({"project": "Tipster", "action": "tap", "id": "bill.amount"}),
+            )
+            .await;
+        // The tool still runs, with its own runner.
+        assert_eq!(r["isError"], false, "{r}");
+    }
+    std::env::remove_var("FAKE_UI_START_FAILS");
+    let calls = calls(&fx);
+    let starts = calls.iter().filter(|l| l.contains(" ui start ")).count();
+    let runs = calls.iter().filter(|l| l.contains(" ui run ")).count();
+    assert_eq!((starts, runs), (1, 2), "{calls:?}");
 }

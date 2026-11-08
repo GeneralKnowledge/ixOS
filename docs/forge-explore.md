@@ -97,7 +97,7 @@ The word lists are a floor, not the policy. Wiring the explorer to the any-app p
 
 | Work | What the explorer gets from it |
 |---|---|
-| Persistent WDA session | Today each `forge ui explore` starts the runner once and keeps it for the whole walk, so the 2 s per-command start-up is paid once, not per action. A long-lived session also lets the MCP server explore without a child process |
+| Persistent WDA session | Merged: `forge ui explore` uses a running `forge ui start` session's runner when there is one, else starts one for the whole walk. Either way the 2 s start-up is paid at most once, not per action |
 | Any-app safety policy | The gate before each action, and with it apps outside the project |
 | Visual regression | A screenshot per screen id is already saved; comparing them with a baseline turns "it looks worse" into an issue kind |
 | Crash diagnosis | `app_closed` already has the step and the replay; pulling and symbolicating the crash report at that step makes it self-explanatory |

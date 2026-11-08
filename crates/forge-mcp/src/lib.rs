@@ -76,7 +76,13 @@ pub struct Server {
     last_failure: Arc<Mutex<Option<Value>>>,
     has_ui: bool,
     journal: Arc<journal::Journal>,
+    /// After a failed `forge ui start`, when to try again.
+    ui_session_retry: Arc<Mutex<Option<std::time::Instant>>>,
 }
+
+/// How long to wait after a UI session failed to start before trying again
+/// (the UI tools still work meanwhile, each starting its own runner).
+const UI_SESSION_RETRY: std::time::Duration = std::time::Duration::from_secs(5 * 60);
 
 impl Server {
     pub fn new(opts: Options) -> Self {
@@ -94,6 +100,7 @@ impl Server {
             device: Arc::new(tokio::sync::Mutex::new(())),
             last_failure: Arc::new(Mutex::new(None)),
             has_ui,
+            ui_session_retry: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -163,6 +170,9 @@ impl Server {
             },
             Some(spec) if spec.device => {
                 let _phone = self.device.lock().await;
+                if spec.needs_ui {
+                    self.ensure_ui_session(cancel).await;
+                }
                 self.call(name, tools::Args(arguments), cancel).await
             }
             _ => self.call(name, tools::Args(arguments), cancel).await,
@@ -179,6 +189,41 @@ impl Server {
             started.elapsed().as_millis() as u64,
         );
         to_call_result(answer)
+    }
+}
+
+impl Server {
+    /// Keeps one WebDriverAgent runner for this server's UI tools
+    /// (`forge ui start --exit-with <this process>`), so each call skips the
+    /// runner start. A no-op when a session is already running; the session
+    /// ends when this server exits or after 30 idle minutes. Best effort: if
+    /// it can't start, the tools start their own runner as before, and the
+    /// next attempt waits [`UI_SESSION_RETRY`].
+    async fn ensure_ui_session(&self, cancel: &tokio_util::sync::CancellationToken) {
+        let now = std::time::Instant::now();
+        let due = self
+            .ui_session_retry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_none_or(|at| now >= at);
+        if !due {
+            return;
+        }
+        let inv = exec::Invocation::new(
+            &["ui", "start", "--idle-minutes", "30"],
+            &self.opts.root,
+            std::time::Duration::from_secs(200),
+            "device",
+        )
+        .arg("--exit-with")
+        .arg(std::process::id().to_string())
+        .opt("--udid", self.opts.udid.clone());
+        let result = exec::run(&self.opts.forge, &self.opts.workspace, &inv, cancel).await;
+        let ok = result["ok"] == json!(true);
+        *self
+            .ui_session_retry
+            .lock()
+            .unwrap_or_else(|p| p.into_inner()) = (!ok).then(|| now + UI_SESSION_RETRY);
     }
 }
 

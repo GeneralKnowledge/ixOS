@@ -254,6 +254,29 @@ impl Phone {
         }
     }
 
+    /// Whether WebDriverAgent answers `/status` within a few seconds.
+    pub fn wda_answers(&self) -> bool {
+        let mut http = self.transport_with_timeout(PROBE_TIMEOUT);
+        matches!(http.request("GET", "/status", None), Ok((200, _)))
+    }
+
+    /// The running WebDriverAgent's version, from `/status`.
+    pub fn wda_version(&self) -> Option<String> {
+        let mut http = self.transport_with_timeout(PROBE_TIMEOUT);
+        let (_, body) = http.request("GET", "/status", None).ok()?;
+        let reply: serde_json::Value = serde_json::from_slice(&body).ok()?;
+        reply
+            .pointer("/value/build/version")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+    }
+
+    /// Asks WebDriverAgent to shut down now (best effort, a few seconds).
+    pub fn shutdown_wda(&self) {
+        let mut http = self.transport_with_timeout(PROBE_TIMEOUT);
+        let _ = http.request("GET", "/wda/shutdown", None);
+    }
+
     /// An HTTP transport to WebDriverAgent on the phone.
     pub fn transport(&self) -> UsbHttp {
         self.transport_with_timeout(REQUEST_TIMEOUT)

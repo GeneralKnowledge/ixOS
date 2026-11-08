@@ -21,6 +21,7 @@ pub mod http;
 pub mod phone;
 pub mod policy;
 pub mod script;
+pub mod session;
 pub mod tree;
 pub mod visual;
 pub mod wda;
