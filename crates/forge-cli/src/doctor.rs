@@ -28,7 +28,60 @@ pub struct Report {
     pub swift_sdks: Vec<String>,
     pub env: Vec<EnvVar>,
     pub ios_device: IosDevice,
+    /// The installed xtool against the pinned build in `toolchain/xtool.env`.
+    pub xtool_pin: XtoolPin,
     pub ready: Ready,
+}
+
+/// The pinned xtool file, compiled in so `forge doctor` and
+/// `scripts/install-xtool.sh` read the same version.
+const XTOOL_PIN_FILE: &str = include_str!("../../../toolchain/xtool.env");
+
+/// The xtool version Forge is tested with (`XTOOL_VERSION` in
+/// `toolchain/xtool.env`).
+pub fn pinned_xtool_version() -> &'static str {
+    XTOOL_PIN_FILE
+        .lines()
+        .find_map(|l| l.trim().strip_prefix("XTOOL_VERSION="))
+        .map(str::trim)
+        .unwrap_or("unknown")
+}
+
+/// Whether the installed xtool is the pinned build. A different version is a
+/// warning, not a blocker: stock xtool builds apps too, it just isn't what
+/// the device results in docs/compatibility.md were recorded with.
+#[derive(Debug, Serialize)]
+pub struct XtoolPin {
+    pub expected: &'static str,
+    /// The version xtool reports (`xtool 1.24.0-ixos.1` gives `1.24.0-ixos.1`),
+    /// `null` when xtool is missing.
+    pub found: Option<String>,
+    /// `null` when xtool is missing.
+    pub matches: Option<bool>,
+}
+
+impl XtoolPin {
+    fn check(version_line: Option<&str>) -> Self {
+        let expected = pinned_xtool_version();
+        let found = version_line.map(|l| {
+            l.trim()
+                .strip_prefix("xtool")
+                .unwrap_or(l)
+                .trim()
+                .to_string()
+        });
+        // A local build of the pinned commit reports `<version>-dirty`.
+        let matches = found.as_deref().map(|f| {
+            f == expected
+                || f.strip_prefix(expected)
+                    .is_some_and(|rest| rest == "-dirty")
+        });
+        XtoolPin {
+            expected,
+            found,
+            matches,
+        }
+    }
 }
 
 /// Signing and device state for installing on an iPhone with xtool. Each
@@ -228,6 +281,13 @@ pub fn report(
         IosDevice::default()
     };
 
+    let xtool_pin = XtoolPin::check(
+        tools
+            .iter()
+            .find(|t| t.name == "xtool" && t.status == Status::Ok)
+            .and_then(|t| t.version.as_deref()),
+    );
+
     let ios_xtool = ok("swift")
         && ok("xtool")
         && has_target(IOS_TARGET)
@@ -263,6 +323,7 @@ pub fn report(
         swift_sdks,
         env,
         ios_device,
+        xtool_pin,
         ready,
     }
 }
@@ -311,6 +372,13 @@ pub fn workflows(r: &Report) -> Vec<Workflow> {
     }
     if !ok("xtool") {
         ios.push("install xtool (docs/linux-setup.md)".to_string());
+    }
+    if r.xtool_pin.matches == Some(false) {
+        ios.push(format!(
+            "xtool {} is not the pinned {} that Forge is tested with (still usable): scripts/install-xtool.sh installs it, checksum-verified",
+            r.xtool_pin.found.as_deref().unwrap_or("?"),
+            r.xtool_pin.expected
+        ));
     }
     if !has_target(IOS_TARGET) {
         ios.push(format!("rustup target add {IOS_TARGET}"));
@@ -626,5 +694,38 @@ mod tests {
         let v = to_value(&report(&mock, &workspace_root(), &|_| None));
         assert_eq!(tool(&v, "xtool")["status"], "error");
         assert!(tool(&v, "xtool").get("version").is_none());
+    }
+
+    #[test]
+    fn xtool_pin_matches_the_pinned_build_and_warns_otherwise() {
+        let pinned = pinned_xtool_version();
+        assert_ne!(
+            pinned, "unknown",
+            "toolchain/xtool.env has no XTOOL_VERSION"
+        );
+
+        let mock = MockRunner::default();
+        let v = to_value(&report(&mock, &workspace_root(), &|_| None));
+        assert_eq!(v["xtool_pin"]["expected"], pinned);
+        assert_eq!(v["xtool_pin"]["matches"], Value::Null);
+
+        for line in [
+            format!("xtool {pinned}\n"),
+            format!("xtool {pinned}-dirty\n"),
+        ] {
+            mock.respond("xtool", 0, &line);
+            let r = report(&mock, &workspace_root(), &|_| None);
+            assert_eq!(r.xtool_pin.matches, Some(true), "{line}");
+            assert!(!workflows(&r)[1].fixes.iter().any(|f| f.contains("pinned")));
+        }
+
+        mock.respond("xtool", 0, "xtool 1.24.0\n");
+        let r = report(&mock, &workspace_root(), &|_| None);
+        assert_eq!(r.xtool_pin.found.as_deref(), Some("1.24.0"));
+        assert_eq!(r.xtool_pin.matches, Some(false));
+        assert!(workflows(&r)[1]
+            .fixes
+            .iter()
+            .any(|f| f.contains("scripts/install-xtool.sh")));
     }
 }

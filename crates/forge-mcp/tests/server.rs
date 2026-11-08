@@ -404,4 +404,23 @@ async fn ui_actions_run_as_one_step_test_files() {
         )
         .await;
     assert_eq!(bad["structuredContent"]["stage"], "usage");
+
+    // The run journal has both calls, the typed text only as its length.
+    let runs = fx.root.join(".forge/runs");
+    let dir = std::fs::read_dir(&runs)
+        .unwrap()
+        .map(|e| e.unwrap().path())
+        .find(|p| p.to_string_lossy().ends_with("-mcp"))
+        .expect("an -mcp run folder");
+    let journal = std::fs::read_to_string(dir.join("journal.jsonl")).unwrap();
+    let lines: Vec<Value> = journal
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert_eq!(lines[0]["schema"], "forge.journal/1");
+    assert_eq!(lines[0]["allow_install"], false);
+    assert_eq!(lines[1]["tool"], "forge_ui_act");
+    assert_eq!(lines[1]["ok"], true);
+    assert_eq!(lines[1]["args"]["text"]["chars"], 2);
+    assert_eq!(lines[2]["stage"], "usage");
 }

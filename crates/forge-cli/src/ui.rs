@@ -3,7 +3,7 @@
 //! wires it to the command line. See docs/forge-ui-testing.md.
 
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
@@ -305,26 +305,90 @@ pub fn screenshot(udid: Option<&str>, path: &Path, out: &mut dyn Write) -> Resul
 
 /// `forge ui run`: a test file's steps; fails if any step fails.
 pub fn run(
+    runner: &dyn CommandRunner,
     udid: Option<&str>,
     file: &Path,
-    out_dir: &Path,
+    out_dir: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let script = Script::load(file)?;
-    let (_phone, apps, _runner, mut driver) = connect(udid)?;
+    // Inside an app, the run is an evidence bundle (docs/evidence.md):
+    // <app>/.forge/runs/<id>-ui-run/ unless --out says otherwise.
+    let app_dir = crate::evidence::app_of(file);
+    let id = report::timestamp();
+    let out_dir: PathBuf = match (out_dir, &app_dir) {
+        (Some(d), _) => d.to_path_buf(),
+        (None, Some(app)) => app.join(".forge/runs").join(format!("{id}-ui-run")),
+        (None, None) => PathBuf::from("forge-ui-out"),
+    };
+    // Read before the run, so the bundle names the code that was tested.
+    let build = app_dir
+        .as_deref()
+        .map(|a| crate::evidence::provenance(runner, a));
+    let started = std::time::Instant::now();
+    let (phone, apps, _runner, mut driver) = connect(udid)?;
     let app = resolve_app(&apps, &script.app)?.to_owned();
-    let report = script::run(&script, &app, &mut driver, out_dir, out).map_err(err)?;
-    report::set_data(serde_json::json!({
-        "test": script.name,
-        "passed_steps": report.passed,
-        "failed_step": report.failed.as_ref().map(|(step, why)| serde_json::json!({
+    let report = script::run(&script, &app, &mut driver, &out_dir, out).map_err(err)?;
+    let failed_step = report.failed.as_ref().map(|(step, why)| {
+        serde_json::json!({
             "step": step,
             "action": report.failed_step,
             "error": why,
             "on_screen": report.on_screen,
             "tree": report.tree_file,
-        })),
+        })
+    });
+    let evidence = match (&app_dir, build) {
+        (Some(app_dir), Some(mut build)) => {
+            build["installed_as"] = serde_json::json!(app);
+            let reqs = crate::evidence::load_requirements(app_dir)?;
+            let rel_to = |p: &Path| {
+                p.strip_prefix(&out_dir)
+                    .map(|r| r.display().to_string())
+                    .ok()
+            };
+            let mut artifacts: Vec<(&'static str, String)> = report
+                .screenshots
+                .iter()
+                .filter_map(|p| rel_to(p))
+                .map(|p| ("screenshot", p))
+                .collect();
+            if let Some(tree) = report.tree_file.as_deref().and_then(rel_to) {
+                artifacts.push(("ui_tree", tree));
+            }
+            let scenario = std::fs::canonicalize(file)
+                .ok()
+                .and_then(|f| {
+                    let app_dir = std::fs::canonicalize(app_dir).ok()?;
+                    f.strip_prefix(app_dir)
+                        .ok()
+                        .map(|r| r.display().to_string())
+                })
+                .unwrap_or_else(|| file.display().to_string());
+            let run = crate::evidence::DeviceRun {
+                scenario: &scenario,
+                build,
+                device: serde_json::json!({
+                    "udid": phone.udid,
+                    "ios_major": phone.ios_major().ok(),
+                }),
+                passed_steps: report.passed,
+                failed_step: failed_step.clone(),
+                artifacts,
+                duration_ms: started.elapsed().as_millis() as u64,
+            };
+            let path = crate::evidence::write_device_bundle(&run, &reqs, &out_dir, &id)?;
+            writeln!(out, "Evidence: {}", path.display()).map_err(err)?;
+            Some(path)
+        }
+        _ => None,
+    };
+    report::set_data(serde_json::json!({
+        "test": script.name,
+        "passed_steps": report.passed,
+        "failed_step": failed_step,
         "screenshots": report.screenshots,
+        "evidence": evidence.map(|p| p.display().to_string()),
     }));
     if !report.screenshots.is_empty() {
         writeln!(out, "Screenshots: {}", out_dir.display()).map_err(err)?;

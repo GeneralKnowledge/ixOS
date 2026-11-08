@@ -14,6 +14,7 @@ mod report;
 mod runner;
 mod swift_check;
 mod ui;
+mod verify;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -133,6 +134,21 @@ enum Commands {
         #[arg(long, conflicts_with_all = ["allow", "udid"])]
         no_device: bool,
     },
+    /// Does every requirement in the app's requirements.toml have current
+    /// evidence? Reads the bundles that `forge check swift` (Linux twin) and
+    /// `forge ui run` (iPhone) wrote to .forge/runs/; runs nothing itself
+    /// (docs/evidence.md)
+    Verify {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Only require the Linux twin evidence (a session without the phone).
+        /// iPhone results are still shown
+        #[arg(long)]
+        twin_only: bool,
+    },
     /// Drive an app on a connected iPhone from Linux: find elements by
     /// accessibility identifier, tap, type, read the screen, take screenshots
     /// (XCTest through WebDriverAgent; docs/forge-ui-testing.md)
@@ -190,9 +206,11 @@ enum UiCommands {
         udid: Option<String>,
         /// The test file
         file: PathBuf,
-        /// Where screenshots and failure details go
-        #[arg(long, value_name = "DIR", default_value = "forge-ui-out")]
-        out: PathBuf,
+        /// Where screenshots, failure details and evidence.json go (default:
+        /// <app>/.forge/runs/<UTC>-ui-run/ when the file is inside an app,
+        /// else forge-ui-out)
+        #[arg(long, value_name = "DIR")]
+        out: Option<PathBuf>,
     },
 }
 
@@ -464,7 +482,7 @@ fn main() {
     let command = command_name(&cli.command);
     let project = result_project(&cli.command);
     let fallback_stage = match cli.command {
-        Commands::Test { .. } | Commands::Check { .. } => "test",
+        Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
         // usbmuxd missing, no phone, not paired, the app not listening.
         Commands::Device { .. } | Commands::Devices => "device",
         Commands::Ui {
@@ -504,6 +522,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Init { .. } => return "init".into(),
         Commands::Test { .. } => return "test".into(),
         Commands::Mcp { .. } => return "mcp".into(),
+        Commands::Verify { .. } => return "verify".into(),
         Commands::Devices => return "devices".into(),
         Commands::Config { cmd } => match cmd {
             ConfigCommands::Sync { .. } => "config sync",
@@ -563,6 +582,7 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
             cmd: RunCommands::Ios { project, .. },
         }
         | Commands::Test { project, .. }
+        | Commands::Verify { project, .. }
         | Commands::Check {
             what: Some(CheckCommands::Swift { project }),
             ..
@@ -594,6 +614,16 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     match cli.command {
         Commands::Doctor if cli.json => doctor::print_json(runner, &root),
         Commands::Doctor => doctor::print_text(runner, &root),
+        Commands::Verify { project, twin_only } => match project
+            .map(|p| absolute_from_cwd(&p))
+            .or_else(app_in_cwd)
+        {
+            Some(app) => verify::verify(runner, &app, twin_only, &mut std::io::stdout()),
+            None => Err(
+                "no app here: run inside an app directory (one with forge.toml) or pass --project <app>"
+                    .into(),
+            ),
+        },
         Commands::Check {
             what: Some(CheckCommands::Swift { project }),
             ..
@@ -713,7 +743,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 }
                 UiCommands::Tree { udid, app } => ui::tree(udid.as_deref(), app.as_deref(), &mut out),
                 UiCommands::Screenshot { udid, path } => ui::screenshot(udid.as_deref(), &path, &mut out),
-                UiCommands::Run { udid, file, out: dir } => ui::run(udid.as_deref(), &file, &dir, &mut out),
+                UiCommands::Run { udid, file, out: dir } => ui::run(runner, udid.as_deref(), &file, dir.as_deref(), &mut out),
             }
         }
         Commands::Device { cmd } => device_command(cmd, cli.json),
