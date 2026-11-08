@@ -611,7 +611,8 @@ fn mismatch(
     for (attribute, wanted) in [("value", &expect.value), ("label", &expect.has_label)] {
         if let Some(wanted) = wanted {
             let found = driver.attribute(element, attribute)?;
-            if found.as_deref() != Some(wanted.as_str()) {
+            // An empty field reports no value at all: that is "".
+            if found.as_deref().unwrap_or("") != wanted.as_str() {
                 mismatch = Some((
                     format!("{attribute} {wanted:?}"),
                     found
@@ -906,6 +907,24 @@ mod tests {
         assert!(report.screenshots.is_empty());
         assert!(report.tree_file.is_none());
         assert!(!driver.calls.iter().any(|c| c == "screenshot"));
+    }
+
+    #[test]
+    fn an_empty_field_matches_an_empty_value() {
+        let script = Script::parse(
+            r#"
+            name = "x"
+            app = "a"
+            timeout = 0
+            [[step]]
+            expect = { id = "bookForm.title", value = "" }
+        "#,
+        )
+        .unwrap();
+        let mut driver = in_front(form());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
     }
 
     #[test]

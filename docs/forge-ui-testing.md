@@ -276,7 +276,7 @@ default = "ask"                     # apps not listed (also the default with no 
 
 **Privacy.** A run in another app writes its screenshots, failure trees and journal to `~/.cache/forge/any-app/<UTC>-ui-run/` (or `--out`), never into an app's `.forge/runs/`, and writes no evidence bundle. The journal, `journal.jsonl`, has one line per decision: time, app, action, the target's label, identifier and kind, and allowed, approved or refused with the reason. Typed text is recorded only as its length. On a failure, the tree and screenshot are saved only if the app under test is still in front, never whatever else came up. Apple's accessibility service (`ax_probe`) switches app monitoring on only for its walk and drops its reports about other apps.
 
-Not checked on the phone yet: the policy runs on Linux against the fake driver; the commit gate's first phone run is in the iPhone session.
+Checked on Cati (iPhone 15 Pro Max, iOS 26.3.1) on 2026-11-08 with the Claude app at `operate`. Typing worked. Send stopped at the prompt and was refused when the answer was n. With no terminal it was refused outright, and without `--any-app` nothing ran. The journal recorded the Send as refused, with the typed text's length only. Pocket Library's M0 still passed 11/11 without the flag. Not yet shown on the phone: `ax_probe` cleaning up after a Ctrl-C in the middle of a walk (the interrupt landed before the walk began).
 
 ### What a failing run gives an agent
 
