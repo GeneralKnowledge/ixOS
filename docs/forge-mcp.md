@@ -422,6 +422,22 @@ Passes when, with no person touching the phone or terminal during any stage:
 4. The main screens are usable at the largest text size in the agent's screenshots.
 5. Reuben looks at the app on the phone, including a photo post, and agrees it works.
 
+#### Result (2026-11-08)
+
+All seven stages passed in one agent session (Claude Code, `claude -p --resume`), on Cati, with nobody touching the phone or the terminal during a stage. Phone time was about 22 minutes in total, all on the laptop's own timer.
+
+| Stage | Time | Turns | What happened |
+|---|---|---|---|
+| `a-build` | 17.5 min | 98 | 14 Rust tests, 5 Swift model tests, iOS build passes. Fixed before the phone: a SQL parameter count (7 of 14 tests failed), a seed count, a Swift 6 Sendable warning, `Path`/`PathBuf` |
+| `b-look` | 8 min | 70 | 3 installs. Found and fixed from screenshots and the tree: the "Save Password?" sheet covering the app after sign-up, like and reply targets 44x18 pt, unlabelled fields, an Unfollow button hard to see in dark mode |
+| `c-test` | 5 min | 23 | Two failures, both real: the test's reset argument didn't apply to a running app (test fix, and Forge now stops the app first), and taps inside pushed screens did nothing (app fix). Journey 42/42 three times, largest text 19/19 |
+| `change-1` | 2 min | 9 | Timeline spacing, one-line author row, larger action targets |
+| `check-1` | 3.5 min | 20 | Fixed uneven spacing seen in a screenshot; both tests pass |
+| `change-2` | 3 min | 26 | Bookmarks, with an in-place v1 to v2 database migration and its test |
+| `check-2` | 2.5 min | 17 | The migration kept the existing data on the phone; journey 56/56 on the first run |
+
+Forge fixes found by the run and made between stages: the client timeout (`MCP_TOOL_TIMEOUT`), `forge mcp --no-device`, `forge check swift` ignoring the app's toolchain pin, `launch` with arguments on a running app, and the UI test docs. Seen and left: SF Symbol images exposed with identifiers (`duplicate_identifier` warnings), tab buttons without identifiers, and `forge_check` reporting no test counts.
+
 ## Open decisions
 
 1. **Agent sandbox bundle id.** Decided (Reuben, 2026-11-07): yes. Recommend `org.forgemobile.agentlab`, one slot, reused by every agent-made app until a person promotes it. The alternative (new id per app) burns slots and App IDs within a day.
