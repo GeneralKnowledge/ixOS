@@ -105,6 +105,122 @@ pub fn info(
     .map_err(err)
 }
 
+/// A free Apple team can have this many of its apps on a phone at once.
+pub const FREE_TEAM_SLOTS: usize = 3;
+
+/// `forge device apps --json`: each app you installed with its profile's
+/// team, lifetime and days left, and the free-team slots in use.
+pub fn apps_data(
+    backend: &dyn DeviceBackend,
+    udid: Option<&str>,
+    now: i64,
+) -> Result<Value, String> {
+    let device = pick_device(backend, udid).map_err(err)?;
+    crate::report::set_device(&device.udid, None);
+    let apps = backend.user_apps(&device).map_err(err)?;
+    // Profiles are best effort: an app list without expiry still helps.
+    let (profiles, profile_error) = match backend.provisioning_profiles(&device) {
+        Ok(ders) => (
+            ders.iter()
+                .filter_map(|d| forge_device::profile_from_der(d))
+                .collect::<Vec<_>>(),
+            None,
+        ),
+        Err(e) => (Vec::new(), Some(e.to_string())),
+    };
+    let rows: Vec<Value> = apps
+        .iter()
+        .map(|app| {
+            // The newest profile that signs this bundle id (exactly, or by
+            // a wildcard App ID).
+            let profile = profiles
+                .iter()
+                .filter(|p| {
+                    p.bundle_id().is_some_and(|id| {
+                        id == app.bundle_id
+                            || id == "*"
+                            || id
+                                .strip_suffix('*')
+                                .is_some_and(|pre| app.bundle_id.starts_with(pre))
+                    })
+                })
+                .max_by_key(|p| p.expires.unwrap_or(0));
+            let free = profile.and_then(|p| p.lifetime_days()).map(|d| d <= 7);
+            json!({
+                "bundle_id": app.bundle_id,
+                "original_id": forge_uitest::policy::original_id(&app.bundle_id),
+                "name": app.name,
+                "version": app.version,
+                "executable": app.executable,
+                "sideloaded": app.bundle_id.starts_with("XTL-"),
+                "team": profile.and_then(|p| p.team.clone()),
+                "free_team": free,
+                "expires": profile.and_then(|p| p.expires),
+                "days_left": profile.and_then(|p| p.expires).map(|e| (e - now) as f64 / 86_400.0),
+                "expired": profile.and_then(|p| p.expires).map(|e| e <= now),
+            })
+        })
+        .collect();
+    let free_in_use = rows
+        .iter()
+        .filter(|r| r["free_team"] == json!(true) && r["expired"] != json!(true))
+        .count();
+    let mut data = json!({
+        "apps": rows,
+        "free_team_slots": { "limit": FREE_TEAM_SLOTS, "in_use": free_in_use, "free": FREE_TEAM_SLOTS.saturating_sub(free_in_use) },
+    });
+    if let Some(e) = profile_error {
+        data["profiles_error"] = json!(e);
+    }
+    Ok(data)
+}
+
+/// `forge device apps`
+pub fn apps(
+    backend: &dyn DeviceBackend,
+    udid: Option<&str>,
+    now: i64,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let data = apps_data(backend, udid, now)?;
+    let apps = data["apps"].as_array().cloned().unwrap_or_default();
+    if apps.is_empty() {
+        writeln!(out, "No apps you installed are on the phone.").map_err(err)?;
+    }
+    for app in &apps {
+        let expiry = match (app["days_left"].as_f64(), app["expired"].as_bool()) {
+            (_, Some(true)) => "profile expired: reinstall to use it".to_string(),
+            (Some(d), _) => format!("expires in {d:.1} days"),
+            _ => "no profile found".to_string(),
+        };
+        let team = match (app["team"].as_str(), app["free_team"].as_bool()) {
+            (Some(t), Some(true)) => format!("{t}, free"),
+            (Some(t), _) => t.to_string(),
+            _ => "?".into(),
+        };
+        writeln!(
+            out,
+            "{:<44} {:<16} {:<18} {}",
+            app["original_id"].as_str().unwrap_or(""),
+            app["name"].as_str().unwrap_or(""),
+            team,
+            expiry
+        )
+        .map_err(err)?;
+    }
+    let slots = &data["free_team_slots"];
+    writeln!(
+        out,
+        "Free-team slots: {} of {} in use. A new free-team app needs a free slot: remove one on the phone first.",
+        slots["in_use"], slots["limit"]
+    )
+    .map_err(err)?;
+    if let Some(e) = data["profiles_error"].as_str() {
+        writeln!(out, "Profiles not read ({e}): expiry unknown").map_err(err)?;
+    }
+    Ok(())
+}
+
 /// `forge device logs`: streams until the phone disconnects, `limit` lines
 /// have matched, `duration` has passed, or the user presses Ctrl-C.
 pub fn logs(
@@ -377,6 +493,90 @@ mod tests {
             }
             Ok(format!("report {name}").into_bytes())
         }
+    }
+
+    struct Apps;
+
+    fn profile(app_id: &str, created: &str, expires: &str) -> Vec<u8> {
+        format!(
+            "\u{30}garbage<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>\
+             <key>Name</key><string>p</string>\
+             <key>TeamIdentifier</key><array><string>ND4P87PX52</string></array>\
+             <key>CreationDate</key><date>{created}</date>\
+             <key>ExpirationDate</key><date>{expires}</date>\
+             <key>Entitlements</key><dict><key>application-identifier</key><string>ND4P87PX52.{app_id}</string></dict>\
+             </dict></plist>tail"
+        )
+        .into_bytes()
+    }
+
+    impl DeviceBackend for Apps {
+        fn devices(&self) -> Result<Vec<DeviceRef>> {
+            Ok(vec![phone()])
+        }
+        fn info(&self, device: &DeviceRef) -> Result<DeviceInfo> {
+            Fake.info(device)
+        }
+        fn syslog(&self, _: &DeviceRef, _: &mut dyn FnMut(&str) -> bool) -> Result<()> {
+            Ok(())
+        }
+        fn crash_reports(&self, _: &DeviceRef) -> Result<Vec<String>> {
+            Ok(vec![])
+        }
+        fn pull_crash_report(&self, _: &DeviceRef, _: &str) -> Result<Vec<u8>> {
+            Ok(vec![])
+        }
+        fn user_apps(&self, _: &DeviceRef) -> Result<Vec<forge_device::InstalledApp>> {
+            let app = |id: &str, name: &str| forge_device::InstalledApp {
+                bundle_id: id.into(),
+                name: Some(name.into()),
+                version: Some("1.0".into()),
+                executable: None,
+            };
+            Ok(vec![
+                app("XTL-ND4P87PX52.org.forgemobile.gooddog", "Good Dog"),
+                app(
+                    "XTL-ND4P87PX52.org.forgemobile.pocketlibrary",
+                    "Pocket Library",
+                ),
+                app("com.example.store", "From the App Store"),
+            ])
+        }
+        fn provisioning_profiles(&self, _: &DeviceRef) -> Result<Vec<Vec<u8>>> {
+            Ok(vec![
+                profile(
+                    "XTL-ND4P87PX52.org.forgemobile.gooddog",
+                    "2026-11-08T10:00:00Z",
+                    "2026-11-15T10:00:00Z",
+                ),
+                // Pocket Library's profile ran out.
+                profile(
+                    "XTL-ND4P87PX52.org.forgemobile.pocketlibrary",
+                    "2026-10-30T10:00:00Z",
+                    "2026-11-06T10:00:00Z",
+                ),
+            ])
+        }
+    }
+
+    #[test]
+    fn apps_show_expiry_and_free_slots() {
+        // 2026-11-08T12:00:00Z
+        let now = 1_794_139_200;
+        let data = apps_data(&Apps, None, now).unwrap();
+        let list = data["apps"].as_array().unwrap();
+        assert_eq!(list[0]["original_id"], "org.forgemobile.gooddog");
+        assert_eq!(list[0]["free_team"], true);
+        assert_eq!(list[0]["expired"], false);
+        assert!((list[0]["days_left"].as_f64().unwrap() - 6.9166).abs() < 0.01);
+        assert_eq!(list[1]["expired"], true);
+        assert!(list[2]["team"].is_null());
+        // The expired app doesn't hold a slot; the App Store app never does.
+        assert_eq!(data["free_team_slots"]["in_use"], 1);
+        let shown = text(|out| apps(&Apps, None, now, out));
+        assert!(shown.contains("expires in 6.9 days"), "{shown}");
+        assert!(shown.contains("profile expired"), "{shown}");
+        assert!(shown.contains("Free-team slots: 1 of 3 in use"), "{shown}");
     }
 
     fn text(f: impl FnOnce(&mut Vec<u8>) -> std::result::Result<(), String>) -> String {

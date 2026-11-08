@@ -16,6 +16,8 @@ idevice = { version = "=0.1.68", default-features = false, features = [
     "usbmuxd",
     "syslog_relay",
     "crashreportcopymobile",
+    "installation_proxy",
+    "misagent",
 ] }
 tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
 plist = "1"

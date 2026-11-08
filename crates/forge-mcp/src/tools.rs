@@ -882,6 +882,22 @@ impl crate::Server {
                 cancel,
             )
             .await;
+        // Installed apps, profile expiry and free slots (M6.1): an install
+        // that needs a slot is the person's call, so say so before trying.
+        let apps = if list["ok"] == json!(true) {
+            self.forge(
+                self.with_udid(Invocation::new(
+                    &["device", "apps"],
+                    &root,
+                    secs(MIN),
+                    "device",
+                )),
+                cancel,
+            )
+            .await
+        } else {
+            Value::Null
+        };
         let ios = &doctor["ios_device"];
         let team = ios["signing_team"].clone();
         let mut notes = Vec::new();
@@ -899,6 +915,22 @@ impl crate::Server {
         if ios["usbmuxd_running"] == json!(false) {
             notes.push("usbmuxd is not running: no phone can be reached until it is plugged in and unlocked.");
         }
+        let mut notes: Vec<String> = notes.into_iter().map(str::to_owned).collect();
+        let slots = &apps["data"]["free_team_slots"];
+        if slots["free"] == json!(0) {
+            notes.push(format!(
+                "All {} free-team app slots are in use: installing an app that isn't on the phone yet will fail. Ask the person which app to remove.",
+                slots["limit"]
+            ));
+        }
+        for app in apps["data"]["apps"].as_array().into_iter().flatten() {
+            if app["expired"] == json!(true) {
+                notes.push(format!(
+                    "{}'s profile has expired: it won't open until it is installed again.",
+                    app["original_id"].as_str().unwrap_or("an app")
+                ));
+            }
+        }
         let devices = match &list["data"]["devices"] {
             Value::Null => list["data"].clone(),
             devices => devices.clone(),
@@ -915,6 +947,8 @@ impl crate::Server {
                     "signing_team": team,
                     "usbmuxd_running": ios["usbmuxd_running"],
                     "ready_to_install": doctor["ready"]["ios_device"],
+                    "apps": apps["data"]["apps"],
+                    "free_team_slots": apps["data"]["free_team_slots"],
                     "notes": notes,
                 }),
             );

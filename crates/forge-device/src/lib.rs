@@ -138,6 +138,22 @@ pub trait DeviceBackend {
     /// One crash report's contents.
     fn pull_crash_report(&self, device: &DeviceRef, name: &str) -> Result<Vec<u8>>;
 
+    /// Apps the developer installed (not Apple's), with their names and
+    /// versions (`forge device apps`).
+    fn user_apps(&self, device: &DeviceRef) -> Result<Vec<InstalledApp>> {
+        let _ = device;
+        Err(DeviceError::Service("this backend cannot list apps".into()))
+    }
+
+    /// The provisioning profiles installed on the phone, as the plist each
+    /// one carries (signed CMS, unparsed: see [`profile_from_der`]).
+    fn provisioning_profiles(&self, device: &DeviceRef) -> Result<Vec<Vec<u8>>> {
+        let _ = device;
+        Err(DeviceError::Service(
+            "this backend cannot list provisioning profiles".into(),
+        ))
+    }
+
     /// A byte stream to `port` on the phone's loopback interface, where a
     /// development build listens. Reads give up after a short wait (an
     /// `ErrorKind::TimedOut` error) so a session loop can do other work.
@@ -147,6 +163,87 @@ pub trait DeviceBackend {
             "this backend cannot open connections".into(),
         ))
     }
+}
+
+/// An app the developer installed.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct InstalledApp {
+    /// As installed: xtool's free-team installs are `XTL-<team>.<id>`.
+    pub bundle_id: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    /// The executable (`CFBundleExecutable`): crash reports and log lines
+    /// use it.
+    pub executable: Option<String>,
+}
+
+/// What a provisioning profile allows, read from its embedded plist.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Profile {
+    pub name: String,
+    pub team: Option<String>,
+    /// `application-identifier`: `<team>.<bundle id>`, possibly ending `*`.
+    pub app_id: Option<String>,
+    /// Seconds since the Unix epoch.
+    pub created: Option<i64>,
+    pub expires: Option<i64>,
+}
+
+impl Profile {
+    /// The bundle id the profile signs, without the team prefix.
+    pub fn bundle_id(&self) -> Option<&str> {
+        self.app_id.as_deref()?.split_once('.').map(|(_, id)| id)
+    }
+
+    /// A free team's profiles last 7 days; a paid team's up to a year.
+    pub fn lifetime_days(&self) -> Option<i64> {
+        Some((self.expires? - self.created?) / 86_400)
+    }
+}
+
+/// Reads the plist inside a signed provisioning profile (a CMS envelope with
+/// the XML plist as its content; the signature isn't checked: the phone
+/// already did). `None` when there's no plist to read.
+pub fn profile_from_der(der: &[u8]) -> Option<Profile> {
+    let start = find(der, b"<?xml")?;
+    let end = find(&der[start..], b"</plist>")? + start + b"</plist>".len();
+    let dict = plist::Value::from_reader_xml(&der[start..end])
+        .ok()?
+        .into_dictionary()?;
+    let text = |key: &str| dict.get(key).and_then(|v| v.as_string()).map(str::to_owned);
+    let date = |key: &str| {
+        dict.get(key)
+            .and_then(|v| v.as_date())
+            .and_then(|d| {
+                std::time::SystemTime::from(d)
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .ok()
+            })
+            .map(|d| d.as_secs() as i64)
+    };
+    let app_id = dict
+        .get("Entitlements")
+        .and_then(|e| e.as_dictionary())
+        .and_then(|e| e.get("application-identifier"))
+        .and_then(|v| v.as_string())
+        .map(str::to_owned);
+    let team = dict
+        .get("TeamIdentifier")
+        .and_then(|t| t.as_array())
+        .and_then(|t| t.first())
+        .and_then(|v| v.as_string())
+        .map(str::to_owned);
+    Some(Profile {
+        name: text("Name").unwrap_or_default(),
+        team,
+        app_id,
+        created: date("CreationDate"),
+        expires: date("ExpirationDate"),
+    })
+}
+
+fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack.windows(needle.len()).position(|w| w == needle)
 }
 
 /// The phone to use: the one with `udid`, or the only one connected.
@@ -236,6 +333,31 @@ pub fn app_crash_reports(names: &[String], app: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn reads_the_plist_inside_a_signed_profile() {
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>Name</key><string>XC org forgemobile gooddog</string>
+<key>TeamIdentifier</key><array><string>ND4P87PX52</string></array>
+<key>CreationDate</key><date>2026-11-08T10:00:00Z</date>
+<key>ExpirationDate</key><date>2026-11-15T10:00:00Z</date>
+<key>Entitlements</key><dict><key>application-identifier</key><string>ND4P87PX52.XTL-ND4P87PX52.org.forgemobile.gooddog</string></dict>
+</dict></plist>"#;
+        let mut der = vec![0x30, 0x82, 0x10, 0x00, 0x06, 0x09];
+        der.extend_from_slice(xml.as_bytes());
+        der.extend_from_slice(&[0xa0, 0x82, 0x01]);
+        let p = profile_from_der(&der).unwrap();
+        assert_eq!(p.team.as_deref(), Some("ND4P87PX52"));
+        assert_eq!(
+            p.bundle_id(),
+            Some("XTL-ND4P87PX52.org.forgemobile.gooddog")
+        );
+        assert_eq!(p.lifetime_days(), Some(7));
+        assert_eq!(p.expires, Some(1_794_736_800));
+        assert!(profile_from_der(b"no plist here").is_none());
+    }
     use super::*;
     use std::cell::RefCell;
 

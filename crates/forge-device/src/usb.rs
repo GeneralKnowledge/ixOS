@@ -2,7 +2,9 @@
 
 use idevice::provider::{IdeviceProvider, UsbmuxdProvider};
 use idevice::services::crashreportcopymobile::CrashReportCopyMobileClient;
+use idevice::services::installation_proxy::InstallationProxyClient;
 use idevice::services::lockdown::LockdownClient;
+use idevice::services::misagent::MisagentClient;
 use idevice::services::syslog_relay::SyslogRelayClient;
 use idevice::usbmuxd::{UsbmuxdAddr, UsbmuxdConnection};
 use idevice::{IdeviceError, IdeviceService};
@@ -13,7 +15,7 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use crate::live::LiveStream;
-use crate::{Connection, DeviceBackend, DeviceError, DeviceInfo, DeviceRef, Result};
+use crate::{Connection, DeviceBackend, DeviceError, DeviceInfo, DeviceRef, InstalledApp, Result};
 
 /// Label idevice sends with each request; shows up in the phone's logs.
 const LABEL: &str = "forge-device";
@@ -258,6 +260,41 @@ impl DeviceBackend for UsbBackend {
                 }
             }
             Ok(names)
+        })
+    }
+
+    fn user_apps(&self, device: &DeviceRef) -> Result<Vec<InstalledApp>> {
+        let provider = self.provider(device)?;
+        self.runtime.block_on(async {
+            let mut proxy: InstallationProxyClient = connect(&provider).await?;
+            let apps = proxy
+                .get_apps(Some("User"), None)
+                .await
+                .map_err(service_error)?;
+            let mut list: Vec<InstalledApp> = apps
+                .into_iter()
+                .map(|(bundle_id, info)| {
+                    let info = info.into_dictionary().unwrap_or_default();
+                    let text =
+                        |key: &str| info.get(key).and_then(|v| v.as_string()).map(str::to_owned);
+                    InstalledApp {
+                        bundle_id,
+                        name: text("CFBundleDisplayName").or_else(|| text("CFBundleName")),
+                        version: text("CFBundleShortVersionString"),
+                        executable: text("CFBundleExecutable"),
+                    }
+                })
+                .collect();
+            list.sort_by(|a, b| a.bundle_id.cmp(&b.bundle_id));
+            Ok(list)
+        })
+    }
+
+    fn provisioning_profiles(&self, device: &DeviceRef) -> Result<Vec<Vec<u8>>> {
+        let provider = self.provider(device)?;
+        self.runtime.block_on(async {
+            let mut client: MisagentClient = connect(&provider).await?;
+            client.copy_all().await.map_err(service_error)
         })
     }
 

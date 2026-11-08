@@ -369,6 +369,13 @@ enum DeviceCommands {
         #[arg(long)]
         udid: Option<String>,
     },
+    /// Apps you installed, with their provisioning profile's team and
+    /// expiry, and how many of a free team's 3 app slots are in use
+    Apps {
+        /// Which phone, when several are connected
+        #[arg(long)]
+        udid: Option<String>,
+    },
     /// Stream the phone's system log; Ctrl-C stops
     Logs {
         /// Which phone, when several are connected
@@ -703,6 +710,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Device { cmd } => match cmd {
             DeviceCommands::List => "device list",
             DeviceCommands::Info { .. } => "device info",
+            DeviceCommands::Apps { .. } => "device apps",
             DeviceCommands::Logs { .. } => "device logs",
             DeviceCommands::Crashes { .. } => "device crashes",
             DeviceCommands::Pair { .. } => "device pair",
@@ -1095,12 +1103,20 @@ fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
     }
 }
 
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
     let backend = forge_device::UsbBackend::new().map_err(|e| e.to_string())?;
     if json {
         let data = match &cmd {
             DeviceCommands::List => Some(device::list_data(&backend)?),
             DeviceCommands::Info { udid } => Some(device::info_data(&backend, udid.as_deref())?),
+            DeviceCommands::Apps { udid } => Some(device::apps_data(&backend, udid.as_deref(), now_secs())?),
             DeviceCommands::Crashes {
                 udid,
                 app,
@@ -1160,6 +1176,7 @@ fn run_device_command(
     match cmd {
         DeviceCommands::List => device::list(backend, out),
         DeviceCommands::Info { udid } => device::info(backend, udid.as_deref(), out),
+        DeviceCommands::Apps { udid } => device::apps(backend, udid.as_deref(), now_secs(), out),
         DeviceCommands::Logs {
             udid,
             process,

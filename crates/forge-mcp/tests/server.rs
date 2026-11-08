@@ -19,6 +19,7 @@ shift # --json
 case "$1 $2" in
   "doctor ") echo '{"schema_version":1,"ios_device":{"apple_sign_in":"logged_in","usbmuxd_running":true,"signing_team":{"id":"ABCDE12345","name":"Someone","kind":"free","sign_in":"apple_id"}},"ready":{"ios_device":true}}' ;;
   "device list") echo '{"schema":"forge.result/1","command":"device list","ok":true,"stage":"ok","duration_ms":5,"diagnostics":[],"hints":[],"data":{"devices":[{"udid":"0000","name":"Cati"}]}}' ;;
+  "device apps") echo '{"schema":"forge.result/1","command":"device apps","ok":true,"stage":"ok","duration_ms":5,"diagnostics":[],"hints":[],"data":{"apps":[{"original_id":"org.forgemobile.gooddog","expired":true}],"free_team_slots":{"limit":3,"in_use":3,"free":0}}}' ;;
   "device logs") sleep 90 ;;
   "run ios") echo '{"schema":"forge.result/1","command":"run ios","ok":true,"stage":"ok","duration_ms":9,"diagnostics":[],"hints":[],"data":{"installed":true,"launched":false}}' ;;
   "build ios") echo "[forge] building"; echo '{"schema":"forge.result/1","command":"build ios","ok":false,"stage":"swift","duration_ms":7,"error":"xtool dev build failed","diagnostics":[{"severity":"error","source":"swiftc","file":"Sources/AppHost/TipView.swift","line":12,"column":5,"message":"cannot find tipModel in scope"}],"hints":[],"log":null}'; exit 11 ;;
@@ -350,6 +351,16 @@ async fn device_status_is_team_aware_and_hung_reads_are_stopped() {
     assert!(calls(&fx)
         .iter()
         .any(|l| l == "--json device list --udid 0000"));
+    assert_eq!(data["free_team_slots"]["free"], 0);
+    let notes = data["notes"].to_string();
+    assert!(
+        notes.contains("All 3 free-team app slots are in use"),
+        "{notes}"
+    );
+    assert!(
+        notes.contains("org.forgemobile.gooddog's profile has expired"),
+        "{notes}"
+    );
 
     // The fake `device logs` hangs; seconds=1 gives it 31 s before the kill.
     let started = std::time::Instant::now();
