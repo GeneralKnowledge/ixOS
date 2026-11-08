@@ -16,6 +16,7 @@ mkdir -p "$WORK/coaching" "$WORK/dog-training/content"
 cp "$LIB"/coaching/{index,types,policy,progression,plan-generator,welfare}.ts "$WORK/coaching/"
 cp "$LIB"/domains/dog-training/{types,policy,why-today,golden-scenarios}.ts "$WORK/dog-training/"
 cp "$LIB"/domains/dog-training/content/{exercises,learning-objectives}.ts "$WORK/dog-training/content/"
+cp "$LIB"/content/glossary.ts "$WORK/dog-training/content/"
 
 # Node runs TypeScript only with explicit .ts imports and no path aliases.
 # Plan item ids come from nanoid; the tests never look at them.

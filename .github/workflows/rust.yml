@@ -35,6 +35,7 @@ jobs:
             examples/chat/rust -> target
             examples/counter/rust -> target
             examples/device-lab/rust -> target
+            examples/good-dog/rust -> target
             examples/pocket-library/rust -> target
             examples/weather/rust -> target
           # Six target directories are large: only main saves them, pull
@@ -63,6 +64,7 @@ jobs:
           ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/device-lab/Xcode/DeviceLab.xcodeproj/project.pbxproj
+          ./scripts/validate-xcode-project.sh examples/good-dog/Xcode/GoodDog.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj
 
   fresh-app:

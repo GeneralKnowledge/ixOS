@@ -1,0 +1,244 @@
+@preconcurrency import ForgeFFI
+import Foundation
+import Observation
+
+private let log = ForgeLog("GoodDog")
+
+/// The app's presentation state. It holds no training rules: every change
+/// goes to the Rust `AppCore` (rust/src/lib.rs), which builds plans, records
+/// sessions and moves skills on. This model keeps the latest answers for the
+/// screens and re-reads them when Rust says the data changed.
+@Observable
+@MainActor
+public final class GoodDogModel {
+    public enum Phase: Equatable {
+        case loading
+        /// No dog yet: show onboarding.
+        case needsDog
+        case ready
+        case failed(String)
+    }
+
+    public private(set) var phase: Phase = .loading
+    public private(set) var dog: DogProfile?
+    /// Today's plan, as Rust last reported it.
+    public private(set) var today: TodayPlan?
+    public private(set) var progress: ProgressSummary?
+    public private(set) var history: [SessionRecord] = []
+    public private(set) var topics: [LearnTopic] = []
+    public private(set) var glossary: [GlossarySection] = []
+    /// The Learn search field.
+    public var searchText = ""
+    /// A failed action, for an alert. The view clears it when dismissed.
+    public var actionError: String?
+    /// Increases after each recorded session; views use it as a haptic trigger.
+    public private(set) var sessionCount = 0
+
+    public private(set) var core: AppCore?
+    private let storageDirectory: String?
+    private let clock: @Sendable () -> LocalTime
+    @ObservationIgnored private var eventTask: Task<Void, Never>?
+    @ObservationIgnored private var events: AppEvents?
+    @ObservationIgnored private var lifecyclePhase: AppPhase = .launching
+
+    /// - Parameters:
+    ///   - storageDirectory: where Rust keeps its data. Defaults to
+    ///     Application Support (a throwaway folder under UI tests); tests
+    ///     pass a temporary one.
+    ///   - clock: the time now with the phone's UTC offset; tests fix it.
+    public init(
+        storageDirectory: String? = nil,
+        clock: @escaping @Sendable () -> LocalTime = LocalTime.now
+    ) {
+        self.storageDirectory = storageDirectory
+        self.clock = clock
+    }
+
+    public var maxNameLength: Int { Int(core?.maxNameLength() ?? 40) }
+
+    /// Rust's matches for `searchText`, or nil when the field is empty.
+    public var searchResults: LearnSearchResults? {
+        guard let core, !searchText.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return core.searchLearn(query: searchText)
+    }
+
+    public func exercise(id: String) -> ExerciseDetail? {
+        _ = history  // re-read when sessions change, so the skill level is current
+        return try? core?.exercise(exerciseId: id)
+    }
+
+    public func term(id: String) -> TermDetail? {
+        try? core?.term(termId: id)
+    }
+
+    // MARK: Lifecycle
+
+    /// Opens the Rust core and starts listening for its events. Calling it
+    /// again while open does nothing.
+    public func open() async {
+        guard core == nil else { return }
+        phase = .loading
+        do {
+            let directory = try storageDirectory ?? Self.defaultDirectory()
+            let core = try await Task.detached { try AppCore(storageDirectory: directory) }.value
+            let events = try core.events()
+            self.core = core
+            self.events = events
+            listen(to: events)
+            if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
+            await reload()
+        } catch {
+            log.error("could not open: \(error)")
+            phase = .failed(Self.describe(error))
+        }
+    }
+
+    public func close() {
+        events?.cancel()
+        eventTask?.cancel()
+        core?.shutdown()
+        core = nil
+        events = nil
+    }
+
+    public func setPhase(_ phase: AppPhase) {
+        lifecyclePhase = phase
+        if phase == .terminated {
+            close()
+        } else {
+            core?.setPhase(phase: phase)
+        }
+    }
+
+    /// Re-reads everything the screens show from Rust. Building today's plan
+    /// may save, so it is awaited off the main actor.
+    public func reload() async {
+        guard let core else { return }
+        dog = core.dog()
+        topics = core.learnTopics()
+        glossary = core.glossary()
+        history = core.history(limit: 50)
+        progress = core.progress(now: clock())
+        guard dog != nil else {
+            today = nil
+            phase = .needsDog
+            return
+        }
+        do {
+            today = try await core.today(now: clock())
+            phase = .ready
+        } catch {
+            log.warn("today failed: \(error)")
+            phase = .failed(Self.describe(error))
+        }
+    }
+
+    // MARK: Commands
+
+    /// Creates or changes the dog's profile. Throws Rust's `AppError`, so a
+    /// form can stay open and show it.
+    public func saveDog(_ profile: DogProfile) async throws {
+        guard let core else { throw AppError.ShutDown }
+        _ = try await core.saveDog(profile: profile, now: clock())
+        await reload()
+    }
+
+    public func shortenToday() async {
+        await perform { core, now in self.today = try await core.shortenToday(now: now) }
+    }
+
+    public func swap(_ activity: PlanActivity) async {
+        await perform { core, now in
+            self.today = try await core.swapActivity(activityId: activity.id, now: now)
+        }
+    }
+
+    /// Records a session and returns what to tell the owner. Throws, so the
+    /// result sheet can stay open on failure.
+    public func record(
+        exerciseId: String,
+        activityId: UInt64?,
+        result: SessionResult,
+        welfareConcern: Bool
+    ) async throws -> SessionFeedback {
+        guard let core else { throw AppError.ShutDown }
+        let feedback = try await core.recordSession(
+            exerciseId: exerciseId,
+            activityId: activityId,
+            result: result,
+            welfareConcern: welfareConcern,
+            now: clock()
+        )
+        sessionCount += 1
+        await reload()
+        return feedback
+    }
+
+    /// Deletes everything and returns to onboarding.
+    public func eraseAll() async {
+        await perform { core, _ in try await core.eraseAll() }
+        await reload()
+    }
+
+    // MARK: Private
+
+    private func perform(_ command: (AppCore, LocalTime) async throws -> Void) async {
+        guard let core else { return }
+        do {
+            try await command(core, clock())
+        } catch {
+            log.warn("command failed: \(error)")
+            actionError = Self.describe(error)
+        }
+    }
+
+    private func listen(to events: AppEvents) {
+        eventTask = Task { [weak self] in
+            while let event = await events.next() {
+                guard let self else { return }
+                switch event {
+                case .dataChanged, .eventsDropped:
+                    await self.reload()
+                case .phaseChanged(_, let resumed):
+                    // Back from the background, possibly on a new day.
+                    if resumed { await self.reload() }
+                }
+            }
+        }
+    }
+
+    public static func describe(_ error: Error) -> String {
+        guard let error = error as? AppError else { return error.localizedDescription }
+        switch error {
+        case .InvalidInput(let reason): return "Please check: \(reason)."
+        case .NotFound: return "That's no longer available."
+        case .NoDog: return "Tell us about your dog first."
+        case .NoAlternative: return "There's nothing else that suits today. Try this one, or keep it short."
+        case .Storage(let reason): return "Good Dog couldn't read or save its data (\(reason))."
+        case .ShutDown: return "Good Dog is closing."
+        }
+    }
+
+    /// Application Support/GoodDog, or a fresh GoodDog-UITest folder when
+    /// launched with `-ForgeUITestData` (forge.toml), so UI tests never touch
+    /// the owner's real data.
+    private static func defaultDirectory() throws -> String {
+        let testData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+        let base = try FileManager.default
+            .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+            .appendingPathComponent(testData ? "GoodDog-UITest" : "GoodDog", isDirectory: true)
+        if testData { try? FileManager.default.removeItem(at: base) }
+        try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        return base.path
+    }
+}
+
+extension LocalTime {
+    /// The time now, with the phone's current offset from UTC.
+    public static func now() -> LocalTime {
+        LocalTime(
+            ms: Int64(Date().timeIntervalSince1970 * 1000),
+            utcOffsetMinutes: Int32(TimeZone.current.secondsFromGMT() / 60)
+        )
+    }
+}

@@ -1,0 +1,48 @@
+[app]
+name = "GoodDog"
+bundle_id = "org.forgemobile.gooddog"
+minimum_ios = "17.0"
+display_name = "Good Dog"         # home-screen name
+version = "1.0.0"                   # CFBundleShortVersionString
+build_number = "1"                  # CFBundleVersion; raise it for every upload
+
+[rust]
+# This app's own Rust crate: logic, state, persistence, networking.
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
+
+# iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
+# this section on every `forge build ios` / `forge run ios` (or `forge config
+# sync`), so edit them here, not in those files. All keys: docs/app-config.md.
+[ios]
+# The SwiftPM product xtool builds (Package.swift). It is the app's executable,
+# so it names the process in `forge device logs --process` and crash reports.
+xtool_product = "GoodDogXtool"
+# icon = "Resources/AppIcon.png"    # 1024x1024 PNG
+orientations = ["portrait"]
+# url_schemes = ["myapp"]           # opens myapp://... links
+# background_modes = ["remote-notification"]
+
+# The text iOS shows when the app asks for a permission.
+[ios.permissions]
+# camera = "Scan barcodes to add items."
+# photo_library = "Attach photos to your notes."
+# location_when_in_use = "Show places near you."
+
+[ios.entitlements]
+# app_groups = ["group.org.forgemobile.gooddog"]
+# associated_domains = ["applinks:example.com"]   # paid team
+# push_notifications = "development"              # paid team
+
+[ios.signing]
+# team_type = "free"                # "free" (Apple ID) or "paid" (Developer Program)
+# team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+# UI automation. This launch argument starts the app on a fresh, throwaway
+# folder (Application Support/GoodDog-UITest), so tests and `forge ui explore`
+# never touch the owner's real dog. docs/forge-explore.md
+[ui_test]
+test_data_args = ["-ForgeUITestData"]

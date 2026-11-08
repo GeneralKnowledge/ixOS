@@ -1,0 +1,1826 @@
+{
+  "kind": "Application",
+  "label": "Good Dog",
+  "enabled": true,
+  "visible": true,
+  "frame": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 430.0,
+    "height": 932.0
+  },
+  "children": [
+    {
+      "kind": "Window",
+      "enabled": true,
+      "visible": true,
+      "frame": {
+        "x": 0.0,
+        "y": 0.0,
+        "width": 430.0,
+        "height": 932.0
+      },
+      "children": [
+        {
+          "kind": "Other",
+          "enabled": true,
+          "visible": true,
+          "frame": {
+            "x": 0.0,
+            "y": 0.0,
+            "width": 430.0,
+            "height": 932.0
+          },
+          "children": [
+            {
+              "kind": "Other",
+              "enabled": true,
+              "visible": true,
+              "frame": {
+                "x": 0.0,
+                "y": 0.0,
+                "width": 430.0,
+                "height": 932.0
+              },
+              "children": [
+                {
+                  "kind": "Other",
+                  "enabled": true,
+                  "visible": true,
+                  "frame": {
+                    "x": 0.0,
+                    "y": 0.0,
+                    "width": 430.0,
+                    "height": 932.0
+                  },
+                  "children": [
+                    {
+                      "kind": "Other",
+                      "enabled": true,
+                      "visible": true,
+                      "frame": {
+                        "x": 0.0,
+                        "y": 0.0,
+                        "width": 430.0,
+                        "height": 932.0
+                      },
+                      "children": [
+                        {
+                          "kind": "Other",
+                          "enabled": true,
+                          "visible": true,
+                          "frame": {
+                            "x": 0.0,
+                            "y": 0.0,
+                            "width": 430.0,
+                            "height": 932.0
+                          },
+                          "children": [
+                            {
+                              "kind": "NavigationBar",
+                              "identifier": "Welcome to Good Dog",
+                              "enabled": true,
+                              "visible": true,
+                              "frame": {
+                                "x": 0.0,
+                                "y": 53.0,
+                                "width": 430.0,
+                                "height": 97.0
+                              },
+                              "children": [
+                                {
+                                  "kind": "StaticText",
+                                  "label": "Welcome to Good Dog",
+                                  "value": "Welcome to Good Dog",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 20.0,
+                                    "y": 102.0,
+                                    "width": 341.0,
+                                    "height": 40.0
+                                  }
+                                }
+                              ]
+                            },
+                            {
+                              "kind": "Other",
+                              "enabled": true,
+                              "visible": true,
+                              "frame": {
+                                "x": 0.0,
+                                "y": 0.0,
+                                "width": 430.0,
+                                "height": 932.0
+                              },
+                              "children": [
+                                {
+                                  "kind": "Other",
+                                  "enabled": true,
+                                  "visible": true,
+                                  "frame": {
+                                    "x": 0.0,
+                                    "y": 0.0,
+                                    "width": 430.0,
+                                    "height": 932.0
+                                  },
+                                  "children": [
+                                    {
+                                      "kind": "Other",
+                                      "enabled": true,
+                                      "visible": true,
+                                      "frame": {
+                                        "x": 0.0,
+                                        "y": 0.0,
+                                        "width": 430.0,
+                                        "height": 932.0
+                                      },
+                                      "children": [
+                                        {
+                                          "kind": "Other",
+                                          "enabled": true,
+                                          "visible": true,
+                                          "frame": {
+                                            "x": 0.0,
+                                            "y": 0.0,
+                                            "width": 430.0,
+                                            "height": 932.0
+                                          },
+                                          "children": [
+                                            {
+                                              "kind": "CollectionView",
+                                              "enabled": true,
+                                              "visible": true,
+                                              "frame": {
+                                                "x": 0.0,
+                                                "y": 0.0,
+                                                "width": 430.0,
+                                                "height": 932.0
+                                              },
+                                              "children": [
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": -20.0,
+                                                    "y": -1715.0,
+                                                    "width": 470.0,
+                                                    "height": 1945.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 149.0,
+                                                    "width": 390.0,
+                                                    "height": 63.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 149.0,
+                                                        "width": 390.0,
+                                                        "height": 63.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 149.0,
+                                                            "width": 390.0,
+                                                            "height": 63.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 149.0,
+                                                        "width": 390.0,
+                                                        "height": 63.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 149.0,
+                                                            "width": 390.0,
+                                                            "height": 63.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 149.0,
+                                                                "width": 390.0,
+                                                                "height": 63.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Short, kind, reward-based practice, planned for you each day.",
+                                                                  "value": "Short, kind, reward-based practice, planned for you each day.",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 149.0,
+                                                                    "width": 390.0,
+                                                                    "height": 63.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": -20.0,
+                                                    "y": 229.0,
+                                                    "width": 470.0,
+                                                    "height": 100.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 229.0,
+                                                    "width": 390.0,
+                                                    "height": 38.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 229.0,
+                                                        "width": 390.0,
+                                                        "height": 38.0
+                                                      }
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 229.0,
+                                                        "width": 390.0,
+                                                        "height": 38.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 229.0,
+                                                            "width": 390.0,
+                                                            "height": 38.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 229.0,
+                                                                "width": 390.0,
+                                                                "height": 38.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "YOUR DOG'S NAME",
+                                                                  "value": "YOUR DOG'S NAME",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 229.0,
+                                                                    "width": 390.0,
+                                                                    "height": 38.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 267.0,
+                                                    "width": 390.0,
+                                                    "height": 44.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 267.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 267.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 267.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 267.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 267.0,
+                                                                "width": 390.0,
+                                                                "height": 44.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "TextField",
+                                                                  "identifier": "dogForm.name",
+                                                                  "label": "Dog's name",
+                                                                  "value": "Name",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 278.0,
+                                                                    "width": 350.0,
+                                                                    "height": 22.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": -20.0,
+                                                    "y": 328.0,
+                                                    "width": 470.0,
+                                                    "height": 153.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 346.0,
+                                                    "width": 390.0,
+                                                    "height": 44.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 346.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 346.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 346.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 346.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 346.0,
+                                                                "width": 390.0,
+                                                                "height": 44.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Age",
+                                                                  "value": "Age",
+                                                                  "enabled": true,
+                                                                  "visible": false,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 358.0,
+                                                                    "width": 29.0,
+                                                                    "height": 20.0
+                                                                  }
+                                                                },
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.lifeStage",
+                                                                  "label": "Age, Adult",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 351.0,
+                                                                    "width": 350.0,
+                                                                    "height": 34.0
+                                                                  },
+                                                                  "children": [
+                                                                    {
+                                                                      "kind": "StaticText",
+                                                                      "label": "Adult",
+                                                                      "value": "Adult",
+                                                                      "enabled": true,
+                                                                      "visible": true,
+                                                                      "frame": {
+                                                                        "x": 336.0,
+                                                                        "y": 358.0,
+                                                                        "width": 39.0,
+                                                                        "height": 20.0
+                                                                      }
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 390.0,
+                                                    "width": 390.0,
+                                                    "height": 44.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 390.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 390.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 390.0,
+                                                        "width": 390.0,
+                                                        "height": 44.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 390.0,
+                                                            "width": 390.0,
+                                                            "height": 44.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 390.0,
+                                                                "width": 390.0,
+                                                                "height": 44.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Time Most Days",
+                                                                  "value": "Time Most Days",
+                                                                  "enabled": true,
+                                                                  "visible": false,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 402.0,
+                                                                    "width": 117.0,
+                                                                    "height": 20.0
+                                                                  }
+                                                                },
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.dailyTime",
+                                                                  "label": "Time Most Days, About 10 minutes",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 395.0,
+                                                                    "width": 350.0,
+                                                                    "height": 34.0
+                                                                  },
+                                                                  "children": [
+                                                                    {
+                                                                      "kind": "StaticText",
+                                                                      "label": "About 10 minutes",
+                                                                      "value": "About 10 minutes",
+                                                                      "enabled": true,
+                                                                      "visible": true,
+                                                                      "frame": {
+                                                                        "x": 247.0,
+                                                                        "y": 402.0,
+                                                                        "width": 128.0,
+                                                                        "height": 20.0
+                                                                      }
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 389.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 434.0,
+                                                    "width": 390.0,
+                                                    "height": 47.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 434.0,
+                                                        "width": 390.0,
+                                                        "height": 47.0
+                                                      }
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 434.0,
+                                                        "width": 390.0,
+                                                        "height": 47.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 434.0,
+                                                            "width": 390.0,
+                                                            "height": 47.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 434.0,
+                                                                "width": 390.0,
+                                                                "height": 47.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Short sessions work best. We'll plan around the time you have.",
+                                                                  "value": "Short sessions work best. We'll plan around the time you have.",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 434.0,
+                                                                    "width": 390.0,
+                                                                    "height": 47.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": -20.0,
+                                                    "y": 480.0,
+                                                    "width": 470.0,
+                                                    "height": 364.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 480.0,
+                                                    "width": 390.0,
+                                                    "height": 38.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 480.0,
+                                                        "width": 390.0,
+                                                        "height": 38.0
+                                                      }
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 480.0,
+                                                        "width": 390.0,
+                                                        "height": 38.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 480.0,
+                                                            "width": 390.0,
+                                                            "height": 38.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 480.0,
+                                                                "width": 390.0,
+                                                                "height": 38.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "WHAT WOULD HELP MOST?",
+                                                                  "value": "WHAT WOULD HELP MOST?",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 480.0,
+                                                                    "width": 390.0,
+                                                                    "height": 38.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 517.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 517.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 517.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 517.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 517.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 517.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "A bit of everything",
+                                                                  "value": "1",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 517.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 561.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 561.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 561.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 561.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 561.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 561.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "Coming back when called",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 561.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 561.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 605.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 605.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 605.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 605.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 605.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 605.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "Walking nicely on the lead",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 605.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 605.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 649.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 649.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 649.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 649.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 649.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 649.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "Settling at home",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 649.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 649.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 693.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 693.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 693.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 693.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 693.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 693.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "Everyday manners",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 693.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 693.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 737.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 737.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 737.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 737.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 737.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 737.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.goal",
+                                                                  "label": "Puppy basics",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 737.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 737.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 781.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 781.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 781.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 781.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 781.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 781.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Experience",
+                                                                  "value": "Experience",
+                                                                  "enabled": true,
+                                                                  "visible": false,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 793.0,
+                                                                    "width": 81.0,
+                                                                    "height": 20.0
+                                                                  }
+                                                                },
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "dogForm.experience",
+                                                                  "label": "Experience, New to training",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 40.0,
+                                                                    "y": 786.0,
+                                                                    "width": 350.0,
+                                                                    "height": 34.0
+                                                                  },
+                                                                  "children": [
+                                                                    {
+                                                                      "kind": "StaticText",
+                                                                      "label": "New to training",
+                                                                      "value": "New to training",
+                                                                      "enabled": true,
+                                                                      "visible": true,
+                                                                      "frame": {
+                                                                        "x": 264.0,
+                                                                        "y": 793.0,
+                                                                        "width": 111.0,
+                                                                        "height": 20.0
+                                                                      }
+                                                                    }
+                                                                  ]
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 40.0,
+                                                    "y": 781.0,
+                                                    "width": 370.0,
+                                                    "height": 1.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": -20.0,
+                                                    "y": 843.0,
+                                                    "width": 470.0,
+                                                    "height": 1972.0
+                                                  }
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 860.0,
+                                                    "width": 390.0,
+                                                    "height": 45.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 860.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": false,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 860.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          }
+                                                        }
+                                                      ]
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 860.0,
+                                                        "width": 390.0,
+                                                        "height": 45.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 860.0,
+                                                            "width": 390.0,
+                                                            "height": 45.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 860.0,
+                                                                "width": 390.0,
+                                                                "height": 45.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "Button",
+                                                                  "identifier": "onboarding.start",
+                                                                  "label": "Start Training",
+                                                                  "enabled": false,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 860.0,
+                                                                    "width": 390.0,
+                                                                    "height": 45.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Cell",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 20.0,
+                                                    "y": 904.0,
+                                                    "width": 390.0,
+                                                    "height": 47.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 904.0,
+                                                        "width": 390.0,
+                                                        "height": 47.0
+                                                      }
+                                                    },
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": true,
+                                                      "frame": {
+                                                        "x": 20.0,
+                                                        "y": 904.0,
+                                                        "width": 390.0,
+                                                        "height": 47.0
+                                                      },
+                                                      "children": [
+                                                        {
+                                                          "kind": "Other",
+                                                          "enabled": true,
+                                                          "visible": true,
+                                                          "frame": {
+                                                            "x": 20.0,
+                                                            "y": 904.0,
+                                                            "width": 390.0,
+                                                            "height": 47.0
+                                                          },
+                                                          "children": [
+                                                            {
+                                                              "kind": "Other",
+                                                              "enabled": true,
+                                                              "visible": true,
+                                                              "frame": {
+                                                                "x": 20.0,
+                                                                "y": 904.0,
+                                                                "width": 390.0,
+                                                                "height": 47.0
+                                                              },
+                                                              "children": [
+                                                                {
+                                                                  "kind": "StaticText",
+                                                                  "label": "Good Dog gives general training guidance. It isn't veterinary or behavioural advice.",
+                                                                  "value": "Good Dog gives general training guidance. It isn't veterinary or behavioural advice.",
+                                                                  "enabled": true,
+                                                                  "visible": true,
+                                                                  "frame": {
+                                                                    "x": 20.0,
+                                                                    "y": 904.0,
+                                                                    "width": 390.0,
+                                                                    "height": 47.0
+                                                                  }
+                                                                }
+                                                              ]
+                                                            }
+                                                          ]
+                                                        }
+                                                      ]
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "label": "Vertical scroll bar, 2 pages",
+                                                  "value": "0%",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 397.0,
+                                                    "y": 103.0,
+                                                    "width": 30.0,
+                                                    "height": 780.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 424.0,
+                                                        "y": 887.0,
+                                                        "width": 3.0,
+                                                        "height": 8.0
+                                                      }
+                                                    }
+                                                  ]
+                                                },
+                                                {
+                                                  "kind": "Other",
+                                                  "label": "Vertical scroll bar, 2 pages",
+                                                  "value": "0%",
+                                                  "enabled": true,
+                                                  "visible": true,
+                                                  "frame": {
+                                                    "x": 397.0,
+                                                    "y": 103.0,
+                                                    "width": 30.0,
+                                                    "height": 780.0
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "kind": "Other",
+                                                      "enabled": true,
+                                                      "visible": false,
+                                                      "frame": {
+                                                        "x": 424.0,
+                                                        "y": 887.0,
+                                                        "width": 3.0,
+                                                        "height": 8.0
+                                                      }
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

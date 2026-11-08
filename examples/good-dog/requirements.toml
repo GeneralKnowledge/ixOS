@@ -1,0 +1,37 @@
+# What Good Dog GD1 must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone.
+
+[[requirement]]
+id = "GD-1"
+statement = "A new owner describes their dog and gets a short starter plan for today."
+twin = ["GoodDogModelTests.testOnboardingLeadsToATodayPlanThatSurvivesARelaunch"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "GD-2"
+statement = "Today's plan stays the same all day, survives a relaunch, and changes on a new day."
+twin = ["GoodDogModelTests.testOnboardingLeadsToATodayPlanThatSurvivesARelaunch", "GoodDogModelTests.testANewDayBringsANewPlan"]
+
+[[requirement]]
+id = "GD-3"
+statement = "Recording how a session went marks it done, moves the skill on and appears in history."
+twin = ["GoodDogModelTests.testRecordingASessionUpdatesTodayProgressAndHistory"]
+device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "GD-4"
+statement = "An invalid dog name is refused with a plain message and changes nothing."
+twin = ["GoodDogModelTests.testInvalidNamesAreRefusedAndChangeNothing"]
+
+[[requirement]]
+id = "GD-5"
+statement = "The owner can swap an activity, take a short plan, and erase everything."
+twin = ["GoodDogModelTests.testSwapShortenAndErase"]
+
+[[requirement]]
+id = "GD-6"
+statement = "Learn shows exercises by topic, a glossary and search across both, from Rust's content."
+twin = ["GoodDogModelTests.testLearnSearchAndGlossaryComeFromRust"]
+device = ["uitests/journey.toml"]

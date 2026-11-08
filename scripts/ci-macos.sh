@@ -59,6 +59,7 @@ affected() {
       examples/counter/*) pick[counter]=1 ;;
       examples/weather/*) pick[weather]=1 ;;
       examples/pocket-library/*) pick[pocket-library]=1 ;;
+      examples/good-dog/* | examples/good-dog-core/*) pick[good-dog]=1 ;;
       examples/device-lab/*) pick[device-lab]=1 ;;
       crates/forge-cli/* | templates/*) pick[template]=1 ;;
       crates/forge-services/* | scripts/make-services-check-app.sh)
@@ -118,7 +119,7 @@ for app in "${APPS[@]}"; do
       ./scripts/test-swift-host.sh "examples/$app"
       endgroup
       ;;
-    chat | pocket-library | device-lab)
+    chat | pocket-library | good-dog | device-lab)
       project="$(find "examples/$app/Xcode" -maxdepth 1 -name '*.xcodeproj' | head -1)"
       group "$app: Swift host tests"
       ./scripts/test-swift-host.sh "examples/$app"

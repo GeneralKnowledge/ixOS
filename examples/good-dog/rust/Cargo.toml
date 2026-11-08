@@ -1,0 +1,51 @@
+# This app's Rust library: its logic, state, persistence and networking, and the
+# UniFFI API the SwiftUI and Compose hosts call. Edit freely; `forge build`
+# rebuilds it and regenerates the bindings.
+[package]
+name = "good-dog-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# Forge's runtime crates, from the Forge checkout this app was created with.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+forge-storage = { path = "../../../crates/forge-storage" }
+# The plan engine, dog-training rules and bundled content (GD0).
+good-dog-core = { path = "../../good-dog-core" }
+# Native services (Keychain, directories, notifications, permissions, deep
+# links): `forge_services::native_services!()` in src/lib.rs. To drop them,
+# remove that line, this dependency and async-trait. See docs/native-services.md.
+forge-services = { path = "../../../crates/forge-services" }
+# The live connection to `forge device` (pair, connect, status, snapshot, cmd).
+# Only in development builds: `forge run ios --devtools` turns the feature on,
+# so release builds contain none of it. See docs/forge-device.md.
+forge-devtools = { path = "../../../crates/forge-devtools", optional = true }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[features]
+devtools = ["dep:forge-devtools"]
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace: the app builds the same inside or outside the Forge checkout.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

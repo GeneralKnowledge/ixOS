@@ -1,0 +1,32 @@
+[
+ {
+  "id": "everyday_foundations",
+  "title": "Everyday foundations",
+  "description": "Attention, name response, and simple manners."
+ },
+ {
+  "id": "puppy_life",
+  "title": "Puppy life",
+  "description": "Gentle confidence-building, mouthing redirects, and early life skills."
+ },
+ {
+  "id": "walking_together",
+  "title": "Walking together",
+  "description": "Lead comfort and check-ins on walks."
+ },
+ {
+  "id": "coming_back",
+  "title": "Coming back when called",
+  "description": "Recall foundations that feel rewarding."
+ },
+ {
+  "id": "calm_confidence",
+  "title": "Calm and confidence",
+  "description": "Settling, handling, and quiet rest."
+ },
+ {
+  "id": "life_at_home",
+  "title": "Life at home",
+  "description": "Toilet routines, doorways, greetings, and everyday pauses."
+ }
+]
