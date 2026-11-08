@@ -11,11 +11,15 @@
 //!   [`http::HttpTransport`]; [`phone::Phone`] supplies the real transport,
 //!   mounts the Developer Disk Image and starts the runner.
 //! - [`script`] runs steps from a TOML file against any [`Driver`].
+//! - [`visual`] and [`baseline`] compare a run's screenshots with approved
+//!   ones (visual regression), on Linux.
 
+pub mod baseline;
 pub mod http;
 pub mod phone;
 pub mod script;
 pub mod tree;
+pub mod visual;
 pub mod wda;
 
 use std::time::{Duration, Instant};

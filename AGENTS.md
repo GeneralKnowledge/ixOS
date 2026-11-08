@@ -60,4 +60,5 @@ On a machine with an iPhone over USB: `forge device list|info|logs|crashes`, and
 | A native iOS capability | [native-services.md](docs/native-services.md), the ledger, [framework-extraction-audit.md](docs/framework-extraction-audit.md) |
 | App settings, permissions, entitlements | [app-config.md](docs/app-config.md) |
 | Proving a feature works (requirements, evidence) | [evidence.md](docs/evidence.md) |
+| Noticing when a UI change made a screen worse (screenshot baselines) | [visual-regression.md](docs/visual-regression.md) |
 | A build or install failure | [troubleshooting.md](docs/troubleshooting.md), [linux-setup.md](docs/linux-setup.md) |

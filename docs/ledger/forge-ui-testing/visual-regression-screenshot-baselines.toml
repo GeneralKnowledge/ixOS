@@ -1,0 +1,9 @@
+order = 35
+capability = "Visual regression: screenshots compared with approved baselines, changed areas named by element (`forge ui run --visual`, `forge ui accept`)"
+framework = "Yes: forge-uitest (visual, baseline)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: no app has baselines yet"
+iphone = "No: tested on Linux only (synthetic images and trees); not run on a phone"
+documented = "Yes: visual-regression.md"
+limits = "Exact pixels with a per-channel tolerance and a minimum area size, not perceptual; status bar and named elements masked; thresholds not yet tuned on real screenshots; baselines are per screen size and must come from the same build kind"
