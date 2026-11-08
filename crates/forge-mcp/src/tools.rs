@@ -112,6 +112,17 @@ pub const SPECS: &[Spec] = &[
         }), &[]),
     },
     Spec {
+        name: "forge_verify",
+        title: "Is every requirement proven?",
+        description: "Reads the app's requirements.toml and the evidence bundles that forge_check (swift) and forge_run_ui_test wrote, and says per requirement whether its Linux twin tests and its iPhone scenario passed for the code as it is now (stale = recorded for different files). Runs nothing. Use it as the stop condition: done when ok, or, without a phone, when ok with twin_only.",
+        tier: Tier::Observe,
+        device: false,
+        needs_ui: false,
+        schema: || schema(json!({
+            "twin_only": {"type": "boolean", "description": "Only require the Linux twin evidence; iPhone results are still shown"}
+        }), &[]),
+    },
+    Spec {
         name: "forge_build_ios",
         title: "Build for iPhone",
         description: "Builds the Rust library for iOS, regenerates the Swift bindings and compiles the SwiftUI app with xtool (needs the Darwin SDK). No phone needed. Failures come back with diagnostics (file, line, column) and a stage: rust, swift.",
@@ -458,6 +469,16 @@ impl crate::Server {
                 }
                 Answer::of(sync)
             }
+            "forge_verify" => {
+                let app = app_or_fail!();
+                let dir = app.dir.display().to_string();
+                let mut inv =
+                    Invocation::new(&["verify", "--project", &dir], &app.dir, secs(MIN), "test");
+                if args.0.get("twin_only") == Some(&json!(true)) {
+                    inv = inv.arg("--twin-only");
+                }
+                Answer::of(self.forge(inv, cancel).await)
+            }
             "forge_check" => {
                 let app = app_or_fail!();
                 let what = args.str("what").unwrap_or("all");
@@ -672,7 +693,13 @@ impl crate::Server {
                     }
                     Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
                 };
-                let out = app.dir.join(".forge").join("mcp").join(stamp("ui-run"));
+                // An evidence bundle, where `forge verify` looks
+                // (docs/evidence.md): .forge/runs/<UTC>-ui-run/.
+                let out = app
+                    .dir
+                    .join(".forge")
+                    .join("runs")
+                    .join(format!("{}-ui-run", crate::journal::timestamp()));
                 self.ui_run(&app, &file, &out, cancel).await
             }
             other => Answer::of(refusal(

@@ -15,6 +15,9 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+
+use crate::runner::{Cmd, CommandRunner};
 
 pub const SCHEMA: &str = "forge.evidence/1";
 pub const REQUIREMENTS_FILE: &str = "requirements.toml";
@@ -224,11 +227,167 @@ pub fn write_bundle(run: &Run, id: &str) -> Result<PathBuf, String> {
     fs::create_dir_all(&dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
     let (log_name, log_text) = run.raw_output;
     fs::write(dir.join(log_name), log_text).map_err(|e| format!("write log: {e}"))?;
-    let doc = document(run, id);
-    let text = serde_json::to_string_pretty(&doc).unwrap_or_default();
-    fs::write(dir.join("evidence.json"), text + "\n")
-        .map_err(|e| format!("write evidence.json: {e}"))?;
+    let mut doc = document(run, id);
+    hash_artifacts(&mut doc, &dir);
+    write_json(&dir, &doc)?;
     Ok(dir)
+}
+
+fn write_json(dir: &Path, doc: &Value) -> Result<(), String> {
+    let text = serde_json::to_string_pretty(doc).unwrap_or_default();
+    fs::write(dir.join("evidence.json"), text + "\n")
+        .map_err(|e| format!("write evidence.json: {e}"))
+}
+
+/// Adds `sha256` and `bytes` to every listed artifact that exists in `dir`,
+/// so a bundle copied elsewhere can be checked against its files.
+pub fn hash_artifacts(doc: &mut Value, dir: &Path) {
+    let Some(list) = doc["artifacts"].as_array_mut() else {
+        return;
+    };
+    for a in list {
+        let Some(rel) = a["path"].as_str() else {
+            continue;
+        };
+        if let Ok(bytes) = fs::read(dir.join(rel)) {
+            a["sha256"] = json!(sha256_hex(&bytes));
+            a["bytes"] = json!(bytes.len());
+        }
+    }
+}
+
+pub fn sha256_hex(bytes: &[u8]) -> String {
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+/// What a run was built from (`build` in a bundle): the commit, whether the
+/// app folder had changes, `tree` (a git tree hash of the app folder as it
+/// was, committed or not, so `forge verify` can tell whether the evidence
+/// is for the code as it is now) and the forge version.
+pub fn provenance(runner: &dyn CommandRunner, app: &Path) -> Value {
+    let git = |args: &[&str]| git_line(runner, app, args, None);
+    json!({
+        "commit": git(&["rev-parse", "HEAD"]),
+        "dirty": git(&["status", "--porcelain", "--", "."]).map(|s| !s.is_empty()),
+        "tree": app_tree(runner, app),
+        "forge": env!("CARGO_PKG_VERSION"),
+    })
+}
+
+fn git_line(
+    runner: &dyn CommandRunner,
+    app: &Path,
+    args: &[&str],
+    index: Option<&Path>,
+) -> Option<String> {
+    let mut cmd = Cmd::new("git").arg("-C").arg(app).args(args);
+    if let Some(index) = index {
+        cmd = cmd.env("GIT_INDEX_FILE", index);
+    }
+    runner
+        .capture(&cmd)
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+}
+
+/// The git tree hash of the app folder's files as they are on disk,
+/// committed or not (ignored files such as `.forge/` are left out). Same
+/// files, same hash. Uses a scratch index, so the real index is untouched.
+pub fn app_tree(runner: &dyn CommandRunner, app: &Path) -> Option<String> {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    static N: AtomicU32 = AtomicU32::new(0);
+    let index = std::env::temp_dir().join(format!(
+        "forge-tree-{}-{}.index",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
+    let tree = git_line(runner, app, &["add", "-A", "--", "."], Some(&index))
+        .and_then(|_| git_line(runner, app, &["write-tree"], Some(&index)));
+    let _ = fs::remove_file(&index);
+    tree.filter(|t| !t.is_empty())
+}
+
+/// The app folder a file belongs to: the nearest folder above it with a
+/// `forge.toml`.
+pub fn app_of(file: &Path) -> Option<PathBuf> {
+    let abs = if file.is_absolute() {
+        file.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(file)
+    };
+    abs.ancestors()
+        .skip(1)
+        .find(|d| d.join("forge.toml").is_file())
+        .map(Path::to_path_buf)
+}
+
+/// What a `forge ui run` on the phone showed, for its device bundle.
+pub struct DeviceRun<'a> {
+    /// The scenario file, relative to the app (as `requirements.toml` names it).
+    pub scenario: &'a str,
+    pub build: Value,
+    pub device: Value,
+    pub passed_steps: usize,
+    /// The failing step: `{ "n", "action", "error", "on_screen", "tree" }`.
+    pub failed_step: Option<Value>,
+    /// Files in the bundle folder: (kind, path relative to the folder).
+    pub artifacts: Vec<(&'static str, String)>,
+    pub duration_ms: u64,
+}
+
+/// Writes `evidence.json` (kind `device`) into `dir`, the run's output
+/// folder, and sets the `device` verdict of every requirement that lists the
+/// scenario. Requirements the scenario doesn't prove are left out.
+pub fn write_device_bundle(
+    run: &DeviceRun,
+    reqs: &[Requirement],
+    dir: &Path,
+    id: &str,
+) -> Result<PathBuf, String> {
+    let ok = run.failed_step.is_none();
+    let verdict = if ok { "passed" } else { "failed" };
+    let requirements: Vec<Value> = reqs
+        .iter()
+        .filter(|r| r.device.iter().any(|s| same_path(s, run.scenario)))
+        .map(|r| {
+            json!({
+                "id": r.id,
+                "statement": r.statement,
+                "device": { "verdict": verdict, "scenarios": [run.scenario] },
+            })
+        })
+        .collect();
+    let mut doc = json!({
+        "schema": SCHEMA,
+        "id": id,
+        "command": "ui run",
+        "kind": "device",
+        "ok": ok,
+        "duration_ms": run.duration_ms,
+        "where": {
+            "host": format!("{}-{}", std::env::consts::ARCH, std::env::consts::OS),
+            "device": run.device,
+        },
+        "build": run.build,
+        "scenario": run.scenario,
+        "steps": { "passed": run.passed_steps, "failed": run.failed_step },
+        "requirements": requirements,
+        "artifacts": run.artifacts.iter().map(|(k, p)| json!({"kind": k, "path": p})).collect::<Vec<_>>(),
+    });
+    fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    hash_artifacts(&mut doc, dir);
+    write_json(dir, &doc)?;
+    Ok(dir.join("evidence.json"))
+}
+
+/// `uitests/tip.toml` and `./uitests/tip.toml` are the same scenario.
+fn same_path(a: &str, b: &str) -> bool {
+    let norm = |s: &str| s.trim_start_matches("./").replace('\\', "/");
+    norm(a) == norm(b)
 }
 
 /// The `evidence.json` document.
@@ -404,5 +563,54 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["requirements"][0]["twin"]["verdict"], "passed");
         assert_eq!(doc["requirements"][0]["device"]["verdict"], "unverified");
         assert!(doc["where"]["device"].is_null());
+    }
+
+    #[test]
+    fn a_device_bundle_judges_only_the_requirements_naming_its_scenario() {
+        let dir = tempfile::tempdir().unwrap();
+        fs::write(dir.path().join("failure-step3.png"), b"png").unwrap();
+        let reqs = [
+            Requirement {
+                id: "T-1".into(),
+                statement: "Tip is added".into(),
+                twin: vec![],
+                device: vec!["./uitests/tip.toml".into()],
+            },
+            Requirement {
+                id: "T-2".into(),
+                statement: "Other".into(),
+                twin: vec!["A.b".into()],
+                device: vec!["uitests/other.toml".into()],
+            },
+        ];
+        let run = DeviceRun {
+            scenario: "uitests/tip.toml",
+            build: json!({"commit": "abc", "tree": "t1", "installed_as": "XTL-1.org.x"}),
+            device: json!({"udid": "0000", "ios_major": 26}),
+            passed_steps: 2,
+            failed_step: Some(json!({"step": 3, "error": "no element"})),
+            artifacts: vec![("screenshot", "failure-step3.png".into())],
+            duration_ms: 9,
+        };
+        let path = write_device_bundle(&run, &reqs, dir.path(), "2026-11-08T09-00-00").unwrap();
+        let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(doc["kind"], "device");
+        assert_eq!(doc["ok"], false);
+        assert_eq!(doc["requirements"].as_array().unwrap().len(), 1);
+        assert_eq!(doc["requirements"][0]["id"], "T-1");
+        assert_eq!(doc["requirements"][0]["device"]["verdict"], "failed");
+        assert_eq!(doc["where"]["device"]["udid"], "0000");
+        assert_eq!(doc["artifacts"][0]["sha256"], sha256_hex(b"png"));
+        assert_eq!(doc["artifacts"][0]["bytes"], 3);
+    }
+
+    #[test]
+    fn the_app_of_a_scenario_is_the_nearest_folder_with_forge_toml() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Tipster");
+        fs::create_dir_all(app.join("uitests")).unwrap();
+        fs::write(app.join("forge.toml"), "").unwrap();
+        assert_eq!(app_of(&app.join("uitests/tip.toml")), Some(app));
+        assert_eq!(app_of(&dir.path().join("x.toml")), None);
     }
 }

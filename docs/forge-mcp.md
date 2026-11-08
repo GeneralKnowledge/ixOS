@@ -43,6 +43,8 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 
 Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
 
+| `forge_verify` | `verify [--twin-only]` | Per requirement in `requirements.toml`: the newest twin and iPhone verdicts and whether they are for the current files ([evidence.md](evidence.md#forge-verify)). The stop condition. `forge_run_ui_test` writes its output to `.forge/runs/<UTC>-ui-run/`, so its results count |
+
 Enforced by the server: paths stay inside the root (symlinks included); phone tools run one at a time; every child has a timeout, and a timeout or a cancelled call kills its whole process group (xtool and cargo too); a device tool that times out returns `needs_person: true`.
 
 Different from the design below, on purpose for M0:
@@ -54,6 +56,16 @@ Different from the design below, on purpose for M0:
 - **Not built:** `forge_ui_audit`, `forge_set_appearance`, `forge_app_state`, `forge_remove_app`, `forge_add_capability` (M1 and later, as planned); screenshot downscaling; a server-side log capture from the last launch; the "no more than two identical failed installs" rule.
 
 Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full MCP session over an in-memory pipe with a fake `forge` script (policy refusals, root escapes, diagnostics in summaries, a hung device call killed with `needs_person`, UI step files). Nothing has run against Cati yet; `iphone-acceptance.sh --with-mcp` (step X2) is the first phone check, asking `forge_device_status` from the phone. A short scripted session (doctor, device status, logs, then a launch, tree and screenshot) follows once `forge ui` has run on the phone; the unattended Tipster run comes after that.
+
+### The run journal
+
+Every tool call is appended to `<root>/.forge/runs/<UTC start>-mcp/journal.jsonl` (format `forge.journal/1`; the path is printed on stderr when the server starts, and nothing is written until the first call). The first line records the server: forge version, root, `allow_install`, allowed bundle ids, UDID. Then one line per call:
+
+```json
+{"event":"call","seq":7,"at":"2026-11-08T09-12-40","tool":"forge_ui_act","args":{"project":"Tipster","action":"type","id":"bill.amount","text":{"chars":2}},"ok":true,"stage":"ok","duration_ms":4210,"cli":"forge --json ui run …"}
+```
+
+A failed call adds `error` (first 500 characters), `needs_person`, the `hints` problems, and `log` and `evidence` paths when the result has them. Typed text and expected values (`text`, `value`) are kept only as their length; app output (trees, logs, screenshots) stays in the files the result points at, never in the journal. It is what a person reads after an unattended run like Tipster's below, and what a later agent reads to pick up where one stopped.
 
 ### First Tipster run on Cati (2026-11-07)
 

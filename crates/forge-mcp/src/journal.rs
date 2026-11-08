@@ -44,7 +44,9 @@ impl Journal {
     /// A journal for a server rooted at `root`. Nothing is written yet.
     pub fn new(root: &Path) -> Self {
         Self {
-            dir: root.join(".forge/runs").join(format!("{}-mcp", timestamp())),
+            dir: root
+                .join(".forge/runs")
+                .join(format!("{}-mcp", timestamp())),
             state: Mutex::new(State::default()),
         }
     }
@@ -194,7 +196,8 @@ mod tests {
 
     #[test]
     fn typed_text_is_kept_as_its_length_only() {
-        let args = json!({"action": "type", "id": "bill.amount", "text": "secret 42", "value": "£50"});
+        let args =
+            json!({"action": "type", "id": "bill.amount", "text": "secret 42", "value": "£50"});
         let result = json!({
             "ok": false, "stage": "ui", "cli": "forge --json ui run step.toml",
             "error": "x".repeat(2000), "needs_person": true,

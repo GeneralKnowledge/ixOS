@@ -495,19 +495,26 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
     Ok(())
 }
 
-/// The commit the run was built from, and whether the app had local changes.
+/// What the run was built from (evidence::provenance), plus the Swift that
+/// ran the tests.
 fn build_info(runner: &dyn CommandRunner, app: &Path) -> serde_json::Value {
-    let git = |args: &[&str]| {
-        runner
-            .capture(&Cmd::new("git").arg("-C").arg(app).args(args))
+    let mut build = evidence::provenance(runner, app);
+    let swift = match std::env::var("FORGE_SWIFT_DOCKER") {
+        Ok(image) if !image.is_empty() => Some(format!("docker {image}")),
+        _ => runner
+            .capture(&Cmd::new("swift").arg("--version"))
             .ok()
             .filter(|o| o.status.success())
-            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+            .and_then(|o| {
+                String::from_utf8_lossy(&o.stdout)
+                    .lines()
+                    .map(str::trim)
+                    .find(|l| !l.is_empty())
+                    .map(str::to_string)
+            }),
     };
-    serde_json::json!({
-        "commit": git(&["rev-parse", "HEAD"]),
-        "dirty": git(&["status", "--porcelain", "--", "."]).map(|s| !s.is_empty()),
-    })
+    build["swift"] = serde_json::json!(swift);
+    build
 }
 
 #[cfg(test)]

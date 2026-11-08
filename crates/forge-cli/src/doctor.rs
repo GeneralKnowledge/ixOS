@@ -699,14 +699,20 @@ mod tests {
     #[test]
     fn xtool_pin_matches_the_pinned_build_and_warns_otherwise() {
         let pinned = pinned_xtool_version();
-        assert_ne!(pinned, "unknown", "toolchain/xtool.env has no XTOOL_VERSION");
+        assert_ne!(
+            pinned, "unknown",
+            "toolchain/xtool.env has no XTOOL_VERSION"
+        );
 
         let mock = MockRunner::default();
         let v = to_value(&report(&mock, &workspace_root(), &|_| None));
         assert_eq!(v["xtool_pin"]["expected"], pinned);
         assert_eq!(v["xtool_pin"]["matches"], Value::Null);
 
-        for line in [format!("xtool {pinned}\n"), format!("xtool {pinned}-dirty\n")] {
+        for line in [
+            format!("xtool {pinned}\n"),
+            format!("xtool {pinned}-dirty\n"),
+        ] {
             mock.respond("xtool", 0, &line);
             let r = report(&mock, &workspace_root(), &|_| None);
             assert_eq!(r.xtool_pin.matches, Some(true), "{line}");

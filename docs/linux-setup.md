@@ -37,14 +37,14 @@ swift --version
 
 ## Install xtool
 
+Forge pins the xtool it is tested with in [`toolchain/xtool.env`](../toolchain/xtool.env): the patched 1.24.0-ixos.1 build from our fork (`GeneralKnowledge/xtool`, branch `ixos`), fetched by commit and checked against its SHA-256. Install it with:
+
 ```bash
-curl -fL \
-  "https://github.com/xtool-org/xtool/releases/latest/download/xtool-$(uname -m).AppImage" \
-  -o /tmp/xtool
-chmod +x /tmp/xtool
-sudo mv /tmp/xtool /usr/local/bin/xtool
-xtool --version
+scripts/install-xtool.sh        # to /usr/local/bin/xtool; refuses a file whose checksum differs
+xtool --version                 # xtool 1.24.0-ixos.1
 ```
+
+Only x86_64 has a pinned build. On arm64, build the fork's `ixos` branch with its `Linux/build.sh` (or use upstream's release at your own risk) and add its URL and SHA-256 to `toolchain/xtool.env`. `forge doctor` says when the installed xtool isn't the pinned version; any recent xtool still builds, but the device results in [compatibility.md](compatibility.md) were recorded with the pinned one.
 
 ## One-time xtool configuration
 
@@ -96,10 +96,10 @@ Hosted Linux CI runs the Rust checks, binding drift, Android JVM tests and a deb
 
 1. `apt-get install` of `libncurses6`, `usbmuxd`, `libimobiledevice-utils`, `curl`, `ca-certificates`
 2. `rustup target add aarch64-apple-ios`
-3. Download of the latest xtool AppImage to `/usr/local/bin/xtool`
+3. `scripts/install-xtool.sh`: the pinned xtool AppImage to `/usr/local/bin/xtool`, SHA-256 checked
 4. Swift 6.2.3 from swift.org into `/usr/local` (skipped if already present)
 5. `cargo fetch`
 
 It holds no credentials or machine-specific paths, so it stays in the repo. It does **not** run `xtool setup` (that needs an Apple ID and an `Xcode.xip`), so agent VMs can run Rust, binding and template checks but not Linux iOS builds.
 
-Two known gaps: xtool is fetched as `latest` rather than the version in [compatibility.md](compatibility.md), and neither download is checksum-verified. If you change the install steps on this page, update `environment.json` to match.
+One known gap: the Swift tarball is not checksum-verified (swift.org publishes PGP signatures, not SHA-256 sums, and download.swift.org could not be reached from the session that pinned xtool). If you change the install steps on this page, update `environment.json` to match.

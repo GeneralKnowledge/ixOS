@@ -427,10 +427,7 @@ pub fn serve_stdio(opts: Options) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     runtime.block_on(async {
         let server = Server::new(opts);
-        eprintln!(
-            "forge mcp: run journal {}",
-            server.journal_path().display()
-        );
+        eprintln!("forge mcp: run journal {}", server.journal_path().display());
         let running = server
             .serve(rmcp::transport::stdio())
             .await
