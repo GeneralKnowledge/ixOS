@@ -268,10 +268,20 @@ private struct AssistantBubble: View {
             ProgressView()
                 .accessibilityLabel("Thinking")
         } else if text.isEmpty {
-            Text(message.state == .refused ? "No answer" : "No text")
+            Text(emptyText)
                 .italic()
         } else {
             Text(text)
+        }
+    }
+
+    /// An answer that ended before any text was written.
+    private var emptyText: String {
+        switch message.state {
+        case .interrupted: return "No answer was written"
+        case .stopped: return "Stopped before any text"
+        case .refused, .failed: return "No answer"
+        case .done, .streaming: return "No text"
         }
     }
 

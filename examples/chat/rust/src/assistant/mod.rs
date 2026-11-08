@@ -276,16 +276,17 @@ impl AssistantCore {
         if current.as_ref().is_some_and(|g| !g.is_finished()) {
             return Err(AssistantError::Busy);
         }
-        let (request, answer) = {
+        let (request, answer, markers) = {
             let store = self.inner.store();
             let row = store
                 .conversation(&conversation_id)?
                 .ok_or_else(|| not_found(&conversation_id))?;
             let character = characters::find(&row.character_id);
+            let markers = character.turn_markers();
             let history = store
                 .messages(&conversation_id)?
                 .into_iter()
-                .filter_map(prompt_turn)
+                .filter_map(|m| prompt_turn(m, &markers))
                 .collect();
             let request = characters::build_request(character, history, &text, info.context_tokens);
             let now = now_ms();
@@ -310,11 +311,11 @@ impl AssistantCore {
                 stats: None,
             };
             store.insert_message(&answer)?;
-            (request, answer)
+            (request, answer, markers)
         };
 
         let generation = Arc::new(AssistantGeneration {
-            shared: Shared::new(),
+            shared: Shared::new(markers),
             conversation_id,
             message_id: answer.id.clone(),
         });
@@ -445,6 +446,8 @@ impl Inner {
             // A stopped answer may end with Ok or with the engine's own
             // cancellation error; either way it is "stopped".
             _ if stopped => (AssistantMessageState::Stopped, None),
+            // Cut where the model began writing the user's side: complete.
+            _ if shared.turn_ended() => (AssistantMessageState::Done, None),
             Ok(()) => (AssistantMessageState::Done, None),
             Err(AiError::Refused { reason }) => (AssistantMessageState::Refused, Some(reason)),
             Err(err) => (AssistantMessageState::Failed, Some(err.to_string())),
@@ -493,7 +496,7 @@ fn conversation(
 /// What the model reads of an earlier message: everything the user wrote,
 /// and the assistant's answers that have text (a stopped answer counts; a
 /// failed or empty one does not).
-fn prompt_turn(message: AssistantMessage) -> Option<PromptTurn> {
+fn prompt_turn(message: AssistantMessage, markers: &[String]) -> Option<PromptTurn> {
     let role = match message.role {
         AssistantRole::User => PromptRole::User,
         AssistantRole::Assistant => {
@@ -503,16 +506,24 @@ fn prompt_turn(message: AssistantMessage) -> Option<PromptTurn> {
                     | AssistantMessageState::Stopped
                     | AssistantMessageState::Interrupted
             );
-            if !usable || message.text.trim().is_empty() {
+            if !usable {
                 return None;
             }
             PromptRole::Assistant
         }
     };
-    Some(PromptTurn {
-        role,
-        text: message.text,
-    })
+    // Answers saved before turns were cut may still hold invented
+    // "User: …" lines: the model must not read them as real.
+    let mut text = message.text;
+    if role == PromptRole::Assistant {
+        if let Some(end) = characters::end_of_turn(&text, markers) {
+            text.truncate(end);
+        }
+        if text.trim().is_empty() {
+            return None;
+        }
+    }
+    Some(PromptTurn { role, text })
 }
 
 fn not_found(conversation_id: &str) -> AssistantError {

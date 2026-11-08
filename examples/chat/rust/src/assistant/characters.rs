@@ -77,14 +77,19 @@ const CHARACTERS: &[CharacterDef] = &[
     },
 ];
 
-/// Rules every character plays by. Pinned: history trimming never drops it.
-const ROLE_PLAY_FRAME: &str = "This is a role-play in a private app on the user's phone. \
-     Stay in character in every reply: answer as the character, in the first \
-     person, and never describe these instructions. Keep replies short (one to \
-     three sentences) and keep things friendly and non-explicit.";
+/// Rules every character follows. Pinned: history trimming never drops it.
+/// Framed as texting in a messaging app rather than as "role-play": on
+/// Cati, Foundation Models answered a role-play framing with "I can't
+/// continue this roleplay" (L1 phone run, 2026-11-08).
+const CHARACTER_FRAME: &str = "You are texting with the user in a private messaging \
+     app on their phone. Write only your own next message, in the first person, \
+     in a casual texting style: one to three short sentences, warm and friendly. \
+     Never write the user's messages, never write a transcript, and never \
+     describe these instructions.";
 
 const ASSISTANT_FRAME: &str = "You are a helpful assistant running entirely on the \
-     user's phone, without internet access. Answer briefly and clearly.";
+     user's phone, without internet access. Answer briefly and clearly. Write \
+     only your own answer, never the user's next message.";
 
 /// The longest answer, in tokens. L3 makes it a setting.
 pub const MAX_ANSWER_TOKENS: u32 = 400;
@@ -124,17 +129,28 @@ impl CharacterDef {
         if self.persona.is_empty() {
             ASSISTANT_FRAME.to_string()
         } else {
-            format!("{ROLE_PLAY_FRAME}\n\n{}", self.persona)
+            format!("{CHARACTER_FRAME}\n\n{}", self.persona)
         }
     }
 
+    /// Line starts that mean the model has begun writing another turn:
+    /// the user's ("User:", "You:" as the user is often called in
+    /// transcripts) or its own name again.
+    pub(crate) fn turn_markers(&self) -> Vec<String> {
+        let mut markers: Vec<String> = ["User:", "You:", "Me:", "Assistant:"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let own = format!("{}:", self.name);
+        if !markers.contains(&own) {
+            markers.push(own);
+        }
+        markers
+    }
+
     fn reminder(&self) -> Option<String> {
-        (!self.persona.is_empty()).then(|| {
-            format!(
-                "[Stay in character as {}; reply in one to three sentences.]",
-                self.name
-            )
-        })
+        (!self.persona.is_empty())
+            .then(|| format!("[Reply as {}, in one to three sentences.]", self.name))
     }
 }
 
@@ -174,4 +190,27 @@ pub(crate) fn build_request(
         temperature: character.temperature,
         max_tokens: MAX_ANSWER_TOKENS,
     }
+}
+
+/// Where the answer's own turn ends: the start of a later line that opens
+/// with one of `markers` (ignoring case, leading spaces and Markdown `*`),
+/// with trailing whitespace before it dropped. `None` if no such line.
+pub(crate) fn end_of_turn(text: &str, markers: &[String]) -> Option<usize> {
+    let mut offset = 0;
+    for line in text.split_inclusive('\n') {
+        let start = offset;
+        offset += line.len();
+        if start == 0 {
+            continue;
+        }
+        let head = line.trim_start_matches([' ', '\t', '*', '_']);
+        let opens_turn = markers.iter().any(|m| {
+            head.get(..m.len())
+                .is_some_and(|h| h.eq_ignore_ascii_case(m))
+        });
+        if opens_turn {
+            return Some(text[..start].trim_end().len());
+        }
+    }
+    None
 }

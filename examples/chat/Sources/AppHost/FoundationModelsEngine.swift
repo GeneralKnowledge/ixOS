@@ -10,10 +10,13 @@ import Foundation
 ///
 /// Rust owns the conversation (characters, history, trimming, when to stop);
 /// this adapter only turns a `GenerateRequest` into text and pushes it into
-/// Rust's `TokenSink` (docs/local-ai.md). Each answer gets a fresh session:
-/// the instructions are the character, the prompt is the trimmed history in
-/// plain text. Plain text generation only, no `@Generable` (its macro needs
-/// a compiler plugin that only ships with Xcode).
+/// Rust's `TokenSink` (docs/local-ai.md). Each answer gets a fresh session
+/// built from a transcript: the character as instructions, then each earlier
+/// message as a real prompt or response entry, and the newest message as the
+/// prompt. (A flattened "User: … You: …" script made the model carry on
+/// writing both sides; L1 phone run, 2026-11-08.) Plain text generation
+/// only, no `@Generable` (its macro needs a compiler plugin that only ships
+/// with Xcode).
 public final class FoundationModelsEngine: LocalModelEngine, Sendable {
     public static let engineId = "apple-foundation-models"
     /// Apple's published context window for the on-device model.
@@ -64,27 +67,48 @@ public final class FoundationModelsEngine: LocalModelEngine, Sendable {
         return (false, "The on-device assistant needs iOS 26 with Apple Intelligence.")
     }
 
-    /// The whole conversation as one prompt. A single message goes as it is.
-    static func prompt(_ turns: [PromptTurn]) -> String {
-        if turns.count == 1 { return turns[0].text }
-        return turns.map { ($0.role == .user ? "User: " : "You: ") + $0.text }
-            .joined(separator: "\n\n") + "\n\nYou:"
-    }
-
     #if canImport(FoundationModels)
+        /// Apple's transcript type; the app has its own `Transcript` (the
+        /// chat screen's rows), which would shadow it.
+        @available(iOS 26.0, macOS 26.0, *)
+        typealias FMTranscript = FoundationModels.Transcript
+
+        /// The instructions and the earlier messages as the session's own
+        /// history, so the model sees real turns and answers only the next.
+        @available(iOS 26.0, macOS 26.0, *)
+        static func transcript(_ instructions: String, _ earlier: [PromptTurn]) -> FMTranscript {
+            func segments(_ text: String) -> [FMTranscript.Segment] {
+                [.text(FMTranscript.TextSegment(content: text))]
+            }
+            var entries: [FMTranscript.Entry] = [
+                .instructions(
+                    FMTranscript.Instructions(segments: segments(instructions), toolDefinitions: []))
+            ]
+            for turn in earlier {
+                switch turn.role {
+                case .user:
+                    entries.append(.prompt(FMTranscript.Prompt(segments: segments(turn.text))))
+                case .assistant:
+                    entries.append(
+                        .response(FMTranscript.Response(assetIDs: [], segments: segments(turn.text))))
+                }
+            }
+            return FMTranscript(entries: entries)
+        }
+
         /// The stream yields the whole answer so far each time; only the new
         /// part goes to Rust. Leaving the loop drops the stream, which ends
         /// the generation.
         @available(iOS 26.0, macOS 26.0, *)
         static func stream(_ request: GenerateRequest, into sink: TokenSink) async throws {
-            let session = LanguageModelSession(instructions: request.instructions)
             let options = GenerationOptions(
                 temperature: request.temperature, maximumResponseTokens: Int(request.maxTokens))
+            let newest = request.turns.last?.text ?? ""
+            let session = LanguageModelSession(
+                transcript: transcript(request.instructions, Array(request.turns.dropLast())))
             var sent = ""
             do {
-                for try await snapshot in session.streamResponse(
-                    to: prompt(request.turns), options: options)
-                {
+                for try await snapshot in session.streamResponse(to: newest, options: options) {
                     let whole = snapshot.content
                     guard whole.count > sent.count, whole.hasPrefix(sent) else {
                         if sink.isStopped() || Task.isCancelled { return }

@@ -33,6 +33,11 @@ pub enum AssistantUpdate {
 pub(crate) struct Shared {
     started: Instant,
     cancelled: AtomicBool,
+    /// The model started writing the user's side ("User: …"): the answer
+    /// was cut there and is complete, not stopped.
+    turn_ended: AtomicBool,
+    /// Line starts that mean the model is writing another turn.
+    turn_markers: Vec<String>,
     state: Mutex<State>,
 }
 
@@ -61,10 +66,12 @@ pub(crate) struct Outcome {
 }
 
 impl Shared {
-    pub fn new() -> Arc<Self> {
+    pub fn new(turn_markers: Vec<String>) -> Arc<Self> {
         Arc::new(Self {
             started: Instant::now(),
             cancelled: AtomicBool::new(false),
+            turn_ended: AtomicBool::new(false),
+            turn_markers,
             state: Mutex::new(State::default()),
         })
     }
@@ -76,7 +83,7 @@ impl Shared {
     pub fn push(&self, text: String) -> bool {
         let waker = {
             let mut state = self.lock();
-            if self.is_cancelled() || state.finished.is_some() {
+            if self.is_cancelled() || self.turn_ended() || state.finished.is_some() {
                 state.pieces_after_stop += 1;
                 return false;
             }
@@ -85,6 +92,20 @@ impl Shared {
                 state.first_piece = Some(self.started.elapsed());
             }
             state.text.push_str(&text);
+            // Small models sometimes go on to write the user's next message
+            // and their own reply ("User: … / You: …"). The answer ends
+            // where that starts; the engine is told to stop.
+            if let Some(end) = super::characters::end_of_turn(&state.text, &self.turn_markers) {
+                state.text.truncate(end);
+                state.delivered = state.delivered.min(end);
+                self.turn_ended.store(true, Ordering::SeqCst);
+                let waker = state.waker.take();
+                drop(state);
+                if let Some(waker) = waker {
+                    waker.wake();
+                }
+                return false;
+            }
             // Wake the screen only when it may take the text now.
             let due = state
                 .last_delivery
@@ -107,6 +128,10 @@ impl Shared {
 
     pub fn is_cancelled(&self) -> bool {
         self.cancelled.load(Ordering::SeqCst)
+    }
+
+    pub fn turn_ended(&self) -> bool {
+        self.turn_ended.load(Ordering::SeqCst)
     }
 
     /// Ends the generation: no more text is accepted, and the screen's
