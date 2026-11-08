@@ -16,6 +16,7 @@
 mod content;
 mod exec;
 mod inspect;
+pub mod journal;
 mod project;
 mod tools;
 
@@ -71,6 +72,7 @@ pub struct Server {
     device: Arc<tokio::sync::Mutex<()>>,
     last_failure: Arc<Mutex<Option<Value>>>,
     has_ui: bool,
+    journal: Arc<journal::Journal>,
 }
 
 impl Server {
@@ -82,12 +84,19 @@ impl Server {
             .stderr(std::process::Stdio::null())
             .status()
             .is_ok_and(|s| s.success());
+        let journal = Arc::new(journal::Journal::new(&opts.root));
         Self {
+            journal,
             opts: Arc::new(opts),
             device: Arc::new(tokio::sync::Mutex::new(())),
             last_failure: Arc::new(Mutex::new(None)),
             has_ui,
         }
+    }
+
+    /// Where this server's run journal is (written from the first tool call).
+    pub fn journal_path(&self) -> std::path::PathBuf {
+        self.journal.path()
     }
 
     fn last_failure(&self) -> Option<Value> {
@@ -126,6 +135,7 @@ impl Server {
         arguments: &serde_json::Map<String, Value>,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> CallToolResult {
+        let started = std::time::Instant::now();
         let answer = match tools::spec(name) {
             Some(spec) if spec.needs_ui && !self.has_ui => tools::Answer {
                 result: tools::refusal(
@@ -147,6 +157,13 @@ impl Server {
             *self.last_failure.lock().unwrap_or_else(|p| p.into_inner()) =
                 Some(answer.result.clone());
         }
+        self.journal.record(
+            &journal::start_line(&self.opts),
+            name,
+            arguments,
+            &answer.result,
+            started.elapsed().as_millis() as u64,
+        );
         to_call_result(answer)
     }
 }
@@ -410,6 +427,10 @@ pub fn serve_stdio(opts: Options) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     runtime.block_on(async {
         let server = Server::new(opts);
+        eprintln!(
+            "forge mcp: run journal {}",
+            server.journal_path().display()
+        );
         let running = server
             .serve(rmcp::transport::stdio())
             .await
