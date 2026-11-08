@@ -96,7 +96,7 @@ Its test for every feature: *does this help an owner understand their dog, make 
 | Brief | Design | Owned by |
 |---|---|---|
 | Goals as the starting point; several at once; pause, change or abandon without losing history | A `Goal` is an owner's instance of a pathway: active, paused, finished or set aside, with its own history. At most three are active, so Today stays calm. Setting a goal aside keeps its sessions and stages | Rust (`goals.rs` in the app crate) |
-| Natural-language goals | Suggested challenges first, plus "in your own words". The words are kept and matched to suggested pathways, which the owner confirms. Rust matches the keywords and nothing is guessed silently. Matching the words with Ask comes later, in GD7 | Rust |
+| Natural-language goals | Suggested challenges first, plus "in your own words". The words are kept and matched against DogResearch's owner-questions taxonomy (`oq-recall`, `oq-alone-time` and so on), which points at the pathways. The owner confirms the match, so nothing is guessed silently. Matching the words with Ask comes later, in GD7 | Rust |
 | Structured pathways: stages, explanations, exercises, real-world practice | Pathways are versioned content written in DogResearch and exported into `content/pathways.json`, like exercises. Each stage has a plain explanation, "why it matters", the exercises it uses, one real-life practice idea and a "ready when" rule. Sessions record the pathway's `contentVersion` too | Content, loaded by `good-dog-core` |
 | Respond to evidence of learning, not completion counts | "Ready when" is a structured rule over the skill states and recent outcomes, for example "becoming consistent, no welfare concern in 7 days, and easy on 2 different days". From GD3 it also counts different contexts. The owner can always say "we're there" or "let's go back a step": progress doesn't have to be linear | Rust |
 | Easier alternatives; maintenance after a skill is learned | The easier variations and `NeedsEasier` already exist. A passed stage becomes *maintenance* and appears now and then, never as a chore | Rust |
@@ -123,6 +123,47 @@ The product phases form the spine. The ixOS capabilities from the original plan 
 | GD7 [GD5] | **Good Dog knows the dog** (phase 3). A richer profile built up gradually (motivators, sensitivities, health notes the owner chooses to give, routines), each item asked when it becomes relevant. Contextual troubleshooting from the history. On-device Ask grounded in the dog's goals and history, which the owner can correct, with transparent memory. **Ask needs Reuben's go-ahead** | Yes: answers stay grounded; welfare rules can't be argued past |
 | GD8 | **Everyday life** (phase 4). Guides and activities for walks, rest, enrichment, handling, visitors, travel and confidence. Management and giving space count as valid outcomes. Needs new content, and qualified review where it calls for it | Yes |
 | GD9 [GD6] | iPhone acceptance against the brief's test, a framework gap report, and the ledger updated | Yes |
+
+### Pathway format (proposed for DogResearch)
+
+DogResearch already has most of what a pathway needs, so the format reuses it rather than inventing a new one. `kb/meta/uk-lite-course.json` (the 10-week Foundation course) already has stages with an aim, lessons, real-life practice, a **gate** made of observable assessment metrics (`metric-recall-long-line-5m`), `opensAfter`, and `ifGateFails` (the easier route back). It also has branches for puppies, rescues, adolescents and hard walks with their own constraints, and safety gates (`safe-002-recall-management` holds off-lead work). A goal pathway is that course shape scoped to one goal:
+
+```json
+{
+  "id": "path-recall",
+  "title": "Coming back when called",
+  "ownerQuestionCategoryIds": ["oq-recall"],
+  "behaviourIds": ["beh-recall-to-handler"],
+  "lifeStages": ["older_puppy", "adolescent", "adult", "senior"],
+  "contentVersion": 1,
+  "stages": [
+    {
+      "id": "recall-near",
+      "title": "Coming back nearby",
+      "whatItMeans": "One recall word, and your dog comes to you in a quiet, enclosed space.",
+      "whyItMatters": "A recall that always pays off at home is the base for every place after it.",
+      "exerciseIds": ["ex-recall-foundation"],
+      "lessonIds": ["lesson-recall-basics"],
+      "everydayPractice": "Call once when your dog is already heading your way, and make arriving worth it.",
+      "opensAfter": ["recall-name"],
+      "gate": { "summary": "Returns to arm's reach on a 5 m long line in low distraction.", "metricIds": ["metric-recall-long-line-5m"] },
+      "ifGateFails": "Go back to the name game and shorten the distance.",
+      "safetyRuleIds": ["safe-002-recall-management", "safe-003"],
+      "maintenance": "A few rewarded recalls on ordinary walks each week."
+    }
+  ]
+}
+```
+
+How the app uses it:
+
+- **Ready when.** A stage's gate passes when both are true. First, the app's own evidence: its exercises are at least `BecomingConsistent` and there is no welfare concern in the cooldown. Second, the owner confirms the gate's observable criteria, asked as a plain question ("Did Moss come back to within arm's reach on the long line?"). Completion counts never pass a gate.
+- **When it doesn't go well.** `ifGateFails` is shown, and the stage steps back.
+- **Safety gates.** `safetyRuleIds` are hard holds in Rust: no stage behind `safe-002` opens without its condition.
+- **Exports.** DogResearch exports pathways as `dist/good-dog-pathways.json` beside its other files, and its QA checks that every exercise, lesson, metric and rule id exists. `export-from-web.sh` copies the file into `good-dog-core/content/`, and a Rust test checks the same ids again.
+- **Branches** (puppy, rescue, adolescent) become per-stage notes chosen by the dog's profile. GD7 widens this.
+
+The first four pathways need recall metrics (which exist), loose-lead metrics (one exists), and settling and visitor metrics (not yet written). DogResearch's own `gap-analysis.md` is where those gaps are tracked.
 
 ### Where M6 fits
 
