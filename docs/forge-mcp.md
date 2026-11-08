@@ -1,6 +1,6 @@
 # Forge MCP: an iOS development environment an AI agent can operate
 
-Status: **M0 server built** (`forge mcp`, crate `crates/forge-mcp`) and **run by an agent on Cati** (2026-11-07, [first run](#first-tipster-run-on-cati-2026-11-07)): a headless Claude Code agent built, installed, inspected, fixed and UI-tested Tipster with no person touching the phone. Reuben's own look at the app (done-when item 6) is pending. [Using Forge MCP](#using-forge-mcp) says what exists and how it differs from the design below; the rest of the page is the design it follows.
+Status: **M0 server built** (`forge mcp`, crate `crates/forge-mcp`) and **run by an agent on Cati** (2026-11-07, [first run](#first-tipster-run-on-cati-2026-11-07)): a headless Claude Code agent built, installed, inspected, fixed and UI-tested Tipster with no person touching the phone, and Reuben confirmed on 2026-11-08 that the app works. **M0 is done.** [Using Forge MCP](#using-forge-mcp) says what exists and how it differs from the design below; the rest of the page is the design it follows.
 
 The idea (Reuben, 2026-11-07): Forge becomes an MCP server, so a coding agent can **create, build, install, launch, inspect, test and fix a real native iOS app on a physical iPhone, from Linux, without a person in the loop**. The agent still writes Rust and SwiftUI with its own editing tools. Forge gives it the parts of iOS development an agent can't do alone: the toolchain, the signing, the phone, and eyes on the result.
 
@@ -61,6 +61,7 @@ Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full M
 
 - The agent created Tipster, kept the maths in Rust, checked on Linux, built, installed, launched, and read the screenshot and tree. It drove the app (typed 84, tapped 20 %, added a person, expected £50.40 per person) and checked logs and crashes. It relaunched at `text_size: largest`, rebuilt and reinstalled, and its UI test `tip.toml` passed on the phone (14 of 14 steps in 9 s).
 - Problems it found from device evidence and fixed: the keyboard covered the per-person total, so the total moved under the bill; at the largest size the presets became 350×78 rows, so it switched to a `ViewThatFits` grid; VoiceOver read the stepper twice, so it relabelled it "Number of people".
+- Reuben opened Tipster on Cati the next morning and confirmed it works (done-when item 6).
 - What went wrong in Forge:
   - Two of the four installs hung. xtool printed `[Installing] 100%`, never printed `[Verifying]`, and never exited. One of them had installed the app anyway. The agent waited out the full 30-minute limit before it got `needs_person`. Now `forge run ios` stops xtool after 90 s of silence following `[Installing] 100%` and reports `data.verified: false`, and `forge_install_device` gives up after 8 minutes.
   - A launch with `text_size` changed nothing while the app was running, so it now stops the app first.
