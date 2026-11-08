@@ -10,6 +10,7 @@ use forge_uitest::baseline::{self, Mode};
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
 use forge_uitest::policy::{self, Access, Gate, Journal, Policy, Scope, TerminalApprover};
 use forge_uitest::script::{self, Script};
+use forge_uitest::session::{self, Attach, SessionInfo};
 use forge_uitest::wda::WdaDriver;
 use forge_uitest::{ensure_front, Driver};
 
@@ -103,7 +104,7 @@ impl Team {
     }
 }
 
-const NO_RUNNER: &str = "the WebDriverAgent runner is not installed: run `forge ui setup --runner <WebDriverAgentRunner-Runner.app>` (see docs/forge-ui-testing.md)";
+pub(crate) const NO_RUNNER: &str = "the WebDriverAgent runner is not installed: run `forge ui setup --runner <WebDriverAgentRunner-Runner.app>` (see docs/forge-ui-testing.md)";
 
 /// `forge ui setup`: mount the Developer Disk Image, install the runner,
 /// and check that it starts.
@@ -160,6 +161,13 @@ pub fn setup(
         }
         (app, _) => app,
     };
+    let live = session::attach(&phone).map_err(err)?;
+    if let (Some(_), Attach::Ready(info)) = (wda_app, &live) {
+        return Err(format!(
+            "a UI session (process {}) is using the runner: `forge ui stop` first, then install it again",
+            info.pid
+        ));
+    }
     if let Some(app) = wda_app {
         if find_runner(&apps).is_none() {
             if let Some(note) = team.full_note(&sideloaded(&apps)) {
@@ -191,8 +199,18 @@ pub fn setup(
     writeln!(out, "Runner: {runner_id}").map_err(err)?;
     writeln!(out, "{}", team.apps_line(&sideloaded(&apps))).map_err(err)?;
 
-    writeln!(out, "Starting WebDriverAgent…").map_err(err)?;
-    let (_runner, mut driver) = start(&phone, &runner_id, team)?;
+    let (_runner, mut driver) = match live {
+        Attach::Ready(info) => {
+            writeln!(out, "{}", session_line(&info)).map_err(err)?;
+            let driver = WdaDriver::connect(phone.transport()).map_err(err)?;
+            (Held::Session(info), driver)
+        }
+        Attach::None => {
+            writeln!(out, "Starting WebDriverAgent…").map_err(err)?;
+            let (runner, driver) = start(&phone, &runner_id, team)?;
+            (Held::Own(runner), driver)
+        }
+    };
     let status = driver.status().map_err(err)?;
     // WDA answers /status before it can serve a session if XCTest is still
     // starting; don't report a runner that isn't ready as working.
@@ -216,28 +234,73 @@ pub fn setup(
         .map_err(err)
 }
 
-/// Opens the phone, starts the runner and a WebDriver session.
+/// The runner a command talks to: one it started (stopped when the command
+/// ends), or a running UI session's (`forge ui start`).
+#[allow(dead_code)] // held for its Drop, or for what it says
+enum Held {
+    Own(Runner),
+    Session(SessionInfo),
+}
+
+/// Said when a command uses a session's runner instead of starting one.
+fn session_line(info: &SessionInfo) -> String {
+    format!(
+        "Using the UI session (process {}): WebDriverAgent {} is already running",
+        info.pid,
+        info.wda_version.as_deref().unwrap_or("(unknown version)")
+    )
+}
+
+/// Opens the phone and a WebDriver session: on a running UI session's
+/// runner if there is one, else on a runner started for this command.
 fn connect(
     udid: Option<&str>,
+    out: &mut dyn Write,
 ) -> Result<
     (
         Phone,
         Vec<String>,
-        Runner,
+        Held,
         WdaDriver<forge_uitest::phone::UsbHttp>,
     ),
     String,
 > {
     let phone = Phone::open(udid).map_err(err)?;
+    report::set_device(&phone.udid, None);
+    if let Attach::Ready(info) = session::attach(&phone).map_err(err)? {
+        // The session checked the disk image and listed the apps when it
+        // started; its runner answering means both still hold.
+        writeln!(out, "{}", session_line(&info)).map_err(err)?;
+        let driver = WdaDriver::connect(phone.transport()).map_err(err)?;
+        let apps = info.apps.clone();
+        return Ok((phone, apps, Held::Session(info), driver));
+    }
     if !phone.ddi_mounted().map_err(err)? {
         return Err("the Developer Disk Image is not mounted (the phone restarted?): run `forge ui setup --ddi <folder>`".into());
     }
     let apps = phone.user_apps().map_err(err)?;
     let runner_id = find_runner(&apps).ok_or(NO_RUNNER)?.to_owned();
-    report::set_device(&phone.udid, None);
     let team = Team::resolve(None, None, Path::new(".")).unwrap_or(Team::Unknown);
     let (runner, driver) = start(&phone, &runner_id, team)?;
-    Ok((phone, apps, runner, driver))
+    Ok((phone, apps, Held::Own(runner), driver))
+}
+
+/// The installed bundle id for `app`. A session's app list is from when it
+/// started, so an app installed since is looked up on the phone again.
+fn resolve(
+    phone: &Phone,
+    apps: &mut Vec<String>,
+    held: &Held,
+    app: &str,
+) -> Result<String, String> {
+    match resolve_app(apps, app) {
+        Ok(id) => Ok(id.to_owned()),
+        Err(_) if matches!(held, Held::Session(_)) => {
+            *apps = phone.user_apps().map_err(err)?;
+            resolve_app(apps, app).map(str::to_owned)
+        }
+        Err(e) => Err(e),
+    }
 }
 
 fn start(
@@ -275,14 +338,14 @@ pub fn tree(
         own: &own,
         policy: &policy,
     };
-    let (_phone, apps, _runner, mut driver) = connect(udid)?;
+    let (phone, mut apps, held, mut driver) = connect(udid, out)?;
     if let Some(app) = app {
-        let app = resolve_app(&apps, app)?;
+        let app = resolve(&phone, &mut apps, &held, app)?;
         // Decided before the app is even brought to the front.
-        scope.access(app, &mut TerminalApprover)?;
-        driver.activate(app).map_err(err)?;
+        scope.access(&app, &mut TerminalApprover)?;
+        driver.activate(&app).map_err(err)?;
         // Never audit whatever else happens to be open.
-        ensure_front(&mut driver, app, Duration::from_secs(10)).map_err(err)?;
+        ensure_front(&mut driver, &app, Duration::from_secs(10)).map_err(err)?;
     }
     let front = driver.foreground().map_err(err)?;
     if app.is_none() {
@@ -328,7 +391,7 @@ pub fn screenshot(
         own: &own,
         policy: &policy,
     };
-    let (_phone, _apps, _runner, mut driver) = connect(udid)?;
+    let (_phone, _apps, _held, mut driver) = connect(udid, out)?;
     let front = driver.foreground().map_err(err)?;
     scope.may_read(front.as_deref(), &mut TerminalApprover)?;
     let png = driver.screenshot().map_err(err)?;
@@ -378,8 +441,8 @@ pub fn run(
         return Err(why);
     }
     let started = std::time::Instant::now();
-    let (phone, apps, _runner, mut driver) = connect(udid)?;
-    let app = resolve_app(&apps, &script.app)?.to_owned();
+    let (phone, mut apps, held, mut driver) = connect(udid, out)?;
+    let app = resolve(&phone, &mut apps, &held, &script.app)?;
     let mut session = None;
     let mut gate = match scope.access(&app, &mut TerminalApprover)? {
         Access::Own => Gate::own(&app),

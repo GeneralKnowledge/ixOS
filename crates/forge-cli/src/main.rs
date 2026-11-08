@@ -15,6 +15,7 @@ mod report;
 mod runner;
 mod swift_check;
 mod ui;
+mod ui_session;
 mod verify;
 
 use clap::{Parser, Subcommand};
@@ -264,6 +265,41 @@ enum UiCommands {
         /// Only this screenshot (its name without .png); repeatable
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
+    },
+    /// Keep one WebDriverAgent runner running in the background, so later
+    /// `forge ui` commands skip starting it (about 2 s each). Stops on
+    /// `forge ui stop` or after --idle-minutes without a command
+    Start {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Stop after this many minutes without a `forge ui` command; 0 never
+        #[arg(long, value_name = "MIN", default_value_t = 30)]
+        idle_minutes: u64,
+        /// Also stop when this process exits (forge mcp passes its own)
+        #[arg(long, value_name = "PID")]
+        exit_with: Option<u32>,
+    },
+    /// Stop the background UI session and its runner
+    Stop {
+        #[arg(long)]
+        udid: Option<String>,
+    },
+    /// Show the background UI session, if any (doesn't touch the phone)
+    Status {
+        #[arg(long)]
+        udid: Option<String>,
+    },
+    /// Hold a UI session in the foreground until Ctrl-C (what `forge ui
+    /// start` runs in the background)
+    Serve {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Stop after this many minutes without a `forge ui` command; 0 never
+        #[arg(long, value_name = "MIN", default_value_t = 30)]
+        idle_minutes: u64,
+        /// Also stop when this process exits
+        #[arg(long, value_name = "PID")]
+        exit_with: Option<u32>,
     },
 }
 
@@ -625,6 +661,10 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
+            UiCommands::Start { .. } => "ui start",
+            UiCommands::Stop { .. } => "ui stop",
+            UiCommands::Status { .. } => "ui status",
+            UiCommands::Serve { .. } => "ui serve",
             UiCommands::Accept { .. } => "ui accept",
         },
     };
@@ -848,6 +888,10 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)
                 }
+                UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
+                UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),
+                UiCommands::Status { udid } => ui_session::status(udid.as_deref(), &mut out),
+                UiCommands::Serve { udid, idle_minutes, exit_with } => ui_session::serve(udid.as_deref(), idle_minutes, exit_with, &mut out),
             }
         }
         Commands::Device { cmd } => device_command(cmd, cli.json),

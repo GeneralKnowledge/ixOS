@@ -1,0 +1,9 @@
+order = 25
+capability = "Keep one WebDriverAgent runner between commands (`forge ui start`, `stop`, `status`; `forge mcp` holds one)"
+framework = "Yes: forge-uitest (session)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No"
+iphone = "Partial: start, reuse, status, stop and recovery after kill -9 all worked on iPhone16,2, iOS 26.3.1, 2026-11-08, run over Remote Control by the iPhone session; not yet confirmed by a person"
+documented = "Yes: forge-ui-testing.md"
+limits = "Measured on iPhone16,2 (2026-11-08): `forge ui tree` 0.5 s with a session against 1.4 to 1.9 s without; `ui start` 1.5 s; a whole test file saves only one runner start (m0 9.2 s against 10.1 s), so the gain is per command, not per step. `forge mcp` holding one is not yet tried on the phone. Restarts the runner after two missed `/status` checks, gives up after three failed restarts. One session per phone; stops after 30 idle minutes by default"
