@@ -23,7 +23,8 @@ forge bindings generate                      # after changing the Rust API
 forge build ios                              # Rust + Swift for iOS (needs xtool and the Darwin SDK)
 forge run ios                                # build, sign and install on the connected iPhone
 forge device logs --process FORGE_PACKAGE_NAMEXtool --for 20s   # the app's log on the phone
-forge device crashes --pull ./crashes        # crash reports from the phone
+forge device crashes --pull ./crashes        # crash reports from the phone, symbolicated
+forge crash ./crashes/<report>.ips           # read one again: kind, likely cause, file and line
 ```
 
 Add `--json` to any of these for one `forge.result/1` object on stdout instead of prose.

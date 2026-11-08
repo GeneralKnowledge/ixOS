@@ -1,0 +1,9 @@
+order = 35
+capability = "Symbolicated crash reports (`forge crash`, `forge device crashes --pull`, `forge_read_crashes`)"
+framework = "Yes: forge-crash"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Partial: Linux tests on an LLVM-built arm64 iOS binary (dSYM and debug map) and hand-written iOS 26 reports"
+iphone = "No"
+documented = "Yes: forge-device.md"
+limits = "Needs the exact build that crashed on this computer (matched by UUID); Swift names need the Swift toolchain to demangle; Rust frames get file and line only with debug line tables in the release profile; .ips only (iOS 15+)"

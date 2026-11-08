@@ -1,0 +1,41 @@
+{"app_name":"Crashy","timestamp":"2026-11-08 10:15:00.00 +0000","app_version":"1.0","slice_uuid":"4c4c4451-5555-3144-a1b5-b63c7a520c29","adam_id":"0","build_version":"1","platform":2,"bundleID":"org.forgemobile.crashy","share_with_app_devs":0,"is_first_party":0,"bug_type":"309","os_version":"iPhone OS 26.3.1 (23D8133)","roots_installed":0,"name":"Crashy","incident_id":"6F2B1E0A-1111-4222-8333-944455556666"}
+{
+  "uptime" : 5400,
+  "procRole" : "Foreground",
+  "version" : 2,
+  "userID" : 501,
+  "deployVersion" : 210,
+  "modelCode" : "iPhone16,2",
+  "coalitionID" : 812,
+  "osVersion" : {
+    "isEmbedded" : true,
+    "train" : "iPhone OS 26.3.1",
+    "releaseType" : "User",
+    "build" : "23D8133"
+  },
+  "captureTime" : "2026-11-08 10:15:00.1234 +0000",
+  "codeSigningMonitor" : 2,
+  "incident" : "6F2B1E0A-1111-4222-8333-944455556666",
+  "pid" : 4242,
+  "cpuType" : "ARM-64",
+  "procName" : "Crashy",
+  "procPath" : "\/private\/var\/containers\/Bundle\/Application\/0A1B2C3D-0000-4000-8000-000000000001\/Crashy.app\/Crashy",
+  "bundleInfo" : {"CFBundleShortVersionString":"1.0","CFBundleVersion":"1","CFBundleIdentifier":"org.forgemobile.crashy"},
+  "parentProc" : "launchd",
+  "parentPid" : 1,
+  "exception" : {"codes":"0x0000000000000001, 0x0000000104ae4018","rawCodes":[1,4373528600],"type":"EXC_BREAKPOINT","signal":"SIGTRAP"},
+  "termination" : {"flags":0,"code":5,"namespace":"SIGNAL","indicator":"Trace\/BPT trap: 5","byProc":"exc handler","byPid":4242},
+  "os_fault" : {"process":"Crashy"},
+  "faultingThread" : 0,
+  "threads" : [{"triggered":true,"id":90001,"threadState":{"flavor":"ARM_THREAD_STATE64"},"queue":"com.apple.main-thread","frames":[{"imageOffset":16408,"symbol":"trap_here","symbolLocation":24,"imageIndex":0},{"imageOffset":16456,"symbol":"depth","symbolLocation":24,"imageIndex":0},{"imageOffset":16496,"symbol":"main","symbolLocation":24,"imageIndex":0},{"imageOffset":21504,"symbol":"start","symbolLocation":2724,"imageIndex":1}]},{"id":90002,"frames":[{"imageOffset":3456,"symbol":"__workq_kernreturn","symbolLocation":8,"imageIndex":2},{"imageOffset":12644,"symbol":"_pthread_wqthread","symbolLocation":368,"imageIndex":3},{"imageOffset":5120,"symbol":"start_wqthread","symbolLocation":8,"imageIndex":3}]}],
+  "usedImages" : [
+  {"source":"P","arch":"arm64","base":4373512192,"size":32768,"uuid":"4c4c4451-5555-3144-a1b5-b63c7a520c29","path":"\/private\/var\/containers\/Bundle\/Application\/0A1B2C3D-0000-4000-8000-000000000001\/Crashy.app\/Crashy","name":"Crashy"},
+  {"source":"P","arch":"arm64e","base":6812528640,"size":560000,"uuid":"0b5c6a3e-1d52-3c5a-9a52-3d1d6c9c0e01","path":"\/usr\/lib\/dyld","name":"dyld"},
+  {"source":"P","arch":"arm64e","base":7765102592,"size":245760,"uuid":"1c4e2c1f-7b2d-3f0e-8b44-5a9d0e7e0f02","path":"\/usr\/lib\/system\/libsystem_kernel.dylib","name":"libsystem_kernel.dylib"},
+  {"source":"P","arch":"arm64e","base":8065024000,"size":53248,"uuid":"2d5f3d20-8c3e-301f-9c55-6bae1f8f1003","path":"\/usr\/lib\/system\/libsystem_pthread.dylib","name":"libsystem_pthread.dylib"}
+],
+  "sharedCache" : {"base":6810431488,"size":4706467840,"uuid":"3e6f4e31-9d4f-3120-ad66-7cbf2f9f2004"},
+  "vmSummary" : "",
+  "legacyInfo" : {"threadTriggered":{"queue":"com.apple.main-thread"}},
+  "trialInfo" : {"rollouts":[],"experiments":[]}
+}

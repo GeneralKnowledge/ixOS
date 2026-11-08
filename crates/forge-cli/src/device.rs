@@ -144,12 +144,13 @@ pub fn logs(
 /// without `app`), and with `pull` copies them into that folder.
 pub fn crashes(
     backend: &dyn DeviceBackend,
-    udid: Option<&str>,
-    app: Option<&str>,
-    pull: Option<&Path>,
+    query: &CrashQuery,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    let (device, names) = crash_names(backend, udid, app)?;
+    let CrashQuery {
+        udid, app, pull, ..
+    } = *query;
+    let (device, names) = crash_names(backend, udid, app, query.limit)?;
     if names.is_empty() {
         writeln!(
             out,
@@ -166,29 +167,60 @@ pub fn crashes(
             }
         }
         Some(dir) => {
-            for file in pull_reports(backend, &device, &names, dir)? {
+            let files = pull_reports(backend, &device, &names, dir)?;
+            let analyses = crate::crash::analyze_pulled(&files, &query.symbols());
+            for file in &files {
                 writeln!(out, "{}", file.display()).map_err(err)?;
+                match analyses.iter().find(|(f, _)| f == file).map(|(_, a)| a) {
+                    Some(Ok(a)) => {
+                        write!(out, "{}", crate::crash::summary(a)).map_err(err)?;
+                        writeln!(out, "  (full report: {}.txt)", file.display()).map_err(err)?;
+                    }
+                    Some(Err(e)) => writeln!(out, "  not symbolicated: {e}").map_err(err)?,
+                    None => {}
+                }
             }
         }
     }
     Ok(())
 }
 
+/// What `forge device crashes` lists and pulls.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CrashQuery<'a> {
+    pub udid: Option<&'a str>,
+    /// Only this app's reports (its executable name).
+    pub app: Option<&'a str>,
+    /// Copy the reports here, and symbolicate them.
+    pub pull: Option<&'a Path>,
+    /// Only the newest N.
+    pub limit: Option<usize>,
+    /// The app folder whose build the reports are symbolicated against.
+    pub project: Option<&'a Path>,
+}
+
+impl CrashQuery<'_> {
+    fn symbols(&self) -> forge_crash::Options {
+        crate::crash::options(self.project, &[], false)
+    }
+}
+
 /// `forge device crashes --json`: `{"reports": [...]}`, plus `"pulled"`
-/// (local paths) with `--pull`.
-pub fn crashes_data(
-    backend: &dyn DeviceBackend,
-    udid: Option<&str>,
-    app: Option<&str>,
-    pull: Option<&Path>,
-) -> Result<Value, String> {
-    let (device, names) = crash_names(backend, udid, app)?;
+/// (local paths) and `"crashes"` (each report symbolicated: kind, message,
+/// likely cause, crashed thread; see forge-crash's `Analysis`) with `--pull`.
+pub fn crashes_data(backend: &dyn DeviceBackend, query: &CrashQuery) -> Result<Value, String> {
+    let (device, names) = crash_names(backend, query.udid, query.app, query.limit)?;
     let mut data = json!({ "reports": names });
-    if let Some(dir) = pull {
+    if let Some(dir) = query.pull {
         let files = pull_reports(backend, &device, &names, dir)?;
         data["pulled"] = json!(files
             .iter()
             .map(|f| f.display().to_string())
+            .collect::<Vec<_>>());
+        let analyses = crate::crash::analyze_pulled(&files, &query.symbols());
+        data["crashes"] = json!(analyses
+            .iter()
+            .map(|(f, a)| crate::crash::entry(f, a))
             .collect::<Vec<_>>());
     }
     Ok(data)
@@ -198,6 +230,7 @@ fn crash_names(
     backend: &dyn DeviceBackend,
     udid: Option<&str>,
     app: Option<&str>,
+    limit: Option<usize>,
 ) -> Result<(forge_device::DeviceRef, Vec<String>), String> {
     let device = pick_device(backend, udid).map_err(err)?;
     crate::report::set_device(&device.udid, None);
@@ -209,6 +242,10 @@ fn crash_names(
             all.sort();
             all
         }
+    };
+    let names = match limit {
+        Some(n) => names.into_iter().take(n).collect(),
+        None => names,
     };
     Ok((device, names))
 }
@@ -276,9 +313,13 @@ mod tests {
             Ok(vec![
                 "Chat-2026-11-07-120000.ips".into(),
                 "Mail-2026-11-07-120000.ips".into(),
+                "Crashy-2026-11-08-101500.ips".into(),
             ])
         }
         fn pull_crash_report(&self, _: &DeviceRef, name: &str) -> Result<Vec<u8>> {
+            if name.starts_with("Crashy") {
+                return Ok(std::fs::read(crash_fixtures().join(name)).unwrap());
+            }
             Ok(format!("report {name}").into_bytes())
         }
     }
@@ -312,22 +353,83 @@ mod tests {
         );
     }
 
+    fn crash_fixtures() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../forge-crash/tests/fixtures")
+    }
+
+    fn query<'a>(app: &'a str, pull: Option<&'a Path>) -> CrashQuery<'a> {
+        CrashQuery {
+            app: Some(app),
+            pull,
+            ..CrashQuery::default()
+        }
+    }
+
     #[test]
     fn crashes_list_and_pull_one_apps_reports() {
         assert_eq!(
-            text(|out| crashes(&Fake, None, Some("Chat"), None, out)),
+            text(|out| crashes(&Fake, &query("Chat", None), out)),
             "Chat-2026-11-07-120000.ips\n"
         );
         assert_eq!(
-            text(|out| crashes(&Fake, None, Some("Notes"), None, out)),
+            text(|out| crashes(&Fake, &query("Notes", None), out)),
             "No crash reports for Notes on the phone.\n"
         );
         let dir = tempfile::tempdir().unwrap();
-        text(|out| crashes(&Fake, None, Some("Chat"), Some(dir.path()), out));
+        let shown = text(|out| crashes(&Fake, &query("Chat", Some(dir.path())), out));
         assert_eq!(
             std::fs::read_to_string(dir.path().join("Chat-2026-11-07-120000.ips")).unwrap(),
             "report Chat-2026-11-07-120000.ips"
         );
+        // Not a real report: copied, but said so rather than failing.
+        assert!(
+            shown.contains("  not symbolicated: not an .ips crash report"),
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn pulled_crashes_are_symbolicated_against_the_app_build() {
+        // An app folder whose build has the crashed binary's dSYM.
+        let app = tempfile::tempdir().unwrap();
+        let dwarf = app
+            .path()
+            .join(".build/debug/Crashy.dSYM/Contents/Resources/DWARF");
+        std::fs::create_dir_all(&dwarf).unwrap();
+        std::fs::copy(
+            crash_fixtures().join("Crashy.dSYM/Contents/Resources/DWARF/Crashy"),
+            dwarf.join("Crashy"),
+        )
+        .unwrap();
+        let pulled = tempfile::tempdir().unwrap();
+        let q = CrashQuery {
+            project: Some(app.path()),
+            limit: Some(1),
+            ..query("Crashy", Some(pulled.path()))
+        };
+        let shown = text(|out| crashes(&Fake, &q, out));
+        assert!(
+            shown.contains("  Crashy crashed: trap (EXC_BREAKPOINT, SIGTRAP)"),
+            "{shown}"
+        );
+        assert!(shown.contains("  Likely cause: trap_here at "), "{shown}");
+        assert!(shown.contains("crashy.c:5:9"), "{shown}");
+        let txt = pulled.path().join("Crashy-2026-11-08-101500.ips.txt");
+        assert!(std::fs::read_to_string(txt)
+            .unwrap()
+            .contains("Thread 0 (crashed"));
+
+        let data = crashes_data(&Fake, &q).unwrap();
+        let c = &data["crashes"][0];
+        assert_eq!(c["kind"], "trap");
+        assert_eq!(c["build"]["status"], "matched");
+        assert_eq!(c["culprit"]["function"], "trap_here");
+        assert_eq!(c["culprit"]["line"], 5);
+        assert_eq!(c["thread"]["frames"][1]["function"], "depth");
+        assert!(c["file"]
+            .as_str()
+            .unwrap()
+            .ends_with("Crashy-2026-11-08-101500.ips"));
     }
 
     #[test]
