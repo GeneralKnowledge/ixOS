@@ -99,9 +99,9 @@ Not in this release. Today the CLI produces development builds (an xtool debug b
 - **iOS:** an archive and export path. App Store submission needs a distribution certificate and provisioning profile; whether xtool can produce a submission-ready build on Linux has not been verified, so the first deliverable is a documented macOS `xcodebuild archive` path.
 - A `docs/distribution.md` covering both, plus release notes in [release-process.md](release-process.md).
 
-### General device control — Investigating
+### Any app on the iPhone (growing UI testing) — Investigating
 
-Forge operating apps it didn't build: reading, navigating and (with a person's approval) acting in any app on the phone, through the same WebDriverAgent route as UI testing. Design, safety model and an evaluation of iCTRL are in [research/general-device-control.md](research/general-device-control.md). Starts after the current milestone; the first step is four no-install spikes in the next iPhone session.
+Forge UI Testing's routes (WebDriverAgent, Apple's accessibility service, `idevice` device services) used on apps Forge didn't build: observe, operate, and, the bigger goal, explore and verify with evidence. Not a separate stack: the same `Driver`, `UiNode` and `Locator`, with a person-written per-app policy for anything outside the project. Plan, safety model and an evaluation of iCTRL: [research/general-device-control.md](research/general-device-control.md). After the current milestone; four no-install spikes go first.
 
 ## Not planned (for now)
 
