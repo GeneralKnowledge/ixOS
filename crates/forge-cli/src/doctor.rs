@@ -571,6 +571,9 @@ pub fn render_text(r: &Report) -> String {
         for fix in &w.fixes {
             out.push_str(&format!("  - {fix}\n"));
         }
+        if !w.ready && w.name.starts_with("iOS from Linux") && r.host.os == "linux" {
+            out.push_str("  `forge setup ios` does most of these for you (it asks before anything needs sudo)\n");
+        }
     }
     if r.host.os == "macos" {
         out.push_str("\nOn macOS you can also build iOS apps with Xcode instead of xtool (docs/ios-xcode.md).\n");
