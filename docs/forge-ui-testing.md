@@ -214,7 +214,7 @@ The same milestones serve apps Forge didn't build: [any app on the iPhone](resea
 | M2 | App lifecycle and state | Background and resume, relaunch, alerts (a permission prompt), devtools probes and setup commands. Chat's "send, background, reopen, still there" journey passes |
 | M2.5 | Runner-free inspection, if #79's probe passes | `AxDriver` behind `Driver`: `forge ui tree` and read-and-tap tests without the WDA runner |
 | M3 | Accessibility pass across the demos | Identifiers and labels in the starter, Pocket Library, Weather and Chat; `forge ui audit` clean on their main screens; a Dynamic Type run; conventions in ios-ui.md |
-| M4 | Screenshots and conditions | Screenshot comparison against approved baselines (with masked regions for times and dates); offline and slow-network runs through the instruments condition inducer; performance numbers from the devtools stream |
+| M4 | Screenshots and conditions | Screenshot comparison against approved baselines (with masked regions for times and dates): built and tested on Linux, not yet run on a phone ([visual-regression.md](visual-regression.md)); offline and slow-network runs through the instruments condition inducer; performance numbers from the devtools stream |
 | M5 | Exploratory testing | `forge ui explore` ([forge-explore.md](forge-explore.md)): seeded walks over a Forge app's screens, crash, alert, dead-end and accessibility checks, and a `forge ui run` replay file per issue. Built and tested on Linux 2026-11-08, not yet run on an iPhone. Still to come: invariants, scrolling below the fold, performance during the walk. Optionally Forge's own Swift XCTest runner if WDA becomes limiting |
 
 ### M0 in detail

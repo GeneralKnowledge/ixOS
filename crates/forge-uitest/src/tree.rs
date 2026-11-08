@@ -1,10 +1,10 @@
 //! The accessibility tree of the screen, as WebDriverAgent reports it
 //! (`GET /source?format=json`), in Forge's own types.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
@@ -14,8 +14,10 @@ pub struct Rect {
 
 /// One element of the accessibility tree.
 /// Serialises as JSON for agents (`forge --json ui tree`, failure files):
-/// empty fields are left out.
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+/// empty fields are left out. Reads back what it writes (baselines keep the
+/// tree of each approved screenshot).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct UiNode {
     /// The element type without Apple's prefix: `Button`, `TextField`, `Cell`…
     pub kind: String,

@@ -64,8 +64,9 @@ Every run that executes tests writes a directory:
 <app>/.forge/runs/<id>-<command>/
   evidence.json        what was proved (below)
   swift-test.log       the raw output it was judged from
-  screens/             device runs: <step>-<name>.png            (proposed)
-  trees/               device runs: the accessibility tree at each check and failure, JSON  (proposed)
+  <name>.png           device runs: each screenshot step's picture
+  <name>.tree.json     device runs: the accessibility tree saved with it
+  visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
   device.log           device runs: the app's log lines for the run, from Forge Device     (proposed)
 ```
 
@@ -115,7 +116,8 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 | `build.installed_as` | Device runs: the bundle id the app is installed as (xtool renames it `XTL-<team>.<id>`) |
 | `tests.cases` | Every XCTest case the run reported, by `Class.method` |
 | `requirements[].notes` | Why a verdict isn't `passed`, in words |
-| `artifacts` | Files in the bundle, with a `kind` (`log`; for device runs `screenshot` and `ui_tree`, later `device_log`, `crash`, `audit`), its `sha256` and its size in `bytes` |
+| `artifacts` | Files in the bundle, with a `kind` (`log`; for device runs `screenshot`, `ui_tree` and `visual_diff`, later `device_log`, `crash`, `audit`), its `sha256` and its size in `bytes` |
+| `visual` | Device runs: each screenshot compared with its approved baseline: `match`, `new`, `changed` or `recorded`, the changed areas and elements ([visual-regression.md](visual-regression.md)) |
 
 Readers must ignore fields they don't know. A change that removes or changes the meaning of a field raises the version to `forge.evidence/2`.
 
@@ -126,6 +128,7 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
 1. Writes to `<app>/.forge/runs/<id>-ui-run/` unless `--out` names another folder. Outside an app it still defaults to `forge-ui-out` and writes no bundle. The files it writes there are unchanged: the script's named screenshots, and at a failed step `failure-stepN.png`, `failure-stepN-tree.json` and `failure-stepN-tree.txt`.
 2. Writes `evidence.json` there with `kind = "device"`, `where.device` (`udid`, `ios_major`), `build` (read before the run, plus `installed_as`), `scenario` (relative to the app) and, instead of `tests`, `steps`: `{ "passed": N, "failed": null | { "step", "action", "error", "on_screen", "tree" } }`. Screenshots and the failure tree are listed under `artifacts`.
 3. Lists only the requirements whose `device` names this scenario, each with `device.verdict` `passed` or `failed`. Twin verdicts are left out of a device bundle.
+4. Compares each screenshot with the scenario's baseline (`uitests/baselines/<test>/`) and records the result under `visual`. A changed screen, or one with a new accessibility finding, fails the run and its requirements like a failed step, with a note naming the screen ([visual-regression.md](visual-regression.md)). `--visual off` skips this.
 
 `forge_run_ui_test` in `forge mcp` writes to the same place, so an agent's UI tests count as evidence. `forge_ui_act`'s one-step files don't: they live in `.forge/mcp/` and no requirement names them.
 

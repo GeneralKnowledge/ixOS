@@ -2,6 +2,7 @@ mod app_config;
 mod check;
 mod commands;
 mod config;
+mod crash;
 mod device;
 mod diagnose;
 mod doctor;
@@ -149,6 +150,29 @@ enum Commands {
         #[arg(long)]
         twin_only: bool,
     },
+    /// Read crash reports (.ips) on this computer: the kind of crash, the
+    /// message, the likely cause and the crashed thread with Swift and Rust
+    /// function, file and line from the app's local build (no phone needed)
+    Crash {
+        /// .ips files, for example from `forge device crashes --pull`
+        #[arg(required = true, value_name = "FILE")]
+        files: Vec<PathBuf>,
+        #[arg(
+            long,
+            help = "App directory whose build symbolicates the reports (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// A binary or .dSYM of the build that crashed (repeatable), when it
+        /// isn't in the app folder
+        #[arg(long = "binary", value_name = "PATH")]
+        binaries: Vec<PathBuf>,
+        /// Every thread, not only the one that crashed
+        #[arg(long)]
+        all_threads: bool,
+        /// Frames shown per thread (text output)
+        #[arg(long, value_name = "N", default_value_t = crash::TEXT_FRAMES)]
+        frames: usize,
+    },
     /// Drive an app on a connected iPhone from Linux: find elements by
     /// accessibility identifier, tap, type, read the screen, take screenshots
     /// (XCTest through WebDriverAgent; docs/forge-ui-testing.md)
@@ -224,6 +248,22 @@ enum UiCommands {
         /// taps that send, post, pay or delete ask each time
         #[arg(long)]
         any_app: bool,
+        /// Screenshots against their baselines (uitests/baselines/<test>/):
+        /// `check` fails the run when one changed, `record` makes every
+        /// screenshot the baseline, `off` skips it (docs/visual-regression.md)
+        #[arg(long, value_name = "MODE", default_value = "check", value_parser = ["check", "record", "off"])]
+        visual: String,
+    },
+    /// Make a run's screenshots the baselines its test is compared with
+    Accept {
+        /// The run's folder (forge ui run prints it; <app>/.forge/runs/<id>-ui-run)
+        run: PathBuf,
+        /// The test file (default: the one the run's evidence.json names)
+        #[arg(long, value_name = "FILE")]
+        scenario: Option<PathBuf>,
+        /// Only this screenshot (its name without .png); repeatable
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
     },
     /// Explore an app without a script: visit its screens, try each safe
     /// control once, and report crashes, error alerts, dead ends and
@@ -308,7 +348,8 @@ enum DeviceCommands {
         #[arg(long = "for", value_name = "DURATION", value_parser = report::parse_duration)]
         duration: Option<std::time::Duration>,
     },
-    /// List crash reports on the phone, or copy them here with --pull
+    /// List crash reports on the phone, or copy them here with --pull and
+    /// symbolicate them against the app's build
     Crashes {
         /// Which phone, when several are connected
         #[arg(long)]
@@ -316,9 +357,18 @@ enum DeviceCommands {
         /// Only this app's reports (its executable name), newest first
         #[arg(long, value_name = "NAME")]
         app: Option<String>,
-        /// Copy the reports into this folder
+        /// Copy the reports into this folder, symbolicate each one and write
+        /// the result next to it (<report>.txt)
         #[arg(long, value_name = "DIR")]
         pull: Option<PathBuf>,
+        /// Only the first N reports (the newest N with --app)
+        #[arg(long, value_name = "N")]
+        limit: Option<usize>,
+        #[arg(
+            long,
+            help = "App directory whose build symbolicates the reports (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
     },
     /// Pair this computer with the development build on screen (once per app
     /// and phone; the app must be built with `forge run ios --devtools`)
@@ -552,6 +602,9 @@ fn main() {
         Commands::Ui {
             cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
         } => "test",
+        Commands::Ui {
+            cmd: UiCommands::Accept { .. },
+        } => "forge",
         // No DDI, no runner, WebDriverAgent not answering.
         Commands::Ui { .. } => "device",
         _ => "forge",
@@ -587,6 +640,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Test { .. } => return "test".into(),
         Commands::Mcp { .. } => return "mcp".into(),
         Commands::Verify { .. } => return "verify".into(),
+        Commands::Crash { .. } => return "crash".into(),
         Commands::Devices => return "devices".into(),
         Commands::Config { cmd } => match cmd {
             ConfigCommands::Sync { .. } => "config sync",
@@ -623,6 +677,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
             UiCommands::Explore { .. } => "ui explore",
+            UiCommands::Accept { .. } => "ui accept",
         },
     };
     sub.into()
@@ -648,6 +703,10 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         }
         | Commands::Test { project, .. }
         | Commands::Verify { project, .. }
+        | Commands::Crash { project, .. }
+        | Commands::Device {
+            cmd: DeviceCommands::Crashes { project, .. },
+        }
         | Commands::Check {
             what: Some(CheckCommands::Swift { project }),
             ..
@@ -774,6 +833,22 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         },
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
+        Commands::Crash {
+            files,
+            project,
+            binaries,
+            all_threads,
+            frames,
+        } => {
+            let project = project.map(|p| absolute_from_cwd(&p)).or_else(app_in_cwd);
+            let options = crash::options(project.as_deref(), &binaries, all_threads);
+            if cli.json {
+                report::set_data(crash::show_data(&files, &options)?);
+                Ok(())
+            } else {
+                crash::show(&files, &options, frames, &mut std::io::stdout().lock())
+            }
+        }
         Commands::Ui { cmd } => {
             // Not `stdout().lock()`: `ui setup` runs xtool, and with --json
             // its output is forwarded to stdout from another thread, which
@@ -808,7 +883,23 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 }
                 UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
-                UiCommands::Run { udid, file, out: dir, any_app } => ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, &mut out),
+                UiCommands::Run {
+                    udid,
+                    file,
+                    out: dir,
+                    any_app,
+                    visual,
+                } => {
+                    let visual = match visual.as_str() {
+                        "record" => Some(forge_uitest::baseline::Mode::Record),
+                        "off" => None,
+                        _ => Some(forge_uitest::baseline::Mode::Check),
+                    };
+                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, &mut out)
+                }
+                UiCommands::Accept { run, scenario, only } => {
+                    ui::accept(&run, scenario.as_deref(), &only, &mut out)
+                }
                 UiCommands::Explore {
                     udid,
                     project,
@@ -916,6 +1007,11 @@ fn project_or_default(project: Option<PathBuf>, example: &str) -> PathBuf {
 }
 
 /// The current directory, if it is an app (has forge.toml).
+/// The app folder `device crashes` symbolicates against.
+fn crashes_project(project: Option<&std::path::Path>) -> Option<PathBuf> {
+    project.map(absolute_from_cwd).or_else(app_in_cwd)
+}
+
 fn app_in_cwd() -> Option<PathBuf> {
     std::env::current_dir()
         .ok()
@@ -955,12 +1051,25 @@ fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
         let data = match &cmd {
             DeviceCommands::List => Some(device::list_data(&backend)?),
             DeviceCommands::Info { udid } => Some(device::info_data(&backend, udid.as_deref())?),
-            DeviceCommands::Crashes { udid, app, pull } => Some(device::crashes_data(
-                &backend,
-                udid.as_deref(),
-                app.as_deref(),
-                pull.as_deref(),
-            )?),
+            DeviceCommands::Crashes {
+                udid,
+                app,
+                pull,
+                limit,
+                project,
+            } => {
+                let project = crashes_project(project.as_deref());
+                Some(device::crashes_data(
+                    &backend,
+                    &device::CrashQuery {
+                        udid: udid.as_deref(),
+                        app: app.as_deref(),
+                        pull: pull.as_deref(),
+                        limit: *limit,
+                        project: project.as_deref(),
+                    },
+                )?)
+            }
             DeviceCommands::Logs {
                 limit: None,
                 duration: None,
@@ -1014,13 +1123,26 @@ fn run_device_command(
             };
             device::logs(backend, udid.as_deref(), &filter, limit, duration, out)
         }
-        DeviceCommands::Crashes { udid, app, pull } => device::crashes(
-            backend,
-            udid.as_deref(),
-            app.as_deref(),
-            pull.as_deref(),
-            out,
-        ),
+        DeviceCommands::Crashes {
+            udid,
+            app,
+            pull,
+            limit,
+            project,
+        } => {
+            let project = crashes_project(project.as_deref());
+            device::crashes(
+                backend,
+                &device::CrashQuery {
+                    udid: udid.as_deref(),
+                    app: app.as_deref(),
+                    pull: pull.as_deref(),
+                    limit,
+                    project: project.as_deref(),
+                },
+                out,
+            )
+        }
         DeviceCommands::Pair { live } => with_target(backend, &live, |t| live::pair(t, out)),
         DeviceCommands::Unpair { live } => with_target(backend, &live, |t| live::unpair(t, out)),
         DeviceCommands::Status { live } => with_target(backend, &live, |t| live::status(t, out)),

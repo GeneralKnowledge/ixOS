@@ -12,13 +12,17 @@
 //!   mounts the Developer Disk Image and starts the runner.
 //! - [`script`] runs steps from a TOML file against any [`Driver`].
 //! - [`policy`] decides what a run may do in an app Forge didn't build.
+//! - [`visual`] and [`baseline`] compare a run's screenshots with approved
+//!   ones (visual regression), on Linux.
 
+pub mod baseline;
 pub mod explore;
 pub mod http;
 pub mod phone;
 pub mod policy;
 pub mod script;
 pub mod tree;
+pub mod visual;
 pub mod wda;
 
 use std::time::{Duration, Instant};

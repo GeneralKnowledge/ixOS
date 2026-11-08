@@ -1,0 +1,9 @@
+order = 35
+capability = "Visual regression: screenshots compared with approved baselines, changed areas named by element (`forge ui run --visual`, `forge ui accept`)"
+framework = "Yes: forge-uitest (visual, baseline)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: no app has baselines yet"
+iphone = "Partial: Pocket Library m0 on iPhone16,2, iOS 26.3.1, 2026-11-08: record, then two unchanged runs matched (one cursor-sized area ignored). Run by the laptop session, not yet confirmed by a person; a deliberate change not yet tried"
+documented = "Yes: visual-regression.md"
+limits = "Exact pixels with a per-channel tolerance and a minimum area size, not perceptual; status bar and named elements masked; saving the tree with each screenshot adds about 2.5 s per screenshot step; baselines are per screen size and must come from the same build kind"

@@ -39,8 +39,42 @@ pub struct Script {
     /// Seconds to wait for an element before failing (default 10).
     #[serde(default = "default_timeout")]
     pub timeout: f64,
+    /// How screenshots are compared with their baselines
+    /// (docs/visual-regression.md).
+    #[serde(default)]
+    pub visual: Visual,
     #[serde(rename = "step", default)]
     pub steps: Vec<Step>,
+}
+
+/// `[visual]`: how this scenario's screenshots are compared with their
+/// baselines. Everything is optional.
+///
+/// ```toml
+/// [visual]
+/// mask = [{ id = "book.updated" }]  # content that changes between runs
+/// status_bar = true                 # mask the clock and battery (default)
+/// tolerance = 16                    # per colour channel, of 255
+/// min_region_pt = 6                 # smaller changes don't count
+/// ```
+#[derive(Debug, Default, Clone, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Visual {
+    /// Elements never compared: times, dates, avatars, anything that
+    /// differs between runs. Found in the accessibility tree saved with the
+    /// screenshot, by identifier or label like a step's target.
+    #[serde(default)]
+    pub mask: Vec<Target>,
+    pub status_bar: Option<bool>,
+    pub tolerance: Option<u8>,
+    pub min_region_pt: Option<f64>,
+}
+
+impl Visual {
+    /// The status bar is masked unless `status_bar = false`.
+    pub fn status_bar_masked(&self) -> bool {
+        self.status_bar.unwrap_or(true)
+    }
 }
 
 fn default_timeout() -> f64 {
@@ -73,7 +107,7 @@ pub struct Launch {
 }
 
 /// Which element: an identifier, an exact label, or part of a label.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub id: Option<String>,
@@ -445,6 +479,16 @@ fn run_step(
     if let Some(name) = &step.screenshot {
         let path = out_dir.join(format!("{}.png", file_name(name)));
         std::fs::write(&path, driver.screenshot()?)?;
+        // The tree beside it says what is on the picture: visual regression
+        // names changed elements from it and masks elements by it. Taken
+        // after the screenshot, so the screenshot is of the screen as the
+        // previous step left it. Best effort: a screenshot without a tree is
+        // still compared, pixel by pixel.
+        if let Ok(tree) = driver.tree() {
+            if let Ok(json) = serde_json::to_vec_pretty(&tree) {
+                let _ = std::fs::write(crate::baseline::tree_path(&path), json);
+            }
+        }
         report.screenshots.push(path);
         return Ok(());
     }
