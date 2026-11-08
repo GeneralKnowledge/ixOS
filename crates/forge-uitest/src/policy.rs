@@ -335,6 +335,12 @@ pub struct Target {
 }
 
 impl Target {
+    /// Neither a label nor an identifier: nothing says what it does.
+    fn is_unidentified(&self) -> bool {
+        let blank = |t: &Option<String>| t.as_deref().is_none_or(|t| t.trim().is_empty());
+        blank(&self.label) && blank(&self.identifier)
+    }
+
     fn name(&self) -> String {
         match (&self.label, &self.identifier) {
             (Some(l), _) if !l.is_empty() => format!("\"{l}\""),
@@ -616,6 +622,16 @@ impl Gate {
             Action::Tap(t) if !t.kind.as_deref().is_some_and(is_text_input) => {
                 is_commit(t.label.as_deref(), t.identifier.as_deref())
                     .map(|word| format!("tap {} (\"{word}\")", t.name()))
+                    // Nothing says what it does (found by kind or position):
+                    // it could be Send, so it is treated as a commit.
+                    .or_else(|| {
+                        t.is_unidentified().then(|| {
+                            format!(
+                                "tap {}, which has no label or identifier to say what it does",
+                                t.name()
+                            )
+                        })
+                    })
             }
             Action::Type {
                 target,
@@ -900,6 +916,50 @@ default = "deny"
             })
             .unwrap_err()
             .contains("secure field"));
+    }
+
+    #[test]
+    fn a_tap_on_an_unlabelled_control_is_a_commit() {
+        // DeepSeek's send arrow can be a Button with no label and no id: a
+        // tap found by kind or position must not slip past the gate.
+        let unlabelled = |kind: &str, label: Option<&str>| Target {
+            label: label.map(str::to_owned),
+            identifier: None,
+            kind: Some(format!("XCUIElementType{kind}")),
+        };
+        let mut gate = Gate::foreign(
+            "com.deepseek.chat",
+            Level::Operate,
+            Box::new(NoApprover),
+            None,
+        );
+        let err = gate
+            .check(&Action::Tap(unlabelled("Button", None)))
+            .unwrap_err();
+        assert!(err.contains("no label or identifier"), "{err}");
+        assert!(err.contains("needs the person's approval"), "{err}");
+        // A blank label is no label.
+        assert!(gate
+            .check(&Action::Tap(unlabelled("Button", Some("  "))))
+            .is_err());
+        // Focusing an unlabelled text view is fine; so is a labelled,
+        // harmless button.
+        assert!(gate
+            .check(&Action::Tap(unlabelled("TextView", None)))
+            .is_ok());
+        assert!(gate
+            .check(&Action::Tap(unlabelled("Button", Some("Think"))))
+            .is_ok());
+        // The person can allow it, and `full` doesn't ask.
+        let mut yes = Gate::foreign(
+            "com.deepseek.chat",
+            Level::Operate,
+            Box::new(Says(Some(true), None, vec![])),
+            None,
+        );
+        assert!(yes.check(&Action::Tap(unlabelled("Button", None))).is_ok());
+        let mut full = Gate::foreign("com.deepseek.chat", Level::Full, Box::new(NoApprover), None);
+        assert!(full.check(&Action::Tap(unlabelled("Button", None))).is_ok());
     }
 
     #[test]

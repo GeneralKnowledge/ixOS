@@ -48,6 +48,68 @@ impl<T: HttpTransport> WdaDriver<T> {
         let path = format!("/session/{}{path}", self.session);
         value(call(&mut self.transport, "GET", &path, None)?)
     }
+
+    /// Every element WDA's query for the locator returns, in tree order.
+    fn query(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
+        // Ids use WDA's `accessibility id` strategy: XCTest's own identifier
+        // query, which Appium documents as the fastest locator, instead of a
+        // predicate evaluated over the whole tree. Same matching as `name`.
+        let query = match locator {
+            Locator::Id(id) => json!({ "using": "accessibility id", "value": id }),
+            _ => json!({ "using": "predicate string", "value": locator.predicate() }),
+        };
+        let found = match self.post("/elements", query) {
+            Err(UiError::Wda(_)) if matches!(locator, Locator::Id(_)) => self.post(
+                "/elements",
+                json!({ "using": "predicate string", "value": locator.predicate() }),
+            )?,
+            other => other?,
+        };
+        let list = found
+            .as_array()
+            .ok_or_else(|| UiError::Wda("element list is not an array".into()))?;
+        list.iter()
+            .map(|item| {
+                item.get(ELEMENT_KEY)
+                    .or_else(|| item.get("ELEMENT"))
+                    .and_then(Value::as_str)
+                    .map(|id| ElementRef(id.to_owned()))
+                    .ok_or_else(|| UiError::Wda("element without an id".into()))
+            })
+            .collect()
+    }
+
+    /// A [`Locator::Near`]: the nearest control is chosen from the tree
+    /// (it needs frames), then reached as "the nth element of its kind" by
+    /// a query. If the query doesn't return as many of that kind as the
+    /// tree had, the screen changed in between: stale, and the caller asks
+    /// again.
+    fn find_near(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
+        let tree = self.tree()?;
+        let Some((at, node)) = locator.find_in(&tree).into_iter().next() else {
+            return Ok(Vec::new());
+        };
+        let of_kind = Locator::Kind {
+            kind: node.kind.clone(),
+            label: None,
+            index: None,
+        };
+        let in_tree: Vec<usize> = of_kind.find_in(&tree).iter().map(|(i, _)| *i).collect();
+        let index = in_tree
+            .iter()
+            .position(|i| *i == at)
+            .ok_or_else(|| UiError::Wda(format!("{locator} is not of its own kind")))?;
+        let found = self.query(&of_kind)?;
+        if found.len() != in_tree.len() {
+            return Err(UiError::Stale(format!(
+                "the screen changed while finding {locator}: {} {} in the tree, {} by query",
+                in_tree.len(),
+                node.kind,
+                found.len()
+            )));
+        }
+        Ok(vec![found[index].clone()])
+    }
 }
 
 impl<T: HttpTransport> Driver for WdaDriver<T> {
@@ -75,32 +137,18 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
-        // Ids use WDA's `accessibility id` strategy: XCTest's own identifier
-        // query, which Appium documents as the fastest locator, instead of a
-        // predicate evaluated over the whole tree. Same matching as `name`.
-        let query = match locator {
-            Locator::Id(id) => json!({ "using": "accessibility id", "value": id }),
-            _ => json!({ "using": "predicate string", "value": locator.predicate() }),
-        };
-        let found = match self.post("/elements", query) {
-            Err(UiError::Wda(_)) if matches!(locator, Locator::Id(_)) => self.post(
-                "/elements",
-                json!({ "using": "predicate string", "value": locator.predicate() }),
-            )?,
-            other => other?,
-        };
-        let list = found
-            .as_array()
-            .ok_or_else(|| UiError::Wda("element list is not an array".into()))?;
-        list.iter()
-            .map(|item| {
-                item.get(ELEMENT_KEY)
-                    .or_else(|| item.get("ELEMENT"))
-                    .and_then(Value::as_str)
-                    .map(|id| ElementRef(id.to_owned()))
-                    .ok_or_else(|| UiError::Wda("element without an id".into()))
-            })
-            .collect()
+        if locator.needs_tree() {
+            return self.find_near(locator);
+        }
+        let found = self.query(locator)?;
+        // A `Kind` with an index: that one of the matches, in tree order
+        // (XCTest's query order, the same as `/source`'s).
+        Ok(match locator {
+            Locator::Kind {
+                index: Some(index), ..
+            } => found.into_iter().skip(*index).take(1).collect(),
+            _ => found,
+        })
     }
 
     fn scroll(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
@@ -316,6 +364,80 @@ mod tests {
             "{}",
             s.sent[2]
         );
+    }
+
+    /// WDA's JSON source for an element.
+    fn wda_node(kind: &str, label: Option<&str>, rect: [f64; 4], children: Vec<Value>) -> Value {
+        json!({
+            "type": format!("XCUIElementType{kind}"),
+            "label": label,
+            "isEnabled": "1",
+            "isVisible": "1",
+            "rect": { "x": rect[0], "y": rect[1], "width": rect[2], "height": rect[3] },
+            "children": children,
+        })
+    }
+
+    #[test]
+    fn finds_a_field_by_its_placeholder_as_the_nth_of_its_kind() {
+        // Two text views: the second has the placeholder over it.
+        let source = wda_node(
+            "Application",
+            None,
+            [0.0, 0.0, 430.0, 932.0],
+            vec![
+                wda_node("TextView", None, [16.0, 100.0, 398.0, 300.0], vec![]),
+                wda_node("TextView", None, [16.0, 790.0, 398.0, 56.0], vec![]),
+                wda_node(
+                    "StaticText",
+                    Some("Message or hold to speak"),
+                    [22.0, 795.0, 386.0, 45.0],
+                    vec![],
+                ),
+            ],
+        );
+        let near = Locator::Near {
+            text: "Message or hold to speak".into(),
+            kind: None,
+        };
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (200, json!({ "value": source })),
+            (
+                200,
+                json!({ "value": [{ ELEMENT_KEY: "T1" }, { ELEMENT_KEY: "T2" }] }),
+            ),
+            // The screen changed: one text view by query, two in the tree.
+            (200, json!({ "value": source })),
+            (200, json!({ "value": [{ ELEMENT_KEY: "T1" }] })),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        assert_eq!(driver.find_all(&near).unwrap(), [ElementRef("T2".into())]);
+        assert!(matches!(driver.find_all(&near), Err(UiError::Stale(_))));
+        drop(driver);
+        assert_eq!(s.sent[1], "GET /source?format=json");
+        assert_eq!(
+            s.sent[2],
+            r#"POST /session/S1/elements {"using":"predicate string","value":"type == \"XCUIElementTypeTextView\""}"#
+        );
+    }
+
+    #[test]
+    fn a_kind_with_an_index_takes_that_match() {
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (
+                200,
+                json!({ "value": [{ ELEMENT_KEY: "B1" }, { ELEMENT_KEY: "B2" }, { ELEMENT_KEY: "B3" }] }),
+            ),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        let third = Locator::Kind {
+            kind: "Button".into(),
+            label: None,
+            index: Some(2),
+        };
+        assert_eq!(driver.find_all(&third).unwrap(), [ElementRef("B3".into())]);
     }
 
     #[test]

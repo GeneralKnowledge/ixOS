@@ -106,14 +106,26 @@ pub struct Launch {
     pub args: Vec<String>,
 }
 
-/// Which element: an identifier, an exact label, or part of a label.
+/// Which element: an identifier, an exact label, or part of a label. For
+/// apps without identifiers or labels: `kind` (with an exact `label`, or
+/// an `index` from 0 in tree order), or `near` a text on screen (a
+/// field's placeholder or caption), optionally with the field's `kind`.
 #[derive(Debug, Default, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Target {
     pub id: Option<String>,
     pub label: Option<String>,
     pub label_contains: Option<String>,
+    /// `Button`, `TextView`… (Apple's `XCUIElementType` prefix optional).
+    pub kind: Option<String>,
+    /// With `kind`: the nth of that kind, from 0.
+    pub index: Option<usize>,
+    /// The control nearest this text.
+    pub near: Option<String>,
 }
+
+/// What a target may combine.
+const TARGET_USAGE: &str = "give exactly one of `id`, `label`, `label_contains`, `kind` or `near`; `kind` can add `label` or `index`, and `near` can add `kind`";
 
 // No `deny_unknown_fields` here: serde does not support it together with
 // `flatten`. `Target` still rejects unknown keys.
@@ -160,12 +172,41 @@ pub struct Expect {
 
 impl Target {
     pub fn locator(&self) -> std::result::Result<Locator, String> {
-        match (&self.id, &self.label, &self.label_contains) {
-            (Some(id), None, None) => Ok(Locator::Id(id.clone())),
-            (None, Some(label), None) => Ok(Locator::Label(label.clone())),
-            (None, None, Some(text)) => Ok(Locator::LabelContains(text.clone())),
-            _ => Err("give exactly one of `id`, `label`, `label_contains`".into()),
+        if let Some(kind) = &self.kind {
+            let valid = kind.chars().all(|c| c.is_ascii_alphanumeric()) && !kind.is_empty();
+            if !valid {
+                return Err(format!(
+                    "kind `{kind}`: an element type such as Button, TextField or TextView"
+                ));
+            }
         }
+        let locator = match (
+            &self.id,
+            &self.label,
+            &self.label_contains,
+            &self.kind,
+            &self.near,
+        ) {
+            (Some(id), None, None, None, None) => Locator::Id(id.clone()),
+            (None, Some(label), None, None, None) => Locator::Label(label.clone()),
+            (None, None, Some(text), None, None) => Locator::LabelContains(text.clone()),
+            (None, label, None, Some(kind), None) => {
+                return Ok(Locator::Kind {
+                    kind: kind.clone(),
+                    label: label.clone(),
+                    index: self.index,
+                })
+            }
+            (None, None, None, kind, Some(text)) => Locator::Near {
+                text: text.clone(),
+                kind: kind.clone(),
+            },
+            _ => return Err(TARGET_USAGE.into()),
+        };
+        if self.index.is_some() {
+            return Err("`index` goes with `kind`".into());
+        }
+        Ok(locator)
     }
 }
 
@@ -856,6 +897,113 @@ mod tests {
         (report, driver, journal)
     }
 
+    /// DeepSeek's composer, then the same screen once text is in it and
+    /// its Send button shows.
+    fn deepseek_run(send: &str, approver: Box<dyn policy::Approver>) -> (Report, FakeDriver) {
+        let script = Script::parse(&format!(
+            r#"
+            name = "Ask DeepSeek"
+            app = "com.deepseek.chat"
+            timeout = 0
+
+            [[step]]
+            type = {{ near = "Message or hold to speak", text = "Hello" }}
+            [[step]]
+            tap = {{ {send} }}
+            "#
+        ))
+        .unwrap();
+        let mut driver = FakeDriver::new(crate::tests::deepseek());
+        let mut typed = crate::tests::deepseek();
+        typed.children.push(UiNode {
+            identifier: None,
+            ..node("Button", "", "Send")
+        });
+        typed.children[5].label = None;
+        // The keyboard's return key, seen on Cati: id `Send`, label "send".
+        // XCTest puts the keyboard after the app's own elements.
+        typed.children.push(UiNode {
+            kind: "Keyboard".into(),
+            visible: true,
+            enabled: true,
+            children: vec![node("Button", "Send", "send")],
+            ..UiNode::default()
+        });
+        driver.after_type = Some(typed);
+        driver.front = Some("com.deepseek.chat".into());
+        let dir = tempfile::tempdir().unwrap();
+        let mut gate = Gate::foreign("com.deepseek.chat", policy::Level::Operate, approver, None);
+        let report = run_gated(
+            &script,
+            "com.deepseek.chat",
+            &mut driver,
+            dir.path(),
+            &mut Vec::new(),
+            &mut gate,
+        )
+        .unwrap();
+        (report, driver)
+    }
+
+    struct Yes;
+    impl policy::Approver for Yes {
+        fn approve(&mut self, _: &str) -> Option<bool> {
+            Some(true)
+        }
+        fn choose(&mut self, _: &str) -> Option<policy::Level> {
+            None
+        }
+    }
+
+    #[test]
+    fn types_into_an_unlabelled_field_and_sends_only_with_approval() {
+        // Send shows only after typing: the tap's search finds it then.
+        let send = r#"kind = "Button", label = "Send""#;
+        let (report, driver) = deepseek_run(send, Box::new(Yes));
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        // The app's button (label "Send"), not the keyboard's `Send` key.
+        assert_eq!(driver.calls, ["type TextView \"Hello\"", "tap \"Send\""]);
+        let (report, driver) = deepseek_run(r#"label = "Send""#, Box::new(Yes));
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(driver.calls[1], "tap \"Send\"");
+        let (report, driver) = deepseek_run(send, Box::new(policy::NoApprover));
+        let (step, why) = report.failed.unwrap();
+        assert_eq!(step, 2);
+        assert!(why.contains("needs the person's approval"), "{why}");
+        assert!(!driver.calls.iter().any(|c| c.starts_with("tap")));
+        // An unlabelled button reached by position is asked about too.
+        let (report, driver) = deepseek_run(
+            r#"kind = "Button", index = 1"#,
+            Box::new(policy::NoApprover),
+        );
+        let (_, why) = report.failed.unwrap();
+        assert!(why.contains("no label or identifier"), "{why}");
+        assert!(!driver.calls.iter().any(|c| c.starts_with("tap")));
+    }
+
+    #[test]
+    fn targets_combine_only_in_ways_that_mean_something() {
+        let target = |toml: &str| toml::from_str::<Target>(toml).unwrap().locator();
+        assert!(matches!(
+            target("kind = 'TextView'\nindex = 0"),
+            Ok(Locator::Kind { index: Some(0), .. })
+        ));
+        assert!(matches!(
+            target("near = 'Name'\nkind = 'TextField'"),
+            Ok(Locator::Near { kind: Some(_), .. })
+        ));
+        for bad in [
+            "index = 0",
+            "label = 'Send'\nindex = 0",
+            "near = 'a'\nlabel = 'b'",
+            "kind = 'Button'\nlabel_contains = 'S'",
+            "kind = 'type == 1'",
+            "id = 'a'\nkind = 'Button'",
+        ] {
+            assert!(target(bad).is_err(), "{bad}");
+        }
+    }
+
     #[test]
     fn another_app_types_but_never_sends_without_approval() {
         let (report, driver, journal) = foreign_run(policy::Level::Operate, CHAT);
@@ -1240,10 +1388,7 @@ mod tests {
         assert_eq!(err, "step 1: each step needs exactly one action");
         let err =
             Script::parse("name='x'\napp='a'\n[[step]]\ntap={id='a', label='b'}\n").unwrap_err();
-        assert_eq!(
-            err,
-            "step 1: give exactly one of `id`, `label`, `label_contains`"
-        );
+        assert_eq!(err, format!("step 1: {TARGET_USAGE}"));
         assert!(Script::parse("name='x'\napp='a'\n[[step]]\ntap={x='a'}\n").is_err());
     }
 }

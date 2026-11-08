@@ -55,7 +55,10 @@ fn target_props() -> Value {
     json!({
         "id": {"type": "string", "description": "Accessibility identifier, e.g. library.add (preferred)"},
         "label": {"type": "string", "description": "Exact VoiceOver label, when there is no identifier"},
-        "label_contains": {"type": "string", "description": "Part of the VoiceOver label"}
+        "label_contains": {"type": "string", "description": "Part of the VoiceOver label"},
+        "kind": {"type": "string", "description": "Element type (Button, TextField, TextView…) for a control with no identifier or label; add label (exact) or index"},
+        "index": {"type": "integer", "minimum": 0, "description": "With kind: the nth element of that kind on screen, from 0, in tree order"},
+        "near": {"type": "string", "description": "Text on screen next to the control (a field's placeholder or caption); finds the nearest text input, or the nearest element of kind"}
     })
 }
 
@@ -225,7 +228,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_ui_act",
         title: "One UI action",
-        description: "One action on the app on screen, by accessibility identifier or label (never coordinates): tap, type text, clear a field, scroll (to an element below the fold, or a list up/down), or expect a state (value, enabled, gone). Fails with the screen's tree when the element isn't there.",
+        description: "One action on the app on screen, by accessibility identifier or label (never coordinates; for a control with neither, by kind with label or index, or near the text beside it): tap, type text, clear a field, scroll (to an element below the fold, or a list up/down), or expect a state (value, enabled, gone). Fails with the screen's tree when the element isn't there.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
@@ -953,13 +956,23 @@ impl crate::Server {
 /// The step table for forge_ui_act.
 fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
     let mut target = Map::new();
-    for key in ["id", "label", "label_contains"] {
+    for key in ["id", "label", "label_contains", "kind", "near"] {
         if let Some(v) = args.str(key) {
             target.insert(key.into(), json!(v));
         }
     }
-    if target.len() != 1 {
-        return Err("give exactly one of id, label or label_contains".into());
+    let has = |key: &str| target.contains_key(key);
+    // kind can add label; near can add kind (forge checks the rest).
+    let primary = target.len() - usize::from(has("kind") && (has("label") || has("near")));
+    if primary != 1 {
+        return Err("give exactly one of id, label, label_contains, kind or near; kind can add label or index, near can add kind".into());
+    }
+    if let Some(index) = args.0.get("index") {
+        let index = index.as_u64().ok_or("index is a whole number from 0")?;
+        if !has("kind") || has("near") {
+            return Err("index goes with kind".into());
+        }
+        target.insert("index".into(), json!(index));
     }
     let action = args.str("action").unwrap_or("");
     let key = match action {
@@ -1099,6 +1112,30 @@ mod tests {
         );
         let a = args(json!({"action": "tap", "id": "a", "label": "b"}));
         assert!(ui_step(&Args(&a)).is_err());
+        // Apps without identifiers: by kind, or by the text beside a field.
+        let a = args(json!({"action": "tap", "kind": "Button", "label": "Send"}));
+        assert_eq!(
+            ui_step(&Args(&a)).unwrap().1,
+            json!({"kind": "Button", "label": "Send"})
+        );
+        let a = args(json!({"action": "tap", "kind": "Button", "index": 2}));
+        assert_eq!(
+            ui_step(&Args(&a)).unwrap().1,
+            json!({"kind": "Button", "index": 2})
+        );
+        let a = args(json!({"action": "type", "near": "Message", "text": "Hi"}));
+        assert_eq!(
+            ui_step(&Args(&a)).unwrap().1,
+            json!({"near": "Message", "text": "Hi"})
+        );
+        for bad in [
+            json!({"action": "tap", "label": "Send", "index": 0}),
+            json!({"action": "tap", "near": "a", "kind": "Button", "index": 0}),
+            json!({"action": "tap", "near": "a", "label": "b"}),
+            json!({"action": "tap", "kind": "Button", "index": -1}),
+        ] {
+            assert!(ui_step(&Args(&args(bad.clone()))).is_err(), "{bad}");
+        }
         let a = args(json!({"action": "scroll", "id": "tip.total"}));
         assert_eq!(
             ui_step(&Args(&a)).unwrap(),

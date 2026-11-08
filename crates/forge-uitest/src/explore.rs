@@ -114,11 +114,7 @@ impl Action {
 
     /// The action as a `forge ui run` step.
     fn toml_step(&self, launch_args: &[String]) -> String {
-        let target = |locator: &Locator| match locator {
-            Locator::Id(id) => format!("id = {}", quote(id)),
-            Locator::Label(label) => format!("label = {}", quote(label)),
-            Locator::LabelContains(text) => format!("label_contains = {}", quote(text)),
-        };
+        let target = |locator: &Locator| locator.toml_fields();
         match self {
             Action::Launch if launch_args.is_empty() => "launch = {}".into(),
             Action::Launch => format!(

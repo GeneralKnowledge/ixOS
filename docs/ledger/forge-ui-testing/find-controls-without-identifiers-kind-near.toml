@@ -1,0 +1,9 @@
+order = 27
+capability = "Find controls that have no identifier or label: by type with a label or index (`kind`, `index`), or by the text beside them (`near`)"
+framework = "Yes: forge-uitest `Locator::Kind`, `Locator::Near`; test files and `forge_ui_act`"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Partial: DeepSeek's composer (com.deepseek.chat.nov, App Store) through a local patch with `kind = \"TextView\"` only"
+iphone = "Partial: iPhone16,2, iOS 26.3.1, 2026-11-08: a local patch with `kind = \"TextView\"` typed into DeepSeek and its Send (label \"Send\") was approved at the prompt. `near`, `index` and the unlabelled-tap gate in this form have not run on a phone"
+documented = "Yes: forge-ui-testing.md (Targets, Apps Forge didn't build)"
+limits = "`index` counts in tree order across the whole screen, so the keyboard or a new row can shift it; `near` needs element frames and reads the tree before each search (one extra round trip); a tap on a control with no label or identifier in another app always asks; no `ref` handles yet"

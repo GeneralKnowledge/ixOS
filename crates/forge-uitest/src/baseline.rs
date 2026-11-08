@@ -19,7 +19,6 @@ use serde::Serialize;
 use crate::script::{Target, Visual};
 use crate::tree::UiNode;
 use crate::visual::{self, Comparison, Options, PixelRect, Region, TreeChange};
-use crate::Locator;
 
 /// What to do with a run's screenshots.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -400,16 +399,11 @@ fn frames(tree: &UiNode, target: &Target, scale: f64) -> Vec<PixelRect> {
     let Ok(locator) = target.locator() else {
         return Vec::new();
     };
-    tree.walk()
+    locator
+        .find_in(tree)
+        .into_iter()
+        .map(|(_, n)| n)
         .filter(|n| n.visible || n.kind == "Application")
-        .filter(|n| match &locator {
-            Locator::Id(id) => n.identifier.as_deref() == Some(id),
-            Locator::Label(label) => n.label.as_deref() == Some(label),
-            Locator::LabelContains(text) => n
-                .label
-                .as_deref()
-                .is_some_and(|l| l.contains(text.as_str())),
-        })
         .filter_map(|n| n.frame)
         .map(|f| PixelRect::from_points(f, scale))
         .collect()
