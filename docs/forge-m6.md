@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08. Nothing in this page is built yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is in progress. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 
@@ -210,10 +210,12 @@ M6.1 starts now. M6.0 waits only for GD1 on the phone. M6.2 and M6.3 can run sid
 - **The agent's judgement.** Focused exploration and correlation make good choices easier; they don't guarantee them. The run record is how a person sees what the agent decided and why.
 - **Scope.** The temptation is a pipeline command. The principle above says no: if M6.0 shows the agent can't sequence the tools, that is evidence for better results and prompts first.
 
-## Open decisions
+## Decisions
 
-1. **Where the agent runs.** Recommended: on the laptop through Remote Control, as Murmur did, so SwiftUI errors come from the xtool build in a minute. A cloud agent would see them only through macOS CI, about 35 minutes later.
-2. **The demo task.** Recommended: taken from Good Dog's next milestone and agreed with the Good Dog thread after GD1 is on the phone, rather than an M6-only feature.
-3. **Phone slots.** Good Dog needs a slot of its own. Recommended: Good Dog keeps its own bundle id (`org.forgemobile.gooddog` in #121) and the agent sandbox slot is freed for it during M6, since agent runs on Good Dog don't need the sandbox.
-4. **Human acceptance as a command.** Recommended: `forge verify --accept` that only a person at a terminal can run, so acceptance sits in the same record as the machine verdicts.
-5. **Start M6.1 before GD1 reaches the phone.** Recommended: yes. It is proven on Pocket Library and Device Lab and doesn't touch Good Dog.
+All five were decided by Reuben on 2026-11-08 ("go with your recommendations"):
+
+1. **Where the agent runs:** on the laptop through Remote Control, as Murmur did, so SwiftUI errors come from the xtool build in a minute. A cloud agent would see them only through macOS CI, about 35 minutes later.
+2. **The demo task:** taken from Good Dog's next milestone and agreed with the Good Dog thread after GD1 is on the phone, not an M6-only feature.
+3. **Phone slots:** Good Dog keeps its own bundle id (`org.forgemobile.gooddog`), and the agent sandbox's slot is freed for it during M6. Removing the sandbox app is done in a coordinated phone sitting.
+4. **Human acceptance:** `forge verify --accept`, which only a person at a terminal can run, so acceptance sits in the same record as the machine verdicts.
+5. **M6.1 starts now,** before GD1 reaches the phone. It is proven on Pocket Library and Device Lab.
