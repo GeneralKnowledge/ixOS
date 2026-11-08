@@ -23,16 +23,38 @@ pub fn options(project: Option<&Path>, binaries: &[PathBuf], all_threads: bool) 
     }
 }
 
-pub fn analyze_file(file: &Path, options: &Options) -> Result<Analysis, String> {
-    let bytes = std::fs::read(file).map_err(|e| format!("read {}: {e}", file.display()))?;
-    forge_crash::analyze(&bytes, options, &ToolchainSwift::default()).map_err(|e| e.to_string())
+/// Why a file has no analysis.
+#[derive(Debug)]
+pub enum Failure {
+    /// A diagnostic report that isn't a crash (CPU or disk-write resource
+    /// reports, hangs): the phone keeps them next to crashes.
+    NotACrash(String),
+    Error(String),
+}
+
+impl std::fmt::Display for Failure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Failure::NotACrash(bug) => write!(f, "not a crash report (bug type {bug})"),
+            Failure::Error(e) => f.write_str(e),
+        }
+    }
+}
+
+pub fn analyze_file(file: &Path, options: &Options) -> Result<Analysis, Failure> {
+    let bytes =
+        std::fs::read(file).map_err(|e| Failure::Error(format!("read {}: {e}", file.display())))?;
+    forge_crash::analyze(&bytes, options, &ToolchainSwift::default()).map_err(|e| match e {
+        forge_crash::CrashError::NotACrash(bug) => Failure::NotACrash(bug),
+        other => Failure::Error(other.to_string()),
+    })
 }
 
 /// One entry of `data.crashes`: the analysis, or why there is none.
-pub fn entry(file: &Path, analysis: &Result<Analysis, String>) -> Value {
+pub fn entry(file: &Path, analysis: &Result<Analysis, Failure>) -> Value {
     let mut v = match analysis {
         Ok(a) => serde_json::to_value(a).unwrap_or_else(|e| json!({ "error": e.to_string() })),
-        Err(e) => json!({ "error": e }),
+        Err(e) => json!({ "error": e.to_string() }),
     };
     v["file"] = json!(file.display().to_string());
     v
@@ -88,7 +110,7 @@ pub fn show_data(files: &[PathBuf], options: &Options) -> Result<Value, String> 
 pub fn analyze_pulled(
     files: &[PathBuf],
     options: &Options,
-) -> Vec<(PathBuf, Result<Analysis, String>)> {
+) -> Vec<(PathBuf, Result<Analysis, Failure>)> {
     files
         .iter()
         .filter(|f| f.extension().is_some_and(|e| e == "ips"))

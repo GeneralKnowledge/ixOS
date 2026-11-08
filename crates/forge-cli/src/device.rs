@@ -179,6 +179,9 @@ pub fn crashes(
                         write!(out, "{}", crate::crash::summary(a)).map_err(err)?;
                         writeln!(out, "  (full report: {}.txt)", file.display()).map_err(err)?;
                     }
+                    Some(Err(e @ crate::crash::Failure::NotACrash(_))) => {
+                        writeln!(out, "  {e}: skipped").map_err(err)?
+                    }
                     Some(Err(e)) => writeln!(out, "  not symbolicated: {e}").map_err(err)?,
                     None => {}
                 }
@@ -227,10 +230,27 @@ pub fn crashes_data(backend: &dyn DeviceBackend, query: &CrashQuery) -> Result<V
             .map(|f| f.display().to_string())
             .collect::<Vec<_>>());
         let analyses = crate::crash::analyze_pulled(&files, &query.symbols());
-        data["crashes"] = json!(analyses
+        // Resource and hang reports sit next to crashes on the phone; they
+        // are listed apart so `crashes` holds crashes and real failures only.
+        let (other, crashes): (Vec<_>, Vec<_>) = analyses
+            .iter()
+            .partition(|(_, a)| matches!(a, Err(crate::crash::Failure::NotACrash(_))));
+        data["crashes"] = json!(crashes
             .iter()
             .map(|(f, a)| crate::crash::entry(f, a))
             .collect::<Vec<_>>());
+        if !other.is_empty() {
+            data["not_crashes"] = json!(other
+                .iter()
+                .map(|(f, a)| {
+                    let bug = match a {
+                        Err(crate::crash::Failure::NotACrash(bug)) => bug.as_str(),
+                        _ => "",
+                    };
+                    json!({ "file": f.display().to_string(), "bug_type": bug })
+                })
+                .collect::<Vec<_>>());
+        }
     }
     Ok(data)
 }
@@ -340,6 +360,7 @@ mod tests {
                 "Chat-2026-11-07-120000.ips".into(),
                 "Mail-2026-11-07-120000.ips".into(),
                 "Crashy-2026-11-08-101500.ips".into(),
+                "Safari-2026-11-08-100000.ips".into(),
             ])
         }
         fn pull_crash_report(&self, _: &DeviceRef, name: &str) -> Result<Vec<u8>> {
@@ -350,6 +371,9 @@ mod tests {
             }
             if name.starts_with("Crashy") {
                 return Ok(std::fs::read(crash_fixtures().join(name)).unwrap());
+            }
+            if name.starts_with("Safari") {
+                return Ok(b"{\"bug_type\":\"145\"}\n{}".to_vec());
             }
             Ok(format!("report {name}").into_bytes())
         }
@@ -478,7 +502,14 @@ mod tests {
         assert!(dir.path().join("Chat-2026-11-07-120000.ips").is_file());
         let data = crashes_data(&Fake, &q).unwrap();
         assert_eq!(data["skipped"][0]["name"], "Mail-2026-11-07-120000.ips");
-        assert_eq!(data["pulled"].as_array().unwrap().len(), 2);
+        assert_eq!(data["pulled"].as_array().unwrap().len(), 3);
+        // The resource report is listed apart, not as a failed crash.
+        assert_eq!(data["not_crashes"][0]["bug_type"], "145");
+        assert_eq!(data["crashes"].as_array().unwrap().len(), 2);
+        assert!(
+            shown.contains("  not a crash report (bug type 145): skipped"),
+            "{shown}"
+        );
     }
 
     #[test]
