@@ -157,7 +157,7 @@ Steps that work today, one action per step (unknown keys are rejected):
 | `screenshot` | a name |
 | `tree` | `true`: save the accessibility tree |
 
-A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
+A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container. `forge ui tree` reports a `duplicate_identifier` warning for two separate elements with one identifier, but not for a wrapper around an element with the same identifier, which the app can't avoid. Likewise the unlabelled UIKit switch inside a labelled SwiftUI `Toggle` isn't reported as `no_label`. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
 
 Each step costs one or more round trips to WebDriverAgent of a few hundred milliseconds: the front-app check, finding the element, and for a tap the hittable check and the tap itself (about 2 s per tap on Cati). To keep a run fast, don't tap a field before `type`: typing focuses it. Identifiers are found with WDA's `accessibility id` strategy (XCTest's own identifier query) rather than a predicate over the whole tree.
 

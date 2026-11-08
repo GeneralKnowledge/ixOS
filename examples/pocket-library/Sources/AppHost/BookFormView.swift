@@ -56,11 +56,13 @@ struct BookFormView: View {
                         .font(.headline)
                         .wordsEntry()
                         .focused($focused, equals: .title)
+                        .accessibilityLabel("Title")
                         .accessibilityIdentifier("bookForm.title")
                         .submitLabel(.next)
                     TextField("Author", text: $input.author)
                         .wordsEntry()
                         .focused($focused, equals: .author)
+                        .accessibilityLabel("Author")
                         .accessibilityIdentifier("bookForm.author")
                         .submitLabel(.next)
                 }
@@ -78,6 +80,7 @@ struct BookFormView: View {
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .currentPage)
+                            .accessibilityLabel("Current page")
                             .accessibilityIdentifier("bookForm.currentPage")
                     }
                     LabeledContent("Pages") {
@@ -85,18 +88,20 @@ struct BookFormView: View {
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .totalPages)
+                            .accessibilityLabel("Pages")
                             .accessibilityIdentifier("bookForm.totalPages")
                     }
                 }
 
                 Section("Rating") {
-                    StarRating(rating: input.rating) { input.rating = $0 }
+                    StarRating(rating: input.rating, idPrefix: "bookForm") { input.rating = $0 }
                 }
 
                 Section("Notes") {
                     TextField("Thoughts, quotes, where you got it…", text: $input.notes, axis: .vertical)
                         .lineLimit(3...10)
                         .focused($focused, equals: .notes)
+                        .accessibilityLabel("Notes")
                         .accessibilityIdentifier("bookForm.notes")
                 }
 
@@ -104,10 +109,12 @@ struct BookFormView: View {
                     TextField("Description", text: $input.description, axis: .vertical)
                         .lineLimit(2...8)
                         .focused($focused, equals: .description)
+                        .accessibilityLabel("Description")
                         .accessibilityIdentifier("bookForm.description")
                     TextField("Cover image link (https://…)", text: $coverURL)
                         .autocorrectionDisabled()
                         .focused($focused, equals: .cover)
+                        .accessibilityLabel("Cover image link")
                         .accessibilityIdentifier("bookForm.cover")
                         #if os(iOS)
                         .textContentType(.URL)

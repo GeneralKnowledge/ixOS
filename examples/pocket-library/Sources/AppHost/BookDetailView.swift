@@ -12,6 +12,7 @@ struct BookDetailView: View {
     @State private var error: PresentedError?
     @State private var finishedCount = 0
     @FocusState private var pageFieldFocused: Bool
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// Read from the model each time, so edits elsewhere show at once.
     private var book: Book? {
@@ -54,6 +55,7 @@ struct BookDetailView: View {
                         Label(status.label, systemImage: status.symbol).tag(status)
                     }
                 }
+                .accessibilityIdentifier("bookDetail.status")
                 LabeledContent("Added", value: Dates.short(book.addedAtMs))
                 if let started = book.startedAtMs {
                     LabeledContent("Started", value: Dates.short(started))
@@ -63,7 +65,7 @@ struct BookDetailView: View {
                 }
             }
             Section("Rating") {
-                StarRating(rating: book.rating) { stars in
+                StarRating(rating: book.rating, idPrefix: "bookDetail") { stars in
                     var input = BookInput(book)
                     input.rating = stars
                     run { try await model.update(book.id, input) }
@@ -79,6 +81,7 @@ struct BookDetailView: View {
             Section("Notes") {
                 if book.notes.isEmpty {
                     Button("Add notes") { editing = true }
+                        .accessibilityIdentifier("bookDetail.addNotes")
                 } else {
                     Text(book.notes).textSelection(.enabled)
                 }
@@ -93,6 +96,7 @@ struct BookDetailView: View {
             }
             Section {
                 Button("Delete Book", role: .destructive) { confirmDelete = true }
+                    .accessibilityIdentifier("bookDetail.delete")
             }
         }
         .groupedList()
@@ -100,11 +104,13 @@ struct BookDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("Edit") { editing = true }
+                    .accessibilityIdentifier("bookDetail.edit")
             }
             ToolbarItem(placement: .secondaryAction) {
                 ShareLink(item: book.shareText) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
+                .accessibilityIdentifier("bookDetail.share")
             }
             #if os(iOS)
             ToolbarItemGroup(placement: .keyboard) {
@@ -149,6 +155,7 @@ struct BookDetailView: View {
                     Label(book.readingPosition == nil ? "Read" : "Continue Reading", systemImage: "book")
                         .font(.headline)
                 }
+                .accessibilityIdentifier("bookDetail.read")
             }
         } else if case .epub = book.source {
             Section {
@@ -160,7 +167,12 @@ struct BookDetailView: View {
     }
 
     private func header(_ book: Book) -> some View {
-        HStack(alignment: .top, spacing: 16) {
+        // At accessibility text sizes the cover goes above the text, as in
+        // the library list, so a long title isn't squeezed beside it.
+        let layout = typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 16))
+        return layout {
             CoverImage(title: book.title, file: book.coverFile, url: book.coverUrl, width: 96)
             VStack(alignment: .leading, spacing: 6) {
                 Text(book.title)
@@ -200,18 +212,24 @@ struct BookDetailView: View {
         }
         HStack {
             Text("Current page")
+                .accessibilityHidden(true)
             Spacer()
+            // The visible "Current page" text isn't the field's label for
+            // VoiceOver or UI tests, and a placeholder isn't either: name it.
             TextField("Page", text: $pageText)
                 .numberEntry()
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 80)
                 .focused($pageFieldFocused)
                 .onSubmit { savePage(book) }
-            Stepper("Page", value: Binding(
+                .accessibilityLabel("Current page")
+                .accessibilityIdentifier("bookDetail.page")
+            Stepper("Current page", value: Binding(
                 get: { Int(book.currentPage) },
                 set: { savePage(book, page: $0) }
             ), in: 0...Int(book.totalPages ?? 100_000))
             .labelsHidden()
+            .accessibilityIdentifier("bookDetail.pageStepper")
         }
         if book.status != .finished {
             Button {
@@ -219,6 +237,7 @@ struct BookDetailView: View {
             } label: {
                 Label("Mark as Finished", systemImage: "checkmark.circle")
             }
+            .accessibilityIdentifier("bookDetail.markFinished")
         }
     }
 
@@ -252,9 +271,13 @@ struct BookDetailView: View {
 }
 
 /// 1–5 stars; tapping the current rating clears it. VoiceOver reads it as one
-/// adjustable control ("Rating, 3 of 5 stars"; swipe up or down to change).
+/// adjustable control ("Rating, 3 of 5 stars"; swipe up or down to change),
+/// identified as `<idPrefix>.rating`. UI automation can still see the stars
+/// themselves, so each has its own name and identifier (`<idPrefix>.star.3`)
+/// rather than five buttons all called `star`.
 struct StarRating: View {
     let rating: UInt8?
+    let idPrefix: String
     let onChange: (UInt8?) -> Void
 
     var body: some View {
@@ -267,8 +290,12 @@ struct StarRating: View {
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.title3)
                         .foregroundStyle(filled ? .yellow : .secondary)
+                        // An SF Symbol's name becomes its identifier.
+                        .accessibilityHidden(true)
                 }
                 .buttonStyle(.borderless)
+                .accessibilityLabel(star == 1 ? "1 star" : "\(star) stars")
+                .accessibilityIdentifier("\(idPrefix).star.\(star)")
             }
             Spacer()
             if rating == nil {
@@ -277,6 +304,7 @@ struct StarRating: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Rating")
+        .accessibilityIdentifier("\(idPrefix).rating")
         .accessibilityValue(rating.map { "\($0) of 5 stars" } ?? "Not rated")
         .accessibilityAdjustableAction { direction in
             let current = Int(rating ?? 0)

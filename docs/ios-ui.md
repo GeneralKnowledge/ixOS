@@ -186,6 +186,8 @@ Don't show errors as red text inside a list. An alert names what failed and has 
 
 - Every control, row and text field has an `.accessibilityIdentifier("screen.element")`, such as `library.add` or `bookForm.title`, so UI tests can find it ([forge-ui-testing.md](forge-ui-testing.md#accessibility-conventions)). Identifiers are never shown or spoken; they don't replace labels.
 - Every control has a text name. Icon-only buttons use `Button("Title", systemImage:)` or a `Label`. Images that carry information have an `accessibilityLabel`; decorative ones are hidden with `.accessibilityHidden(true)`.
+- Give every text field an `.accessibilityLabel`. A `TextField`'s title is only its placeholder, and a `Text` beside it (in an `HStack` or `LabeledContent`) doesn't name it either, so without one VoiceOver and UI tests see a field called nothing, or called whatever it holds.
+- An unlabelled SF Symbol image gets its symbol name as its identifier, so five `star` images are five elements called `star`. Hide decorative symbols, and give repeated controls their own identifiers (`bookForm.star.3`).
 - Combine a row's pieces into one VoiceOver element with `.accessibilityElement(children: .combine)`.
 - Check every screen at the largest accessibility text size. Rows should wrap rather than truncate their primary text. Swap a horizontal layout for a vertical one under `@Environment(\.dynamicTypeSize)` when `isAccessibilitySize` is true.
 - Touch targets are at least 44×44 points. System controls already are; custom tappable views need `.contentShape` and a large enough frame.
