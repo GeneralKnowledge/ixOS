@@ -67,14 +67,14 @@ Layers: **Core** (any app may need it), **Optional** (a substantial system an ap
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
 | JSON snapshot storage with migration hook | Yes: forge-storage | Yes | n/a | Yes: Chat, starter | Yes: Chat, 2026-11-05 | Yes | Rewrites the whole file on every change |
-| Relational store with queries (SQLite) | Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery | Yes | n/a | Yes: Chat M2 (`forge-chat.db`) | No: Chat M2 device run skipped | Partial: chat-demo.md | Bundled SQLite builds with xtool (Chat M2); the phone run that would show "Storage: SQLite" in Settings has not been done |
+| Relational store with queries (SQLite) | Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery of a file SQLite reports as damaged (a locked or unreadable file is an error, never a recovery) | Yes | n/a | Yes: Chat M2 (`forge-chat.db`) | No: Chat M2 device run skipped | Partial: chat-demo.md | Bundled SQLite builds with xtool (Chat M2); the phone run that would show "Storage: SQLite" in Settings has not been done |
 | Full-text search | Partial: FTS5 is built into `Database`; the query builder is still Chat's own (`fts_query`) | Yes | n/a | Yes: Chat M2 search | No | Partial: chat-demo.md | |
 | Backup and restore archive | No | No | No | No | No | No | |
 | App directories | Yes: forge-services | Yes | Yes | Partial: services check app only | No | Yes | Store relative paths only |
 | Document picker import (copy into app) | Yes | Partial: path handed to Rust | Yes: `forgeFileImporter` | Partial: services check app only | No | Yes | |
 | Share sheet and Save to Files | Yes | Yes: `ShareItem` | Yes: `ForgeShareLink` | Partial: services check app only | No | Yes | |
 | Managed file store | Yes: forge-storage `FileStore` (`files` module, `hash` feature for SHA-256) | Yes | n/a | Partial: Chat M3 attachments (`AttachmentStore` keeps Chat's limits on top); Pocket Library covers, EPUBs, reader images and exports | No | Partial: rustdoc, architecture.md | No backup exclusion yet |
-| File-backed upload and download with progress | Partial: forge-net `HttpClient::send_file`, `download_to_file` | Yes | n/a | Partial: Chat M3 | No | No | Streams from and to files; no progress reporting yet |
+| File-backed upload and download with progress | Partial: forge-net `HttpClient::send_file`, `download_to_file` | Yes | n/a | Partial: Chat M3 | No | No | Streams from and to files; downloads take a byte limit and use FileStore temporary names, so a killed download is swept; no progress reporting or resume yet |
 | Background transfers | No | No | No | No | No | No | Needs native `URLSession` (S6) |
 | CSV import and export | No | No | n/a | No | No | No | |
 | Report export (zip, GPX, GeoJSON, PDF, PNG) | No | No | No | No | No | No | PDF and PNG drawn natively |

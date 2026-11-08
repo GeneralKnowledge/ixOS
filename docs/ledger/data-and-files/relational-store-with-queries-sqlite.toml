@@ -1,6 +1,6 @@
 order = 20
 capability = "Relational store with queries (SQLite)"
-framework = "Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery"
+framework = "Yes: forge-storage `Database` (feature `sqlite`): migrations, transactions, recovery of a file SQLite reports as damaged (a locked or unreadable file is an error, never a recovery)"
 rust_api = "Yes"
 ios_native = "n/a"
 in_app = "Yes: Chat M2 (`forge-chat.db`)"

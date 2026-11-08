@@ -163,9 +163,19 @@ impl AttachmentStore {
         }
     }
 
-    /// Where a download of `id` goes before it is checked.
-    pub fn download_path(&self, id: &str) -> PathBuf {
-        self.directory().join(format!(".download-{id}"))
+    /// Removes the temporaries an earlier run left behind; never touches a
+    /// kept attachment. Called when a client opens.
+    pub fn sweep_temporaries(&self) -> u64 {
+        self.files.sweep_temporaries()
+    }
+
+    /// Where a download of `id` goes before it is checked: one of the
+    /// store's temporary names, so a download killed with the app is
+    /// removed by the next sweep instead of staying hidden for ever.
+    pub fn download_path(&self, _id: &str) -> PathBuf {
+        self.files
+            .partial_path()
+            .unwrap_or_else(|_| self.directory().join(".partial-download"))
     }
 }
 

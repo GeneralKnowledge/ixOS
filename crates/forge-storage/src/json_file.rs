@@ -7,10 +7,13 @@
 //! Writes are atomic ([`write_atomic`]). A file written by a newer build
 //! (higher `schema_version`) is reported as
 //! [`StorageError::UnsupportedSchemaVersion`] and never overwritten by
-//! [`JsonFile::save`]; anything unreadable is [`StorageError::CorruptData`].
+//! [`JsonFile::save`]; anything unreadable is [`StorageError::CorruptData`],
+//! and `save` does not replace it either unless the app asks
+//! ([`JsonFile::save_over_corrupt`]).
 //! Older versions are handed to the app's migration function.
 
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -23,12 +26,33 @@ use crate::StorageError;
 pub type Migration = fn(from_version: u32, data: Value) -> Result<Value, StorageError>;
 
 /// One JSON document on disk, holding a `T`.
+///
+/// Clones share what the file was last seen to hold, so a clone saves
+/// without re-reading the file as well.
 #[derive(Debug, Clone)]
 pub struct JsonFile<T> {
     path: PathBuf,
     version: u32,
     migrate: Option<Migration>,
+    known: Arc<Mutex<Known>>,
     _type: std::marker::PhantomData<fn() -> T>,
+}
+
+/// A file's size and modification time.
+type Stamp = (u64, Option<std::time::SystemTime>);
+
+/// What this `JsonFile` last saw on disk.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Known {
+    /// Not read or written yet, or the last read failed: check before writing.
+    Unchecked,
+    /// Missing, or a document this build can read: safe to replace while
+    /// the file still has this size and modification time (`None`: absent).
+    Ours(Option<Stamp>),
+    /// Unreadable: never replaced by `save`.
+    Corrupt,
+    /// Written by a newer build: never replaced.
+    Newer,
 }
 
 impl<T: Serialize + DeserializeOwned> JsonFile<T> {
@@ -38,6 +62,7 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
             path: path.into(),
             version,
             migrate: None,
+            known: Arc::new(Mutex::new(Known::Unchecked)),
             _type: std::marker::PhantomData,
         }
     }
@@ -55,6 +80,31 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
 
     /// The stored value, or `None` if the file does not exist yet.
     pub fn load(&self) -> Result<Option<T>, StorageError> {
+        let result = self.read();
+        self.remember(match &result {
+            Ok(_) => Known::Ours(self.stamp()),
+            Err(StorageError::CorruptData { .. }) => Known::Corrupt,
+            Err(StorageError::UnsupportedSchemaVersion { .. }) => Known::Newer,
+            Err(_) => Known::Unchecked,
+        });
+        result
+    }
+
+    fn remember(&self, known: Known) {
+        *self.known.lock().unwrap_or_else(|p| p.into_inner()) = known;
+    }
+
+    /// The file's size and modification time, or `None` when it is absent.
+    fn stamp(&self) -> Option<Stamp> {
+        let meta = std::fs::metadata(&self.path).ok()?;
+        Some((meta.len(), meta.modified().ok()))
+    }
+
+    fn known(&self) -> Known {
+        *self.known.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn read(&self) -> Result<Option<T>, StorageError> {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
             Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -93,25 +143,58 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
             .map_err(|e| corrupt(e.to_string()))
     }
 
-    /// Writes `value` atomically, creating the directory if needed. Refuses
-    /// to replace a file written by a newer build.
+    /// Writes `value` atomically, creating the directory if needed.
+    ///
+    /// Refuses to replace a file written by a newer build
+    /// (`UnsupportedSchemaVersion`) or one that could not be read
+    /// (`CorruptData`): an unreadable file may still be recoverable, so
+    /// replacing it is the app's explicit decision ([`Self::save_over_corrupt`]).
+    /// The file is read before the first write, and again only when its
+    /// size or modification time changed since this `JsonFile` last loaded
+    /// or saved it; otherwise saving costs one `stat` on top of the write.
     pub fn save(&self, value: &T) -> Result<(), StorageError> {
-        if let Err(err @ StorageError::UnsupportedSchemaVersion { .. }) = self.load() {
-            return Err(err);
+        if self.known() != Known::Ours(self.stamp()) {
+            // Unchecked, changed by someone else since we last saw it, or
+            // something was wrong last time (the app may have moved a bad
+            // file aside since): look again. Otherwise one `stat` replaces
+            // reading and parsing the whole file.
+            self.load()?;
         }
+        self.write(value)
+    }
+
+    /// Like [`Self::save`], but replaces a file that could not be read.
+    /// For an app's explicit "start again" after telling the user; it still
+    /// refuses to replace a file from a newer build.
+    pub fn save_over_corrupt(&self, value: &T) -> Result<(), StorageError> {
+        match self.load() {
+            Ok(_) | Err(StorageError::CorruptData { .. }) => self.write(value),
+            Err(err) => Err(err),
+        }
+    }
+
+    fn write(&self, value: &T) -> Result<(), StorageError> {
         if let Some(dir) = self.path.parent() {
             std::fs::create_dir_all(dir).map_err(|err| StorageError::WriteFailed {
                 reason: format!("create {}: {err}", dir.display()),
             })?;
         }
-        let json = serde_json::to_vec_pretty(&serde_json::json!({
-            "schema_version": self.version,
-            "data": value,
-        }))
+        // Serialised straight from `value`, without building a `Value` tree.
+        #[derive(Serialize)]
+        struct Envelope<'a, T> {
+            schema_version: u32,
+            data: &'a T,
+        }
+        let json = serde_json::to_vec_pretty(&Envelope {
+            schema_version: self.version,
+            data: value,
+        })
         .map_err(|err| StorageError::WriteFailed {
             reason: err.to_string(),
         })?;
-        write_atomic(&self.path, &json)
+        write_atomic(&self.path, &json)?;
+        self.remember(Known::Ours(self.stamp()));
+        Ok(())
     }
 }
 
@@ -165,6 +248,52 @@ mod tests {
         std::fs::write(notes.path(), "{not json").unwrap();
         assert!(matches!(
             notes.load(),
+            Err(StorageError::CorruptData { .. })
+        ));
+    }
+
+    #[test]
+    fn a_corrupt_file_is_replaced_only_on_request() {
+        let dir = tempfile::tempdir().unwrap();
+        let notes = file(dir.path(), 1);
+        std::fs::create_dir_all(notes.path().parent().unwrap()).unwrap();
+        std::fs::write(notes.path(), "{half a docu").unwrap();
+        let value = Notes {
+            items: vec!["new".into()],
+        };
+        assert!(matches!(
+            notes.save(&value),
+            Err(StorageError::CorruptData { .. })
+        ));
+        assert_eq!(
+            std::fs::read_to_string(notes.path()).unwrap(),
+            "{half a docu"
+        );
+        notes.save_over_corrupt(&value).unwrap();
+        assert_eq!(notes.load().unwrap(), Some(value));
+    }
+
+    #[test]
+    fn a_file_moved_aside_after_a_failed_load_can_be_saved_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let notes = file(dir.path(), 1);
+        std::fs::create_dir_all(notes.path().parent().unwrap()).unwrap();
+        std::fs::write(notes.path(), "garbage").unwrap();
+        assert!(notes.load().is_err());
+        std::fs::rename(notes.path(), dir.path().join("aside")).unwrap();
+        notes.save(&Notes { items: vec![] }).unwrap();
+    }
+
+    #[test]
+    fn a_file_changed_behind_its_back_is_checked_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let notes = file(dir.path(), 1);
+        notes.save(&Notes { items: vec![] }).unwrap();
+        std::fs::write(notes.path(), "garbage, and longer than before").unwrap();
+        assert!(matches!(
+            notes.save(&Notes {
+                items: vec!["x".into()]
+            }),
             Err(StorageError::CorruptData { .. })
         ));
     }

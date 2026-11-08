@@ -518,6 +518,7 @@ mod tests {
             &Request::get(url),
             &dest,
             &CancelHandle::new(),
+            Some(9),
         )
         .unwrap();
         server.join().unwrap();
@@ -540,6 +541,7 @@ mod tests {
             &Request::get(url),
             &missing,
             &CancelHandle::new(),
+            None,
         )
         .unwrap();
         server.join().unwrap();
@@ -559,11 +561,36 @@ mod tests {
             &Request::get(url),
             &cut,
             &CancelHandle::new(),
+            None,
         )
         .unwrap_err();
         server.join().unwrap();
         assert!(matches!(err, NetError::Transport { .. }), "{err:?}");
         assert!(!cut.exists());
+        assert_eq!(
+            std::fs::read_dir(dest.parent().unwrap()).unwrap().count(),
+            1
+        );
+
+        // A body larger than the limit stops there and leaves nothing.
+        let big = dir.path().join("files/big.pdf");
+        let (url, server) = one_shot_server(
+            "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nConnection: close\r\n\r\n0123456789",
+        );
+        let err = crate::download_to_file(
+            &UreqClient::new(),
+            &Request::get(url),
+            &big,
+            &CancelHandle::new(),
+            Some(9),
+        )
+        .unwrap_err();
+        server.join().unwrap();
+        assert!(
+            matches!(&err, NetError::Transport { reason } if reason.contains("larger than 9")),
+            "{err:?}"
+        );
+        assert!(!big.exists());
         assert_eq!(
             std::fs::read_dir(dest.parent().unwrap()).unwrap().count(),
             1

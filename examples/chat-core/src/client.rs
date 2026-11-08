@@ -236,6 +236,8 @@ impl ChatClient {
             Err(err) => (ChatSnapshot::new(), Some(err)),
         };
         let attachments = store.attachments();
+        // Downloads and copies a killed earlier run left half done.
+        attachments.sweep_temporaries();
         let client = Self {
             inner: Arc::new(Inner {
                 repo,

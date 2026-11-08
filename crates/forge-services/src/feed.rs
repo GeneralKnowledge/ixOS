@@ -7,9 +7,43 @@
 //! the host delivered it on, so listeners should be quick (copy the value
 //! into your own state and return).
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::thread::ThreadId;
 
-type Listener<T> = Arc<dyn Fn(&T) + Send + Sync>;
+type Listener<T> = Arc<Entry<T>>;
+
+/// One listener, with what makes cancelling it final: `live` is cleared
+/// first, then `cancel` waits on `gate` for a delivery already running on
+/// another thread, so no value reaches the listener after `cancel` returns.
+struct Entry<T> {
+    call: Box<dyn Fn(&T) + Send + Sync>,
+    live: AtomicBool,
+    gate: Mutex<()>,
+    /// The thread delivering to this listener right now, if any, so a
+    /// listener that cancels its own watch does not wait for itself.
+    deliverer: Mutex<Option<ThreadId>>,
+}
+
+impl<T> Entry<T> {
+    fn deliver(&self, value: &T) {
+        let _gate = lock(&self.gate);
+        if !self.live.load(Ordering::SeqCst) {
+            return;
+        }
+        *lock(&self.deliverer) = Some(std::thread::current().id());
+        (self.call)(value);
+        *lock(&self.deliverer) = None;
+    }
+
+    fn retire(&self) {
+        self.live.store(false, Ordering::SeqCst);
+        let delivering_here = *lock(&self.deliverer) == Some(std::thread::current().id());
+        if !delivering_here {
+            drop(lock(&self.gate));
+        }
+    }
+}
 
 /// One stream of values from the host, fanned out to Rust listeners.
 pub struct Feed<T> {
@@ -52,7 +86,7 @@ impl<T: Clone + Send + 'static> Feed<T> {
             state.listeners.iter().map(|(_, l)| l.clone()).collect()
         };
         for listener in listeners {
-            listener(&value);
+            listener.deliver(&value);
         }
     }
 
@@ -77,12 +111,18 @@ impl<T: Clone + Send + 'static> Feed<T> {
         stop: impl FnOnce() + Send + 'static,
     ) -> Result<Watch, E> {
         let _control = lock(&self.control);
-        let (id, first) = {
+        let (id, first, entry) = {
             let mut state = lock(&self.state);
             let id = state.next_id;
             state.next_id += 1;
-            state.listeners.push((id, Arc::new(listener)));
-            (id, state.listeners.len() == 1)
+            let entry = Arc::new(Entry {
+                call: Box::new(listener),
+                live: AtomicBool::new(true),
+                gate: Mutex::new(()),
+                deliverer: Mutex::new(None),
+            });
+            state.listeners.push((id, Arc::clone(&entry)));
+            (id, state.listeners.len() == 1, entry)
         };
         if first {
             if let Err(err) = start() {
@@ -94,6 +134,9 @@ impl<T: Clone + Send + 'static> Feed<T> {
         }
         let feed: Weak<Self> = Arc::downgrade(self);
         Ok(Watch::new(move || {
+            // First, and outside the feed's locks: a delivery still running
+            // on another thread may itself take them.
+            entry.retire();
             if let Some(feed) = feed.upgrade() {
                 let _control = lock(&feed.control);
                 let now_empty = {
