@@ -1,0 +1,24 @@
+STAGE A of a staged run (no phone). You are working on Good Dog, an existing Forge app in examples/good-dog of this checkout. Make the change described below as far as it can go without an iPhone. Later stages, in this same session, put it on the phone in short sessions, so do everything that doesn't need the phone now.
+
+Use the forge MCP tools for everything Forge does: read forge://conventions and forge://capabilities first, then forge_inspect_app on examples/good-dog. Read docs/good-dog-demo.md for the app's plan and AGENTS.md for the rules. Make forge_check pass (Rust tests and the Swift model check) and forge_build_ios pass (it compiles the SwiftUI). After changing the app crate's exported API, regenerate the bindings with forge bindings generate; never edit Generated/ by hand. Installing is not allowed in this stage and no phone is plugged in: don't call device tools.
+
+Also write the UI test now, so the phone stages only have to run it: a file in examples/good-dog/uitests/ that launches with the launch argument -ForgeUITestSampleDog (a sample dog, so onboarding is skipped), opens an exercise from Today, starts the guided session, steps forward to the end and back once, records "getting there", and checks the session appears as done on Today. Find everything by accessibility identifier.
+
+Don't plant problems and don't keep a known problem back to find later. If you notice one, fix it and say so.
+
+End by writing examples/good-dog/M65-REPORT.md: what you changed, what the build and checks showed and what you fixed, and what you expect to need checking on the phone.
+
+The change:
+
+Good Dog's exercises read as lists. An exercise screen shows its preparation, steps, what to look for and what to do if it's hard as sections of text, and the owner has to scroll back and forth while holding a lead and a treat. Turn an exercise into a guided session the owner can follow one step at a time.
+
+- A "Start guided session" button on the exercise screen opens the guided session.
+- The session shows one thing at a time: first a short "get ready" card, then each step on its own, with the step's number and the total ("Step 2 of 5"). Large text and big Back and Next controls that are easy to hit while holding a lead.
+- The existing session timer keeps running across the steps, and is visible on every card.
+- After the last step, the session ends on the same outcome choice the exercise screen already has (easy, getting there, too difficult, plus the welfare concern option). Choosing one records the session exactly as recording from the exercise screen does today: same rules, same history entry, same skill progress.
+- Leaving the session part way (closing it, or the app being terminated) records nothing. Reopening the exercise starts the guided session again from the start.
+- "If it's difficult" is one tap away on every step card, without losing the place.
+
+Keep the session's state and rules in Rust (which card is showing, moving next and back, what may be recorded and when); SwiftUI only presents it. Every new control gets an accessibility identifier named screen.element and a label a VoiceOver user understands. The guided session must work at the largest text size and in dark mode.
+
+Add a requirement for it to requirements.toml (GD-7), with a Rust or Swift model test as its twin evidence and a UI test file in uitests/ as its device check.

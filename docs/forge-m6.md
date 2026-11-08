@@ -249,9 +249,9 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 
 **The task** comes from Good Dog's own next milestone, agreed with the Good Dog thread, so it advances the app instead of running beside it. Reuben (2026-11-08): once M6 is ready, use the loop to improve Good Dog substantially, because the app feels basic and its programmes are good step-by-step guides that read as lists. Good Dog's new direction is goal-led training (PR #127, docs/good-dog-demo.md), so the task follows that plan:
 
-- **The task:** pausing, resuming and setting aside a training goal, with its history kept. It runs after GD2a (the Rust goals-and-pathways milestone, which the Good Dog thread builds first). It crosses Rust state, storage, SwiftUI, interaction and accessibility, and needs no new capability.
-- **Fallback:** GD2b's goal journey screen, the screen that turns a goal's steps into a path you work through rather than a list.
-- Earlier candidates (the My Dog progress section, CSV export for a trainer, now GD4, and reminder preferences, now GD5) still cross the same layers but no longer advance the product's next step.
+- **The task (Reuben, 2026-11-08 17:54):** a guided exercise session. An exercise's steps become cards the owner follows one at a time, with the timer running across them, ending on the existing outcome choice, which records exactly as the exercise screen does. Leaving part way records nothing. It works on today's app, so the run doesn't wait for GD2a, and the exercise screen stays in the goal-led plan. It crosses Rust state, SwiftUI, interaction and accessibility, and needs no new capability. The full task and requirement GD-7 are in `scripts/agent-runs/good-dog-m65/task.txt`.
+- **Not chosen now:** pausing, resuming and setting aside a goal, which needs GD2a first. It remains a candidate for M6.6, with GD2b's goal journey screen.
+- **How it runs:** `scripts/agent-runs/good-dog-m65/run-m65.sh`, in stages: `prep`, `a-change` (no phone, up to 60 min), `b-look` and `c-test` (phone, up to 20 min each), and `d-record` (`forge verify --run`). The agent works in its own git worktree. Phone stages install `org.forgemobile.gooddog` over the build already there, and launch only on test data (`-ForgeUITestData -ForgeUITestSampleDog`), never the owner's own data. Afterwards Reuben uses the guided session and records `--accept GD-7` himself.
 
 Not a planted bug. If the run finds no genuine problem, the record says so and M6 isn't complete on that point; a second task follows.
 
