@@ -114,7 +114,7 @@ The product phases form the spine. The ixOS capabilities from the original plan 
 |---|---|---|
 | GD0 | Rust port of the engine, policy and content; the golden fixture passes 100 out of 100. **Done** (2026-11-08): also matches all 900 scenarios with swaps and 315 simulated weeks | No |
 | GD1 | Native app: onboarding, Today, exercise runner, Learn, My dog, all on forge-storage; UI test journey. **Done** (2026-11-08): Rust and model tests pass on Linux; macOS CI and the laptop compiled the SwiftUI. On Cati (iPhone 15 Pro Max, iOS 26.3.1) the `journey.toml` UI test passed 29 of 29 steps, and Reuben checked dark mode | Yes: install, run the journey, and check dark mode |
-| GD2a | **Goals in Rust** (phase 1). Goal and pathway model; the pathway format agreed for DogResearch, with the model and rules tested against a fixture, then recall, loose-lead walking, settling and greeting visitors once DogResearch has them; stage rules; `GoalPolicy`; goal management (start, pause, resume, set aside, "we're there", "go back"). The data file moves from version 1 to 2 with a forge-storage migration, so GD1's data survives. Tests: every pathway references real exercises and life stages, stage rules, welfare holds, history kept across pause and set aside, and the migration | No |
+| GD2a | **Goals in Rust** (phase 1). Goal and pathway model; the pathway format agreed for DogResearch, with the model and rules tested against a fixture, then recall, loose-lead walking, settling and greeting visitors once DogResearch has them; stage rules; `GoalPolicy`; goal management (start, pause, resume, set aside, "we're there", "go back"). The data file moves from version 1 to 2 with a forge-storage migration, so GD1's data survives. Tests: every pathway references real exercises and life stages, stage rules, welfare holds, history kept across pause and set aside, and the migration. **Built** (2026-11-08): the format, loader and checks in `good-dog-core` (`dog_training::pathways`), `GoalFocusPolicy` (with no goal it plans exactly as GD1; a goal's current-stage exercises get a boost), and the goal API in the app crate (`start_goal`, `pause_goal`, `resume_goal`, `set_goal_aside`, `answer_gate`, `step_back`, `suggest_goals` from the owner's own words), with at most three active goals. Store version 2 migrates GD1 data. Tested on Linux against `tests/fixtures/pathways-sample.json`; `content/pathways.json` stays empty until DogResearch publishes, so the shipped app offers no goals yet. Safety rules are carried but not yet enforced (see below) | No |
 | GD2b | **Goals on the phone** (phase 1). Onboarding picks one to three challenges. A goal screen shows the journey: where the dog is, what this stage means and why, what "ready" looks like in words, and what comes next. Today leads with a goal's next step, adds an everyday idea, and has "not today". Pause and set aside are on the goal screen | Yes: the journey test grows to cover goals; data from GD1 survives the update |
 | GD3 | **Reflections and adaptive steps** (phase 2). After a session there's a quick record (one tap still works) plus an optional reflection: where it happened (home, garden, street, park, with other dogs or visitors), signs of stress or switching off chosen from a list, and the owner's own words. At most one follow-up question, and only when the answer changes the next step. "What this changes" explains the next step. Stage rules count contexts. Owner-reported changes appear on the goal | Yes: reflections recorded; a stress sign steps the pathway back |
 | GD4 [GD3] | **Meaningful progress** (phases 2 and 4). Progress for each goal with Swift Charts: the contexts practised, learned compared with reliable, skills in maintenance. A summary to share with a trainer as CSV and PDF through the share sheet | Yes: charts read with VoiceOver; export opens in Files |
@@ -132,6 +132,8 @@ DogResearch already has most of what a pathway needs, so the format reuses it ra
 {
   "id": "path-recall",
   "title": "Coming back when called",
+  "summary": "From turning to their name to coming back on a long line.",
+  "matchPhrases": ["come back", "recall", "runs off", "won't come"],
   "ownerQuestionCategoryIds": ["oq-recall"],
   "behaviourIds": ["beh-recall-to-handler"],
   "lifeStages": ["older_puppy", "adolescent", "adult", "senior"],
@@ -146,7 +148,8 @@ DogResearch already has most of what a pathway needs, so the format reuses it ra
       "lessonIds": ["lesson-recall-basics"],
       "everydayPractice": "Call once when your dog is already heading your way, and make arriving worth it.",
       "opensAfter": ["recall-name"],
-      "gate": { "summary": "Returns to arm's reach on a 5 m long line in low distraction.", "metricIds": ["metric-recall-long-line-5m"] },
+      "gate": { "summary": "Returns to arm's reach on a 5 m long line in low distraction.", "metricIds": ["metric-recall-long-line-5m"],
+                "ownerCheck": "On a 5 metre long line somewhere quiet, does {dog} come back to arm's reach when called once?" },
       "ifGateFails": "Go back to the name game and shorten the distance.",
       "safetyRuleIds": ["safe-002-recall-management", "safe-003-no-punish-return"],
       "maintenance": "A few rewarded recalls on ordinary walks each week."
@@ -155,11 +158,14 @@ DogResearch already has most of what a pathway needs, so the format reuses it ra
 }
 ```
 
+Two fields were added while building GD2a: `matchPhrases` (everyday words an owner might type, so "he pulls on the lead" suggests loose-lead walking; nothing is guessed when nothing matches) and `gate.ownerCheck` (the gate as the plain question the owner answers, with `{dog}` for the name). `behaviourIds` is optional and not read yet. The test fixture `good-dog-core/tests/fixtures/pathways-sample.json` is the reference example.
+
 How the app uses it:
 
-- **Ready when.** A stage's gate passes when both are true. First, the app's own evidence: its exercises are at least `BecomingConsistent` and there is no welfare concern in the cooldown. Second, the owner confirms the gate's observable criteria, asked as a plain question ("Did Moss come back to within arm's reach on the long line?"). Completion counts never pass a gate.
-- **When it doesn't go well.** `ifGateFails` is shown, and the stage steps back.
-- **Safety gates.** `safetyRuleIds` are hard holds in Rust: no stage behind `safe-002` opens without its condition.
+- **Ready when.** A stage's gate passes when both are true. First, the app's own evidence: its exercises are at least `BecomingConsistent`, with "went well" or "getting there" on two different days, and there is no welfare concern in the cooldown. Second, the owner confirms the gate's observable criteria, asked as a plain question ("Did Moss come back to within arm's reach on the long line?"). Completion counts never pass a gate.
+- **Holds.** A welfare rest or a skill being made easier holds the stage: the owner's "yes" is refused until the hold lifts. Without a hold, the owner may say yes ahead of the app's evidence, since they see the dog every day; the goal's history records that it was ahead of the evidence.
+- **When it doesn't go well.** `ifGateFails` is shown. "Not yet" is recorded and changes nothing else; "go back a stage" is the owner's choice. GD3's reflections are where a stress sign steps the stage back automatically.
+- **Safety gates (not yet enforced).** `safetyRuleIds` are carried through but not enforced: DogResearch's rules are prose, and Rust needs a machine-readable condition for each before it can hold a stage. Agreeing that shape with DogResearch is part of writing the first pathways.
 - **Exports.** DogResearch exports pathways as `dist/good-dog-pathways.json` beside its other files, and its QA checks that every exercise, lesson, metric and rule id exists. `export-from-web.sh` copies the file into `good-dog-core/content/`, and a Rust test checks the same ids again.
 - **Branches** (puppy, rescue, adolescent) become per-stage notes chosen by the dog's profile. GD7 widens this.
 

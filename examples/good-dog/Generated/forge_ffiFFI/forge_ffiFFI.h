@@ -342,6 +342,11 @@ void uniffi_forge_ffi_fn_free_appcore(uint64_t handle, RustCallStatus *_Nonnull 
 uint64_t uniffi_forge_ffi_fn_constructor_appcore_new(RustBuffer storage_directory, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_ANSWER_GATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_ANSWER_GATE
+uint64_t uniffi_forge_ffi_fn_method_appcore_answer_gate(uint64_t ptr, uint64_t goal_id, int8_t met, RustBuffer now
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_DOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_DOG
 RustBuffer uniffi_forge_ffi_fn_method_appcore_dog(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -367,6 +372,16 @@ RustBuffer uniffi_forge_ffi_fn_method_appcore_exercise(uint64_t ptr, RustBuffer 
 RustBuffer uniffi_forge_ffi_fn_method_appcore_glossary(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_GOAL
+RustBuffer uniffi_forge_ffi_fn_method_appcore_goal(uint64_t ptr, uint64_t goal_id, RustBuffer now, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_GOALS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_GOALS
+RustBuffer uniffi_forge_ffi_fn_method_appcore_goals(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_HISTORY
 RustBuffer uniffi_forge_ffi_fn_method_appcore_history(uint64_t ptr, uint32_t limit, RustCallStatus *_Nonnull out_status
@@ -380,6 +395,16 @@ RustBuffer uniffi_forge_ffi_fn_method_appcore_learn_topics(uint64_t ptr, RustCal
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_MAX_NAME_LENGTH
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_MAX_NAME_LENGTH
 uint32_t uniffi_forge_ffi_fn_method_appcore_max_name_length(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_PATHWAYS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_PATHWAYS
+RustBuffer uniffi_forge_ffi_fn_method_appcore_pathways(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_PAUSE_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_PAUSE_GOAL
+uint64_t uniffi_forge_ffi_fn_method_appcore_pause_goal(uint64_t ptr, uint64_t goal_id, RustBuffer now
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_PHASE
@@ -397,6 +422,11 @@ RustBuffer uniffi_forge_ffi_fn_method_appcore_progress(uint64_t ptr, RustBuffer 
 uint64_t uniffi_forge_ffi_fn_method_appcore_record_session(uint64_t ptr, RustBuffer exercise_id, RustBuffer activity_id, RustBuffer result, int8_t welfare_concern, RustBuffer now
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RESUME_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RESUME_GOAL
+uint64_t uniffi_forge_ffi_fn_method_appcore_resume_goal(uint64_t ptr, uint64_t goal_id, RustBuffer now
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SAVE_DOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SAVE_DOG
 uint64_t uniffi_forge_ffi_fn_method_appcore_save_dog(uint64_t ptr, RustBuffer profile, RustBuffer now
@@ -405,6 +435,11 @@ uint64_t uniffi_forge_ffi_fn_method_appcore_save_dog(uint64_t ptr, RustBuffer pr
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SEARCH_LEARN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SEARCH_LEARN
 RustBuffer uniffi_forge_ffi_fn_method_appcore_search_learn(uint64_t ptr, RustBuffer query, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SET_GOAL_ASIDE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SET_GOAL_ASIDE
+uint64_t uniffi_forge_ffi_fn_method_appcore_set_goal_aside(uint64_t ptr, uint64_t goal_id, RustBuffer now
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SET_PHASE
@@ -420,6 +455,21 @@ uint64_t uniffi_forge_ffi_fn_method_appcore_shorten_today(uint64_t ptr, RustBuff
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SHUTDOWN
 void uniffi_forge_ffi_fn_method_appcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_START_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_START_GOAL
+uint64_t uniffi_forge_ffi_fn_method_appcore_start_goal(uint64_t ptr, RustBuffer pathway_id, RustBuffer own_words, RustBuffer now
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_STEP_BACK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_STEP_BACK
+uint64_t uniffi_forge_ffi_fn_method_appcore_step_back(uint64_t ptr, uint64_t goal_id, RustBuffer now
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SUGGEST_GOALS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SUGGEST_GOALS
+RustBuffer uniffi_forge_ffi_fn_method_appcore_suggest_goals(uint64_t ptr, RustBuffer own_words, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SWAP_ACTIVITY
@@ -891,6 +941,12 @@ uint16_t uniffi_forge_ffi_checksum_func_parse_deep_link(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_ANSWER_GATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_ANSWER_GATE
+uint16_t uniffi_forge_ffi_checksum_method_appcore_answer_gate(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_DOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_DOG
 uint16_t uniffi_forge_ffi_checksum_method_appcore_dog(void
@@ -921,6 +977,18 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_glossary(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_GOAL
+uint16_t uniffi_forge_ffi_checksum_method_appcore_goal(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_GOALS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_GOALS
+uint16_t uniffi_forge_ffi_checksum_method_appcore_goals(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_HISTORY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_HISTORY
 uint16_t uniffi_forge_ffi_checksum_method_appcore_history(void
@@ -936,6 +1004,18 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_learn_topics(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_MAX_NAME_LENGTH
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_MAX_NAME_LENGTH
 uint16_t uniffi_forge_ffi_checksum_method_appcore_max_name_length(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_PATHWAYS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_PATHWAYS
+uint16_t uniffi_forge_ffi_checksum_method_appcore_pathways(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_PAUSE_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_PAUSE_GOAL
+uint16_t uniffi_forge_ffi_checksum_method_appcore_pause_goal(void
     
 );
 #endif
@@ -957,6 +1037,12 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_record_session(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
+uint16_t uniffi_forge_ffi_checksum_method_appcore_resume_goal(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SAVE_DOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SAVE_DOG
 uint16_t uniffi_forge_ffi_checksum_method_appcore_save_dog(void
@@ -966,6 +1052,12 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_save_dog(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SEARCH_LEARN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SEARCH_LEARN
 uint16_t uniffi_forge_ffi_checksum_method_appcore_search_learn(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SET_GOAL_ASIDE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SET_GOAL_ASIDE
+uint16_t uniffi_forge_ffi_checksum_method_appcore_set_goal_aside(void
     
 );
 #endif
@@ -984,6 +1076,24 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_shorten_today(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SHUTDOWN
 uint16_t uniffi_forge_ffi_checksum_method_appcore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_START_GOAL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_START_GOAL
+uint16_t uniffi_forge_ffi_checksum_method_appcore_start_goal(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_STEP_BACK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_STEP_BACK
+uint16_t uniffi_forge_ffi_checksum_method_appcore_step_back(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SUGGEST_GOALS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SUGGEST_GOALS
+uint16_t uniffi_forge_ffi_checksum_method_appcore_suggest_goals(void
     
 );
 #endif

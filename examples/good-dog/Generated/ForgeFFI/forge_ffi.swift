@@ -629,6 +629,13 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 public protocol AppCoreProtocol: AnyObject, Sendable {
     
     /**
+     * The owner's answer to the current stage's question. "Yes" moves on,
+     * unless a welfare rest or "making it easier" holds the stage
+     * (`InvalidInput` with the reason); "not yet" is noted.
+     */
+    func answerGate(goalId: UInt64, met: Bool, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
      * The dog's profile, or `None` before onboarding.
      */
     func dog()  -> DogProfile?
@@ -654,6 +661,16 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func glossary()  -> [GlossarySection]
     
     /**
+     * One goal in full.
+     */
+    func goal(goalId: UInt64, now: LocalTime) throws  -> GoalDetail
+    
+    /**
+     * The owner's goals: active first, then paused, finished, set aside.
+     */
+    func goals()  -> [GoalSummary]
+    
+    /**
      * Recorded sessions, newest first.
      */
     func history(limit: UInt32)  -> [SessionRecord]
@@ -669,6 +686,17 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      */
     func maxNameLength()  -> UInt32
     
+    /**
+     * The goals the owner can start: pathways that suit the dog's age.
+     * Empty until DogResearch publishes pathways.
+     */
+    func pathways()  -> [PathwaySummary]
+    
+    /**
+     * Stops a goal for now; its stage and history are kept.
+     */
+    func pauseGoal(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
+    
     func phase()  -> AppPhase
     
     func progress(now: LocalTime)  -> ProgressSummary
@@ -682,6 +710,11 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func recordSession(exerciseId: String, activityId: UInt64?, result: SessionResult, welfareConcern: Bool, now: LocalTime) async throws  -> SessionFeedback
     
     /**
+     * Picks a paused or set-aside goal up again where it was.
+     */
+    func resumeGoal(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
      * Creates or changes the profile. The name is trimmed; an empty or
      * over-long name is `InvalidInput`. A plan not yet started is rebuilt.
      */
@@ -692,6 +725,11 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * search field. Quick enough to call on every keystroke.
      */
     func searchLearn(query: String)  -> LearnSearchResults
+    
+    /**
+     * Stops working on a goal without deleting anything.
+     */
+    func setGoalAside(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
     
     /**
      * The host reports a lifecycle change. Coming back from the background
@@ -710,6 +748,24 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * Saves already running finish. Idempotent.
      */
     func shutdown() 
+    
+    /**
+     * Starts working on a pathway, at most three at once. Starting one the
+     * owner already has picks it up again instead. Today's plan, if not
+     * started, is rebuilt around it.
+     */
+    func startGoal(pathwayId: String, ownWords: String?, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
+     * Goes back one stage. Normal, not a failure.
+     */
+    func stepBack(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
+     * Goals matching what the owner typed, best first. Empty when nothing
+     * matches; show the full list then, never a guess.
+     */
+    func suggestGoals(ownWords: String)  -> [PathwaySummary]
     
     /**
      * Replaces one of today's activities with something different. At
@@ -796,6 +852,27 @@ public convenience init(storageDirectory: String)throws  {
 
     
     /**
+     * The owner's answer to the current stage's question. "Yes" moves on,
+     * unless a welfare rest or "making it easier" holds the stage
+     * (`InvalidInput` with the reason); "not yet" is noted.
+     */
+open func answerGate(goalId: UInt64, met: Bool, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_answer_gate(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterBool.lower(met),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * The dog's profile, or `None` before onboarding.
      */
 open func dog() -> DogProfile?  {
@@ -864,6 +941,32 @@ open func glossary() -> [GlossarySection]  {
 }
     
     /**
+     * One goal in full.
+     */
+open func goal(goalId: UInt64, now: LocalTime)throws  -> GoalDetail  {
+    return try  FfiConverterTypeGoalDetail_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_goal(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(goalId),
+        FfiConverterTypeLocalTime_lower(now),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The owner's goals: active first, then paused, finished, set aside.
+     */
+open func goals() -> [GoalSummary]  {
+    return try!  FfiConverterSequenceTypeGoalSummary.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_goals(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Recorded sessions, newest first.
      */
 open func history(limit: UInt32) -> [SessionRecord]  {
@@ -899,6 +1002,38 @@ open func maxNameLength() -> UInt32  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The goals the owner can start: pathways that suit the dog's age.
+     * Empty until DogResearch publishes pathways.
+     */
+open func pathways() -> [PathwaySummary]  {
+    return try!  FfiConverterSequenceTypePathwaySummary.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_pathways(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Stops a goal for now; its stage and history are kept.
+     */
+open func pauseGoal(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_pause_goal(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
 open func phase() -> AppPhase  {
@@ -943,6 +1078,25 @@ open func recordSession(exerciseId: String, activityId: UInt64?, result: Session
 }
     
     /**
+     * Picks a paused or set-aside goal up again where it was.
+     */
+open func resumeGoal(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_resume_goal(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * Creates or changes the profile. The name is trimmed; an empty or
      * over-long name is `InvalidInput`. A plan not yet started is rebuilt.
      */
@@ -974,6 +1128,25 @@ open func searchLearn(query: String) -> LearnSearchResults  {
         FfiConverterString.lower(query),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Stops working on a goal without deleting anything.
+     */
+open func setGoalAside(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_set_goal_aside(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
     /**
@@ -1019,6 +1192,60 @@ open func shutdown()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Starts working on a pathway, at most three at once. Starting one the
+     * owner already has picks it up again instead. Today's plan, if not
+     * started, is rebuilt around it.
+     */
+open func startGoal(pathwayId: String, ownWords: String?, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_start_goal(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(pathwayId),FfiConverterOptionString.lower(ownWords),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Goes back one stage. Normal, not a failure.
+     */
+open func stepBack(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_step_back(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Goals matching what the owner typed, best first. Empty when nothing
+     * matches; show the full list then, never a guess.
+     */
+open func suggestGoals(ownWords: String) -> [PathwaySummary]  {
+    return try!  FfiConverterSequenceTypePathwaySummary.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_suggest_goals(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(ownWords),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -2819,6 +3046,97 @@ public func FfiConverterTypeExerciseSummary_lower(_ value: ExerciseSummary) -> R
 
 
 /**
+ * Whether the current stage's gate can be asked.
+ */
+public struct GateStatus: Equatable, Hashable {
+    /**
+     * The app's evidence is there: ask the owner `question`.
+     */
+    public var readyForCheck: Bool
+    /**
+     * A welfare rest or "making it easier" holds the stage. Moving on is
+     * refused until it ends.
+     */
+    public var held: Bool
+    /**
+     * The gate as a question to the owner, with the dog's name.
+     */
+    public var question: String
+    /**
+     * Rust's plain-English note on where things stand.
+     */
+    public var note: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The app's evidence is there: ask the owner `question`.
+         */readyForCheck: Bool, 
+        /**
+         * A welfare rest or "making it easier" holds the stage. Moving on is
+         * refused until it ends.
+         */held: Bool, 
+        /**
+         * The gate as a question to the owner, with the dog's name.
+         */question: String, 
+        /**
+         * Rust's plain-English note on where things stand.
+         */note: String) {
+        self.readyForCheck = readyForCheck
+        self.held = held
+        self.question = question
+        self.note = note
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GateStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGateStatus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GateStatus {
+        return
+            try GateStatus(
+                readyForCheck: FfiConverterBool.read(from: &buf), 
+                held: FfiConverterBool.read(from: &buf), 
+                question: FfiConverterString.read(from: &buf), 
+                note: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GateStatus, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.readyForCheck, into: &buf)
+        FfiConverterBool.write(value.held, into: &buf)
+        FfiConverterString.write(value.question, into: &buf)
+        FfiConverterString.write(value.note, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGateStatus_lift(_ buf: RustBuffer) throws -> GateStatus {
+    return try FfiConverterTypeGateStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGateStatus_lower(_ value: GateStatus) -> RustBuffer {
+    return FfiConverterTypeGateStatus.lower(value)
+}
+
+
+/**
  * A glossary category and its terms.
  */
 public struct GlossarySection: Equatable, Hashable {
@@ -2876,6 +3194,415 @@ public func FfiConverterTypeGlossarySection_lift(_ buf: RustBuffer) throws -> Gl
 #endif
 public func FfiConverterTypeGlossarySection_lower(_ value: GlossarySection) -> RustBuffer {
     return FfiConverterTypeGlossarySection.lower(value)
+}
+
+
+/**
+ * A goal in full.
+ */
+public struct GoalDetail: Equatable, Hashable {
+    public var summary: GoalSummary
+    public var pathwaySummary: String
+    public var stages: [GoalStage]
+    /**
+     * `None` once the goal is finished.
+     */
+    public var gate: GateStatus?
+    /**
+     * Newest first.
+     */
+    public var history: [GoalEvent]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(summary: GoalSummary, pathwaySummary: String, stages: [GoalStage], 
+        /**
+         * `None` once the goal is finished.
+         */gate: GateStatus?, 
+        /**
+         * Newest first.
+         */history: [GoalEvent]) {
+        self.summary = summary
+        self.pathwaySummary = pathwaySummary
+        self.stages = stages
+        self.gate = gate
+        self.history = history
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalDetail: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalDetail: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalDetail {
+        return
+            try GoalDetail(
+                summary: FfiConverterTypeGoalSummary.read(from: &buf), 
+                pathwaySummary: FfiConverterString.read(from: &buf), 
+                stages: FfiConverterSequenceTypeGoalStage.read(from: &buf), 
+                gate: FfiConverterOptionTypeGateStatus.read(from: &buf), 
+                history: FfiConverterSequenceTypeGoalEvent.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalDetail, into buf: inout [UInt8]) {
+        FfiConverterTypeGoalSummary.write(value.summary, into: &buf)
+        FfiConverterString.write(value.pathwaySummary, into: &buf)
+        FfiConverterSequenceTypeGoalStage.write(value.stages, into: &buf)
+        FfiConverterOptionTypeGateStatus.write(value.gate, into: &buf)
+        FfiConverterSequenceTypeGoalEvent.write(value.history, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalDetail_lift(_ buf: RustBuffer) throws -> GoalDetail {
+    return try FfiConverterTypeGoalDetail.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalDetail_lower(_ value: GoalDetail) -> RustBuffer {
+    return FfiConverterTypeGoalDetail.lower(value)
+}
+
+
+/**
+ * Something that happened to a goal, worded by Rust.
+ */
+public struct GoalEvent: Equatable, Hashable {
+    public var atMs: Int64
+    public var text: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(atMs: Int64, text: String) {
+        self.atMs = atMs
+        self.text = text
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalEvent: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalEvent: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalEvent {
+        return
+            try GoalEvent(
+                atMs: FfiConverterInt64.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalEvent, into buf: inout [UInt8]) {
+        FfiConverterInt64.write(value.atMs, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalEvent_lift(_ buf: RustBuffer) throws -> GoalEvent {
+    return try FfiConverterTypeGoalEvent.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalEvent_lower(_ value: GoalEvent) -> RustBuffer {
+    return FfiConverterTypeGoalEvent.lower(value)
+}
+
+
+/**
+ * Which goal today's plan serves, and why, for the top of Today.
+ */
+public struct GoalFocus: Equatable, Hashable {
+    public var goalId: UInt64
+    public var goalTitle: String
+    public var stageTitle: String
+    /**
+     * Rust's wording: why this stage matters now.
+     */
+    public var why: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(goalId: UInt64, goalTitle: String, stageTitle: String, 
+        /**
+         * Rust's wording: why this stage matters now.
+         */why: String) {
+        self.goalId = goalId
+        self.goalTitle = goalTitle
+        self.stageTitle = stageTitle
+        self.why = why
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalFocus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalFocus: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalFocus {
+        return
+            try GoalFocus(
+                goalId: FfiConverterUInt64.read(from: &buf), 
+                goalTitle: FfiConverterString.read(from: &buf), 
+                stageTitle: FfiConverterString.read(from: &buf), 
+                why: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalFocus, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.goalId, into: &buf)
+        FfiConverterString.write(value.goalTitle, into: &buf)
+        FfiConverterString.write(value.stageTitle, into: &buf)
+        FfiConverterString.write(value.why, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalFocus_lift(_ buf: RustBuffer) throws -> GoalFocus {
+    return try FfiConverterTypeGoalFocus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalFocus_lower(_ value: GoalFocus) -> RustBuffer {
+    return FfiConverterTypeGoalFocus.lower(value)
+}
+
+
+/**
+ * One stage of a goal, explained.
+ */
+public struct GoalStage: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var state: StageState
+    public var whatItMeans: String
+    public var whyItMatters: String
+    public var exercises: [ExerciseSummary]
+    public var everydayPractice: String
+    /**
+     * What "ready" looks like, in words.
+     */
+    public var readyWhen: String
+    public var ifItIsHard: String
+    /**
+     * For passed stages: how to keep the skill.
+     */
+    public var maintenance: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, state: StageState, whatItMeans: String, whyItMatters: String, exercises: [ExerciseSummary], everydayPractice: String, 
+        /**
+         * What "ready" looks like, in words.
+         */readyWhen: String, ifItIsHard: String, 
+        /**
+         * For passed stages: how to keep the skill.
+         */maintenance: String) {
+        self.id = id
+        self.title = title
+        self.state = state
+        self.whatItMeans = whatItMeans
+        self.whyItMatters = whyItMatters
+        self.exercises = exercises
+        self.everydayPractice = everydayPractice
+        self.readyWhen = readyWhen
+        self.ifItIsHard = ifItIsHard
+        self.maintenance = maintenance
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalStage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalStage {
+        return
+            try GoalStage(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                state: FfiConverterTypeStageState.read(from: &buf), 
+                whatItMeans: FfiConverterString.read(from: &buf), 
+                whyItMatters: FfiConverterString.read(from: &buf), 
+                exercises: FfiConverterSequenceTypeExerciseSummary.read(from: &buf), 
+                everydayPractice: FfiConverterString.read(from: &buf), 
+                readyWhen: FfiConverterString.read(from: &buf), 
+                ifItIsHard: FfiConverterString.read(from: &buf), 
+                maintenance: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalStage, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeStageState.write(value.state, into: &buf)
+        FfiConverterString.write(value.whatItMeans, into: &buf)
+        FfiConverterString.write(value.whyItMatters, into: &buf)
+        FfiConverterSequenceTypeExerciseSummary.write(value.exercises, into: &buf)
+        FfiConverterString.write(value.everydayPractice, into: &buf)
+        FfiConverterString.write(value.readyWhen, into: &buf)
+        FfiConverterString.write(value.ifItIsHard, into: &buf)
+        FfiConverterString.write(value.maintenance, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalStage_lift(_ buf: RustBuffer) throws -> GoalStage {
+    return try FfiConverterTypeGoalStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalStage_lower(_ value: GoalStage) -> RustBuffer {
+    return FfiConverterTypeGoalStage.lower(value)
+}
+
+
+/**
+ * One of the owner's goals, for a list.
+ */
+public struct GoalSummary: Equatable, Hashable {
+    public var id: UInt64
+    public var pathwayId: String
+    public var title: String
+    public var status: GoalStatus
+    /**
+     * The stage being worked on (the last one once finished).
+     */
+    public var stageTitle: String
+    /**
+     * 1-based.
+     */
+    public var stageNumber: UInt32
+    public var stageCount: UInt32
+    /**
+     * What the owner wrote when they started it, if anything.
+     */
+    public var ownWords: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, pathwayId: String, title: String, status: GoalStatus, 
+        /**
+         * The stage being worked on (the last one once finished).
+         */stageTitle: String, 
+        /**
+         * 1-based.
+         */stageNumber: UInt32, stageCount: UInt32, 
+        /**
+         * What the owner wrote when they started it, if anything.
+         */ownWords: String?) {
+        self.id = id
+        self.pathwayId = pathwayId
+        self.title = title
+        self.status = status
+        self.stageTitle = stageTitle
+        self.stageNumber = stageNumber
+        self.stageCount = stageCount
+        self.ownWords = ownWords
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalSummary: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalSummary {
+        return
+            try GoalSummary(
+                id: FfiConverterUInt64.read(from: &buf), 
+                pathwayId: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                status: FfiConverterTypeGoalStatus.read(from: &buf), 
+                stageTitle: FfiConverterString.read(from: &buf), 
+                stageNumber: FfiConverterUInt32.read(from: &buf), 
+                stageCount: FfiConverterUInt32.read(from: &buf), 
+                ownWords: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalSummary, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.pathwayId, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeGoalStatus.write(value.status, into: &buf)
+        FfiConverterString.write(value.stageTitle, into: &buf)
+        FfiConverterUInt32.write(value.stageNumber, into: &buf)
+        FfiConverterUInt32.write(value.stageCount, into: &buf)
+        FfiConverterOptionString.write(value.ownWords, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalSummary_lift(_ buf: RustBuffer) throws -> GoalSummary {
+    return try FfiConverterTypeGoalSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalSummary_lower(_ value: GoalSummary) -> RustBuffer {
+    return FfiConverterTypeGoalSummary.lower(value)
 }
 
 
@@ -3207,6 +3934,71 @@ public func FfiConverterTypeLocalTime_lift(_ buf: RustBuffer) throws -> LocalTim
 #endif
 public func FfiConverterTypeLocalTime_lower(_ value: LocalTime) -> RustBuffer {
     return FfiConverterTypeLocalTime.lower(value)
+}
+
+
+/**
+ * A goal the owner can start.
+ */
+public struct PathwaySummary: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var summary: String
+    public var stageCount: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, summary: String, stageCount: UInt32) {
+        self.id = id
+        self.title = title
+        self.summary = summary
+        self.stageCount = stageCount
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension PathwaySummary: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypePathwaySummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PathwaySummary {
+        return
+            try PathwaySummary(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                summary: FfiConverterString.read(from: &buf), 
+                stageCount: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: PathwaySummary, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.summary, into: &buf)
+        FfiConverterUInt32.write(value.stageCount, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePathwaySummary_lift(_ buf: RustBuffer) throws -> PathwaySummary {
+    return try FfiConverterTypePathwaySummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypePathwaySummary_lower(_ value: PathwaySummary) -> RustBuffer {
+    return FfiConverterTypePathwaySummary.lower(value)
 }
 
 
@@ -3878,6 +4670,10 @@ public struct TodayPlan: Equatable, Hashable {
      * A first plan, built from gentle starter exercises.
      */
     public var starter: Bool
+    /**
+     * The active goal today's plan works towards most, when there is one.
+     */
+    public var goalFocus: GoalFocus?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3890,13 +4686,17 @@ public struct TodayPlan: Equatable, Hashable {
          */canShorten: Bool, 
         /**
          * A first plan, built from gentle starter exercises.
-         */starter: Bool) {
+         */starter: Bool, 
+        /**
+         * The active goal today's plan works towards most, when there is one.
+         */goalFocus: GoalFocus?) {
         self.activities = activities
         self.totalMinutes = totalMinutes
         self.doneCount = doneCount
         self.shortPlan = shortPlan
         self.canShorten = canShorten
         self.starter = starter
+        self.goalFocus = goalFocus
     }
 
     
@@ -3920,7 +4720,8 @@ public struct FfiConverterTypeTodayPlan: FfiConverterRustBuffer {
                 doneCount: FfiConverterUInt32.read(from: &buf), 
                 shortPlan: FfiConverterBool.read(from: &buf), 
                 canShorten: FfiConverterBool.read(from: &buf), 
-                starter: FfiConverterBool.read(from: &buf)
+                starter: FfiConverterBool.read(from: &buf), 
+                goalFocus: FfiConverterOptionTypeGoalFocus.read(from: &buf)
         )
     }
 
@@ -3931,6 +4732,7 @@ public struct FfiConverterTypeTodayPlan: FfiConverterRustBuffer {
         FfiConverterBool.write(value.shortPlan, into: &buf)
         FfiConverterBool.write(value.canShorten, into: &buf)
         FfiConverterBool.write(value.starter, into: &buf)
+        FfiConverterOptionTypeGoalFocus.write(value.goalFocus, into: &buf)
     }
 }
 
@@ -4598,6 +5400,95 @@ public func FfiConverterTypeForgeLogLevel_lift(_ buf: RustBuffer) throws -> Forg
 #endif
 public func FfiConverterTypeForgeLogLevel_lower(_ value: ForgeLogLevel) -> RustBuffer {
     return FfiConverterTypeForgeLogLevel.lower(value)
+}
+
+
+
+/**
+ * Where a goal stands.
+ */
+
+public enum GoalStatus: Equatable, Hashable {
+    
+    case active
+    case paused
+    /**
+     * Every stage passed; the skill is kept up with occasional practice.
+     */
+    case finished
+    /**
+     * The owner stopped working on it. Its history stays.
+     */
+    case setAside
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension GoalStatus: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalStatus: FfiConverterRustBuffer {
+    typealias SwiftType = GoalStatus
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalStatus {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .active
+        
+        case 2: return .paused
+        
+        case 3: return .finished
+        
+        case 4: return .setAside
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: GoalStatus, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .active:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .paused:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .finished:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .setAside:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalStatus_lift(_ buf: RustBuffer) throws -> GoalStatus {
+    return try FfiConverterTypeGoalStatus.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalStatus_lower(_ value: GoalStatus) -> RustBuffer {
+    return FfiConverterTypeGoalStatus.lower(value)
 }
 
 
@@ -5477,6 +6368,82 @@ public func FfiConverterTypeSkillLevel_lower(_ value: SkillLevel) -> RustBuffer 
 
 
 /**
+ * Where a stage is on the owner's route.
+ */
+
+public enum StageState: Equatable, Hashable {
+    
+    case passed
+    case current
+    case upcoming
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension StageState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeStageState: FfiConverterRustBuffer {
+    typealias SwiftType = StageState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> StageState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .passed
+        
+        case 2: return .current
+        
+        case 3: return .upcoming
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: StageState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .passed:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .current:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .upcoming:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStageState_lift(_ buf: RustBuffer) throws -> StageState {
+    return try FfiConverterTypeStageState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeStageState_lower(_ value: StageState) -> RustBuffer {
+    return FfiConverterTypeStageState.lower(value)
+}
+
+
+
+/**
  * What the owner most wants help with. A closed set: the web app asks for
  * free text and matches keywords, which its own docs call brittle.
  */
@@ -5664,6 +6631,54 @@ fileprivate struct FfiConverterOptionTypeDogProfile: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeDogProfile.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeGateStatus: FfiConverterRustBuffer {
+    typealias SwiftType = GateStatus?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeGateStatus.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeGateStatus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeGoalFocus: FfiConverterRustBuffer {
+    typealias SwiftType = GoalFocus?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeGoalFocus.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeGoalFocus.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -5867,6 +6882,81 @@ fileprivate struct FfiConverterSequenceTypeGlossarySection: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeGoalEvent: FfiConverterRustBuffer {
+    typealias SwiftType = [GoalEvent]
+
+    public static func write(_ value: [GoalEvent], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGoalEvent.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GoalEvent] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GoalEvent]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGoalEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeGoalStage: FfiConverterRustBuffer {
+    typealias SwiftType = [GoalStage]
+
+    public static func write(_ value: [GoalStage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGoalStage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GoalStage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GoalStage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGoalStage.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeGoalSummary: FfiConverterRustBuffer {
+    typealias SwiftType = [GoalSummary]
+
+    public static func write(_ value: [GoalSummary], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGoalSummary.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GoalSummary] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GoalSummary]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGoalSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeLearnTopic: FfiConverterRustBuffer {
     typealias SwiftType = [LearnTopic]
 
@@ -5909,6 +6999,31 @@ fileprivate struct FfiConverterSequenceTypeLinkedText: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeLinkedText.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypePathwaySummary: FfiConverterRustBuffer {
+    typealias SwiftType = [PathwaySummary]
+
+    public static func write(_ value: [PathwaySummary], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypePathwaySummary.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PathwaySummary] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [PathwaySummary]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypePathwaySummary.read(from: &buf))
         }
         return seq
     }
@@ -6308,6 +7423,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_parse_deep_link() != 63697) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_answer_gate() != 47026) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_dog() != 60207) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6323,6 +7441,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_appcore_glossary() != 40695) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_goal() != 30343) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_goals() != 3238) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_history() != 45282) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6330,6 +7454,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_max_name_length() != 25181) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_pathways() != 30231) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_pause_goal() != 10914) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_phase() != 30323) {
@@ -6341,10 +7471,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_appcore_record_session() != 22558) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_resume_goal() != 7280) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_save_dog() != 44784) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_search_learn() != 48663) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_set_goal_aside() != 47237) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_set_phase() != 269) {
@@ -6354,6 +7490,15 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_shutdown() != 39076) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_start_goal() != 31874) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_step_back() != 6133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_suggest_goals() != 24391) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_swap_activity() != 13135) {

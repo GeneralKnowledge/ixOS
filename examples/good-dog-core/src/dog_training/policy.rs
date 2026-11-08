@@ -117,3 +117,51 @@ impl CoachingPolicy for DogTrainingPolicy {
         explain_plan_item(input)
     }
 }
+
+/// Extra score for an exercise in an active goal's current stage. A focus
+/// exercise practised yesterday still loses to fresh ones (the planner takes
+/// 8 off for a recent repeat), so goals steer the plan without filling it.
+pub const GOAL_FOCUS_BOOST: i32 = 6;
+
+/// The dog-training policy, steered toward the exercises of the owner's
+/// active goals. Everything except the affinity score is the base policy's,
+/// so with no focus it plans exactly as [`DogTrainingPolicy`] does (and the
+/// web app's golden plans).
+#[derive(Clone, Copy, Debug)]
+pub struct GoalFocusPolicy<'a> {
+    pub focus_exercise_ids: &'a [String],
+}
+
+impl CoachingPolicy for GoalFocusPolicy<'_> {
+    type Exercise = ExerciseContent;
+    type Subject = DogSubject;
+
+    fn is_eligible(&self, exercise: &ExerciseContent, dog: &DogSubject) -> bool {
+        DogTrainingPolicy.is_eligible(exercise, dog)
+    }
+
+    fn daily_budget(&self, dog: &DogSubject) -> PlanBudget {
+        DogTrainingPolicy.daily_budget(dog)
+    }
+
+    fn starter_exercises<'e>(
+        &self,
+        eligible: &[&'e ExerciseContent],
+        dog: &DogSubject,
+    ) -> Vec<&'e ExerciseContent> {
+        DogTrainingPolicy.starter_exercises(eligible, dog)
+    }
+
+    fn affinity_score(&self, exercise: &ExerciseContent, dog: &DogSubject) -> i32 {
+        let base = DogTrainingPolicy.affinity_score(exercise, dog);
+        if self.focus_exercise_ids.contains(&exercise.core.id) {
+            base + GOAL_FOCUS_BOOST
+        } else {
+            base
+        }
+    }
+
+    fn explain(&self, input: &WhyTodayInput<'_>) -> String {
+        DogTrainingPolicy.explain(input)
+    }
+}

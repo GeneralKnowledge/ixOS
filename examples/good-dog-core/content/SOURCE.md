@@ -14,3 +14,10 @@ Known gap in the web app's content: exercises `ex-down-comfort`, `ex-toilet-rout
 and `ex-puppy-mouthing` use learning objectives (`down`, `housetraining`,
 `puppy-mouthing`) that have no entry in `learning-objectives.json`, so they have no
 label. `tests/content.rs` allows exactly these three.
+
+`pathways.json` holds goal pathways (docs/good-dog-demo.md, "Pathway format"). They are
+written in [GeneralKnowledge/DogResearch](https://github.com/GeneralKnowledge/DogResearch)
+first (Reuben, 2026-11-08) and exported here; until DogResearch publishes them the file
+is an empty list, and the app offers no goals. `tests/fixtures/pathways-sample.json` is a
+test-only sample in the same format. `tests/pathways.rs` checks every shipped pathway
+against the exercises.
