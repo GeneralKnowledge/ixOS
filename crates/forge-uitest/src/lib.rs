@@ -164,6 +164,10 @@ pub trait Driver {
     fn screenshot(&mut self) -> Result<Vec<u8>>;
     /// The bundle id of the app in front, if the phone says.
     fn foreground(&mut self) -> Result<Option<String>>;
+    /// Hide the on-screen keyboard, if the driver knows how.
+    fn dismiss_keyboard(&mut self) -> Result<()> {
+        Ok(())
+    }
     /// Whether a search should also say what it found (type, label and
     /// identifier), so that [`Driver::attribute`] answers those without
     /// asking the phone again. Each such read costs WebDriverAgent a fresh

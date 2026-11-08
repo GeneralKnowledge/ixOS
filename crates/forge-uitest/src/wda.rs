@@ -4,7 +4,7 @@
 //! `POST /session`, `POST /session/:s/elements` with a predicate,
 //! `.../element/:e/click`, `.../element/:e/value`, `.../element/:e/clear`,
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
-//! `POST .../wda/deactivateApp`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
+//! `POST .../wda/deactivateApp`, `POST .../wda/keyboard/dismiss`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -144,6 +144,12 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     fn terminate(&mut self, bundle_id: &str) -> Result<()> {
         self.changed();
         self.post("/wda/apps/terminate", json!({ "bundleId": bundle_id }))?;
+        Ok(())
+    }
+
+    fn dismiss_keyboard(&mut self) -> Result<()> {
+        // WDA's own route: taps the keyboard's hide or Done key where there is one.
+        self.post("/wda/keyboard/dismiss", json!({}))?;
         Ok(())
     }
 

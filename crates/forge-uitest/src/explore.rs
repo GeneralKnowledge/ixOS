@@ -187,6 +187,25 @@ const EXTERNAL: &[&str] = &[
     "donate",
 ];
 
+/// Words that mark a control starting a system service the walk must never
+/// start: the microphone (dictation turned on at Cati, and WebDriverAgent
+/// then dropped the connection), the camera, the keyboard switcher, and
+/// the system file picker, which is another app's UI. Matched in every mode.
+const SYSTEM: &[&str] = &[
+    "dictation",
+    "dictate",
+    "microphone",
+    "mic",
+    "camera",
+    "globe",
+    "globekey",
+    "emoji",
+    "import",
+];
+
+/// Two-word forms of the above.
+const SYSTEM_PAIRS: &[(&str, &str)] = &[("next", "keyboard")];
+
 /// Words that mark a destructive control: skipped unless
 /// [`Config::allow_destructive`].
 const DESTRUCTIVE: &[&str] = &[
@@ -298,6 +317,15 @@ fn gate(node: &UiNode, config: &Config) -> Option<String> {
     for text in [&node.identifier, &node.label].into_iter().flatten() {
         all.extend(words(text));
     }
+    if let Some(word) = all.iter().find(|w| SYSTEM.contains(&w.as_str())) {
+        return Some(format!("starts a system service (\"{word}\")"));
+    }
+    if all
+        .windows(2)
+        .any(|w| SYSTEM_PAIRS.contains(&(w[0].as_str(), w[1].as_str())))
+    {
+        return Some("starts a system service (keyboard switcher)".into());
+    }
     if let Some(word) = all.iter().find(|w| EXTERNAL.contains(&w.as_str())) {
         return Some(format!("acts outside the phone (\"{word}\")"));
     }
@@ -404,6 +432,62 @@ fn collect_fingerprint(node: &UiNode, parts: &mut BTreeSet<String>) {
     }
 }
 
+/// Labels and identifiers of the keyboard's own controls (system and
+/// third-party keyboards), lower-cased.
+const KEYBOARD_MARKERS: &[&str] = &[
+    "next keyboard",
+    "dictate",
+    "dictation",
+    "globekey",
+    "emoji",
+    "keyboard",
+];
+
+/// How far above the top of the keys keyboard extension panels reach
+/// (Grammarly's top panel, Tenor's search, the system suggestion bar).
+const KEYBOARD_PANEL: f64 = 100.0;
+
+/// Where the keyboard begins, if one is on screen: the top of the keys, the
+/// `Keyboard` element or a keyboard control such as Next keyboard.
+fn keyboard_top(tree: &UiNode) -> Option<f64> {
+    tree.walk()
+        .filter(|n| n.visible || n.kind == "Keyboard")
+        .filter(|n| {
+            n.kind == "Keyboard"
+                || n.kind == "Key"
+                || [&n.identifier, &n.label]
+                    .into_iter()
+                    .flatten()
+                    .any(|t| KEYBOARD_MARKERS.contains(&t.to_lowercase().as_str()))
+        })
+        .filter_map(|n| n.frame.map(|f| f.y))
+        .reduce(f64::min)
+}
+
+/// The app's own part of the screen: the tree without the keyboard, its
+/// keys and the extension panels above them. Seen on Cati (2026-11-08):
+/// left in, the explorer tapped Next keyboard into third-party keyboards,
+/// typed on their keys and turned dictation on.
+pub fn app_part(tree: &UiNode) -> UiNode {
+    let cutoff = keyboard_top(tree).map(|top| top - KEYBOARD_PANEL);
+    fn prune(node: &UiNode, cutoff: Option<f64>) -> UiNode {
+        UiNode {
+            children: node
+                .children
+                .iter()
+                .filter(|c| c.kind != "Keyboard" && c.kind != "Key")
+                .filter(|c| match (cutoff, c.frame) {
+                    (Some(cutoff), Some(frame)) => frame.y < cutoff,
+                    _ => true,
+                })
+                .map(|c| prune(c, cutoff))
+                .collect(),
+            ..node.clone()
+        }
+    }
+    prune(tree, cutoff)
+}
+
 /// A screen's name for people: its navigation bar or alert title.
 fn title(tree: &UiNode) -> Option<String> {
     tree.walk()
@@ -505,7 +589,7 @@ fn consider(
             .as_ref()
             .and_then(|id| config.fixtures.get(id))
             .cloned()
-            .unwrap_or_else(|| config.default_text.clone());
+            .unwrap_or_else(|| filler(node, &config.default_text));
         Action::Type(locator, text)
     } else {
         Action::Tap(locator)
@@ -516,6 +600,42 @@ fn consider(
             || EXIT_LABELS.contains(&label.as_str())
             || back_button);
     found.push(Candidate { action, key, exit });
+}
+
+/// Words in a field's identifier or label that ask for a number.
+const NUMBER_WORDS: &[&str] = &[
+    "number", "count", "amount", "price", "cost", "total", "quantity", "qty", "age", "year",
+    "years", "page", "pages", "minutes", "hours", "days", "percent", "rating", "goal", "bill",
+    "tip", "people", "pin", "zip", "postcode",
+];
+
+/// Text that suits the field. WebDriverAgent's tree doesn't say which
+/// keyboard a field uses, so this goes by its identifier, label and current
+/// value: a field showing a number, or named like one, gets digits (seen on
+/// Cati: "Forge" typed into a number field), an email field an address, a
+/// web field a URL, a phone field a phone number. Anything else gets
+/// `default`.
+fn filler(node: &UiNode, default: &str) -> String {
+    let mut all = Vec::new();
+    for text in [&node.identifier, &node.label].into_iter().flatten() {
+        all.extend(words(text));
+    }
+    let has = |list: &[&str]| all.iter().any(|w| list.contains(&w.as_str()));
+    let numeric_value = node.value.as_deref().is_some_and(|v| {
+        let v = v.trim();
+        !v.is_empty() && v.chars().all(|c| c.is_ascii_digit() || ".,-".contains(c))
+    });
+    if has(&["email", "mail"]) {
+        "forge@example.com".into()
+    } else if has(&["url", "website", "web", "link", "homepage"]) {
+        "https://example.com".into()
+    } else if has(&["phone", "tel", "mobile"]) {
+        "5550100".into()
+    } else if numeric_value || has(NUMBER_WORDS) {
+        "3".into()
+    } else {
+        default.to_owned()
+    }
 }
 
 /// A small, dependency-free PRNG (SplitMix64): the walk only needs a
@@ -837,9 +957,14 @@ impl Explorer<'_> {
                 .driver
                 .launch(&self.config.app, &self.config.launch_args),
             Action::Tap(locator) => self.on_element(locator, &mut |d, e| d.tap(e)),
-            Action::Type(locator, text) => {
-                self.on_element(locator, &mut |d, e| d.type_text(e, text))
-            }
+            Action::Type(locator, text) => self
+                .on_element(locator, &mut |d, e| d.type_text(e, text))
+                // Put the keyboard away so the walk carries on in the app.
+                // Not every keyboard can be dismissed this way; what stays
+                // up is cut from the tree by `app_part`.
+                .map(|()| {
+                    let _ = self.driver.dismiss_keyboard();
+                }),
         };
         let mut outcome = match result {
             Ok(()) => None,
@@ -985,7 +1110,8 @@ impl Explorer<'_> {
     fn observe(&mut self, step: usize) -> Result<Landed> {
         // The tree first: WebDriverAgent waits for the app to be idle, by
         // which time a crash has taken the app off the screen.
-        let tree = self.driver.tree()?;
+        // Only the app's own part: never the keyboard or its extensions.
+        let tree = app_part(&self.driver.tree()?);
         let front = self.driver.foreground()?;
         match front.as_deref() {
             Some(app) if app == self.config.app => {}
@@ -1346,6 +1472,45 @@ mod tests {
         current: &'static str,
         front: Option<String>,
         log: Vec<String>,
+        /// Typing brings up a keyboard, as on the phone.
+        keyboard_up: bool,
+        /// Whether `dismiss_keyboard` works (WDA can't always).
+        keyboard_dismissable: bool,
+        dismissals: usize,
+    }
+
+    fn at(mut n: UiNode, y: f64) -> UiNode {
+        n.frame = Some(Rect {
+            x: 0.0,
+            y,
+            width: 40.0,
+            height: 40.0,
+        });
+        n
+    }
+
+    /// A system keyboard with a third-party extension's panels, as WDA
+    /// showed it on Cati.
+    fn keyboard() -> Vec<UiNode> {
+        vec![
+            at(
+                UiNode {
+                    children: vec![
+                        at(node("Key", None, Some("c")), 700.0),
+                        at(node("Key", None, Some("shift")), 760.0),
+                    ],
+                    ..node("Keyboard", None, None)
+                },
+                640.0,
+            ),
+            at(
+                node("Button", Some("gr-button-toppanel-1"), Some("Tone")),
+                560.0,
+            ),
+            at(node("Button", None, Some("Search Tenor")), 580.0),
+            at(node("Button", None, Some("Next keyboard")), 860.0),
+            at(node("Button", Some("dictation"), Some("Dictate")), 860.0),
+        ]
     }
 
     impl ModelApp {
@@ -1432,6 +1597,9 @@ mod tests {
                 current: "library",
                 front: None,
                 log: Vec::new(),
+                keyboard_up: false,
+                keyboard_dismissable: true,
+                dismissals: 0,
             }
         }
 
@@ -1483,7 +1651,10 @@ mod tests {
                 .find(|((screen, k), _)| *screen == current && *k == key)
                 .map(|(_, to)| to.clone());
             match to {
-                Some(To::Screen(next)) => self.current = next,
+                Some(To::Screen(next)) => {
+                    self.current = next;
+                    self.keyboard_up = false;
+                }
                 Some(To::Crash) => self.front = Some(crate::fake::SPRINGBOARD.into()),
                 Some(To::OtherApp(app)) => self.front = Some(app.into()),
                 None => {}
@@ -1495,6 +1666,14 @@ mod tests {
             self.log.push(format!("type {text}"));
             let node = self.screen().nth_mut(index).expect("node");
             node.value = Some(text.into());
+            self.keyboard_up = true;
+            Ok(())
+        }
+        fn dismiss_keyboard(&mut self) -> Result<()> {
+            self.dismissals += 1;
+            if self.keyboard_dismissable {
+                self.keyboard_up = false;
+            }
             Ok(())
         }
         fn clear(&mut self, _: &ElementRef) -> Result<()> {
@@ -1504,7 +1683,11 @@ mod tests {
             Ok(None)
         }
         fn tree(&mut self) -> Result<UiNode> {
-            Ok(self.screen().clone())
+            let mut tree = self.screen().clone();
+            if self.keyboard_up {
+                tree.children.extend(keyboard());
+            }
+            Ok(tree)
         }
         fn screenshot(&mut self) -> Result<Vec<u8>> {
             Ok(b"\x89PNG".to_vec())
@@ -1771,6 +1954,101 @@ mod tests {
                 .join(format!("screens/{}.json", screen.id))
                 .is_file());
         }
+    }
+
+    #[test]
+    fn never_touches_the_keyboard_or_dictation() {
+        for dismissable in [true, false] {
+            let mut model = ModelApp::pocket_library();
+            model.keyboard_dismissable = dismissable;
+            let report = run(&config(), &mut model, None, &mut Vec::new()).unwrap();
+            assert!(model.dismissals > 0, "typing puts the keyboard away");
+            for step in &report.journal {
+                for forbidden in [
+                    "Next keyboard",
+                    "dictation",
+                    "Tenor",
+                    "gr-button",
+                    "label \"c\"",
+                ] {
+                    assert!(!step.action.contains(forbidden), "{}", step.action);
+                }
+            }
+            for issue in &report.issues {
+                for forbidden in ["Key ", "Tone", "Tenor", "Dictate", "Next keyboard"] {
+                    assert!(!issue.message.contains(forbidden), "{}", issue.message);
+                }
+            }
+            // The form with and without a keyboard is one screen.
+            assert_eq!(report.screens.len(), 5, "dismissable: {dismissable}");
+        }
+    }
+
+    #[test]
+    fn the_keyboard_and_its_panels_are_not_part_of_the_app() {
+        let mut tree = ModelApp::pocket_library().screens["form"].clone();
+        let without = tree.clone();
+        tree.children.push(at(
+            node("Button", Some("bookForm.cancel2"), Some("Close")),
+            500.0,
+        ));
+        tree.children.extend(keyboard());
+        let part = app_part(&tree);
+        let kept: Vec<_> = part.walk().filter_map(|n| n.label.clone()).collect();
+        assert!(kept.contains(&"Close".to_owned()), "{kept:?}");
+        for gone in ["c", "Tone", "Search Tenor", "Next keyboard", "Dictate"] {
+            assert!(!kept.contains(&gone.to_owned()), "{gone} in {kept:?}");
+        }
+        assert_eq!(app_part(&without), without);
+    }
+
+    #[test]
+    fn system_services_are_never_started() {
+        let config = config();
+        for (id, label) in [
+            ("dictation", "Dictate"),
+            ("GlobeKey", "Next keyboard"),
+            ("library.import", "Import EPUB"),
+            ("scan.camera", "Scan with Camera"),
+        ] {
+            let why = gate(&node("Button", Some(id), Some(label)), &config).unwrap_or_default();
+            assert!(why.starts_with("starts a system service"), "{id}: {why}");
+        }
+    }
+
+    #[test]
+    fn fields_get_text_that_fits() {
+        let field = |id: &str, label: &str, value: Option<&str>| UiNode {
+            value: value.map(Into::into),
+            ..node("TextField", Some(id), Some(label))
+        };
+        let fill = |n: &UiNode| filler(n, "Forge");
+        assert_eq!(fill(&field("goal.books", "Yearly goal", Some("10"))), "3");
+        assert_eq!(fill(&field("x.y", "", Some("12.50"))), "3");
+        assert_eq!(fill(&field("bookForm.pages", "Pages", None)), "3");
+        assert_eq!(
+            fill(&field("account.email", "Email", None)),
+            "forge@example.com"
+        );
+        assert_eq!(
+            fill(&field("profile.website", "Website", None)),
+            "https://example.com"
+        );
+        assert_eq!(
+            fill(&field("bookForm.title", "Title", Some("Dune"))),
+            "Forge"
+        );
+        // A fixture still wins.
+        let config = Config {
+            fixtures: HashMap::from([("goal.books".into(), "12".into())]),
+            ..config()
+        };
+        let tree = app(vec![field("goal.books", "Yearly goal", Some("10"))]);
+        let (found, _) = candidates(&tree, &config);
+        assert_eq!(
+            found[0].action,
+            Action::Type(Locator::Id("goal.books".into()), "12".into())
+        );
     }
 
     #[test]
