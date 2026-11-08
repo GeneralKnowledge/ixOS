@@ -26,7 +26,7 @@ Values: **Yes**, **Partial** (with a note), **No**, **n/a**. Workstream ids (W1 
 
 Android is work in progress ([roadmap](roadmap.md#android--work-in-progress)), so this ledger tracks iOS only. An Android column will be added when Android work resumes.
 
-The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Relay, Sketchbook. Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
+The core demo sequence is fixed: Chat, Good Dog, FieldKit, Soundscape, Relay, Sketchbook. Good Dog replaced Pocket Ledger on 2026-11-08; its plan is [good-dog-demo.md](good-dog-demo.md). Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
 
 ## Modules
 
@@ -198,8 +198,8 @@ A capability can work and still give a poor app. Each metric has a proposed targ
 |---|---|---|---|---|
 | Cold launch to first interactive screen (release build) | Under 1 s | Process start and first-frame timestamps logged by the app | Chat M1 | Not measured |
 | Rust-to-Swift call overhead | Under 50 µs median for a sync call, under 1 ms for an async round trip | Benchmark screen in the services check app | Chat M0 | Not measured |
-| Large-list scrolling | No hitches scrolling 10,000 rows (messages, transactions) | Frame-hitch counter from `CADisplayLink` in a debug overlay | Chat M1, Pocket Ledger | Not measured |
-| Database queries | Full-text search over 100,000 messages under 50 ms; a month's budget totals under 20 ms | Timed in Rust and logged | Chat M2, Pocket Ledger | Not measured |
+| Large-list scrolling | No hitches scrolling 10,000 rows (messages) | Frame-hitch counter from `CADisplayLink` in a debug overlay | Chat M1 | Not measured |
+| Database queries | Full-text search over 100,000 messages under 50 ms; today's plan from a year of training sessions under 20 ms | Timed in Rust and logged | Chat M2, Good Dog GD1 | Not measured |
 | Attachment import and thumbnail | A 12 MP photo imported and thumbnailed in under 500 ms, never decoded on the main thread | Timed in the app | Chat M3 | Not measured |
 | Memory | Chat with 10,000 messages under 150 MB; a widget extension under 30 MB | Footprint logged by the app | Chat M3, W9 | Not measured |
 | Audio glitches and latency | No underruns in 10 minutes; under 20 ms round trip at a 256-frame buffer | Underrun counter in the render callback; the audio session's buffer duration | Spike S4, Soundscape | Not measured |
