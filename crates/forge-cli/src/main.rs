@@ -13,10 +13,12 @@ mod ledger;
 mod live;
 mod report;
 mod runner;
+mod status;
 mod swift_check;
 mod ui;
 mod ui_session;
 mod verify;
+mod watch;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -254,6 +256,10 @@ enum UiCommands {
         /// screenshot the baseline, `off` skips it (docs/visual-regression.md)
         #[arg(long, value_name = "MODE", default_value = "check", value_parser = ["check", "record", "off"])]
         visual: String,
+        /// Don't read the app's log or look for its crash reports during
+        /// the run (one-step runs, where each second counts)
+        #[arg(long)]
+        no_watch: bool,
     },
     /// Make a run's screenshots the baselines its test is compared with
     Accept {
@@ -361,6 +367,13 @@ enum DeviceCommands {
     /// One phone's name, model, iOS version and whether Developer Mode is on
     Info {
         /// Which phone, when several are connected (see `forge device list`)
+        #[arg(long)]
+        udid: Option<String>,
+    },
+    /// Apps you installed, with their provisioning profile's team and
+    /// expiry, and how many of a free team's 3 app slots are in use
+    Apps {
+        /// Which phone, when several are connected
         #[arg(long)]
         udid: Option<String>,
     },
@@ -590,6 +603,11 @@ enum RunCommands {
         /// status, snapshot, cmd). For development only
         #[arg(long)]
         devtools: bool,
+        /// Build first (Rust and Swift), then wait up to this many minutes
+        /// for the iPhone: ask for the phone only when the status says
+        /// waiting_for_device (<app>/.forge/status/run-ios.json)
+        #[arg(long, value_name = "MINUTES")]
+        wait_for_device: Option<u64>,
     },
 }
 
@@ -698,6 +716,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Device { cmd } => match cmd {
             DeviceCommands::List => "device list",
             DeviceCommands::Info { .. } => "device info",
+            DeviceCommands::Apps { .. } => "device apps",
             DeviceCommands::Logs { .. } => "device logs",
             DeviceCommands::Crashes { .. } => "device crashes",
             DeviceCommands::Pair { .. } => "device pair",
@@ -929,13 +948,14 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     out: dir,
                     any_app,
                     visual,
+                    no_watch,
                 } => {
                     let visual = match visual.as_str() {
                         "record" => Some(forge_uitest::baseline::Mode::Record),
                         "off" => None,
                         _ => Some(forge_uitest::baseline::Mode::Check),
                     };
-                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, &mut out)
+                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, !no_watch, &mut out)
                 }
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)
@@ -967,7 +987,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         per_screen,
                         screenshots: !no_screenshots,
                     };
-                    ui::explore(udid.as_deref(), &project, options, dir.as_deref(), &mut out)
+                    ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out)
                 }
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
                 UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),
@@ -984,15 +1004,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 project,
                 release,
                 devtools,
+                wait_for_device,
             } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(
+                commands::run_ios_with(
                     runner,
                     &ios,
                     &root,
                     &project,
                     configuration(release),
                     devtools,
+                    wait_for_device.map(|m| std::time::Duration::from_secs(m * 60)),
                 )
             }
         },
@@ -1089,12 +1111,20 @@ fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
     }
 }
 
+fn now_secs() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
 fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
     let backend = forge_device::UsbBackend::new().map_err(|e| e.to_string())?;
     if json {
         let data = match &cmd {
             DeviceCommands::List => Some(device::list_data(&backend)?),
             DeviceCommands::Info { udid } => Some(device::info_data(&backend, udid.as_deref())?),
+            DeviceCommands::Apps { udid } => Some(device::apps_data(&backend, udid.as_deref(), now_secs())?),
             DeviceCommands::Crashes {
                 udid,
                 app,
@@ -1154,6 +1184,7 @@ fn run_device_command(
     match cmd {
         DeviceCommands::List => device::list(backend, out),
         DeviceCommands::Info { udid } => device::info(backend, udid.as_deref(), out),
+        DeviceCommands::Apps { udid } => device::apps(backend, udid.as_deref(), now_secs(), out),
         DeviceCommands::Logs {
             udid,
             process,

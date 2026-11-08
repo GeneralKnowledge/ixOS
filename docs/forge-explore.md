@@ -132,8 +132,9 @@ Run through the iPhone test session, not separately. Each proves something the L
 
 ## Not built yet
 
-- An MCP tool (`forge_ui_explore`); agents can run `forge --json ui explore` today.
 - Scrolling to controls below the fold, and long lists beyond the first row.
 - Invariants an app declares (for example "the count on the badge equals the rows"), and checks across a whole walk.
-- Performance during the walk (A3 FPS and memory), and checking crash reports after each action.
+- Performance during the walk (A3 FPS and memory).
+
+Since M6.1 ([forge-m6.md](forge-m6.md), Linux-tested, not yet run on the phone): agents call `forge_ui_explore` in `forge mcp` (no destructive taps and no typed text of their own); every walk writes a `forge.evidence/1` bundle next to `explore.json`; the app's log lines are kept as `device.log`, and when the app closes its new crash reports are pulled and symbolicated into `crashes/`. A walk that tried no control fails rather than passing.
 - Seeded random walks as well as the systematic one, for flaky-state bugs.

@@ -187,7 +187,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_diagnose",
         title: "The last failure",
-        description: "The last failed tool result in this session with the end of its log file: the place to start fixing. Basic: it does not yet correlate logs, crashes and UI state.",
+        description: "The last failed tool result in this session with the end of its log file, and data.correlation: the UI step or explore action that failed and its screen, the app's log lines just before it, the symbolicated crash (kind, message, the app frame with file and line) when the app crashed, the files changed since this session started and whether the crash is in one of them, and the likely layer (rust, swift, ui, signing, device). The place to start fixing.",
         tier: Tier::Observe,
         device: false,
         needs_ui: false,
@@ -255,6 +255,23 @@ pub const SPECS: &[Spec] = &[
         schema: || schema(json!({
             "file": {"type": "string", "description": "The test file, relative to the root (e.g. MyApp/uitests/smoke.toml)"}
         }), &["file"]),
+    },
+    Spec {
+        name: "forge_ui_explore",
+        title: "Explore the app for problems",
+        description: "Walks the app's screens on the phone without a script: tries each safe control once and reports crashes (app_closed), error alerts, dead ends, controls with no effect and accessibility problems (no_label, duplicate or missing identifiers). Each issue comes with a forge ui run file under data.out/repro/ that replays it: run it with forge_run_ui_test, and copy it into the app's uitests/ to keep it as a regression test. Runs on the app's test data (forge.toml [ui_test] test_data_args), or with real_data only looks. Never taps send, pay, share and the like, never types into secure fields, never touches the keyboard or system services, and never taps delete or reset (a person can allow that from the terminal). Writes an evidence bundle to <app>/.forge/runs/<UTC>-ui-explore/.",
+        tier: Tier::Project,
+        device: true,
+        needs_ui: true,
+        schema: || schema(json!({
+            "actions": {"type": "integer", "minimum": 1, "maximum": 200, "description": "Stop after this many actions (default 40)"},
+            "minutes": {"type": "integer", "minimum": 1, "maximum": 15, "description": "Hard time limit (default 5)"},
+            "seed": {"type": "integer", "minimum": 0, "description": "Repeat an earlier walk: the same seed tries controls in the same order (data.seed of that walk)"},
+            "skip": {"type": "array", "items": {"type": "string"}, "description": "Identifiers or labels never to touch"},
+            "largest_text": {"type": "boolean", "description": "Launch at the largest accessibility text size"},
+            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, only looking (for an app without a test-data mode)"},
+            "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"}
+        }), &[]),
     },
     Spec {
         name: "forge_accept_screenshots",
@@ -723,6 +740,65 @@ impl crate::Server {
                     .join(format!("{}-ui-run", crate::journal::timestamp()));
                 self.ui_run(&app, &file, &out, true, cancel).await
             }
+            "forge_ui_explore" => {
+                let app = app_or_fail!();
+                let minutes = args.int("minutes", 5, 15);
+                let out = app
+                    .dir
+                    .join(".forge")
+                    .join("runs")
+                    .join(format!("{}-ui-explore", crate::journal::timestamp()));
+                // No --allow-destructive and no typed text from the agent:
+                // destructive taps stay a person's choice at the terminal.
+                let mut inv = Invocation::new(
+                    &["ui", "explore"],
+                    &app.dir,
+                    secs((minutes + 3) * MIN),
+                    "test",
+                )
+                .arg("--project")
+                .arg(app.dir.display().to_string())
+                .arg("--actions")
+                .arg(args.int("actions", 40, 200).to_string())
+                .arg("--minutes")
+                .arg(minutes.to_string())
+                .arg("--per-screen")
+                .arg(args.int("per_screen", 15, 50).to_string())
+                .arg("--out")
+                .arg(out.display().to_string())
+                .opt(
+                    "--seed",
+                    args.0
+                        .get("seed")
+                        .and_then(Value::as_u64)
+                        .map(|s| s.to_string()),
+                );
+                for skip in args
+                    .0
+                    .get("skip")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    inv = inv.arg("--skip").arg(skip);
+                }
+                if args.bool("largest_text") {
+                    inv = inv.arg("--largest-text");
+                }
+                if args.bool("real_data") {
+                    inv = inv.arg("--real-data");
+                }
+                let mut result = self.forge(self.with_udid(inv), cancel).await;
+                if let Some(data) = result.get_mut("data").and_then(Value::as_object_mut) {
+                    data.entry("out").or_insert_with(|| json!(rel(&root, &out)));
+                }
+                Answer {
+                    result,
+                    untrusted: true,
+                    image: None,
+                }
+            }
             "forge_accept_screenshots" => {
                 let app = app_or_fail!();
                 let Some(run) = args.str("run") else {
@@ -806,6 +882,22 @@ impl crate::Server {
                 cancel,
             )
             .await;
+        // Installed apps, profile expiry and free slots (M6.1): an install
+        // that needs a slot is the person's call, so say so before trying.
+        let apps = if list["ok"] == json!(true) {
+            self.forge(
+                self.with_udid(Invocation::new(
+                    &["device", "apps"],
+                    &root,
+                    secs(MIN),
+                    "device",
+                )),
+                cancel,
+            )
+            .await
+        } else {
+            Value::Null
+        };
         let ios = &doctor["ios_device"];
         let team = ios["signing_team"].clone();
         let mut notes = Vec::new();
@@ -823,6 +915,22 @@ impl crate::Server {
         if ios["usbmuxd_running"] == json!(false) {
             notes.push("usbmuxd is not running: no phone can be reached until it is plugged in and unlocked.");
         }
+        let mut notes: Vec<String> = notes.into_iter().map(str::to_owned).collect();
+        let slots = &apps["data"]["free_team_slots"];
+        if slots["free"] == json!(0) {
+            notes.push(format!(
+                "All {} free-team app slots are in use: installing an app that isn't on the phone yet will fail. Ask the person which app to remove.",
+                slots["limit"]
+            ));
+        }
+        for app in apps["data"]["apps"].as_array().into_iter().flatten() {
+            if app["expired"] == json!(true) {
+                notes.push(format!(
+                    "{}'s profile has expired: it won't open until it is installed again.",
+                    app["original_id"].as_str().unwrap_or("an app")
+                ));
+            }
+        }
         let devices = match &list["data"]["devices"] {
             Value::Null => list["data"].clone(),
             devices => devices.clone(),
@@ -839,6 +947,8 @@ impl crate::Server {
                     "signing_team": team,
                     "usbmuxd_running": ios["usbmuxd_running"],
                     "ready_to_install": doctor["ready"]["ios_device"],
+                    "apps": apps["data"]["apps"],
+                    "free_team_slots": apps["data"]["free_team_slots"],
                     "notes": notes,
                 }),
             );
@@ -864,6 +974,13 @@ impl crate::Server {
             .as_str()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .map(|t| exec::tail(&t, 12_000));
+        // Where the failure happened and what explains it (M6.1).
+        let app_dir = failure["app"]["path"]
+            .as_str()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.opts.root.clone());
+        let changed = crate::correlate::changed_files(&app_dir, self.start_commit.as_deref());
+        let correlation = crate::correlate::correlate(&failure, &changed);
         json!({
             "schema": "forge.result/1",
             "command": "diagnose",
@@ -875,7 +992,8 @@ impl crate::Server {
             "data": {
                 "last_failure": failure,
                 "log_tail": log_tail,
-                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person.",
+                "correlation": correlation,
+                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person. For a UI or explore failure, correlation says which step, the app's log just before, the crash and whether it is in a file changed in this session.",
             }
         })
     }
@@ -923,14 +1041,18 @@ impl crate::Server {
         visual: bool,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Answer {
-        let inv = self.with_udid(
-            Invocation::new(&["ui", "run"], &app.dir, secs(10 * MIN), "test")
-                .arg(file.display().to_string())
-                .arg("--out")
-                .arg(out.display().to_string())
-                .arg("--visual")
-                .arg(if visual { "check" } else { "off" }),
-        );
+        let mut inv = Invocation::new(&["ui", "run"], &app.dir, secs(10 * MIN), "test")
+            .arg(file.display().to_string())
+            .arg("--out")
+            .arg(out.display().to_string())
+            .arg("--visual")
+            .arg(if visual { "check" } else { "off" });
+        // One-step actions (forge_ui_act, launch) skip the log and crash
+        // watch: it costs a crash-report listing per tap.
+        if !visual {
+            inv = inv.arg("--no-watch");
+        }
+        let inv = self.with_udid(inv);
         let result = self.forge(inv, cancel).await;
         // On failure, show the screen at the failed step; when only the
         // pictures changed, the first diff (changes in red, areas outlined).

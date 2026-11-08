@@ -162,10 +162,21 @@ pub async fn run(
         Some(mut value) => {
             // `forge doctor --json` predates the result contract: no `ok`.
             let obj = value.as_object_mut().expect("object");
+            let exited_ok = status.as_ref().is_ok_and(|s| s.success());
             if !obj.contains_key("ok") {
+                obj.insert("ok".into(), json!(exited_ok));
+            } else if obj["ok"] == json!(true) && !exited_ok {
+                // A result that says ok from a child that then failed (or
+                // was killed) is not a success.
+                let code = status.as_ref().ok().and_then(|s| s.code());
+                obj.insert("ok".into(), json!(false));
                 obj.insert(
-                    "ok".into(),
-                    json!(status.as_ref().is_ok_and(|s| s.success())),
+                    "error".into(),
+                    json!(format!(
+                        "`{}` reported ok but exited {}",
+                        inv.display(),
+                        code.map_or("by signal".into(), |c| c.to_string())
+                    )),
                 );
             }
             value

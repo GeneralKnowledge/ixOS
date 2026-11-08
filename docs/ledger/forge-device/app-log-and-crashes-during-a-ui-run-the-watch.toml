@@ -1,0 +1,9 @@
+order = 38
+capability = "The app's log and crash reports collected during a UI run or walk, and correlated with the failing step (`forge ui run`, `forge ui explore`, `forge_diagnose`)"
+framework = "Yes: forge-cli (watch.rs), forge-mcp (correlate.rs)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a"
+iphone = "No"
+documented = "Yes: forge-m6.md, evidence.md"
+limits = "The log is live only (lines from the start of the run); crash reports are matched by being new since the run started; the syslog stream and WebDriverAgent have not yet run together on a phone"
