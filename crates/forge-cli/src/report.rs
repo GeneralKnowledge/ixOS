@@ -31,6 +31,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     log: None,
     saved_stdout: None,
     usage: false,
+    stage: None,
 });
 
 struct State {
@@ -42,6 +43,8 @@ struct State {
     saved_stdout: Option<File>,
     /// The command was called wrongly (stage `usage`, exit 2).
     usage: bool,
+    /// A stage the command itself knows its failure belongs to.
+    stage: Option<&'static str>,
 }
 
 fn state() -> std::sync::MutexGuard<'static, State> {
@@ -118,6 +121,12 @@ pub fn add_hint(hint: JsonHint) {
     if let Some(failure) = state().failure.as_mut() {
         failure.hints.push(hint);
     }
+}
+
+/// The failure belongs to `stage` (for example a UI run that broke off
+/// because the phone went away is `device`, not `test`).
+pub fn set_failed_stage(stage: &'static str) {
+    state().stage = Some(stage);
 }
 
 /// An error in how the command was called: stage `usage`, exit code 2.
@@ -398,6 +407,8 @@ pub fn result(outcome: &Outcome, res: &Result<(), String>) -> Value {
         "ok"
     } else if st.usage {
         "usage"
+    } else if let Some(stage) = st.stage {
+        stage
     } else {
         failed_stage(failure.as_ref(), &diagnostics, outcome.fallback_stage)
     };
