@@ -49,13 +49,53 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Lines kept from one run; the oldest go first.
-const MAX_LINES: usize = 5000;
-/// Libraries that log inside the app's process for the test runner, not
-/// for the app: WebDriverAgent's attribute queries go through
-/// XCTAutomationSupport, thousands of lines a run on Cati (2026-11-08),
-/// which pushed the app's own lines out of the kept log.
-const RUNNER_LIBRARIES: &[&str] = &["XCTAutomationSupport"];
+/// Lines kept from one run; the oldest go first. A 5-minute run on Cati
+/// logged about 9400 lines in the app's process besides WebDriverAgent's
+/// (UIKit, HangTracer), so 5000 lost the start; 20000 keeps a few such runs
+/// (about 3 MB).
+const MAX_LINES: usize = 20_000;
+/// Libraries that log inside the app's process for the test runner or the
+/// system, not for the app. On Cati (2026-11-08) WebDriverAgent's
+/// attribute queries (XCTAutomationSupport, 7689 lines in a 54 s run) and
+/// HangTracer (6738 lines in a crash run) pushed the app's own lines,
+/// including a Rust panic, out of the kept log.
+const RUNNER_LIBRARIES: &[&str] = &["XCTAutomationSupport", "HangTracer"];
+
+/// A line the test runner caused rather than the app: WebDriverAgent's
+/// queries, HangTracer, and UIKit reporting each synthesised touch
+/// ("Evaluating dispatch of UIEvent", "Sending UIEvent"), about 30 lines a
+/// second of a 20-minute run on Cati.
+fn runner_line(line: &str) -> bool {
+    match log_library(line) {
+        Some(l) if RUNNER_LIBRARIES.contains(&l) => true,
+        Some("UIKitCore") => {
+            line.contains("dispatch of UIEvent") || line.contains("Sending UIEvent")
+        }
+        _ => false,
+    }
+}
+
+/// The app's own line: logged by its executable or its Rust library
+/// (ForgeLog, `forge_runtime::logging`), not by a system framework.
+fn own_line(line: &str, process: &str) -> bool {
+    match log_library(line) {
+        None => true,
+        Some(l) => l == process || l.contains("forge_ffi"),
+    }
+}
+
+/// Makes room for one line: the oldest system-framework line goes first,
+/// so the app's own lines are the last to be dropped.
+fn evict(lines: &mut VecDeque<String>, process: &str) {
+    match lines.iter().position(|l| !own_line(l, process)) {
+        Some(i) => {
+            lines.remove(i);
+        }
+        None => {
+            lines.pop_front();
+        }
+    }
+}
 
 /// The library of a syslog relay line, `UIKitCore` in
 /// `GoodDogXtool(UIKitCore)[9] <Notice>: ...`.
@@ -105,8 +145,9 @@ impl Watch {
                 stop.clone(),
             );
             let udid = udid.to_owned();
+            let process = process.to_owned();
             let filter = LogFilter {
-                process: Some(process.to_owned()),
+                process: Some(process.clone()),
                 contains: None,
             };
             std::thread::Builder::new()
@@ -117,15 +158,13 @@ impl Watch {
                         pick_device(backend.as_ref(), Some(&udid)).map_err(|e| e.to_string())?;
                     backend
                         .syslog_while(&device, &stop, &mut |line| {
-                            if filter.matches(line)
-                                && log_library(line).is_some_and(|l| RUNNER_LIBRARIES.contains(&l))
-                            {
+                            if filter.matches(line) && runner_line(line) {
                                 runner_lines.fetch_add(1, Ordering::Relaxed);
                             } else if filter.matches(line) {
                                 let ms = started.elapsed().as_millis();
                                 let mut lines = lines.lock().unwrap_or_else(|p| p.into_inner());
                                 if lines.len() == MAX_LINES {
-                                    lines.pop_front();
+                                    evict(&mut lines, &process);
                                     dropped.fetch_add(1, Ordering::Relaxed);
                                 }
                                 lines.push_back(format!("+{ms}ms {line}"));
@@ -159,6 +198,11 @@ impl Watch {
         let mut notes = Vec::new();
         let (reader_state, reader) = self.stop_reader();
         let log_status = match &reader {
+            // The phone went away part-way: what came before is kept.
+            Err(e) if self.line_count() > 0 => {
+                notes.push(format!("app log cut short: {e}"));
+                "partial"
+            }
             Err(e) => {
                 notes.push(format!("app log not read: {e}"));
                 "unavailable"
@@ -169,7 +213,7 @@ impl Watch {
         let dropped = self.dropped.load(Ordering::Relaxed);
         if dropped > 0 {
             notes.push(format!(
-                "the app logged more than {MAX_LINES} lines: the first {dropped} were dropped, so device.log starts part-way through the run"
+                "the app's process logged more than {MAX_LINES} lines: {dropped} were dropped, system frameworks' oldest first, so device.log is missing part of the run"
             ));
         }
         let lines: Vec<String> = self
@@ -220,7 +264,8 @@ impl Watch {
             // More than MAX_LINES arrived: the oldest were dropped, so the
             // log starts part-way through the run.
             "log_lines_dropped": dropped,
-            // WebDriverAgent's lines in the app's process (XCTAutomationSupport).
+            // Lines in the app's process from the test runner and the system
+            // (RUNNER_LIBRARIES), left out of device.log.
             "runner_lines_skipped": self.runner_lines.load(Ordering::Relaxed),
             "log_tail": tail,
             "crash_reports": crash_status,
@@ -538,10 +583,7 @@ mod tests {
         );
         assert_eq!(log_library("x GoodDogXtool[9] <Notice>: y"), None);
         assert!(
-            v["notes"][0]
-                .as_str()
-                .unwrap()
-                .contains("first 7 were dropped"),
+            v["notes"][0].as_str().unwrap().contains("7 were dropped"),
             "{v}"
         );
         let log = std::fs::read_to_string(tmp.path().join("device.log")).unwrap();
@@ -550,6 +592,23 @@ mod tests {
             "{}",
             &log[..200]
         );
+    }
+
+    #[test]
+    fn the_apps_own_lines_outlast_the_systems_and_touch_noise_is_left_out() {
+        let sys = |n| format!("+1ms Nov  8 x GoodDogXtool(UIKitCore)[9] <Notice>: layout {n}");
+        let own = "+1ms Nov  8 x GoodDogXtool(libforge_ffi.dylib)[9] <Notice>: [today] plan ready";
+        let mut lines: VecDeque<String> = [own.to_string(), sys(1), sys(2)].into();
+        evict(&mut lines, "GoodDogXtool");
+        assert_eq!(lines[0], own);
+        assert_eq!(lines[1], sys(2));
+        assert!(own_line("x GoodDogXtool[9] <Notice>: y", "GoodDogXtool"));
+        assert!(!own_line(&sys(1), "GoodDogXtool"));
+        assert!(runner_line(
+            "x GoodDogXtool(UIKitCore)[9] <Notice>: Evaluating dispatch of UIEvent: 0x1"
+        ));
+        assert!(runner_line("x GoodDogXtool(HangTracer)[9] <Notice>: hang"));
+        assert!(!runner_line(&sys(1)));
     }
 
     #[test]

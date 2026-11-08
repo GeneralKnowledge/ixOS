@@ -1,0 +1,9 @@
+order = 39
+capability = "Run record and a person's acceptance: `forge verify --run <start>` (and `forge_verify run: true`) writes one `kind = \"run\"` bundle and `report.md` with the commits, builds, checks, crashes, failures and their repairs, and every check not run with its reason; `forge verify --accept <ID> --note` records a person's acceptance as `kind = \"human\"`; `forge verify` shows twin, iPhone and person columns"
+framework = "Yes: forge-cli (`run_record`, `verify`), forge-mcp (`forge_verify run`, `FORGE_MCP_CHILD`)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a: it reads the bundles and journals other commands write"
+iphone = "No"
+documented = "Yes: forge-m6.md (M6.4), evidence.md, forge-mcp.md"
+limits = "Reads only what other commands wrote; runs nothing. Repairs are inferred from timing (commits between a failure and the next success of the same tool). `--accept` needs a terminal and is refused under `forge mcp`, which stops agents and scripts but records a person's claim, not proof they looked. Linux-tested on recorded bundles and journals; the first real record comes from the M6.5 run"

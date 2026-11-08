@@ -28,6 +28,9 @@ const REDACTED_ARGS: &[&str] = &["text", "value"];
 const MAX_ERROR: usize = 500;
 
 pub struct Journal {
+    /// The server's start, `2026-11-07T16-40-12` (UTC): `forge verify --run`
+    /// takes it as the start of the run.
+    started: String,
     dir: PathBuf,
     state: Mutex<State>,
 }
@@ -43,12 +46,16 @@ struct State {
 impl Journal {
     /// A journal for a server rooted at `root`. Nothing is written yet.
     pub fn new(root: &Path) -> Self {
+        let started = timestamp();
         Self {
-            dir: root
-                .join(".forge/runs")
-                .join(format!("{}-mcp", timestamp())),
+            dir: root.join(".forge/runs").join(format!("{started}-mcp")),
+            started,
             state: Mutex::new(State::default()),
         }
+    }
+
+    pub fn started(&self) -> &str {
+        &self.started
     }
 
     pub fn path(&self) -> PathBuf {

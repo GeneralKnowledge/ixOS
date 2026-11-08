@@ -120,6 +120,11 @@ impl Server {
         self.journal.path()
     }
 
+    /// When this server started (a run id): the start of `forge_verify run`.
+    pub fn started(&self) -> &str {
+        self.journal.started()
+    }
+
     fn last_failure(&self) -> Option<Value> {
         self.last_failure
             .lock()

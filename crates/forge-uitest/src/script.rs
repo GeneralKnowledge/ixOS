@@ -522,6 +522,17 @@ fn run_step(
         });
     }
     if let Some(scroll) = &step.scroll {
+        // A swipe that crosses the keyboard types into the field: on Cati
+        // a CollectionView scroll turned "Moss" into "MossSsss". Refuse
+        // rather than change the person's text.
+        if driver
+            .tree()
+            .is_ok_and(|t| t.walk().any(|n| n.kind == "Keyboard" && n.visible))
+        {
+            return Err(UiError::Refused(
+                "the keyboard is up, and a scroll would swipe across it and type into the field: close it first (tap the field's Done or Return key)".into(),
+            ));
+        }
         return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
             d.scroll(e, &scroll.direction)
         });
@@ -531,7 +542,14 @@ fn run_step(
     }
     if let Some(name) = &step.screenshot {
         let path = out_dir.join(format!("{}.png", file_name(name)));
-        std::fs::write(&path, driver.screenshot()?)?;
+        let (png, settled) = settled_screenshot(driver)?;
+        if !settled {
+            writeln!(
+                out,
+                "        the screen was still changing (an animation or a clock?): screenshot taken anyway"
+            )?;
+        }
+        std::fs::write(&path, png)?;
         // The tree beside it says what is on the picture: visual regression
         // names changed elements from it and masks elements by it. Taken
         // after the screenshot, so the screenshot is of the screen as the
@@ -732,6 +750,30 @@ fn mismatch(
     Ok(mismatch)
 }
 
+/// Screenshots until two in a row are the same, so a picture is of the
+/// screen at rest and not part-way through a push (seen on Cati: one
+/// check caught a navigation transition, 18% of the screen). Gives up after
+/// [`SETTLE_TRIES`] and says so with `false`.
+fn settled_screenshot(driver: &mut dyn Driver) -> Result<(Vec<u8>, bool)> {
+    let mut last = driver.screenshot()?;
+    for _ in 0..SETTLE_TRIES {
+        std::thread::sleep(crate::POLL);
+        let next = driver.screenshot()?;
+        if next == last {
+            return Ok((next, true));
+        }
+        last = next;
+    }
+    Ok((last, false))
+}
+
+/// Extra screenshots a screenshot step may take while the screen settles.
+const SETTLE_TRIES: usize = 5;
+
+/// What a failure records instead of the home screen.
+pub const HOME_SCREEN: &str =
+    "the app is not in front (the home screen is): its tree and screenshot are not recorded, since they show the person's apps and notifications";
+
 /// Saves what was on screen when a step failed. Best effort: the failure
 /// itself is the report.
 fn record_failure(
@@ -741,6 +783,14 @@ fn record_failure(
     out: &mut dyn Write,
     report: &mut Report,
 ) {
+    // The app has gone and the home screen is in front: its tree and
+    // screenshot hold the person's apps and notification counts, which are
+    // theirs, not the test's. Say so instead of recording them.
+    if driver.foreground().ok().flatten().as_deref() == Some(crate::policy::SPRINGBOARD) {
+        report.on_screen = vec![HOME_SCREEN.to_owned()];
+        let _ = writeln!(out, "        {HOME_SCREEN}");
+        return;
+    }
     match driver.tree() {
         Ok(tree) => {
             report.on_screen = tree.on_screen(15);
@@ -830,6 +880,53 @@ mod tests {
         let mut driver = FakeDriver::new(screen);
         driver.front = Some("a".into());
         driver
+    }
+
+    #[test]
+    fn a_scroll_with_the_keyboard_up_is_refused() {
+        let script = Script::parse(
+            "name='k'\napp='a'\ntimeout=0\n[[step]]\nscroll={kind='CollectionView', direction='down'}\n",
+        )
+        .unwrap();
+        let mut screen = node("Application", "", "Good Dog");
+        let mut keyboard = node("Keyboard", "", "");
+        keyboard.visible = true;
+        screen.children = vec![node("CollectionView", "", ""), keyboard];
+        let mut driver = in_front(screen);
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut out).unwrap();
+        assert!(report.failed.unwrap().1.contains("the keyboard is up"));
+        assert!(
+            !driver.calls.iter().any(|c| c.starts_with("scroll")),
+            "{:?}",
+            driver.calls
+        );
+    }
+
+    #[test]
+    fn a_failure_on_the_home_screen_records_nothing_of_it() {
+        let script = Script::parse(
+            r#"
+            name = "gone"
+            app = "a"
+            timeout = 0
+            [[step]]
+            tap = { id = "library.nope" }
+        "#,
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(node("Icon", "Mail", "Mail, 3 new messages"));
+        driver.front = Some(crate::policy::SPRINGBOARD.into());
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut out).unwrap();
+        assert!(report.failed.is_some());
+        assert_eq!(report.on_screen, [HOME_SCREEN]);
+        assert!(report.tree_file.is_none());
+        assert!(!dir.path().join("failure-step1.png").exists());
+        assert!(!dir.path().join("failure-step1-tree.txt").exists());
+        assert!(!String::from_utf8(out).unwrap().contains("3 new messages"));
     }
 
     const M0: &str = r#"
@@ -1167,6 +1264,8 @@ mod tests {
                 "launch XTL-1.org.forgemobile.pocketlibrary []",
                 "tap library.add",
                 "type bookForm.title \"Hello from Forge\"",
+                // Two the same in a row: the screen has settled.
+                "screenshot",
                 "screenshot"
             ]
         );

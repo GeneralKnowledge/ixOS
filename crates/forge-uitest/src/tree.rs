@@ -318,7 +318,7 @@ impl UiNode {
                 let target = row_around(self, frame, path);
                 if !in_bar
                     && !inline
-                    && (target.width < MIN_TARGET - 0.5 || target.height < MIN_TARGET - 0.5)
+                    && (target.width < MIN_TARGET - SLACK || target.height < MIN_TARGET - SLACK)
                 {
                     let mut finding = Finding::new("small_tap_target", "warning", self);
                     finding.detail = Some(format!(
@@ -433,6 +433,11 @@ fn scroller<'a>(path: &[&'a UiNode]) -> Option<&'a UiNode> {
 
 /// Apple's minimum tap target, in points.
 const MIN_TARGET: f64 = 44.0;
+/// How far under [`MIN_TARGET`] still counts as meeting it. A system list
+/// row is 44 pt with its separator, and the tree reports its cell as 43 pt
+/// (Good Dog's picker options on Cati, 2026-11-08): Apple's own rows are
+/// not small targets.
+const SLACK: f64 = 1.0;
 
 /// The area a finger can hit for `node`: its own frame, or the row around
 /// it when that row holds no other control and hugs it (at most 24 pt
@@ -699,6 +704,16 @@ mod tests {
             ["tap target too small (44 x 18 pt, under 44 x 44): Button id=post.like \"Like\""]
         );
         assert_eq!(root.audit()[0].issue, "small_tap_target");
+        // A system list row, 43 pt in the tree, meets it; 42 pt doesn't.
+        let row = |h| app(vec![el("Button", None, "Adult", (0.0, 300.0, 250.0, h))]);
+        assert!(row(43.0)
+            .audit()
+            .iter()
+            .all(|f| f.issue != "small_tap_target"));
+        assert!(row(42.0)
+            .audit()
+            .iter()
+            .any(|f| f.issue == "small_tap_target"));
         // A disabled one can't be tapped at all.
         let mut off = el(
             "Button",

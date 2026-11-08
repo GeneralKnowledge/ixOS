@@ -277,7 +277,7 @@ pub fn provenance(runner: &dyn CommandRunner, app: &Path) -> Value {
     })
 }
 
-fn git_line(
+pub(crate) fn git_line(
     runner: &dyn CommandRunner,
     app: &Path,
     args: &[&str],

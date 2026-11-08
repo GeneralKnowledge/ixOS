@@ -109,11 +109,13 @@ pub fn info(
 pub const FREE_TEAM_SLOTS: usize = 3;
 
 /// `forge device apps --json`: each app you installed with its profile's
-/// team, lifetime and days left, and the free-team slots in use.
+/// team, lifetime and days left, and the free-team slots in use. Apps with
+/// no provisioning profile (the App Store's) are left out unless `all`.
 pub fn apps_data(
     backend: &dyn DeviceBackend,
     udid: Option<&str>,
     now: i64,
+    all: bool,
 ) -> Result<Value, String> {
     let device = pick_device(backend, udid).map_err(err)?;
     crate::report::set_device(&device.udid, None);
@@ -161,6 +163,8 @@ pub fn apps_data(
             })
         })
         .collect();
+    let (rows, without_profile): (Vec<Value>, Vec<Value>) =
+        rows.into_iter().partition(|r| all || !r["team"].is_null());
     let free_in_use = rows
         .iter()
         .filter(|r| r["free_team"] == json!(true) && r["expired"] != json!(true))
@@ -169,6 +173,9 @@ pub fn apps_data(
         "apps": rows,
         "free_team_slots": { "limit": FREE_TEAM_SLOTS, "in_use": free_in_use, "free": FREE_TEAM_SLOTS.saturating_sub(free_in_use) },
     });
+    if !all {
+        data["not_shown_without_profile"] = json!(without_profile.len());
+    }
     if let Some(e) = profile_error {
         data["profiles_error"] = json!(e);
     }
@@ -180,9 +187,10 @@ pub fn apps(
     backend: &dyn DeviceBackend,
     udid: Option<&str>,
     now: i64,
+    all: bool,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    let data = apps_data(backend, udid, now)?;
+    let data = apps_data(backend, udid, now, all)?;
     let apps = data["apps"].as_array().cloned().unwrap_or_default();
     if apps.is_empty() {
         writeln!(out, "No apps you installed are on the phone.").map_err(err)?;
@@ -207,6 +215,12 @@ pub fn apps(
             expiry
         )
         .map_err(err)?;
+    }
+    if let Some(n) = data["not_shown_without_profile"]
+        .as_u64()
+        .filter(|n| *n > 0)
+    {
+        writeln!(out, "{n} app(s) with no provisioning profile (from the App Store) not shown; --all lists them.").map_err(err)?;
     }
     let slots = &data["free_team_slots"];
     writeln!(
@@ -563,7 +577,7 @@ mod tests {
     fn apps_show_expiry_and_free_slots() {
         // 2026-11-08T12:00:00Z
         let now = 1_794_139_200;
-        let data = apps_data(&Apps, None, now).unwrap();
+        let data = apps_data(&Apps, None, now, true).unwrap();
         let list = data["apps"].as_array().unwrap();
         assert_eq!(list[0]["original_id"], "org.forgemobile.gooddog");
         assert_eq!(list[0]["free_team"], true);
@@ -573,8 +587,18 @@ mod tests {
         assert!(list[2]["team"].is_null());
         // The expired app doesn't hold a slot; the App Store app never does.
         assert_eq!(data["free_team_slots"]["in_use"], 1);
-        let shown = text(|out| apps(&Apps, None, now, out));
+        let shown = text(|out| apps(&Apps, None, now, false, out));
         assert!(shown.contains("expires in 6.9 days"), "{shown}");
+        // App Store apps (no profile) are hidden by default, and counted.
+        assert!(!shown.contains("com.example.store"), "{shown}");
+        assert!(
+            shown.contains("1 app(s) with no provisioning profile"),
+            "{shown}"
+        );
+        let default = apps_data(&Apps, None, now, false).unwrap();
+        assert_eq!(default["apps"].as_array().unwrap().len(), 2);
+        assert_eq!(default["not_shown_without_profile"], 1);
+        assert_eq!(default["free_team_slots"]["in_use"], 1);
         assert!(shown.contains("profile expired"), "{shown}");
         assert!(shown.contains("Free-team slots: 1 of 3 in use"), "{shown}");
     }

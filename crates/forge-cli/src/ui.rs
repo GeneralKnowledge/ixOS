@@ -494,6 +494,24 @@ pub fn screenshot(
 /// keeps what it collected in `out_dir` (`device.log`, `crashes/`,
 /// `watch.json`) and puts it in the result, so the evidence gathered before
 /// the failure isn't lost with it.
+/// Whether a run's error means the phone went away (unplugged on Cati,
+/// 2026-11-08: "connecting to WebDriverAgent: bad device").
+fn phone_gone(error: &str) -> bool {
+    let e = error.to_lowercase();
+    [
+        "bad device",
+        "device not found",
+        "no device",
+        "connecting to webdriveragent",
+        "broken pipe",
+        "connection reset",
+        "socket io failed",
+        "close_notify",
+    ]
+    .iter()
+    .any(|w| e.contains(w))
+}
+
 fn broke_off(
     error: String,
     watcher: Result<crate::watch::Watch, String>,
@@ -502,6 +520,14 @@ fn broke_off(
     let value = match watcher {
         Ok(w) => w.finish(out_dir, true).value,
         Err(why) => crate::watch::not_watched(&why),
+    };
+    // The phone or WebDriverAgent went away: a device failure, said plainly.
+    let error = match phone_gone(&error) {
+        true => {
+            report::set_failed_stage("device");
+            format!("the iPhone was disconnected or stopped answering during the run ({error})")
+        }
+        false => error,
     };
     let _ = std::fs::create_dir_all(out_dir);
     let saved = std::fs::write(
@@ -541,7 +567,24 @@ pub fn run(
     let policy = Policy::load()?;
     // Inside an app, the run is an evidence bundle (docs/evidence.md):
     // <app>/.forge/runs/<id>-ui-run/ unless --out says otherwise.
-    let mut app_dir = crate::evidence::app_of(file);
+    let mut app_dir = crate::evidence::app_of(file).or_else(|| {
+        // A test file kept outside the app (a scratch folder on the laptop)
+        // still runs a Forge app: find it by its bundle id, from here or
+        // in this checkout's examples, so its log is watched and the run
+        // is its evidence. Seen on Cati: a soak ran unwatched for this.
+        let here = std::env::current_dir().ok()?;
+        let examples = crate::commands::workspace_root().join("examples");
+        here.ancestors()
+            .map(Path::to_path_buf)
+            .chain(
+                std::fs::read_dir(&examples)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .map(|e| e.path()),
+            )
+            .find(|d| own_apps(&[d.as_path()]).contains(&script.app))
+    });
     let id = report::timestamp();
     let own = {
         let mut dirs: Vec<&Path> = vec![Path::new(".")];
@@ -877,6 +920,9 @@ pub struct ExploreOptions {
     pub largest_text: bool,
     /// `dark` or `light`; `None` follows the phone.
     pub appearance: Option<String>,
+    /// The app's own launch arguments, after Forge's (for example one that
+    /// starts past onboarding with fixture data).
+    pub launch_args: Vec<String>,
     pub per_screen: usize,
     pub screenshots: bool,
 }
@@ -953,6 +999,7 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             if options.largest_text {
                 args.extend(explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
             }
+            args.extend(options.launch_args.iter().cloned());
             args
         },
         test_data,
@@ -1392,6 +1439,7 @@ mod tests {
             real_data: false,
             largest_text: true,
             appearance: None,
+            launch_args: vec![],
             per_screen: 15,
             screenshots: true,
         }
@@ -1427,6 +1475,14 @@ mod tests {
                 .unwrap();
         assert_eq!(saved["status"], "not_watched");
         assert_eq!(saved["reason"], "--no-watch");
+    }
+
+    #[test]
+    fn an_unplugged_phone_is_a_device_failure() {
+        // Seen on Cati when the cable was pulled at step 3.
+        assert!(phone_gone("connecting to WebDriverAgent: bad device"));
+        assert!(phone_gone("device socket io failed"));
+        assert!(!phone_gone("no element matches id `library.nope`"));
     }
 
     fn pocket_library() -> PathBuf {
@@ -1468,6 +1524,14 @@ mod tests {
             config.launch_args[..3],
             ["-ForgeUITestData", "-ForgeAppearance", "dark"]
         );
+        // The app's own arguments come after Forge's.
+        let own = ExploreOptions {
+            launch_args: vec!["-GoodDogSampleDog".into()],
+            largest_text: false,
+            ..options()
+        };
+        let config = explore_config(&pocket_library(), &own).unwrap();
+        assert_eq!(config.launch_args.last().unwrap(), "-GoodDogSampleDog");
         let reckless = ExploreOptions {
             allow_destructive: true,
             ..real

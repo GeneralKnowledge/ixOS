@@ -10,9 +10,9 @@ Status: format version 1, 2026-11-08. The Linux half (the headless twin) is buil
 |---|---|---|---|---|
 | **Twin** | The app's real Rust core and its portable Swift view model, driven by XCTests | Linux, no SDK, no phone, in seconds (`forge check swift`) | The behaviour: rules, state, persistence, errors, cancellation, events across the Swift–Rust boundary | The requirement's `twin` verdict |
 | **Device** | The installed app, driven by a UI scenario through its accessibility identifiers | A physical iPhone (`forge ui run`, #61) | That the screens reach that behaviour on the phone: the control exists, is labelled, responds, and the state shows | The requirement's `device` verdict |
-| **Person** | Someone looks at the evidence and the phone | | That it is right | The capability ledger's "iPhone: Yes". Only a person sets it |
+| **Person** | Someone looks at the evidence and the phone | Their own terminal (`forge verify --accept`) | That it is right | The requirement's `person` verdict, and the capability ledger's "iPhone: Yes". Only a person sets either |
 
-The kinds are never mixed up. A twin pass leaves the device verdict `unverified`. A device pass is still not "iPhone: Yes" in the ledger until a person reports it ([AGENTS.md](../AGENTS.md) rule 7).
+The kinds are never mixed up. A twin pass leaves the device verdict `unverified`, and neither machine verdict fills the person column. A device pass is still not "iPhone: Yes" in the ledger until a person reports it ([AGENTS.md](../AGENTS.md) rule 7).
 
 Most of a feature's behaviour belongs in the twin, because it is cheap: Pocket Library's seven model tests run against the real Rust library in 0.05 seconds, and the whole check takes about 10 seconds with a warm Swift image. The device run then only has to show that the screen is wired to that behaviour, which keeps UI scenarios short and the phone free.
 
@@ -112,7 +112,7 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 
 | Field | Means |
 |---|---|
-| `kind` | `linux-twin`, `device`, or `fixture` (an explore walk on a model of the app, `--fixture`: it shows how Forge explored, never how the app behaves, and sets no verdict). Decides which verdict a run may set |
+| `kind` | `linux-twin`, `device`, `fixture` (an explore walk on a model of the app, `--fixture`: it shows how Forge explored, never how the app behaves, and sets no verdict), `run` (a run record, below; sets no verdict) or `human` (a person's acceptance, below). Decides which verdict a bundle may set |
 | `ok` | No test failed and no requirement is `failed` or `missing` |
 | `where.device` | `null` on Linux. On a device run: `{ "udid", "name", "ios" }` |
 | `build.commit`, `build.dirty` | The commit the run was built from, and whether the app folder had uncommitted changes |
@@ -134,7 +134,7 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
 2. Writes `evidence.json` there with `kind = "device"`, `where.device` (`udid`, `ios_major`), `build` (read before the run, plus `installed_as`), `scenario` (relative to the app) and, instead of `tests`, `steps`: `{ "passed": N, "failed": null | { "step", "action", "error", "on_screen", "tree" } }`. Screenshots and the failure tree are listed under `artifacts`.
 3. Lists only the requirements whose `device` names this scenario, each with `device.verdict` `passed` or `failed`. Twin verdicts are left out of a device bundle.
 4. Records `watch` (M6.1): the app's own log lines while the run lasted (`device.log`) and, when a step failed, its crash reports written during the run, pulled and symbolicated. The failed step carries `log_tail`, `crash`, `log_status` and `crash_reports`. `--no-watch` skips it. What couldn't be collected is never left to look like a quiet app:
-   - `log_status`: `collected`, `empty` (the reader ran and the app logged nothing), or `unavailable` (the reader couldn't start, failed, or didn't stop in time; `notes` says which).
+   - `log_status`: `collected`, `empty` (the reader ran and the app logged nothing), `partial` (the reader stopped early, for example the phone was unplugged, and the lines before are kept), or `unavailable` (the reader couldn't start, failed, or didn't stop in time; `notes` says which).
    - `reader`: what became of the log reader thread at the end. `stopped` means it was joined and its connection to the phone is closed; `detached` means it didn't stop within 2 s and was left to end on its own (the log is then `unavailable`); `not_started` means there was no reader.
    - `crash_reports`: `not_checked` (the run passed), `none_new`, `found`, or `unavailable` (the phone's reports couldn't be listed or pulled). Only `none_new` means the app didn't crash.
    - Each crash has `symbolicated`: `matched`, `other_build` (frames point at today's code, not the code that crashed), `no_local_build`, `unknown`, or `unreadable`.
@@ -157,11 +157,22 @@ It runs nothing. It reads `requirements.toml` and every bundle in `<app>/.forge/
 
 A requirement is `proven` when every proof it names passed for the current files. With `--twin-only` the device column is shown but not required, and a requirement nothing on Linux can prove (only a device scenario, or a twin test that is `not_run` because it needs Apple's frameworks, like Pocket Library's PL-9) is `not here` rather than open. The command fails (stage `test`, exit 14) while any requirement is open; `not here` doesn't fail it but is listed. Its `--json` `data.requirements` has each row with its `status`. It is the agent's stop condition ("every requirement has current evidence") and the page a person reviews; in `forge mcp` it is `forge_verify`.
 
+## Run records and acceptance (`forge verify --run`, `--accept`)
+
+```
+forge verify --project examples/good-dog --run 2026-11-08T10-00-00   # what happened since then
+forge verify --project examples/good-dog --accept GD-3 --note "Recorded two sessions on Cati; history shows both"
+```
+
+`--run` writes one bundle of `kind = "run"` to `<app>/.forge/runs/<id>-run/` with `report.md` beside it, the page a person reads. It holds `since`, `repository`, `head`, `commits`, `dirty_at_end`, `builds` (from the MCP journal), `checks` (twin runs, UI runs, device walks and, apart from them, fixture walks), `device`, `screenshots`, `new_accessibility_findings`, `crashes`, `failures` (each with its `repairs`), `requirements` (the three columns for this run), `not_run` (requirement, check and reason), `not_accepted`, and a `verdict` of `complete` or `incomplete`. It runs nothing and sets no verdict. How each part is worked out is in [forge-m6.md](forge-m6.md#m64-the-run-record).
+
+`--accept` writes a bundle of `kind = "human"` whose requirement entry has `person: { verdict: "accepted", by, note }` and the usual `build`, so it goes stale when the files change. It needs a terminal, asks for the id to be typed back, and is refused inside `forge mcp`. `forge verify` then shows it in the Person column. A requirement can be `proven` without a person; the run record's verdict can't be `complete` without one.
+
 ## Next steps (not built)
 
 - **Linux repro** (audit A8): pull the app's data from the phone (`house_arrest`) into a twin test, so a bug seen on the device is reproduced on Linux in seconds.
 - **MCP resource**: a `forge://runs/{id}` resource returning a bundle's files as they are ([forge-mcp.md](forge-mcp.md)).
 - **More apps**: neither of the other two apps with model tests builds its twin on Linux yet (checked 2026-11-07 with `forge check swift`). Device Lab's `Format.swift` uses `Measurement.formatted`, which Linux Foundation lacks. Chat's `LocalChatNotifier.swift` imports only Foundation but uses `ChatRoute` and the notification adapters, which live in Apple-only files. Each is a small move like Pocket Library's, then a `requirements.toml`.
-- **A report**: `verify`'s table is the summary today. An HTML or Markdown export of a bundle (screenshots inline) is worth building once people review device runs regularly.
+- **A richer report**: the run record's `report.md` lists screenshots by path. An HTML export with them inline is worth building once people review device runs regularly.
 
 Where the code lives: requirement parsing, XCTest parsing, provenance and bundle writing are in `crates/forge-cli/src/evidence.rs`, called by `forge check swift` and `forge ui run` (both in forge-cli, so nothing needed extracting). `forge verify` is `crates/forge-cli/src/verify.rs`.

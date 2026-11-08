@@ -117,12 +117,13 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_verify",
         title: "Is every requirement proven?",
-        description: "Reads the app's requirements.toml and the evidence bundles that forge_check (swift) and forge_run_ui_test wrote, and says per requirement whether its Linux twin tests and its iPhone scenario passed for the code as it is now (stale = recorded for different files). Runs nothing. Use it as the stop condition: done when ok, or, without a phone, when ok with twin_only.",
+        description: "Reads the app's requirements.toml and the evidence bundles that forge_check (swift) and forge_run_ui_test wrote, and says per requirement whether its Linux twin tests and its iPhone scenario passed for the code as it is now (stale = recorded for different files). Runs nothing. Use it as the stop condition: done when ok, or, without a phone, when ok with twin_only. With run: true it instead writes the run record for this session (since the server started): commits, builds and installs, checks, crashes, failures and the commits that repaired them, and every check not run with its reason, as <app>/.forge/runs/<id>-run/evidence.json and report.md; give the person report.md. Only a person can accept a requirement (forge verify --accept in their own terminal); no tool does it.",
         tier: Tier::Observe,
         device: false,
         needs_ui: false,
         schema: || schema(json!({
-            "twin_only": {"type": "boolean", "description": "Only require the Linux twin evidence; iPhone results are still shown"}
+            "twin_only": {"type": "boolean", "description": "Only require the Linux twin evidence; iPhone results are still shown"},
+            "run": {"type": "boolean", "description": "Write the run record for this session instead (forge verify --run <server start>)"}
         }), &[]),
     },
     Spec {
@@ -533,7 +534,13 @@ impl crate::Server {
                 let dir = app.dir.display().to_string();
                 let mut inv =
                     Invocation::new(&["verify", "--project", &dir], &app.dir, secs(MIN), "test");
-                if args.0.get("twin_only") == Some(&json!(true)) {
+                if args.0.get("run") == Some(&json!(true)) {
+                    inv = inv.arg("--run").arg(self.started());
+                    let journal = self.journal_path();
+                    if journal.is_file() {
+                        inv = inv.arg("--journal").arg(journal.display().to_string());
+                    }
+                } else if args.0.get("twin_only") == Some(&json!(true)) {
                     inv = inv.arg("--twin-only");
                 }
                 Answer::of(self.forge(inv, cancel).await)

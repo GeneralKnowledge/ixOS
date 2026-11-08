@@ -508,6 +508,15 @@ fn title(tree: &UiNode) -> Option<String> {
         .and_then(|n| n.label.clone().or_else(|| n.identifier.clone()))
 }
 
+/// The system alert iOS shows after a shake while typing: "Undo Typing",
+/// "Undo Paste" and so on, with Cancel and Undo.
+fn is_undo_alert(alert: &UiNode) -> bool {
+    alert
+        .walk()
+        .filter_map(|n| n.label.as_deref())
+        .any(|l| l.starts_with("Undo ") && l.split_whitespace().count() <= 3)
+}
+
 /// The controls on a screen, and those the explorer won't touch.
 fn candidates(tree: &UiNode, config: &Config) -> (Vec<Candidate>, Vec<Skipped>) {
     let mut found = Vec::new();
@@ -527,6 +536,23 @@ fn visit(
 ) {
     // Keyboard keys are typing, not navigation.
     if node.kind == "Keyboard" {
+        return;
+    }
+    // iOS's Shake to Undo alert ("Undo Typing"): the system's, not the
+    // app's. On Cati the walk tapped its Undo, which emptied the field it
+    // had typed and kept Good Dog's Start button disabled. Only its Cancel.
+    if node.kind == "Alert" && node.visible && is_undo_alert(node) {
+        for button in node.walk().filter(|n| n.kind == "Button") {
+            let label = button.label.as_deref().unwrap_or("");
+            if label.eq_ignore_ascii_case("cancel") {
+                consider(button, config, false, found, skipped, keys);
+            } else {
+                skipped.push(Skipped {
+                    element: button.summary(),
+                    reason: "the system's Shake to Undo alert: only Cancel is tapped".into(),
+                });
+            }
+        }
         return;
     }
     if node.visible && node.enabled {
@@ -2133,6 +2159,25 @@ mod tests {
         fn foreground(&mut self) -> Result<Option<String>> {
             Ok(self.front.clone())
         }
+    }
+
+    #[test]
+    fn the_shake_to_undo_alert_is_only_ever_cancelled() {
+        let mut alert = node("Alert", None, Some("Undo Typing"));
+        alert.children = vec![
+            node("StaticText", None, Some("Undo Typing")),
+            node("Button", None, Some("Cancel")),
+            node("Button", None, Some("Undo")),
+        ];
+        let tree = app(vec![
+            node("TextField", Some("dogForm.name"), Some("Name")),
+            alert,
+        ]);
+        let (found, skipped) = candidates(&tree, &config());
+        let labels: Vec<String> = found.iter().map(|c| c.key.clone()).collect();
+        assert!(labels.iter().any(|l| l.contains("Cancel")), "{labels:?}");
+        assert!(!labels.iter().any(|l| l.ends_with(":Undo")), "{labels:?}");
+        assert!(skipped.iter().any(|s| s.reason.contains("Shake to Undo")));
     }
 
     fn config() -> Config {
