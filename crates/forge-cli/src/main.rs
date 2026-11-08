@@ -13,6 +13,7 @@ mod ledger;
 mod live;
 mod report;
 mod runner;
+mod status;
 mod swift_check;
 mod ui;
 mod ui_session;
@@ -602,6 +603,11 @@ enum RunCommands {
         /// status, snapshot, cmd). For development only
         #[arg(long)]
         devtools: bool,
+        /// Build first (Rust and Swift), then wait up to this many minutes
+        /// for the iPhone: ask for the phone only when the status says
+        /// waiting_for_device (<app>/.forge/status/run-ios.json)
+        #[arg(long, value_name = "MINUTES")]
+        wait_for_device: Option<u64>,
     },
 }
 
@@ -998,15 +1004,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 project,
                 release,
                 devtools,
+                wait_for_device,
             } => {
                 let project = project_or_default(project, "examples/counter");
-                commands::run_ios(
+                commands::run_ios_with(
                     runner,
                     &ios,
                     &root,
                     &project,
                     configuration(release),
                     devtools,
+                    wait_for_device.map(|m| std::time::Duration::from_secs(m * 60)),
                 )
             }
         },

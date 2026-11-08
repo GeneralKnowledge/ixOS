@@ -153,6 +153,11 @@ pub fn open_log(project: &Path, command: &str) {
     }
 }
 
+/// The open log file's path.
+pub fn log_path() -> Option<std::path::PathBuf> {
+    state().log.as_ref().map(|(p, _)| p.clone())
+}
+
 /// Appends a child's output to the log, if one is open.
 pub fn log_bytes(bytes: &[u8]) {
     if let Some((_, file)) = state().log.as_mut() {

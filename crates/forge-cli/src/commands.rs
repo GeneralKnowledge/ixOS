@@ -910,6 +910,7 @@ pub fn build_ios(
 
 /// Builds and installs on a connected device. xtool does not launch the
 /// app (and `xtool launch` does not work on iOS 17+), so the user opens it.
+#[cfg(test)]
 pub fn run_ios(
     runner: &dyn CommandRunner,
     builder: &dyn IosBuilder,
@@ -918,19 +919,111 @@ pub fn run_ios(
     configuration: IosConfiguration,
     devtools: bool,
 ) -> Result<(), String> {
+    run_ios_with(
+        runner,
+        builder,
+        root,
+        project,
+        configuration,
+        devtools,
+        None,
+    )
+}
+
+/// How often `--wait-for-device` looks for the phone.
+const DEVICE_POLL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// `forge run ios`. With `wait_for_device`, the app is built (Rust and
+/// Swift, type-checked) before the phone is needed, and the command then
+/// waits up to that long for it: ask the person for the phone only once it
+/// says `waiting_for_device` (Good Dog pain point 17). Every run writes
+/// `<app>/.forge/status/run-ios.json` (status.rs), so the requester can see
+/// it started (pain point 18).
+pub fn run_ios_with(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    root: &Path,
+    project: &Path,
+    configuration: IosConfiguration,
+    devtools: bool,
+    wait_for_device: Option<std::time::Duration>,
+) -> Result<(), String> {
     let (project_dir, cfg) = ios_project(root, project)?;
-    ios_preflight(runner, builder, Purpose::Run)?;
+    let status = crate::status::Status::start(&project_dir, "run ios");
+    let result = run_ios_steps(
+        runner,
+        builder,
+        root,
+        &project_dir,
+        &cfg,
+        configuration,
+        devtools,
+        wait_for_device,
+        &status,
+    );
+    status.finish(&result);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn run_ios_steps(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    root: &Path,
+    project_dir: &Path,
+    cfg: &ForgeConfig,
+    configuration: IosConfiguration,
+    devtools: bool,
+    wait_for_device: Option<std::time::Duration>,
+    status: &crate::status::Status,
+) -> Result<(), String> {
+    let project_dir = project_dir.to_path_buf();
+    // Waiting for the phone later: only the build's own checks now.
+    let purpose = if wait_for_device.is_some() {
+        Purpose::Build
+    } else {
+        Purpose::Run
+    };
+    ios_preflight(runner, builder, purpose)?;
     // Only xtool signs here; other builders (Xcode) choose their own team.
     let team = if builder.name() == "xtool" {
-        check_signing_team(runner, &cfg)?
+        check_signing_team(runner, cfg)?
     } else {
         None
     };
-    package_ios(runner, root, &project_dir, &cfg, devtools)?;
+    status.phase("building");
+    package_ios(runner, root, &project_dir, cfg, devtools)?;
+    if let Some(limit) = wait_for_device {
+        println!(
+            "[forge] Building the Swift app ({}) before asking for the iPhone",
+            configuration.name()
+        );
+        builder.build(runner, &project_dir, configuration)?;
+        status.phase("waiting_for_device");
+        println!(
+            "[forge] Built. Waiting up to {} min for the iPhone: connect it by USB and unlock it.",
+            limit.as_secs().div_ceil(60)
+        );
+        let deadline = std::time::Instant::now() + limit;
+        loop {
+            match crate::ios_env::ios_devices(runner) {
+                Some(devices) if !devices.is_empty() => break,
+                _ if std::time::Instant::now() >= deadline => {
+                    return Err(format!(
+                        "The app is built, but no iPhone was connected within {} min. Connect it, unlock it, and run `forge run ios --project {}` again (the build is reused).",
+                        limit.as_secs().div_ceil(60),
+                        project_dir.display()
+                    ));
+                }
+                _ => std::thread::sleep(DEVICE_POLL),
+            }
+        }
+    }
+    status.phase("installing");
     println!("[forge] Building and installing ({})", configuration.name());
     builder
         .run(runner, &project_dir, configuration)
-        .map_err(|err| explain_team_limit(err, team_type(&cfg), team.as_ref()))?;
+        .map_err(|err| explain_team_limit(err, team_type(cfg), team.as_ref()))?;
     // xtool installs but cannot launch on iOS 17+: someone opens the app.
     crate::report::set_data(serde_json::json!({
         "configuration": configuration.name(),
@@ -1486,6 +1579,40 @@ ios_device = true
             "{:?}",
             mock.call_lines()
         );
+    }
+
+    #[test]
+    fn wait_for_device_builds_before_looking_for_the_phone() {
+        let (_tmp, root) = workspace(IOS_TOML, &[]);
+        let mock = ready_ios_host();
+        // No phone at all: the preflight doesn't ask, the build still runs,
+        // and the wait ends with a message saying the build is ready.
+        mock.respond("xtool devices --no-wait", 0, "\n");
+        let err = run_ios_with(
+            &mock,
+            &XtoolBuilder,
+            &root,
+            Path::new("apps/demo"),
+            IosConfiguration::Debug,
+            false,
+            Some(std::time::Duration::from_secs(0)),
+        )
+        .unwrap_err();
+        assert!(err.contains("The app is built, but no iPhone"), "{err}");
+        let calls = mock.call_lines();
+        let build = calls
+            .iter()
+            .position(|l| l.contains("dev build"))
+            .expect("built");
+        assert!(calls.iter().all(|l| !l.contains("dev run")), "{calls:?}");
+        assert!(calls[..build]
+            .iter()
+            .any(|l| l.contains("package-ios-library.sh")));
+        let status: serde_json::Value = serde_json::from_str(
+            &std::fs::read_to_string(root.join("apps/demo/.forge/status/run-ios.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(status["phase"], "failed");
     }
 
     #[test]
