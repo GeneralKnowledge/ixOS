@@ -75,12 +75,13 @@ struct BookFormView: View {
                         }
                     }
                     .accessibilityIdentifier("bookForm.status")
+                    // LabeledContent already names its field ("Current page");
+                    // another accessibilityLabel would make VoiceOver say it twice.
                     LabeledContent("Current page") {
                         TextField("0", text: $currentPage)
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .currentPage)
-                            .accessibilityLabel("Current page")
                             .accessibilityIdentifier("bookForm.currentPage")
                     }
                     LabeledContent("Pages") {
@@ -88,7 +89,6 @@ struct BookFormView: View {
                             .numberEntry()
                             .multilineTextAlignment(.trailing)
                             .focused($focused, equals: .totalPages)
-                            .accessibilityLabel("Pages")
                             .accessibilityIdentifier("bookForm.totalPages")
                     }
                 }

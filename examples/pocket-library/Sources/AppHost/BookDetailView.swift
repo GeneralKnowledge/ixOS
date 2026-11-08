@@ -290,7 +290,9 @@ struct StarRating: View {
                     Image(systemName: filled ? "star.fill" : "star")
                         .font(.title3)
                         .foregroundStyle(filled ? .yellow : .secondary)
-                        // An SF Symbol's name becomes its identifier.
+                        // An SF Symbol's name becomes its identifier, and UI
+                        // automation still sees the image inside the button.
+                        .accessibilityIdentifier("\(idPrefix).star.\(star).image")
                         .accessibilityHidden(true)
                 }
                 .buttonStyle(.borderless)
