@@ -381,11 +381,32 @@ Through Remote Control on the laptop, as the acceptance runs already are: a sess
 | | Goal | Done when |
 |---|---|---|
 | M1 | The agent sees state and appearance | `forge_app_state` (devtools pairing, probes, commands) after #57's first phone run; `forge_set_appearance`; Swift logs in the live stream (C3); ledger served as data; `forge_remove_app` behind approval |
-| M2 | A bigger app, end to end | A mock social app (feed, profiles, posts, likes, replies, image attachments, persistent local accounts, pull to refresh) built from one prompt plus follow-ups like "make the timeline less cramped", reusing Chat's attachment and storage pieces. `forge_ui_audit` clean on its main screens |
+| M2 | A bigger app, end to end ([run plan](#m2-run-murmur)) | A mock social app (feed, profiles, posts, likes, replies, image attachments, persistent local accounts, pull to refresh) built from one prompt plus follow-ups like "make the timeline less cramped", reusing Chat's attachment and storage pieces. `forge_ui_audit` clean on its main screens |
 | M3 | Capabilities as tools | `forge_add_capability` once C7 (Swift service selection) exists; `prove_capability` prompt produces ledger evidence |
 | M4 | Remote agents | Only if needed: Streamable HTTP with OAuth through a tunnel, or keep using Remote Control |
 
 The mock social app in M2 is an acceptance exercise for the agent loop, not a new demo; the six-demo sequence stays as it is.
+
+### M2 run: Murmur
+
+Started 2026-11-08 after Tipster passed. The app is **Murmur**, a microblogging timeline that lives entirely on the phone: local accounts (sign up, sign in, switch), a home timeline of followed accounts, compose with a 280-character count and an optional photo, likes, replies in a thread view, profiles with follow, and pull to refresh. Five simulated accounts are seeded in Rust and pull to refresh brings in new posts from them. All state is in Rust with SQLite (forge-storage).
+
+Choices, and why:
+
+- **No server.** A laptop server like Chat's would add Wi-Fi, IP and uptime failures that say nothing about the agent loop. The simulated accounts give the feed something to refresh.
+- **Free team.** No push, no Sign in with Apple, one sandbox slot (it installs over Tipster). Nothing in the app needs a paid team, so paying is not a prerequisite for this run.
+- **Follow-ups in the same session.** After the first prompt, two more are sent with `claude -p --resume`: "the timeline feels cramped" and "add bookmarks". This checks the agent can change an app it built, which a single prompt doesn't.
+- **No `forge_ui_audit`.** It isn't built (M1). The agent checks the main screens with `text_size: largest`; the accessibility audit (`ax_probe`) runs by hand afterwards if wanted.
+
+Prompts and the laptop script: [`scripts/agent-runs/murmur/`](../scripts/agent-runs/murmur/) (`run-murmur.sh prep|run|followup 1|followup 2|summary`).
+
+Passes when, with no person touching the phone or terminal during each agent run:
+
+1. Everything Forge does goes through Forge MCP tools: create, check, build, install, launch, screenshots and the tree.
+2. At least one real problem found from device evidence is fixed and checked again.
+3. A UI test passes on the phone covering sign up, post (top of the timeline), like (count), reply (in the thread view), and a terminate and relaunch with the post still there; after follow-up 2 it also covers bookmarks.
+4. The main screens are usable at the largest text size in the agent's screenshots.
+5. Reuben looks at the app on the phone, including a photo post, and agrees it works.
 
 ## Open decisions
 
