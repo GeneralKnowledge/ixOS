@@ -148,7 +148,7 @@ DogResearch already has most of what a pathway needs, so the format reuses it ra
       "opensAfter": ["recall-name"],
       "gate": { "summary": "Returns to arm's reach on a 5 m long line in low distraction.", "metricIds": ["metric-recall-long-line-5m"] },
       "ifGateFails": "Go back to the name game and shorten the distance.",
-      "safetyRuleIds": ["safe-002-recall-management", "safe-003"],
+      "safetyRuleIds": ["safe-002-recall-management", "safe-003-no-punish-return"],
       "maintenance": "A few rewarded recalls on ordinary walks each week."
     }
   ]
