@@ -220,11 +220,11 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 
 **What:** an agent session (staged, on the laptop, through Remote Control) takes a real Good Dog task and runs the loop with everything above, ending with a run record. Reuben then reviews the app on the phone and records his acceptance.
 
-**The task** is chosen after GD1 is on the phone and agreed with the Good Dog thread, from Good Dog's own next milestone, so it advances GD instead of running beside it. Reuben (2026-11-08): once M6 is ready, use the loop to improve Good Dog substantially. The app feels basic; its training programmes are good step-by-step guides but read as lists. So the demonstration task should make a programme something you do rather than read: for example a guided session that walks through one step at a time with its own timer, marks each step done, records how it went, and shows progress through the programme. That crosses Rust (session state, progress), storage, SwiftUI, interaction and accessibility, and it gives the loop real screens to check in dark mode and at large text sizes. Other candidates that cross Rust, storage, SwiftUI, interaction and accessibility without a new capability spike:
+**The task** comes from Good Dog's own next milestone, agreed with the Good Dog thread, so it advances the app instead of running beside it. Reuben (2026-11-08): once M6 is ready, use the loop to improve Good Dog substantially, because the app feels basic and its programmes are good step-by-step guides that read as lists. Good Dog's new direction is goal-led training (PR #127, docs/good-dog-demo.md), so the task follows that plan:
 
-- The plain-English progress section on My Dog with weekly history (the data half of GD3, before the charts).
-- History export for a trainer as CSV through the share sheet (GD3).
-- Reminder preferences stored in Rust and shown in settings, without the notification delivery (the Rust half of GD2).
+- **The task:** pausing, resuming and setting aside a training goal, with its history kept. It runs after GD2a (the Rust goals-and-pathways milestone, which the Good Dog thread builds first). It crosses Rust state, storage, SwiftUI, interaction and accessibility, and needs no new capability.
+- **Fallback:** GD2b's goal journey screen, the screen that turns a goal's steps into a path you work through rather than a list.
+- Earlier candidates (the My Dog progress section, CSV export for a trainer, now GD4, and reminder preferences, now GD5) still cross the same layers but no longer advance the product's next step.
 
 Not a planted bug. If the run finds no genuine problem, the record says so and M6 isn't complete on that point; a second task follows.
 
