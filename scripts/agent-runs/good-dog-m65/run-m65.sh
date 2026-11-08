@@ -7,7 +7,7 @@
 #
 #   bash run-m65.sh prep       no phone   worktree, build forge, check claude, warm the iOS build
 #   bash run-m65.sh a-change   no phone   make the change, tests, UI test, build (<= 60 min)
-#   bash run-m65.sh b-look     PHONE      install, screenshots, largest text, dark, audit, fix (<= 20 min)
+#   bash run-m65.sh b-look     PHONE      install, screenshots, dark mode, audit, fix (<= 20 min)
 #   bash run-m65.sh c-test     PHONE      UI tests until they pass, short explore walk (<= 20 min)
 #   bash run-m65.sh d-record   no phone   forge verify --run, check the record (<= 15 min)
 #   bash run-m65.sh summary
