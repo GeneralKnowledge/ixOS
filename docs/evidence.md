@@ -1,6 +1,6 @@
 # Evidence: proving an app does what it should
 
-Status: format version 1, 2026-11-08. The Linux half (the headless twin) is built and runs in CI for Pocket Library. `forge ui run` writes device bundles and `forge verify` reads both kinds; both are tested on Linux only, and no device bundle has been written on an iPhone yet.
+Status: format version 1, 2026-11-08. The Linux half (the headless twin) is built and runs in CI for Pocket Library. `forge ui run` writes device bundles and `forge verify` reads both kinds; both are tested on Linux, and the first device bundle was written on an iPhone on 2026-11-08 (Pocket Library PL-10, `uitests/m0.toml`, 11 of 11 steps on iOS 26).
 
 "The build passed" says the code compiles. It does not say the app works. This page defines how a run of Forge records what it proved, so that an agent can show that a feature works instead of saying so, and a person can check the claim in a minute. It is the capability ledger's rule ("an API is not proof") applied to apps, from discoveries D4 and D5 in the [agent capability audit](research/forge-agent-capability-audit.md).
 
