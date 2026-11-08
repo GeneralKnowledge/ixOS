@@ -26,7 +26,7 @@ Values: **Yes**, **Partial** (with a note), **No**, **n/a**. Workstream ids (W1 
 
 Android is work in progress ([roadmap](roadmap.md#android--work-in-progress)), so this ledger tracks iOS only. An Android column will be added when Android work resumes.
 
-The core demo sequence is fixed: Chat, Pocket Ledger, FieldKit, Soundscape, Relay, Sketchbook. Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
+The core demo sequence is fixed: Chat, Good Dog, FieldKit, Soundscape, Relay, Sketchbook. Good Dog replaced Pocket Ledger on 2026-11-08; its plan is [good-dog-demo.md](good-dog-demo.md). Each phase builds the smallest reusable capability its demo needs, proves it on the phone, and updates this page.
 
 ## Modules
 

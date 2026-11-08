@@ -329,3 +329,15 @@ fn a_host_without_services_shows_sections_unavailable() {
         PermissionStatus::Unsupported
     );
 }
+
+#[test]
+#[should_panic(expected = "crash test: no readings yet")]
+fn the_crash_test_panics_on_no_readings() {
+    // Only the planted bug: the exported call aborts the process by design.
+    crate::crash_test::latest_reading(&[]);
+}
+
+#[test]
+fn the_crash_test_reading_is_the_last() {
+    assert_eq!(crate::crash_test::latest_reading(&[1, 2, 3]), 3);
+}

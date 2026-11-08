@@ -243,6 +243,7 @@ struct BookRow: View {
                     } icon: {
                         Image(systemName: book.status.symbol)
                             .foregroundStyle(book.status.tint)
+                            .accessibilityHidden(true)
                     }
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -254,6 +255,7 @@ struct BookRow: View {
                     HStack(spacing: 6) {
                         Image(systemName: book.status.symbol)
                             .foregroundStyle(book.status.tint)
+                            .accessibilityHidden(true)
                         if book.status == .reading, book.totalPages != nil {
                             ProgressView(value: book.progress)
                                 .tint(book.status.tint)

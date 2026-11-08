@@ -53,6 +53,21 @@ public final class LabModel {
         refresh()
     }
 
+    /// Crashes the app on purpose with a Swift runtime error: a force unwrap
+    /// of a number that doesn't parse. Only the Crash Test screen calls it,
+    /// to check `forge device crashes --pull` down to this line.
+    public func crashTestSwift() {
+        let typed = String("not a number")
+        let value = Int(typed)!
+        print(value)
+    }
+
+    /// Crashes the app on purpose with a Rust panic nothing catches
+    /// (`crash_test.rs`).
+    public func crashTestRust() {
+        crashTestRustPanic()
+    }
+
     /// Forgets peaks, ranges and the distance travelled.
     public func reset() {
         lab.reset()

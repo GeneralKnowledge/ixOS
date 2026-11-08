@@ -26,6 +26,7 @@ extension View {
             presenting: error.wrappedValue
         ) { _ in
             Button("OK", role: .cancel) {}
+                .accessibilityIdentifier("alert.ok")
         } message: { presented in
             Text(presented.message)
         }
