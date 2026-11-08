@@ -27,8 +27,8 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
 ## Quick start (Linux)
 
-1. Install [Rust](https://www.rust-lang.org/), [Swift](https://www.swift.org/) and [xtool](https://github.com/xtool-org/xtool), then run `xtool setup` with an **Xcode.xip** (Xcode 26) to install the Darwin SDK. See [docs/linux-setup.md](docs/linux-setup.md). Android is work in progress; if you want to try it anyway, install the SDK, NDK and `cargo-ndk` ([docs/android-setup.md](docs/android-setup.md)).
-2. Clone this repository (`git clone https://github.com/GeneralKnowledge/ixOS.git ~/src/forge`; ixOS is the repository, Forge is the tool), install the CLI from it and check the machine: `cargo install --path ~/src/forge/crates/forge-cli --locked`, then `forge doctor`. It reports which workflows are ready (Rust, iOS from Linux with xtool, and the work-in-progress Android path) and how to fix each missing piece.
+1. Install [Rust](https://www.rust-lang.org/) and download **Xcode 26** as a `.xip` from Apple (you don't install it; Forge uses the iOS SDK inside). `forge setup ios --xip <Xcode.xip>` (step 2) installs Swift, [xtool](https://github.com/xtool-org/xtool), USB support and the SDK; [docs/linux-setup.md](docs/linux-setup.md) has the same steps by hand. Android is work in progress; if you want to try it anyway, install the SDK, NDK and `cargo-ndk` ([docs/android-setup.md](docs/android-setup.md)).
+2. Clone this repository (`git clone https://github.com/GeneralKnowledge/ixOS.git ~/src/forge`; ixOS is the repository, Forge is the tool), install the CLI from it and set up the machine: `cargo install --path ~/src/forge/crates/forge-cli --locked`, then `forge setup ios --xip ~/Downloads/Xcode_26.xip`. It asks before anything needs sudo and ends with the same report as `forge doctor`, which says at any time which workflows are ready (Rust, iOS from Linux with xtool, and the work-in-progress Android path) and how to fix each missing piece.
 3. Create an app outside the checkout and run it. It gets its own Rust crate for your logic:
 
    ```bash
@@ -85,6 +85,7 @@ docs/                  # Architecture, setup, validation
 
 ```bash
 cargo run -p forge-cli -- doctor          # what this machine can build, with a fix for each missing piece
+cargo run -p forge-cli -- setup ios --xip ~/Downloads/Xcode_26.xip   # install the Linux iOS toolchain; asks before sudo, safe to rerun
 cargo run -p forge-cli -- doctor --json   # the same report as JSON, for CI and scripts
 cargo run -p forge-cli -- check           # full local CI matrix (or: make check)
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios

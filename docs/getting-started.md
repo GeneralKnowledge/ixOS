@@ -6,18 +6,24 @@ If you get stuck, `forge doctor` tells you what is missing and the command that 
 
 ## 1. Install the toolchain (once)
 
-Follow [linux-setup.md](linux-setup.md). In short:
-
-1. Rust with rustup, then `rustup target add aarch64-apple-ios`.
-2. Swift 6.2 from swift.org.
-3. xtool, then `sudo apt-get install usbmuxd libimobiledevice-utils`.
-4. Download **Xcode 26** as `Xcode.xip` from developer.apple.com (needs a free Apple ID) and run `xtool setup`. It asks for your Apple ID and the path to `Xcode.xip`, and installs the Darwin SDK. Xcode 16's SDK is too old for Swift 6.2.
-5. Clone Forge and install its CLI:
+1. Install Rust with rustup (https://rustup.rs).
+2. Clone Forge and install its CLI. ixOS is the repository; Forge is the tool it gives you.
 
    ```bash
    git clone https://github.com/GeneralKnowledge/ixOS.git ~/src/forge
    cargo install --path ~/src/forge/crates/forge-cli --locked
    ```
+
+3. Download **Xcode 26** as a `.xip` from [developer.apple.com/download/all](https://developer.apple.com/download/all/). It needs a free Apple ID and is several GB. You don't install Xcode; Forge takes Apple's iOS SDK (the "Darwin SDK") out of it. Xcode 16's SDK is too old for Swift 6.2.
+4. Let Forge set up the rest:
+
+   ```bash
+   forge setup ios --xip ~/Downloads/Xcode_26.xip
+   ```
+
+   It adds the iOS Rust target, installs usbmuxd, libimobiledevice and FUSE, the pinned xtool, and Swift 6.2 (on Ubuntu 24.04), installs the Darwin SDK from your `.xip`, and starts xtool's Apple sign-in. It asks before anything that needs `sudo`, and xtool asks for your Apple ID itself; Forge never sees it. Anything it can't do is marked `!` with what to do, and running it again picks up where it stopped. Without `--xip` it looks for an `Xcode*.xip` in `~/Downloads`.
+
+   To do each step by hand instead, follow [linux-setup.md](linux-setup.md).
 
    The installed `forge` remembers where the checkout is. If you move the checkout, reinstall or set `FORGE_WORKSPACE`.
 

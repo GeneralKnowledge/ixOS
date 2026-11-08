@@ -15,6 +15,7 @@ mod live;
 mod report;
 mod run_record;
 mod runner;
+mod setup;
 mod status;
 mod swift_check;
 mod ui;
@@ -45,6 +46,13 @@ enum Commands {
     /// Report toolchain and environment readiness
     /// (`--json` prints one object: tool versions, Rust targets, env, readiness)
     Doctor,
+    /// Get this machine ready to build: checks each piece, installs what it
+    /// safely can (asking before anything needs sudo), and ends with the
+    /// readiness report. Safe to run again
+    Setup {
+        #[command(subcommand)]
+        cmd: SetupCommands,
+    },
     /// Run the full local CI matrix: fmt, clippy, tests, binding drift, template sync, Android JVM and Swift host tests
     Check {
         /// Stop at the first failing step instead of running them all
@@ -208,6 +216,22 @@ enum Commands {
     Ui {
         #[command(subcommand)]
         cmd: UiCommands,
+    },
+}
+
+#[derive(Subcommand)]
+enum SetupCommands {
+    /// Linux: the iOS Rust target, usbmuxd and FUSE, the pinned xtool, Swift,
+    /// the Darwin SDK from an Xcode.xip you downloaded, and xtool's Apple
+    /// sign-in. Never downloads Xcode or sees your Apple ID
+    Ios {
+        /// The Xcode 26 .xip to install the Darwin SDK from (default: the
+        /// newest Xcode*.xip in ~/Downloads, if the SDK isn't installed yet)
+        #[arg(long, value_name = "PATH")]
+        xip: Option<PathBuf>,
+        /// Answer yes to every question, for scripts
+        #[arg(long, short)]
+        yes: bool,
     },
 }
 
@@ -785,6 +809,7 @@ fn main() {
 fn command_name(command: &Commands) -> String {
     let sub = match command {
         Commands::Doctor => return "doctor".into(),
+        Commands::Setup { .. } => return "setup ios".into(),
         Commands::Check {
             what: Some(CheckCommands::Swift { .. }),
             ..
@@ -897,6 +922,27 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     let root = commands::workspace_root();
     let ios = ios_builder::XtoolBuilder;
     match cli.command {
+        Commands::Setup {
+            cmd: SetupCommands::Ios { xip, yes },
+        } => {
+            use std::io::IsTerminal;
+            let env = |k: &str| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned());
+            setup::setup_ios(
+                &setup::Host {
+                    runner,
+                    root: &root,
+                    env: &env,
+                    ask: &setup::ask_terminal,
+                    os: std::env::consts::OS,
+                    arch: std::env::consts::ARCH,
+                },
+                &setup::Options {
+                    xip: xip.map(|p| absolute_from_cwd(&p)),
+                    yes,
+                    interactive: std::io::stdin().is_terminal() && !cli.json,
+                },
+            )
+        }
         Commands::Doctor if cli.json => doctor::print_json(runner, &root),
         Commands::Doctor => doctor::print_text(runner, &root),
         Commands::Verify {

@@ -2,6 +2,8 @@
 
 Forge Mobile targets **Linux-first** development for native iOS apps using Rust, UniFFI, SwiftUI, and [xtool](https://github.com/xtool-org/xtool).
 
+`forge setup ios --xip <Xcode.xip>` does every step on this page that can be automated, asking before anything needs `sudo` ([getting-started.md](getting-started.md#1-install-the-toolchain-once)). This page is the same setup by hand, and the reference for what each piece is for.
+
 ## Requirements
 
 | Tool | Purpose |
