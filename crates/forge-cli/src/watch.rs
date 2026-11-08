@@ -198,6 +198,11 @@ impl Watch {
         let mut notes = Vec::new();
         let (reader_state, reader) = self.stop_reader();
         let log_status = match &reader {
+            // The phone went away part-way: what came before is kept.
+            Err(e) if self.line_count() > 0 => {
+                notes.push(format!("app log cut short: {e}"));
+                "partial"
+            }
             Err(e) => {
                 notes.push(format!("app log not read: {e}"));
                 "unavailable"
@@ -578,10 +583,7 @@ mod tests {
         );
         assert_eq!(log_library("x GoodDogXtool[9] <Notice>: y"), None);
         assert!(
-            v["notes"][0]
-                .as_str()
-                .unwrap()
-                .contains("7 were dropped"),
+            v["notes"][0].as_str().unwrap().contains("7 were dropped"),
             "{v}"
         );
         let log = std::fs::read_to_string(tmp.path().join("device.log")).unwrap();

@@ -187,7 +187,9 @@ pub fn build(i: &Inputs, id: &str) -> Value {
                 "file": c["file"],
             }));
         }
-        let unread = w["log_status"] == "unavailable" || w["crash_reports"] == "unavailable";
+        let unread = w["log_status"] == "unavailable"
+            || w["log_status"] == "partial"
+            || w["crash_reports"] == "unavailable";
         if unread || w["status"] == "not_watched" {
             watch_gaps.push(json!({
                 "run": b["id"],

@@ -505,6 +505,8 @@ fn phone_gone(error: &str) -> bool {
         "connecting to webdriveragent",
         "broken pipe",
         "connection reset",
+        "socket io failed",
+        "close_notify",
     ]
     .iter()
     .any(|w| e.contains(w))
@@ -1479,6 +1481,7 @@ mod tests {
     fn an_unplugged_phone_is_a_device_failure() {
         // Seen on Cati when the cable was pulled at step 3.
         assert!(phone_gone("connecting to WebDriverAgent: bad device"));
+        assert!(phone_gone("device socket io failed"));
         assert!(!phone_gone("no element matches id `library.nope`"));
     }
 

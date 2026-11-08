@@ -197,6 +197,12 @@ const RULES: &[Rule] = &[
         "Unplug and replug the iPhone, unlock it and tap Trust when it asks. If it never asks: `idevicepair pair` (libimobiledevice-utils), then run again.",
     ),
     rule(
+        &["the iphone was disconnected"],
+        Stage::Device,
+        "The iPhone was unplugged or dropped off USB during the run.",
+        "Plug the iPhone back in, unlock it, check `forge devices` lists it, then run again. What was collected before is kept in the run's folder.",
+    ),
+    rule(
         &["usbmuxd", "usbmux", "resource temporarily unavailable"],
         Stage::Device,
         "usbmuxd, the service that talks to iPhones over USB, is not running or stopped responding.",
