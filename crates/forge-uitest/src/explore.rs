@@ -105,6 +105,11 @@ pub const LARGEST_TEXT_ARGS: [&str; 2] = [
     "UICTContentSizeCategoryAccessibilityXXXL",
 ];
 
+/// Forge's own launch argument for dark or light mode (`-ForgeAppearance
+/// dark`), honoured by Forge apps' root view (`forgeLaunchAppearance()`).
+/// UIKit has no launch argument for it.
+pub const APPEARANCE_ARG: &str = "-ForgeAppearance";
+
 /// One thing the explorer does to the app.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Action {
@@ -768,6 +773,9 @@ pub struct ScreenSummary {
 pub struct Report {
     pub app: String,
     pub seed: u64,
+    /// What every launch was given (test data, appearance, text size): a
+    /// later walk compares screenshots only with a walk launched the same.
+    pub launch_args: Vec<String>,
     pub actions: usize,
     pub duration_ms: u64,
     /// `explored` (nothing left to try), `action_budget` or `time_budget`.
@@ -1438,8 +1446,8 @@ impl Explorer<'_> {
         Ok(())
     }
 
-    /// The checks every new screen gets: Forge's accessibility audit, and
-    /// controls pushed off the side of the screen.
+    /// The checks every new screen gets: Forge's accessibility audit
+    /// (labels, identifiers, small tap targets, text cut off).
     fn check_screen(&mut self, id: &str, step: usize) {
         let tree = self.tree.clone();
         for finding in tree.audit() {
@@ -1452,25 +1460,6 @@ impl Explorer<'_> {
                 Some(step),
                 path,
             );
-        }
-        let width = tree.frame.map(|f| f.width).filter(|w| *w > 0.0);
-        if let Some(width) = width {
-            for node in tree.walk().filter(|n| {
-                n.visible && (n.is_interactive() || n.kind == "StaticText") && n.label.is_some()
-            }) {
-                let Some(frame) = node.frame else { continue };
-                if frame.width > 0.0 && (frame.x < -1.0 || frame.x + frame.width > width + 1.0) {
-                    let path = self.trail.clone();
-                    self.report(
-                        "clipped",
-                        "warning",
-                        format!("runs off the side of the screen: {}", node.summary()),
-                        id,
-                        Some(step),
-                        path,
-                    );
-                }
-            }
         }
     }
 
@@ -1620,6 +1609,7 @@ impl Explorer<'_> {
         let report = Report {
             app: self.config.app.clone(),
             seed: self.config.seed,
+            launch_args: self.config.launch_args.clone(),
             actions: self.actions,
             duration_ms: started.elapsed().as_millis() as u64,
             stopped: stopped.to_owned(),

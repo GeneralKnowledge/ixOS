@@ -37,6 +37,8 @@ struct Cli {
     command: Commands,
 }
 
+// Parsed once per process: the size of the largest variant doesn't matter.
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Commands {
     /// Report toolchain and environment readiness
@@ -186,6 +188,7 @@ enum Commands {
     },
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum UiCommands {
     /// Mount the Developer Disk Image, install the WebDriverAgent runner and
@@ -214,6 +217,20 @@ enum UiCommands {
     },
     /// Print the accessibility tree of the screen and flag unlabelled controls
     Tree {
+        #[arg(long)]
+        udid: Option<String>,
+        /// Bring this app (its forge.toml bundle id) to the front first
+        #[arg(long, value_name = "BUNDLE_ID")]
+        app: Option<String>,
+        /// Also read apps Forge didn't build, as far as
+        /// ~/.config/forge/device-control.toml allows
+        #[arg(long)]
+        any_app: bool,
+    },
+    /// Audit the screen for accessibility: unlabelled controls, missing or
+    /// duplicate identifiers, tap targets under 44 x 44 pt, text cut off.
+    /// Fails on an error
+    Audit {
         #[arg(long)]
         udid: Option<String>,
         /// Bring this app (its forge.toml bundle id) to the front first
@@ -313,6 +330,10 @@ enum UiCommands {
         /// Launch with the largest accessibility text size
         #[arg(long)]
         largest_text: bool,
+        /// Launch in dark or light mode (`-ForgeAppearance`, which Forge
+        /// apps honour; without it the app follows the phone)
+        #[arg(long, value_parser = ["dark", "light"])]
+        appearance: Option<String>,
         /// At most this many controls tried per screen
         #[arg(long, default_value_t = 15)]
         per_screen: usize,
@@ -775,6 +796,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Ui { cmd } => match cmd {
             UiCommands::Setup { .. } => "ui setup",
             UiCommands::Tree { .. } => "ui tree",
+            UiCommands::Audit { .. } => "ui audit",
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
             UiCommands::Explore { .. } => "ui explore",
@@ -988,6 +1010,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     )
                 }
                 UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
+                UiCommands::Audit { udid, app, any_app } => ui::audit(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
                 UiCommands::Run {
                     udid,
@@ -1018,6 +1041,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     allow_destructive,
                     real_data,
                     largest_text,
+                    appearance,
                     per_screen,
                     no_screenshots,
                     out: dir,
@@ -1045,6 +1069,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         allow_destructive,
                         real_data,
                         largest_text,
+                        appearance,
                         per_screen,
                         screenshots: !no_screenshots,
                     };

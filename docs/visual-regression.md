@@ -16,6 +16,7 @@ examples/pocket-library/uitests/baselines/m0/1-library@1290x2796.tree.json  its 
 
 - Baselines are committed with the app, so a reviewer sees an approved screen change in the same PR as the code that changed it.
 - The size is part of the name. One scenario can have baselines for several phones; a phone with no baseline of its size gets `new`, never a false `changed`.
+- So is the variant (M6.3): the appearance and text size from the launch step before the screenshot. `launch = { args = ["-ForgeAppearance", "dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }` makes the next screenshots `name@1290x2796-dark-ax5.png`. Appearance is `-dark` or `-light` (Forge apps honour `-ForgeAppearance` from their root view); text sizes are `-xs` to `-xxxl` and `-ax1` to `-ax5` (Apple's AX1–AX5); the default size L adds nothing. A scenario can run the same screens light and dark, at two sizes, without its baselines colliding.
 - With each screenshot, `forge ui run` now also saves the accessibility tree (`name.tree.json`), so the comparison can say *what* changed, not only *where*.
 - Screenshots taken at a failed step (`failure-stepN.png`) are never compared.
 - Accepting a baseline doesn't make the app's other evidence stale: `uitests/baselines/` is left out of `build.tree` ([evidence.md](evidence.md)).

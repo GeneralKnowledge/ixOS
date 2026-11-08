@@ -1,0 +1,9 @@
+order = 37
+capability = "Appearance and accessibility checks: dark or light mode at launch (`-ForgeAppearance`, `forge_launch_app appearance`, `forge ui explore --appearance`), baselines per variant (`-dark`, `-ax5`), the audit of small tap targets and text cut off (`forge ui audit`, `forge_ui_audit`), and walks that say which screens look different from the last clean walk"
+framework = "Yes: forge-uitest (`tree` audit, `baseline` variants and walk comparison), forge-cli (`ui audit`), forge-mcp (`forge_ui_audit`)"
+rust_api = "n/a"
+ios_native = "Yes: `forgeLaunchAppearance()` on the root view (`.preferredColorScheme`) in the template and every iOS example"
+in_app = "Yes: the template, Pocket Library, Good Dog, Device Lab, Chat, Weather (always dark by design) and Counter honour `-ForgeAppearance`; compiled by macOS CI only"
+iphone = "No"
+documented = "Yes: forge-m6.md (M6.3), visual-regression.md, forge-explore.md, forge-mcp.md"
+limits = "Measured on the accessibility tree, not the pixels: contrast and text truncated with an ellipsis inside its own frame are not checked. Small-target checks count a Form row as the target and leave out bar buttons and links inside a sentence. An app made before M6.3 ignores `-ForgeAppearance`. The walk comparison needs an earlier clean walk launched with the same arguments, and a difference is information, never an issue. Checked against the GD1 journey's recorded trees on Linux; nothing here has run on the phone"

@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog. Neither has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog; M6.3 is built and Linux-tested (its Swift side is compiled by macOS CI only). None of them has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 
@@ -173,19 +173,33 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 
 ### M6.3 Appearance and accessibility checks
 
-**What:**
+**Status (2026-11-08):**
 
-- Dark and light at launch: a `-ForgeAppearance dark|light` launch argument that the template's app root honours with `.preferredColorScheme`. This changes app code, so it goes in the template and in each app. `forge_launch_app` gets `appearance` next to `text_size`.
-- Baselines per variant: `<name>@<W>x<H>[-dark][-xxxl].png`, so a scenario can be run in four variants without the baselines colliding.
-- Two more tree audit findings: tap targets under 44×44 pt (Murmur's agent found these by eye) and text clipped at the largest size (a label's frame narrower than its neighbour's or than the screen, measured from the tree, not pixels).
-- `forge_ui_audit`: the current screen's audit as a tool (planned in forge-mcp.md since M0).
-- Explore compares each screen with its last clean walk's screenshot and reports `changed` as information, not an issue. The brief is right that a difference is a change, not a defect, so the agent decides.
+| State | M6.3 |
+|---|---|
+| Implemented | `-ForgeAppearance dark\|light` honoured by the template and every iOS example (`forgeLaunchAppearance()` on the root view); `appearance` on `forge_launch_app` and `forge_ui_explore`, `--appearance` on `forge ui explore`; baselines per variant; `small_tap_target` and a wider `clipped` in the audit; `forge ui audit` and `forge_ui_audit`; explore's comparison with the last clean walk |
+| Linux-tested | Yes: `cargo test` covers the variant names, dark and light baselines kept apart, both audit findings and their exemptions, the audit on the GD1 journey's six recorded trees (no false findings), the walk comparison on PNG pairs, which earlier walk is compared with, and the MCP arguments |
+| CI-tested | The Rust side in this PR's CI. The Swift side (`LaunchAppearance.swift`, the app roots) is compiled by macOS CI only; this session has no Swift toolchain |
+| Simulated or fixture-tested | Only in the sense above: recorded trees and generated PNGs. No model walk is involved |
+| iPhone-tested | No |
+| Human-accepted | No |
 
-**Relies on:** `visual.rs`, `baseline.rs`, `tree.rs` audit, `forge_launch_app`'s `text_size`.
+**How it works:**
 
-**Tested by:** Linux tests with recorded trees and PNG pairs.
+- **Dark and light at launch.** UIKit has no launch argument for the appearance, so it is the app's: `-ForgeAppearance dark` lands in `UserDefaults`, and `forgeLaunchAppearance()` on the root view turns it into `.preferredColorScheme`. Without it the app follows the phone. Weather forces dark by design, so the argument changes nothing there. An app made before M6.3 ignores it, which a screenshot shows at once.
+- **Baselines per variant.** The launch step before a screenshot decides its variant: `-dark` or `-light`, then the text size (`-xs` to `-xxxl`, `-ax1` to `-ax5` for the accessibility sizes, Apple's AX1–AX5). `1-library@1290x2796-dark-ax5.png` sits beside `1-library@1290x2796.png`, and `forge ui accept` writes to the right one. Existing baselines, launched without either argument, keep their names.
+- **`small_tap_target`** (warning): an enabled control under 44 x 44 pt. A control counts at the size of the row around it when that row holds no other control and hugs it within 24 pt (a Form row is tapped anywhere: Good Dog's 34 pt pickers sit in 44 pt rows). Left out: controls in navigation, tool and tab bars (the system widens their touch area) and links inside a sentence (WCAG 2.5.8 exempts them). The finding says what was measured (`44 x 18 pt, under 44 x 44`).
+- **`clipped`** (warning) now also covers text drawn over other text, as well as text or a labelled control running off the side of the screen (which only counts while partly on screen, so a carousel's next page isn't flagged). Overlaps count only between texts in the same scrolling container: a list's rows scrolling under a fixed bar (Good Dog's "Done today" bar over the steps) are not an overlap. A text inside another (a row's label and its parts) isn't either.
+- **`forge ui audit` and `forge_ui_audit`.** The screen's audit without the tree: counts by severity and issue, each finding with its element and what was measured, and `checks`, which says what isn't measured. A clean audit is clean for these checks only. It fails on an error (an unlabelled control).
+- **Walks compared with the last clean one.** After a walk on the phone, each screen's screenshot is compared with the same screen (by fingerprint) in the newest earlier device walk that was launched with the same arguments (test data, appearance, text size) and found no error. `data.visual` lists `match` or `changed` with the changed areas and the elements in them, and the diff images go to `visual/`. It is information, never an issue: a difference is a change, not a defect, and the agent decides. A walk on a model has no screenshots and says so.
 
-**iPhone:** Pocket Library in dark mode at the largest text size: screenshots differ from light mode as expected, and the new audit findings are checked against what a person sees. A person confirms which findings are real.
+**Limits:**
+
+- The audit reads the tree, not the pixels: contrast, text truncated with an ellipsis inside its own frame (the tree keeps the full label), and meaning carried by colour alone are not checked. Apple's own audit (XCTest `performAccessibilityAudit`, or the accessibility audit service the research found reachable from Linux) would cover those; it isn't used yet.
+- The small-target exemptions are judgements about where the system widens the touch area. A person should confirm them on the phone (check 9 below).
+- The walk comparison matches screens by their identifiers, so two visits to the same screen with different content (an empty list, then a full one) compare as a change.
+
+**iPhone (owed, next sitting):** checks 8 to 10 in the table below.
 
 ### M6.4 The run record
 
@@ -206,7 +220,7 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 
 **What:** an agent session (staged, on the laptop, through Remote Control) takes a real Good Dog task and runs the loop with everything above, ending with a run record. Reuben then reviews the app on the phone and records his acceptance.
 
-**The task** is chosen after GD1 is on the phone and agreed with the Good Dog thread, from Good Dog's own next milestone, so it advances GD instead of running beside it. Candidates that cross Rust, storage, SwiftUI, interaction and accessibility without a new capability spike:
+**The task** is chosen after GD1 is on the phone and agreed with the Good Dog thread, from Good Dog's own next milestone, so it advances GD instead of running beside it. Reuben (2026-11-08): once M6 is ready, use the loop to improve Good Dog substantially. The app feels basic; its training programmes are good step-by-step guides but read as lists. So the demonstration task should make a programme something you do rather than read: for example a guided session that walks through one step at a time with its own timer, marks each step done, records how it went, and shows progress through the programme. That crosses Rust (session state, progress), storage, SwiftUI, interaction and accessibility, and it gives the loop real screens to check in dark mode and at large text sizes. Other candidates that cross Rust, storage, SwiftUI, interaction and accessibility without a new capability spike:
 
 - The plain-English progress section on My Dog with weekly history (the data half of GD3, before the charts).
 - History export for a trainer as CSV through the share sheet (GD3).
@@ -281,7 +295,7 @@ Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-d
 
 **iPhone:** one install of a `--blank` app and of Good Dog after the `Store<T>` move, in the next coordinated sitting. Proves the starter and the moved storage still run on the phone.
 
-## Outstanding iPhone checks (M6.1 and M6.2)
+## Outstanding iPhone checks (M6.1 to M6.3)
 
 None of these has run; each says what it proves.
 
@@ -294,6 +308,9 @@ None of these has run; each says what it proves.
 | 5 | Good Dog or Pocket Library: a plain walk, a real change to one view, then `forge ui explore --since HEAD` | The aimed walk reaches that view's controls within its first few actions on real trees; `focus.not_reached` is right | M6.2 |
 | 6 | The same walk with the same seed twice | Determinism on the phone (owed since #109 and #119) | M6.2 |
 | 7 | An issue found, fixed, and the next aimed walk | `reproduced: true` before, `gone` after, on the phone | M6.2 |
+| 8 | Good Dog (after a rebuild with M6.3) launched with `forge_launch_app appearance: dark, text_size: largest`, then `forge_ui_audit` on Today, an exercise and My Dog | The app honours `-ForgeAppearance` on the phone (the screenshot is dark); the audit's findings at AX5 are real, or show where its exemptions are wrong | M6.3 |
+| 9 | A person looks at each `small_tap_target` and `clipped` finding from check 8 on the phone | Which findings are real. Only a person can say this, and it is recorded as theirs | M6.3 |
+| 10 | Good Dog `journey.toml` with a dark launch step: `--visual record`, then a check run; then two explore walks with `--appearance dark` | Dark baselines are kept apart from the light ones (`-dark-ax5` names); the second walk compares with the first and lists `match` for unchanged screens | M6.3 |
 
 The runbook for 1 to 3 is in project files at `m6/m61-phone-checks.md`.
 

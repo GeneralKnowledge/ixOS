@@ -446,6 +446,7 @@ pub fn write_explore_bundle(run: &ExploreRun, dir: &Path, id: &str) -> Result<Pa
         ("screens", "png", "screenshot"),
         ("screens", "json", "ui_tree"),
         ("repro", "toml", "repro"),
+        ("visual", "png", "diff"),
     ] {
         let mut files: Vec<String> = fs::read_dir(dir.join(sub))
             .into_iter()
