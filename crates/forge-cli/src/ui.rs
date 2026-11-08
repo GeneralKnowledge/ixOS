@@ -410,6 +410,7 @@ pub fn screenshot(
 
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
 /// `visual` `Some(Check)`) if a screenshot differs from its baseline.
+#[allow(clippy::too_many_arguments)]
 pub fn run(
     runner: &dyn CommandRunner,
     udid: Option<&str>,
@@ -417,6 +418,7 @@ pub fn run(
     out_dir: Option<&Path>,
     any_app: bool,
     visual: Option<Mode>,
+    watch: bool,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let script = Script::load(file)?;
@@ -481,8 +483,17 @@ pub fn run(
     let build = app_dir
         .as_deref()
         .map(|a| crate::evidence::provenance(runner, a));
+    // The app's own log and crash reports, for a Forge app only: another
+    // developer's app logs the person's data.
+    let watcher = match (&app_dir, watch) {
+        (Some(dir), true) => crate::watch::product(dir).map(|product| {
+            crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, dir)
+        }),
+        _ => None,
+    };
     let report =
         script::run_gated(&script, &app, &mut driver, &out_dir, out, &mut gate).map_err(err)?;
+    let watched = watcher.map(|w| w.finish(&out_dir, report.failed.is_some()));
     // Visual regression runs on Linux, after the phone part: the screenshots
     // taken before a failed step are still compared.
     let visual = match visual {
@@ -507,14 +518,33 @@ pub fn run(
         .map(|s| s.name.clone())
         .collect();
     let failed_step = report.failed.as_ref().map(|(step, why)| {
-        serde_json::json!({
+        let mut failed = serde_json::json!({
             "step": step,
             "action": report.failed_step,
             "error": why,
             "on_screen": report.on_screen,
             "tree": report.tree_file,
-        })
+        });
+        // What the app logged just before, and where it crashed if it did.
+        if let Some(w) = &watched {
+            failed["log_tail"] = serde_json::json!(w.tail);
+            if let Some(crash) = w.value["crashes"].as_array().and_then(|c| c.first()) {
+                failed["crash"] = crash.clone();
+            }
+        }
+        failed
     });
+    if let Some(crash) = failed_step.as_ref().and_then(|f| f.get("crash")) {
+        writeln!(
+            out,
+            "The app crashed: {}",
+            crash["title"]
+                .as_str()
+                .or(crash["kind"].as_str())
+                .unwrap_or("see crashes/")
+        )
+        .map_err(err)?;
+    }
     let evidence = match (&app_dir, build) {
         (Some(app_dir), Some(mut build)) => {
             build["installed_as"] = serde_json::json!(app);
@@ -544,6 +574,9 @@ pub fn run(
                     artifacts.push(("visual_diff", diff.clone()));
                 }
             }
+            if let Some(w) = &watched {
+                artifacts.extend(w.artifacts.iter().cloned());
+            }
             let scenario = std::fs::canonicalize(file)
                 .ok()
                 .and_then(|f| {
@@ -566,6 +599,7 @@ pub fn run(
                 duration_ms: started.elapsed().as_millis() as u64,
                 visual: visual.as_ref().and_then(|v| serde_json::to_value(v).ok()),
                 visual_failures: visual_failures.clone(),
+                watch: watched.as_ref().map(|w| w.value.clone()),
             };
             let path = crate::evidence::write_device_bundle(&run, &reqs, &out_dir, &id)?;
             writeln!(out, "Evidence: {}", path.display()).map_err(err)?;
@@ -579,6 +613,7 @@ pub fn run(
         "failed_step": failed_step,
         "screenshots": report.screenshots,
         "visual": visual,
+        "watch": watched.as_ref().map(|w| &w.value),
         "out": out_dir.display().to_string(),
         "evidence": evidence.map(|p| p.display().to_string()),
         // Another developer's app: the level it ran at and its journal.
@@ -793,7 +828,12 @@ pub fn explore(
     // Reuses a running `forge ui start` session's runner when there is one.
     let (phone, mut apps, held, mut driver) = connect(udid, out)?;
     config.app = resolve(&phone, &mut apps, &held, &config.script_app)?;
+    let watcher = crate::watch::product(project).map(|product| {
+        crate::watch::Watch::start(crate::watch::usb, &phone.udid, &product, project)
+    });
     let report = explore::run(&config, &mut driver, Some(&out_dir), out).map_err(err)?;
+    let closed = report.issues.iter().any(|i| i.issue == "app_closed");
+    let watched = watcher.map(|w| w.finish(&out_dir, closed));
     writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
     let summary = serde_json::json!({
         "app": report.app,
@@ -812,6 +852,8 @@ pub fn explore(
                 "ios_major": phone.ios_major().ok(),
             }),
             explore: summary.clone(),
+            watch: watched.as_ref().map(|w| w.value.clone()),
+            artifacts: watched.map(|w| w.artifacts).unwrap_or_default(),
             ok: report.errors() == 0,
             duration_ms: started.elapsed().as_millis() as u64,
         },

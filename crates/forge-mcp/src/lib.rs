@@ -14,6 +14,7 @@
 //! refused unless the person started the server with `--allow install`.
 
 mod content;
+mod correlate;
 mod exec;
 mod inspect;
 pub mod journal;
@@ -78,6 +79,9 @@ pub struct Server {
     journal: Arc<journal::Journal>,
     /// After a failed `forge ui start`, when to try again.
     ui_session_retry: Arc<Mutex<Option<std::time::Instant>>>,
+    /// The commit the root was at when the server started: forge_diagnose
+    /// lists the files changed since.
+    start_commit: Option<String>,
 }
 
 /// How long to wait after a UI session failed to start before trying again
@@ -94,7 +98,9 @@ impl Server {
             .status()
             .is_ok_and(|s| s.success());
         let journal = Arc::new(journal::Journal::new(&opts.root));
+        let start_commit = correlate::head(&opts.root);
         Self {
+            start_commit,
             journal,
             opts: Arc::new(opts),
             device: Arc::new(tokio::sync::Mutex::new(())),

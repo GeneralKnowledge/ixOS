@@ -17,6 +17,7 @@ mod swift_check;
 mod ui;
 mod ui_session;
 mod verify;
+mod watch;
 
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
@@ -254,6 +255,10 @@ enum UiCommands {
         /// screenshot the baseline, `off` skips it (docs/visual-regression.md)
         #[arg(long, value_name = "MODE", default_value = "check", value_parser = ["check", "record", "off"])]
         visual: String,
+        /// Don't read the app's log or look for its crash reports during
+        /// the run (one-step runs, where each second counts)
+        #[arg(long)]
+        no_watch: bool,
     },
     /// Make a run's screenshots the baselines its test is compared with
     Accept {
@@ -929,13 +934,14 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     out: dir,
                     any_app,
                     visual,
+                    no_watch,
                 } => {
                     let visual = match visual.as_str() {
                         "record" => Some(forge_uitest::baseline::Mode::Record),
                         "off" => None,
                         _ => Some(forge_uitest::baseline::Mode::Check),
                     };
-                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, &mut out)
+                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, !no_watch, &mut out)
                 }
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)

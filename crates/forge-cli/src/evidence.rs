@@ -350,6 +350,8 @@ pub struct DeviceRun<'a> {
     /// Screenshots that differ from their baselines, or gained accessibility
     /// findings: they fail the run like a failed step.
     pub visual_failures: Vec<String>,
+    /// The app's log and crash reports during the run (`watch.rs`).
+    pub watch: Option<Value>,
 }
 
 /// Writes `evidence.json` (kind `device`) into `dir`, the run's output
@@ -394,6 +396,7 @@ pub fn write_device_bundle(
         "scenario": run.scenario,
         "steps": { "passed": run.passed_steps, "failed": run.failed_step },
         "visual": run.visual,
+        "watch": run.watch,
         "requirements": requirements,
         "artifacts": run.artifacts.iter().map(|(k, p)| json!({"kind": k, "path": p})).collect::<Vec<_>>(),
     });
@@ -411,6 +414,10 @@ pub struct ExploreRun {
     pub device: Value,
     /// The walk's summary: seed, stopped, actions, screens, issues.
     pub explore: Value,
+    /// The app's log and crash reports during the walk (`watch.rs`).
+    pub watch: Option<Value>,
+    /// Files the watch wrote (`device.log`, `crashes/…`).
+    pub artifacts: Vec<(&'static str, String)>,
     /// No error-severity issue (a crash, an unlabelled control).
     pub ok: bool,
     pub duration_ms: u64,
@@ -445,6 +452,11 @@ pub fn write_explore_bundle(run: &ExploreRun, dir: &Path, id: &str) -> Result<Pa
         files.sort();
         artifacts.extend(files.into_iter().map(|p| json!({"kind": kind, "path": p})));
     }
+    artifacts.extend(
+        run.artifacts
+            .iter()
+            .map(|(kind, path)| json!({"kind": kind, "path": path})),
+    );
     let mut doc = json!({
         "schema": SCHEMA,
         "id": id,
@@ -458,6 +470,7 @@ pub fn write_explore_bundle(run: &ExploreRun, dir: &Path, id: &str) -> Result<Pa
         },
         "build": run.build,
         "explore": run.explore,
+        "watch": run.watch,
         "requirements": [],
         "artifacts": artifacts,
     });
@@ -676,6 +689,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             duration_ms: 9,
             visual: None,
             visual_failures: vec![],
+            watch: None,
         };
         let path = write_device_bundle(&run, &reqs, dir.path(), "2026-11-08T09-00-00").unwrap();
         let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
@@ -735,6 +749,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
                 json!({"mode": "check", "screens": [{"name": "form", "verdict": "changed"}]}),
             ),
             visual_failures: vec!["form".into()],
+            watch: None,
         };
         let path = write_device_bundle(&run, &reqs, dir.path(), "id").unwrap();
         let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
@@ -763,6 +778,8 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             build: json!({"commit": "abc", "dirty": false}),
             device: json!({"udid": "0000", "ios_major": 26}),
             explore: json!({"seed": 1, "issues": [{"issue": "app_closed", "severity": "error"}]}),
+            watch: Some(json!({"log_lines": 0, "crashes": []})),
+            artifacts: vec![("device_log", "device.log".into())],
             ok: false,
             duration_ms: 5,
         };
@@ -786,6 +803,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
                 ("screenshot", "screens/ab12.png"),
                 ("ui_tree", "screens/ab12.json"),
                 ("repro", "repro/issue-1-app_closed.toml"),
+                ("device_log", "device.log"),
             ]
         );
         assert_eq!(doc["artifacts"][1]["bytes"], 2);

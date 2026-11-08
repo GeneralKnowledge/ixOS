@@ -187,7 +187,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_diagnose",
         title: "The last failure",
-        description: "The last failed tool result in this session with the end of its log file: the place to start fixing. Basic: it does not yet correlate logs, crashes and UI state.",
+        description: "The last failed tool result in this session with the end of its log file, and data.correlation: the UI step or explore action that failed and its screen, the app's log lines just before it, the symbolicated crash (kind, message, the app frame with file and line) when the app crashed, the files changed since this session started and whether the crash is in one of them, and the likely layer (rust, swift, ui, signing, device). The place to start fixing.",
         tier: Tier::Observe,
         device: false,
         needs_ui: false,
@@ -940,6 +940,13 @@ impl crate::Server {
             .as_str()
             .and_then(|p| std::fs::read_to_string(p).ok())
             .map(|t| exec::tail(&t, 12_000));
+        // Where the failure happened and what explains it (M6.1).
+        let app_dir = failure["app"]["path"]
+            .as_str()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| self.opts.root.clone());
+        let changed = crate::correlate::changed_files(&app_dir, self.start_commit.as_deref());
+        let correlation = crate::correlate::correlate(&failure, &changed);
         json!({
             "schema": "forge.result/1",
             "command": "diagnose",
@@ -951,7 +958,8 @@ impl crate::Server {
             "data": {
                 "last_failure": failure,
                 "log_tail": log_tail,
-                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person.",
+                "correlation": correlation,
+                "next": "Fix the earliest diagnostic; for stage signing or device call forge_device_status first; needs_person means stop and tell the person. For a UI or explore failure, correlation says which step, the app's log just before, the crash and whether it is in a file changed in this session.",
             }
         })
     }
@@ -999,14 +1007,18 @@ impl crate::Server {
         visual: bool,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Answer {
-        let inv = self.with_udid(
-            Invocation::new(&["ui", "run"], &app.dir, secs(10 * MIN), "test")
-                .arg(file.display().to_string())
-                .arg("--out")
-                .arg(out.display().to_string())
-                .arg("--visual")
-                .arg(if visual { "check" } else { "off" }),
-        );
+        let mut inv = Invocation::new(&["ui", "run"], &app.dir, secs(10 * MIN), "test")
+            .arg(file.display().to_string())
+            .arg("--out")
+            .arg(out.display().to_string())
+            .arg("--visual")
+            .arg(if visual { "check" } else { "off" });
+        // One-step actions (forge_ui_act, launch) skip the log and crash
+        // watch: it costs a crash-report listing per tap.
+        if !visual {
+            inv = inv.arg("--no-watch");
+        }
+        let inv = self.with_udid(inv);
         let result = self.forge(inv, cancel).await;
         // On failure, show the screen at the failed step; when only the
         // pictures changed, the first diff (changes in red, areas outlined).
