@@ -392,6 +392,11 @@ RustBuffer uniffi_forge_ffi_fn_method_appcore_phase(uint64_t ptr, RustCallStatus
 RustBuffer uniffi_forge_ffi_fn_method_appcore_progress(uint64_t ptr, RustBuffer now, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RECORD_GUIDED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RECORD_GUIDED_SESSION
+uint64_t uniffi_forge_ffi_fn_method_appcore_record_guided_session(uint64_t ptr, uint64_t session, RustBuffer result, int8_t welfare_concern, RustBuffer now
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RECORD_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_RECORD_SESSION
 uint64_t uniffi_forge_ffi_fn_method_appcore_record_session(uint64_t ptr, RustBuffer exercise_id, RustBuffer activity_id, RustBuffer result, int8_t welfare_concern, RustBuffer now
@@ -420,6 +425,11 @@ uint64_t uniffi_forge_ffi_fn_method_appcore_shorten_today(uint64_t ptr, RustBuff
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SHUTDOWN
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SHUTDOWN
 void uniffi_forge_ffi_fn_method_appcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_START_GUIDED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_START_GUIDED_SESSION
+uint64_t uniffi_forge_ffi_fn_method_appcore_start_guided_session(uint64_t ptr, RustBuffer exercise_id, RustBuffer activity_id, RustBuffer now, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_SWAP_ACTIVITY
@@ -476,6 +486,56 @@ uint64_t uniffi_forge_ffi_fn_constructor_cancellation_new(RustCallStatus *_Nonnu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CANCELLATION_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CANCELLATION_CANCEL
 void uniffi_forge_ffi_fn_method_cancellation_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_GUIDEDSESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_GUIDEDSESSION
+uint64_t uniffi_forge_ffi_fn_clone_guidedsession(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_GUIDEDSESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_GUIDEDSESSION
+void uniffi_forge_ffi_fn_free_guidedsession(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_ACTIVITY_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_ACTIVITY_ID
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_activity_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_BACK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_BACK
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_back(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_CARD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_CARD
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_card(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_EXERCISE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_EXERCISE_ID
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_exercise_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_IF_DIFFICULT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_IF_DIFFICULT
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_if_difficult(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_NEXT
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_next(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_SAFETY_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_SAFETY_NOTE
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_safety_note(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_TITLE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_GUIDEDSESSION_TITLE
+RustBuffer uniffi_forge_ffi_fn_method_guidedsession_title(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALNOTIFIER
@@ -951,6 +1011,12 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_progress(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RECORD_GUIDED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RECORD_GUIDED_SESSION
+uint16_t uniffi_forge_ffi_checksum_method_appcore_record_guided_session(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RECORD_SESSION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_RECORD_SESSION
 uint16_t uniffi_forge_ffi_checksum_method_appcore_record_session(void
@@ -987,6 +1053,12 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_shutdown(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_START_GUIDED_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_START_GUIDED_SESSION
+uint16_t uniffi_forge_ffi_checksum_method_appcore_start_guided_session(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SWAP_ACTIVITY
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_SWAP_ACTIVITY
 uint16_t uniffi_forge_ffi_checksum_method_appcore_swap_activity(void
@@ -1020,6 +1092,54 @@ uint16_t uniffi_forge_ffi_checksum_method_appevents_next(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CANCELLATION_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CANCELLATION_CANCEL
 uint16_t uniffi_forge_ffi_checksum_method_cancellation_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_ACTIVITY_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_ACTIVITY_ID
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_activity_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_BACK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_BACK
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_back(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_CARD
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_CARD
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_card(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_EXERCISE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_EXERCISE_ID
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_exercise_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_IF_DIFFICULT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_IF_DIFFICULT
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_if_difficult(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_NEXT
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_SAFETY_NOTE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_SAFETY_NOTE
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_safety_note(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_TITLE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_GUIDEDSESSION_TITLE
+uint16_t uniffi_forge_ffi_checksum_method_guidedsession_title(void
     
 );
 #endif

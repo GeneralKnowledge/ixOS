@@ -35,3 +35,9 @@ id = "GD-6"
 statement = "Learn shows exercises by topic, a glossary and search across both, from Rust's content."
 twin = ["GoodDogModelTests.testLearnSearchAndGlossaryComeFromRust"]
 device = ["uitests/journey.toml"]
+
+[[requirement]]
+id = "GD-7"
+statement = "An exercise can be followed as a guided session, one card at a time (get ready, then each step with its number), and recording its outcome at the end records it exactly as the exercise screen does; leaving part way records nothing."
+twin = ["GoodDogModelTests.testAGuidedSessionStepsThroughAndRecordsLikeTheExerciseScreen", "GoodDogModelTests.testLeavingAGuidedSessionPartWayRecordsNothing"]
+device = ["uitests/guided.toml"]
