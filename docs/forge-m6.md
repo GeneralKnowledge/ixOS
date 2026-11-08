@@ -10,7 +10,8 @@ The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rus
 - **What those runs didn't have is what landed since:** exploration (#109, #119), visual regression (#110), crash symbolication (#111, #114), the any-app policy (#107), unlabelled-control locators (#120) and `forge verify`. They work as separate commands. Several of them are not reachable from `forge mcp`, none of them feeds the others, and nothing joins their output into one record of a run.
 - **So M6 is mostly wiring, plus four real additions:** exploration aimed at what changed, failure correlation (action, screen, logs, crash, changed files), appearance variants (dark mode is not settable today), and a run record that says what was changed, what ran, what didn't, and what a person accepted.
 - **Good Dog isn't on the phone yet.** GD1 is PR #121 (Linux-checked; SwiftUI only syntax-checked so far). M6's demonstration starts after GD1's own phone run, and its task should come from Good Dog's next milestone rather than be invented for M6.
-- **Plan:** six milestones. A baseline run with today's tools comes first, so the gap list is measured rather than guessed. Infrastructure is proven on Pocket Library and Device Lab, which are already on the phone, so it doesn't wait for Good Dog.
+- **Good Dog's pain-points log is part of M6** (Reuben, 2026-11-08): loop-related items go into the milestones that need them, and the rest form a cleanup milestone, M6.P.
+- **Plan:** seven milestones. A baseline run with today's tools comes first, so the gap list is measured rather than guessed. Infrastructure is proven on Pocket Library and Device Lab, which are already on the phone, so it doesn't wait for Good Dog.
 
 ## What exists today, verified
 
@@ -162,6 +163,34 @@ Not a planted bug. If the run finds no genuine problem, the record says so and M
 
 **iPhone:** yes, one more set of staged sittings.
 
+### Good Dog pain points in M6
+
+Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-dog-pain-points.md`, in #121) to be fixed as part of M6. Each item goes where it helps the loop, and the rest form one cleanup milestone. Framework extractions (`Store<T>`, test data, `LocalTime`) start only after #121 merges, because rule 1 extracts from merged code.
+
+| Log item | Where in M6 | What |
+|---|---|---|
+| 1, 9: SwiftUI views not type-checked on Linux | M6.1 (cheap part), M6.P (the rest) | `forge check swift` adds `swiftc -parse` of the view files now. Type-checking against SwiftUI stubs is a spike in M6.P; if it isn't feasible, the laptop xtool build stays the check (decision 1) |
+| 5, 13: test-data and clock code copied between apps; no way to keep test data across a relaunch | M6.2 | `ForgeTestData.directory(app:)` with the keep-data flag in the template, and `forge_runtime::LocalTime` with an injectable clock. Pocket Library and Good Dog move onto them |
+| 12: `expect` can't combine an id with a label check | M6.2 | `id` plus `label_contains` in one target in `forge ui run` |
+| 14: a requirement can't say its device check isn't written yet | M6.4 | `device = []` with a `pending` note; `forge verify` lists it as open with the note, so the run record names it under not run |
+| 15: no view of app slots | M6.1 | `forge device apps` (already planned there) |
+| 10: Docker not running gives a confusing error | M6.1 | `forge check swift` and `forge doctor` say Docker isn't running and how to start it |
+| 2, 3: `forge init` gives a notes app to delete; generated README and AGENTS name the starter's files | M6.P | `forge init --blank`: an empty `AppCore` with lifecycle, events and logging wired, one screen, one model test, docs listing what is actually there |
+| 4: `forge_storage::Store<T>` (save, then publish) | M6.P | Extracted from Good Dog's `change` helper and Pocket Library's `store.rs` (the second use) |
+| 4, 11: adding an app to CI takes five hand edits | M6.P | `ci-macos.sh` and one twin step discover apps from `examples/*/forge.toml` |
+| 6, 7: UniFFI enums aren't `CaseIterable`; error case casing | M6.P | `forge bindings generate` adds `CaseIterable` to field-less enums; the casing is documented in ios-ui.md |
+| 1 (prebuilt bindgen), 8, 16: slow first `forge init`, bundled content, shared core crate | M6.P (docs), later (prebuilt bindgen) | Document bundled content and a shared core crate in app-crate.md. A prebuilt `uniffi-bindgen` waits until the first-run time matters to an agent run |
+
+### M6.P Pain-point cleanup
+
+**What:** the items marked M6.P above, as two or three small PRs (starter and bindings; storage; CI). Where it's practical they are done by the M6 agent loop itself, as warm-up tasks before M6.5, which also tests the loop on framework code.
+
+**Relies on:** #121 merged (for the extractions), `check-app-crates.sh`'s auto-discovery as the CI pattern.
+
+**Tested by:** `make validate`, `scripts/check-fresh-app.sh` with `--blank`, Good Dog and Pocket Library tests passing on `Store<T>` unchanged.
+
+**iPhone:** one install of a `--blank` app and of Good Dog after the `Store<T>` move, in the next coordinated sitting. Proves the starter and the moved storage still run on the phone.
+
 ## Order and phone time
 
 ```
@@ -170,7 +199,7 @@ M6.1 ─┬─ M6.2 ─┐
 GD1 phone run ── M6.0 ─┘
 ```
 
-M6.1 starts now. M6.0 waits only for GD1 on the phone. M6.2 and M6.3 can run side by side. Phone checks for M6.1–M6.3 go into one coordinated sitting through the iPhone session thread, about 30 minutes, together with the reruns already owed for #119 and #120.
+M6.1 starts now. M6.0 waits only for GD1 on the phone. M6.2 and M6.3 can run side by side. M6.P runs alongside them once #121 has merged. Phone checks for M6.1–M6.3 go into one coordinated sitting through the iPhone session thread, about 30 minutes, together with the reruns already owed for #119 and #120.
 
 ## Risks
 
