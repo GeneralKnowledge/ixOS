@@ -32,5 +32,9 @@ thiserror = { workspace = true }
 # `FORGE_UI_DEBUG=1`: idevice's own debug log on stderr (testmanagerd replies).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry"] }
 
+[target.'cfg(unix)'.dependencies]
+# `forge ui status`/`stop`: whether a session's process is still running.
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3.14"

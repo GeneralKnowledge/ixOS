@@ -172,6 +172,8 @@ forge ui setup [--ddi DIR] [--runner APP]   mount the DDI if needed, install the
 forge ui tree  [--app BUNDLE]               the accessibility tree of the screen, plus unlabelled controls
 forge ui screenshot [out.png]               save a screenshot on Linux
 forge ui run FILE [--out DIR]               run a test file; screenshots and failure details go to DIR
+forge ui start [--idle-minutes N]           keep one runner running for the commands above (see "One runner for many commands")
+forge ui status | stop                      show or end that session
 ```
 
 Later milestones add:
@@ -236,6 +238,28 @@ On the Linux machine, with the phone plugged in, unlocked and trusting the compu
 After the phone restarts, run `forge ui setup --ddi …` again (the image is unmounted at every reboot). After seven days, reinstall the runner with `--runner`.
 
 `forge ui setup` words its app-limit and expiry notes for the team xtool signs with: `--team free|paid`, or `[ios.signing] team_type` in the forge.toml of the directory it runs in. A paid Apple Developer Program team has no 3-app limit and its signatures last as long as the provisioning profile (up to a year), so the runner can stay installed. Without either setting it assumes nothing and says what a free account would hit.
+
+### One runner for many commands
+
+Without a session, every `forge ui` command starts the WebDriverAgent runner and the phone tears it down when `forge` exits. On Cati that is about 2 s per command (G0, 2026-11-08), most of a short test, and an agent exploring an app makes hundreds of calls. A **UI session** keeps one runner running instead:
+
+```
+forge ui start                 # starts `forge ui serve` in the background; returns when WDA is ready
+forge ui tree / run / …        # use the session's runner: no runner start, no disk-image check, no app list
+forge ui status                # pid, state, WDA version, uptime, last use, restarts, log path (doesn't touch the phone)
+forge ui stop                  # stops it; the runner shuts down at once
+```
+
+- Commands find the session through a small state file per phone (`$XDG_RUNTIME_DIR/forge/ui-session/<udid>.json`, else `~/.cache/forge/ui-session/`, or `$FORGE_UI_SESSION_DIR`). Before using it they check that the session's process is alive and that WDA answers `/status` within 5 s. A file left by a dead process is removed and the command starts its own runner, as before. The file holds no screen content: process id, phone, runner, state and installed bundle ids.
+- Each command still opens its own WebDriver session on the shared runner (one small request), so commands never inherit another command's element ids.
+- The session lists installed apps when it starts. An app installed since is looked up on the phone again when a command names it.
+- **It stops** on `forge ui stop`, Ctrl-C or SIGTERM, after 30 minutes with no command (`--idle-minutes N`, 0 for never), or when the process given in `--exit-with <pid>` exits.
+- **It repairs itself.** Every 10 s it asks WDA for `/status` (one local USB request). After two misses in a row it restarts the runner; after three failed restarts in a row it gives up and exits. A command that arrives while the runner is starting or restarting waits up to 150 s for it, reading only the state file, then says what happened and points at `forge ui status`.
+- `forge ui setup` uses a running session's runner for its check. Reinstalling the runner (`--runner … --reinstall`) refuses while a session is running: `forge ui stop` first.
+- **`forge mcp` starts one for its UI tools** with `--exit-with <its own pid>`, so the runner lives exactly as long as the MCP server (or 30 idle minutes). If the session can't start, the tools start their own runner as before and the server tries again after 5 minutes.
+- `forge ui serve` is the same thing in the foreground, with its log on the terminal.
+
+Nothing about which app a command may act on changes: the front-app check below runs on every command, session or not.
 
 ### Only the app under test
 

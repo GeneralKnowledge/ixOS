@@ -898,6 +898,7 @@ dependencies = [
  "base64 0.22.1",
  "forge-device",
  "idevice",
+ "libc",
  "plist",
  "serde",
  "serde_json",
