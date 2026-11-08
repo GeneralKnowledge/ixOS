@@ -542,7 +542,14 @@ fn run_step(
     }
     if let Some(name) = &step.screenshot {
         let path = out_dir.join(format!("{}.png", file_name(name)));
-        std::fs::write(&path, driver.screenshot()?)?;
+        let (png, settled) = settled_screenshot(driver)?;
+        if !settled {
+            writeln!(
+                out,
+                "        the screen was still changing (an animation or a clock?): screenshot taken anyway"
+            )?;
+        }
+        std::fs::write(&path, png)?;
         // The tree beside it says what is on the picture: visual regression
         // names changed elements from it and masks elements by it. Taken
         // after the screenshot, so the screenshot is of the screen as the
@@ -742,6 +749,26 @@ fn mismatch(
     }
     Ok(mismatch)
 }
+
+/// Screenshots until two in a row are the same, so a picture is of the
+/// screen at rest and not part-way through a push (seen on Cati: one
+/// check caught a navigation transition, 18% of the screen). Gives up after
+/// [`SETTLE_TRIES`] and says so with `false`.
+fn settled_screenshot(driver: &mut dyn Driver) -> Result<(Vec<u8>, bool)> {
+    let mut last = driver.screenshot()?;
+    for _ in 0..SETTLE_TRIES {
+        std::thread::sleep(crate::POLL);
+        let next = driver.screenshot()?;
+        if next == last {
+            return Ok((next, true));
+        }
+        last = next;
+    }
+    Ok((last, false))
+}
+
+/// Extra screenshots a screenshot step may take while the screen settles.
+const SETTLE_TRIES: usize = 5;
 
 /// What a failure records instead of the home screen.
 pub const HOME_SCREEN: &str =
@@ -1237,6 +1264,8 @@ mod tests {
                 "launch XTL-1.org.forgemobile.pocketlibrary []",
                 "tap library.add",
                 "type bookForm.title \"Hello from Forge\"",
+                // Two the same in a row: the screen has settled.
+                "screenshot",
                 "screenshot"
             ]
         );

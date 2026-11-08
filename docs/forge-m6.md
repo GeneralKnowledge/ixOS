@@ -349,6 +349,7 @@ Found in the first sitting (Cati, 2026-11-08, forge at 9c8488a) and what became 
 - Crash reports are pulled only when a step fails or the app closes: on a passing run `crash_reports` is `not_checked`, which means not looked, never "no crash". By design.
 - Check 8 (Good Dog dark at AX5, audit on Today, an exercise and My Dog): no `small_tap_target` or `clipped` findings, but the audit only sees what is on screen, so at AX5 it covered the top of each screen. Today's plan title wrapped into three lines and ran under the tab bar unflagged. Reuben judged wrap and overlap by eye.
 - A `kind` CollectionView scroll with the keyboard up swiped across it and typed into the name field ("Moss" became "MossSsss"). A scroll step now refuses while the keyboard is up (M6.4's PR).
+- Check 10, dark journey: recorded 29/29; a check straight after differed on 3 of 6 screens: a session time on My Dog (needs a mask), 1.5% of small text areas on an exercise, and 18% of the glossary term screen, caught mid-push. Screenshot steps now wait for the screen to settle (M6.4's PR); the text areas need a second look once that is in.
 - Open: a whole-screen audit (scroll, then audit each part); the journey needs scroll steps at AX5, where `onboarding.start`, `exercise.step.0` and `dog.sessionsThisWeek` are below the fold; a `kind` scroll in a CollectionView took 7 to 11 s each; `forge_diagnose` called while another tool is still running answers about the last call that finished, not the running one.
 
 ## Order and phone time
