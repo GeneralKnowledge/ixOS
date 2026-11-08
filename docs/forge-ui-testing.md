@@ -259,6 +259,8 @@ forge ui stop                  # stops it; the runner shuts down at once
 - **`forge mcp` starts one for its UI tools** with `--exit-with <its own pid>`, so the runner lives exactly as long as the MCP server (or 30 idle minutes). If the session can't start, the tools start their own runner as before and the server tries again after 5 minutes.
 - `forge ui serve` is the same thing in the foreground, with its log on the terminal.
 
+On Cati (2026-11-08, WDA 16.15.2): `forge ui start` took 1.5 s; `forge ui tree` took 0.5 s with the session and 1.4 to 1.9 s without. A test file saves one runner start (m0: 9.2 s against 10.1 s), since its steps already shared one runner. Stop, status, and recovery after the session process was killed (`kill -9`; the next command started its own runner) worked as described.
+
 Nothing about which app a command may act on changes: the front-app check below runs on every command, session or not.
 
 ### Only the app under test
