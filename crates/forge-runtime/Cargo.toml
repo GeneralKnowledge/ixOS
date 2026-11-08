@@ -17,3 +17,7 @@ log = { version = "0.4", features = ["std"] }
 # Only for the `ForgeAndroid.nativeInit` JNI export (src/jni_init.rs); the
 # version must match the one forge-net's Android verifier init takes.
 jni = { version = "0.22", default-features = false }
+
+[dev-dependencies]
+# Same pin as the Counter crate's model tests.
+proptest = "=1.12.0"
