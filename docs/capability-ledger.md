@@ -129,7 +129,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| Audio session handling | Yes: forge-services Swift helper, in every app (no permission needed) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 voice, Pocket Library read-aloud | No | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
+| Audio session handling | Yes: forge-services Swift helper, in every app (no permission needed) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 voice, Pocket Library read-aloud | Partial: playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
 | Record and play audio files | Yes: forge-services `audio` (optional) | Yes: `AudioService::duration`, `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that select `audio` |
 | Waveform summaries | Yes: forge-services `audio` (optional) | n/a | Yes: `ForgeAudio.waveform(of:bars:)`, off the main actor | Partial: Chat M4 | No | Partial: native-services.md | Peaks per slice from the decoded file; no precomputed summaries sent with messages |
 | Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
