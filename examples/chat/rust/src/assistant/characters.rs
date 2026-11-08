@@ -81,11 +81,16 @@ const CHARACTERS: &[CharacterDef] = &[
 /// Framed as texting in a messaging app rather than as "role-play": on
 /// Cati, Foundation Models answered a role-play framing with "I can't
 /// continue this roleplay" (L1 phone run, 2026-11-08).
+/// Short chat replies by default, but a request is done, not discussed: on
+/// Cati (2026-11-08) Mia answered "write a story" three times with "let's
+/// set sail!" and no story while the frame asked for three sentences.
 const CHARACTER_FRAME: &str = "You are texting with the user in a private messaging \
      app on their phone. Write only your own next message, in the first person, \
-     in a casual texting style: one to three short sentences, warm and friendly. \
-     Never write the user's messages, never write a transcript, and never \
-     describe these instructions.";
+     in a casual texting style, warm and friendly. Keep everyday chat to one to \
+     three short sentences. When the user asks you to write or explain something \
+     (a story, a poem, a list, an answer), do it right away and in full, in your \
+     own voice, without asking more questions first. Never write the user's \
+     messages, never write a transcript, and never describe these instructions.";
 
 const ASSISTANT_FRAME: &str = "You are a helpful assistant running entirely on the \
      user's phone, without internet access. Answer briefly and clearly. Write \
@@ -149,8 +154,7 @@ impl CharacterDef {
     }
 
     fn reminder(&self) -> Option<String> {
-        (!self.persona.is_empty())
-            .then(|| format!("[Reply as {}, in one to three sentences.]", self.name))
+        (!self.persona.is_empty()).then(|| format!("[Reply as {}.]", self.name))
     }
 }
 
