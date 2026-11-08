@@ -186,8 +186,32 @@ fn first_line(bytes: &[u8]) -> Option<String> {
         .map(str::to_string)
 }
 
+/// An AppImage (xtool ships as one) that can't mount itself prints this and
+/// may still exit 0, so it would pass as a version string.
+fn appimage_fuse_error(out: &std::process::Output) -> Option<String> {
+    [&out.stdout, &out.stderr]
+        .iter()
+        .flat_map(|b| {
+            String::from_utf8_lossy(b)
+                .lines()
+                .map(str::trim)
+                .map(str::to_string)
+                .collect::<Vec<_>>()
+        })
+        .find(|l| l.contains("fusermount") || l.contains("libfuse"))
+}
+
+/// The fix for an xtool that can't start because FUSE is missing.
+const FUSE_FIX: &str = "xtool can't start because FUSE is missing (it ships as an AppImage): sudo apt-get install fuse3 (docs/linux-setup.md)";
+
 fn probe(runner: &dyn CommandRunner, name: &'static str, program: &str, args: &[&str]) -> Tool {
     match runner.capture(&Cmd::new(program).args(args)) {
+        Ok(out) if appimage_fuse_error(&out).is_some() => Tool {
+            name,
+            status: Status::Error,
+            version: None,
+            detail: appimage_fuse_error(&out),
+        },
         // `java -version` prints to stderr.
         Ok(out) if out.status.success() => Tool {
             name,
@@ -370,7 +394,15 @@ pub fn workflows(r: &Report) -> Vec<Workflow> {
     if !ok("swift") {
         ios.push("install Swift 6 (docs/linux-setup.md)".to_string());
     }
-    if !ok("xtool") {
+    let xtool_needs_fuse = r.tools.iter().any(|t| {
+        t.name == "xtool"
+            && t.detail
+                .as_deref()
+                .is_some_and(|d| d.contains("fusermount") || d.contains("libfuse"))
+    });
+    if xtool_needs_fuse {
+        ios.push(FUSE_FIX.to_string());
+    } else if !ok("xtool") {
         ios.push("install xtool (docs/linux-setup.md)".to_string());
     }
     if r.xtool_pin.matches == Some(false) {
@@ -685,6 +717,26 @@ mod tests {
         let r = report(&mock, &workspace_root(), &|_| None);
         assert!(r.ready.ios_device);
         assert!(workflows(&r)[2].fixes.is_empty());
+    }
+
+    #[test]
+    fn xtool_without_fuse_is_an_error_with_the_fuse_fix() {
+        let mock = MockRunner::default();
+        mock.respond(
+            "xtool",
+            0,
+            "Error: No suitable fusermount binary found on the $PATH\n",
+        );
+        let r = report(&mock, &workspace_root(), &|_| None);
+        let v = to_value(&r);
+        assert_eq!(tool(&v, "xtool")["status"], "error");
+        assert!(tool(&v, "xtool").get("version").is_none());
+        let fixes = &workflows(&r)[1].fixes;
+        assert!(fixes.iter().any(|f| f.contains("fuse3")), "{fixes:?}");
+        assert!(
+            fixes.iter().all(|f| !f.contains("install-xtool.sh")),
+            "{fixes:?}"
+        );
     }
 
     #[test]

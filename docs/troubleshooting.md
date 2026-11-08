@@ -38,9 +38,9 @@ Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
 | Weather | Fails | Links | Links | Links |
 | Chat | Fails | Links | Links | Links |
 | App from `forge init` (old Counter template) | Not tested | Fails | Links | Links |
-| App from `forge init` (own Rust crate, since 2026-11-06) | Not tested | Not tested | Not tested | Not tested |
+| App from `forge init` (own Rust crate, since 2026-11-06): Pocket Library | Not tested | Not tested | Links | Not tested |
 
-On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter and Weather were installed and opened the same way. Apps from `forge init` have only been built, not installed, and the current template (each app with its own Rust crate) has not yet been built with xtool at all; CI builds it with Xcode on macOS.
+On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter and Weather were installed and opened the same way. Pocket Library, which began as a `forge init` app with its own Rust crate, was built this way on 2026-11-07 and runs on the iPhone. A freshly generated app from today's template has not yet been recorded installing on a phone; CI builds it with Xcode on macOS.
 
 ## `forge run ios` says usbmuxd is not running, or xtool seems to hang
 
@@ -49,6 +49,18 @@ xtool talks to the iPhone through usbmuxd. When usbmuxd is not running, xtool wa
 ## `forge run ios` finished but the app did not open
 
 That is expected: `xtool dev run` installs the app but does not launch it, and `xtool launch` does not work on iOS 17 and later (upstream xtool issue #44). Tap the app's icon on the home screen. The first time, trust your developer profile first (Settings > General > VPN & Device Management).
+
+## The app opens to a blank screen, or closes straight away
+
+The build and install worked, so the problem is in the running app. With the iPhone still connected:
+
+```bash
+forge device logs --process <App>Xtool --for 30s   # then open the app; Rust and Swift log here
+forge device crashes                               # did it crash? `--pull <dir>` saves and symbolicates the report
+forge crash <dir>/*.ips                            # the crashed thread, with Swift and Rust file and line
+```
+
+The process name is the app's name followed by `Xtool` (`MyAppXtool`); `forge device apps` lists what is installed. A screen that stays empty usually means the root view is still waiting for Rust: look for a thrown error in the log, and check that `ContentView.swift` shows something while its model loads. Once `forge ui setup` has run, `forge ui tree` and `forge ui screenshot` show what is on screen ([forge-ui-testing.md](forge-ui-testing.md)). More in [forge-device.md](forge-device.md).
 
 ## `xtool devices` hangs or says `Resource temporarily unavailable`
 

@@ -1042,15 +1042,99 @@ fn run_ios_steps(
         "launched": false,
         "signing_team": team,
     }));
-    println!(
-        "[forge] Installed. Open the app from the iPhone's home screen (xtool does not launch it). The first time, trust your developer profile: Settings > General > VPN & Device Management."
+    let verified =
+        !crate::ios_builder::INSTALL_UNVERIFIED.load(std::sync::atomic::Ordering::Relaxed);
+    let first_install = record_install(&project_dir, &cfg.app.bundle_id);
+    print!(
+        "{}",
+        install_summary(&InstallSummary {
+            app: cfg.app.display_name.as_deref().unwrap_or(&cfg.app.name),
+            configuration: configuration.name(),
+            team: team.as_ref().map(|t| t.describe()),
+            verified,
+            process: &crate::app_config::xtool_product(cfg),
+            first_install,
+            devtools,
+        })
     );
-    if devtools {
-        println!(
-            "[forge] Development build: with the app open, run `forge device pair` once, then `forge device connect`."
+    Ok(())
+}
+
+/// What `forge run ios` says after a successful install.
+struct InstallSummary<'a> {
+    /// The name on the home screen.
+    app: &'a str,
+    configuration: &'a str,
+    team: Option<String>,
+    /// The app's process on the phone (`[ios] xtool_product`).
+    process: &'a str,
+    /// false: xtool hung after `[Installing] 100%` and Forge stopped it.
+    verified: bool,
+    /// No earlier install of this bundle id is recorded for this app.
+    first_install: bool,
+    devtools: bool,
+}
+
+/// The end of a successful `forge run ios`: what was done, then the one
+/// thing the person has to do next, which xtool can't do for them (it
+/// doesn't launch apps on iOS 17 and later). The profile-trust step is
+/// spelled out on the app's first install and shortened after that.
+fn install_summary(s: &InstallSummary) -> String {
+    let mut out = String::from("\n[forge] Done:\n");
+    out.push_str("  ✓ Rust library built for iOS\n");
+    out.push_str("  ✓ Swift bindings generated\n");
+    out.push_str(&format!("  ✓ App built ({})\n", s.configuration));
+    match &s.team {
+        Some(team) => out.push_str(&format!("  ✓ Signed with {team}\n")),
+        None => out.push_str("  ✓ Signed\n"),
+    }
+    if s.verified {
+        out.push_str("  ✓ Installed on the iPhone\n");
+    } else {
+        out.push_str(
+            "  ! Install probably finished: xtool reached 100% but didn't exit, so Forge stopped it. If the app isn't on the home screen, run `forge run ios` again.\n",
         );
     }
-    Ok(())
+    out.push_str(&format!(
+        "\nNext: open {} on your iPhone. Forge can't open it for you (xtool can't launch apps on iOS 17 and later).\n",
+        s.app
+    ));
+    if s.first_install {
+        out.push_str(
+            "\nFirst install of this app: iOS won't open it until you trust your developer profile.\n  On the iPhone: Settings > General > VPN & Device Management > your Apple ID > Trust.\n  You do this once per Apple ID on this phone.\n",
+        );
+    } else {
+        out.push_str(
+            "If iOS says \"Untrusted Developer\": Settings > General > VPN & Device Management > your Apple ID > Trust.\n",
+        );
+    }
+    out.push_str(&format!(
+        "If it opens to a blank screen or closes at once: `forge device logs --process {} --for 30s`, then open it; `forge device crashes` lists crashes (docs/troubleshooting.md).\n",
+        s.process
+    ));
+    if s.devtools {
+        out.push_str(
+            "Development build: with the app open, run `forge device pair` once, then `forge device connect`.\n",
+        );
+    }
+    out
+}
+
+/// Notes a successful install in `<app>/.forge/installed` (one bundle id
+/// per line). Returns true when this bundle id wasn't there yet. A file
+/// that can't be read or written counts as a first install, which only
+/// makes the trust step longer.
+fn record_install(project_dir: &Path, bundle_id: &str) -> bool {
+    let path = project_dir.join(".forge/installed");
+    let seen = std::fs::read_to_string(&path).unwrap_or_default();
+    if seen.lines().any(|l| l.trim() == bundle_id) {
+        return false;
+    }
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::write(&path, format!("{seen}{bundle_id}\n"));
+    true
 }
 
 fn team_type(cfg: &ForgeConfig) -> Option<&str> {
@@ -1562,6 +1646,54 @@ ios_device = true
             explain_team_limit("other".into(), Some("paid"), None),
             "other"
         );
+    }
+
+    fn summary(first_install: bool, verified: bool) -> String {
+        install_summary(&InstallSummary {
+            app: "My App",
+            configuration: "debug",
+            team: Some("Someone (ZZZZZ99999), free personal team".into()),
+            process: "MyAppXtool",
+            verified,
+            first_install,
+            devtools: false,
+        })
+    }
+
+    #[test]
+    fn install_summary_names_the_app_and_the_next_step() {
+        let out = summary(true, true);
+        assert!(out.contains("✓ Installed on the iPhone"), "{out}");
+        assert!(out.contains("Signed with Someone (ZZZZZ99999)"), "{out}");
+        assert!(out.contains("Next: open My App on your iPhone"), "{out}");
+        assert!(out.contains("First install of this app"), "{out}");
+        assert!(
+            out.contains("forge device logs --process MyAppXtool"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn install_summary_shortens_the_trust_step_after_the_first_install() {
+        let out = summary(false, true);
+        assert!(!out.contains("First install"), "{out}");
+        assert!(out.contains("Untrusted Developer"), "{out}");
+    }
+
+    #[test]
+    fn install_summary_says_when_the_install_was_not_confirmed() {
+        let out = summary(false, false);
+        assert!(!out.contains("✓ Installed"), "{out}");
+        assert!(out.contains("Install probably finished"), "{out}");
+    }
+
+    #[test]
+    fn record_install_is_true_only_the_first_time() {
+        let tmp = tempfile::tempdir().unwrap();
+        assert!(record_install(tmp.path(), "org.example.a"));
+        assert!(!record_install(tmp.path(), "org.example.a"));
+        assert!(record_install(tmp.path(), "org.example.b"));
+        assert!(!record_install(tmp.path(), "org.example.a"));
     }
 
     #[test]

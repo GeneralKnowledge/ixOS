@@ -16,7 +16,7 @@ Forge has several ways to build an app. They differ in the host machine, the too
 | `forge build android --install` | Linux or macOS | Gradle (`installDebug`) | connected phone or emulator | debug APK | release | Supported, not yet recorded on a physical phone |
 | `forge test` in an Android app | Linux or macOS | Cargo, then Gradle (`testDebugUnitTest`) | the JVM (host tests) | debug | debug | Supported, CI |
 | iOS Simulator | macOS | Xcode | Simulator | — | — | **Not supported**: no simulator slice of the Rust library ([roadmap](roadmap.md#ios-simulator-support--open)) |
-| Release / store builds (App Store, Google Play) | — | — | — | — | — | **Not supported** yet ([roadmap](roadmap.md#store-distribution-app-store-google-play--open)) |
+| Release / store builds (App Store, Google Play) | — | — | — | — | — | **Not supported** yet. The staged plan for the first App Store release, and which steps need a Mac, is [first-app-store-release.md](first-app-store-release.md) |
 
 Notes:
 

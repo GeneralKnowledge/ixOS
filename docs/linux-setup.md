@@ -10,6 +10,7 @@ Forge Mobile targets **Linux-first** development for native iOS apps using Rust,
 | Swift 6.2+ (6.4 recommended by xtool upstream) | SwiftPM host |
 | xtool | iOS build, sign, install |
 | usbmuxd | USB communication with iPhone |
+| FUSE (`fuse3`) | Lets the xtool AppImage start |
 | Xcode `.xip` | Supplies iOS SDK via `xtool setup` (download in browser; license acceptance required) |
 | Apple ID / Developer credentials | `xtool setup` / `xtool auth` |
 
@@ -43,6 +44,8 @@ Forge pins the xtool it is tested with in [`toolchain/xtool.env`](../toolchain/x
 scripts/install-xtool.sh        # to /usr/local/bin/xtool; refuses a file whose checksum differs
 xtool --version                 # xtool 1.24.0-ixos.1
 ```
+
+xtool ships as an AppImage, which needs FUSE. If `xtool --version` says `No suitable fusermount binary found`, install it: `sudo apt-get install fuse3`.
 
 Only x86_64 has a pinned build. On arm64, build the fork's `ixos` branch with its `Linux/build.sh` (or use upstream's release at your own risk) and add its URL and SHA-256 to `toolchain/xtool.env`. `forge doctor` says when the installed xtool isn't the pinned version; any recent xtool still builds, but the device results in [compatibility.md](compatibility.md) were recorded with the pinned one.
 

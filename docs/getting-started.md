@@ -56,7 +56,7 @@ The app has its own Rust crate in `rust/`, a SwiftUI screen in `Sources/AppHost/
 forge run ios
 ```
 
-This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it. It does not open the app (xtool cannot launch apps on iOS 17 and later): tap its icon on the home screen.
+This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it. It ends with a short list of what it did and a **Next** step. It does not open the app (xtool cannot launch apps on iOS 17 and later): tap its icon on the home screen.
 
 The first install of each app needs one step on the phone before it opens: Settings > General > VPN & Device Management, tap your Apple ID, then **Trust**.
 
@@ -103,6 +103,8 @@ The layers are:
 | Signing and provisioning | xtool not signed in, free-account limits, a revoked certificate |
 | iPhone | not connected or not trusted, locked, Developer Mode off, profile not trusted, usbmuxd stuck |
 
+If the app installs but opens to a blank screen or closes at once, see [troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away): `forge device logs` and `forge device crashes` show what happened on the phone.
+
 If a check before the build is wrong about your setup, `FORGE_SKIP_PREFLIGHT=1 forge run ios` skips it.
 
 For scripts and coding agents, add `--json` to any command: stdout then carries one result object (`ok`, the failed `stage`, compiler `diagnostics` with file and line, the `hints` above, and the path of a full log), progress goes to stderr, and the exit code names the stage: 10 Rust, 11 Swift, 12 signing, 13 iPhone, 14 tests, 2 a wrong command line. The format is in [forge-mcp.md](forge-mcp.md#the-result-contract).
@@ -110,6 +112,7 @@ For scripts and coding agents, add `--json` to any command: stdout then carries 
 ## Next
 
 - [builds.md](builds.md): every way to build, debug and release, and what is not supported yet.
+- [first-app-store-release.md](first-app-store-release.md): publishing. Forge doesn't do App Store builds yet; this is the plan, including the steps that need a Mac.
 - [ios-signing.md](ios-signing.md): Apple accounts, signing and devices in more depth.
 - [android-setup.md](android-setup.md): the same app on Android (`forge init MyApp --platform android`). Android is work in progress.
 - On a Mac, the app's `Xcode/` project gives you the debugger and Instruments ([ios-xcode.md](ios-xcode.md)). It is optional.
