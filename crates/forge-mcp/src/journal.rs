@@ -109,6 +109,7 @@ pub fn start_line(opts: &crate::Options) -> Value {
         "forge_version": env!("CARGO_PKG_VERSION"),
         "root": opts.root.display().to_string(),
         "allow_install": opts.allow_install,
+        "no_device": opts.no_device,
         "bundle_ids": opts.bundle_ids,
         "udid": opts.udid,
     })

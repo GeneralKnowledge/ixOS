@@ -63,6 +63,9 @@ pub struct Options {
     pub bundle_ids: Vec<String>,
     /// `--udid`: the only phone device tools touch.
     pub udid: Option<String>,
+    /// `--no-device`: leave out every tool that touches a phone, for work
+    /// that must not use the phone even if one is plugged in.
+    pub no_device: bool,
 }
 
 #[derive(Clone)]
@@ -110,6 +113,7 @@ impl Server {
         tools::SPECS
             .iter()
             .filter(move |s| self.has_ui || !s.needs_ui)
+            .filter(move |s| !(self.opts.no_device && s.device))
     }
 
     fn tool(spec: &tools::Spec) -> Tool {
@@ -142,6 +146,16 @@ impl Server {
                     name,
                     "usage",
                     "this forge build has no `forge ui` (Forge UI Testing, PR #61): update Forge and restart `forge mcp`",
+                    None,
+                ),
+                untrusted: false,
+                image: None,
+            },
+            Some(spec) if spec.device && self.opts.no_device => tools::Answer {
+                result: tools::refusal(
+                    name,
+                    "policy",
+                    "this server was started with --no-device: no phone tools in this session",
                     None,
                 ),
                 untrusted: false,

@@ -37,7 +37,7 @@ struct ReaderView: View {
     /// Counts chapter loads: each gets a fresh scroll view.
     @State private var loadCount = 0
     @State private var readAloud = ReadAloud()
-    @State private var voices: [VoiceOption] = []
+    @State private var voices: [VoiceCandidate] = []
 
     var body: some View {
         Group {
@@ -220,9 +220,9 @@ struct ReaderView: View {
                     }
                 }
                 Picker("Voice", selection: $readAloud.voiceID) {
-                    Text("Default Voice").tag(String?.none)
+                    Text("Best Available").tag(String?.none)
                     ForEach(voices) { voice in
-                        Text(voice.label).tag(String?.some(voice.id))
+                        Text(VoiceChoice.label(for: voice)).tag(String?.some(voice.id))
                     }
                 }
             } label: {
@@ -337,7 +337,7 @@ struct ReaderView: View {
     private func prepareReadAloud(_ contents: ReaderContents) {
         let book = model.book(id: bookID)
         readAloud.setBook(title: contents.title, author: book?.author ?? "", coverFile: book?.coverFile)
-        voices = ReadAloud.voices().map { VoiceOption(id: $0.identifier, label: ReadAloud.label(for: $0)) }
+        voices = ReadAloud.voices()
         readAloud.onBlock = { block in
             // Also runs with the screen locked, so save from here rather
             // than from the scroll position.
@@ -382,11 +382,6 @@ struct ReaderView: View {
             }
         }
     }
-}
-
-private struct VoiceOption: Identifiable {
-    let id: String
-    let label: String
 }
 
 private struct PositionKey: Hashable {

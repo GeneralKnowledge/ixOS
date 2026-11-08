@@ -26,6 +26,8 @@ struct SettingsView: View {
                     Text("When online search is off, Pocket Library never connects to the internet except to show covers of books you added from the catalogue before.")
                 }
 
+                VoiceSettingsSection()
+
                 Section {
                     if let storage {
                         LabeledContent("Books", value: "\(storage.books)")

@@ -197,14 +197,17 @@ fn the_character_is_pinned_and_reminded_and_history_is_sent() {
 
     let request = engine.last_request();
     assert!(request.instructions.contains("You are Mia"));
-    assert!(request.instructions.contains("Stay in character"));
+    assert!(request
+        .instructions
+        .contains("Never write the user's messages"));
+    assert!(!request.instructions.contains("role-play"));
     let roles: Vec<_> = request.turns.iter().map(|t| t.role).collect();
     use PromptRole::{Assistant as A, User as U};
     // Opening line, first exchange, the new message.
     assert_eq!(roles, [A, U, A, U]);
     assert_eq!(request.turns[1].text, "I had a long day");
     let last = &request.turns[3].text;
-    assert!(last.starts_with("[Stay in character as Mia"), "{last}");
+    assert!(last.starts_with("[Reply as Mia"), "{last}");
     assert!(last.ends_with("Work was busy"));
     assert_eq!(request.temperature, 0.8);
 }
@@ -265,7 +268,7 @@ fn stop_ends_the_answer_and_the_engine_and_keeps_the_text() {
     // The stopped text is part of the history for the next answer.
     let messages = core.messages(conversation.id).unwrap();
     assert_eq!(messages[1].state, AssistantMessageState::Stopped);
-    assert!(prompt_turn(messages[1].clone()).is_some());
+    assert!(prompt_turn(messages[1].clone(), &[]).is_some());
 }
 
 #[test]
@@ -374,7 +377,7 @@ fn refusals_and_failures_are_kept_apart_and_left_out_of_the_history() {
     let (_, _, refused) = drain(&core.send(conversation.id.clone(), "Hmm".into()).unwrap());
     assert_eq!(refused.state, AssistantMessageState::Refused);
     assert_eq!(refused.error.as_deref(), Some("guardrail"));
-    assert!(prompt_turn(refused).is_none());
+    assert!(prompt_turn(refused, &[]).is_none());
 
     let mut engine = FakeEngine::new(&["half"]);
     engine.result = Err(AiError::Engine {
@@ -482,4 +485,68 @@ fn the_engine_runs_off_the_calling_thread() {
     assert_ne!(engine_thread, std::thread::current().id());
     let (_, _, message) = drain(&generation);
     assert_eq!(message.state, AssistantMessageState::Done);
+}
+
+#[test]
+fn an_answer_ends_where_the_model_starts_writing_the_users_side() {
+    // What Foundation Models did on Cati (L1 phone run, 2026-11-08).
+    let (core, engine) = core_with(FakeEngine::new(&[
+        "That's so cool! ",
+        "🤯 I'm so impressed!",
+        "\n\nYo",
+        "u: Hmm I'm learning SwiftUI",
+        "\nUser: It's intuitive",
+    ]));
+    let mia = core.start_conversation("girlfriend".into()).unwrap();
+    let generation = core
+        .send(mia.id.clone(), "I build iOS tools on Linux".into())
+        .unwrap();
+    let (_, _, message) = drain(&generation);
+    assert_eq!(message.text, "That's so cool! 🤯 I'm so impressed!");
+    assert_eq!(
+        message.state,
+        AssistantMessageState::Done,
+        "complete, not stopped"
+    );
+    assert_eq!(
+        message.stats.unwrap().pieces,
+        4,
+        "the engine was told to stop"
+    );
+
+    // The next request carries only the real answer.
+    drain(&core.send(mia.id, "Thanks!".into()).unwrap());
+    let request = engine.last_request();
+    assert_eq!(
+        request.turns[2].text,
+        "That's so cool! 🤯 I'm so impressed!"
+    );
+}
+
+#[test]
+fn turn_markers_are_found_only_at_the_start_of_a_later_line() {
+    let markers = characters::find("girlfriend").turn_markers();
+    let end = |t: &str| characters::end_of_turn(t, &markers);
+    assert_eq!(end("Hi!\nYou: hey"), Some(3));
+    assert_eq!(end("Hi!  \n\n  **User:** hey"), Some(3));
+    assert_eq!(end("Hi!\nmia: again"), Some(3));
+    assert_eq!(end("You: is how it starts"), None, "only a later line");
+    assert_eq!(end("Tell me what you: think"), None);
+    assert_eq!(end("Line one\nLine two"), None);
+}
+
+#[test]
+fn saved_answers_with_invented_turns_are_cleaned_for_the_model() {
+    let markers = characters::find("girlfriend").turn_markers();
+    let saved = AssistantMessage {
+        id: "m".into(),
+        conversation_id: "c".into(),
+        role: AssistantRole::Assistant,
+        text: "So cool!\nYou: I'm learning SwiftUI\nUser: Haha".into(),
+        state: AssistantMessageState::Done,
+        error: None,
+        created_at: 0,
+        stats: None,
+    };
+    assert_eq!(prompt_turn(saved, &markers).unwrap().text, "So cool!");
 }

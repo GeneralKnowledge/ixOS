@@ -22,6 +22,7 @@ New apps carry it in `.mcp.json` (`forge init` writes `{"forge": {"command": "fo
 forge mcp                                                    # root = current folder; installing refused
 forge mcp --allow install --bundle-id org.forgemobile.agentlab   # the M0 run: the agent may install the sandbox app only
 forge mcp --root ~/apps --udid 00008130-…                   # another root; device tools only touch this phone
+forge mcp --no-device                                        # no phone tools at all, even with a phone plugged in
 ```
 
 Built (M0), each tool running `forge <command> --json` in the app folder:
@@ -40,10 +41,11 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 | `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes` | Not symbolicated |
 | `forge_diagnose` | (server state) | The last failed result in the session and the end of its log file |
 | `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (any build from main since #61). Screenshots, and the failure screenshot of a UI run, come back as images. `forge_launch_app` takes `text_size` (`small` to `largest`): a `UIPreferredContentSizeCategoryName` launch argument, so the agent checks the largest Dynamic Type size without changing the phone's settings (not yet run on a phone) |
+| `forge_verify` | `verify [--twin-only]` | Per requirement in `requirements.toml`: the newest twin and iPhone verdicts and whether they are for the current files ([evidence.md](evidence.md#forge-verify)). The stop condition. `forge_run_ui_test` writes its output to `.forge/runs/<UTC>-ui-run/`, so its results count |
 
 Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
 
-| `forge_verify` | `verify [--twin-only]` | Per requirement in `requirements.toml`: the newest twin and iPhone verdicts and whether they are for the current files ([evidence.md](evidence.md#forge-verify)). The stop condition. `forge_run_ui_test` writes its output to `.forge/runs/<UTC>-ui-run/`, so its results count |
+**Client timeouts.** Some clients stop waiting for a tool long before Forge's own limits (30 min for a build, 8 min for an install, 5 min for `forge_create_app`). Claude Code gives up after 60 s by default (found in the Murmur dry run, 2026-11-08: `forge_create_app` "timed out" three times while `forge init` was still running, and the agent finished the folder by hand), so start it with `MCP_TOOL_TIMEOUT=1900000`. Other clients have their own setting.
 
 Enforced by the server: paths stay inside the root (symlinks included); phone tools run one at a time; every child has a timeout, and a timeout or a cancelled call kills its whole process group (xtool and cargo too); a device tool that times out returns `needs_person: true`.
 
@@ -59,7 +61,7 @@ Checks (Linux, no phone): `cargo test -p forge-mcp` runs unit tests and a full M
 
 ### The run journal
 
-Every tool call is appended to `<root>/.forge/runs/<UTC start>-mcp/journal.jsonl` (format `forge.journal/1`; the path is printed on stderr when the server starts, and nothing is written until the first call). The first line records the server: forge version, root, `allow_install`, allowed bundle ids, UDID. Then one line per call:
+Every tool call is appended to `<root>/.forge/runs/<UTC start>-mcp/journal.jsonl` (format `forge.journal/1`; the path is printed on stderr when the server starts, and nothing is written until the first call). The first line records the server: forge version, root, `allow_install`, `no_device`, allowed bundle ids, UDID. Then one line per call:
 
 ```json
 {"event":"call","seq":7,"at":"2026-11-08T09-12-40","tool":"forge_ui_act","args":{"project":"Tipster","action":"type","id":"bill.amount","text":{"chars":2}},"ok":true,"stage":"ok","duration_ms":4210,"cli":"forge --json ui run …"}
@@ -393,11 +395,59 @@ Through Remote Control on the laptop, as the acceptance runs already are: a sess
 | | Goal | Done when |
 |---|---|---|
 | M1 | The agent sees state and appearance | `forge_app_state` (devtools pairing, probes, commands) after #57's first phone run; `forge_set_appearance`; Swift logs in the live stream (C3); ledger served as data; `forge_remove_app` behind approval |
-| M2 | A bigger app, end to end | A mock social app (feed, profiles, posts, likes, replies, image attachments, persistent local accounts, pull to refresh) built from one prompt plus follow-ups like "make the timeline less cramped", reusing Chat's attachment and storage pieces. `forge_ui_audit` clean on its main screens |
+| M2 | A bigger app, end to end ([run plan](#m2-run-murmur)) | A mock social app (feed, profiles, posts, likes, replies, image attachments, persistent local accounts, pull to refresh) built from one prompt plus follow-ups like "make the timeline less cramped", reusing Chat's attachment and storage pieces. `forge_ui_audit` clean on its main screens |
 | M3 | Capabilities as tools | `forge_add_capability` once C7 (Swift service selection) exists; `prove_capability` prompt produces ledger evidence |
 | M4 | Remote agents | Only if needed: Streamable HTTP with OAuth through a tunnel, or keep using Remote Control |
 
 The mock social app in M2 is an acceptance exercise for the agent loop, not a new demo; the six-demo sequence stays as it is.
+
+### M2 run: Murmur
+
+Started 2026-11-08 after Tipster passed. The app is **Murmur**, a microblogging timeline that lives entirely on the phone: local accounts (sign up, sign in, switch), a home timeline of followed accounts, compose with a 280-character count and an optional photo, likes, replies in a thread view, profiles with follow, and pull to refresh. Five simulated accounts are seeded in Rust and pull to refresh brings in new posts from them. All state is in Rust with SQLite (forge-storage).
+
+Choices, and why:
+
+- **No server.** A laptop server like Chat's would add Wi-Fi, IP and uptime failures that say nothing about the agent loop. The simulated accounts give the feed something to refresh.
+- **Free team.** No push, no Sign in with Apple, one sandbox slot (it installs over Tipster). Nothing in the app needs a paid team, so paying is not a prerequisite for this run.
+- **Short phone stages, one agent session.** Reuben (2026-11-08) didn't want one 90-minute unattended run: the phone is tied up all that time, and any Forge fix it shows has to wait for the end. So the run is staged. Everything that doesn't need the phone runs first, as long as it needs, with the server started with `--no-device`, so no phone tool is offered even if a phone is plugged in: the agent writes the app, makes `forge_check` and `forge_build_ios` (SwiftUI on the laptop) pass and writes the UI test. Each phone stage is then 15–20 minutes at most. Every stage resumes the same session (`claude -p --resume`), so the agent keeps what it learned, and Forge can be fixed and rebuilt between stages.
+- **Two changes after it works.** "The timeline feels cramped" and "add bookmarks", each made without the phone and then checked on it. This checks the agent can change an app it built.
+- **No `forge_ui_audit`.** It isn't built (M1). The agent checks the main screens with `text_size: largest`; the accessibility audit (`ax_probe`) runs by hand afterwards if wanted.
+
+| Stage | Phone | Limit | What the agent does |
+|---|---|---|---|
+| `a-build` | No | 60 min | Reads the resources, creates Murmur, writes Rust and SwiftUI, `forge_check` and `forge_build_ios` pass, writes the UI test |
+| `b-look` | Yes | 20 min | Installs, launches, screenshots and tree of the main screens at the default and largest text size, logs; fixes what they show |
+| `c-test` | Yes | 15 min | Runs the UI test until it passes |
+| `change-1` | No | 30 min | Less cramped timeline |
+| `check-1` | Yes | 15 min | Install, look, UI test |
+| `change-2` | No | 30 min | Bookmarks, and the UI test extended |
+| `check-2` | Yes | 15 min | Install, look, UI test |
+
+At most about 65 minutes of phone time in four sittings, usually less: a stage ends when its work is done. Prompts and the laptop script: [`scripts/agent-runs/murmur/`](../scripts/agent-runs/murmur/) (`run-murmur.sh prep`, then one stage at a time, `summary`).
+
+Passes when, with no person touching the phone or terminal during any stage:
+
+1. Everything Forge does goes through Forge MCP tools: create, check, build, install, launch, screenshots and the tree.
+2. At least one real problem found from device evidence is fixed and checked again.
+3. A UI test passes on the phone covering sign up, post (top of the timeline), like (count), reply (in the thread view), and a terminate and relaunch with the post still there; after change 2 it also covers bookmarks.
+4. The main screens are usable at the largest text size in the agent's screenshots.
+5. Reuben looks at the app on the phone, including a photo post, and agrees it works.
+
+#### Result (2026-11-08)
+
+All seven stages passed in one agent session (Claude Code, `claude -p --resume`), on Cati, with nobody touching the phone or the terminal during a stage. Phone time was about 19 minutes over the four phone stages.
+
+| Stage | Time | Turns | What happened |
+|---|---|---|---|
+| `a-build` | 17.5 min | 98 | 14 Rust tests, 5 Swift model tests, iOS build passes. Fixed before the phone: a SQL parameter count (7 of 14 tests failed), a seed count, a Swift 6 Sendable warning, `Path`/`PathBuf` |
+| `b-look` | 8 min | 70 | 3 installs. Found and fixed from screenshots and the tree: the "Save Password?" sheet covering the app after sign-up, like and reply targets 44x18 pt, unlabelled fields, an Unfollow button hard to see in dark mode |
+| `c-test` | 5 min | 23 | Two failures, both real: the test's reset argument didn't apply to a running app (test fix, and Forge now stops the app first), and taps inside pushed screens did nothing (app fix). Journey 42/42 three times, largest text 19/19 |
+| `change-1` | 2 min | 9 | Timeline spacing, one-line author row, larger action targets |
+| `check-1` | 3.5 min | 20 | Fixed uneven spacing seen in a screenshot; both tests pass |
+| `change-2` | 3 min | 26 | Bookmarks, with an in-place v1 to v2 database migration and its test |
+| `check-2` | 2.5 min | 17 | The migration kept the existing data on the phone; journey 56/56 on the first run |
+
+Forge fixes found by the run and made between stages: the client timeout (`MCP_TOOL_TIMEOUT`), `forge mcp --no-device`, `forge check swift` ignoring the app's toolchain pin, `launch` with arguments on a running app, and the UI test docs. Seen and left: SF Symbol images exposed with identifiers (`duplicate_identifier` warnings), tab buttons without identifiers, and `forge_check` reporting no test counts.
 
 ## Open decisions
 

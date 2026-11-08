@@ -1,0 +1,1 @@
+STAGE C (phone, about 10 minutes). Run the UI test in uitests/ with forge_run_ui_test. When a step fails, decide from the failure screenshot and tree whether the app or the test is wrong, fix that one, and run it again until it passes. If a result says needs_person, stop. Add a "Stage C" section to REPORT.md with each failure, its fix and the final result.

@@ -122,27 +122,44 @@ Deterministic tests are plain data, so they can be reviewed, diffed and later ge
 # examples/pocket-library/uitests/add-book.toml
 name = "Add a book"
 app = "org.forgemobile.pocketlibrary"
+timeout = 10                     # seconds to wait for an element (default 10)
 
 [[step]]
-launch = { fresh = true }
+launch = {}                      # or launch = { args = ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
 
 [[step]]
 tap = { id = "library.add" }
 
 [[step]]
-type = { id = "bookForm.title", text = "Hello from Forge" }
+type = { id = "bookForm.title", text = "Hello from Forge", clear = true }
 
 [[step]]
 tap = { id = "bookForm.save" }
 
 [[step]]
-expect = { id = "library.row", label_contains = "Hello from Forge" }
+expect = { label_contains = "Hello from Forge" }
 
 [[step]]
 screenshot = "after-add"
 ```
 
-Built steps: `launch`, `activate`, `terminate`, `background` (seconds), `tap`, `type`, `clear`, `scroll`, `expect` (exists, gone, `has_label`, `value`, `enabled`), `screenshot` and `tree`. `scroll = { id = "…" }` scrolls until that element is on screen; `scroll = { id = "list", direction = "down" }` scrolls the scroll view `list` (`up`, `down`, `left`, `right`). When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Planned: `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
+Steps that work today, one action per step (unknown keys are rejected):
+
+| Step | Form |
+|---|---|
+| `launch` | `{}` or `{ args = [...] }` (launch arguments; with arguments a running app is stopped first, so they apply) |
+| `activate`, `terminate` | `{}`: bring the app to the front, or quit it. `terminate` then `launch` is a relaunch |
+| `background` | seconds, then the app comes back |
+| `tap`, `clear` | a target |
+| `type` | a target plus `text`, and `clear = true` to empty the field first |
+| `scroll` | `{ id = "…" }` scrolls until that element is on screen; `{ id = "list", direction = "down" }` scrolls the scroll view `list` (`up`, `down`, `left`, `right`) |
+| `expect` | a target plus at most these checks: `value` (equals), `has_label` (equals), `enabled` (true or false), `gone = true`. A target alone checks that it exists |
+| `screenshot` | a name |
+| `tree` | `true`: save the accessibility tree |
+
+A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
+
+Planned, not built (a test using them fails to parse): `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 
 ### CLI
 
@@ -183,6 +200,8 @@ These go into [ios-ui.md](ios-ui.md#accessibility) and the `forge init` starter:
 The exploratory tester is a separate command (`forge explore ios`). It never takes part in pass/fail acceptance. It reads the UI tree, picks valid actions (taps on enabled elements, text into fields, back navigation, background and resume), and watches for crashes (Forge Device crash reports), error alerts, error log lines and devtools state invariants. When it finds a problem it writes the action sequence out as a normal test file, which then becomes a deterministic regression test after a person reviews it. An AI model can choose the actions later, but the first version is seeded random walks so its results are reproducible.
 
 ## Milestones
+
+The same milestones serve apps Forge didn't build: [any app on the iPhone](research/general-device-control.md) adds a per-app policy, a few `Driver` calls and locators for apps without identifiers, not a second stack.
 
 | | Goal | Done when |
 |---|---|---|

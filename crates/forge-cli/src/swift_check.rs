@@ -298,11 +298,16 @@ fn swift_cmd(st: &Path, app: &Path, args: &[&str]) -> Cmd {
 /// The host build of the app's Rust library: `<target>/debug/libforge_ffi.a`.
 fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, String> {
     let manifest = app.join("rust/Cargo.toml");
+    // Run from the crate's folder: rustup picks the toolchain from the
+    // working directory (rust/rust-toolchain.toml), not from --manifest-path,
+    // so from the app folder it fails where no default toolchain is set.
+    let crate_dir = app.join("rust");
     crate::commands::run_explained(
         runner,
         Cmd::new("cargo")
             .args(["build", "--lib", "--manifest-path"])
-            .arg(&manifest),
+            .arg(&manifest)
+            .cwd(&crate_dir),
     )?;
     let meta = runner.capture(
         &Cmd::new("cargo")
@@ -313,7 +318,8 @@ fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, Strin
                 "1",
                 "--manifest-path",
             ])
-            .arg(&manifest),
+            .arg(&manifest)
+            .cwd(&crate_dir),
     )?;
     let target = serde_json::from_slice::<serde_json::Value>(&meta.stdout)
         .ok()

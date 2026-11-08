@@ -327,6 +327,13 @@ fn run_step(
 ) -> Result<()> {
     let locate = |t: &Target| t.locator().map_err(UiError::Device);
     if let Some(launch) = &step.launch {
+        // Launching an app that is already running only brings it to the
+        // front, and its launch arguments are silently dropped. Stop it first
+        // when there are arguments, so they always apply (an app that isn't
+        // running is fine).
+        if !launch.args.is_empty() {
+            let _ = driver.terminate(app);
+        }
         return driver.launch(app, &launch.args);
     }
     if step.activate.is_some() {
@@ -829,6 +836,26 @@ mod tests {
         let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
         assert!(report.failed.is_none(), "{:?}", report.failed);
         assert_eq!(report.passed, 6);
+    }
+
+    #[test]
+    fn launch_with_arguments_stops_the_app_first() {
+        let script = Script::parse(
+            "name='l'\napp='a'\n[[step]]\nlaunch={}\n[[step]]\nlaunch={args=['-Reset','YES']}\n",
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(library());
+        let dir = tempfile::tempdir().unwrap();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut Vec::new()).unwrap();
+        assert!(report.failed.is_none(), "{:?}", report.failed);
+        assert_eq!(
+            driver.calls,
+            [
+                "launch a []",
+                "terminate a",
+                "launch a [\"-Reset\", \"YES\"]"
+            ]
+        );
     }
 
     #[test]
