@@ -75,10 +75,20 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
     }
 
     fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
-        let found = self.post(
-            "/elements",
-            json!({ "using": "predicate string", "value": locator.predicate() }),
-        )?;
+        // Ids use WDA's `accessibility id` strategy: XCTest's own identifier
+        // query, which Appium documents as the fastest locator, instead of a
+        // predicate evaluated over the whole tree. Same matching as `name`.
+        let query = match locator {
+            Locator::Id(id) => json!({ "using": "accessibility id", "value": id }),
+            _ => json!({ "using": "predicate string", "value": locator.predicate() }),
+        };
+        let found = match self.post("/elements", query) {
+            Err(UiError::Wda(_)) if matches!(locator, Locator::Id(_)) => self.post(
+                "/elements",
+                json!({ "using": "predicate string", "value": locator.predicate() }),
+            )?,
+            other => other?,
+        };
         let list = found
             .as_array()
             .ok_or_else(|| UiError::Wda("element list is not an array".into()))?;
@@ -279,11 +289,32 @@ mod tests {
             s.sent,
             [
                 r#"POST /session {"capabilities":{"alwaysMatch":{}}}"#,
-                r#"POST /session/S1/elements {"using":"predicate string","value":"name == \"bookForm.title\""}"#,
+                r#"POST /session/S1/elements {"using":"accessibility id","value":"bookForm.title"}"#,
                 "POST /session/S1/element/E7/click {}",
                 r#"POST /session/S1/element/E7/value {"text":"Hi","value":["H","i"]}"#,
                 "GET /session/S1/element/E7/attribute/value",
             ]
+        );
+    }
+
+    #[test]
+    fn falls_back_to_a_predicate_if_accessibility_id_is_refused() {
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1", "value": {} })),
+            (
+                400,
+                json!({ "value": { "error": "invalid selector", "message": "unsupported" } }),
+            ),
+            (200, json!({ "value": [{ ELEMENT_KEY: "E1" }] })),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        let found = driver.find_all(&Locator::Id("chat.send".into())).unwrap();
+        assert_eq!(found, [ElementRef("E1".into())]);
+        drop(driver);
+        assert!(
+            s.sent[2].contains(r#""using":"predicate string""#),
+            "{}",
+            s.sent[2]
         );
     }
 

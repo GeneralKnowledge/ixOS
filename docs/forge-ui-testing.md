@@ -159,6 +159,8 @@ Steps that work today, one action per step (unknown keys are rejected):
 
 A target is exactly one of `id` (the accessibility identifier), `label` (exact) or `label_contains`. When an identifier matches several elements, as when SwiftUI also puts it on a wrapper, steps act on the first control (a Button, a field…) rather than the container, and `forge ui tree` reports a `duplicate_identifier` warning. Rows of a list that share one identifier can't be told apart: give each row its own (`timeline.row.<post id>`) or check them by `label_contains`.
 
+Each step costs one or more round trips to WebDriverAgent of a few hundred milliseconds: the front-app check, finding the element, and for a tap the hittable check and the tap itself (about 2 s per tap on Cati). To keep a run fast, don't tap a field before `type`: typing focuses it. Identifiers are found with WDA's `accessibility id` strategy (XCTest's own identifier query) rather than a predicate over the whole tree.
+
 Planned, not built (a test using them fails to parse): `swipe`, `alert` (accept or dismiss), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 
 ### CLI
