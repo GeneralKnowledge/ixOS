@@ -68,27 +68,32 @@ public final class FoundationModelsEngine: LocalModelEngine, Sendable {
     }
 
     #if canImport(FoundationModels)
+        /// Apple's transcript type; the app has its own `Transcript` (the
+        /// chat screen's rows), which would shadow it.
+        @available(iOS 26.0, macOS 26.0, *)
+        typealias FMTranscript = FoundationModels.Transcript
+
         /// The instructions and the earlier messages as the session's own
         /// history, so the model sees real turns and answers only the next.
         @available(iOS 26.0, macOS 26.0, *)
-        static func transcript(_ instructions: String, _ earlier: [PromptTurn]) -> Transcript {
-            func segments(_ text: String) -> [Transcript.Segment] {
-                [.text(Transcript.TextSegment(content: text))]
+        static func transcript(_ instructions: String, _ earlier: [PromptTurn]) -> FMTranscript {
+            func segments(_ text: String) -> [FMTranscript.Segment] {
+                [.text(FMTranscript.TextSegment(content: text))]
             }
-            var entries: [Transcript.Entry] = [
+            var entries: [FMTranscript.Entry] = [
                 .instructions(
-                    Transcript.Instructions(segments: segments(instructions), toolDefinitions: []))
+                    FMTranscript.Instructions(segments: segments(instructions), toolDefinitions: []))
             ]
             for turn in earlier {
                 switch turn.role {
                 case .user:
-                    entries.append(.prompt(Transcript.Prompt(segments: segments(turn.text))))
+                    entries.append(.prompt(FMTranscript.Prompt(segments: segments(turn.text))))
                 case .assistant:
                     entries.append(
-                        .response(Transcript.Response(assetIDs: [], segments: segments(turn.text))))
+                        .response(FMTranscript.Response(assetIDs: [], segments: segments(turn.text))))
                 }
             }
-            return Transcript(entries: entries)
+            return FMTranscript(entries: entries)
         }
 
         /// The stream yields the whole answer so far each time; only the new
