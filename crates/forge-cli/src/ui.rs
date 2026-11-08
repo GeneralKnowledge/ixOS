@@ -6,6 +6,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
+use forge_uitest::baseline::{self, Mode};
 use forge_uitest::phone::{find_ddi, find_runner, resolve_app, sideloaded, Phone, Runner};
 use forge_uitest::policy::{self, Access, Gate, Journal, Policy, Scope, TerminalApprover};
 use forge_uitest::script::{self, Script};
@@ -343,13 +344,15 @@ pub fn screenshot(
     .map_err(err)
 }
 
-/// `forge ui run`: a test file's steps; fails if any step fails.
+/// `forge ui run`: a test file's steps; fails if any step fails, or (with
+/// `visual` `Some(Check)`) if a screenshot differs from its baseline.
 pub fn run(
     runner: &dyn CommandRunner,
     udid: Option<&str>,
     file: &Path,
     out_dir: Option<&Path>,
     any_app: bool,
+    visual: Option<Mode>,
     out: &mut dyn Write,
 ) -> Result<(), String> {
     let script = Script::load(file)?;
@@ -416,6 +419,29 @@ pub fn run(
         .map(|a| crate::evidence::provenance(runner, a));
     let report =
         script::run_gated(&script, &app, &mut driver, &out_dir, out, &mut gate).map_err(err)?;
+    // Visual regression runs on Linux, after the phone part: the screenshots
+    // taken before a failed step are still compared.
+    let visual = match visual {
+        Some(mode) => Some(baseline::compare_run(
+            file,
+            &script.visual,
+            &report.screenshots,
+            &out_dir,
+            mode,
+        )?),
+        None => None,
+    };
+    if let Some(visual) = &visual {
+        if !visual.screens.is_empty() {
+            writeln!(out, "Screenshots against {}:", visual.baselines).map_err(err)?;
+            write!(out, "{}", visual.render()).map_err(err)?;
+        }
+    }
+    let visual_failures: Vec<String> = visual
+        .iter()
+        .flat_map(|v| v.screens.iter().filter(|s| s.failed()))
+        .map(|s| s.name.clone())
+        .collect();
     let failed_step = report.failed.as_ref().map(|(step, why)| {
         serde_json::json!({
             "step": step,
@@ -443,6 +469,17 @@ pub fn run(
             if let Some(tree) = report.tree_file.as_deref().and_then(rel_to) {
                 artifacts.push(("ui_tree", tree));
             }
+            for shot in &report.screenshots {
+                let tree = baseline::tree_path(shot);
+                if let Some(tree) = tree.is_file().then(|| rel_to(&tree)).flatten() {
+                    artifacts.push(("ui_tree", tree));
+                }
+            }
+            for screen in visual.iter().flat_map(|v| &v.screens) {
+                if let Some(diff) = &screen.diff {
+                    artifacts.push(("visual_diff", diff.clone()));
+                }
+            }
             let scenario = std::fs::canonicalize(file)
                 .ok()
                 .and_then(|f| {
@@ -463,6 +500,8 @@ pub fn run(
                 failed_step: failed_step.clone(),
                 artifacts,
                 duration_ms: started.elapsed().as_millis() as u64,
+                visual: visual.as_ref().and_then(|v| serde_json::to_value(v).ok()),
+                visual_failures: visual_failures.clone(),
             };
             let path = crate::evidence::write_device_bundle(&run, &reqs, &out_dir, &id)?;
             writeln!(out, "Evidence: {}", path.display()).map_err(err)?;
@@ -475,6 +514,8 @@ pub fn run(
         "passed_steps": report.passed,
         "failed_step": failed_step,
         "screenshots": report.screenshots,
+        "visual": visual,
+        "out": out_dir.display().to_string(),
         "evidence": evidence.map(|p| p.display().to_string()),
         // Another developer's app: the level it ran at and its journal.
         "any_app": gate.is_foreign().then(|| serde_json::json!({
@@ -485,10 +526,94 @@ pub fn run(
     if !report.screenshots.is_empty() {
         writeln!(out, "Screenshots: {}", out_dir.display()).map_err(err)?;
     }
-    match report.failed {
-        None => Ok(()),
-        Some((step, why)) => Err(format!("step {step} failed: {why}")),
+    if let Some(v) = &visual {
+        let new: Vec<&str> = v
+            .screens
+            .iter()
+            .filter(|s| s.verdict == "new")
+            .map(|s| s.name.as_str())
+            .collect();
+        if !new.is_empty() && visual_failures.is_empty() && report.failed.is_none() {
+            writeln!(
+                out,
+                "No baseline yet for {}. Look at the screenshots; if they are right: forge ui accept {}",
+                new.join(", "),
+                out_dir.display()
+            )
+            .map_err(err)?;
+        }
     }
+    match report.failed {
+        Some((step, why)) => Err(format!("step {step} failed: {why}")),
+        None if !visual_failures.is_empty() => Err(format!(
+            "{} differ{} from {} baseline{}: {}. Look at the diffs in {}; if the change is intended, `forge ui accept {}` makes these the baselines (then run again)",
+            if visual_failures.len() == 1 { "1 screenshot".to_string() } else { format!("{} screenshots", visual_failures.len()) },
+            if visual_failures.len() == 1 { "s" } else { "" },
+            if visual_failures.len() == 1 { "its" } else { "their" },
+            if visual_failures.len() == 1 { "" } else { "s" },
+            visual_failures.join(", "),
+            out_dir.join("visual").display(),
+            out_dir.display()
+        )),
+        None => Ok(()),
+    }
+}
+
+/// `forge ui accept`: make a run's screenshots the scenario's baselines.
+/// The scenario comes from `--scenario`, else from the run's evidence.json.
+pub fn accept(
+    run_dir: &Path,
+    scenario: Option<&Path>,
+    only: &[String],
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let scenario = match scenario {
+        Some(s) => s.to_path_buf(),
+        None => scenario_of(run_dir)?,
+    };
+    if !scenario.is_file() {
+        return Err(format!("{}: no such test file", scenario.display()));
+    }
+    let written = baseline::accept(&scenario, run_dir, only)?;
+    for path in &written {
+        writeln!(out, "Baseline: {}", path.display()).map_err(err)?;
+    }
+    report::set_data(serde_json::json!({
+        "scenario": scenario.display().to_string(),
+        "baselines": written,
+    }));
+    writeln!(
+        out,
+        "{} baseline{} updated. Commit {} with the change that caused {}.",
+        written.len(),
+        if written.len() == 1 { "" } else { "s" },
+        baseline::dir_for(&scenario).display(),
+        if written.len() == 1 { "it" } else { "them" }
+    )
+    .map_err(err)
+}
+
+/// The scenario a run bundle names (`scenario`, relative to its app).
+fn scenario_of(run_dir: &Path) -> Result<PathBuf, String> {
+    let evidence = run_dir.join("evidence.json");
+    let text = std::fs::read_to_string(&evidence).map_err(|_| {
+        format!(
+            "{} has no evidence.json (the run was outside an app): pass --scenario <test file>",
+            run_dir.display()
+        )
+    })?;
+    let doc: serde_json::Value =
+        serde_json::from_str(&text).map_err(|e| format!("{}: {e}", evidence.display()))?;
+    let rel = doc["scenario"]
+        .as_str()
+        .ok_or_else(|| format!("{} names no scenario: pass --scenario", evidence.display()))?;
+    let app = crate::evidence::app_of(&evidence).ok_or_else(|| {
+        format!(
+            "{} is not inside an app: pass --scenario",
+            run_dir.display()
+        )
+    })?;
+    Ok(app.join(rel))
 }
 
 #[cfg(test)]
@@ -528,6 +653,42 @@ mod tests {
             Team::resolve(Some("paid"), Some(TeamKind::Free), dir.path()),
             Ok(Team::Paid)
         );
+    }
+
+    #[test]
+    fn accept_finds_the_scenario_from_the_bundle() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path().join("Tipster");
+        let run = app.join(".forge/runs/2026-11-08T10-00-00-ui-run");
+        std::fs::create_dir_all(&run).unwrap();
+        std::fs::create_dir_all(app.join("uitests")).unwrap();
+        std::fs::write(app.join("forge.toml"), "").unwrap();
+        std::fs::write(app.join("uitests/tip.toml"), "").unwrap();
+        let png = forge_uitest::visual::encode_png(&forge_uitest::visual::Image::new(
+            2,
+            3,
+            [0, 0, 0, 255],
+        ))
+        .unwrap();
+        std::fs::write(run.join("form.png"), &png).unwrap();
+        std::fs::write(run.join("failure-step4.png"), &png).unwrap();
+
+        let mut out = Vec::new();
+        let missing = accept(&run, None, &[], &mut out).unwrap_err();
+        assert!(missing.contains("--scenario"), "{missing}");
+
+        std::fs::write(
+            run.join("evidence.json"),
+            r#"{"scenario": "uitests/tip.toml"}"#,
+        )
+        .unwrap();
+        accept(&run, None, &[], &mut out).unwrap();
+        assert!(app.join("uitests/baselines/tip/form@2x3.png").is_file());
+        assert!(!app
+            .join("uitests/baselines/tip/failure-step4@2x3.png")
+            .exists());
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("1 baseline updated"), "{text}");
     }
 
     #[test]

@@ -224,6 +224,22 @@ enum UiCommands {
         /// taps that send, post, pay or delete ask each time
         #[arg(long)]
         any_app: bool,
+        /// Screenshots against their baselines (uitests/baselines/<test>/):
+        /// `check` fails the run when one changed, `record` makes every
+        /// screenshot the baseline, `off` skips it (docs/visual-regression.md)
+        #[arg(long, value_name = "MODE", default_value = "check", value_parser = ["check", "record", "off"])]
+        visual: String,
+    },
+    /// Make a run's screenshots the baselines its test is compared with
+    Accept {
+        /// The run's folder (forge ui run prints it; <app>/.forge/runs/<id>-ui-run)
+        run: PathBuf,
+        /// The test file (default: the one the run's evidence.json names)
+        #[arg(long, value_name = "FILE")]
+        scenario: Option<PathBuf>,
+        /// Only this screenshot (its name without .png); repeatable
+        #[arg(long, value_name = "NAME")]
+        only: Vec<String>,
     },
 }
 
@@ -501,6 +517,9 @@ fn main() {
         Commands::Ui {
             cmd: UiCommands::Run { .. },
         } => "test",
+        Commands::Ui {
+            cmd: UiCommands::Accept { .. },
+        } => "forge",
         // No DDI, no runner, WebDriverAgent not answering.
         Commands::Ui { .. } => "device",
         _ => "forge",
@@ -571,6 +590,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
+            UiCommands::Accept { .. } => "ui accept",
         },
     };
     sub.into()
@@ -756,7 +776,23 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 }
                 UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
-                UiCommands::Run { udid, file, out: dir, any_app } => ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, &mut out),
+                UiCommands::Run {
+                    udid,
+                    file,
+                    out: dir,
+                    any_app,
+                    visual,
+                } => {
+                    let visual = match visual.as_str() {
+                        "record" => Some(forge_uitest::baseline::Mode::Record),
+                        "off" => None,
+                        _ => Some(forge_uitest::baseline::Mode::Check),
+                    };
+                    ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, &mut out)
+                }
+                UiCommands::Accept { run, scenario, only } => {
+                    ui::accept(&run, scenario.as_deref(), &only, &mut out)
+                }
             }
         }
         Commands::Device { cmd } => device_command(cmd, cli.json),

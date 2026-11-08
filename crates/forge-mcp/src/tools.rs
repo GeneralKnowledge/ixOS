@@ -244,13 +244,25 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_run_ui_test",
         title: "Run a UI test file",
-        description: "Runs a UI test file (TOML steps: launch, tap, type, expect, screenshot, tree; format and an example in forge://docs/forge-ui-testing, and the starter's uitests/smoke.toml) against the app on the phone. On failure: the failed step, what was on screen, the tree, and a screenshot.",
+        description: "Runs a UI test file (TOML steps: launch, tap, type, expect, screenshot, tree; format and an example in forge://docs/forge-ui-testing, and the starter's uitests/smoke.toml) against the app on the phone. On failure: the failed step, what was on screen, the tree, and a screenshot. Each screenshot is compared with its approved baseline (uitests/baselines/): data.visual.screens says match, new (no baseline yet) or changed, with the changed areas, the elements there, tree changes (removed/added/label/value/enabled/moved) and new accessibility findings; a change fails the run and the diff image comes back. If the change is what you meant, call forge_accept_screenshots with data.out; if not, fix the app.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
         schema: || schema(json!({
             "file": {"type": "string", "description": "The test file, relative to the root (e.g. MyApp/uitests/smoke.toml)"}
         }), &["file"]),
+    },
+    Spec {
+        name: "forge_accept_screenshots",
+        title: "Approve a run's screenshots as baselines",
+        description: "Makes the screenshots of a forge_run_ui_test run (its data.out folder) the baselines its test is compared with, in uitests/baselines/<test>/ (PNG plus accessibility tree, committed with the app). Only after looking at them: for a new screen, that it is right; for a changed one, that the change is the one you meant. Then run the test again so the evidence passes.",
+        tier: Tier::Project,
+        device: false,
+        needs_ui: true,
+        schema: || schema(json!({
+            "run": {"type": "string", "description": "The run folder, relative to the root (e.g. Tipster/.forge/runs/2026-11-08T10-00-00-ui-run)"},
+            "only": {"type": "array", "items": {"type": "string"}, "description": "Only these screenshots (names without .png)"}
+        }), &["run"]),
     },
 ];
 
@@ -700,7 +712,41 @@ impl crate::Server {
                     .join(".forge")
                     .join("runs")
                     .join(format!("{}-ui-run", crate::journal::timestamp()));
-                self.ui_run(&app, &file, &out, cancel).await
+                self.ui_run(&app, &file, &out, true, cancel).await
+            }
+            "forge_accept_screenshots" => {
+                let app = app_or_fail!();
+                let Some(run) = args.str("run") else {
+                    return Answer::of(refusal(name, "usage", "`run` is required", None));
+                };
+                let run = match project::inside(&root, run) {
+                    Ok(r) if r.join("evidence.json").is_file() => r,
+                    Ok(r) => {
+                        return Answer::of(refusal(
+                            name,
+                            "usage",
+                            &format!(
+                                "{} is not a forge_run_ui_test run folder (no evidence.json)",
+                                rel(&root, &r)
+                            ),
+                            None,
+                        ))
+                    }
+                    Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
+                };
+                let mut inv = Invocation::new(&["ui", "accept"], &app.dir, secs(MIN), "forge")
+                    .arg(run.display().to_string());
+                for only in args
+                    .0
+                    .get("only")
+                    .and_then(Value::as_array)
+                    .into_iter()
+                    .flatten()
+                    .filter_map(Value::as_str)
+                {
+                    inv = inv.arg("--only").arg(only);
+                }
+                Answer::of(self.forge(inv, cancel).await)
             }
             other => Answer::of(refusal(
                 other,
@@ -851,7 +897,8 @@ impl crate::Server {
                 None,
             ));
         }
-        let mut answer = self.ui_run(app, &file, &out, cancel).await;
+        // One action is not a scenario: nothing to compare with.
+        let mut answer = self.ui_run(app, &file, &out, false, cancel).await;
         if answer.image.is_none() && steps.iter().any(|(k, _)| *k == "screenshot") {
             let shot = out.join("after.png");
             answer.image = shot.is_file().then_some(shot);
@@ -864,19 +911,30 @@ impl crate::Server {
         app: &App,
         file: &Path,
         out: &Path,
+        visual: bool,
         cancel: &tokio_util::sync::CancellationToken,
     ) -> Answer {
         let inv = self.with_udid(
             Invocation::new(&["ui", "run"], &app.dir, secs(10 * MIN), "test")
                 .arg(file.display().to_string())
                 .arg("--out")
-                .arg(out.display().to_string()),
+                .arg(out.display().to_string())
+                .arg("--visual")
+                .arg(if visual { "check" } else { "off" }),
         );
         let result = self.forge(inv, cancel).await;
-        // On failure, show the screen at the failed step.
+        // On failure, show the screen at the failed step; when only the
+        // pictures changed, the first diff (changes in red, areas outlined).
         let image = result["data"]["failed_step"]["step"]
             .as_u64()
             .map(|n| out.join(format!("failure-step{n}.png")))
+            .or_else(|| {
+                result["data"]["visual"]["screens"]
+                    .as_array()?
+                    .iter()
+                    .find_map(|s| s["diff"].as_str())
+                    .map(|d| out.join(d))
+            })
             .filter(|p| p.is_file());
         Answer {
             result,
