@@ -342,6 +342,13 @@ None of these has run; each says what it proves.
 
 The runbook for 1 to 3 is in project files at `m6/m61-phone-checks.md`.
 
+Found in the first sitting (Cati, 2026-11-08, forge at 9c8488a) and what became of it:
+
+- Check 3 passed: a Rust panic in a UI run gave the failed step a symbolicated crash (`rust_panic`, `crash_test.rs:24`) and `forge_diagnose` layer `rust`. HangTracer filled the 5000-line log and pushed the panic's own line out; HangTracer is now left out like WebDriverAgent's lines (M6.4's PR).
+- When the app had died, the failed step listed the home screen's icons and notification counts. A failure with the home screen in front now records neither its tree nor its screenshot, only a note saying why (M6.4's PR).
+- Crash reports are pulled only when a step fails or the app closes: on a passing run `crash_reports` is `not_checked`, which means not looked, never "no crash". By design.
+- Open: a `kind` scroll in a CollectionView took 8 to 11 s each; `forge_diagnose` called while another tool is still running answers about the last call that finished, not the running one.
+
 ## Order and phone time
 
 ```

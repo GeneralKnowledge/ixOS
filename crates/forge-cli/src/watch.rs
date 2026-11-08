@@ -51,11 +51,12 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
 
 /// Lines kept from one run; the oldest go first.
 const MAX_LINES: usize = 5000;
-/// Libraries that log inside the app's process for the test runner, not
-/// for the app: WebDriverAgent's attribute queries go through
-/// XCTAutomationSupport, thousands of lines a run on Cati (2026-11-08),
-/// which pushed the app's own lines out of the kept log.
-const RUNNER_LIBRARIES: &[&str] = &["XCTAutomationSupport"];
+/// Libraries that log inside the app's process for the test runner or the
+/// system, not for the app. On Cati (2026-11-08) WebDriverAgent's
+/// attribute queries (XCTAutomationSupport, 7689 lines in a 54 s run) and
+/// HangTracer (6738 lines in a crash run) pushed the app's own lines,
+/// including a Rust panic, out of the kept log.
+const RUNNER_LIBRARIES: &[&str] = &["XCTAutomationSupport", "HangTracer"];
 
 /// The library of a syslog relay line, `UIKitCore` in
 /// `GoodDogXtool(UIKitCore)[9] <Notice>: ...`.
@@ -220,7 +221,8 @@ impl Watch {
             // More than MAX_LINES arrived: the oldest were dropped, so the
             // log starts part-way through the run.
             "log_lines_dropped": dropped,
-            // WebDriverAgent's lines in the app's process (XCTAutomationSupport).
+            // Lines in the app's process from the test runner and the system
+            // (RUNNER_LIBRARIES), left out of device.log.
             "runner_lines_skipped": self.runner_lines.load(Ordering::Relaxed),
             "log_tail": tail,
             "crash_reports": crash_status,

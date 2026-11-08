@@ -732,6 +732,10 @@ fn mismatch(
     Ok(mismatch)
 }
 
+/// What a failure records instead of the home screen.
+pub const HOME_SCREEN: &str =
+    "the app is not in front (the home screen is): its tree and screenshot are not recorded, since they show the person's apps and notifications";
+
 /// Saves what was on screen when a step failed. Best effort: the failure
 /// itself is the report.
 fn record_failure(
@@ -741,6 +745,14 @@ fn record_failure(
     out: &mut dyn Write,
     report: &mut Report,
 ) {
+    // The app has gone and the home screen is in front: its tree and
+    // screenshot hold the person's apps and notification counts, which are
+    // theirs, not the test's. Say so instead of recording them.
+    if driver.foreground().ok().flatten().as_deref() == Some(crate::policy::SPRINGBOARD) {
+        report.on_screen = vec![HOME_SCREEN.to_owned()];
+        let _ = writeln!(out, "        {HOME_SCREEN}");
+        return;
+    }
     match driver.tree() {
         Ok(tree) => {
             report.on_screen = tree.on_screen(15);
@@ -830,6 +842,31 @@ mod tests {
         let mut driver = FakeDriver::new(screen);
         driver.front = Some("a".into());
         driver
+    }
+
+    #[test]
+    fn a_failure_on_the_home_screen_records_nothing_of_it() {
+        let script = Script::parse(
+            r#"
+            name = "gone"
+            app = "a"
+            timeout = 0
+            [[step]]
+            tap = { id = "library.nope" }
+        "#,
+        )
+        .unwrap();
+        let mut driver = FakeDriver::new(node("Icon", "Mail", "Mail, 3 new messages"));
+        driver.front = Some(crate::policy::SPRINGBOARD.into());
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut out).unwrap();
+        assert!(report.failed.is_some());
+        assert_eq!(report.on_screen, [HOME_SCREEN]);
+        assert!(report.tree_file.is_none());
+        assert!(!dir.path().join("failure-step1.png").exists());
+        assert!(!dir.path().join("failure-step1-tree.txt").exists());
+        assert!(!String::from_utf8(out).unwrap().contains("3 new messages"));
     }
 
     const M0: &str = r#"
