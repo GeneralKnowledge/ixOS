@@ -28,7 +28,7 @@ serde_json = { workspace = true }
 toml = "1.1"
 thiserror = { workspace = true }
 # Evidence bundles record a SHA-256 of each file they list.
-sha2 = "0.10"
+sha2 = "0.11"
 
 [target.'cfg(unix)'.dependencies]
 # `--json`: points fd 1 at stderr so only the result reaches stdout.

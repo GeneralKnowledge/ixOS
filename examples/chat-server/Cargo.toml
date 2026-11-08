@@ -14,7 +14,7 @@ futures-util = { version = "0.3", default-features = false }
 getrandom = "0.4"
 serde = { workspace = true }
 # Attachments are stored under the SHA-256 of their bytes.
-sha2 = "0.10"
+sha2 = "0.11"
 serde_json = { workspace = true }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "time"] }
 
@@ -22,5 +22,5 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync",
 tempfile = "3.14"
 chat-core = { workspace = true, features = ["ureq"] }
 # HTTPS end-to-end test: a TLS front for the mock server with a throwaway CA.
-rcgen = { version = "0.13", default-features = false, features = ["ring", "pem"] }
+rcgen = { version = "0.14", default-features = false, features = ["ring", "pem"] }
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
