@@ -88,5 +88,13 @@ background = 3
 [[step]]
 tap = { id = "tab.today" }
 
+# Each tab keeps its own navigation, so Today still shows the exercise
+# recorded above, through the trip to the background.
+[[step]]
+expect = { id = "exercise.done" }
+
+[[step]]
+tap = { id = "BackButton" }
+
 [[step]]
 expect = { id = "today.progress" }
