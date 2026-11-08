@@ -1,0 +1,189 @@
+# Forge M6: an autonomous, evidence-driven dev loop
+
+Status: plan, 2026-11-08. Nothing in this page is built yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+
+The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
+
+## The short answer
+
+- **Most of the loop already exists and has already run unattended twice.** Tipster (M0, 2026-11-07) and Murmur (M2, 2026-11-08) were built, installed, inspected, tested and fixed by an agent through `forge mcp`, and both found real problems from device evidence (keyboard covering a total, a password sheet covering the app, 44×18 pt tap targets, taps doing nothing in pushed screens) and fixed them ([forge-mcp.md](forge-mcp.md#m2-run-murmur)). M6 is not starting from zero.
+- **What those runs didn't have is what landed since:** exploration (#109, #119), visual regression (#110), crash symbolication (#111, #114), the any-app policy (#107), unlabelled-control locators (#120) and `forge verify`. They work as separate commands. Several of them are not reachable from `forge mcp`, none of them feeds the others, and nothing joins their output into one record of a run.
+- **So M6 is mostly wiring, plus four real additions:** exploration aimed at what changed, failure correlation (action, screen, logs, crash, changed files), appearance variants (dark mode is not settable today), and a run record that says what was changed, what ran, what didn't, and what a person accepted.
+- **Good Dog isn't on the phone yet.** GD1 is PR #121 (Linux-checked; SwiftUI only syntax-checked so far). M6's demonstration starts after GD1's own phone run, and its task should come from Good Dog's next milestone rather than be invented for M6.
+- **Plan:** six milestones. A baseline run with today's tools comes first, so the gap list is measured rather than guessed. Infrastructure is proven on Pocket Library and Device Lab, which are already on the phone, so it doesn't wait for Good Dog.
+
+## What exists today, verified
+
+"Linux" means automated tests that ran in CI. "iPhone" means a run on Cati whose result someone saw. "Person" means Reuben confirmed it himself. A merged PR is none of these.
+
+| Capability | Where | Linux | iPhone | Person |
+|---|---|---|---|---|
+| Rust logic, UniFFI, `forge check swift` twin, `requirements.toml` | `forge-cli` `evidence.rs`, `swift_check.rs` | Yes | n/a | n/a |
+| Build, sign, install (`forge build ios`, `forge run ios --json`), stall detection after `[Installing] 100%` | `ios_builder.rs`, xtool fork | Yes (recorded output) | Yes (Tipster, Murmur, Pocket Library) | Yes |
+| Launch, tree, screenshot, tap and type by identifier (`forge ui run`, WDA) | `forge-uitest` | Yes | Yes (Pocket Library m0 11/11) | Yes |
+| Persistent UI session (`forge ui start`) | `ui_session.rs`, `session.rs` | Yes | Partial: worked, not confirmed by a person | No |
+| Unlabelled-control locators (`kind`, `index`, `near`) | `forge-uitest` (#120) | Yes | Partial: `kind` only; needs the rerun | No |
+| Exploration (`forge ui explore`), test-data mode, keyboard cut | `explore.rs` (#109, #119) | Yes | Partial: two walks, the test-data and keyboard fixes not rerun | No |
+| Any-app policy and commit gate | `policy.rs` (#107) | Yes | Yes | Yes (watched) |
+| Visual regression (baselines, tree diff, `forge ui accept`) | `visual.rs`, `baseline.rs` (#110) | Yes | Partial: match and a real change reported, not confirmed by a person | No |
+| Crash pull and symbolication (Swift and Rust frames) | `forge-crash`, `forge device crashes --pull` (#111, #114) | Yes | Yes (Device Lab) | Yes (Reuben tapped both crashes) |
+| Live device logs (`forge device logs --for`) | `forge-device` | Yes | Yes | n/a |
+| Evidence bundles `forge.evidence/1` (`linux-twin`, `device`) and `forge verify` | `evidence.rs`, `verify.rs` | Yes | Device bundles from `forge ui run`: yes | No |
+| `forge mcp`: 18 tools, run journal `forge.journal/1`, install allowance | `forge-mcp` | Yes | Yes (Tipster, Murmur) | Yes (Tipster, Murmur) |
+| Staged agent runs (`claude -p --resume`, phone stages of 15–20 min) | `scripts/agent-runs/murmur/` | n/a | Yes (Murmur 7/7 stages) | Yes |
+
+Two docs are behind the code: [dev-loop.md](dev-loop.md)'s status table (last checked 2026-11-07, says UI tests don't pass on the phone) and `forge_diagnose`'s own description. M6.4 refreshes them.
+
+## Gaps against the acceptance criteria
+
+| # | Criterion | Today | Gap |
+|---|---|---|---|
+| 1–3 | Task, inspect, plan, implement in Rust and SwiftUI | Works (Murmur's change stages). `forge_inspect_app`, `forge://conventions`, app `AGENTS.md` | Good Dog must be on the phone first (GD1). Nothing for M6 to build |
+| 4 | Linux checks | `forge_check` (Rust tests, twin) | Views are only type-checked by xtool or macOS CI. The agent runs on the laptop, where `forge_build_ios` type-checks them, so this isn't blocking. `forge_check` reports no test counts (seen in Murmur) |
+| 5 | Build and install | `forge_build_ios`, `forge_install_device` | Free team: 3 slots and no way to see them (`forge device apps` not built). Good Dog needs a slot |
+| 6 | Launch and inspect | `forge_launch_app` (with `text_size`), `forge_inspect_ui`, `forge_screenshot` | Dark mode can't be set. No app-state view (`forge_app_state` waits on the devtools pairing, never run on the phone) |
+| 7 | Scenarios and exploration | `forge_run_ui_test`; `forge ui explore` from the shell only | **No `forge_ui_explore` tool.** Exploration walks everything in shuffled order, with no idea what changed. No scrolling below the fold. A repro file isn't linked to a requirement. Test data is emptied on every launch, so a device test can't check that data survives a relaunch (Good Dog pain point 13) |
+| 8 | Visual and accessibility | Baselines per scenario; tree audit (no label, duplicate id, missing id) | No baselines per appearance or text size. Explore screenshots aren't compared with anything. The audit has no small-target or truncation checks. `forge_ui_audit` not built |
+| 9–10 | Discover, diagnose, repair | Murmur did this by reading screenshots and trees | **`forge_diagnose` is "the last failure and its log tail".** A crash in a UI run or a walk doesn't pull the crash report; logs aren't captured around the failing action; nothing names the changed files |
+| 11 | Rerun and verify on the device | `forge_run_ui_test` again, `forge_verify` | Explore repros can't be promoted into the app's tests. `forge verify` only knows twin and device verdicts |
+| 12–13 | One evidence record; pass, fail, skip, human kept apart | Per-command bundles plus the MCP journal | **No run-level record.** Explore writes `explore.json`, not `forge.evidence/1`. Device bundles have no logs or crashes (`device.log` is listed as proposed). There is no `human` kind, so a person's acceptance can't be recorded next to the machine verdicts. Nothing lists the checks that weren't run |
+| 14 | Repeatable | The Murmur run script | Run scripts are per-app copies. No generic "M6 run" with a task file |
+
+## Principles for the plan
+
+- **No new orchestrator.** The agent is the orchestrator; it already chooses the next tool. Forge's job is to give each tool a structured answer that makes the next choice obvious (what failed, where, what changed, what's untested), and to refuse what's unsafe. A fixed pipeline command would cut against the brief.
+- **Extend the bundle, don't invent a format.** Explore and the run record become `forge.evidence/1` bundles with new optional fields. Readers already ignore fields they don't know, so this needs no version change.
+- **Few new tools.** Five MCP tools at most across M6 (explore, appearance, audit, record acceptance, run report), each over an existing CLI command or a flag on one.
+- **Safety stays where it is.** Exploration keeps its floor (external words, destructive words, secure fields, keyboard, system services) and test-data mode. M6 adds no allowance. Installs still need `--allow install`. Destructive actions still need `--allow-destructive` on test data, which an MCP agent can't grant itself.
+
+## Milestones
+
+Infrastructure (M6.1–M6.4) and the Good Dog work (M6.0, M6.5) are separate PRs. Each infrastructure milestone is proven on an app already on the phone, so none of it waits for Good Dog.
+
+### M6.0 Baseline run with today's tools
+
+**What:** after GD1's own phone run (owned by the Good Dog thread), one staged agent session on Good Dog with a small real task, using only what's on `main`. The Murmur pattern: build stages without the phone, short phone stages, one resumed session. The agent is told to use explore from the shell and to note every time it had to guess.
+
+**Why first:** it shows the demonstration early and turns the gap table above into measured friction. Anything the run doesn't hit drops down the list.
+
+**Relies on:** `forge mcp`, `forge ui explore`, `scripts/agent-runs/murmur/` as the template.
+
+**Tested by:** the run itself, with the journal and bundles kept.
+
+**iPhone:** yes, about 30 minutes in one sitting, after GD1 is installed.
+
+**Output:** a short results section in this page; no Forge code.
+
+### M6.1 Diagnostics in the loop
+
+**What:**
+
+- `forge_ui_explore`: an MCP tool over `forge --json ui explore`, always on test data, with the same refusals as the CLI.
+- Explore writes a `forge.evidence/1` bundle (`kind = "device"`, `command = "ui explore"`), with each issue linked to its step, screen and screenshot, and its repro file listed as an artifact.
+- When a UI run step or an explore action closes the app, Forge pulls the new crash report for that app, symbolicates it (`forge-crash`), and attaches it to that step: `kind`, `culprit` file and line, and `build.status`.
+- Device logs for the run window: `forge ui run` and `explore` capture the app's own log lines while they run and store `device.log` (the artifact already proposed in [evidence.md](evidence.md)). Only the app's process, and app output is never copied into the journal.
+- `forge_diagnose` correlates: the failed step or action, the screen id and its tree, log lines from a few seconds before it, the crash summary, and `git diff --stat` of the app since the bundle's `build.commit`.
+- `forge device apps`: installed developer apps with their profile expiry, so the agent knows whether an install will need a slot before it tries (Good Dog pain point 15). Removing an app stays a person's step.
+
+**Relies on:** `forge-crash`, `forge device logs`, `forge device crashes`, `explore.rs` `app_closed`, `evidence.rs`.
+
+**Tested by:** Linux tests with recorded WDA trees and `.ips` fixtures (the existing fixture dSYM). A fake driver that "crashes" after a given action checks the correlation end to end.
+
+**iPhone:** Device Lab's Crash Test buttons in a UI scenario: the bundle must name the step, `crash_test.rs:24` and the log lines before it. Then one explore walk on Pocket Library test data writing a bundle. Proves correlation on real reports and real timing.
+
+### M6.2 Exploration aimed at the change
+
+**What:**
+
+- `--focus`: start from the screens and controls the task touched. Forge reads the changed files (`git diff` since a commit) for accessibility identifiers and finds the screens holding them in earlier walks' maps. The walk goes there first, by the shortest known path.
+- A coverage map kept between walks (`.forge/explore-map.json`: screens, controls tried, last result, missing labels). New and changed screens, untried controls and controls that failed before come first. Screens unchanged since the last clean walk are skipped unless asked.
+- Scroll to controls below the fold (named in forge-explore.md as not built).
+- `forge ui explore --promote <issue>` copies a repro into the app's `uitests/` with a name the agent gives it. The agent then names it in `requirements.toml`, which keeps requirements in the agent's hands.
+- A launch flag that keeps test data across a relaunch (`-ForgeUITestKeepData`), so a device test can check persistence. This is the app-template helper from Good Dog pain point 5, and the second use (Pocket Library and Good Dog) justifies it.
+
+**Relies on:** the explorer's screen fingerprint and replay, `forge ui run`.
+
+**Tested by:** Linux tests on recorded trees: same seed and map give the same walk, a changed identifier puts its screen first, and an unchanged screen is skipped.
+
+**iPhone:** Pocket Library: one full walk to build the map, then a change to one screen, then `--focus` reaches that screen in its first few actions and skips the rest. This is also the determinism check still owed from #109 and #119. Proves focus on real trees.
+
+### M6.3 Appearance and accessibility checks
+
+**What:**
+
+- Dark and light at launch: a `-ForgeAppearance dark|light` launch argument that the template's app root honours with `.preferredColorScheme`. This changes app code, so it goes in the template and in each app. `forge_launch_app` gets `appearance` next to `text_size`.
+- Baselines per variant: `<name>@<W>x<H>[-dark][-xxxl].png`, so a scenario can be run in four variants without the baselines colliding.
+- Two more tree audit findings: tap targets under 44×44 pt (Murmur's agent found these by eye) and text clipped at the largest size (a label's frame narrower than its neighbour's or than the screen, measured from the tree, not pixels).
+- `forge_ui_audit`: the current screen's audit as a tool (planned in forge-mcp.md since M0).
+- Explore compares each screen with its last clean walk's screenshot and reports `changed` as information, not an issue. The brief is right that a difference is a change, not a defect, so the agent decides.
+
+**Relies on:** `visual.rs`, `baseline.rs`, `tree.rs` audit, `forge_launch_app`'s `text_size`.
+
+**Tested by:** Linux tests with recorded trees and PNG pairs.
+
+**iPhone:** Pocket Library in dark mode at the largest text size: screenshots differ from light mode as expected, and the new audit findings are checked against what a person sees. A person confirms which findings are real.
+
+### M6.4 The run record
+
+**What:**
+
+- `forge verify --run <start>` reads every bundle and the MCP journal since a start mark and writes one `forge.evidence/1` bundle of `kind = "run"`. It holds: app and repository, the commits made during the run and the dirty state at the end, builds and installs (from the journal), device and OS, scenarios and walks with their verdicts, screenshots and audit findings, crashes and logs, the failures and the commits that followed them (the repairs), and a `not_run` list with a reason for each check that was expected and didn't run. It also writes `report.md`, which is what a person reads.
+- A `human` verdict: `forge verify --accept GD-3 --note "…"` records a person's acceptance as its own bundle (`kind = "human"`), refused when stdin isn't a terminal and absent from MCP, so no agent can record it. `forge verify` shows twin, device and person columns.
+- `forge_verify` gains `run: true` for the report.
+- Refresh dev-loop.md's status table and the M6 page's results.
+
+**Relies on:** `verify.rs`, `evidence.rs`, the journal.
+
+**Tested by:** Linux tests with recorded bundles and journals: a skipped check shows as not run, never as passed; a device verdict never fills the person column; a twin pass never fills the device column.
+
+**iPhone:** none of its own; the M6.5 run produces the first real record.
+
+### M6.5 The Good Dog demonstration
+
+**What:** an agent session (staged, on the laptop, through Remote Control) takes a real Good Dog task and runs the loop with everything above, ending with a run record. Reuben then reviews the app on the phone and records his acceptance.
+
+**The task** is chosen after GD1 is on the phone and agreed with the Good Dog thread, from Good Dog's own next milestone, so it advances GD instead of running beside it. Candidates that cross Rust, storage, SwiftUI, interaction and accessibility without a new capability spike:
+
+- The plain-English progress section on My Dog with weekly history (the data half of GD3, before the charts).
+- History export for a trainer as CSV through the share sheet (GD3).
+- Reminder preferences stored in Rust and shown in settings, without the notification delivery (the Rust half of GD2).
+
+Not a planted bug. If the run finds no genuine problem, the record says so and M6 isn't complete on that point; a second task follows.
+
+**Passes when** the brief's acceptance criteria 1–14 are met, checked against the run record, with Reuben's acceptance recorded as `human`.
+
+**iPhone:** yes, staged phone sittings of 15–20 minutes, planned with the iPhone session thread.
+
+### M6.6 Repeat
+
+**What:** a second run in a fresh agent session, on a different Good Dog task, from a generic run script (`scripts/agent-runs/m6/` with a task file, replacing the per-app copies). Ledger rows for the tools M6 touched are updated from what actually ran.
+
+**Passes when** the second run completes with no Forge change between stages. Any Forge fix needed counts against repeatability and is recorded.
+
+**iPhone:** yes, one more set of staged sittings.
+
+## Order and phone time
+
+```
+M6.1 ─┬─ M6.2 ─┐
+      └─ M6.3 ─┼─ M6.4 ── M6.5 ── M6.6
+GD1 phone run ── M6.0 ─┘
+```
+
+M6.1 starts now. M6.0 waits only for GD1 on the phone. M6.2 and M6.3 can run side by side. Phone checks for M6.1–M6.3 go into one coordinated sitting through the iPhone session thread, about 30 minutes, together with the reruns already owed for #119 and #120.
+
+## Risks
+
+- **Free team slots.** Cati has 3 app slots. Good Dog, Pocket Library and the agent sandbox may be all of them, and Device Lab's crash check needs one too. Each install that needs a slot is Reuben's call (decision 3).
+- **Good Dog's pace.** If GD1 slips or needs a big fix on the phone, M6.5 waits. M6.1–M6.4 don't.
+- **No genuine defect.** The brief forbids planting one. The Murmur and Tipster runs each found several, so the odds are good, but the plan allows for a second task.
+- **The agent's judgement.** Focused exploration and correlation make good choices easier; they don't guarantee them. The run record is how a person sees what the agent decided and why.
+- **Scope.** The temptation is a pipeline command. The principle above says no: if M6.0 shows the agent can't sequence the tools, that is evidence for better results and prompts first.
+
+## Open decisions
+
+1. **Where the agent runs.** Recommended: on the laptop through Remote Control, as Murmur did, so SwiftUI errors come from the xtool build in a minute. A cloud agent would see them only through macOS CI, about 35 minutes later.
+2. **The demo task.** Recommended: taken from Good Dog's next milestone and agreed with the Good Dog thread after GD1 is on the phone, rather than an M6-only feature.
+3. **Phone slots.** Good Dog needs a slot of its own. Recommended: Good Dog keeps its own bundle id (`org.forgemobile.gooddog` in #121) and the agent sandbox slot is freed for it during M6, since agent runs on Good Dog don't need the sandbox.
+4. **Human acceptance as a command.** Recommended: `forge verify --accept` that only a person at a terminal can run, so acceptance sits in the same record as the machine verdicts.
+5. **Start M6.1 before GD1 reaches the phone.** Recommended: yes. It is proven on Pocket Library and Device Lab and doesn't touch Good Dog.
