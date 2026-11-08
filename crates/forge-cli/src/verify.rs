@@ -3,9 +3,13 @@
 //! Reads `<app>/requirements.toml` and the bundles in `<app>/.forge/runs/`
 //! (docs/evidence.md), and prints one row per requirement: its newest twin
 //! verdict (from `forge check swift`), its newest device verdict (from
-//! `forge ui run`), and whether each was recorded for the app's files as
+//! `forge ui run`), its newest acceptance by a person (`forge verify
+//! --accept`, M6.4), and whether each was recorded for the app's files as
 //! they are now. It is the agent's stop condition and the page a person
 //! reviews. It runs nothing itself.
+//!
+//! The three columns never fill each other: a twin pass is never a device
+//! result, and a device pass is never a person's acceptance.
 
 use std::fs;
 use std::path::Path;
@@ -41,11 +45,11 @@ impl Proof {
     }
 
     /// Passed, for the code as it is now.
-    fn holds(&self) -> bool {
+    pub(crate) fn holds(&self) -> bool {
         self.verdict == "passed" && self.current == Some(true)
     }
 
-    fn json(&self) -> Value {
+    pub(crate) fn json(&self) -> Value {
         json!({
             "verdict": self.verdict,
             "run": self.run,
@@ -72,6 +76,9 @@ pub struct Row {
     pub twin: Option<Proof>,
     /// `None` when the requirement names no device scenario.
     pub device: Option<Proof>,
+    /// A person's acceptance (`kind = "human"` bundles only). Shown, not
+    /// required by the status: only a person can add it.
+    pub person: Proof,
 }
 
 /// Where a requirement stands.
@@ -88,7 +95,7 @@ pub enum Status {
 }
 
 impl Status {
-    fn as_str(self) -> &'static str {
+    pub(crate) fn as_str(self) -> &'static str {
         match self {
             Status::Proven => "proven",
             Status::Open => "open",
@@ -179,6 +186,7 @@ pub fn rows(reqs: &[Requirement], bundles: &[Value], tree_now: Option<&str>) -> 
             statement: r.statement.clone(),
             twin: (!r.twin.is_empty()).then(|| newest("linux-twin", &r.id, "twin")),
             device: (!r.device.is_empty()).then(|| newest("device", &r.id, "device")),
+            person: newest("human", &r.id, "person"),
         })
         .collect()
 }
@@ -186,15 +194,16 @@ pub fn rows(reqs: &[Requirement], bundles: &[Value], tree_now: Option<&str>) -> 
 pub fn render(rows: &[Row], twin_only: bool) -> String {
     let cell = |p: &Option<Proof>| p.as_ref().map_or("-".to_string(), Proof::cell);
     let mut out = format!(
-        "  {:<8} {:<18} {:<18} {:<8} {}\n",
-        "ID", "Linux twin", "iPhone", "Status", "Requirement"
+        "  {:<8} {:<18} {:<18} {:<18} {:<8} {}\n",
+        "ID", "Linux twin", "iPhone", "Person", "Status", "Requirement"
     );
     for r in rows {
         out.push_str(&format!(
-            "  {:<8} {:<18} {:<18} {:<8} {}\n",
+            "  {:<8} {:<18} {:<18} {:<18} {:<8} {}\n",
             r.id,
             cell(&r.twin),
             cell(&r.device),
+            r.person.cell(),
             match r.status(twin_only) {
                 Status::NotHere => "not here",
                 st => st.as_str(),
@@ -242,6 +251,7 @@ pub fn verify(
             "statement": r.statement,
             "twin": r.twin.as_ref().map(Proof::json),
             "device": r.device.as_ref().map(Proof::json),
+            "person": r.person.json(),
             "status": r.status(twin_only).as_str(),
         })).collect::<Vec<_>>(),
     }));
@@ -368,6 +378,38 @@ mod tests {
         );
         let text = render(&rows, false);
         assert!(text.contains("passed (stale)"), "{text}");
+    }
+
+    fn human_bundle(id: &str, tree: &str, req: &str) -> Value {
+        json!({
+            "schema": "forge.evidence/1", "id": id, "kind": "human",
+            "build": {"commit": "c1", "tree": tree},
+            "requirements": [{"id": req, "person": {"verdict": "accepted", "by": "Reuben"}}],
+        })
+    }
+
+    #[test]
+    fn only_a_person_fills_the_person_column() {
+        let reqs = [req("A", true, true)];
+        // A twin pass and a device pass: still no person.
+        let both = [
+            twin_bundle("1", "t", &[("A", "passed")]),
+            device_bundle("2", "t", &["A"], "passed"),
+        ];
+        let rows = rows(&reqs, &both, Some("t"));
+        assert_eq!(rows[0].person.verdict, "none");
+        assert_eq!(rows[0].status(false), Status::Proven);
+        // A person's acceptance fills it, and doesn't touch the device column.
+        let only_person = [human_bundle("3", "t", "A")];
+        let rows = super::rows(&reqs, &only_person, Some("t"));
+        assert_eq!(rows[0].person.verdict, "accepted");
+        assert_eq!(rows[0].person.current, Some(true));
+        assert_eq!(rows[0].device.as_ref().unwrap().verdict, "none");
+        assert_eq!(rows[0].status(false), Status::Open);
+        // Accepted for other files: stale.
+        let rows = super::rows(&reqs, &only_person, Some("other"));
+        assert_eq!(rows[0].person.cell(), "accepted (stale)");
+        assert!(render(&rows, false).contains("Person"));
     }
 
     #[test]

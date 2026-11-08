@@ -27,6 +27,8 @@ case "$1 $2" in
     echo '{"schema":"forge.result/1","command":"ui start","ok":true,"stage":"ok","duration_ms":4,"diagnostics":[],"hints":[],"data":{"pid":1}}' ;;
   "ui explore") echo '{"schema":"forge.result/1","command":"ui explore","ok":false,"stage":"test","duration_ms":3,"error":"exploring found 1 error(s)","diagnostics":[],"hints":[],"data":{"seed":7,"issues":[{"number":1,"issue":"app_closed","severity":"error"}]}}'; exit 14 ;;
   "ui run") echo '{"schema":"forge.result/1","command":"ui run","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":1}}' ;;
+  "verify --project") echo "env FORGE_MCP_CHILD=$FORGE_MCP_CHILD" >> "$FAKE_LOG"
+    echo '{"schema":"forge.result/1","command":"verify","ok":true,"stage":"ok","duration_ms":2,"diagnostics":[],"hints":[],"data":{}}' ;;
   "config show") echo 'not json at all'; exit 3 ;;
   *) echo "error: unrecognized subcommand '$1'" >&2; exit 2 ;;
 esac
@@ -598,6 +600,44 @@ async fn audit_and_dark_mode_go_through_forge_ui() {
         lines
             .iter()
             .any(|l| l.starts_with("--json ui explore ") && l.contains("--appearance dark")),
+        "{lines:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_run_record_starts_at_the_server_start_and_no_tool_can_accept() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start(&fx, true, true).await;
+    let tools = c.request("tools/list", json!({})).await;
+    let text = tools.to_string();
+    assert!(text.contains("\"twin_only\""), "{text}");
+    assert!(!text.contains("\"accept\""), "no tool takes accept");
+    c.call("forge_verify", json!({"project": "Tipster"})).await;
+    c.call("forge_verify", json!({"project": "Tipster", "run": true}))
+        .await;
+    let lines = calls(&fx);
+    let verify: Vec<&String> = lines
+        .iter()
+        .filter(|l| l.starts_with("--json verify "))
+        .collect();
+    assert_eq!(verify.len(), 2, "{lines:?}");
+    assert!(verify.iter().all(|l| !l.contains("--accept")), "{lines:?}");
+    // The run starts when the server did, and reads this server's journal
+    // (written by the first call).
+    let run = verify[1];
+    let start = run
+        .split("--run ")
+        .nth(1)
+        .unwrap()
+        .split(' ')
+        .next()
+        .unwrap();
+    assert_eq!(start.len(), 19, "{run}");
+    assert!(run.contains(&format!("{start}-mcp/journal.jsonl")), "{run}");
+    // Every forge the server runs knows it is under MCP, so --accept refuses.
+    assert!(
+        lines.iter().any(|l| l == "env FORGE_MCP_CHILD=1"),
         "{lines:?}"
     );
 }

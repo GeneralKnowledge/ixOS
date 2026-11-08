@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog; M6.3 is built and Linux-tested (its Swift side is compiled by macOS CI only). None of them has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog; M6.3 is built and Linux-tested (its Swift side is compiled by macOS CI only); M6.4 is built and Linux-tested. None of them has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 
@@ -33,7 +33,7 @@ The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rus
 | `forge mcp`: 18 tools, run journal `forge.journal/1`, install allowance | `forge-mcp` | Yes | Yes (Tipster, Murmur) | Yes (Tipster, Murmur) |
 | Staged agent runs (`claude -p --resume`, phone stages of 15–20 min) | `scripts/agent-runs/murmur/` | n/a | Yes (Murmur 7/7 stages) | Yes |
 
-Two docs are behind the code: [dev-loop.md](dev-loop.md)'s status table (last checked 2026-11-07, says UI tests don't pass on the phone) and `forge_diagnose`'s own description. M6.4 refreshes them.
+Two docs were behind the code: [dev-loop.md](dev-loop.md)'s status table (last checked 2026-11-07, said UI tests didn't pass on the phone) and `forge_diagnose`'s own description. M6.1 refreshed the description and M6.4 the table.
 
 ## Gaps against the acceptance criteria
 
@@ -216,6 +216,33 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 
 **iPhone:** none of its own; the M6.5 run produces the first real record.
 
+**Status (2026-11-08):**
+
+| State | M6.4 |
+|---|---|
+| Implemented | `forge verify --run <start> [--journal <file>]` writes `<app>/.forge/runs/<id>-run/evidence.json` (`kind = "run"`) and `report.md`; `forge verify --accept <ID> --note "…"` writes `<id>-accept/evidence.json` (`kind = "human"`); `forge verify` has a Person column; `forge_verify` takes `run: true` |
+| Linux-tested | Yes: `cargo test` covers a skipped check listed as not run (never passed), a device pass leaving the person column empty and a fixture walk leaving the device column empty, a failure and the commits after it kept as a repair, the acceptance refused without a terminal or under `forge mcp`, refused unless the id is typed back, and the MCP server never passing `--accept` |
+| CI-tested | The same tests in this PR's CI. No Swift is involved |
+| Simulated or fixture-tested | The tests use recorded bundles and journals. A run on Good Dog's real `.forge/runs/` (empty in this checkout) gave "0 of 6 proven, 9 checks not run, 6 not accepted", which is right for a checkout with no runs |
+| iPhone-tested | Not applicable: it reads what other commands wrote. The first real record comes from M6.5 |
+| Human-accepted | No. Nothing has been accepted with `--accept` yet |
+
+**How it works:**
+
+- **The start** is a run id (`2026-11-08T10-00-00`, UTC), the same stamp as every run folder. `forge_verify run: true` uses the time the MCP server started and that server's journal, so an agent asks for the record of its own session. From a shell, `--journal` picks one file; without it every `*-mcp/journal.jsonl` started since the start, in the app's and the repository's `.forge/runs/`, is read.
+- **What it reads:** the bundles in `<app>/.forge/runs/` whose id is at or after the start (twin runs, UI runs with their `watch` and `visual` sections, explore walks with device and fixture walks kept apart), the journal's build and install calls and every failed call, and `git log` and `git status` for the commits made and what was still uncommitted at the end. It runs nothing.
+- **Repairs:** a failed tool call, then the commits made before the next successful call of the same tool, are recorded together as that failure's repair. A failure with no later success has `then_passed: null`: the commits after it are listed, but nothing shows they fixed it.
+- **Not run:** for each requirement and each proof it names (twin, device), the reason it isn't proven in this run: nothing ran it since the start, it ran but `not_run` (needs Apple's frameworks), its result is for other files (stale), or the run had no phone (the server was started with `--no-device`). A requirement no person accepted is listed as not accepted. The verdict is `complete` only when every requirement is proven in the run and accepted by a person, so an agent's record alone always says `incomplete`.
+- **The three columns never fill each other.** The twin column reads only `linux-twin` bundles, the device column only `device` bundles (a walk on a model is `fixture` and counts for neither), and the person column only `human` bundles.
+- **Acceptance is a person's.** `--accept` needs stdin to be a terminal, is refused when `FORGE_MCP_CHILD` is set (the MCP server sets it on every `forge` it runs), names the commit and whether the files are uncommitted, and asks the person to type the requirement id back. The bundle records who (`git config user.name`, else `$USER`) and the note. It is for the app's files as they are: a later change makes it stale like any other verdict. No MCP tool takes it.
+
+**Limits:**
+
+- The terminal check stops an agent's tools and scripts, not a person who chooses to pipe a terminal into it. It records a claim by whoever typed it, not proof that they looked at the phone; the note is where they say what they looked at.
+- Repairs are inferred from timing (commits between a failure and the next success of the same tool), not from what the commit changed.
+- `git log --since` reads commit times, so commits made earlier and rebased or merged during the run are listed as made during it.
+- Crashes and logs come from the UI runs' `watch` sections. A crash seen only through `forge device crashes` outside a UI run isn't in the record.
+
 ### M6.5 The Good Dog demonstration
 
 **What:** an agent session (staged, on the laptop, through Remote Control) takes a real Good Dog task and runs the loop with everything above, ending with a run record. Reuben then reviews the app on the phone and records his acceptance.
@@ -295,7 +322,7 @@ Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-d
 
 **iPhone:** one install of a `--blank` app and of Good Dog after the `Store<T>` move, in the next coordinated sitting. Proves the starter and the moved storage still run on the phone.
 
-## Outstanding iPhone checks (M6.1 to M6.3)
+## Outstanding iPhone checks (M6.1 to M6.4)
 
 None of these has run; each says what it proves.
 
@@ -311,6 +338,7 @@ None of these has run; each says what it proves.
 | 8 | Good Dog (after a rebuild with M6.3) launched with `forge_launch_app appearance: dark, text_size: largest`, then `forge_ui_audit` on Today, an exercise and My Dog | The app honours `-ForgeAppearance` on the phone (the screenshot is dark); the audit's findings at AX5 are real, or show where its exemptions are wrong | M6.3 |
 | 9 | A person looks at each `small_tap_target` and `clipped` finding from check 8 on the phone | Which findings are real. Only a person can say this, and it is recorded as theirs | M6.3 |
 | 10 | Good Dog `journey.toml` with a dark launch step: `--visual record`, then a check run; then two explore walks with `--appearance dark` | Dark baselines are kept apart from the light ones (`-dark-ax5` names); the second walk compares with the first and lists `match` for unchanged screens | M6.3 |
+| 11 | After check 2 passes and Reuben has used the journey on the phone, he runs `forge verify --project examples/good-dog --accept GD-3 --note "…"` in his own terminal on the laptop, then `forge verify` | A person's acceptance is recorded as `human` and only fills the Person column. Not a phone check itself: it needs the person, so it goes in the same sitting. Optional; M6.5 needs it anyway | M6.4 |
 
 The runbook for 1 to 3 is in project files at `m6/m61-phone-checks.md`.
 

@@ -13,6 +13,7 @@ mod ios_env;
 mod ledger;
 mod live;
 mod report;
+mod run_record;
 mod runner;
 mod status;
 mod swift_check;
@@ -155,6 +156,28 @@ enum Commands {
         /// iPhone results are still shown
         #[arg(long)]
         twin_only: bool,
+        /// Write the run record for an agent run that started at this run id
+        /// (`2026-11-08T10-00-00`, UTC): commits, builds, checks, failures and
+        /// repairs, and what was not run, as `<app>/.forge/runs/<id>-run/`
+        #[arg(long, value_name = "START", conflicts_with_all = ["accept", "twin_only"])]
+        run: Option<String>,
+        /// The `forge mcp` journal to read with --run (default: every
+        /// journal started since START, in the app's and the repository's runs)
+        #[arg(long, value_name = "PATH", requires = "run")]
+        journal: Option<PathBuf>,
+        /// Record that you, a person, checked this requirement on the phone.
+        /// Needs a terminal and asks you to type the id back; refused inside
+        /// `forge mcp` and from scripts
+        #[arg(
+            long,
+            value_name = "ID",
+            requires = "note",
+            conflicts_with = "twin_only"
+        )]
+        accept: Option<String>,
+        /// What you looked at, with --accept
+        #[arg(long, value_name = "TEXT", requires = "accept")]
+        note: Option<String>,
     },
     /// Read crash reports (.ips) on this computer: the kind of crash, the
     /// message, the likely cause and the crashed thread with Swift and Rust
@@ -866,11 +889,32 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     match cli.command {
         Commands::Doctor if cli.json => doctor::print_json(runner, &root),
         Commands::Doctor => doctor::print_text(runner, &root),
-        Commands::Verify { project, twin_only } => match project
-            .map(|p| absolute_from_cwd(&p))
-            .or_else(app_in_cwd)
-        {
-            Some(app) => verify::verify(runner, &app, twin_only, &mut std::io::stdout()),
+        Commands::Verify {
+            project,
+            twin_only,
+            run,
+            journal,
+            accept,
+            note,
+        } => match project.map(|p| absolute_from_cwd(&p)).or_else(app_in_cwd) {
+            Some(app) => {
+                let mut out = std::io::stdout();
+                if let Some(start) = run {
+                    let journal = journal.map(|p| absolute_from_cwd(&p));
+                    run_record::record(runner, &app, &start, journal.as_deref(), &mut out)
+                } else if let Some(id) = accept {
+                    run_record::accept(
+                        runner,
+                        &app,
+                        &id,
+                        note.as_deref().unwrap_or(""),
+                        &mut std::io::stdin().lock(),
+                        &mut out,
+                    )
+                } else {
+                    verify::verify(runner, &app, twin_only, &mut out)
+                }
+            }
             None => Err(
                 "no app here: run inside an app directory (one with forge.toml) or pass --project <app>"
                     .into(),

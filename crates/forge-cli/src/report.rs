@@ -470,6 +470,11 @@ pub fn timestamp() -> String {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    stamp_at(secs)
+}
+
+/// [`timestamp`] for a time in seconds since 1970 (UTC).
+pub fn stamp_at(secs: u64) -> String {
     let (days, rem) = (secs / 86_400, secs % 86_400);
     // Howard Hinnant's civil_from_days.
     let z = days as i64 + 719_468;

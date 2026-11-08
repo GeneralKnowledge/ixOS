@@ -80,6 +80,9 @@ pub async fn run(
         .current_dir(&inv.cwd)
         // Apps outside the checkout still find Forge's scripts and templates.
         .env("FORGE_WORKSPACE", workspace)
+        // `forge verify --accept` refuses to run under this: only a person
+        // records an acceptance.
+        .env("FORGE_MCP_CHILD", "1")
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
