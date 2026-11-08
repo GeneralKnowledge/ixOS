@@ -16,6 +16,7 @@
 //!   ones (visual regression), on Linux.
 
 pub mod baseline;
+pub mod explore;
 pub mod http;
 pub mod phone;
 pub mod policy;
@@ -64,7 +65,7 @@ pub type Result<T> = std::result::Result<T, UiError>;
 /// copy and layout changes. Labels are what VoiceOver reads, so finding by
 /// label also checks that the element has one. There is deliberately no
 /// coordinate locator.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Locator {
     /// `.accessibilityIdentifier(...)`, matched exactly.
     Id(String),

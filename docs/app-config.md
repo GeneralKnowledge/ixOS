@@ -139,6 +139,14 @@ Forge never stores Apple credentials. xtool signs with the account you signed in
 | `team_type = "free" \| "paid"` | Which kind of team xtool signs with. With `"free"`, Forge refuses entitlements Apple only provisions for the Apple Developer Program, and says which one, before anything is built. Left unset, Forge prints a warning for them instead. |
 | `team_id = "ABCDE12345"` | Your 10-character team ID. Used to check the Xcode project's `DEVELOPMENT_TEAM` (`forge config check` reports a mismatch). |
 
+### `[ui_test]`
+
+How UI automation runs the app. Nothing here is written into the app; the app itself must honour the argument.
+
+| Key | Use |
+|---|---|
+| `test_data_args = ["-ForgeUITestData"]` | Launch arguments that start the app on fresh, throwaway data instead of the person's own. `forge ui explore` refuses to change data without them ([forge-explore.md](forge-explore.md#test-data)). Pocket Library honours `-ForgeUITestData` by using an emptied `PocketLibrary-UITest` folder |
+
 ## Debug and release builds
 
 | Command | Swift configuration | Rust library |
