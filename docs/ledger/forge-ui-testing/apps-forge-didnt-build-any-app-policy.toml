@@ -1,0 +1,9 @@
+order = 25
+capability = "Act in apps Forge didn't build, under a per-app policy (`forge ui --any-app`, `~/.config/forge/device-control.toml`)"
+framework = "Yes: forge-uitest `policy`"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: tested against the fake driver with the Claude app's chat screen as G0 read it"
+iphone = "No: the policy has not run on a phone. G0 (2026-11-08) read and operated the Claude app on iPhone16,2, iOS 26.3.1 before the policy existed"
+documented = "Partial: forge-ui-testing.md (Apps Forge didn't build), research/general-device-control.md"
+limits = "Commit gate matches words in labels and identifiers, so it can miss commits; approval only at a terminal (MCP and scripts are refused); MCP has no --any-app yet; system apps (com.apple.*) aren't resolved until the app inventory lands; the hard-refusal list is by bundle id and unchecked on a phone"

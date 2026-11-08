@@ -1,6 +1,6 @@
 # Any app on the iPhone: growing Forge UI Testing beyond Forge's own apps
 
-Status: design, 2026-11-08, revised the same day after Reuben's review, with the first phone results ([Spikes on Cati](#spikes-on-cati), 2026-11-08). **Nothing here is built.** The current milestone (Forge End-to-End Validation, then the Murmur social app) adds no large features.
+Status: design, 2026-11-08, revised the same day after Reuben's review, with the first phone results ([Spikes on Cati](#spikes-on-cati), 2026-11-08). **Built so far: priority 1**, the policy, commit gate, journal and `--any-app` for `forge ui` ([Apps Forge didn't build](../forge-ui-testing.md#apps-forge-didnt-build); tested on Linux, not yet on the phone). The rest is design.
 
 **What this is not:** a separate phone-control workstream or a second automation stack. Forge already has the architecture: [Forge UI Testing](../forge-ui-testing.md) (`forge-uitest`'s `Driver`, `UiNode` and `Locator`), and the [agent capability audit](forge-agent-capability-audit.md) of 2026-11-07 already proposed the missing routes: A2 (Apple's accessibility service), A3 (the rest of `idevice`), the exploratory crawler, and evidence bundles (A4). This page applies those plans to apps Forge didn't build, and makes "any app" a first-class use of the same system.
 
@@ -43,12 +43,12 @@ From the code on `main` and the phone runs of 2026-11-07.
 | Accessibility tree | `forge ui tree` reads whatever is in front: **the Claude app on Cati gave 160 elements, 38 labelled, 15 with identifiers (`chat-input`, `chat-model-picker`, `Send`, `Stop`, `BackButton`…) in 4 s** (P1) | 4 s includes starting the runner; a long feed is still unmeasured |
 | Runner-free reading (A2) | `ax_probe` read the Claude app: 20 elements in VoiceOver order, all labelled, 5 with identifiers (P3) | Experimental; flat list; moves the VoiceOver focus visibly |
 | Screenshot | `forge ui screenshot`, any app | None |
-| Tap, type, scroll | `Driver` by identifier, label or label substring. **`forge ui run` with a test file naming the Claude app typed into `chat-input` and tapped `Send` on Cati**; about 10 s for the run, mostly about 2 s of runner start-up per step | No policy: see below. Apps without identifiers need better locators |
+| Tap, type, scroll | `Driver` by identifier, label or label substring. **`forge ui run` with a test file naming the Claude app typed into `chat-input` and tapped `Send` on Cati**; about 10 s for the run, mostly about 2 s of runner start-up per step | Policy built since (`--any-app`, levels, commit gate; see below). Apps without identifiers need better locators |
 | Runner-free press (A2) | `ax_probe --press` in a dev-signed app | Still unknown on an app without `get-task-allow`: P3 walked but didn't press |
 | Swipe, back, Home, alerts, open URL | No (`background` only) | WDA has each; iOS has no system back, so back means the navigation bar's button or an edge swipe |
 | Another app's internal state | Devtools, own apps only | Not possible, by design |
 
-`XCUIApplication(bundleIdentifier:)` is Apple's documented way for one UI test to drive several installed apps, Apple's included; WDA is a long-running XCTest that exposes it over HTTP. Forge's guard (`UiError::WrongApp`, [Only the app under test](../forge-ui-testing.md#only-the-app-under-test)) only checks that the app *named in the test file* is in front, and a test file can name any user-installed app. **So the CLI can already act inside any App Store app, with no policy at all**, as the Claude app run showed; only the MCP server limits itself to the project's app. That makes the policy below the first thing to build before any wider use, not a later refinement. The design replaces "the app the file names" with a policy a person writes; it doesn't remove the check.
+`XCUIApplication(bundleIdentifier:)` is Apple's documented way for one UI test to drive several installed apps, Apple's included; WDA is a long-running XCTest that exposes it over HTTP. Forge's guard (`UiError::WrongApp`, [Only the app under test](../forge-ui-testing.md#only-the-app-under-test)) only checks that the app *named in the test file* is in front, and a test file can name any user-installed app. **So the CLI could act inside any App Store app, with no policy at all**, as the Claude app run showed; only the MCP server limited itself to the project's app. That made the policy below the first thing to build, and it is now built: another app needs `--any-app` and a level from the person's policy file, and commits ask ([Apps Forge didn't build](../forge-ui-testing.md#apps-forge-didnt-build)). The check that the named app is in front stays.
 
 ## A3 services, and which are app-independent
 
@@ -167,7 +167,7 @@ Updated from the audit's order now that Tipster has proved the agent loop on a p
 | | Work | Builds on | Proves |
 |---|---|---|---|
 | 0 | Spikes P1–P4 on Cati (below) | Today's code | **Done 2026-11-08**, except P4, a runner-free press and an Apple app: WDA reads and operates an App Store app |
-| 1 | Policy, commit gate, journal, `--any-app` (the CLI has no policy today, see above) | `ensure_front` | Safe operation outside the project |
+| 1 | Policy, commit gate, journal, `--any-app`. **Built** for `forge ui` (Linux tests; phone run pending). The MCP `--any-app` waits for priority 2 | `ensure_front` | Safe operation outside the project |
 | 2 | Driver seam: long-lived session, `AxDriver` (A2), locators without identifiers, swipe/back/home/alert/open URL, app inventory | UI Testing M2.5, `Phone` | Observe and operate on any app, route chosen per operation |
 | 3 | A3 commands, selectively: network, location, perf, rotate, process list | `Phone`, audit A3 | Conditions and measurements around any app |
 | 4 | Crawler | 1–3, UI Testing M5 | Understand and verify, first on Forge's apps |
@@ -191,8 +191,8 @@ What they settle: WDA reads and operates another developer's app on iOS 26.3.1 w
 
 ## Open decisions
 
-1. **Default for apps not in the policy file:** `ask` (recommended) or `deny`.
-2. **Commit approval without elicitation:** refuse with a message (recommended, as tier 2 does today), or a per-session allowance per app.
+1. **Default for apps not in the policy file:** built as `ask`, which with no terminal is a refusal. A file can say `default = "deny"`.
+2. **Commit approval without elicitation:** built as refuse with a message. A per-session allowance per app is not built.
 3. **Banking and messaging apps:** `observe` only until the crawler and policy have run on harmless apps (recommended).
 
 ## Sources
