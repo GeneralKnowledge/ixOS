@@ -137,4 +137,26 @@ final class GoodDogModelTests: XCTestCase {
         let tomorrow = await openModel(dir, dayOffset: 1)
         XCTAssertNotEqual(tomorrow.today?.activities.first?.id, today.activities.first?.id)
     }
+
+    /// `-ForgeUITestSampleDog` starts past onboarding, and never replaces a
+    /// dog that already exists.
+    @MainActor
+    func testASampleDogSkipsOnboardingButNeverReplacesADog() async throws {
+        let dir = try makeDirectory()
+        let sample = DogProfile(name: "Sample", lifeStage: .adult, dailyTime: .fewMinutes, goal: .general, experience: .new)
+        let clock: @Sendable () -> LocalTime = { LocalTime(ms: Self.nineAM, utcOffsetMinutes: 0) }
+
+        let first = GoodDogModel(storageDirectory: dir.path, clock: clock, sampleDog: sample)
+        await first.open()
+        XCTAssertEqual(first.phase, .ready)
+        XCTAssertEqual(first.dog?.name, "Sample")
+        XCTAssertNotNil(first.today)
+        try await first.saveDog(moss)
+        first.close()
+
+        let second = GoodDogModel(storageDirectory: dir.path, clock: clock, sampleDog: sample)
+        await second.open()
+        XCTAssertEqual(second.dog?.name, "Moss")
+        second.close()
+    }
 }

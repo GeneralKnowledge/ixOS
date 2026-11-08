@@ -44,4 +44,4 @@ Record decisions and known issues about this app here, newest first, so the next
 
 - 2026-11-08 (GD1): the plan engine, dog rules and content are `examples/good-dog-core` (ported from the Good Dog web app; parity tests there). This crate adds saving (`gooddog.json`, one JSON document), the day boundary (`LocalTime`: the host passes the time and its UTC offset) and the API. Change planning rules in good-dog-core, not here.
 - Goals are a closed set (`TrainingGoal`), mapped to the phrases the engine's keyword matching expects. The web app used free text.
-- `-ForgeUITestData` starts on a fresh throwaway folder every launch, so a device test can't check persistence across a relaunch; the twin tests do (GD-2).
+- `-ForgeUITestData` starts on a fresh throwaway folder every launch, so a device test can't check persistence across a relaunch; the twin tests do (GD-2). It also fixes the clock (`LocalTime.uiTest`). `-ForgeUITestSampleDog`, only together with `-ForgeUITestData`, starts with a sample dog so exploration reaches Today and My Dog.

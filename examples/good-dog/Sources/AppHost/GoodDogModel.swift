@@ -37,6 +37,8 @@ public final class GoodDogModel {
     public private(set) var core: AppCore?
     private let storageDirectory: String?
     private let clock: @Sendable () -> LocalTime
+    /// Set up before the first read when the store has no dog yet.
+    private let sampleDog: DogProfile?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: AppEvents?
     @ObservationIgnored private var lifecyclePhase: AppPhase = .launching
@@ -48,9 +50,11 @@ public final class GoodDogModel {
     ///   - clock: the time now with the phone's UTC offset; tests fix it.
     public init(
         storageDirectory: String? = nil,
-        clock: (@Sendable () -> LocalTime)? = nil
+        clock: (@Sendable () -> LocalTime)? = nil,
+        sampleDog: DogProfile? = GoodDogModel.launchSampleDog
     ) {
         self.storageDirectory = storageDirectory
+        self.sampleDog = sampleDog
         if let clock {
             self.clock = clock
         } else if Self.usesTestData {
@@ -65,6 +69,16 @@ public final class GoodDogModel {
     /// runs on a fixed clock, so dates and times on screen don't change
     /// between runs and screenshots stay comparable.
     static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+
+    /// With `-ForgeUITestData`, `-ForgeUITestSampleDog` starts on a dog
+    /// that is already set up, so `forge ui explore` can reach Today and My
+    /// Dog without filling in onboarding (journey.toml covers onboarding).
+    /// Never used on the owner's own data.
+    public static let sampleDogArgument = "-ForgeUITestSampleDog"
+    public static let launchSampleDog: DogProfile? =
+        usesTestData && ProcessInfo.processInfo.arguments.contains(sampleDogArgument)
+        ? DogProfile(name: "Moss", lifeStage: .adult, dailyTime: .aboutTenMinutes, goal: .recall, experience: .new)
+        : nil
 
     public var maxNameLength: Int { Int(core?.maxNameLength() ?? 40) }
 
@@ -98,6 +112,9 @@ public final class GoodDogModel {
             self.events = events
             listen(to: events)
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
+            if let sampleDog, core.dog() == nil {
+                _ = try await core.saveDog(profile: sampleDog, now: clock())
+            }
             await reload()
         } catch {
             log.error("could not open: \(error)")
