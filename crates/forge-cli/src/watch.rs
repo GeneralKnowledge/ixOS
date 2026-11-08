@@ -49,8 +49,11 @@ pub fn usb() -> Result<Box<dyn DeviceBackend>, String> {
         .map_err(|e| e.to_string())
 }
 
-/// Lines kept from one run; the oldest go first.
-const MAX_LINES: usize = 5000;
+/// Lines kept from one run; the oldest go first. A 5-minute run on Cati
+/// logged about 9400 lines in the app's process besides WebDriverAgent's
+/// (UIKit, HangTracer), so 5000 lost the start; 20000 keeps a few such runs
+/// (about 3 MB).
+const MAX_LINES: usize = 20_000;
 /// Libraries that log inside the app's process for the test runner or the
 /// system, not for the app. On Cati (2026-11-08) WebDriverAgent's
 /// attribute queries (XCTAutomationSupport, 7689 lines in a 54 s run) and
