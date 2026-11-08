@@ -37,6 +37,7 @@ It exits with an error when it found an error-severity issue (a crash, an unlabe
 | `--real-data` | off | Explore the data already on the phone, only looking: nothing that saves, edits, rates, types or changes a setting |
 | `--largest-text` | off | Launch at the largest accessibility text size (UIKit's own launch argument) |
 | `--appearance dark\|light` | the phone's | Launch in dark or light mode (`-ForgeAppearance`, which Forge apps honour from their root view; M6.3) |
+| `--launch-arg <ARG>` | none | One of the app's own launch arguments, after Forge's; repeat for more. For an app that can start past onboarding with sample data, so the walk reaches the rest of the app (seen on Cati: a Good Dog walk never left onboarding) |
 | `--per-screen N` | 15 | At most N controls tried per screen |
 | `--no-screenshots` | | Faster; trees are still saved |
 
@@ -90,6 +91,7 @@ The explorer touches the app the way a curious person would, so it has a floor o
 
 - **Only Forge apps for now.** `--project` names an app folder with a `forge.toml`; there is no bundle id option. Other developers' apps come next: the any-app policy (`forge_uitest::policy`, merged in #107) exists, and the explorer has to ask its gate before each action, as `forge ui run --any-app` does, before it gets a bundle id option.
 - **Never** starts a system service: dictation (it turns the microphone on), the camera, the keyboard switcher (Next keyboard, globe, emoji) or the system file picker (import), which is another app's interface. This is matched as whole words in every mode.
+- **Only cancels** iOS's Shake to Undo alert ("Undo Typing"): it is the system's, and tapping its Undo once emptied a field the walk had filled (Good Dog on Cati, 2026-11-08).
 - **Never** types into secure fields, and **never** taps a control whose identifier or label (as whole words, camelCase split) says it acts outside the phone or on someone else: send, post, reply, pay, buy, purchase, checkout, subscribe, transfer, share, call, publish, submit, invite, follow, report, block, donate.
 - **Never changes the person's data**: see [Test data](#test-data).
 - **Skips destructive controls** (delete, remove, erase, reset, clear, wipe, discard, trash, sign out, log out) unless `--allow-destructive`, which only works with test data.

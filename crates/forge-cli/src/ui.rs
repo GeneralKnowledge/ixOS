@@ -877,6 +877,9 @@ pub struct ExploreOptions {
     pub largest_text: bool,
     /// `dark` or `light`; `None` follows the phone.
     pub appearance: Option<String>,
+    /// The app's own launch arguments, after Forge's (for example one that
+    /// starts past onboarding with fixture data).
+    pub launch_args: Vec<String>,
     pub per_screen: usize,
     pub screenshots: bool,
 }
@@ -953,6 +956,7 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             if options.largest_text {
                 args.extend(explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
             }
+            args.extend(options.launch_args.iter().cloned());
             args
         },
         test_data,
@@ -1392,6 +1396,7 @@ mod tests {
             real_data: false,
             largest_text: true,
             appearance: None,
+            launch_args: vec![],
             per_screen: 15,
             screenshots: true,
         }
@@ -1468,6 +1473,14 @@ mod tests {
             config.launch_args[..3],
             ["-ForgeUITestData", "-ForgeAppearance", "dark"]
         );
+        // The app's own arguments come after Forge's.
+        let own = ExploreOptions {
+            launch_args: vec!["-GoodDogSampleDog".into()],
+            largest_text: false,
+            ..options()
+        };
+        let config = explore_config(&pocket_library(), &own).unwrap();
+        assert_eq!(config.launch_args.last().unwrap(), "-GoodDogSampleDog");
         let reckless = ExploreOptions {
             allow_destructive: true,
             ..real

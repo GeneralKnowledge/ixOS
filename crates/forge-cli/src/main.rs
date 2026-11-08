@@ -357,6 +357,11 @@ enum UiCommands {
         /// apps honour; without it the app follows the phone)
         #[arg(long, value_parser = ["dark", "light"])]
         appearance: Option<String>,
+        /// One of the app's own launch arguments, added after Forge's;
+        /// repeat for more (for example `--launch-arg=-GoodDogSampleDog`, so
+        /// the walk starts past onboarding)
+        #[arg(long = "launch-arg", value_name = "ARG", allow_hyphen_values = true)]
+        launch_arg: Vec<String>,
         /// At most this many controls tried per screen
         #[arg(long, default_value_t = 15)]
         per_screen: usize,
@@ -1089,6 +1094,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     real_data,
                     largest_text,
                     appearance,
+                    launch_arg,
                     per_screen,
                     no_screenshots,
                     out: dir,
@@ -1117,6 +1123,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         real_data,
                         largest_text,
                         appearance,
+                        launch_args: launch_arg,
                         per_screen,
                         screenshots: !no_screenshots,
                     };
