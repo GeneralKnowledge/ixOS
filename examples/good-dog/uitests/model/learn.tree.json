@@ -1,0 +1,157 @@
+{
+ "kind": "Application",
+ "label": "Good Dog",
+ "enabled": true,
+ "visible": true,
+ "frame": {
+  "x": 0.0,
+  "y": 0.0,
+  "width": 430.0,
+  "height": 932.0
+ },
+ "children": [
+  {
+   "kind": "Window",
+   "enabled": true,
+   "visible": true,
+   "frame": {
+    "x": 0.0,
+    "y": 0.0,
+    "width": 430.0,
+    "height": 932.0
+   },
+   "children": [
+    {
+     "kind": "Other",
+     "enabled": true,
+     "visible": true,
+     "frame": {
+      "x": 16.0,
+      "y": 200.0,
+      "width": 398.0,
+      "height": 44.0
+     },
+     "children": [
+      {
+       "kind": "NavigationBar",
+       "enabled": true,
+       "visible": true,
+       "identifier": "Learn",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "learn.exercise.name-response",
+       "label": "Practise responding to their name",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "learn.exercise.settle-on-mat",
+       "label": "Settle on a mat",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "learn.term.positive-reinforcement",
+       "label": "Positive reinforcement",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "Button",
+       "enabled": true,
+       "visible": true,
+       "identifier": "learn.glossary",
+       "label": "Training Words",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       }
+      },
+      {
+       "kind": "TabBar",
+       "enabled": true,
+       "visible": true,
+       "label": "Tab Bar",
+       "frame": {
+        "x": 16.0,
+        "y": 200.0,
+        "width": 398.0,
+        "height": 44.0
+       },
+       "children": [
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "tab.today",
+         "label": "Today",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        },
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "tab.learn",
+         "label": "Learn",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        },
+        {
+         "kind": "Button",
+         "enabled": true,
+         "visible": true,
+         "identifier": "tab.dog",
+         "label": "My Dog",
+         "frame": {
+          "x": 16.0,
+          "y": 200.0,
+          "width": 398.0,
+          "height": 44.0
+         }
+        }
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ ]
+}

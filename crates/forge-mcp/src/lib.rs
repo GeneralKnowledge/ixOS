@@ -82,6 +82,9 @@ pub struct Server {
     /// The commit the root was at when the server started: forge_diagnose
     /// lists the files changed since.
     start_commit: Option<String>,
+    /// Files that already had uncommitted changes when the server started:
+    /// their diff since `start_commit` may include earlier edits.
+    dirty_at_start: Vec<String>,
 }
 
 /// How long to wait after a UI session failed to start before trying again
@@ -99,8 +102,10 @@ impl Server {
             .is_ok_and(|s| s.success());
         let journal = Arc::new(journal::Journal::new(&opts.root));
         let start_commit = correlate::head(&opts.root);
+        let dirty_at_start = correlate::dirty(&opts.root);
         Self {
             start_commit,
+            dirty_at_start,
             journal,
             opts: Arc::new(opts),
             device: Arc::new(tokio::sync::Mutex::new(())),

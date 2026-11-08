@@ -19,7 +19,7 @@ idevice = { version = "=0.1.68", default-features = false, features = [
     "installation_proxy",
     "misagent",
 ] }
-tokio = { version = "1", features = ["rt", "net", "time", "io-util"] }
+tokio = { version = "1", features = ["rt", "net", "time", "io-util", "macros"] }
 plist = "1"
 # Only for the `ax_probe` spike (`--features ax-probe`): Apple's accessibility
 # audit service speaks DTX after a TLS handshake that is then dropped.

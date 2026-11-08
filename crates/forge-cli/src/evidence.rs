@@ -421,6 +421,9 @@ pub struct ExploreRun {
     /// No error-severity issue (a crash, an unlabelled control).
     pub ok: bool,
     pub duration_ms: u64,
+    /// `device`, or `fixture` for a walk on a model of the app (no phone):
+    /// it says how Forge explored, never how the app behaves.
+    pub kind: &'static str,
 }
 
 /// Writes `evidence.json` (kind `device`, command `ui explore`) into `dir`,
@@ -432,6 +435,12 @@ pub fn write_explore_bundle(run: &ExploreRun, dir: &Path, id: &str) -> Result<Pa
     let mut artifacts = Vec::new();
     if dir.join("explore.json").is_file() {
         artifacts.push(json!({"kind": "explore_report", "path": "explore.json"}));
+    }
+    for name in ["focus.json", "compare.json"] {
+        if dir.join(name).is_file() {
+            let kind = name.trim_end_matches(".json");
+            artifacts.push(json!({"kind": kind, "path": name}));
+        }
     }
     for (sub, ext, kind) in [
         ("screens", "png", "screenshot"),
@@ -461,7 +470,7 @@ pub fn write_explore_bundle(run: &ExploreRun, dir: &Path, id: &str) -> Result<Pa
         "schema": SCHEMA,
         "id": id,
         "command": "ui explore",
-        "kind": "device",
+        "kind": run.kind,
         "ok": run.ok,
         "duration_ms": run.duration_ms,
         "where": {
@@ -782,6 +791,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             artifacts: vec![("device_log", "device.log".into())],
             ok: false,
             duration_ms: 5,
+            kind: "device",
         };
         let path = write_explore_bundle(&run, dir, "2026-11-08T13-00-00").unwrap();
         let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();

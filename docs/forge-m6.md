@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built and Linux-tested; its phone checks are pending. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog. Neither has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 
@@ -106,21 +106,70 @@ Infrastructure (M6.1–M6.4) and the Good Dog work (M6.0, M6.5) are separate PRs
 
 What the phone has to show, in the next coordinated sitting: the syslog stream and WDA running together without either dropping; a Device Lab crash named in the failed step with `crash_test.rs:24`; `forge device apps` matching what Settings shows (including whether the WebDriverAgent runner holds a free slot); and the misagent profile read on iOS 26.3.1.
 
+**Hardening (2026-11-08, after an audit of the M6.1 code; Linux-tested only):**
+
+| Problem found | Fix | Regression test |
+|---|---|---|
+| A UI run or walk that returned an error (WebDriverAgent or the phone stopped answering, the app closing at launch) skipped `Watch::finish`: the log reader thread kept the phone's syslog service, and the log and crash reports collected so far were lost | The error path finishes the watch, pulls new crash reports, writes `device.log`, `crashes/` and `watch.json`, puts the watch in the result and names the folder in the error. Dropping an unfinished `Watch` stops and joins its reader the same way | `dropping_an_unfinished_watch_joins_its_reader`, `a_run_that_breaks_off_keeps_its_watch_and_says_where` |
+| The log reader only noticed it should stop when the phone sent a line, so on a quiet phone it outlived the run | New `DeviceBackend::syslog_while(stop)`, whose contract is to return within about 100 ms of the stop flag whether or not a line arrives; the USB backend keeps it. `finish` and drop join the reader thread, waiting at most 2 s, and `watch.reader` says what happened: `stopped` (joined, connection closed), `detached` or `not_started`. Rust can't kill a thread, so a backend that breaks the contract is detached after the wait and reported (`reader: detached`, `log_status: unavailable` and a note; on drop, a line on stderr); it ends on the phone's next line, a disconnect, or when `forge` exits | `a_quiet_app_is_empty_not_missing_and_the_reader_has_ended_when_finish_returns` (the reader's last act is checked once, with no waiting, right after `finish` returns), `a_reader_that_wont_stop_is_left_after_the_wait_and_reported` |
+| A watch that couldn't start (unreadable forge.toml), a log reader that failed, and crash reports that couldn't be listed all looked like a quiet app that didn't crash | `log_status` (`collected`, `empty`, `unavailable`), `crash_reports` (`not_checked`, `none_new`, `found`, `unavailable`), `symbolicated` on each crash, and `status: not_watched` with a `reason`. The failed step carries both statuses | `a_phone_that_cant_be_reached_is_unavailable_evidence_not_a_quiet_app`, `a_run_without_a_watch_says_why` |
+| Correlation matched a crash to a changed file by file name: `crates/forge-runtime/src/training.rs` changed made a crash in `examples/good-dog/rust/src/training.rs` "in a changed file" | `culprit_source` resolves the crash path to a repository path (absolute in this checkout, absolute from another clone by a tail that starts at a top folder of the repository, relative to the app folder as forge-crash writes it, or repository-relative), normalising `\`, `.` and `..`. `changed` is `true` only on an exact path match, `false` when placed and unchanged or in toolchain or dependency code, and `null` when it can't be placed or the changes can't be listed | `the_same_file_name_in_another_folder_is_not_a_match`, `absolute_paths_in_this_checkout_and_in_another_resolve_to_the_same_file`, `code_outside_the_repository_is_said_to_be_outside`, `an_unplaceable_path_or_unknown_changes_are_unknown_not_unchanged`, `normalising_paths` |
+| The changed-file list covered the app folder only, and was empty (read as "nothing changed") outside a git checkout | Changes across the whole repository since the server started; files already modified at the start are listed as `dirty_at_start`; outside git, `changes.unknown` says why | `changes_cover_the_whole_repository_and_say_when_git_is_missing` |
+| Diagnose couldn't tell "no crash" from "crash reports not checked", nor say a crash came from another build or wasn't symbolicated | `collection`, `crash.symbolicated` and a `next` hint for each case; `evidence.exists` checks the bundle path | `crashes_from_another_build_or_without_symbols_say_so`, `a_failed_step_without_a_crash_check_doesnt_rule_out_a_crash` |
+| A timed-out or cancelled MCP call looked like any failure, and a stopped UI run lost the path of what it had written | `stopped: timeout` or `cancelled`; UI run and explore results always name `data.out`, with `partial` when the run was stopped | `a_timeout_or_a_cancel_is_a_failure_that_says_which`, `a_stopped_run_still_names_its_folder_and_says_it_is_partial`, `ok_from_a_child_that_exits_non_zero_is_a_failure` |
+| An explore bundle said `ok: true` for a walk that tried nothing (the command failed); `--actions 0` or `1` walked nothing | The bundle's `ok` needs a tried control; `--actions` below 2 is refused | `explore_refuses_options_that_would_check_nothing` |
+
+Still unproven without the phone: `syslog_while` on a real syslog relay (that it stops within 100 ms and drops no lines while WDA runs), and that a real crash's DWARF path resolves through `culprit_source` (the laptop builds in its own clone, so `other_checkout` is the path expected). These join the M6.1 phone checks.
+
 ### M6.2 Exploration aimed at the change
 
-**What:**
+The question: when an agent changes an app, can Forge explore the parts most likely to be affected, and find problems a script misses? Built on 2026-11-08, on Linux, without the phone.
 
-- `--focus`: start from the screens and controls the task touched. Forge reads the changed files (`git diff` since a commit) for accessibility identifiers and finds the screens holding them in earlier walks' maps. The walk goes there first, by the shortest known path.
-- A coverage map kept between walks (`.forge/explore-map.json`: screens, controls tried, last result, missing labels). New and changed screens, untried controls and controls that failed before come first. Screens unchanged since the last clean walk are skipped unless asked.
-- Scroll to controls below the fold (named in forge-explore.md as not built).
-- `forge ui explore --promote <issue>` copies a repro into the app's `uitests/` with a name the agent gives it. The agent then names it in `requirements.toml`, which keeps requirements in the agent's hands.
-- A launch flag that keeps test data across a relaunch (`-ForgeUITestKeepData`), so a device test can check persistence. This is the app-template helper from Good Dog pain point 5, and the second use (Pocket Library and Good Dog) justifies it.
+**Status, kept apart:**
 
-**Relies on:** the explorer's screen fingerprint and replay, `forge ui run`.
+| State | What |
+|---|---|
+| Implemented | `forge ui focus`; `forge ui explore --since/--changed/--focus/--previous/--verify/--fixture`; `forge_ui_focus` and the new `forge_ui_explore` arguments in MCP |
+| Linux-tested | Unit tests on synthetic trees (the Pocket Library model app in `explore.rs`) and on the real Good Dog source (`focus.rs`) |
+| CI-tested | `scripts/demo-m6.2.sh` runs in `rust.yml` and fails if the aimed walk stops finding the planted crash, a seed stops repeating, or the fixed crash isn't rechecked |
+| Simulated or fixture-tested | Every walk in the demo is on a model of Good Dog (`examples/good-dog/uitests/model/`): five screens recorded on the phone, five written by hand from the Swift source and marked `synthesized`, with the crash planted in the model. It proves how Forge prioritises, reproduces and rechecks, not how Good Dog behaves on a phone. Its bundles say `kind = "fixture"`, `forge verify` never counts them, and a phone walk never learns from or compares with them |
+| iPhone-tested | Nothing yet |
+| Human-accepted | Nothing yet |
 
-**Tested by:** Linux tests on recorded trees: same seed and map give the same walk, a changed identifier puts its screen first, and an unchanged screen is skipped.
+**How it works:**
 
-**iPhone:** Pocket Library: one full walk to build the map, then a change to one screen, then `--focus` reaches that screen in its first few actions and skips the rest. This is also the determinism check still owed from #109 and #119. Proves focus on real trees.
+1. **What did I change, and which screens should I inspect?** `forge ui focus` reads the changed files (git since a commit, or `--changed`) and links them to accessibility identifiers, each link with the file it comes from and how:
+   - *direct*: a changed Swift file declares the identifier (`.accessibilityIdentifier("record.save")`); an interpolated one (`"record.result.\(key)"`) is kept as its prefix, `record.result.*`.
+   - *entry*: a Swift file uses a type the change declares (TodayView presents ExerciseView, so `today.activity.*` is a way in), or calls changed Rust through the UniFFI bindings, possibly through a model method (`MyDogView calls record() (GoodDogModel.swift), which calls recordSession; record_session (lib.rs) uses … from training.rs`). Exported Rust functions count where they are called, not where a property of the same name is read.
+   - Every changed file with no link is listed with the reason (outside the app, generated bindings, not app source, deleted, or nothing connects it). A file name alone never ties code to a screen.
+   - It also names the UI tests that use the linked identifiers and flags changed persistence or navigation code.
+2. **Exploring the change first.** With a focus the explorer tries, in order: the change's own controls on the screen in front; routes from the previous walk (its issues to recheck first, then the shortest known ways to screens where it saw the change's identifiers, without the taps that changed nothing); the ways in on the screen in front; then the nearest screen with focus controls left. Only then does it walk the rest as before. Within each tier the seeded order holds, so the same seed, focus and previous walk give the same walk; without a focus the walk is exactly the old one.
+3. **What did Forge actually exercise?** `explore.json` gets `focus`: the declared identifiers, which were seen and where, which were tried and at which step, the first step that tried one, and the ones never reached, with why that can happen ("not checked, so not passed"). Each journal step has a `phase` (`explore`, `route`, `recheck`, `verify`), and each screen its identifiers and route.
+4. **What did it find, and can I reproduce it?** Each issue now has its tie to the change (`focus`: direct, entry, screen or none) and what that tie rests on (`focus_basis`: `declared` when the changed file holds the identifier, `inferred` for a chain of names matched as text; neither is a proven dependency, and `basis_note` says so in every report), `changed_files` with how (empty means no link was established, not "unrelated"), `confidence` (`observed` for what the phone showed; `heuristic` for `no_effect` and `dead_end`), `evidence` (the screen's tree and screenshot), its replay as steps (`route`) and its replay file. After the walk, up to `--verify` issues (default 3; errors first, then warnings on the focus) are replayed from a fresh launch, and `reproduced` says whether they came back. These replays aren't counted in `--actions`; audit findings aren't replayed.
+5. **Did my change fix them?** With an earlier walk (`--previous`, or by default the app's latest under `.forge/runs` when the walk has a focus), `compare.json` sorts the earlier issues into `still_present`, `gone`, `new` and `not_rechecked`. An issue is `gone` only when this walk did the action that showed it (its recheck route does) and it didn't come back.
+
+`forge_ui_explore` in MCP aims at the files changed since the server started by default (`focus_changes`), learns from the previous walk (`previous`) and replays 3 issues (`verify`). `forge_ui_focus` gives the mapping alone, without the phone.
+
+**Demonstration** (`scripts/demo-m6.2.sh [OUT_DIR]`, about a minute, no phone):
+
+1. `forge ui focus --changed Sources/AppHost/ExerciseView.swift` on Good Dog: 11 declared identifiers, the ways in from Today and Learn, the journey test that uses them.
+2. An earlier plain walk of the model before the change: the map.
+3. The model after the change, where Save on the "How did it go?" sheet closes the app. The aimed walk (seed 7, 20 actions) finds the crash at step 9, ties it to ExerciseView.swift (`declared in ExerciseView.swift`), and its replay brings it back. Its files are `repro/issue-N-app_closed.toml`, `screens/<id>.json`, `focus.json` and `evidence.json` with `kind = "fixture"`.
+4. The same seed again: identical journal.
+5. Plain against aimed, seeds 1 to 20, 20 actions each: the plain walk found the crash in 2 of 20 (steps 11 and 12); the aimed walk in 20 of 20 (steps 8 or 9), with no earlier walk to learn from.
+6. After the fix, the aimed walk rechecks the earlier crash first: `gone`.
+
+The planted crash is in the model, not in Good Dog. What the demo proves is how Forge chooses, records and compares; it doesn't prove that Good Dog behaves like the model, and it is no substitute for the phone run below.
+
+**What it can't do yet:**
+
+- The links are textual: whole-word names and brace-matched bodies, not a compiler's view. A common method name can over-link (a Rust file used by most exports, such as Good Dog's `training.rs`, links most screens as ways in), and identifiers built at run time, or set through a helper, are missed.
+- It can't reach a screen whose way in isn't on screen: no scrolling below the fold, one row per list.
+- State across a relaunch isn't checked: test-data mode starts fresh on every launch, so a relaunch can't show that data survived. That needs the keep-data launch flag (`-ForgeUITestKeepData`, Good Dog pain point 5), not built. Changed persistence code is flagged in `forge ui focus` only.
+- No coverage map kept between walks beyond the previous walk's `explore.json`; no "skip unchanged screens".
+- `--promote` (copy a replay into `uitests/`) isn't built; the replay files are ready to copy by hand.
+
+**iPhone (owed, next sitting):** Pocket Library or Good Dog on test data: one plain walk, then a real change to one view, then `forge ui explore --since HEAD` reaches that view's controls within its first few actions, the same seed repeats the walk on the phone, and a fixed issue shows as `gone`. This is also the determinism check owed since #109 and #119. Until then, M6.2 is fixture-tested only.
 
 ### M6.3 Appearance and accessibility checks
 
@@ -231,6 +280,22 @@ Reuben (2026-11-08) asked for the Good Dog build's pain-points log (`docs/good-d
 **Tested by:** `make validate`, `scripts/check-fresh-app.sh` with `--blank`, Good Dog and Pocket Library tests passing on `Store<T>` unchanged.
 
 **iPhone:** one install of a `--blank` app and of Good Dog after the `Store<T>` move, in the next coordinated sitting. Proves the starter and the moved storage still run on the phone.
+
+## Outstanding iPhone checks (M6.1 and M6.2)
+
+None of these has run; each says what it proves.
+
+| # | Check | Proves | From |
+|---|---|---|---|
+| 1 | `forge device apps` against Settings > VPN & Device Management | The app list, profile team and days left, and the free-team slots in use, including whether the WebDriverAgent runner holds one | M6.1 |
+| 2 | Good Dog `uitests/journey.toml` on test data: `watch.log_status` is `collected` and `log_lines` > 0, `device.log` holds only `GoodDogXtool` lines | The syslog stream and WebDriverAgent run together; `syslog_while` stops at the end of the run without dropping either | M6.1, hardening |
+| 3 | Device Lab `dashboard.crashTest` then `crashTest.rust` in a UI run (`m6/device-lab-crash-rust.toml`): the failed step has `crash` with `symbolicated: matched`, culprit `rust/src/crash_test.rs`, `crash_reports: found`, and the log tail has "crashing on purpose"; then `forge_diagnose` gives `culprit_source.resolved_by` `app_relative` or `other_checkout` and `layer: rust` | Crash correlation on a real report and a real DWARF path | M6.1, hardening |
+| 4 | Unplug the phone during a UI run | The run breaks off with `watch.json`, `device.log` and the folder named in the error; `watch.reader` is `stopped` (joined, not detached) | Hardening |
+| 5 | Good Dog or Pocket Library: a plain walk, a real change to one view, then `forge ui explore --since HEAD` | The aimed walk reaches that view's controls within its first few actions on real trees; `focus.not_reached` is right | M6.2 |
+| 6 | The same walk with the same seed twice | Determinism on the phone (owed since #109 and #119) | M6.2 |
+| 7 | An issue found, fixed, and the next aimed walk | `reproduced: true` before, `gone` after, on the phone | M6.2 |
+
+The runbook for 1 to 3 is in project files at `m6/m61-phone-checks.md`.
 
 ## Order and phone time
 

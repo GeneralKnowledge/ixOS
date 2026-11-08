@@ -137,4 +137,21 @@ Run through the iPhone test session, not separately. Each proves something the L
 - Performance during the walk (A3 FPS and memory).
 
 Since M6.1 ([forge-m6.md](forge-m6.md), Linux-tested, not yet run on the phone): agents call `forge_ui_explore` in `forge mcp` (no destructive taps and no typed text of their own); every walk writes a `forge.evidence/1` bundle next to `explore.json`; the app's log lines are kept as `device.log`, and when the app closes its new crash reports are pulled and symbolicated into `crashes/`. A walk that tried no control fails rather than passing.
+
+## Exploring what changed (M6.2)
+
+Since M6.2 ([forge-m6.md](forge-m6.md#m62-exploration-aimed-at-the-change), Linux- and CI-tested on a model of Good Dog, not yet on the phone), a walk can be aimed at a change:
+
+```bash
+forge ui focus --project examples/good-dog --since HEAD           # what the uncommitted work touches
+forge ui explore --project examples/good-dog --since HEAD          # try that first
+forge ui explore --project examples/good-dog --changed Sources/AppHost/ExerciseView.swift
+```
+
+- The controls the changed Swift files declare go first, then routes from the previous walk (its issues are rechecked first), then the ways into the change (views that present it or call into it), then the rest of the app as before.
+- `explore.json` says what of the change was seen, tried and never reached; each issue says its tie to the change and the files behind it, its confidence (`observed` or `heuristic`), and after a replay whether it came back (`--verify N`, default 3).
+- Every tie says what it rests on (`focus_basis` on an issue, `basis` on a link): `declared` when the changed file contains the control's identifier (that control's code changed; which screen shows it is not proven) and `inferred` when names were matched as words along a chain (a view that uses the changed code) or by the same screen part. Both are read from the source as text, not compiled: leads for where to look first, never proven dependencies. `forge ui focus` prints that first, and groups the inferred ways in by the reason, so each can be checked. `basis_note` in `focus.json` and `explore.json` says the same for an agent.
+- With an earlier walk (`--previous FILE`, or the app's latest when the walk has a focus; `--no-previous` turns it off), `compare.json` lists issues gone, still there, new and not rechecked. "Gone" needs this walk to have done what showed the issue.
+- `--fixture MODEL.json` walks a model of the app (recorded trees and where taps lead) instead of the phone. It proves how Forge explores, never how the app behaves: its bundle and result say `kind = "fixture"`, `forge verify` never counts it as a device result, a walk learns only from earlier walks of its own kind (a phone walk never compares with a model's issues, and `--previous` naming the other kind is refused), and MCP has no way to start one. `scripts/demo-m6.2.sh` is the worked example.
+
 - Seeded random walks as well as the systematic one, for flaky-state bugs.

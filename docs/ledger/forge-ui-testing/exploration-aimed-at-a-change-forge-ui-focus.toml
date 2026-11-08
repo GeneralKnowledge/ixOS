@@ -1,0 +1,9 @@
+order = 55
+capability = "Exploration aimed at a change: which screens and controls changed files touch, read from the source (`forge ui focus`), and walks that try them first, follow earlier walks' routes, replay their findings and compare with the previous walk (`forge ui explore --since/--changed`)"
+framework = "Yes: forge-uitest (`focus`, `model`), forge-cli (`focus.rs`)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "Partial: Good Dog, on a model of the app built from its recorded screens (scripts/demo-m6.2.sh, run in CI)"
+iphone = "No"
+documented = "Yes: forge-m6.md (M6.2), forge-explore.md"
+limits = "Source links are textual (whole-word names, brace-matched bodies), not the compiler's: they can over-link a common name and miss identifiers built at run time. Persistence across a relaunch can't be explored yet (test-data mode starts fresh on every launch). No scrolling below the fold. The model walk proves how Forge explores and reports, not how the app behaves; nothing here has run on the phone"

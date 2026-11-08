@@ -68,6 +68,9 @@ Every run that executes tests writes a directory:
   <name>.tree.json     device runs: the accessibility tree saved with it
   visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
   device.log           device runs: the app's own log lines during the run (`+<ms>` from its start)
+  watch.json           a device run that broke off: what the watch collected before it
+  focus.json           an aimed walk (M6.2): the change's identifiers and links, the routes from the previous walk
+  compare.json         an aimed walk with a previous one: issues gone, still there, new, not rechecked
   crashes/             device runs: the app's crash reports written during the run, symbolicated (`<report>.ips.txt`)
   explore.json, screens/, repro/   `forge ui explore`: the walk, each screen, a replay file per issue
 ```
@@ -109,7 +112,7 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 
 | Field | Means |
 |---|---|
-| `kind` | `linux-twin` or `device`. Decides which verdict a run may set |
+| `kind` | `linux-twin`, `device`, or `fixture` (an explore walk on a model of the app, `--fixture`: it shows how Forge explored, never how the app behaves, and sets no verdict). Decides which verdict a run may set |
 | `ok` | No test failed and no requirement is `failed` or `missing` |
 | `where.device` | `null` on Linux. On a device run: `{ "udid", "name", "ios" }` |
 | `build.commit`, `build.dirty` | The commit the run was built from, and whether the app folder had uncommitted changes |
@@ -130,7 +133,13 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
 1. Writes to `<app>/.forge/runs/<id>-ui-run/` unless `--out` names another folder. Outside an app it still defaults to `forge-ui-out` and writes no bundle. The files it writes there are unchanged: the script's named screenshots, and at a failed step `failure-stepN.png`, `failure-stepN-tree.json` and `failure-stepN-tree.txt`.
 2. Writes `evidence.json` there with `kind = "device"`, `where.device` (`udid`, `ios_major`), `build` (read before the run, plus `installed_as`), `scenario` (relative to the app) and, instead of `tests`, `steps`: `{ "passed": N, "failed": null | { "step", "action", "error", "on_screen", "tree" } }`. Screenshots and the failure tree are listed under `artifacts`.
 3. Lists only the requirements whose `device` names this scenario, each with `device.verdict` `passed` or `failed`. Twin verdicts are left out of a device bundle.
-4. Records `watch` (M6.1): the app's own log lines while the run lasted (`device.log`) and, when a step failed, its crash reports written during the run, pulled and symbolicated. The failed step carries `log_tail` and `crash`. `--no-watch` skips it.
+4. Records `watch` (M6.1): the app's own log lines while the run lasted (`device.log`) and, when a step failed, its crash reports written during the run, pulled and symbolicated. The failed step carries `log_tail`, `crash`, `log_status` and `crash_reports`. `--no-watch` skips it. What couldn't be collected is never left to look like a quiet app:
+   - `log_status`: `collected`, `empty` (the reader ran and the app logged nothing), or `unavailable` (the reader couldn't start, failed, or didn't stop in time; `notes` says which).
+   - `reader`: what became of the log reader thread at the end. `stopped` means it was joined and its connection to the phone is closed; `detached` means it didn't stop within 2 s and was left to end on its own (the log is then `unavailable`); `not_started` means there was no reader.
+   - `crash_reports`: `not_checked` (the run passed), `none_new`, `found`, or `unavailable` (the phone's reports couldn't be listed or pulled). Only `none_new` means the app didn't crash.
+   - Each crash has `symbolicated`: `matched`, `other_build` (frames point at today's code, not the code that crashed), `no_local_build`, `unknown`, or `unreadable`.
+   - A run that wasn't watched has `status: not_watched` and a `reason` (`--no-watch`, another developer's app, an unreadable forge.toml).
+   - A run that broke off (WebDriverAgent or the phone stopped answering) still stops the watch, writes `device.log`, `crashes/` and `watch.json` into the run folder, and says so in the error.
 5. Compares each screenshot with the scenario's baseline (`uitests/baselines/<test>/`) and records the result under `visual`. A changed screen, or one with a new accessibility finding, fails the run and its requirements like a failed step, with a note naming the screen ([visual-regression.md](visual-regression.md)). `--visual off` skips this.
 
 `forge_run_ui_test` in `forge mcp` writes to the same place, so an agent's UI tests count as evidence. `forge_ui_act`'s one-step files don't: they live in `.forge/mcp/` and no requirement names them.

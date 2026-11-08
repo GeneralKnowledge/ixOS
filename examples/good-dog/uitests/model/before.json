@@ -1,0 +1,284 @@
+{
+ "app": "org.forgemobile.gooddog",
+ "start": "today",
+ "note": "Good Dog GD1 as it is: saving a session works",
+ "screens": {
+  "today": {
+   "tree": "../baselines/journey/2-today@1290x2796.tree.json"
+  },
+  "exercise": {
+   "tree": "../baselines/journey/3-exercise@1290x2796.tree.json"
+  },
+  "recorded": {
+   "tree": "../baselines/journey/4-recorded@1290x2796.tree.json"
+  },
+  "mydog": {
+   "tree": "../baselines/journey/5-my-dog@1290x2796.tree.json"
+  },
+  "term": {
+   "tree": "../baselines/journey/6-term@1290x2796.tree.json"
+  },
+  "record": {
+   "tree": "record.tree.json",
+   "synthesized": "written by hand from ExerciseView.swift (RecordSessionView): no tree of this screen was recorded on the phone"
+  },
+  "record-chosen": {
+   "tree": "record-chosen.tree.json",
+   "synthesized": "written by hand from ExerciseView.swift (RecordSessionView, a result chosen): no tree of this screen was recorded on the phone"
+  },
+  "feedback": {
+   "tree": "feedback.tree.json",
+   "synthesized": "written by hand from ExerciseView.swift (the Session Saved alert): no tree of this screen was recorded on the phone"
+  },
+  "learn": {
+   "tree": "learn.tree.json",
+   "synthesized": "written by hand from LearnView.swift: no tree of this screen was recorded on the phone"
+  },
+  "dog-edit": {
+   "tree": "dog-edit.tree.json",
+   "synthesized": "written by hand from DogFormView.swift (EditDogView): no tree of this screen was recorded on the phone"
+  }
+ },
+ "taps": [
+  {
+   "screen": "today",
+   "target": "today.activity.0",
+   "to": "exercise"
+  },
+  {
+   "screen": "today",
+   "target": "today.activity.1",
+   "to": "exercise"
+  },
+  {
+   "screen": "today",
+   "target": "today.activity.2",
+   "to": "exercise"
+  },
+  {
+   "screen": "today",
+   "target": "today.shorten",
+   "to": "stay"
+  },
+  {
+   "screen": "today",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "today",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "today",
+   "target": "tab.dog",
+   "to": "mydog"
+  },
+  {
+   "screen": "exercise",
+   "target": "BackButton",
+   "to": "today"
+  },
+  {
+   "screen": "exercise",
+   "target": "exercise.record",
+   "to": "record"
+  },
+  {
+   "screen": "exercise",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "exercise",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "exercise",
+   "target": "tab.dog",
+   "to": "mydog"
+  },
+  {
+   "screen": "exercise",
+   "target": "gooddog-term:positive-reinforcement",
+   "to": "term"
+  },
+  {
+   "screen": "exercise",
+   "target": "gooddog-term:reward",
+   "to": "term"
+  },
+  {
+   "screen": "exercise",
+   "target": "gooddog-term:cue",
+   "to": "term"
+  },
+  {
+   "screen": "record",
+   "target": "record.result.easy",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.result.easy",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record",
+   "target": "record.result.gettingThere",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.result.gettingThere",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record",
+   "target": "record.result.tooDifficult",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.result.tooDifficult",
+   "to": "record-chosen"
+  },
+  {
+   "screen": "record",
+   "target": "record.cancel",
+   "to": "exercise"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.cancel",
+   "to": "exercise"
+  },
+  {
+   "screen": "record",
+   "target": "record.welfare",
+   "to": "stay"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.welfare",
+   "to": "stay"
+  },
+  {
+   "screen": "record-chosen",
+   "target": "record.save",
+   "to": "feedback"
+  },
+  {
+   "screen": "feedback",
+   "target": "feedback.ok",
+   "to": "recorded"
+  },
+  {
+   "screen": "recorded",
+   "target": "BackButton",
+   "to": "today"
+  },
+  {
+   "screen": "recorded",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "recorded",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "recorded",
+   "target": "tab.dog",
+   "to": "mydog"
+  },
+  {
+   "screen": "mydog",
+   "target": "dog.edit",
+   "to": "dog-edit"
+  },
+  {
+   "screen": "dog-edit",
+   "target": "dogForm.cancel",
+   "to": "mydog"
+  },
+  {
+   "screen": "dog-edit",
+   "target": "dogForm.save",
+   "to": "mydog"
+  },
+  {
+   "screen": "mydog",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "mydog",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "mydog",
+   "target": "tab.dog",
+   "to": "mydog"
+  },
+  {
+   "screen": "learn",
+   "target": "learn.exercise.name-response",
+   "to": "exercise"
+  },
+  {
+   "screen": "learn",
+   "target": "learn.exercise.settle-on-mat",
+   "to": "exercise"
+  },
+  {
+   "screen": "learn",
+   "target": "learn.term.positive-reinforcement",
+   "to": "term"
+  },
+  {
+   "screen": "learn",
+   "target": "learn.glossary",
+   "to": "term"
+  },
+  {
+   "screen": "learn",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "learn",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "learn",
+   "target": "tab.dog",
+   "to": "mydog"
+  },
+  {
+   "screen": "term",
+   "target": "BackButton",
+   "to": "learn"
+  },
+  {
+   "screen": "term",
+   "target": "tab.today",
+   "to": "today"
+  },
+  {
+   "screen": "term",
+   "target": "tab.learn",
+   "to": "learn"
+  },
+  {
+   "screen": "term",
+   "target": "tab.dog",
+   "to": "mydog"
+  }
+ ]
+}

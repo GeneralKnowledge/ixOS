@@ -7,6 +7,7 @@ mod device;
 mod diagnose;
 mod doctor;
 mod evidence;
+mod focus;
 mod ios_builder;
 mod ios_env;
 mod ledger;
@@ -322,6 +323,51 @@ enum UiCommands {
         /// <app>/.forge/runs/<UTC>-ui-explore/)
         #[arg(long, value_name = "DIR")]
         out: Option<PathBuf>,
+        /// Aim the walk at what changed since this commit (`HEAD`: the
+        /// uncommitted work): the controls the changed files declare, and
+        /// the ways into them, go first (see `forge ui focus`)
+        #[arg(long, value_name = "REV")]
+        since: Option<String>,
+        /// Aim the walk at these changed files instead of git's list
+        /// (repeatable)
+        #[arg(long, value_name = "FILE")]
+        changed: Vec<String>,
+        /// Also aim at this identifier, or a prefix ending in `.*`
+        /// (repeatable)
+        #[arg(long, value_name = "ID")]
+        focus: Vec<String>,
+        /// The earlier walk to learn from (its explore.json): routes to the
+        /// focus, and its issues to check again. Default: the app's latest
+        /// walk under .forge/runs, when the walk has a focus
+        #[arg(long, value_name = "EXPLORE_JSON")]
+        previous: Option<PathBuf>,
+        /// Don't use an earlier walk
+        #[arg(long)]
+        no_previous: bool,
+        /// After the walk, replay up to this many issues once more to see
+        /// whether they come back (not counted in --actions)
+        #[arg(long, default_value_t = 3)]
+        verify: usize,
+        /// Walk a model of the app (a screen graph of recorded trees,
+        /// docs/forge-m6.md) instead of the phone. Proves how Forge
+        /// explores, never how the app behaves
+        #[arg(long, value_name = "MODEL_JSON")]
+        fixture: Option<PathBuf>,
+    },
+    /// Which screens and controls a change touches, from the source: the
+    /// identifiers the changed files declare, the ways into them, the UI
+    /// tests that use them, and the files with no link (and why). Needs no
+    /// phone
+    Focus {
+        /// The app: its folder with forge.toml
+        #[arg(long, default_value = ".")]
+        project: PathBuf,
+        /// Changes since this commit (default `HEAD`: the uncommitted work)
+        #[arg(long, value_name = "REV")]
+        since: Option<String>,
+        /// These files instead of git's list (repeatable)
+        #[arg(long, value_name = "FILE")]
+        changed: Vec<String>,
     },
     /// Keep one WebDriverAgent runner running in the background, so later
     /// `forge ui` commands skip starting it (about 2 s each). Stops on
@@ -657,7 +703,7 @@ fn main() {
             cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
         } => "test",
         Commands::Ui {
-            cmd: UiCommands::Accept { .. },
+            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
         } => "forge",
         // No DDI, no runner, WebDriverAgent not answering.
         Commands::Ui { .. } => "device",
@@ -732,6 +778,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Run { .. } => "ui run",
             UiCommands::Explore { .. } => "ui explore",
+            UiCommands::Focus { .. } => "ui focus",
             UiCommands::Start { .. } => "ui start",
             UiCommands::Stop { .. } => "ui stop",
             UiCommands::Status { .. } => "ui status",
@@ -974,8 +1021,22 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     per_screen,
                     no_screenshots,
                     out: dir,
+                    since,
+                    changed,
+                    focus,
+                    previous,
+                    no_previous,
+                    verify,
+                    fixture,
                 } => {
                     let options = ui::ExploreOptions {
+                        since,
+                        changed,
+                        focus,
+                        previous,
+                        no_previous,
+                        verify,
+                        fixture,
                         actions,
                         minutes,
                         seed,
@@ -989,6 +1050,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     };
                     ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out)
                 }
+                UiCommands::Focus { project, since, changed } => focus::show(&project, since.as_deref(), &changed, &mut out),
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
                 UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),
                 UiCommands::Status { udid } => ui_session::status(udid.as_deref(), &mut out),
