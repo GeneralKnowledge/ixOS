@@ -201,7 +201,9 @@ fn the_character_is_pinned_and_reminded_and_history_is_sent() {
         .instructions
         .contains("Never write the user's messages"));
     assert!(!request.instructions.contains("role-play"));
-    assert!(request.instructions.contains("do it right away and in full"));
+    assert!(request
+        .instructions
+        .contains("do it right away and in full"));
     let roles: Vec<_> = request.turns.iter().map(|t| t.role).collect();
     use PromptRole::{Assistant as A, User as U};
     // Opening line, first exchange, the new message.
