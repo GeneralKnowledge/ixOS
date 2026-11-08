@@ -347,7 +347,9 @@ Found in the first sitting (Cati, 2026-11-08, forge at 9c8488a) and what became 
 - Check 3 passed: a Rust panic in a UI run gave the failed step a symbolicated crash (`rust_panic`, `crash_test.rs:24`) and `forge_diagnose` layer `rust`. HangTracer filled the 5000-line log and pushed the panic's own line out; HangTracer is now left out like WebDriverAgent's lines (M6.4's PR).
 - When the app had died, the failed step listed the home screen's icons and notification counts. A failure with the home screen in front now records neither its tree nor its screenshot, only a note saying why (M6.4's PR).
 - Crash reports are pulled only when a step fails or the app closes: on a passing run `crash_reports` is `not_checked`, which means not looked, never "no crash". By design.
-- Open: a `kind` scroll in a CollectionView took 8 to 11 s each; `forge_diagnose` called while another tool is still running answers about the last call that finished, not the running one.
+- Check 8 (Good Dog dark at AX5, audit on Today, an exercise and My Dog): no `small_tap_target` or `clipped` findings, but the audit only sees what is on screen, so at AX5 it covered the top of each screen. Today's plan title wrapped into three lines and ran under the tab bar unflagged. Reuben judged wrap and overlap by eye.
+- A `kind` CollectionView scroll with the keyboard up swiped across it and typed into the name field ("Moss" became "MossSsss"). A scroll step now refuses while the keyboard is up (M6.4's PR).
+- Open: a whole-screen audit (scroll, then audit each part); the journey needs scroll steps at AX5, where `onboarding.start`, `exercise.step.0` and `dog.sessionsThisWeek` are below the fold; a `kind` scroll in a CollectionView took 7 to 11 s each; `forge_diagnose` called while another tool is still running answers about the last call that finished, not the running one.
 
 ## Order and phone time
 

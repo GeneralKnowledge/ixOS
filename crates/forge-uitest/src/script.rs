@@ -522,6 +522,17 @@ fn run_step(
         });
     }
     if let Some(scroll) = &step.scroll {
+        // A swipe that crosses the keyboard types into the field: on Cati
+        // a CollectionView scroll turned "Moss" into "MossSsss". Refuse
+        // rather than change the person's text.
+        if driver
+            .tree()
+            .is_ok_and(|t| t.walk().any(|n| n.kind == "Keyboard" && n.visible))
+        {
+            return Err(UiError::Refused(
+                "the keyboard is up, and a scroll would swipe across it and type into the field: close it first (tap the field's Done or Return key)".into(),
+            ));
+        }
         return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
             d.scroll(e, &scroll.direction)
         });
@@ -842,6 +853,28 @@ mod tests {
         let mut driver = FakeDriver::new(screen);
         driver.front = Some("a".into());
         driver
+    }
+
+    #[test]
+    fn a_scroll_with_the_keyboard_up_is_refused() {
+        let script = Script::parse(
+            "name='k'\napp='a'\ntimeout=0\n[[step]]\nscroll={kind='CollectionView', direction='down'}\n",
+        )
+        .unwrap();
+        let mut screen = node("Application", "", "Good Dog");
+        let mut keyboard = node("Keyboard", "", "");
+        keyboard.visible = true;
+        screen.children = vec![node("CollectionView", "", ""), keyboard];
+        let mut driver = in_front(screen);
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", &mut driver, dir.path(), &mut out).unwrap();
+        assert!(report.failed.unwrap().1.contains("the keyboard is up"));
+        assert!(
+            !driver.calls.iter().any(|c| c.starts_with("scroll")),
+            "{:?}",
+            driver.calls
+        );
     }
 
     #[test]
