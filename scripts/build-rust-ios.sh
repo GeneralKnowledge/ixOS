@@ -79,6 +79,14 @@ FEATURES=()
 if [[ -n "${FORGE_RUST_FEATURES:-}" ]]; then
   FEATURES=(--features "$FORGE_RUST_FEATURES")
 fi
+# Line tables for the Rust frames of crash reports (`forge crash`, docs/forge-device.md).
+# They stay in the static library's object files, which the app binary's debug map
+# points at, so the app itself does not grow. FORGE_IOS_RUST_DEBUG overrides the level
+# (`false` leaves them out); a CARGO_PROFILE_<NAME>_DEBUG set by the caller wins.
+PROFILE_DEBUG_VAR="CARGO_PROFILE_$(echo "$CARGO_PROFILE" | tr 'a-z-' 'A-Z_')_DEBUG"
+if [[ "$CARGO_PROFILE" != "dev" && -z "${!PROFILE_DEBUG_VAR:-}" ]]; then
+  export "$PROFILE_DEBUG_VAR=${FORGE_IOS_RUST_DEBUG:-line-tables-only}"
+fi
 cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE" ${FEATURES[@]+"${FEATURES[@]}"}
 
 OUT_DIR="$NATIVE_OUT/ios-device/lib"

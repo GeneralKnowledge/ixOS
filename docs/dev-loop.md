@@ -17,7 +17,7 @@ What an agent (or a person) can do at each step today, from Linux. "Phone-verifi
 | 7. Inspect the UI | `forge ui tree`/`screenshot` (#61, WDA); Apple's accessibility service probe (#79, #88; experimental, `ax_probe --json`) | WDA tree and screenshot: **work on Cati** (2026-11-07, with #90). Accessibility service: **phone-verified for reading and pressing** (Cati, iOS 26.3.1, 2026-11-07): identifiers, labels and values of the foreground app, and a press by identifier (`library.add`), with no runner and no disk image. It reads a flat VoiceOver-order list, not a tree, and can't type; Apple's audit doesn't answer yet. See [ax-audit.md](research/ax-audit.md) |
 | 8. Read logs | `forge device logs --process <App>Xtool --for 20s --json`; Swift logs through ForgeLog (#66); `forge_read_logs` | Built; device logs phone-verified (#50), live-only (no history before the call) |
 | 9. Run UI tests | `forge ui run <file>.toml --json` (#61); `forge_run_ui_test`, `forge_ui_act` | Built; not yet passing on the phone: finding an element by identifier uses an attribute WDA 16 rejects (bug open), so Pocket Library's `uitests/m0.toml` hasn't passed |
-| 10. Diagnose | `diagnose.rs` hints in every `--json` result, `forge device crashes --pull`, `forge_diagnose` (last failure and its log) | Basic: no correlation of logs, crashes and UI state yet; crashes not symbolicated |
+| 10. Diagnose | `diagnose.rs` hints in every `--json` result, `forge device crashes --pull` (symbolicated), `forge crash`, `forge_diagnose` (last failure and its log) | Basic: no correlation of logs, crashes and UI state yet |
 
 ### Proving it on the phone
 
@@ -76,7 +76,7 @@ Times marked *measured* were measured for this page (cloud Linux container, x86_
 | 5. Launch | **Tap the icon.** xtool can't launch on iOS 17+ (`forge run ios` says so) | n/a | **Yes, every iteration** |
 | 6. Look at it | Look at the phone. Simulator screenshots exist only in macOS CI, for the starter, Pocket Library and Weather, and only when their Swift changes | n/a | **Yes, every iteration** |
 | 7. Logs | `forge device logs --grep "[target]"` (system log, Rust records only); `forge device connect` with `--devtools` (Rust records and lifecycle, not yet run on the phone) | Live | No, but Swift `print`/`Logger` output is missing from the live stream, and starter apps made before 2026-11-07 share the process name `AppHostXtool` |
-| 8. Diagnose a crash | `forge device crashes --app … --pull` | Live | Reports are not symbolicated; no debugger from Linux |
+| 8. Diagnose a crash | `forge device crashes --app … --pull` | Live | Symbolicated against the local build (Swift and Rust file and line); no debugger from Linux |
 | 9. Test | Rust tests on Linux. XCTest only on macOS (`forge test` skips it). UI tests on the phone: PR #61 (*since then:* merged, not yet run on the phone) | Rust: seconds. XCTest: macOS CI (step 3') | UI checks are manual runbooks (iphone-acceptance.md, ACCEPTANCE.md) |
 | 10. Repeat | Steps 2–7 again | | |
 
@@ -159,7 +159,7 @@ Stock xtool relinks on every run (13.1 s no-change rebuild vs 2.9 s with the pat
 
 ### 7. Crashes can't be read and there's no debugger — rare, but expensive. Agent: partial
 
-`forge device crashes` pulls reports, unsymbolicated. Smallest fix: `--symbolicate`, with `llvm-symbolizer` against the binary in the last build (the build already has its debug info; the Swift toolchain ships llvm-symbolizer). A Linux debugger (lldb + debugserver through idevice's debug proxy) is possible but not small; leave it until symbolicated crashes and the live log aren't enough.
+Done (2026-11-08): `forge device crashes --pull` and `forge crash` symbolicate reports in process (`forge-crash`: `.ips` parsing, UUID match against the app's build, Mach-O debug map and dSYM through `addr2line`), and say what kind of crash it was and which app frame to start at ([forge-device.md](forge-device.md#crash-reports)). No external tool is needed except `swift demangle` for Swift names. A Linux debugger (lldb + debugserver through idevice's debug proxy) is possible but not small; leave it until symbolicated crashes and the live log aren't enough.
 
 ### 8. Commands speak to people, not programs — every agent step. Agent: **yes**
 

@@ -305,8 +305,15 @@ pub fn app_tree(runner: &dyn CommandRunner, app: &Path) -> Option<String> {
         std::process::id(),
         N.fetch_add(1, Ordering::Relaxed)
     ));
-    let tree = git_line(runner, app, &["add", "-A", "--", "."], Some(&index))
-        .and_then(|_| git_line(runner, app, &["write-tree"], Some(&index)));
+    // Approved screenshots (uitests/baselines/) say nothing about the code:
+    // accepting one must not make the app's evidence stale.
+    let tree = git_line(
+        runner,
+        app,
+        &["add", "-A", "--", ".", ":(exclude,glob)**/baselines/**"],
+        Some(&index),
+    )
+    .and_then(|_| git_line(runner, app, &["write-tree"], Some(&index)));
     let _ = fs::remove_file(&index);
     tree.filter(|t| !t.is_empty())
 }
@@ -337,6 +344,12 @@ pub struct DeviceRun<'a> {
     /// Files in the bundle folder: (kind, path relative to the folder).
     pub artifacts: Vec<(&'static str, String)>,
     pub duration_ms: u64,
+    /// The screenshots compared with their baselines
+    /// (`forge_uitest::baseline::Report`), unless `--visual off`.
+    pub visual: Option<Value>,
+    /// Screenshots that differ from their baselines, or gained accessibility
+    /// findings: they fail the run like a failed step.
+    pub visual_failures: Vec<String>,
 }
 
 /// Writes `evidence.json` (kind `device`) into `dir`, the run's output
@@ -348,8 +361,13 @@ pub fn write_device_bundle(
     dir: &Path,
     id: &str,
 ) -> Result<PathBuf, String> {
-    let ok = run.failed_step.is_none();
+    let ok = run.failed_step.is_none() && run.visual_failures.is_empty();
     let verdict = if ok { "passed" } else { "failed" };
+    let notes: Vec<String> = run
+        .visual_failures
+        .iter()
+        .map(|name| format!("screenshot {name} differs from its baseline"))
+        .collect();
     let requirements: Vec<Value> = reqs
         .iter()
         .filter(|r| r.device.iter().any(|s| same_path(s, run.scenario)))
@@ -357,7 +375,7 @@ pub fn write_device_bundle(
             json!({
                 "id": r.id,
                 "statement": r.statement,
-                "device": { "verdict": verdict, "scenarios": [run.scenario] },
+                "device": { "verdict": verdict, "scenarios": [run.scenario], "notes": notes },
             })
         })
         .collect();
@@ -375,6 +393,7 @@ pub fn write_device_bundle(
         "build": run.build,
         "scenario": run.scenario,
         "steps": { "passed": run.passed_steps, "failed": run.failed_step },
+        "visual": run.visual,
         "requirements": requirements,
         "artifacts": run.artifacts.iter().map(|(k, p)| json!({"kind": k, "path": p})).collect::<Vec<_>>(),
     });
@@ -591,6 +610,8 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             failed_step: Some(json!({"step": 3, "error": "no element"})),
             artifacts: vec![("screenshot", "failure-step3.png".into())],
             duration_ms: 9,
+            visual: None,
+            visual_failures: vec![],
         };
         let path = write_device_bundle(&run, &reqs, dir.path(), "2026-11-08T09-00-00").unwrap();
         let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
@@ -602,6 +623,66 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["where"]["device"]["udid"], "0000");
         assert_eq!(doc["artifacts"][0]["sha256"], sha256_hex(b"png"));
         assert_eq!(doc["artifacts"][0]["bytes"], 3);
+    }
+
+    #[test]
+    fn baselines_are_left_out_of_the_app_tree_hash() {
+        let dir = tempfile::tempdir().unwrap();
+        let app = dir.path();
+        let runner = crate::runner::RealRunner;
+        let git = |args: &[&str]| {
+            std::process::Command::new("git")
+                .arg("-C")
+                .arg(app)
+                .args(args)
+                .output()
+                .unwrap()
+        };
+        if !git(&["init", "-q"]).status.success() {
+            return; // no git here
+        }
+        fs::create_dir_all(app.join("uitests/baselines/m0")).unwrap();
+        fs::write(app.join("forge.toml"), "").unwrap();
+        let before = app_tree(&runner, app).expect("a tree hash");
+        fs::write(app.join("uitests/baselines/m0/form@2x3.png"), "png").unwrap();
+        assert_eq!(app_tree(&runner, app).as_deref(), Some(before.as_str()));
+        fs::write(app.join("uitests/m0.toml"), "x").unwrap();
+        assert_ne!(app_tree(&runner, app).as_deref(), Some(before.as_str()));
+    }
+
+    #[test]
+    fn a_visual_change_fails_the_device_verdict_with_a_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let reqs = vec![Requirement {
+            id: "T-1".into(),
+            statement: "Tip is added".into(),
+            twin: vec![],
+            device: vec!["uitests/tip.toml".into()],
+        }];
+        let run = DeviceRun {
+            scenario: "uitests/tip.toml",
+            build: json!({}),
+            device: json!({}),
+            passed_steps: 5,
+            failed_step: None,
+            artifacts: vec![("visual_diff", "visual/form.diff.png".into())],
+            duration_ms: 9,
+            visual: Some(
+                json!({"mode": "check", "screens": [{"name": "form", "verdict": "changed"}]}),
+            ),
+            visual_failures: vec!["form".into()],
+        };
+        let path = write_device_bundle(&run, &reqs, dir.path(), "id").unwrap();
+        let doc: Value = serde_json::from_str(&fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(doc["ok"], false);
+        assert_eq!(doc["steps"]["failed"], Value::Null);
+        assert_eq!(doc["visual"]["screens"][0]["verdict"], "changed");
+        let device = &doc["requirements"][0]["device"];
+        assert_eq!(device["verdict"], "failed");
+        assert_eq!(
+            device["notes"][0],
+            "screenshot form differs from its baseline"
+        );
     }
 
     #[test]

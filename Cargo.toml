@@ -10,6 +10,7 @@ members = [
     "crates/forge-devtools",
     "crates/forge-uitest",
     "crates/forge-mcp",
+    "crates/forge-crash",
     "examples/chat-core",
     "examples/chat-server",
     "examples/chat-cli",

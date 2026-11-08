@@ -38,12 +38,13 @@ Built (M0), each tool running `forge <command> --json` in the app folder:
 | `forge_install_device` | `run ios` | Tier 2: refused unless `--allow install` (and the bundle id is in `--bundle-id`, when given); the refusal carries `person_command` |
 | `forge_device_status` | `device list` + `doctor` | Phones, usbmuxd, sign-in, signing team, team-aware notes |
 | `forge_read_logs` | `device logs --for --limit --process <xtool_product>` | 1–120 s, live only; marked as app output |
-| `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes` | Not symbolicated |
+| `forge_read_crashes` | `device crashes --app --pull <app>/.forge/crashes --limit N --project <app>` | Symbolicated against the local build: kind, message, culprit frame with file and line, crashed thread |
 | `forge_diagnose` | (server state) | The last failed result in the session and the end of its log file |
 | `forge_launch_app`, `forge_screenshot`, `forge_inspect_ui`, `forge_ui_act`, `forge_run_ui_test` | `ui run` with a one-step test file (`launch`, `terminate`, `tap`, `type`, `clear`, `expect`), `ui screenshot`, `ui tree --app`, `ui run` | Listed only when the `forge` binary has `forge ui` (any build from main since #61). Screenshots, and the failure screenshot of a UI run, come back as images. `forge_launch_app` takes `text_size` (`small` to `largest`): a `UIPreferredContentSizeCategoryName` launch argument, so the agent checks the largest Dynamic Type size without changing the phone's settings (not yet run on a phone) |
+| `forge_accept_screenshots` | `ui accept <run> [--only NAME]` | Makes a `forge_run_ui_test` run's screenshots the baselines its test is compared with. `forge_run_ui_test` compares every screenshot by default and fails on a changed screen; its result has `data.visual` and returns the first diff image ([visual-regression.md](visual-regression.md)) |
 | `forge_verify` | `verify [--twin-only]` | Per requirement in `requirements.toml`: the newest twin and iPhone verdicts and whether they are for the current files ([evidence.md](evidence.md#forge-verify)). The stop condition. `forge_run_ui_test` writes its output to `.forge/runs/<UTC>-ui-run/`, so its results count |
 
-Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`.
+Resources: `forge://conventions` (the starter's AGENTS.md rules plus how to use the tools), `forge://capabilities` (the generated ledger), `forge://limits` (the practical limits below and the free/paid table from ios-signing.md), `forge://docs/{page}`. Prompts: `new_app`, `fix_build`, `fix_crash`.
 
 **Client timeouts.** Some clients stop waiting for a tool long before Forge's own limits (30 min for a build, 8 min for an install, 5 min for `forge_create_app`). Claude Code gives up after 60 s by default (found in the Murmur dry run, 2026-11-08: `forge_create_app` "timed out" three times while `forge init` was still running, and the agent finished the folder by hand), so start it with `MCP_TOOL_TIMEOUT=1900000`. Other clients have their own setting.
 
@@ -186,7 +187,7 @@ Signing happens inside `forge run ios` (xtool signs online with the logged-in Ap
 | Tool | What it does | Built on | Gap | M0 |
 |---|---|---|---|---|
 | `forge_read_logs` | Bounded log read: `since` (launch, a time, a cursor), `limit`, `grep`, `source` (system log or the app's own live stream) | `forge device logs`, `forge device connect` (#57) | Logs stream until Ctrl-C today. Needs `--since`/`--for` so a call ends, and the server keeps a capture running from the last launch. Swift logs missing from the live stream (DL4, audit C3) | Yes (system log) |
-| `forge_read_crashes` | New crash reports for the app since the last launch | `forge device crashes --app --pull` | Symbolication (DL7) | Yes |
+| `forge_read_crashes` | The app's newest crash reports, symbolicated | `forge device crashes --app --pull` | Done: `forge-crash` (DL7) | Yes |
 | `forge_app_state` | The app's own status, probes and commands, in a dev build | `forge device status/snapshot/cmd` (#57) | Pairing needs the app on screen within two minutes of launch: fine for an agent that just launched it, but never run on the phone yet | No (M1) |
 
 `forge_app_state` is the most interesting inspection tool for an agent: it sees the Rust state directly ("3 notes, last error none") rather than inferring it from pixels. It arrives in M1 because the live session has not yet run on Cati.
@@ -264,6 +265,7 @@ Prompts are reusable task recipes a person can pick in their client:
 |---|---|
 | `new_app` (name, idea) | Read conventions and capabilities, create the app, keep the model Foundation-only, add identifiers as you go, build, install, launch, screenshot, inspect the tree, write one UI test |
 | `fix_build` | Read the last result's diagnostics, fix the earliest error first, rebuild; if the stage is signing or device, check device status before touching code |
+| `fix_crash` | Read the newest crash with forge_read_crashes, start at its culprit frame, reproduce the cause in a Linux test, fix, reinstall and check that no new report appears |
 | `ui_review` (screen) | Screenshot in light, dark and largest text, inspect the tree, compare against ios-ui.md, fix, repeat |
 | `prove_capability` (name) | Use a capability in the app, run it on the phone, collect logs and a screenshot as evidence for the ledger. A person still records the ledger result |
 
