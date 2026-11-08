@@ -13,6 +13,7 @@ struct ForgeAppLauncher: App {
         WindowGroup {
             ContentView()
                 .receivesDeepLinks()
+                .forgeLaunchAppearance()
         }
     }
 }

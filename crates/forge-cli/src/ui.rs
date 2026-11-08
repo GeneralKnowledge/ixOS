@@ -332,6 +332,102 @@ pub fn tree(
     any_app: bool,
     out: &mut dyn Write,
 ) -> Result<(), String> {
+    let (front, tree) = screen_tree(udid, app, any_app, out)?;
+    write!(out, "{}", tree.render()).map_err(err)?;
+    let findings = tree.audit();
+    report::set_data(serde_json::json!({
+        "app": front,
+        "tree": tree,
+        "text": tree.render(),
+        "findings": findings,
+    }));
+    if !findings.is_empty() {
+        writeln!(out, "\nAccessibility ({}):", findings.len()).map_err(err)?;
+        for finding in findings {
+            writeln!(out, "  {finding}").map_err(err)?;
+        }
+    }
+    Ok(())
+}
+
+/// `forge ui audit` (M6.3): the accessibility audit of the screen, without
+/// the tree. Fails when it finds an error (a control VoiceOver can't name).
+pub fn audit(
+    udid: Option<&str>,
+    app: Option<&str>,
+    any_app: bool,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let (front, tree) = screen_tree(udid, app, any_app, out)?;
+    let result = audit_result(front.as_deref(), &tree);
+    report::set_data(result.clone());
+    write!(out, "{}", audit_text(&result)).map_err(err)?;
+    match result["errors"].as_u64().unwrap_or(0) {
+        0 => Ok(()),
+        n => Err(format!("the audit found {n} error(s)")),
+    }
+}
+
+/// What the audit checks, said with every result: a clean audit is clean
+/// for these checks only.
+const AUDIT_CHECKS: [&str; 5] = [
+    "no_label: a control VoiceOver has no name for (error)",
+    "no_identifier, duplicate_identifier: a control tests can't find reliably (warning)",
+    "small_tap_target: under 44 x 44 pt, counting a Form row as the target; bar buttons and links inside a sentence are left out (warning)",
+    "clipped: text or a labelled control running off the side of the screen, or text drawn over text in the same list (warning)",
+    "Measured on the accessibility tree, not the pixels: contrast, text truncated with an ellipsis inside its own frame and colour-only meaning are not checked",
+];
+
+fn audit_result(front: Option<&str>, tree: &forge_uitest::UiNode) -> serde_json::Value {
+    let findings = tree.audit();
+    let count = |severity: &str| findings.iter().filter(|f| f.severity == severity).count();
+    let mut by_issue = std::collections::BTreeMap::<&str, usize>::new();
+    for f in &findings {
+        *by_issue.entry(f.issue).or_default() += 1;
+    }
+    serde_json::json!({
+        "app": front,
+        "screen": tree.frame.map(|f| serde_json::json!({"width": f.width, "height": f.height})),
+        "errors": count("error"),
+        "warnings": count("warning"),
+        "by_issue": by_issue,
+        "findings": findings,
+        "checks": AUDIT_CHECKS,
+    })
+}
+
+fn audit_text(result: &serde_json::Value) -> String {
+    let findings = result["findings"].as_array().cloned().unwrap_or_default();
+    let mut text = format!(
+        "Accessibility audit: {} error(s), {} warning(s)\n",
+        result["errors"], result["warnings"]
+    );
+    for f in &findings {
+        let what = f["issue"].as_str().unwrap_or("?");
+        let detail = f["detail"]
+            .as_str()
+            .map(|d| format!(" ({d})"))
+            .unwrap_or_default();
+        text.push_str(&format!(
+            "  {} {what}{detail}: {}\n",
+            f["severity"].as_str().unwrap_or("?"),
+            f["element"]["summary"].as_str().unwrap_or("")
+        ));
+    }
+    if findings.is_empty() {
+        text.push_str("  Nothing found by these checks (contrast and truncation inside a frame aren't measured).\n");
+    }
+    text
+}
+
+/// The app in front and its tree, after the any-app policy allowed reading
+/// it (and bringing `app` to the front first).
+fn screen_tree(
+    udid: Option<&str>,
+    app: Option<&str>,
+    any_app: bool,
+    out: &mut dyn Write,
+) -> Result<(Option<String>, forge_uitest::UiNode), String> {
     let policy = Policy::load()?;
     let own = own_apps(&[Path::new(".")]);
     let scope = Scope {
@@ -361,21 +457,7 @@ pub fn tree(
             .unwrap_or("unknown (WebDriverAgent did not say)")
     )
     .map_err(err)?;
-    write!(out, "{}", tree.render()).map_err(err)?;
-    let findings = tree.audit();
-    report::set_data(serde_json::json!({
-        "app": front,
-        "tree": tree,
-        "text": tree.render(),
-        "findings": findings,
-    }));
-    if !findings.is_empty() {
-        writeln!(out, "\nAccessibility ({}):", findings.len()).map_err(err)?;
-        for finding in findings {
-            writeln!(out, "  {finding}").map_err(err)?;
-        }
-    }
-    Ok(())
+    Ok((front, tree))
 }
 
 /// `forge ui screenshot`
@@ -793,6 +875,8 @@ pub struct ExploreOptions {
     /// Explore the app on the person's own data, looking only.
     pub real_data: bool,
     pub largest_text: bool,
+    /// `dark` or `light`; `None` follows the phone.
+    pub appearance: Option<String>,
     pub per_screen: usize,
     pub screenshots: bool,
 }
@@ -863,6 +947,9 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             } else {
                 Vec::new()
             };
+            if let Some(mode) = &options.appearance {
+                args.extend([explore::APPEARANCE_ARG.to_string(), mode.clone()]);
+            }
             if options.largest_text {
                 args.extend(explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
             }
@@ -1020,6 +1107,42 @@ fn latest_walk(project: &Path, out_dir: &Path, kind: &str) -> Option<PathBuf> {
     walks.pop().map(|p| p.join("explore.json"))
 }
 
+/// The newest earlier device walk launched with the same arguments and with
+/// no error: what this walk's screenshots are compared with (M6.3).
+fn last_clean_walk(
+    project: &Path,
+    out_dir: &Path,
+    launch_args: &[String],
+) -> Option<(PathBuf, serde_json::Value)> {
+    let runs = project.join(".forge/runs");
+    let mut walks: Vec<PathBuf> = std::fs::read_dir(&runs)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .is_some_and(|n| n.to_string_lossy().ends_with("-ui-explore"))
+        })
+        .filter(|p| p != out_dir && walk_kind(&p.join("explore.json")) == "device")
+        .collect();
+    walks.sort();
+    walks.into_iter().rev().find_map(|dir| {
+        let text = std::fs::read_to_string(dir.join("explore.json")).ok()?;
+        let value: serde_json::Value = serde_json::from_str(&text).ok()?;
+        let same_launch = value["launch_args"].as_array().is_some_and(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str())
+                .eq(launch_args.iter().map(String::as_str))
+        });
+        let clean = !value["issues"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .any(|i| i["severity"] == "error");
+        (same_launch && clean).then_some((dir, value))
+    })
+}
+
 /// `forge ui explore`: walk a Forge app's screens and report what is wrong.
 /// Fails when the walk found an error (a crash, an unlabelled control).
 pub fn explore(
@@ -1113,6 +1236,35 @@ pub fn explore(
         }
     };
     writeln!(out, "Report: {}", out_dir.join("explore.json").display()).map_err(err)?;
+    // Screens against the last clean walk launched the same way (M6.3):
+    // information for the reader, never an issue.
+    let visual = match (kind, options.screenshots) {
+        ("device", true) => match last_clean_walk(project, &out_dir, &report.launch_args) {
+            Some((dir, earlier)) => {
+                let screens: Vec<(String, Option<String>)> = report
+                    .screens
+                    .iter()
+                    .map(|s| (s.id.clone(), s.screenshot.clone()))
+                    .collect();
+                let v = forge_uitest::baseline::compare_walks(&out_dir, &screens, &dir, &earlier);
+                writeln!(
+                    out,
+                    "Against the last clean walk ({}): {} of {} screen(s) look different (not issues; see visual/)",
+                    dir.display(),
+                    v["changed"],
+                    v["compared"]
+                )
+                .map_err(err)?;
+                v
+            }
+            None => serde_json::json!({
+                "compared": 0,
+                "note": "No earlier clean walk launched the same way (same test data, appearance and text size) to compare screenshots with."
+            }),
+        },
+        ("device", false) => serde_json::json!({"compared": 0, "note": "--no-screenshots"}),
+        _ => serde_json::json!({"compared": 0, "note": "A model of the app has no screenshots."}),
+    };
     // What changed since the previous walk: new, still there, gone (only
     // when this walk did what showed it), not rechecked.
     let compared = previous.as_ref().map(|(value, path)| {
@@ -1166,6 +1318,7 @@ pub fn explore(
         "issues": report.issues,
         "focus": report.focus,
         "compare": compared,
+        "visual": visual,
     });
     build["installed_as"] = serde_json::json!(config.app);
     let tried = report
@@ -1238,6 +1391,7 @@ mod tests {
             allow_destructive: false,
             real_data: false,
             largest_text: true,
+            appearance: None,
             per_screen: 15,
             screenshots: true,
         }
@@ -1304,6 +1458,16 @@ mod tests {
         let config = explore_config(&pocket_library(), &real).unwrap();
         assert!(!config.test_data);
         assert!(config.launch_args.is_empty());
+        // Dark mode is passed on every launch, like the text size.
+        let dark = ExploreOptions {
+            appearance: Some("dark".into()),
+            ..options()
+        };
+        let config = explore_config(&pocket_library(), &dark).unwrap();
+        assert_eq!(
+            config.launch_args[..3],
+            ["-ForgeUITestData", "-ForgeAppearance", "dark"]
+        );
         let reckless = ExploreOptions {
             allow_destructive: true,
             ..real
@@ -1409,7 +1573,11 @@ mod tests {
         std::fs::create_dir_all(&run).unwrap();
         std::fs::create_dir_all(app.join("uitests")).unwrap();
         std::fs::write(app.join("forge.toml"), "").unwrap();
-        std::fs::write(app.join("uitests/tip.toml"), "").unwrap();
+        std::fs::write(
+            app.join("uitests/tip.toml"),
+            "name = \"tip\"\napp = \"org.forgemobile.tipster\"\n[[step]]\nlaunch = {}\n[[step]]\nscreenshot = \"tip\"\n",
+        )
+        .unwrap();
         let png = forge_uitest::visual::encode_png(&forge_uitest::visual::Image::new(
             2,
             3,
@@ -1499,5 +1667,107 @@ mod tests {
             refused.contains("is a fixture walk and this is a device walk"),
             "{refused}"
         );
+    }
+
+    #[test]
+    fn the_audit_result_counts_findings_and_says_what_it_checks() {
+        // Good Dog's My Dog screen from the iPhone, with one control
+        // shrunk to Murmur's 44 x 18 pt like button.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/good-dog/uitests/baselines/journey/5-my-dog@1290x2796.tree.json");
+        let mut tree: forge_uitest::UiNode =
+            serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap();
+        assert_eq!(audit_result(Some("app"), &tree)["warnings"], 0);
+        let index = tree
+            .walk()
+            .position(|n| {
+                n.kind == "Button" && n.identifier.is_some() && n.frame.is_some_and(|f| f.y > 160.0)
+            })
+            .unwrap();
+        let button = tree.nth_mut(index).unwrap();
+        let id = button.identifier.clone().unwrap();
+        let frame = button.frame.as_mut().unwrap();
+        (frame.x, frame.width, frame.height) = (200.0, 44.0, 18.0);
+        let result = audit_result(Some("app"), &tree);
+        assert_eq!(result["errors"], 0);
+        assert_eq!(result["by_issue"]["small_tap_target"], 1, "{result}");
+        assert_eq!(result["screen"]["width"], 430.0);
+        let text = audit_text(&result);
+        assert!(
+            text.contains("warning small_tap_target (44 x 18 pt, under 44 x 44)"),
+            "{text}"
+        );
+        assert!(text.contains(&id), "{text}");
+        // What isn't measured is said with every result.
+        assert!(result["checks"].to_string().contains("contrast"));
+    }
+
+    #[test]
+    fn screenshots_are_compared_with_the_last_clean_walk_launched_the_same_way() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runs = tmp.path().join(".forge/runs");
+        let walk = |name: &str, kind: &str, args: &[&str], error: bool| {
+            let dir = runs.join(name);
+            std::fs::create_dir_all(&dir).unwrap();
+            let issues = if error {
+                serde_json::json!([{"severity": "error"}])
+            } else {
+                serde_json::json!([{"severity": "warning"}])
+            };
+            std::fs::write(
+                dir.join("explore.json"),
+                serde_json::json!({"launch_args": args, "issues": issues, "screens": []})
+                    .to_string(),
+            )
+            .unwrap();
+            std::fs::write(
+                dir.join("evidence.json"),
+                serde_json::json!({"kind": kind}).to_string(),
+            )
+            .unwrap();
+            dir
+        };
+        let light = walk(
+            "2026-11-08T09-00-00-ui-explore",
+            "device",
+            &["-ForgeUITestData"],
+            false,
+        );
+        let dark = walk(
+            "2026-11-08T10-00-00-ui-explore",
+            "device",
+            &["-ForgeUITestData", "-ForgeAppearance", "dark"],
+            false,
+        );
+        // Newer, but with a crash: not clean.
+        walk(
+            "2026-11-08T11-00-00-ui-explore",
+            "device",
+            &["-ForgeUITestData"],
+            true,
+        );
+        // Newer, but a model.
+        walk(
+            "2026-11-08T12-00-00-ui-explore",
+            "fixture",
+            &["-ForgeUITestData"],
+            false,
+        );
+        let now = runs.join("2026-11-08T13-00-00-ui-explore");
+        let args = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert_eq!(
+            last_clean_walk(tmp.path(), &now, &args(&["-ForgeUITestData"])).map(|(d, _)| d),
+            Some(light)
+        );
+        assert_eq!(
+            last_clean_walk(
+                tmp.path(),
+                &now,
+                &args(&["-ForgeUITestData", "-ForgeAppearance", "dark"])
+            )
+            .map(|(d, _)| d),
+            Some(dark)
+        );
+        assert!(last_clean_walk(tmp.path(), &now, &args(&["-ForgeAppearance", "light"])).is_none());
     }
 }

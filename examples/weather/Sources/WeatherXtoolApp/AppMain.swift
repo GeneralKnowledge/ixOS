@@ -7,6 +7,7 @@ struct WeatherXtoolApp: App {
     var body: some Scene {
         WindowGroup {
             WeatherView()
+                .forgeLaunchAppearance()
         }
     }
 }

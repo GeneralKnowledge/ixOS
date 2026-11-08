@@ -14,6 +14,7 @@ struct ChatXtool: App {
         WindowGroup {
             ContentView()
                 .receivesDeepLinks()
+                .forgeLaunchAppearance()
         }
     }
 }

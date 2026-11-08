@@ -21,6 +21,7 @@ It prints each action and where it led, then a summary, and writes to `<app>/.fo
 |---|---|
 | `explore.json` | The whole report: screens, issues, the journal of every action (`--json` prints the summary) |
 | `screens/<id>.png`, `screens/<id>.json` | A screenshot and the accessibility tree of every new screen |
+| `visual/<id>.diff.png` | Screens that look different from the last clean walk launched the same way (M6.3; `data.visual` lists them). Information, never an issue: a difference is a change, not a defect |
 | `repro/issue-<n>-<kind>.toml` | A `forge ui run` file per issue: launch, the shortest known way to the screen, the action, a screenshot |
 
 It exits with an error when it found an error-severity issue (a crash, an unlabelled control), so an agent or a script can treat it like a test. Re-run a finding with `forge ui run <out>/repro/issue-3-app_closed.toml`.
@@ -35,6 +36,7 @@ It exits with an error when it found an error-severity issue (a crash, an unlabe
 | `--allow-destructive` | off | Also tap delete, remove, reset, sign out… (test data only) |
 | `--real-data` | off | Explore the data already on the phone, only looking: nothing that saves, edits, rates, types or changes a setting |
 | `--largest-text` | off | Launch at the largest accessibility text size (UIKit's own launch argument) |
+| `--appearance dark\|light` | the phone's | Launch in dark or light mode (`-ForgeAppearance`, which Forge apps honour from their root view; M6.3) |
 | `--per-screen N` | 15 | At most N controls tried per screen |
 | `--no-screenshots` | | Faster; trees are still saved |
 
@@ -59,7 +61,8 @@ The explorer is `forge_uitest::explore`. It drives any `Driver`, so the same cod
 | `error_alert` | warning | An alert whose text says something failed (error, failed, couldn't, unable, invalid…) |
 | `action_failed` | warning | WebDriverAgent refused the action |
 | `dead_end` | warning | A screen with no back or dismiss control from which nothing tried led anywhere: only relaunching gets out |
-| `clipped` | warning | A labelled control or text running off the side of the screen (useful with `--largest-text`) |
+| `clipped` | warning | A labelled control or text running off the side of the screen, or text drawn over other text in the same list (useful with `--largest-text`) |
+| `small_tap_target` | warning | A control under 44 x 44 pt, counting a Form row as the target; bar buttons and links inside a sentence are left out (M6.3) |
 | `no_identifier`, `duplicate_identifier` | warning | Forge's tree audit |
 | `no_effect` | info | A button or link whose tap changed nothing in the tree |
 

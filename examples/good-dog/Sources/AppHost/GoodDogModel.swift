@@ -37,6 +37,8 @@ public final class GoodDogModel {
     public private(set) var core: AppCore?
     private let storageDirectory: String?
     private let clock: @Sendable () -> LocalTime
+    /// Set up before the first read when the store has no dog yet.
+    private let sampleDog: DogProfile?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: AppEvents?
     @ObservationIgnored private var lifecyclePhase: AppPhase = .launching
@@ -48,11 +50,35 @@ public final class GoodDogModel {
     ///   - clock: the time now with the phone's UTC offset; tests fix it.
     public init(
         storageDirectory: String? = nil,
-        clock: @escaping @Sendable () -> LocalTime = LocalTime.now
+        clock: (@Sendable () -> LocalTime)? = nil,
+        sampleDog: DogProfile? = GoodDogModel.launchSampleDog
     ) {
         self.storageDirectory = storageDirectory
-        self.clock = clock
+        self.sampleDog = sampleDog
+        if let clock {
+            self.clock = clock
+        } else if Self.usesTestData {
+            self.clock = { LocalTime.uiTest }
+        } else {
+            self.clock = { LocalTime.now() }
+        }
     }
+
+    /// Whether this launch uses throwaway test data (`-ForgeUITestData`, as
+    /// `forge ui run` and `forge ui explore` pass it). Such a launch also
+    /// runs on a fixed clock, so dates and times on screen don't change
+    /// between runs and screenshots stay comparable.
+    static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+
+    /// With `-ForgeUITestData`, `-ForgeUITestSampleDog` starts on a dog
+    /// that is already set up, so `forge ui explore` can reach Today and My
+    /// Dog without filling in onboarding (journey.toml covers onboarding).
+    /// Never used on the owner's own data.
+    public static let sampleDogArgument = "-ForgeUITestSampleDog"
+    public static let launchSampleDog: DogProfile? =
+        usesTestData && ProcessInfo.processInfo.arguments.contains(sampleDogArgument)
+        ? DogProfile(name: "Moss", lifeStage: .adult, dailyTime: .aboutTenMinutes, goal: .recall, experience: .new)
+        : nil
 
     public var maxNameLength: Int { Int(core?.maxNameLength() ?? 40) }
 
@@ -86,6 +112,9 @@ public final class GoodDogModel {
             self.events = events
             listen(to: events)
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
+            if let sampleDog, core.dog() == nil {
+                _ = try await core.saveDog(profile: sampleDog, now: clock())
+            }
             await reload()
         } catch {
             log.error("could not open: \(error)")
@@ -223,7 +252,7 @@ public final class GoodDogModel {
     /// launched with `-ForgeUITestData` (forge.toml), so UI tests never touch
     /// the owner's real data.
     private static func defaultDirectory() throws -> String {
-        let testData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+        let testData = usesTestData
         let base = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent(testData ? "GoodDog-UITest" : "GoodDog", isDirectory: true)
@@ -234,6 +263,10 @@ public final class GoodDogModel {
 }
 
 extension LocalTime {
+    /// The fixed time of a launch on test data: Monday 9 November 2026,
+    /// 09:30 UTC, with no offset.
+    public static let uiTest = LocalTime(ms: 1794216600000, utcOffsetMinutes: 0)
+
     /// The time now, with the phone's current offset from UTC.
     public static func now() -> LocalTime {
         LocalTime(

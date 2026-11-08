@@ -26,3 +26,9 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = "3.14"
+
+# Foundation review tests (docs/foundation-review.md): crash, recovery and
+# consistency checks that need SQLite and hashing.
+[[test]]
+name = "foundation"
+required-features = ["sqlite", "hash"]

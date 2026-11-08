@@ -574,3 +574,30 @@ async fn focus_reads_the_session_changes_or_named_files_without_the_phone() {
         lines[1]
     );
 }
+
+#[tokio::test]
+async fn audit_and_dark_mode_go_through_forge_ui() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start(&fx, false, true).await;
+    c.call("forge_ui_audit", json!({"project": "Tipster"}))
+        .await;
+    c.call(
+        "forge_ui_explore",
+        json!({"project": "Tipster", "appearance": "dark", "focus_changes": false, "previous": false}),
+    )
+    .await;
+    let lines = calls(&fx);
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("--json ui audit ") && l.contains("--app ")),
+        "{lines:?}"
+    );
+    assert!(
+        lines
+            .iter()
+            .any(|l| l.starts_with("--json ui explore ") && l.contains("--appearance dark")),
+        "{lines:?}"
+    );
+}

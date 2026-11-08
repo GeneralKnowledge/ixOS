@@ -13,6 +13,7 @@ struct ChatApplication: App {
         WindowGroup {
             ContentView()
                 .receivesDeepLinks()
+                .forgeLaunchAppearance()
         }
     }
 }
