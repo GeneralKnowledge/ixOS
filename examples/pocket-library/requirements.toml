@@ -6,8 +6,8 @@
 # phone: each requirement's device verdict stays "unverified" until a run on
 # an iPhone records one.
 #
-# `device`: UI scenarios (paths in this app) for `forge ui run` (draft PR #61).
-# None is listed yet; they arrive with #61's first phone run.
+# `device`: UI scenarios (paths in this app) for `forge ui run`. Their verdicts
+# come only from a run on an iPhone.
 
 [[requirement]]
 id = "PL-1"
@@ -54,3 +54,8 @@ id = "PL-9"
 statement = "Read aloud speaks exactly the text shown on the page."
 # Needs AVFoundation, so Linux reports it as not run; macOS CI runs it.
 twin = ["ReadAloudTests.testSpokenTextIsTheShownText"]
+
+[[requirement]]
+id = "PL-10"
+statement = "The New Book form takes a typed title, enables Add, and Cancel leaves without saving."
+device = ["uitests/m0.toml"]
