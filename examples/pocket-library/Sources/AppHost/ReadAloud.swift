@@ -39,8 +39,8 @@ final class ReadAloud: NSObject {
         }
     }
 
-    /// A voice identifier, or `nil` for the default voice of the device's
-    /// language.
+    /// A voice identifier, or `nil` for the best installed voice of the
+    /// device's language (see `bestVoice()`). Settings writes the same key.
     var voiceID: String? = UserDefaults.standard.string(forKey: ReadAloud.voiceKey) {
         didSet {
             UserDefaults.standard.set(voiceID, forKey: Self.voiceKey)
@@ -64,6 +64,7 @@ final class ReadAloud: NSObject {
     @ObservationIgnored private var chapterTitle = ""
     @ObservationIgnored private var coverFile: String?
     @ObservationIgnored private var remoteCommandsAdded = false
+    @ObservationIgnored private var cachedVoice: (identifier: String, voice: AVSpeechSynthesisVoice?)?
 
     override init() {
         super.init()
@@ -88,6 +89,8 @@ final class ReadAloud: NSObject {
         word = nil
         block = nil
         utterance = nil
+        // Picks up voices downloaded while the reader was open.
+        cachedVoice = nil
         if synthesizer.isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         updateNowPlaying()
     }
@@ -165,28 +168,75 @@ final class ReadAloud: NSObject {
 
     // MARK: Voices
 
-    /// The voices for the device's language (or English), best quality
-    /// first. Better voices can be downloaded in Settings > Accessibility >
-    /// Spoken Content > Voices.
-    static func voices() -> [AVSpeechSynthesisVoice] {
-        let language = AVSpeechSynthesisVoice.currentLanguageCode()
-        let prefix = String(language.prefix(2))
-        let all = AVSpeechSynthesisVoice.speechVoices()
-        var matching = all.filter { $0.language.hasPrefix(prefix) }
-        if matching.isEmpty { matching = all.filter { $0.language.hasPrefix("en") } }
-        return matching.sorted {
-            ($0.quality.rawValue, $1.name) > ($1.quality.rawValue, $0.name)
+    /// The installed voices, ready to choose from. Novelty voices (Bells,
+    /// Bubbles…) are left out; Personal Voices appear once the user has
+    /// allowed the app to use them.
+    static func installedVoices() -> [VoiceCandidate] {
+        AVSpeechSynthesisVoice.speechVoices()
+            .filter { !$0.voiceTraits.contains(.isNoveltyVoice) }
+            .map { voice in
+                let quality: VoiceCandidate.Quality = switch voice.quality {
+                case .premium: .premium
+                case .enhanced: .enhanced
+                default: .standard
+                }
+                return VoiceCandidate(
+                    id: voice.identifier,
+                    name: voice.name,
+                    language: voice.language,
+                    quality: quality,
+                    isPersonal: voice.voiceTraits.contains(.isPersonalVoice)
+                )
+            }
+    }
+
+    /// The device's language, such as "en-GB".
+    static var language: String { AVSpeechSynthesisVoice.currentLanguageCode() }
+
+    /// The voices to offer, best first. Better voices can be downloaded in
+    /// Settings > Accessibility > Spoken Content > Voices.
+    static func voices() -> [VoiceCandidate] {
+        VoiceChoice.ranked(installedVoices(), language: language)
+    }
+
+    /// The voice used for "Best Available": iOS's own default for a
+    /// language is the small standard voice even when an Enhanced or
+    /// Premium one is installed, so pick by quality.
+    static func bestVoice() -> AVSpeechSynthesisVoice? {
+        VoiceChoice.best(installedVoices(), language: language)
+            .flatMap { AVSpeechSynthesisVoice(identifier: $0.id) }
+            ?? AVSpeechSynthesisVoice(language: language)
+    }
+
+    /// Whether the user can be asked for their Personal Voice: they have
+    /// one (or might), and haven't answered yet.
+    static var canAskForPersonalVoice: Bool {
+        AVSpeechSynthesizer.personalVoiceAuthorizationStatus == .notDetermined
+    }
+
+    /// Asks to use the user's Personal Voice (made in Settings >
+    /// Accessibility > Personal Voice). Returns whether it was allowed.
+    static func askForPersonalVoice() async -> Bool {
+        await withCheckedContinuation { continuation in
+            AVSpeechSynthesizer.requestPersonalVoiceAuthorization { status in
+                continuation.resume(returning: status == .authorized)
+            }
         }
     }
 
-    static func label(for voice: AVSpeechSynthesisVoice) -> String {
-        let region = Locale.current.localizedString(forIdentifier: voice.language) ?? voice.language
-        switch voice.quality {
-        case .premium: return "\(voice.name) (Premium, \(region))"
-        case .enhanced: return "\(voice.name) (Enhanced, \(region))"
-        default: return "\(voice.name) (\(region))"
+    /// The voice to speak with: the one picked, if it is still installed,
+    /// otherwise the best available. Looked up once per chapter and voice
+    /// change, not per paragraph.
+    private func resolvedVoice() -> AVSpeechSynthesisVoice? {
+        if let cachedVoice, cachedVoice.identifier == voiceID ?? Self.bestVoiceMarker {
+            return cachedVoice.voice
         }
+        let voice = voiceID.flatMap(AVSpeechSynthesisVoice.init(identifier:)) ?? Self.bestVoice()
+        cachedVoice = (voiceID ?? Self.bestVoiceMarker, voice)
+        return voice
     }
+
+    private static let bestVoiceMarker = ""
 
     // MARK: Speaking
 
@@ -209,8 +259,7 @@ final class ReadAloud: NSObject {
         }
         let next = AVSpeechUtterance(string: texts[index])
         next.rate = Self.rate(for: speed)
-        next.voice = voiceID.flatMap(AVSpeechSynthesisVoice.init(identifier:))
-            ?? AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
+        next.voice = resolvedVoice()
         next.postUtteranceDelay = 0.15
         utterance = next
         block = index
@@ -241,7 +290,7 @@ final class ReadAloud: NSObject {
     }
 
     private static let speedKey = "readAloudSpeed"
-    private static let voiceKey = "readAloudVoice"
+    nonisolated static let voiceKey = "readAloudVoice"
     private static var savedSpeed: Double {
         let saved = UserDefaults.standard.double(forKey: speedKey)
         return saved > 0 ? saved : 1
