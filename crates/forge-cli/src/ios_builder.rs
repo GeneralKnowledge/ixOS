@@ -143,6 +143,24 @@ pub struct XtoolBuilder;
 
 const XTOOL: &str = "xtool";
 
+/// How long `xtool dev run` may stay silent after `[Installing] 100%` before
+/// Forge stops it. A healthy install goes on to print `[Verifying]` progress
+/// (which keeps it alive); on Cati two reinstalls printed nothing more and
+/// never exited, though one of them had installed the app.
+const INSTALL_GRACE: std::time::Duration = std::time::Duration::from_secs(90);
+
+/// Set when the last `run` stopped xtool after `[Installing] 100%` without
+/// a verification (reported as `data.verified: false` by `forge run ios`).
+pub static INSTALL_UNVERIFIED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
+
+/// Whether xtool's output (the last few KB) says the install finished:
+/// its progress reaches `[Installing] 100%` (it may redraw with `\r`).
+fn install_finished(tail: &str) -> bool {
+    tail.split(['\n', '\r'])
+        .any(|line| line.contains("Installing") && line.contains("100%"))
+}
+
 // Debug is xtool's default configuration; `--release` passes `-c release`.
 // With Swift 6.2 debug builds need the Darwin SDK from Xcode 26; the iOS 18 SDK
 // from Xcode 16 fails to link with `undefined symbol: swift_coroFrameAlloc`
@@ -193,7 +211,24 @@ impl IosBuilder for XtoolBuilder {
         configuration: IosConfiguration,
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
-        run_explained(runner, xtool_dev("run", project_dir, configuration))
+        let cmd = xtool_dev("run", project_dir, configuration);
+        let (status, tail, cut_short) =
+            runner.stream_tail_until(&cmd, &install_finished, INSTALL_GRACE)?;
+        if cut_short {
+            // Seen on Cati (iOS 26.3.1, 2026-11-07): two of four installs
+            // stopped after [Installing] 100% with no [Verifying] line.
+            println!(
+                "[forge] xtool reached [Installing] 100% and then printed nothing for {} s, so Forge stopped it. The app is most likely installed, but xtool did not report verifying it: open it to check, and if the phone shows the old version, run this again.",
+                INSTALL_GRACE.as_secs()
+            );
+            INSTALL_UNVERIFIED.store(true, std::sync::atomic::Ordering::Relaxed);
+            return Ok(());
+        }
+        if status.success() {
+            Ok(())
+        } else {
+            Err(crate::diagnose::explain(&cmd.display(), status, &tail))
+        }
     }
 
     fn install(&self, runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String> {
@@ -303,6 +338,14 @@ fn xtool_preflight(
 mod tests {
     use super::*;
     use crate::runner::MockRunner;
+
+    #[test]
+    fn install_finished_reads_xtool_progress() {
+        assert!(install_finished("Installing 37%\rInstalling 100%"));
+        assert!(install_finished("[forge] x\nInstalling app: 100%\n"));
+        assert!(!install_finished("Installing 99%\n"));
+        assert!(!install_finished("Building 100%\n"));
+    }
 
     /// A Linux machine with everything set up and an iPhone connected.
     fn ready_host() -> MockRunner {

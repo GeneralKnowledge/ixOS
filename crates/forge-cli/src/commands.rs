@@ -936,6 +936,9 @@ pub fn run_ios(
         "configuration": configuration.name(),
         "devtools": devtools,
         "installed": true,
+        // false: xtool hung after [Installing] 100% and Forge stopped it.
+        "verified": !crate::ios_builder::INSTALL_UNVERIFIED
+            .load(std::sync::atomic::Ordering::Relaxed),
         "launched": false,
         "signing_team": team,
     }));
