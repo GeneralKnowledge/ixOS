@@ -7,8 +7,8 @@
 #
 #   bash run-m65.sh prep       no phone   worktree, build forge, check claude, warm the iOS build
 #   bash run-m65.sh a-change   no phone   make the change, tests, UI test, build (<= 60 min)
-#   bash run-m65.sh b-look     PHONE      install, screenshots, dark mode, audit, fix (<= 20 min)
-#   bash run-m65.sh c-test     PHONE      UI tests until they pass, short explore walk (<= 20 min)
+#   bash run-m65.sh b-look     PHONE      install, feature UI test, dark look and audit of changed screens, fix (<= 10 min)
+#   bash run-m65.sh c-test     PHONE      only what B left open; affected existing UI test once (<= 10 min)
 #   bash run-m65.sh d-record   no phone   forge verify --run, check the record (<= 15 min)
 #   bash run-m65.sh summary
 #
@@ -41,7 +41,7 @@ mcp_config() {
   [[ $1 == phone ]] && allow='"--allow","install","--bundle-id","org.forgemobile.gooddog",'
   mkdir -p "$OUT"
   cat > "$OUT/mcp.json" <<JSON
-{"mcpServers":{"forge":{"command":"$FORGE","args":["mcp",$allow"--root","$LAB"],"env":{"FORGE_WORKSPACE":"$SRC"}}}}
+{"mcpServers":{"forge":{"command":"$FORGE","args":["mcp",$allow"--root","$LAB"],"env":{"FORGE_WORKSPACE":"$SRC","FORGE_RUN_START":"$(cat "$OUT/run-start" 2>/dev/null)"}}}}
 JSON
 }
 
@@ -98,7 +98,7 @@ stage() {
   set -e
   echo "$name: agent exit $code after $(( $(date +%s) - start )) s$([[ $code == 124 ]] && echo ' (time limit)')"
   tools "$OUT/$name.jsonl" | tee "$OUT/$name.tools.txt"
-  cp -r "$APP/.forge/mcp" "$OUT/$name-screens" 2>/dev/null || true
+  cp -r "$APP/.forge/runs" "$OUT/$name-runs" 2>/dev/null || true
   echo "report: $APP/M65-REPORT.md"
 }
 
@@ -116,9 +116,12 @@ prep)
   mkdir -p "$OUT"
   echo "prep done"
   ;;
-a-change) stage a-change nophone 3600 "$HERE/a-change.txt" ;;
-b-look)   stage b-look   phone   1200 "$HERE/b-look.txt" ;;
-c-test)   stage c-test   phone   1200 "$HERE/c-test.txt" ;;
+a-change)
+  # The run starts here: every later stage's record covers it from this point.
+  mkdir -p "$OUT" && date -u +%Y-%m-%dT%H-%M-%S > "$OUT/run-start"
+  stage a-change nophone 3600 "$HERE/a-change.txt" ;;
+b-look)   stage b-look   phone   600  "$HERE/b-look.txt" ;;
+c-test)   stage c-test   phone   600  "$HERE/c-test.txt" ;;
 d-record) stage d-record nophone 900  "$HERE/d-record.txt" ;;
 summary)
   for f in "$OUT"/*.tools.txt; do echo "== $f"; grep RESULT "$f" || echo "(no result: stopped or cut off)"; done
