@@ -1,6 +1,6 @@
 # Local AI in Chat: design and milestones
 
-Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. Next: L1 after Chat M3.
+Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. L1 (the Assistant in Chat on Foundation Models) is built; its phone run is in [Chat's ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#l1-on-device-assistant).
 
 Goal: a private, offline AI assistant inside the Chat app on the iPhone. It downloads its own model, runs it on the phone and keeps working in airplane mode. It is the flagship's first feature that needs no server. For ixOS it proves a reusable **local model capability**: a native Swift inference adapter behind a stable interface that Rust app code drives, with storage, streaming, cancellation and resource limits handled by the framework.
 
@@ -181,6 +181,22 @@ The check app and its runbook: `scripts/make-ai-check-app.sh`, [local-ai-check.m
 | Swift → Rust push cost | **1.6 µs per push** in debug, **0.6 µs** in release (10,000 pushes): negligible against ~28 ms per token |
 
 Each milestone is one PR with a device runbook in `examples/chat/ACCEPTANCE.md`, the same as Chat's others.
+
+### L1 as built
+
+The Assistant in Chat, as the L1 row describes, with these choices and differences from section 2:
+
+- **The engine interface starts small.** `LocalModelEngine` has `describe()` and `generate(request, sink)` only; `models`, `download`, `remove`, `load`, `unload` and `resources` arrive with L2's model library and L4's monitor. `generate` returns nothing: Rust's sink measures first-text time, duration and pieces itself, so every engine is timed the same way.
+- **Rust runs the engine on a thread of its own** (`forge_runtime::block_on` over the foreign future), so `send` returns at once and the main thread never waits for the model.
+- **One answer at a time,** across conversations (`Busy`). Deleting a conversation or shutting down stops its answer.
+- **Coalescing:** `next()` hands over what arrived since the last delivery, at most every 50 ms; `catch_up()` lets a screen that opens mid-answer start from the text so far. Assistant traffic does not use the 512-event `ChatEvent` queue.
+- **What is saved:** the user's message and an empty `Streaming` answer before the engine starts, the answer's text, state (Done, Stopped, Refused, Failed) and timings when it ends. An app killed mid-answer leaves it `Interrupted` at the next launch, without the partial text. Stopped and interrupted answers stay in the history the model reads; refused and failed ones do not.
+- **Characters:** the built-in Assistant, Leo and Mia, from L0, with an opening line each. The pinned frame, the per-turn reminder and oldest-first trimming are L0's harness; Rust fits history into the engine's context at 3 characters per token after room for a 400-token answer. User-made characters and the controls are L3.
+- **Foundation Models:** a fresh `LanguageModelSession` per answer with the character as instructions and the trimmed history as a plain-text prompt (Rust owns the history, so the session's own transcript is not used); only the new part of each snapshot is pushed. Guardrail refusals become `Refused`, shown as a refusal. iOS 26 and Apple Intelligence are checked on every send and whenever the screen appears or the app returns to the foreground, with the reason shown (Apple Intelligence off, model still downloading, iPhone not eligible).
+- **Chat stays on iOS 17.** Foundation Models is gated with `#available(iOS 26, *)`, so L1 needs no minimum change; decision 3 (iOS 18) lands with CoreML-LLM in L2.
+- **Not yet:** keeping model state between turns (an L2 concern for Qwen3.5, whose time to first text grows with the history), search over assistant chats, and backgrounding mid-answer (L3).
+
+Tests: 19 Rust tests with a fake engine (`examples/chat/rust/src/assistant/tests.rs`, plus `the_assistant_works_signed_out_and_survives_sign_out`) and Swift model tests with a scripted Swift engine (`AssistantModelTests`, macOS CI).
 
 ### Capability ledger rows this adds
 

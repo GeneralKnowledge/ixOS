@@ -176,6 +176,10 @@ A voice message is an attachment like any other (M3): an AAC `.m4a` file sent as
 
 Recording and playback are not Chat code. They are Forge's optional `audio` native service (`crates/forge-services/swift/optional/ForgeServices+Audio.swift`, see [native-services.md](native-services.md#audio-audio)), which Chat selects with `native_services!(audio)` (and `microphone` in forge.toml): `ForgeAudioRecorder` (the microphone permission, the audio session, a level meter, a 5-minute limit), `ForgeAudioPlayer` (one file at a time, pauses on interruptions and unplugged headphones) and `ForgeAudio.waveform`. Rust asks for the microphone as `NativePermission::Microphone` (services interface v3). A recording that ends by itself (the limit, or a phone call) is sent rather than lost.
 
+### The on-device assistant (L1)
+
+Designed in [local-ai.md](local-ai.md). `ChatCore::assistant()` returns an `AssistantCore` that lives beside the account session, not inside it: it opens `assistant.db` next to the accounts at launch and works signed out. Rust owns the conversations, the characters and their prompt harness, history trimming and when an answer stops; a Swift engine (`FoundationModelsEngine`) implements the `LocalModelEngine` foreign trait and pushes text into Rust's `TokenSink`. `send` returns an `AssistantGeneration` at once; the screen reads it with `next()` (text at most about 20 times a second, then `Finished`) and stops it with `cancel()`, which makes the sink's `push` return false so the engine ends its stream. Assistant traffic never touches the `ChatEvent` queue.
+
 ### Store
 
 **Since M2** the store is a SQLite database, `forge-chat.db`, opened through `forge_storage::Database` (feature `sqlite`: bundled SQLite, WAL mode, migrations by `user_version`). Tables: `conversations`, `messages` (each row the message as JSON plus indexed columns), `cursors`, `drafts`, and `messages_fts`, an FTS5 index kept in step by triggers. Saves are diffs in one transaction, not a rewrite.

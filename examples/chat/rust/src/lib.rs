@@ -11,6 +11,9 @@
 //! - **Lifecycle.** The host reports scene phases with `set_phase`; in the
 //!   background every live stream stops (iOS suspends the app within
 //!   seconds anyway), and on resume they restart and catch up.
+//! - **Assistant.** A private assistant that runs on the iPhone
+//!   ([`assistant`], `ChatCore::assistant`). It has its own store and works
+//!   signed in or out.
 //!
 //! Network commands are `async` and run on worker threads
 //! ([`forge_runtime::background`]). They are not cancelled by the host: a
@@ -24,9 +27,11 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chat_core::{ChatClient, ChatConfig, ChatStore, HttpRepo};
 use forge_runtime::{background, EventHub, Lifecycle, Phase};
 
+pub mod assistant;
 pub mod credentials;
 mod types;
 
+pub use assistant::AssistantCore;
 pub use credentials::{Credentials, KeychainCredentials, MemoryCredentials, StoredAccount};
 pub use types::*;
 
@@ -61,6 +66,7 @@ pub struct ChatCore {
     events: EventHub<ChatEvent>,
     lifecycle: Lifecycle,
     shut_down: AtomicBool,
+    assistant: Arc<AssistantCore>,
 }
 
 /// The signed-in account and its chat engine.
@@ -172,6 +178,12 @@ impl ChatCore {
     /// `AccountChanged`. Idempotent.
     pub fn sign_out(&self) -> Result<(), ChatError> {
         self.sign_out_locked(&mut self.lock(), true)
+    }
+
+    /// The on-device assistant. Works without an account, and keeps its
+    /// conversations when the account signs out.
+    pub fn assistant(&self) -> Arc<AssistantCore> {
+        Arc::clone(&self.assistant)
     }
 
     /// A new event stream. Each consumer takes its own and sees every event
@@ -555,6 +567,7 @@ impl ChatCore {
     /// Sends in flight finish and are saved. Idempotent.
     pub fn shutdown(&self) {
         self.shut_down.store(true, Ordering::SeqCst);
+        self.assistant.shutdown();
         if let Some(session) = self.lock().as_ref() {
             session.client.shutdown();
         }
@@ -583,7 +596,14 @@ impl ChatCore {
         std::fs::create_dir_all(&storage_directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", storage_directory.display()),
         })?;
+        let assistant =
+            AssistantCore::open(&storage_directory.join("assistant.db")).map_err(|err| {
+                ChatError::Storage {
+                    reason: format!("open the assistant: {err}"),
+                }
+            })?;
         let core = Self {
+            assistant,
             storage_directory,
             credentials,
             session: Mutex::new(None),

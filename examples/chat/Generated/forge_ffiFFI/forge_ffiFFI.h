@@ -243,6 +243,19 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD0
+typedef void (*UniffiCallbackInterfaceLocalModelEngineMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD1
+typedef void (*UniffiCallbackInterfaceLocalModelEngineMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -300,6 +313,16 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
 typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, double* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
+typedef struct UniffiVTableCallbackInterfaceLocalModelEngine {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceLocalModelEngineMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceLocalModelEngineMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceLocalModelEngine;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
@@ -366,6 +389,11 @@ uint64_t uniffi_forge_ffi_fn_constructor_chatcore_with_memory_credentials(RustBu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ACCOUNT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ACCOUNT
 RustBuffer uniffi_forge_ffi_fn_method_chatcore_account(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ASSISTANT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ASSISTANT
+uint64_t uniffi_forge_ffi_fn_method_chatcore_assistant(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATCORE_ATTACHMENT_FILE
@@ -556,6 +584,151 @@ void uniffi_forge_ffi_fn_method_chatevents_cancel(uint64_t ptr, RustCallStatus *
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATEVENTS_NEXT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_CHATEVENTS_NEXT
 uint64_t uniffi_forge_ffi_fn_method_chatevents_next(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_ASSISTANTCORE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_ASSISTANTCORE
+uint64_t uniffi_forge_ffi_fn_clone_assistantcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_ASSISTANTCORE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_ASSISTANTCORE
+void uniffi_forge_ffi_fn_free_assistantcore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CHARACTERS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CHARACTERS
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_characters(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CONVERSATIONS
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_conversations(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_current_generation(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+void uniffi_forge_ffi_fn_method_assistantcore_delete_conversation(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_ENGINE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_ENGINE_INFO
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_engine_info(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_MESSAGES
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_messages(uint64_t ptr, RustBuffer conversation_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SEND
+uint64_t uniffi_forge_ffi_fn_method_assistantcore_send(uint64_t ptr, RustBuffer conversation_id, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SET_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SET_ENGINE
+void uniffi_forge_ffi_fn_method_assistantcore_set_engine(uint64_t ptr, uint64_t engine, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_SHUTDOWN
+void uniffi_forge_ffi_fn_method_assistantcore_shutdown(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_START_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTCORE_START_CONVERSATION
+RustBuffer uniffi_forge_ffi_fn_method_assistantcore_start_conversation(uint64_t ptr, RustBuffer character_id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALMODELENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALMODELENGINE
+uint64_t uniffi_forge_ffi_fn_clone_localmodelengine(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_LOCALMODELENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_LOCALMODELENGINE
+void uniffi_forge_ffi_fn_free_localmodelengine(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_LOCALMODELENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_LOCALMODELENGINE
+void uniffi_forge_ffi_fn_init_callback_vtable_localmodelengine(const UniffiVTableCallbackInterfaceLocalModelEngine* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALMODELENGINE_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALMODELENGINE_DESCRIBE
+RustBuffer uniffi_forge_ffi_fn_method_localmodelengine_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALMODELENGINE_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALMODELENGINE_GENERATE
+uint64_t uniffi_forge_ffi_fn_method_localmodelengine_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TOKENSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TOKENSINK
+uint64_t uniffi_forge_ffi_fn_clone_tokensink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TOKENSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TOKENSINK
+void uniffi_forge_ffi_fn_free_tokensink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TOKENSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TOKENSINK_IS_STOPPED
+int8_t uniffi_forge_ffi_fn_method_tokensink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TOKENSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TOKENSINK_PUSH
+int8_t uniffi_forge_ffi_fn_method_tokensink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_ASSISTANTGENERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_ASSISTANTGENERATION
+uint64_t uniffi_forge_ffi_fn_clone_assistantgeneration(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_ASSISTANTGENERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_ASSISTANTGENERATION
+void uniffi_forge_ffi_fn_free_assistantgeneration(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CANCEL
+void uniffi_forge_ffi_fn_method_assistantgeneration_cancel(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CATCH_UP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CATCH_UP
+RustBuffer uniffi_forge_ffi_fn_method_assistantgeneration_catch_up(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+RustBuffer uniffi_forge_ffi_fn_method_assistantgeneration_conversation_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_IS_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_IS_FINISHED
+int8_t uniffi_forge_ffi_fn_method_assistantgeneration_is_finished(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+RustBuffer uniffi_forge_ffi_fn_method_assistantgeneration_message_id(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_ASSISTANTGENERATION_NEXT
+uint64_t uniffi_forge_ffi_fn_method_assistantgeneration_next(uint64_t ptr
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_LOCALNOTIFIER
@@ -1031,6 +1204,12 @@ uint16_t uniffi_forge_ffi_checksum_method_chatcore_account(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ASSISTANT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ASSISTANT
+uint16_t uniffi_forge_ffi_checksum_method_chatcore_assistant(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATCORE_ATTACHMENT_FILE
 uint16_t uniffi_forge_ffi_checksum_method_chatcore_attachment_file(void
@@ -1244,6 +1423,126 @@ uint16_t uniffi_forge_ffi_checksum_method_chatevents_cancel(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATEVENTS_NEXT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_CHATEVENTS_NEXT
 uint16_t uniffi_forge_ffi_checksum_method_chatevents_next(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CHARACTERS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CHARACTERS
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_characters(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CONVERSATIONS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CONVERSATIONS
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_conversations(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_CURRENT_GENERATION
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_current_generation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_DELETE_CONVERSATION
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_delete_conversation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_ENGINE_INFO
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_ENGINE_INFO
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_engine_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_MESSAGES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_MESSAGES
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_messages(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SEND
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SET_ENGINE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SET_ENGINE
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_set_engine(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SHUTDOWN
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_SHUTDOWN
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_shutdown(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_START_CONVERSATION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTCORE_START_CONVERSATION
+uint16_t uniffi_forge_ffi_checksum_method_assistantcore_start_conversation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALMODELENGINE_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALMODELENGINE_DESCRIBE
+uint16_t uniffi_forge_ffi_checksum_method_localmodelengine_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALMODELENGINE_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALMODELENGINE_GENERATE
+uint16_t uniffi_forge_ffi_checksum_method_localmodelengine_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TOKENSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TOKENSINK_IS_STOPPED
+uint16_t uniffi_forge_ffi_checksum_method_tokensink_is_stopped(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TOKENSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TOKENSINK_PUSH
+uint16_t uniffi_forge_ffi_checksum_method_tokensink_push(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CATCH_UP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CATCH_UP
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_catch_up(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_CONVERSATION_ID
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_conversation_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_IS_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_IS_FINISHED
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_is_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_MESSAGE_ID
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_message_id(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_NEXT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_ASSISTANTGENERATION_NEXT
+uint16_t uniffi_forge_ffi_checksum_method_assistantgeneration_next(void
     
 );
 #endif

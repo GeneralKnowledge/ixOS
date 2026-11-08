@@ -305,6 +305,29 @@ fn sign_out_forgets_the_account_and_its_chats() {
 }
 
 #[test]
+fn the_assistant_works_signed_out_and_survives_sign_out() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let (core, credentials) = keychain_core(dir.path());
+    assert_eq!(core.account(), None);
+    // No account, no server: the assistant still opens and keeps chats.
+    let assistant = core.assistant();
+    let mia = assistant.start_conversation("girlfriend".into()).unwrap();
+
+    block_on(core.sign_up(server.url.clone(), "Me".into())).unwrap();
+    core.sign_out().unwrap();
+    let list = core.assistant().conversations().unwrap();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].id, mia.id);
+
+    // And after a relaunch.
+    core.shutdown();
+    drop(core);
+    let again = ChatCore::open(dir.path().join("chats"), credentials).unwrap();
+    assert_eq!(again.assistant().conversations().unwrap()[0].id, mia.id);
+}
+
+#[test]
 fn bad_input_is_rejected_before_the_network() {
     let dir = tempfile::tempdir().unwrap();
     let core = ChatCore::with_memory_credentials(dir.path().to_string_lossy().into()).unwrap();

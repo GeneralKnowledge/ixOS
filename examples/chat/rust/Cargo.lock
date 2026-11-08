@@ -244,6 +244,7 @@ dependencies = [
  "forge-net",
  "forge-runtime",
  "forge-services",
+ "forge-storage",
  "serde",
  "serde_json",
  "tempfile",

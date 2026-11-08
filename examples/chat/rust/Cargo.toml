@@ -22,6 +22,8 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 # Native services: the account token lives in the iOS Keychain.
 forge-services = { path = "../../../crates/forge-services" }
+# The on-device assistant's conversations (assistant.db).
+forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.

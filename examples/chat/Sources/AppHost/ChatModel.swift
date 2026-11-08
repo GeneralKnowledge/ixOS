@@ -63,9 +63,12 @@ public final class ChatModel {
     public private(set) var waitingCount = 0
 
     public private(set) var core: ChatCore?
+    /// The on-device assistant, once the core is open. It needs no account.
+    public private(set) var assistant: AssistantModel?
     private let storageDirectory: String?
     private let useKeychain: Bool?
     @ObservationIgnored private let notifier: ChatNotifier?
+    @ObservationIgnored private let assistantEngine: LocalModelEngine?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: ChatEvents?
 
@@ -76,12 +79,16 @@ public final class ChatModel {
     ///     not open. With one, every room is watched while the app runs.
     ///   - useKeychain: keep the account in the Keychain (the default when
     ///     `ForgeServices.install()` has run) or only in memory (tests).
+    ///   - assistantEngine: the on-device model for the assistant (the app
+    ///     passes `FoundationModelsEngine()`; tests a fake or nothing).
     public init(
-        storageDirectory: String? = nil, notifier: ChatNotifier? = nil, useKeychain: Bool? = nil
+        storageDirectory: String? = nil, notifier: ChatNotifier? = nil, useKeychain: Bool? = nil,
+        assistantEngine: LocalModelEngine? = nil
     ) {
         self.storageDirectory = storageDirectory
         self.notifier = notifier
         self.useKeychain = useKeychain
+        self.assistantEngine = assistantEngine
     }
 
     // MARK: Opening and the account
@@ -105,6 +112,7 @@ public final class ChatModel {
             let events = try core.events()
             self.core = core
             self.events = events
+            assistant = AssistantModel(core: core.assistant(), engine: assistantEngine)
             listen(to: events)
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
             showAccount(core.account())
@@ -150,6 +158,8 @@ public final class ChatModel {
             close()
         } else {
             core?.setPhase(phase: phase)
+            // Apple Intelligence may have been turned on meanwhile.
+            if phase == .active { assistant?.refresh() }
         }
     }
 

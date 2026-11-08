@@ -1,0 +1,9 @@
+order = 65
+capability = "Apple Foundation Models (on-device text generation)"
+framework = "No: in the Chat app crate until L5 (`forge-ai`)"
+rust_api = "Yes: `LocalModelEngine` foreign trait and `TokenSink` (Chat, L1)"
+ios_native = "Yes: `FoundationModelsEngine` (Chat), streamed, stops when Rust says so"
+in_app = "Yes: Chat's Assistant (L1)"
+iphone = "Partial: available on a free-team app (L0 check app, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-07); generation not yet run on the phone"
+documented = "Partial: local-ai.md, Chat ACCEPTANCE.md (L1)"
+limits = "iOS 26 with Apple Intelligence on; 4,096-token context; Apple's guardrails can refuse; plain text only (`@Generable` needs Xcode's macro plugin)"
