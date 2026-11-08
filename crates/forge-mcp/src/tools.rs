@@ -123,7 +123,7 @@ pub const SPECS: &[Spec] = &[
         needs_ui: false,
         schema: || schema(json!({
             "twin_only": {"type": "boolean", "description": "Only require the Linux twin evidence; iPhone results are still shown"},
-            "run": {"type": "boolean", "description": "Write the run record for this session instead (forge verify --run <server start>)"}
+            "run": {"type": "boolean", "description": "Write the run record for this session instead (forge verify --run <server start>, or FORGE_RUN_START when the run script set it, so a staged run covers every stage)"}
         }), &[]),
     },
     Spec {
@@ -535,10 +535,15 @@ impl crate::Server {
                 let mut inv =
                     Invocation::new(&["verify", "--project", &dir], &app.dir, secs(MIN), "test");
                 if args.0.get("run") == Some(&json!(true)) {
-                    inv = inv.arg("--run").arg(self.started());
-                    let journal = self.journal_path();
-                    if journal.is_file() {
-                        inv = inv.arg("--journal").arg(journal.display().to_string());
+                    if let Some(start) = self.run_start() {
+                        // Every stage's journal since the run began.
+                        inv = inv.arg("--run").arg(start);
+                    } else {
+                        inv = inv.arg("--run").arg(self.started());
+                        let journal = self.journal_path();
+                        if journal.is_file() {
+                            inv = inv.arg("--journal").arg(journal.display().to_string());
+                        }
                     }
                 } else if args.0.get("twin_only") == Some(&json!(true)) {
                     inv = inv.arg("--twin-only");

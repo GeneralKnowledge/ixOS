@@ -41,7 +41,7 @@ mcp_config() {
   [[ $1 == phone ]] && allow='"--allow","install","--bundle-id","org.forgemobile.gooddog",'
   mkdir -p "$OUT"
   cat > "$OUT/mcp.json" <<JSON
-{"mcpServers":{"forge":{"command":"$FORGE","args":["mcp",$allow"--root","$LAB"],"env":{"FORGE_WORKSPACE":"$SRC"}}}}
+{"mcpServers":{"forge":{"command":"$FORGE","args":["mcp",$allow"--root","$LAB"],"env":{"FORGE_WORKSPACE":"$SRC","FORGE_RUN_START":"$(cat "$OUT/run-start" 2>/dev/null)"}}}}
 JSON
 }
 
@@ -116,7 +116,10 @@ prep)
   mkdir -p "$OUT"
   echo "prep done"
   ;;
-a-change) stage a-change nophone 3600 "$HERE/a-change.txt" ;;
+a-change)
+  # The run starts here: every later stage's record covers it from this point.
+  mkdir -p "$OUT" && date -u +%Y-%m-%dT%H-%M-%S > "$OUT/run-start"
+  stage a-change nophone 3600 "$HERE/a-change.txt" ;;
 b-look)   stage b-look   phone   600  "$HERE/b-look.txt" ;;
 c-test)   stage c-test   phone   600  "$HERE/c-test.txt" ;;
 d-record) stage d-record nophone 900  "$HERE/d-record.txt" ;;
