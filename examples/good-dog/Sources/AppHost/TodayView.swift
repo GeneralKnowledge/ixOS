@@ -106,9 +106,18 @@ private struct ProgressRow: View {
 
 private struct ActivityRow: View {
     let activity: PlanActivity
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    /// At accessibility text sizes the status icon goes above the text, so
+    /// the title keeps the full width instead of breaking mid-word.
+    private var layout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 6))
+            : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+        layout {
             Image(systemName: activity.result == nil ? "circle" : "checkmark.circle.fill")
                 .foregroundStyle(activity.result == nil ? Color.secondary : Color.green)
                 .font(.title3)
