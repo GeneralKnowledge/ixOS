@@ -28,6 +28,16 @@ extension DogLifeStage: CaseIterable, Identifiable {
         case .senior: "Senior"
         }
     }
+    /// For accessibility identifiers.
+    public var key: String {
+        switch self {
+        case .youngPuppy: "youngPuppy"
+        case .olderPuppy: "olderPuppy"
+        case .adolescent: "adolescent"
+        case .adult: "adult"
+        case .senior: "senior"
+        }
+    }
 }
 
 extension DailyTime: CaseIterable, Identifiable {
@@ -38,6 +48,14 @@ extension DailyTime: CaseIterable, Identifiable {
         case .fewMinutes: "A few minutes"
         case .aboutTenMinutes: "About 10 minutes"
         case .moreThanTen: "More than 10 minutes"
+        }
+    }
+    /// For accessibility identifiers.
+    public var key: String {
+        switch self {
+        case .fewMinutes: "fewMinutes"
+        case .aboutTenMinutes: "aboutTenMinutes"
+        case .moreThanTen: "moreThanTen"
         }
     }
 }
@@ -55,6 +73,17 @@ extension TrainingGoal: CaseIterable, Identifiable {
         case .puppyBasics: "Puppy basics"
         }
     }
+    /// For accessibility identifiers.
+    public var key: String {
+        switch self {
+        case .general: "general"
+        case .recall: "recall"
+        case .looseLead: "looseLead"
+        case .settle: "settle"
+        case .manners: "manners"
+        case .puppyBasics: "puppyBasics"
+        }
+    }
 }
 
 extension OwnerExperience: CaseIterable, Identifiable {
@@ -64,6 +93,13 @@ extension OwnerExperience: CaseIterable, Identifiable {
         switch self {
         case .new: "New to training"
         case .some: "Done some training"
+        }
+    }
+    /// For accessibility identifiers.
+    public var key: String {
+        switch self {
+        case .new: "new"
+        case .some: "some"
         }
     }
 }

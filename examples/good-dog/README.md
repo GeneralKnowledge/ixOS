@@ -36,4 +36,4 @@ forge run ios --project .                          # build and install on an iPh
 forge ui run uitests/journey.toml                  # the journey on the phone
 ```
 
-Under UI tests (`-ForgeUITestData`), the app uses a fresh folder, so it never touches your real dog.
+Under UI tests (`-ForgeUITestData`), the app uses a fresh folder, so it never touches your real dog, and runs on a fixed clock (Monday 9 November 2026, 09:30 UTC) so screenshots stay comparable. Adding `-ForgeUITestSampleDog` starts with a sample dog (Moss) already set up, skipping onboarding: `forge ui explore --launch-arg -ForgeUITestSampleDog`. `uitests/journey.toml` covers onboarding itself.
