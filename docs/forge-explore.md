@@ -84,14 +84,14 @@ Without either, the command stops and says which to add. The word list errs towa
 
 The explorer touches the app the way a curious person would, so it has a floor of rules that no option removes:
 
-- **Only Forge apps for now.** `--project` names an app folder with a `forge.toml`; there is no bundle id option. Other developers' apps wait for the any-app policy ([general-device-control.md](research/general-device-control.md#safety)), which the explorer will obey as an agent does.
+- **Only Forge apps for now.** `--project` names an app folder with a `forge.toml`; there is no bundle id option. Other developers' apps come next: the any-app policy (`forge_uitest::policy`, merged in #107) exists, and the explorer has to ask its gate before each action, as `forge ui run --any-app` does, before it gets a bundle id option.
 - **Never** types into secure fields, and **never** taps a control whose identifier or label (as whole words, camelCase split) says it acts outside the phone or on someone else: send, post, reply, pay, buy, purchase, checkout, subscribe, transfer, share, call, publish, submit, invite, follow, report, block, donate.
 - **Never changes the person's data**: see [Test data](#test-data).
 - **Skips destructive controls** (delete, remove, erase, reset, clear, wipe, discard, trash, sign out, log out) unless `--allow-destructive`, which only works with test data.
 - Every skipped control is listed per screen in `explore.json` with the reason, so coverage gaps are visible.
 - Nothing typed is logged beyond the fixture text the person chose; trees and screenshots stay in the app's `.forge/runs`, which is not committed.
 
-The word lists are a floor, not the policy. When the any-app policy lands, its commit gate replaces `EXTERNAL` and the explorer asks it before each action.
+The word lists are a floor, not the policy. Wiring the explorer to the any-app policy's commit gate (`policy::is_commit`) is the next step; then one list serves both.
 
 ## How it fits with the work alongside it
 
