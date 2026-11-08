@@ -20,11 +20,14 @@ use good_dog_core::dog_training::{
 };
 
 mod goals;
+mod guided;
 mod model;
 #[cfg(test)]
 mod tests;
 mod training;
 
+use guided::RecordingClaim;
+pub use guided::{GuidedCard, GuidedCardKind, GuidedSession};
 pub use model::*;
 use training::{exercise, feedback_message, validated_profile, Stored};
 
@@ -314,6 +317,67 @@ impl AppCore {
             stored.goal_detail(goal_id, now)
         })
         .await
+    }
+
+    // MARK: Guided session
+
+    /// Starts a guided session of an exercise on its "get ready" card. It
+    /// is refused when a session couldn't be recorded at the end (the same
+    /// rules as `record_session`: no dog, an unknown exercise, an activity
+    /// that isn't today's or is already recorded). Saves nothing; a session
+    /// left part way is simply dropped.
+    pub fn start_guided_session(
+        &self,
+        exercise_id: String,
+        activity_id: Option<u64>,
+        now: LocalTime,
+    ) -> Result<Arc<GuidedSession>, AppError> {
+        if self.shut_down.load(Ordering::SeqCst) {
+            return Err(AppError::ShutDown);
+        }
+        let e = lock(&self.state).check_recordable(&exercise_id, activity_id, now)?;
+        let glossary = bundled_glossary();
+        let linked = |text: &str| LinkedText::from(parse_term_links(text, glossary));
+        forge_runtime::logging::info!(
+            "guided session started: {} steps, planned {}",
+            e.steps.len(),
+            activity_id.is_some()
+        );
+        Ok(Arc::new(GuidedSession::new(
+            exercise_id,
+            activity_id,
+            e.title.clone(),
+            linked(&e.preparation),
+            e.steps.iter().map(|s| linked(s)).collect(),
+            linked(&e.look_for),
+            linked(&e.if_difficult),
+            e.safety_note.as_deref().map(linked),
+        )))
+    }
+
+    /// Records a guided session from its outcome card, exactly as
+    /// `record_session` records from the exercise screen. Refused with
+    /// `InvalidInput` before the last step and once it has been recorded.
+    pub async fn record_guided_session(
+        &self,
+        session: Arc<GuidedSession>,
+        result: SessionResult,
+        welfare_concern: bool,
+        now: LocalTime,
+    ) -> Result<SessionFeedback, AppError> {
+        let claim = RecordingClaim::take(&session)?;
+        let feedback = self
+            .record_session(
+                session.exercise_id.clone(),
+                session.activity_id,
+                result,
+                welfare_concern,
+                now,
+            )
+            .await?;
+        claim.saved();
+        forge_runtime::logging::info!("guided session recorded");
+        Ok(feedback)
     }
 
     // MARK: Progress

@@ -702,6 +702,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func progress(now: LocalTime)  -> ProgressSummary
     
     /**
+     * Records a guided session from its outcome card, exactly as
+     * `record_session` records from the exercise screen. Refused with
+     * `InvalidInput` before the last step and once it has been recorded.
+     */
+    func recordGuidedSession(session: GuidedSession, result: SessionResult, welfareConcern: Bool, now: LocalTime) async throws  -> SessionFeedback
+    
+    /**
      * Records how a practice session went and moves the skill on.
      * `activity_id` ties it to one of today's activities; leave it out for
      * extra practice started from Learn. A welfare concern rests the skill
@@ -755,6 +762,15 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * started, is rebuilt around it.
      */
     func startGoal(pathwayId: String, ownWords: String?, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
+     * Starts a guided session of an exercise on its "get ready" card. It
+     * is refused when a session couldn't be recorded at the end (the same
+     * rules as `record_session`: no dog, an unknown exercise, an activity
+     * that isn't today's or is already recorded). Saves nothing; a session
+     * left part way is simply dropped.
+     */
+    func startGuidedSession(exerciseId: String, activityId: UInt64?, now: LocalTime) throws  -> GuidedSession
     
     /**
      * Goes back one stage. Normal, not a failure.
@@ -1056,6 +1072,27 @@ open func progress(now: LocalTime) -> ProgressSummary  {
 }
     
     /**
+     * Records a guided session from its outcome card, exactly as
+     * `record_session` records from the exercise screen. Refused with
+     * `InvalidInput` before the last step and once it has been recorded.
+     */
+open func recordGuidedSession(session: GuidedSession, result: SessionResult, welfareConcern: Bool, now: LocalTime)async throws  -> SessionFeedback  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_appcore_record_guided_session(
+                        self.uniffiCloneHandle(),FfiConverterTypeGuidedSession_lower(session),FfiConverterTypeSessionResult_lower(result),FfiConverterBool.lower(welfareConcern),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeSessionFeedback_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
      * Records how a practice session went and moves the skill on.
      * `activity_id` ties it to one of today's activities; leave it out for
      * extra practice started from Learn. A welfare concern rests the skill
@@ -1213,6 +1250,25 @@ open func startGoal(pathwayId: String, ownWords: String?, now: LocalTime)async t
             liftFunc: FfiConverterTypeGoalDetail_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
+}
+    
+    /**
+     * Starts a guided session of an exercise on its "get ready" card. It
+     * is refused when a session couldn't be recorded at the end (the same
+     * rules as `record_session`: no dog, an unknown exercise, an activity
+     * that isn't today's or is already recorded). Saves nothing; a session
+     * left part way is simply dropped.
+     */
+open func startGuidedSession(exerciseId: String, activityId: UInt64?, now: LocalTime)throws  -> GuidedSession  {
+    return try  FfiConverterTypeGuidedSession_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_start_guided_session(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(exerciseId),
+        FfiConverterOptionUInt64.lower(activityId),
+        FfiConverterTypeLocalTime_lower(now),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -1638,6 +1694,250 @@ public func FfiConverterTypeCancellation_lift(_ handle: UInt64) throws -> Cancel
 #endif
 public func FfiConverterTypeCancellation_lower(_ value: Cancellation) -> UInt64 {
     return FfiConverterTypeCancellation.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One guided session of one exercise. Made by
+ * `AppCore::start_guided_session`, recorded by
+ * `AppCore::record_guided_session`. Thread-safe.
+ */
+public protocol GuidedSessionProtocol: AnyObject, Sendable {
+    
+    /**
+     * The plan activity this session belongs to; `None` for extra practice.
+     */
+    func activityId()  -> UInt64?
+    
+    /**
+     * Moves to the card before. `InvalidInput` on the "get ready" card or
+     * once the session is recorded.
+     */
+    func back() throws  -> GuidedCard
+    
+    /**
+     * The card showing now.
+     */
+    func card()  -> GuidedCard
+    
+    func exerciseId()  -> String
+    
+    /**
+     * "If it's difficult", offered on every card without moving.
+     */
+    func ifDifficult()  -> LinkedText
+    
+    /**
+     * Moves to the next card. `InvalidInput` on the outcome card or once
+     * the session is recorded.
+     */
+    func next() throws  -> GuidedCard
+    
+    /**
+     * Shown on the "get ready" card when the exercise has one.
+     */
+    func safetyNote()  -> LinkedText?
+    
+    func title()  -> String
+    
+}
+/**
+ * One guided session of one exercise. Made by
+ * `AppCore::start_guided_session`, recorded by
+ * `AppCore::record_guided_session`. Thread-safe.
+ */
+open class GuidedSession: GuidedSessionProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_guidedsession(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_guidedsession(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The plan activity this session belongs to; `None` for extra practice.
+     */
+open func activityId() -> UInt64?  {
+    return try!  FfiConverterOptionUInt64.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_activity_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Moves to the card before. `InvalidInput` on the "get ready" card or
+     * once the session is recorded.
+     */
+open func back()throws  -> GuidedCard  {
+    return try  FfiConverterTypeGuidedCard_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_back(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The card showing now.
+     */
+open func card() -> GuidedCard  {
+    return try!  FfiConverterTypeGuidedCard_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_card(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func exerciseId() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_exercise_id(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * "If it's difficult", offered on every card without moving.
+     */
+open func ifDifficult() -> LinkedText  {
+    return try!  FfiConverterTypeLinkedText_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_if_difficult(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Moves to the next card. `InvalidInput` on the outcome card or once
+     * the session is recorded.
+     */
+open func next()throws  -> GuidedCard  {
+    return try  FfiConverterTypeGuidedCard_lift(try rustCallWithError(FfiConverterTypeAppError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_next(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Shown on the "get ready" card when the exercise has one.
+     */
+open func safetyNote() -> LinkedText?  {
+    return try!  FfiConverterOptionTypeLinkedText.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_safety_note(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+open func title() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_guidedsession_title(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGuidedSession: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = GuidedSession
+
+    public static func lift(_ handle: UInt64) throws -> GuidedSession {
+        return GuidedSession(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: GuidedSession) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GuidedSession {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: GuidedSession, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedSession_lift(_ handle: UInt64) throws -> GuidedSession {
+    return try FfiConverterTypeGuidedSession.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedSession_lower(_ value: GuidedSession) -> UInt64 {
+    return FfiConverterTypeGuidedSession.lower(value)
 }
 
 
@@ -3607,6 +3907,119 @@ public func FfiConverterTypeGoalSummary_lower(_ value: GoalSummary) -> RustBuffe
 
 
 /**
+ * The card on screen, and what the owner may do from it.
+ */
+public struct GuidedCard: Equatable, Hashable {
+    public var kind: GuidedCardKind
+    /**
+     * Where this card is, from 0 (get ready) to `card_count - 1` (outcome).
+     */
+    public var position: UInt32
+    public var cardCount: UInt32
+    /**
+     * On a step card, its number from 1 ("Step 2 of 5").
+     */
+    public var stepNumber: UInt32?
+    public var stepCount: UInt32
+    /**
+     * The preparation, the step, or (on the outcome card) what to look for.
+     */
+    public var text: LinkedText
+    public var canGoBack: Bool
+    public var canGoNext: Bool
+    /**
+     * Only on the outcome card, and only until the session is recorded.
+     */
+    public var canRecord: Bool
+    public var recorded: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: GuidedCardKind, 
+        /**
+         * Where this card is, from 0 (get ready) to `card_count - 1` (outcome).
+         */position: UInt32, cardCount: UInt32, 
+        /**
+         * On a step card, its number from 1 ("Step 2 of 5").
+         */stepNumber: UInt32?, stepCount: UInt32, 
+        /**
+         * The preparation, the step, or (on the outcome card) what to look for.
+         */text: LinkedText, canGoBack: Bool, canGoNext: Bool, 
+        /**
+         * Only on the outcome card, and only until the session is recorded.
+         */canRecord: Bool, recorded: Bool) {
+        self.kind = kind
+        self.position = position
+        self.cardCount = cardCount
+        self.stepNumber = stepNumber
+        self.stepCount = stepCount
+        self.text = text
+        self.canGoBack = canGoBack
+        self.canGoNext = canGoNext
+        self.canRecord = canRecord
+        self.recorded = recorded
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GuidedCard: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGuidedCard: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GuidedCard {
+        return
+            try GuidedCard(
+                kind: FfiConverterTypeGuidedCardKind.read(from: &buf), 
+                position: FfiConverterUInt32.read(from: &buf), 
+                cardCount: FfiConverterUInt32.read(from: &buf), 
+                stepNumber: FfiConverterOptionUInt32.read(from: &buf), 
+                stepCount: FfiConverterUInt32.read(from: &buf), 
+                text: FfiConverterTypeLinkedText.read(from: &buf), 
+                canGoBack: FfiConverterBool.read(from: &buf), 
+                canGoNext: FfiConverterBool.read(from: &buf), 
+                canRecord: FfiConverterBool.read(from: &buf), 
+                recorded: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GuidedCard, into buf: inout [UInt8]) {
+        FfiConverterTypeGuidedCardKind.write(value.kind, into: &buf)
+        FfiConverterUInt32.write(value.position, into: &buf)
+        FfiConverterUInt32.write(value.cardCount, into: &buf)
+        FfiConverterOptionUInt32.write(value.stepNumber, into: &buf)
+        FfiConverterUInt32.write(value.stepCount, into: &buf)
+        FfiConverterTypeLinkedText.write(value.text, into: &buf)
+        FfiConverterBool.write(value.canGoBack, into: &buf)
+        FfiConverterBool.write(value.canGoNext, into: &buf)
+        FfiConverterBool.write(value.canRecord, into: &buf)
+        FfiConverterBool.write(value.recorded, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedCard_lift(_ buf: RustBuffer) throws -> GuidedCard {
+    return try FfiConverterTypeGuidedCard.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedCard_lower(_ value: GuidedCard) -> RustBuffer {
+    return FfiConverterTypeGuidedCard.lower(value)
+}
+
+
+/**
  * What a Learn search found.
  */
 public struct LearnSearchResults: Equatable, Hashable {
@@ -5494,6 +5907,91 @@ public func FfiConverterTypeGoalStatus_lower(_ value: GoalStatus) -> RustBuffer 
 
 
 /**
+ * What a card of a guided session shows.
+ */
+
+public enum GuidedCardKind: Equatable, Hashable {
+    
+    /**
+     * The preparation, before the first step.
+     */
+    case getReady
+    /**
+     * One step of the exercise.
+     */
+    case step
+    /**
+     * After the last step: how did it go?
+     */
+    case outcome
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension GuidedCardKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGuidedCardKind: FfiConverterRustBuffer {
+    typealias SwiftType = GuidedCardKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GuidedCardKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .getReady
+        
+        case 2: return .step
+        
+        case 3: return .outcome
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: GuidedCardKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .getReady:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .step:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .outcome:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedCardKind_lift(_ buf: RustBuffer) throws -> GuidedCardKind {
+    return try FfiConverterTypeGuidedCardKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGuidedCardKind_lower(_ value: GuidedCardKind) -> RustBuffer {
+    return FfiConverterTypeGuidedCardKind.lower(value)
+}
+
+
+
+/**
  * A permission the app can ask the user for. More cases (camera,
  * photos, microphone) are added as their adapters are; see
  * docs/native-services.md. A permission whose service the app
@@ -6543,6 +7041,30 @@ public func FfiConverterTypeTrainingGoal_lower(_ value: TrainingGoal) -> RustBuf
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionUInt32: FfiConverterRustBuffer {
+    typealias SwiftType = UInt32?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterUInt32.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterUInt32.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionUInt64: FfiConverterRustBuffer {
     typealias SwiftType = UInt64?
 
@@ -7468,6 +7990,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_appcore_progress() != 3010) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_record_guided_session() != 11871) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_record_session() != 22558) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7495,6 +8020,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_appcore_start_goal() != 31874) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_start_guided_session() != 24214) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_step_back() != 6133) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -7517,6 +8045,30 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_cancellation_cancel() != 6133) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_activity_id() != 62348) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_back() != 17009) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_card() != 7522) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_exercise_id() != 12955) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_if_difficult() != 57606) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_next() != 37355) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_safety_note() != 15118) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_guidedsession_title() != 14421) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_localnotifier_schedule() != 55943) {

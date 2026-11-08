@@ -203,6 +203,34 @@ public final class GoodDogModel {
         return feedback
     }
 
+    /// Starts a guided session of an exercise on its "get ready" card.
+    /// Throws Rust's `AppError` when the session couldn't be recorded at
+    /// the end (the activity is already done, for example).
+    public func startGuidedSession(exerciseId: String, activityId: UInt64?) throws -> GuidedSessionModel {
+        guard let core else { throw AppError.ShutDown }
+        let session = try core.startGuidedSession(exerciseId: exerciseId, activityId: activityId, now: clock())
+        return GuidedSessionModel(session: session, app: self)
+    }
+
+    /// Records a guided session from its outcome card. Rust applies the
+    /// same rules and writes the same record as `record`.
+    func recordGuided(
+        _ session: GuidedSession,
+        result: SessionResult,
+        welfareConcern: Bool
+    ) async throws -> SessionFeedback {
+        guard let core else { throw AppError.ShutDown }
+        let feedback = try await core.recordGuidedSession(
+            session: session,
+            result: result,
+            welfareConcern: welfareConcern,
+            now: clock()
+        )
+        sessionCount += 1
+        await reload()
+        return feedback
+    }
+
     /// Deletes everything and returns to onboarding.
     public func eraseAll() async {
         await perform { core, _ in try await core.eraseAll() }

@@ -1,0 +1,125 @@
+# GD-7 on a real iPhone: follow today's first exercise as a guided session,
+# step to the end and back once, look at "If it's difficult" without losing
+# the place, record "getting there", and see it done on Today.
+# Runs on throwaway data with the sample dog (-ForgeUITestData
+# -ForgeUITestSampleDog; the sample dog needs the test-data flag), so
+# onboarding is skipped and the plan is fixed: today's first activity is
+# ex-name-response, 4 steps. rust/src/tests.rs pins that
+# (the_ui_tests_sample_dog_starts_today_on_a_four_step_exercise).
+#   forge ui run examples/good-dog/uitests/guided.toml
+
+name = "GD-7: guided exercise session"
+app = "org.forgemobile.gooddog"
+
+[[step]]
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+
+[[step]]
+expect = { id = "today.progress" }
+
+[[step]]
+tap = { id = "today.activity.0" }
+
+[[step]]
+tap = { id = "exercise.guided" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Get ready" }
+
+# The session timer starts with the session and shows on every card.
+[[step]]
+expect = { id = "guided.timer" }
+
+[[step]]
+expect = { id = "guided.back", enabled = false }
+
+[[step]]
+screenshot = "1-get-ready"
+
+[[step]]
+tap = { id = "guided.next" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Step 1 of 4" }
+
+[[step]]
+tap = { id = "guided.next" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Step 2 of 4" }
+
+[[step]]
+screenshot = "2-step"
+
+# "If it's difficult" is one tap away and keeps the place.
+[[step]]
+tap = { id = "guided.ifDifficult" }
+
+[[step]]
+expect = { id = "guided.ifDifficult.text" }
+
+[[step]]
+tap = { id = "guided.ifDifficult.done" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Step 2 of 4" }
+
+[[step]]
+expect = { id = "guided.timer" }
+
+[[step]]
+tap = { id = "guided.next" }
+
+[[step]]
+tap = { id = "guided.next" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Step 4 of 4" }
+
+[[step]]
+tap = { id = "guided.next" }
+
+# The end: the outcome choice, and Save waits for a choice.
+[[step]]
+expect = { id = "guided.progress", has_label = "How did it go?" }
+
+[[step]]
+expect = { id = "guided.save", enabled = false }
+
+[[step]]
+expect = { id = "guided.timer" }
+
+# Back once from the end, and forward again.
+[[step]]
+tap = { id = "guided.back" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "Step 4 of 4" }
+
+[[step]]
+tap = { id = "guided.next" }
+
+[[step]]
+expect = { id = "guided.progress", has_label = "How did it go?" }
+
+[[step]]
+tap = { id = "record.result.gettingThere" }
+
+[[step]]
+screenshot = "3-outcome"
+
+[[step]]
+tap = { id = "guided.save" }
+
+[[step]]
+tap = { id = "feedback.ok" }
+
+# Back on the exercise screen, recorded; then Today shows it done.
+[[step]]
+expect = { id = "exercise.done" }
+
+[[step]]
+tap = { id = "BackButton" }
+
+[[step]]
+expect = { id = "today.activity.0", value = "Done" }

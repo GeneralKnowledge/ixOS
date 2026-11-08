@@ -253,6 +253,8 @@ The planted crash is in the model, not in Good Dog. What the demo proves is how 
 - **Not chosen now:** pausing, resuming and setting aside a goal, which needs GD2a first. It remains a candidate for M6.6, with GD2b's goal journey screen.
 - **How it runs:** `scripts/agent-runs/good-dog-m65/run-m65.sh`, in stages: `prep`, `a-change` (no phone, up to 60 min), `b-look` and `c-test` (phone, up to 20 min each), and `d-record` (`forge verify --run`). The agent works in its own git worktree. Phone stages install `org.forgemobile.gooddog` over the build already there, and launch only on test data (`-ForgeUITestData -ForgeUITestSampleDog`), never the owner's own data. Afterwards Reuben uses the guided session and records `--accept GD-7` himself.
 
+**Checks in proportion (Reuben, 2026-11-08 18:35):** "we have maybe went a little test crazy on small changes." By default a small change gets the Linux checks, one install, the UI test that covers it, and a dark-mode look and audit of the screens it touched. Exploration walks, full reruns of other UI tests, screenshot baseline reviews and largest-text checks on the phone are for big UI changes or a release. Each phone stage has a hard limit of 10 minutes and stops cleanly if the phone is unplugged.
+
 Not a planted bug. If the run finds no genuine problem, the record says so and M6 isn't complete on that point; a second task follows.
 
 **Passes when** the brief's acceptance criteria 1–14 are met, checked against the run record, with Reuben's acceptance recorded as `human`.

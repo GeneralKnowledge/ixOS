@@ -2,12 +2,17 @@
 import SwiftUI
 
 /// One exercise: why, how, what to look for, and what to do if it's hard.
-/// "How Did It Go?" records the session in Rust.
+/// "Start Guided Session" follows it one card at a time; "How Did It Go?"
+/// records the session in Rust.
 struct ExerciseView: View {
     let model: GoodDogModel
     let route: ExerciseRoute
     @State private var recording = false
     @State private var feedback: SessionFeedback?
+    @State private var guided: GuidedSessionModel?
+    @State private var startError: String?
+    /// The session timer, shared with the guided session so it keeps running.
+    @State private var timerStartedAt: Date?
 
     private var activity: PlanActivity? {
         model.today?.activities.first { $0.id == route.activityId }
@@ -25,6 +30,18 @@ struct ExerciseView: View {
                     if let activity {
                         Text(activity.whyToday)
                             .foregroundStyle(.secondary)
+                    }
+                    if activity?.result == nil {
+                        Button {
+                            startGuided()
+                        } label: {
+                            Label("Start Guided Session", systemImage: "figure.walk")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                        .accessibilityHint("Shows the steps one at a time, with large Back and Next buttons.")
+                        .accessibilityIdentifier("exercise.guided")
                     }
                 }
                 Section("Why it helps") {
@@ -81,7 +98,7 @@ struct ExerciseView: View {
                     Text("Tip")
                 }
                 Section {
-                    SessionTimer()
+                    SessionTimer(startedAt: $timerStartedAt, screen: "exercise")
                 }
             }
             .navigationTitle(exercise.title)
@@ -113,6 +130,16 @@ struct ExerciseView: View {
             .sheet(isPresented: $recording) {
                 RecordSessionView(model: model, route: route, title: exercise.title) { feedback = $0 }
             }
+            #if os(iOS)
+            .fullScreenCover(item: $guided) { session in
+                GuidedSessionView(model: model, session: session, timerStartedAt: $timerStartedAt)
+            }
+            #else
+            .sheet(item: $guided) { session in
+                GuidedSessionView(model: model, session: session, timerStartedAt: $timerStartedAt)
+            }
+            #endif
+            .errorAlert("Couldn't Start", message: $startError)
             .alert(
                 "Session Saved",
                 isPresented: Binding(get: { feedback != nil }, set: { if !$0 { feedback = nil } }),
@@ -128,33 +155,119 @@ struct ExerciseView: View {
             ContentUnavailableView("Exercise Not Found", systemImage: "questionmark.circle")
         }
     }
+
+    /// A new session every time, on its "get ready" card. The timer starts
+    /// with it unless it is already running.
+    private func startGuided() {
+        do {
+            guided = try model.startGuidedSession(exerciseId: route.exerciseId, activityId: route.activityId)
+            if timerStartedAt == nil { timerStartedAt = Date() }
+        } catch {
+            startError = GoodDogModel.describe(error)
+        }
+    }
 }
 
-/// A simple stopwatch, so sessions stay short.
-private struct SessionTimer: View {
-    @State private var startedAt: Date?
+extension GuidedSessionModel: Identifiable {}
+
+/// A simple stopwatch, so sessions stay short. `screen` prefixes the
+/// accessibility identifiers (`exercise.timer.start`, `guided.timer.stop`).
+struct SessionTimer: View {
+    @Binding var startedAt: Date?
+    let screen: String
 
     var body: some View {
-        HStack {
-            if let startedAt {
-                TimelineView(.periodic(from: startedAt, by: 1)) { context in
-                    let seconds = Int(context.date.timeIntervalSince(startedAt))
-                    Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
-                        .font(.title2.monospacedDigit())
-                        .accessibilityLabel("\(seconds / 60) minutes \(seconds % 60) seconds")
-                }
-                Spacer()
-                Button("Stop", systemImage: "stop.fill") { self.startedAt = nil }
-                    .accessibilityIdentifier("exercise.timer.stop")
-            } else {
-                Label("Timer", systemImage: "stopwatch")
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Button("Start", systemImage: "play.fill") { startedAt = Date() }
-                    .accessibilityIdentifier("exercise.timer.start")
+        // Side by side, or one above the other at the largest text sizes.
+        ViewThatFits(in: .horizontal) {
+            HStack {
+                time
+                Spacer(minLength: 12)
+                button
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                time
+                button
             }
         }
         .sensoryFeedback(.selection, trigger: startedAt)
+    }
+
+    @ViewBuilder private var time: some View {
+        if let startedAt {
+            TimelineView(.periodic(from: startedAt, by: 1)) { context in
+                let seconds = max(0, Int(context.date.timeIntervalSince(startedAt)))
+                Text(String(format: "%d:%02d", seconds / 60, seconds % 60))
+                    .font(.title2.monospacedDigit())
+                    .accessibilityLabel("Session time: \(seconds / 60) minutes \(seconds % 60) seconds")
+                    .accessibilityIdentifier("\(screen).timer")
+            }
+        } else {
+            Label("Timer", systemImage: "stopwatch")
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// A bordered button at least 44 pt tall: the bare text button measured
+    /// 59 x 20 pt on the phone (forge_ui_audit, Stage B), too small to hit
+    /// while holding a lead.
+    @ViewBuilder private var button: some View {
+        if startedAt != nil {
+            Button { startedAt = nil } label: {
+                Label("Stop", systemImage: "stop.fill")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Stop timer")
+            .accessibilityIdentifier("\(screen).timer.stop")
+        } else {
+            Button { startedAt = Date() } label: {
+                Label("Start", systemImage: "play.fill")
+                    .frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Start timer")
+            .accessibilityIdentifier("\(screen).timer.start")
+        }
+    }
+}
+
+/// The outcome choice: how it went, and whether the dog seemed worried or
+/// uncomfortable. Shared by "How Did It Go?" and the guided session's last
+/// card, so both offer exactly the same choice. Sections, for a `Form`.
+struct OutcomeChoice: View {
+    let title: String
+    @Binding var result: SessionResult?
+    @Binding var welfareConcern: Bool
+
+    var body: some View {
+        Section {
+            ForEach(SessionResult.allCases) { option in
+                Button {
+                    result = option
+                } label: {
+                    HStack {
+                        Label(option.title, systemImage: option.systemImage)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if result == option {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.tint)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                }
+                .accessibilityAddTraits(result == option ? .isSelected : [])
+                .accessibilityIdentifier("record.result.\(option.key)")
+            }
+        } header: {
+            Text(title)
+        }
+        Section {
+            Toggle("My dog seemed worried, sore or uncomfortable", isOn: $welfareConcern)
+                .accessibilityIdentifier("record.welfare")
+        } footer: {
+            Text("If so, we'll rest this skill for a few days and keep things gentle.")
+        }
     }
 }
 
@@ -173,34 +286,7 @@ private struct RecordSessionView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section {
-                    ForEach(SessionResult.allCases) { option in
-                        Button {
-                            result = option
-                        } label: {
-                            HStack {
-                                Label(option.title, systemImage: option.systemImage)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if result == option {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(.tint)
-                                        .accessibilityHidden(true)
-                                }
-                            }
-                        }
-                        .accessibilityAddTraits(result == option ? .isSelected : [])
-                        .accessibilityIdentifier("record.result.\(option.key)")
-                    }
-                } header: {
-                    Text(title)
-                }
-                Section {
-                    Toggle("My dog seemed worried, sore or uncomfortable", isOn: $welfareConcern)
-                        .accessibilityIdentifier("record.welfare")
-                } footer: {
-                    Text("If so, we'll rest this skill for a few days and keep things gentle.")
-                }
+                OutcomeChoice(title: title, result: $result, welfareConcern: $welfareConcern)
             }
             .navigationTitle("How Did It Go?")
             #if os(iOS)

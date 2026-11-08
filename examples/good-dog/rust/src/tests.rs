@@ -680,3 +680,226 @@ fn erasing_clears_goals() {
     assert!(app.goals().is_empty());
     assert_eq!(app.pathways().len(), 4, "the offered pathways stay");
 }
+
+// MARK: Guided session (GD-7)
+
+/// Steps through a guided session to its outcome card.
+fn to_outcome(session: &GuidedSession) {
+    while session.card().can_go_next {
+        session.next().unwrap();
+    }
+    assert_eq!(session.card().kind, GuidedCardKind::Outcome);
+}
+
+#[test]
+fn a_guided_session_shows_get_ready_then_each_step_then_the_outcome() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let activity = block_on(app.today(at(NINE_AM))).unwrap().activities[0].clone();
+    let detail = app.exercise(activity.exercise_id.clone()).unwrap();
+    let session = app
+        .start_guided_session(activity.exercise_id.clone(), Some(activity.id), at(NINE_AM))
+        .unwrap();
+    assert_eq!(session.title(), detail.title);
+    assert_eq!(session.if_difficult(), detail.if_difficult);
+
+    let card = session.card();
+    assert_eq!(card.kind, GuidedCardKind::GetReady);
+    assert_eq!(card.text, detail.preparation);
+    assert_eq!(card.step_count, detail.steps.len() as u32);
+    assert_eq!(card.card_count, detail.steps.len() as u32 + 2);
+    assert!(!card.can_go_back && card.can_go_next && !card.can_record);
+    assert!(matches!(session.back(), Err(AppError::InvalidInput { .. })));
+
+    for (i, step) in detail.steps.iter().enumerate() {
+        let card = session.next().unwrap();
+        assert_eq!(card.kind, GuidedCardKind::Step);
+        assert_eq!(card.step_number, Some(i as u32 + 1));
+        assert_eq!(&card.text, step);
+        assert!(card.can_go_back && !card.can_record);
+    }
+    let outcome = session.next().unwrap();
+    assert_eq!(outcome.kind, GuidedCardKind::Outcome);
+    assert_eq!(outcome.text, detail.look_for);
+    assert!(outcome.can_record && !outcome.can_go_next);
+    let last = session.back().unwrap();
+    assert_eq!(last.step_number, Some(detail.steps.len() as u32));
+}
+
+#[test]
+fn recording_a_guided_session_matches_recording_from_the_exercise_screen() {
+    let guided_dir = tempfile::tempdir().unwrap();
+    let plain_dir = tempfile::tempdir().unwrap();
+    let guided = onboarded(guided_dir.path());
+    let plain = onboarded(plain_dir.path());
+    let activity = block_on(guided.today(at(NINE_AM))).unwrap().activities[0].clone();
+    assert_eq!(
+        block_on(plain.today(at(NINE_AM))).unwrap().activities[0],
+        activity
+    );
+
+    let session = guided
+        .start_guided_session(activity.exercise_id.clone(), Some(activity.id), at(NINE_AM))
+        .unwrap();
+    // Not before the last step.
+    assert!(matches!(
+        block_on(guided.record_guided_session(
+            session.clone(),
+            SessionResult::GettingThere,
+            false,
+            at(NINE_AM)
+        )),
+        Err(AppError::InvalidInput { .. })
+    ));
+    assert!(guided.history(10).is_empty());
+    to_outcome(&session);
+
+    let later = at(NINE_AM + 60_000);
+    let from_guided = block_on(guided.record_guided_session(
+        session.clone(),
+        SessionResult::GettingThere,
+        false,
+        later,
+    ))
+    .unwrap();
+    let from_screen = block_on(plain.record_session(
+        activity.exercise_id.clone(),
+        Some(activity.id),
+        SessionResult::GettingThere,
+        false,
+        later,
+    ))
+    .unwrap();
+    assert_eq!(from_guided, from_screen);
+    assert_eq!(guided.history(10), plain.history(10));
+    assert_eq!(guided.progress(later), plain.progress(later));
+    assert_eq!(
+        block_on(guided.today(later)).unwrap(),
+        block_on(plain.today(later)).unwrap()
+    );
+    // The saved files are the same too: one rule, one record.
+    assert_eq!(
+        std::fs::read_to_string(guided_dir.path().join("gooddog.json")).unwrap(),
+        std::fs::read_to_string(plain_dir.path().join("gooddog.json")).unwrap()
+    );
+
+    // Recorded once, then it stays put.
+    let card = session.card();
+    assert!(card.recorded && !card.can_record && !card.can_go_back);
+    assert!(matches!(
+        block_on(guided.record_guided_session(session.clone(), SessionResult::Easy, false, later)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    assert_eq!(guided.history(10).len(), 1);
+    // A done activity can't start another guided session.
+    assert!(matches!(
+        guided.start_guided_session(activity.exercise_id, Some(activity.id), later),
+        Err(AppError::InvalidInput { .. })
+    ));
+}
+
+#[test]
+fn a_guided_welfare_concern_rests_the_skill_like_the_exercise_screen() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let activity = block_on(app.today(at(NINE_AM))).unwrap().activities[0].clone();
+    let session = app
+        .start_guided_session(activity.exercise_id.clone(), Some(activity.id), at(NINE_AM))
+        .unwrap();
+    to_outcome(&session);
+    let feedback =
+        block_on(app.record_guided_session(session, SessionResult::Easy, true, at(NINE_AM)))
+            .unwrap();
+    assert_eq!(feedback.skill.level, SkillLevel::MakingEasier);
+    assert!(app.history(1)[0].welfare_concern);
+}
+
+#[test]
+fn leaving_a_guided_session_part_way_records_nothing_and_the_next_starts_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let activity = block_on(app.today(at(NINE_AM))).unwrap().activities[0].clone();
+    let saved = std::fs::read_to_string(dir.path().join("gooddog.json")).unwrap();
+    let session = app
+        .start_guided_session(activity.exercise_id.clone(), Some(activity.id), at(NINE_AM))
+        .unwrap();
+    session.next().unwrap();
+    session.next().unwrap();
+    drop(session);
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("gooddog.json")).unwrap(),
+        saved,
+        "nothing saved"
+    );
+    assert!(app.history(10).is_empty());
+    assert_eq!(app.progress(at(NINE_AM)).sessions_total, 0);
+
+    // The app terminated part way: the reopened app knows nothing of it.
+    app.shutdown();
+    let reopened = open(dir.path());
+    assert!(reopened.history(10).is_empty());
+    let again = reopened
+        .start_guided_session(activity.exercise_id, Some(activity.id), at(NINE_AM))
+        .unwrap();
+    assert_eq!(again.card().kind, GuidedCardKind::GetReady);
+    assert_eq!(again.card().position, 0);
+}
+
+#[test]
+fn a_guided_session_needs_what_a_record_needs() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = open(dir.path());
+    assert!(matches!(
+        app.start_guided_session("ex-name-game".into(), None, at(NINE_AM)),
+        Err(AppError::NoDog)
+    ));
+    block_on(app.save_dog(moss(), at(NINE_AM))).unwrap();
+    assert!(matches!(
+        app.start_guided_session("no-such-exercise".into(), None, at(NINE_AM)),
+        Err(AppError::NotFound { .. })
+    ));
+    let plan = block_on(app.today(at(NINE_AM))).unwrap();
+    let (a, b) = (&plan.activities[0], &plan.activities[1]);
+    assert!(matches!(
+        app.start_guided_session(b.exercise_id.clone(), Some(a.id), at(NINE_AM)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    // Extra practice from Learn, with no activity, is fine.
+    let extra = app
+        .start_guided_session(a.exercise_id.clone(), None, at(NINE_AM))
+        .unwrap();
+    to_outcome(&extra);
+    block_on(app.record_guided_session(extra, SessionResult::Easy, false, at(NINE_AM))).unwrap();
+    assert_eq!(app.history(10).len(), 1);
+    assert_eq!(block_on(app.today(at(NINE_AM))).unwrap().done_count, 0);
+    app.shutdown();
+    assert!(matches!(
+        app.start_guided_session(a.exercise_id.clone(), None, at(NINE_AM)),
+        Err(AppError::ShutDown)
+    ));
+}
+
+/// `uitests/guided.toml` taps Next a fixed number of times. It launches
+/// with `-ForgeUITestData -ForgeUITestSampleDog`: the sample dog
+/// (`GoodDogModel.launchSampleDog`) on the fixed clock (`LocalTime.uiTest`).
+/// If this fails, the plan or the content changed: update the test file.
+#[test]
+fn the_ui_tests_sample_dog_starts_today_on_a_four_step_exercise() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = open(dir.path());
+    let ui_test = LocalTime {
+        ms: 1_794_216_600_000,
+        utc_offset_minutes: 0,
+    };
+    let sample = DogProfile {
+        name: "Moss".into(),
+        life_stage: DogLifeStage::Adult,
+        daily_time: DailyTime::AboutTenMinutes,
+        goal: TrainingGoal::Recall,
+        experience: OwnerExperience::New,
+    };
+    block_on(app.save_dog(sample, ui_test)).unwrap();
+    let first = block_on(app.today(ui_test)).unwrap().activities[0].clone();
+    let steps = app.exercise(first.exercise_id.clone()).unwrap().steps.len();
+    assert_eq!((first.exercise_id.as_str(), steps), ("ex-name-response", 4));
+}

@@ -352,28 +352,27 @@ impl Stored {
         Ok(())
     }
 
-    /// Records a practice session and moves the skill on. `activity_id` ties
-    /// it to one of today's activities; without one it is extra practice.
-    pub fn record(
-        &mut self,
+    /// Whether a session of `exercise_id` may be recorded now: there is a
+    /// dog, the exercise exists, and `activity_id` (if given) is one of
+    /// today's activities, for that exercise, not yet recorded. `record`
+    /// and starting a guided session both apply it.
+    pub fn check_recordable(
+        &self,
         exercise_id: &str,
         activity_id: Option<u64>,
-        result: SessionResult,
-        welfare_concern: bool,
         now: LocalTime,
-    ) -> Result<String, AppError> {
+    ) -> Result<&'static ExerciseContent, AppError> {
         self.subject()?;
         let e = exercise(exercise_id).ok_or(AppError::NotFound {
             what: "that exercise".into(),
         })?;
-        let session_id = self.take_id();
         if let Some(activity_id) = activity_id {
             let activity = self
                 .today_index(now)
                 .and_then(|i| {
                     self.plans[i]
                         .activities
-                        .iter_mut()
+                        .iter()
                         .find(|a| a.id == activity_id)
                 })
                 .ok_or(AppError::NotFound {
@@ -389,6 +388,29 @@ impl Stored {
                     reason: "that activity has already been recorded".into(),
                 });
             }
+        }
+        Ok(e)
+    }
+
+    /// Records a practice session and moves the skill on. `activity_id` ties
+    /// it to one of today's activities; without one it is extra practice.
+    pub fn record(
+        &mut self,
+        exercise_id: &str,
+        activity_id: Option<u64>,
+        result: SessionResult,
+        welfare_concern: bool,
+        now: LocalTime,
+    ) -> Result<String, AppError> {
+        let e = self.check_recordable(exercise_id, activity_id, now)?;
+        let session_id = self.take_id();
+        if let Some(activity_id) = activity_id {
+            let index = self.today_index(now).expect("checked above");
+            let activity = self.plans[index]
+                .activities
+                .iter_mut()
+                .find(|a| a.id == activity_id)
+                .expect("checked above");
             activity.session_id = Some(session_id);
         }
         let objective = e.core.learning_objective_id.clone();
