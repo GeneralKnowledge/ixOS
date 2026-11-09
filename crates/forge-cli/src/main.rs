@@ -326,6 +326,31 @@ enum UiCommands {
         #[arg(long)]
         any_app: bool,
     },
+    /// Open the app on the phone (or stop it with --terminate), optionally
+    /// in dark or light mode or at the largest text size. Needs `forge ui
+    /// setup`; `forge run ios` installs but does not open the app
+    Launch {
+        #[arg(long)]
+        udid: Option<String>,
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Stop the app instead of opening it
+        #[arg(long, conflicts_with_all = ["appearance", "largest_text", "launch_arg"])]
+        terminate: bool,
+        /// Dark or light mode for this launch (the app is restarted)
+        #[arg(long, value_parser = ["dark", "light"])]
+        appearance: Option<String>,
+        /// The largest accessibility text size for this launch (the app is
+        /// restarted)
+        #[arg(long)]
+        largest_text: bool,
+        /// Another launch argument (repeatable; the app is restarted)
+        #[arg(long = "launch-arg", value_name = "ARG", allow_hyphen_values = true)]
+        launch_arg: Vec<String>,
+    },
     /// Save a screenshot of the phone's screen here
     Screenshot {
         #[arg(long)]
@@ -896,6 +921,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Audit { .. } => "ui audit",
             UiCommands::Screenshot { .. } => "ui screenshot",
+            UiCommands::Launch { .. } => "ui launch",
             UiCommands::Run { .. } => "ui run",
             UiCommands::Explore { .. } => "ui explore",
             UiCommands::Focus { .. } => "ui focus",
@@ -1184,6 +1210,28 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Audit { udid, app, any_app } => ui::audit(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
+                UiCommands::Launch {
+                    udid,
+                    project,
+                    terminate,
+                    appearance,
+                    largest_text,
+                    launch_arg,
+                } => {
+                    let project = project_or_default(project, "");
+                    if project.as_os_str().is_empty() {
+                        return Err("no app here: run inside an app directory (with forge.toml) or pass --project".into());
+                    }
+                    let mut args = Vec::new();
+                    if let Some(mode) = &appearance {
+                        args.extend([forge_uitest::explore::APPEARANCE_ARG.to_string(), mode.clone()]);
+                    }
+                    if largest_text {
+                        args.extend(forge_uitest::explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
+                    }
+                    args.extend(launch_arg);
+                    ui::launch(runner, udid.as_deref(), &project, terminate, &args, &mut out)
+                }
                 UiCommands::Run {
                     udid,
                     file,

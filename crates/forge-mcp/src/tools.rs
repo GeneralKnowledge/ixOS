@@ -692,24 +692,37 @@ impl crate::Server {
             "forge_diagnose" => Answer::of(self.diagnose()),
             "forge_launch_app" => {
                 let app = app_or_fail!();
-                let steps = if args.bool("terminate") {
-                    vec![("terminate", json!({}))]
+                // `forge ui launch`, as a person would run it: it restarts
+                // the app when there are launch arguments.
+                let mut inv = Invocation::new(&["ui", "launch"], &app.dir, secs(10 * MIN), "test")
+                    .arg("--project")
+                    .arg(app.dir.display().to_string());
+                if args.bool("terminate") {
+                    inv = inv.arg("--terminate");
                 } else {
                     match launch_args(&args) {
-                        // A running app keeps its launch arguments, so a
-                        // text size or appearance only applies after a
-                        // fresh start (seen on Cati, 2026-11-07).
-                        Ok(launch)
-                            if args.str("text_size").is_some()
-                                || args.str("appearance").is_some() =>
-                        {
-                            vec![("terminate", json!({})), ("launch", launch)]
+                        Ok(launch) => {
+                            for a in launch["args"].as_array().into_iter().flatten() {
+                                if let Some(a) = a.as_str() {
+                                    inv = inv.arg(format!("--launch-arg={a}"));
+                                }
+                            }
                         }
-                        Ok(launch) => vec![("launch", launch)],
                         Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
                     }
-                };
-                self.one_step(&app, name, steps, cancel).await
+                }
+                let result = self.forge(self.with_udid(inv), cancel).await;
+                // On failure, the screen at the failed step.
+                let image = result["data"]["failed_step"]["step"]
+                    .as_u64()
+                    .zip(result["data"]["out"].as_str())
+                    .map(|(n, out)| PathBuf::from(out).join(format!("failure-step{n}.png")))
+                    .filter(|p| p.is_file());
+                Answer {
+                    result,
+                    untrusted: true,
+                    image,
+                }
             }
             "forge_screenshot" => {
                 let app = app_or_fail!();

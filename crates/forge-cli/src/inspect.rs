@@ -155,7 +155,7 @@ fn show(d: &Value) -> String {
             .as_array()
             .into_iter()
             .flatten()
-            .map(|i| s(i))
+            .map(&s)
             .collect();
         let sdk = if f["imports_ui_framework"] == json!(true) {
             "  [needs the iOS SDK]"
@@ -178,7 +178,7 @@ fn show(d: &Value) -> String {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|t| s(t))
+        .map(&s)
         .collect();
     let _ = writeln!(
         out,
@@ -205,7 +205,7 @@ fn show(d: &Value) -> String {
         .as_array()
         .into_iter()
         .flatten()
-        .map(|t| s(t))
+        .map(&s)
         .collect();
     let _ = writeln!(
         out,

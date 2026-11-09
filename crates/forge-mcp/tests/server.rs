@@ -26,6 +26,7 @@ case "$1 $2" in
   "ui start") [ -n "$FAKE_UI_START_FAILS" ] && { echo '{"schema":"forge.result/1","command":"ui start","ok":false,"stage":"device","duration_ms":4,"error":"no runner","diagnostics":[],"hints":[]}'; exit 1; }
     echo '{"schema":"forge.result/1","command":"ui start","ok":true,"stage":"ok","duration_ms":4,"diagnostics":[],"hints":[],"data":{"pid":1}}' ;;
   "ui explore") echo '{"schema":"forge.result/1","command":"ui explore","ok":false,"stage":"test","duration_ms":3,"error":"exploring found 1 error(s)","diagnostics":[],"hints":[],"data":{"seed":7,"issues":[{"number":1,"issue":"app_closed","severity":"error"}]}}'; exit 14 ;;
+  "ui launch") echo '{"schema":"forge.result/1","command":"ui launch","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":2}}' ;;
   "ui run") echo '{"schema":"forge.result/1","command":"ui run","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":1}}' ;;
   "verify --project") echo "env FORGE_MCP_CHILD=$FORGE_MCP_CHILD" >> "$FAKE_LOG"
     echo '{"schema":"forge.result/1","command":"verify","ok":true,"stage":"ok","duration_ms":2,"diagnostics":[],"hints":[],"data":{}}' ;;
@@ -476,6 +477,44 @@ async fn a_failed_ui_session_start_is_not_retried_at_once() {
     let starts = calls.iter().filter(|l| l.contains(" ui start ")).count();
     let runs = calls.iter().filter(|l| l.contains(" ui run ")).count();
     assert_eq!((starts, runs), (1, 2), "{calls:?}");
+}
+
+#[tokio::test]
+async fn launch_runs_the_same_command_a_person_runs() {
+    let _g = SERIAL.lock().await;
+    let fx = fixture();
+    let mut c = Client::start(&fx, false, true).await;
+    let r = c
+        .call(
+            "forge_launch_app",
+            json!({"project": "Tipster", "appearance": "dark", "text_size": "largest"}),
+        )
+        .await;
+    assert_eq!(r["isError"], false, "{r}");
+    let line = calls(&fx)
+        .into_iter()
+        .find(|l| l.starts_with("--json ui launch "))
+        .expect("forge ui launch was called");
+    assert!(line.contains("--project "), "{line}");
+    assert!(
+        line.contains("--launch-arg=-ForgeAppearance --launch-arg=dark"),
+        "{line}"
+    );
+    assert!(
+        line.contains("--launch-arg=UICTContentSizeCategoryAccessibilityXXXL"),
+        "{line}"
+    );
+    assert!(line.ends_with("--udid 0000"), "{line}");
+    let stop = c
+        .call(
+            "forge_launch_app",
+            json!({"project": "Tipster", "terminate": true}),
+        )
+        .await;
+    assert_eq!(stop["isError"], false, "{stop}");
+    assert!(calls(&fx)
+        .iter()
+        .any(|l| l.starts_with("--json ui launch ") && l.contains("--terminate")));
 }
 
 #[tokio::test]

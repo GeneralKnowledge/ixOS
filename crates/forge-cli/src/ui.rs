@@ -550,6 +550,62 @@ fn broke_off(
     }
 }
 
+/// The one-step test file `forge ui launch` runs: stop the app, or open it
+/// (restarting it first when there are launch arguments: a running app
+/// keeps the ones it started with, seen on Cati 2026-11-07).
+pub fn launch_script(bundle_id: &str, terminate: bool, args: &[String]) -> String {
+    let mut doc = toml::Table::new();
+    doc.insert("name".into(), "forge ui launch".into());
+    doc.insert("app".into(), bundle_id.into());
+    let step = |key: &str, value: toml::Table| {
+        let mut t = toml::Table::new();
+        t.insert(key.into(), toml::Value::Table(value));
+        toml::Value::Table(t)
+    };
+    let mut steps = Vec::new();
+    if terminate || !args.is_empty() {
+        steps.push(step("terminate", toml::Table::new()));
+    }
+    if !terminate {
+        let mut launch = toml::Table::new();
+        if !args.is_empty() {
+            launch.insert(
+                "args".into(),
+                toml::Value::Array(args.iter().map(|a| a.as_str().into()).collect()),
+            );
+        }
+        steps.push(step("launch", launch));
+    }
+    doc.insert("step".into(), toml::Value::Array(steps));
+    toml::to_string(&doc).unwrap_or_default()
+}
+
+/// `forge ui launch`: opens (or stops) the app at `project` on the phone,
+/// as a one-step UI test in `<app>/.forge/ui/<UTC>-launch/`. Not evidence:
+/// no requirement names it.
+pub fn launch(
+    runner: &dyn CommandRunner,
+    udid: Option<&str>,
+    project: &Path,
+    terminate: bool,
+    args: &[String],
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let forge_toml = project.join("forge.toml");
+    let text = std::fs::read_to_string(&forge_toml)
+        .map_err(|e| format!("{}: {e} (pass --project <app>)", forge_toml.display()))?;
+    let cfg = crate::config::ForgeConfig::parse(&text)?;
+    let dir = project
+        .join(".forge")
+        .join("ui")
+        .join(format!("{}-launch", report::timestamp()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = dir.join("steps.toml");
+    std::fs::write(&file, launch_script(&cfg.app.bundle_id, terminate, args))
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    run(runner, udid, &file, Some(&dir), false, None, false, out)
+}
+
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
 /// `visual` `Some(Check)`) if a screenshot differs from its baseline.
 #[allow(clippy::too_many_arguments)]
@@ -1560,6 +1616,38 @@ mod tests {
             },
         ] {
             assert!(explore_config(&pocket_library(), &bad).is_err());
+        }
+    }
+
+    #[test]
+    fn launch_files_restart_only_for_new_arguments() {
+        let plain: toml::Table = toml::from_str(&launch_script("org.x.app", false, &[])).unwrap();
+        assert_eq!(plain["app"].as_str(), Some("org.x.app"));
+        let steps = plain["step"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].get("launch").is_some());
+        let dark: toml::Table = toml::from_str(&launch_script(
+            "org.x.app",
+            false,
+            &["-ForgeAppearance".into(), "dark".into()],
+        ))
+        .unwrap();
+        let steps = dark["step"].as_array().unwrap();
+        assert!(steps[0].get("terminate").is_some());
+        assert_eq!(steps[1]["launch"]["args"][1].as_str(), Some("dark"));
+        let stop: toml::Table = toml::from_str(&launch_script("org.x.app", true, &[])).unwrap();
+        let steps = stop["step"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].get("terminate").is_some());
+        // Every file is one forge ui run accepts.
+        for text in [
+            launch_script("org.x.app", false, &[]),
+            launch_script("org.x.app", true, &[]),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let f = dir.path().join("s.toml");
+            std::fs::write(&f, text).unwrap();
+            Script::load(&f).unwrap();
         }
     }
 
