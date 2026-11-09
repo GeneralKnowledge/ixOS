@@ -458,8 +458,9 @@ fn app_info(project: &Path) -> Option<Value> {
     }))
 }
 
-/// Prints the result on the real stdout and returns the exit code.
-pub fn finish(outcome: &Outcome, res: Result<(), String>) -> i32 {
+/// Prints the result on the real stdout and returns the exit code and the
+/// result.
+pub fn finish(outcome: &Outcome, res: Result<(), String>) -> (i32, Value) {
     let value = result(outcome, &res);
     let code = exit_code(value["stage"].as_str().unwrap_or(""));
     let _ = std::io::stdout().flush();
@@ -472,7 +473,7 @@ pub fn finish(outcome: &Outcome, res: Result<(), String>) -> i32 {
         }
         None => println!("{text}"),
     }
-    code
+    (code, value)
 }
 
 /// `2026-11-07T16-40-12` in UTC, for log file names and run ids.

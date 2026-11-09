@@ -9,6 +9,7 @@ mod diagnose;
 mod doctor;
 mod evidence;
 mod focus;
+mod history;
 mod inspect;
 mod ios_builder;
 mod ios_env;
@@ -826,7 +827,25 @@ fn main() {
     let runner = runner::RealRunner;
     // doctor --json has its own report shape (it predates the result contract).
     if !cli.json || matches!(cli.command, Commands::Doctor) {
-        if let Err(err) = dispatch(cli, &runner) {
+        let started = std::time::Instant::now();
+        let command = command_name(&cli.command);
+        let project = result_project(&cli.command);
+        let fallback = fallback_stage(&cli.command);
+        let res = dispatch(cli, &runner);
+        if let Some(app) = &project {
+            history::append(
+                app,
+                &history::Entry {
+                    command: &command,
+                    ok: res.is_ok(),
+                    stage: if res.is_ok() { "ok" } else { fallback },
+                    error: res.as_ref().err().map(String::as_str),
+                    duration_ms: started.elapsed().as_millis() as u64,
+                    log: None,
+                },
+            );
+        }
+        if let Err(err) = res {
             eprintln!("error: {err}");
             std::process::exit(1);
         }
@@ -836,20 +855,7 @@ fn main() {
     let started = std::time::Instant::now();
     let command = command_name(&cli.command);
     let project = result_project(&cli.command);
-    let fallback_stage = match cli.command {
-        Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
-        // usbmuxd missing, no phone, not paired, the app not listening.
-        Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
-        Commands::Ui {
-            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
-        } => "test",
-        Commands::Ui {
-            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
-        } => "forge",
-        // No DDI, no runner, WebDriverAgent not answering.
-        Commands::Ui { .. } => "device",
-        _ => "forge",
-    };
+    let fallback_stage = fallback_stage(&cli.command);
     if let (Some(dir), true) = (&project, logs_to_file(&cli.command)) {
         report::open_log(dir, &command);
     }
@@ -865,7 +871,40 @@ fn main() {
             .filter(|p| p.join("forge.toml").is_file()),
         fallback_stage,
     };
-    std::process::exit(report::finish(&outcome, res));
+    let log = report::log_path();
+    let (code, value) = report::finish(&outcome, res);
+    if let Some(app) = outcome.project {
+        history::append(
+            app,
+            &history::Entry {
+                command: &command,
+                ok: value["ok"] == serde_json::json!(true),
+                stage: value["stage"].as_str().unwrap_or(""),
+                error: value["error"].as_str(),
+                duration_ms: value["duration_ms"].as_u64().unwrap_or(0),
+                log: log.as_deref(),
+            },
+        );
+    }
+    std::process::exit(code);
+}
+
+/// The stage an unrecognised failure of `command` counts as.
+fn fallback_stage(command: &Commands) -> &'static str {
+    match command {
+        Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
+        // usbmuxd missing, no phone, not paired, the app not listening.
+        Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
+        Commands::Ui {
+            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
+        } => "test",
+        Commands::Ui {
+            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
+        } => "forge",
+        // No DDI, no runner, WebDriverAgent not answering.
+        Commands::Ui { .. } => "device",
+        _ => "forge",
+    }
 }
 
 /// `run ios`, `device logs`, ...: the command as the result names it.
