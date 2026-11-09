@@ -21,13 +21,26 @@ cd "$WORK/SpikeApp"
 rm -rf rust/target build .build xtool
 sed -i "s#https://github.com/GeneralKnowledge/ForgeKit.git#file://$WORK/ForgeKit#" Package.swift
 
+# The app pins its toolchain in rust/rust-toolchain.toml; use it everywhere,
+# even on a machine with no rustup default.
+RUSTUP_TOOLCHAIN="$(sed -n 's/^channel *= *"\(.*\)"/\1/p' rust/rust-toolchain.toml)"
+export RUSTUP_TOOLCHAIN
 echo "== versions"; xtool --version 2>/dev/null || true; swift --version 2>&1 | head -1; rustc --version
 
 echo "== Rust for aarch64-apple-ios with the Darwin SDK"
 CONFIG="$(swift sdk configure darwin arm64-apple-ios --show-configuration 2>/dev/null)"
 export SDKROOT="$(echo "$CONFIG" | awk -F': ' '/sdkRootPath/ {print $2; exit}')"
-TOOLCHAIN="$(echo "$CONFIG" | awk -F': ' '/toolchainPath/ {print $2; exit}')"
-export CC="$TOOLCHAIN/usr/bin/clang" CXX="$TOOLCHAIN/usr/bin/clang++" AR="$TOOLCHAIN/usr/bin/ar"
+# Some SDK configurations print no toolchainPath; then use the clang that
+# sits next to `swift`. Swift toolchains ship llvm-ar, not ar.
+TOOLCHAIN_BIN="$(echo "$CONFIG" | awk -F': ' '/toolchainPath/ {print $2; exit}')"
+if [[ -n "$TOOLCHAIN_BIN" ]]; then
+  TOOLCHAIN_BIN="$TOOLCHAIN_BIN/usr/bin"
+else
+  TOOLCHAIN_BIN="$(dirname "$(readlink -f "$(command -v swift)")")"
+fi
+export CC="$TOOLCHAIN_BIN/clang" CXX="$TOOLCHAIN_BIN/clang++"
+if [[ -x "$TOOLCHAIN_BIN/ar" ]]; then export AR="$TOOLCHAIN_BIN/ar"; else export AR="$TOOLCHAIN_BIN/llvm-ar"; fi
+[[ -x "$CC" ]] || { echo "error: no clang at $CC" >&2; exit 1; }
 export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="$CC"
 rustup target add aarch64-apple-ios >/dev/null
 (cd rust && cargo rustc --locked -p spike-app-core --lib --crate-type staticlib --target aarch64-apple-ios --release)

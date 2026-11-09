@@ -31,3 +31,18 @@ The three architecture experiments from [docs/app-model-review.md](../../docs/ap
 - **The phone.** No install or launch; nothing here changes the capability ledger.
 - **Kotlin.** Android was not touched; `forge-app` is plain Rust apart from its UniFFI exports, so Kotlin bindings should follow, unverified.
 - **A registry.** Rust used a git commit pin. `=0.3.0` from crates.io is the same guarantee and was not tried.
+
+## xtool on Linux (Phase 1 gate, 2026-11-09)
+
+`scripts/xtool-check.sh` on the developer laptop (Linux, xtool 1.24.0, Swift
+6.2.3, Darwin SDK iPhoneOS 26.0, Rust 1.97.0), at commit 6ed61dc: `xtool dev
+build` succeeded in 108 s (SwiftPM 98.7 s), with ForgeKit resolved at exact
+0.3.0 from a tagged git repository. The result is an arm64 `SpikeAppXtool.app`.
+Built only: nothing was installed and no phone was involved. The only output
+noise was lld's usual "does not support linking for platform iOS" warnings
+(11 of them).
+
+The first run failed in the script, not the model. This SDK's configuration
+prints no `toolchainPath`, and the machine has no rustup default toolchain.
+The script now falls back to the clang next to `swift` (with `llvm-ar`) and
+uses the app's pinned Rust toolchain.
