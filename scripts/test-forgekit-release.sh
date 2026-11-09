@@ -40,7 +40,8 @@ rm "$TMP/clone/dirty"
 release "$TMP/clone" || fail "release failed: $(cat "$TMP/out")"
 diff <(cd "$ROOT" && git ls-tree -r --name-only HEAD:forgekit | sort) \
   <(cd "$TMP/clone" && git ls-files | grep -v '^RELEASE$' | sort) || fail "release content differs from forgekit/"
-git -C "$TMP/clone" rev-parse -q --verify refs/tags/0.3.0 >/dev/null || fail "no tag"
+version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' "$ROOT/crates/forge-app/Cargo.toml" | head -n 1)"
+git -C "$TMP/clone" rev-parse -q --verify "refs/tags/$version" >/dev/null || fail "no tag $version"
 
 # The same version again: refused.
 release "$TMP/clone" && fail "released the same version twice"
