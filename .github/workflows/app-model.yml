@@ -15,6 +15,7 @@ on:
       - "forgekit/**"
       - "examples/checklist/**"
       - "scripts/forgekit.sh"
+      - "scripts/test-forgekit-release.sh"
       - "scripts/generate-bindings.sh"
       - ".github/workflows/app-model.yml"
   workflow_dispatch:
@@ -43,6 +44,10 @@ jobs:
 
       - name: ForgeKit matches forge-app (bindings, contract version)
         run: ./scripts/forgekit.sh check
+
+      - name: ForgeKit release refuses anything but a clean ForgeKit clone
+        if: runner.os == 'Linux'
+        run: ./scripts/test-forgekit-release.sh
 
       - name: Rust core (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh examples/checklist
