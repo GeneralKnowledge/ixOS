@@ -44,6 +44,8 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 4. Edit `rust/src/lib.rs`, and the SwiftUI or Compose screens. `forge run` / `forge build` rebuild the Rust and regenerate the bindings. See [docs/app-crate.md](docs/app-crate.md) for the Rust side and [docs/ios-ui.md](docs/ios-ui.md) for building a native iOS interface.
 5. Set the app's name, version, icon, permission prompts, URL schemes and entitlements in `forge.toml`; Forge writes Info.plist, App.entitlements and xtool.yml from it ([docs/app-config.md](docs/app-config.md)).
 
+All the docs, by task, are listed in [docs/README.md](docs/README.md), and [docs/status.md](docs/status.md) says what works on an iPhone today.
+
 New to Forge? `forge init MyApp --minimal` starts from a one-screen app, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
 To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android examples (`examples/counter-android`, `examples/chat-android`) are work in progress.
@@ -71,7 +73,7 @@ examples/counter          # SwiftUI + xtool app; its rust/ crate holds the count
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # (Android, work in progress) Compose + Gradle app on the same Rust crate as examples/counter
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
-examples/chat-android     # (Android, work in progress) The chat app in Compose (frozen at its pre-M0 features, own rust/ crate)
+examples/chat-android     # (Android, work in progress) The chat app in Compose (frozen at its early features, own rust/ crate)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
 templates/app-rust        # Starter Rust crate every new app gets as rust/ (see docs/app-crate.md)
@@ -109,13 +111,15 @@ cargo run -p forge-cli -- device logs --process CounterXtool --for 20s    # the 
 
 An agent edits Rust and SwiftUI with its own tools; Forge gives it the toolchain, signing, the phone and structured results. What exists today:
 
+Where each of these stands on a real iPhone is kept current in [docs/status.md](docs/status.md).
+
 | | State |
 |---|---|
 | `--json` on every command (`forge.result/1`: stage, compiler diagnostics with file and line, hints, log file) | Built |
 | `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK (xtool) or macOS CI |
-| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose, and UI tools through `forge ui`), docs and the ledger as resources, installing only when the person allows it | Built (M0), tested on Linux against a fake CLI; not yet run against a phone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
+| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose, and UI tools through `forge ui`), docs and the ledger as resources, installing only when the person allows it | Built; an agent has used it to build, install and test an app on a real iPhone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
 | Which Apple team signs, free or paid, in `forge doctor` and `forge run ios` | Built; not yet run with a paid team ([docs/ios-signing.md](docs/ios-signing.md#which-team-is-xtool-using)) |
-| UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built (#61). On an iPhone: setup, launch, tree and screenshot work; finding by identifier and a passing test don't yet. Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |
+| UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built. On an iPhone: setup, launch, finding by identifier, tapping, typing, the tree and screenshots work (a UI test passed 11 of 11 steps). Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |
 | Apple's accessibility service from Linux (no runner or disk image) | Experimental probe: reading identifiers and labels and pressing by identifier work on an iPhone; no typing, and Apple's audit doesn't answer yet ([docs/research/ax-audit.md](docs/research/ax-audit.md)) |
 
 New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
@@ -134,7 +138,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 
 ## Known limitations
 
-- iOS builds are device-only: no iOS Simulator support yet. Linux iOS builds need xtool's Darwin SDK (from an Xcode.xip).
+- iOS builds are device-only: no iOS Simulator support yet. Linux iOS builds need the Darwin SDK, Apple's iOS SDK, which `forge setup ios` takes from an Xcode.xip.
 - Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)). The plan for the first App Store release, and which of its steps need a Mac, is [docs/first-app-store-release.md](docs/first-app-store-release.md).
 - Apps need a Forge checkout on the same machine: the runtime crates are not published to crates.io yet.
 - Android is work in progress: it has not been validated on a physical phone, gets no new features, and has none of the `forge-services` native services. CI still builds the APK and runs the JVM tests when Android or shared Rust code changes.

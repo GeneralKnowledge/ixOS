@@ -638,9 +638,9 @@ enum ConfigCommands {
 
 #[derive(Subcommand)]
 enum LedgerCommands {
-    /// Write docs/capability-ledger.md from the records in docs/ledger/
+    /// Write docs/capability-ledger.md and docs/status.md from the records in docs/ledger/
     Generate,
-    /// Fail if docs/capability-ledger.md differs from the records (for CI)
+    /// Fail if docs/capability-ledger.md or docs/status.md differs from the records (for CI)
     Check,
     /// List the records, optionally only those mentioning TEXT
     List {

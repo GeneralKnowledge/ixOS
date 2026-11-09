@@ -123,3 +123,5 @@ For scripts and coding agents, add `--json` to any command: stdout then carries 
 - [ios-signing.md](ios-signing.md): Apple accounts, signing and devices in more depth.
 - [android-setup.md](android-setup.md): the same app on Android (`forge init MyApp --platform android`). Android is work in progress.
 - On a Mac, the app's `Xcode/` project gives you the debugger and Instruments ([ios-xcode.md](ios-xcode.md)). It is optional.
+- [status.md](status.md): what works on an iPhone today, and what is built but not yet proven on a phone.
+- [README.md](README.md): every doc, grouped by what you want to do.

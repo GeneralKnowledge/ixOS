@@ -1,6 +1,6 @@
 # Forge M6: an autonomous, evidence-driven dev loop
 
-Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog; M6.3 is built and Linux-tested (its Swift side is compiled by macOS CI only); M6.4 is built and Linux-tested. None of them has run on the phone yet. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
+Status: plan, 2026-11-08, decisions taken the same day. M6.1 is built, hardened and Linux-tested; M6.2 is built, Linux-tested and CI-tested on a model of Good Dog; M6.3 is built and Linux-tested (its Swift side is compiled by macOS CI only); M6.4 is built and Linux-tested. At the time of writing none of them had run on the phone; their phone checks ran in the coordinated sitting of 2026-11-08, and [status.md](status.md) has the current state of each. It was written after reading `main` at 301359f (#106–#120 merged) and the open Good Dog GD1 PR (#121).
 
 The brief (Reuben, 2026-11-08): an AI agent takes a real task on an existing Rust and SwiftUI app, changes it, builds and installs it on the iPhone, inspects and tests it, finds a real problem, diagnoses and fixes it, proves the fix on the phone, and leaves a truthful record of all of it. Good Dog is the demonstration app. The measure is how much of the real development process an agent completes reliably, safely and on its own, not how many tools Forge has.
 

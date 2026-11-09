@@ -6,7 +6,7 @@ This page records what ixOS can actually do on an iPhone, one row per capability
 
 Draft, 2026-11-07. The plan behind it, with the demo-by-demo map, xtool limits and workstreams, is [ixOS capability plan: what the demos need](https://claude.ai/artifact/QA6NRXYy9SVSNfEG7LXZLx). Update the ledger in the same PR as any change to a capability.
 
-Each table row is one record: a small TOML file under [`docs/ledger/`](ledger/), named after the row, with an `order` number that sets its position. To change a row, edit its file; to add one, add a file. Then run `forge ledger generate` (or `cargo run -p forge-cli -- ledger generate`), which rewrites this page; `cargo test` fails while the page and the records disagree. `forge ledger list <text>` finds a record.
+Each table row is one record: a small TOML file under [`docs/ledger/`](ledger/), named after the row, with an `order` number that sets its position. To change a row, edit its file; to add one, add a file. Then run `forge ledger generate` (or `cargo run -p forge-cli -- ledger generate`), which rewrites this page and the plain-language summary in [status.md](status.md); `cargo test` fails while the page and the records disagree. `forge ledger list <text>` finds a record.
 
 ## Columns
 
@@ -54,8 +54,8 @@ Layers: **Core** (any app may need it), **Optional** (a substantial system an ap
 
 | Capability | Framework | Rust API | iOS native | In an app | iPhone | Documented | Limits |
 |---|---|---|---|---|---|---|---|
-| App-owned Rust crate with UniFFI async exports | Yes | Yes | Yes | Yes: starter, Pocket Library | No: built with xtool, install not recorded | Yes: app-crate.md | Every example owns its crate; the Android Chat example keeps a frozen copy of the old Chat API in its own crate |
-| Native SwiftUI structure (navigation, lists, sheets, search) | Yes: starter | n/a | Yes | Yes: starter, Pocket Library | No | Yes: ios-ui.md | Older examples use `ObservableObject` |
+| App-owned Rust crate with UniFFI async exports | Yes | Yes | Yes | Yes: starter, Pocket Library | Yes: Pocket Library (a `forge init` app with its own crate) on iPhone16,2, iOS 26.3.1, 2026-11-07: UI test m0 passed 11/11, watched by Reuben. A fresh app from the current starter has not been recorded on a phone | Yes: app-crate.md | Every example owns its crate; the Android Chat example keeps a frozen copy of the old Chat API in its own crate |
+| Native SwiftUI structure (navigation, lists, sheets, search) | Yes: starter | n/a | Yes | Yes: starter, Pocket Library | Partial: Pocket Library list, add sheet and form on iPhone16,2, iOS 26.3.1, 2026-11-07 (UI test m0 11/11, watched by Reuben); navigation pushes and search not exercised | Yes: ios-ui.md | Older examples use `ObservableObject` |
 | Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object) | Yes: forge-runtime | Yes | n/a | Yes: starter, Chat, Pocket Library | No | Partial: app-crate.md | |
 | Logging (platform log, recent records, extra sinks, panics logged) | Yes: forge-runtime | Yes: `forge_runtime::logging` | n/a: Rust writes the system log via `syslog` | Yes: starter and every example call `logging::init` | Partial: Warn reached the USB log on iPhone (iOS 26.3.1, 2026-11-07); Info did not (LOG_INFO dropped by the relay), fixed to notice priority, recheck pending | Partial: app-crate.md, architecture.md | Swift logs through `ForgeLog` (crates calling `forge_runtime::log_export!()`), so its records share the pipeline; no file sink yet |
 | Lifecycle phases reported to Rust | Yes: forge-runtime | Yes | Yes: `.forgeLifecycle` | Yes: starter | No | Yes | |

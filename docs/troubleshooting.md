@@ -88,7 +88,7 @@ These come from the last step of `forge run ios`, when xtool signs the app and i
 | Message contains | Problem | Fix |
 |------------------|---------|-----|
 | `requires logging in with xtool auth`, `Logged out` | xtool has no Apple sign-in | `xtool auth login`, check with `xtool auth status` |
-| `maximum number of apps for free development profiles` | Free accounts: 3 sideloaded apps per device | Remove another development app from the iPhone |
+| `maximum number of apps for free development profiles` | A free account can have 3 development apps on a device at once | Remove another development app from the iPhone |
 | `App ID limit` | Free accounts: 10 new bundle ids per 7 days | Reuse a bundle id (`bundle_id` in forge.toml), or wait |
 | `provisioning profile`, `certificate has been revoked`, `maximum number of certificates` | Apple refused the certificate or profile | `xtool auth logout`, `xtool auth login`; revoke old development certificates at developer.apple.com if at the limit |
 | `Developer Mode` | Developer Mode is off (iOS 16+) | Settings > Privacy & Security > Developer Mode, restart |

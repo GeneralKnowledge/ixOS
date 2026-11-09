@@ -29,7 +29,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 4. **Accessibility identifiers on every interactive control,** named `screen.element` (for example `library.add`). UI tests find elements by identifier, then label, never by coordinates. Give controls labels a VoiceOver user can understand.
 5. **Log through `forge_runtime::logging`** in Rust. Never log user content.
 6. **Never edit `Generated/` by hand.** Regenerate with `forge bindings generate --project <app>` and commit the result.
-7. **Update the [capability ledger](docs/capability-ledger.md) in the same PR as a capability change.** Edit or add its record under `docs/ledger/` and run `forge ledger generate`; never edit the generated page. "iPhone: Yes" needs a run on a physical iPhone reported by a person; never record a skipped run as passing.
+7. **Update the [capability ledger](docs/capability-ledger.md) in the same PR as a capability change.** Edit or add its record under `docs/ledger/` and run `forge ledger generate`, which also rewrites the summary in `docs/status.md`; never edit either generated page. "iPhone: Yes" needs a run on a physical iPhone reported by a person; never record a skipped run as passing.
 8. **Physical device steps:** say which step needs the iPhone and what it proves. Don't claim device results you didn't see.
 9. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
 
@@ -53,6 +53,8 @@ Swift: SwiftUI compiles only with the Darwin SDK (xtool on a Linux laptop that h
 On a machine with an iPhone over USB: `forge device list|info|logs|crashes` (`crashes --pull <dir>` symbolicates; `forge crash <file.ips>` reads a report offline), and for a development build (`forge run ios --devtools`) `forge device pair|status|snapshot|cmd|connect`. See [forge-device.md](docs/forge-device.md). The agent-facing design of the dev loop and the MCP server is in [dev-loop.md](docs/dev-loop.md) and [forge-mcp.md](docs/forge-mcp.md).
 
 ## Docs to read for a task
+
+Every doc is listed by task in [docs/README.md](docs/README.md).
 
 | Task | Read |
 |---|---|

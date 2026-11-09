@@ -177,7 +177,7 @@ Don't show errors as red text inside a list. An alert names what failed and has 
 - **Typography.** Use text styles only (`.largeTitle` through `.caption2`) and never `.system(size:)`, so Dynamic Type works. Emphasise with `.headline` or `.fontWeight` rather than with size.
 - **Colour.** Use `.primary`, `.secondary` and `.tertiary` for text, and `.tint` for interactive elements. When you need a colour for a surface, use the system background colours (`Color(.systemGroupedBackground)`, `Color(.secondarySystemGroupedBackground)`) and materials (`.regularMaterial`). These all adapt to dark mode. Use a fixed colour only when the colour itself carries meaning, such as a weather symbol's palette.
 - **Identity.** An app's identity comes from its accent colour (the `AccentColor` asset, or `.tint()` on the root view), its app icon, its symbols and its copy. It doesn't come from restyling system controls. That leaves room for each app to look like itself.
-- **Dark mode for tests.** The app's entry point attaches `.forgeLaunchAppearance()` to the root view (`LaunchAppearance.swift`, in the starter). Launched with `-ForgeAppearance dark` or `light`, the app opens in that mode without changing the phone; otherwise it follows the phone. UI tests, `forge ui explore --appearance` and `forge_launch_app appearance` use it to check both appearances (docs/forge-m6.md, M6.3).
+- **Dark mode for tests.** The app's entry point attaches `.forgeLaunchAppearance()` to the root view (`LaunchAppearance.swift`, in the starter). Launched with `-ForgeAppearance dark` or `light`, the app opens in that mode without changing the phone; otherwise it follows the phone. UI tests, `forge ui explore --appearance` and `forge_launch_app appearance` use it to check both appearances.
 - **Symbols.** Use SF Symbols with their default rendering mode, or `.symbolRenderingMode(.hierarchical)` / `.multicolor` where it adds information.
 - **Spacing and shapes.** Rely on the default padding of lists, forms, stacks and `.padding()`. If you need a constant, use a multiple of 4 and name it. For any rounded shape you draw yourself, use `.containerRelativeShape` or `RoundedRectangle(cornerRadius:style: .continuous)`.
 - **Safe areas.** Leave them alone. Lists, forms and navigation stacks already respect them. Use `.safeAreaInset(edge:)` to pin content above the home indicator, rather than adding padding.
@@ -205,7 +205,7 @@ Not every native feature should go through Rust.
 | Capability | Where it lives |
 |---|---|
 | Share sheet (`ShareLink`), haptics, clipboard (`UIPasteboard`), `PhotosPicker`, file import and export (`.fileImporter` / `.fileExporter`) | Swift only. Pass the resulting data or file URL to Rust if Rust should store it. |
-| Keychain, local notifications, permissions, deep links | Swift adapters exposed to Rust where Rust needs them. These are being built in the native iOS services work (M3). |
+| Keychain, local notifications, permissions, deep links | Swift adapters exposed to Rust where Rust needs them ([native-services.md](native-services.md)). |
 | Location | Swift (CoreLocation), passing coordinates to Rust (see Weather). |
 | Camera | Not provided yet. Add it when an app needs it. |
 
