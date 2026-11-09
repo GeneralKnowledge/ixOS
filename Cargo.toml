@@ -24,7 +24,7 @@ exclude = ["examples/kataster-ios"]
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [workspace.dependencies]
 forge-storage = { path = "crates/forge-storage" }

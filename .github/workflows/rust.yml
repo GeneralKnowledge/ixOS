@@ -121,17 +121,17 @@ jobs:
   # Cheap policy checks, one job: the minimum supported Rust version still
   # compiles, and dependencies pass advisories, licences, bans and sources.
   policy:
-    name: MSRV (1.88) and cargo-deny
+    name: MSRV (1.89) and cargo-deny
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Rust 1.88
-        run: rustup toolchain install 1.88.0 --profile minimal
+      - name: Install Rust 1.89
+        run: rustup toolchain install 1.89.0 --profile minimal
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2
         with:
           tool: cargo-deny
       - name: MSRV check
-        run: cargo +1.88.0 check --workspace --all-targets
+        run: cargo +1.89.0 check --workspace --all-targets
       - name: cargo deny (advisories, licenses, bans, sources)
         run: cargo deny check

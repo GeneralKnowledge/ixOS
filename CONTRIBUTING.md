@@ -31,7 +31,7 @@ Going further:
 
 ## Toolchain and dependencies
 
-- Rust is pinned in `rust-toolchain.toml`; rustup installs it automatically. Bump it in its own PR and fix any new Clippy lints there. CI also checks the declared MSRV (1.88).
+- Rust is pinned in `rust-toolchain.toml`; rustup installs it automatically. Bump it in its own PR and fix any new Clippy lints there. CI also checks the declared MSRV (1.89).
 - `cargo deny check` (install with `cargo install cargo-deny --locked`) audits advisories, licenses and sources using `deny.toml`. CI runs it on every PR that changes code.
 - Dependabot opens grouped weekly PRs for Cargo and GitHub Actions (pinned by commit SHA) and monthly ones for Gradle.
 
@@ -52,7 +52,7 @@ CI is kept lean on purpose: a pull request should be green in minutes, and is ga
 | --- | --- | --- | --- |
 | Rust (Linux) | Rust: fmt, clippy, tests, app-owned crates, binding drift, Xcode project layout | Every code change | Every code change |
 | Rust (Linux) | Fresh app outside the checkout | Every code change | Every code change |
-| Rust (Linux) | MSRV (1.88) and cargo-deny | Every code change | Every code change |
+| Rust (Linux) | MSRV (1.89) and cargo-deny | Every code change | Every code change |
 | macOS | iOS (Swift tests, Xcode build): one job, `scripts/ci-macos.sh` | On demand | Weekly, every app |
 | Android (Linux) | android-apk | Only when Android code changes | When shared Rust or Android code changes |
 | Screenshots (macOS) | Simulator screenshots | On demand | On demand |
