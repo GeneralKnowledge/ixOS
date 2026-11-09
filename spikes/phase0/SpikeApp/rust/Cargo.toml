@@ -1,0 +1,33 @@
+# Phase 0 spike app crate (docs/app-model-review.md). Same shape as a
+# `forge init --minimal` crate, but it names the runtime contract types from
+# the `forge-app` component instead of declaring its own.
+[package]
+name = "spike-app-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# FRAMEWORK_DEPS_BEGIN
+forge-app = { path = "../../forge-app" }
+forge-runtime = { path = "../../../../crates/forge-runtime" }
+forge-storage = { path = "../../../../crates/forge-storage" }
+# FRAMEWORK_DEPS_END
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[workspace]
+members = [".", "bindgen"]
+
+[profile.release]
+lto = true
+codegen-units = 1
