@@ -12,6 +12,7 @@ Read these in order the first time.
 |---|---|
 | [getting-started.md](getting-started.md) | From a bare Linux machine to your first app on your iPhone, about an hour |
 | [first-app.md](first-app.md) | Add a feature to the minimal starter app (Rust rule, test, view model, button), about 20 minutes |
+| [human-workflow.md](human-workflow.md) | The whole loop with the CLI alone, from `forge init` to reviewing evidence: no AI agent, MCP server or API key at any step |
 | [troubleshooting.md](troubleshooting.md) | A build, install or launch failed, or the app opens to a blank screen (`forge diagnose` checks it for you) |
 | [linux-setup.md](linux-setup.md) | Each toolchain step by hand, if `forge setup ios` couldn't do one |
 
@@ -48,7 +49,9 @@ Read these in order the first time.
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
 | [evidence.md](evidence.md) | Recording what a run proved, so a feature is shown to work rather than said to |
 
-## For coding agents
+## For coding agents (optional)
+
+Nothing on the pages above needs an agent. Agents use the same commands; these pages add the optional integration (`forge agent setup`, `forge mcp`).
 
 | Page | What it's for |
 |---|---|
