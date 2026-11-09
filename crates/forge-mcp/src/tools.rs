@@ -463,7 +463,10 @@ impl crate::Server {
                     .arg("--bundle-id")
                     .arg(args.str("bundle_id").unwrap_or(crate::SANDBOX_BUNDLE_ID))
                     .arg("--path")
-                    .arg(dest.display().to_string());
+                    .arg(dest.display().to_string())
+                    // An app an agent creates gets the agent files; a
+                    // person's `forge init` doesn't unless asked.
+                    .arg("--agent");
                 let mut result = self.forge(inv, cancel).await;
                 if result["ok"] == json!(true) {
                     // Every later tool takes the folder relative to the root.

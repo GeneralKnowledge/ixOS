@@ -1,3 +1,4 @@
+mod agent;
 mod app_config;
 mod app_diagnose;
 mod check;
@@ -82,6 +83,15 @@ enum Commands {
         /// which shows every pattern a larger app needs
         #[arg(long)]
         minimal: bool,
+        /// Also write the optional AI coding agent files (AGENTS.md,
+        /// CLAUDE.md, .mcp.json), as `forge agent setup` does
+        #[arg(long)]
+        agent: bool,
+    },
+    /// Optional files for AI coding agents. Nothing in Forge needs them
+    Agent {
+        #[command(subcommand)]
+        cmd: AgentCommands,
     },
     /// iOS app configuration from forge.toml: Info.plist, App.entitlements, xtool.yml
     Config {
@@ -663,6 +673,23 @@ struct LiveArgs {
 }
 
 #[derive(Subcommand)]
+enum AgentCommands {
+    /// Write AGENTS.md (the app's rules and commands), CLAUDE.md and
+    /// .mcp.json (starts `forge mcp`) into the app. Existing files are kept
+    Setup {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Also add the hosted sosumi.ai MCP server (Apple's developer
+        /// documentation as text) to .mcp.json
+        #[arg(long)]
+        apple_docs: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ConfigCommands {
     /// Regenerate Info.plist, App.entitlements and xtool.yml (and Package.swift's
     /// iOS platform) from forge.toml. `forge build ios` and `forge run ios` do this too.
@@ -922,6 +949,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Mcp { .. } => return "mcp".into(),
         Commands::Verify { .. } => return "verify".into(),
         Commands::Inspect { .. } => return "inspect".into(),
+        Commands::Agent { .. } => return "agent setup".into(),
         Commands::Crash { .. } => return "crash".into(),
         Commands::Devices => return "devices".into(),
         Commands::Diagnose { .. } => return "diagnose".into(),
@@ -996,6 +1024,9 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         | Commands::Diagnose { project, .. }
         | Commands::Verify { project, .. }
         | Commands::Inspect { project }
+        | Commands::Agent {
+            cmd: AgentCommands::Setup { project, .. },
+        }
         | Commands::Crash { project, .. }
         | Commands::Device {
             cmd: DeviceCommands::Crashes { project, .. },
@@ -1114,11 +1145,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             platform,
             path,
             minimal,
+            agent,
         } => {
+            if agent && platform != "ios" {
+                return Err(
+                    "--agent is for iOS apps (Android is work in progress, docs/roadmap.md)".into(),
+                );
+            }
             let path = path
                 .map(|p| absolute_from_cwd(&p))
                 .or_else(|| default_init_dest(&root, &name));
-            commands::init_with(
+            let dest = commands::init_with(
                 runner,
                 &root,
                 &name,
@@ -1126,7 +1163,26 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 &platform,
                 path.as_deref(),
                 minimal,
-            )
+            )?;
+            if agent {
+                agent::run(&root, &dest, false)?;
+            }
+            Ok(())
+        }
+        Commands::Agent {
+            cmd: AgentCommands::Setup {
+                project,
+                apple_docs,
+            },
+        } => {
+            let project = project_or_default(project, "");
+            if project.as_os_str().is_empty() {
+                return Err(
+                    "no app here: run inside an app directory (with forge.toml) or pass --project"
+                        .into(),
+                );
+            }
+            agent::run(&root, &project, apple_docs)
         }
         Commands::Config { cmd } => {
             let (project, action) = match cmd {

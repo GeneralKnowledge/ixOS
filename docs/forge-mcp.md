@@ -16,7 +16,7 @@ This page is the MCP layer only. The loop itself (create, change the UI, run on 
 
 ## Using Forge MCP
 
-New apps carry it in `.mcp.json` (`forge init` writes `{"forge": {"command": "forge", "args": ["mcp"]}}`), so Claude Code and other MCP clients start it from the app folder. By hand:
+It is optional: every tool runs a `forge` command a person can run too. To use it, `forge agent setup` (or `forge init --agent`) writes `.mcp.json` with `{"forge": {"command": "forge", "args": ["mcp"]}}` into the app, so Claude Code and other MCP clients start it from the app folder; `--apple-docs` adds the hosted sosumi server. A plain `forge init` writes no agent files (apps created before 2026-11-09 have them and keep working). `forge_create_app` passes `--agent`. By hand:
 
 ```bash
 forge mcp                                                    # root = current folder; installing refused

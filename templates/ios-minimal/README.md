@@ -39,7 +39,7 @@ Rust owns the state and the rules; Swift shows them. Each change is a Rust comma
 | `forge.toml` | App name, bundle identifier, version, permissions (`forge config show`). |
 | `Info.plist`, `App.entitlements`, `xtool.yml` | Generated from `forge.toml` on every build. Edit `forge.toml` instead. |
 | `Xcode/` | An Xcode project, for a Mac. Never required. |
-| `AGENTS.md`, `CLAUDE.md`, `.mcp.json` | Instructions and tools for AI coding agents. |
+| `AGENTS.md`, `CLAUDE.md`, `.mcp.json` | Not here by default. If you use an AI coding agent, `forge agent setup` adds its instructions and tool setup; nothing else needs them. |
 
 ## When you need more
 
