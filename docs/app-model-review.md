@@ -198,6 +198,13 @@ The foundation review's six contracts remain right; they describe what the runti
 
 The one new piece is the **application runtime**, present on both sides of the boundary: `forge-app` in Rust and `ForgeKit` in Swift. It is generic infrastructure that every app needs; it holds no domain. The application core is the app's own code and owns its state, rules and decisions. Capabilities receive what they need (a data directory, a scope, a priority) from the runtime instead of from hand wiring.
 
+**The runtime stays light** (Reuben's review of this page). `forge-app` provides mechanics, not an application manager:
+
+- It does not own the app's state type or require one. The executor runs the app's closures in order over whatever the app keeps (one struct, several stores, a SQLite handle, a game world); "published state" is a revision counter and an optional snapshot the app chooses to publish, not a framework-shaped model.
+- It does not choose a persistence mechanism. JSON, SQLite, plain files or nothing at all stay the app's choice through the capability crates. The runtime provides the directories, the commit point (a command's result is reported only after the app's closure returns), and the recovery and migration *hooks*; it does not dictate a schema format.
+- Every piece is usable alone. An app can take the lifecycle and operations without the executor (Chat's client already has its own threads), or the executor without events. The starter uses all of it; nothing else must.
+- It does not schedule durable jobs. That waits for a second real user (N1), as below.
+
 What this deliberately does not do: make Rust objects directly observable from SwiftUI, generate SwiftUI, impose a navigation model, or introduce a generic event bus. The app's exported API stays its own, in its own names.
 
 ### What an app writes (Rust)
@@ -206,14 +213,11 @@ Illustrative, to fix the idea rather than the API:
 
 ```rust
 // The app's state and rules: plain Rust, no UniFFI, no framework types.
-struct Notes { next_id: u64, notes: Vec<Note> }
+// How it is stored is the app's choice; here a JsonFile from forge-storage.
+struct Notes { file: JsonFile<Saved>, saved: Saved }
 
-impl forge_app::Model for Notes {
-    const SCHEMA: Schema = Schema::json("notes", 2).migrate(1, v1_to_v2);
-    type Event = AppEvent;
-}
-
-// The typed application interface: the app's names.
+// The typed application interface: the app's names. The runtime is generic
+// over whatever the app hands it; it does not require a framework trait.
 #[derive(uniffi::Object)]
 pub struct AppCore { rt: forge_app::Runtime<Notes> }
 
@@ -242,6 +246,8 @@ impl AppCore {
 forge_app::export_runtime!(AppCore);
 ```
 
+The runtime's `command` runs the closure on the executor and bumps the revision when it returns `Ok`; saving is the closure's own call to its store, so "commit before reporting" holds whatever the store is.
+
 What disappears from every app: the `shut_down` flag, `ensure_running`, `parts()`, holding a mutex across a save, scope-to-error mapping, hand-made event types for drops and phases, choosing a data directory in Swift.
 
 ### What an app writes (Swift)
@@ -264,13 +270,24 @@ struct NotesApp: App {
 
 ### The contracts
 
-**Ownership.** One core per process per data directory, owned by `ForgeHost` at the `App` level, enforced in Rust by a lock on the data directory. Views and models borrow it.
+**Ownership.** One core per process, owned by `ForgeHost` at the `App` level. Views and models borrow it. Its private data directory has one writer, enforced in Rust by a lock. Data shared with extensions follows the rules under *Persistence* below, because a simple lock is not enough there.
 
 **State.** Rust owns state. Queries read a published, committed snapshot and never block on I/O. Every committed command increments a revision and publishes `Changed { revision, areas }`; Swift models re-query what they show. Commands return only their direct result (the new item's id, a validation outcome), never the whole state. Apps may add domain events with payloads (Chat's messages) when a stream genuinely needs them; drops always produce `EventsDropped`, after which the host re-reads. This is the Pocket Library and Good Dog pattern, chosen because it is cheap over FFI, never inconsistent, and does not require a diff.
 
 **Commands.** One serial executor per core (Counter's design, from R1): arrival order, commit-then-publish, no lock across I/O, shutdown drains accepted commands. Commands are not cancellable once accepted.
 
-**Operations.** Anything slow or cancellable is an operation with an id, a scope, progress, `cancel()` and exactly one outcome. Scopes: `foreground` (stops in the background), `lifetime` (runs until shutdown, suspends with the process), `finishing` (asks iOS for background time; its expiry cancels it), and later `durable` (a persisted record replayed at launch: Chat's outbox, extracted when the second user exists, N1).
+**Operations.** Anything slow or cancellable is an operation with an id, a scope, progress, `cancel()` and exactly one outcome.
+
+**Background work, precisely.** iOS gives an app four different things, and the runtime must not blur them. Requesting background time does not make work finish, and nothing short of a persisted record makes work survive termination.
+
+| Kind | Guarantee | Mechanism | Example |
+|---|---|---|---|
+| Committed before return | Done, on disk, when the command returns; survives any later suspension or kill | The command executor; the app's store writes inside the command | Saving a note, recording a training session |
+| Short extra time | *Best effort*: iOS may grant some seconds after backgrounding, and may end it early. Work must be safe to abandon at any point and is cancelled on expiry | `finishing` scope over `beginBackgroundTask`; expiry cancels the scope | Finishing an upload already 90% done, flushing a log |
+| Interruptible, restartable | Stops when the app leaves the screen; the app restarts it on resume if it still matters | `foreground` scope; `Interrupted` outcome; `Resumed` event | A search request, a live chat stream, a forecast refresh |
+| Durable | Survives termination and relaunch; runs again until it succeeds or fails terminally, exactly once in effect | A persisted operation record replayed at launch, with idempotency keys. `BGTaskScheduler` and background `URLSession` can add *opportunistic* progress while suspended, never a deadline | Chat's outbox; a future FieldKit upload queue |
+
+The first three are phase 1 and 2 work. The fourth is deliberately deferred: it is a contract (record, retry classification, replay hook), extracted from Chat when a second app needs it, not a general job system. `lifetime` (runs until shutdown, freezes with the process) remains for work that may simply pause while suspended.
 
 **Lifecycle.**
 
@@ -278,7 +295,7 @@ struct NotesApp: App {
 |---|---|---|
 | Launch | Lock data directory; run migrations; report `Opened { fresh, restored, migrated, recovered_operations }` | Seed data; replay durable work |
 | Active | Nothing | Refresh |
-| Background | Cancel `foreground`; start `finishing` under a background task | Persist anything not yet saved |
+| Background | Cancel `foreground`; ask for background time for `finishing` work (best effort; expiry cancels it) | Nothing to save: commands already committed |
 | Resumed | Renew `foreground`; re-check permissions; publish `Resumed` | Restart streams, refresh |
 | Suspended / killed | Nothing can run: every command has committed before returning | (none, by design) |
 | Terminated | Shutdown if iOS says so; never relied on | (none) |
@@ -291,8 +308,9 @@ struct NotesApp: App {
 
 | Guarantee | How |
 |---|---|
-| One writer | Directory lock held by the runtime |
-| Layout | Runtime-owned: `data/` (backed up, protected), `caches/` (re-downloadable, excluded from backup), `tmp/` (swept at launch), secrets in Keychain with first-run reconciliation (S5) |
+| One writer (private data) | A lock on the app's private data directory, held by the runtime for the process |
+| Layout | The runtime provides the directories and their policies; the app decides what goes where and in which format: `data/` (backed up, protected), `caches/` (re-downloadable, excluded from backup), `tmp/` (swept at launch), secrets in Keychain with first-run reconciliation (S5). An app can declare more stores and classes (a large media store excluded from backup, a "complete" protection class for a journal) |
+| Shared data (App Groups, extensions) | A separate, explicit `shared/` store in the App Group container, never the private directory. Two processes (the app and a widget, share or notification extension) may open it, so a per-process lock is not enough. And iOS terminates a suspended process that still holds a file lock or an open SQLite transaction in a shared container (the `0xdead10cc` termination), so long-held locks there are wrong. The contract: SQLite in WAL mode with a busy timeout and short transactions for shared records, or a single-writer rule (only the app writes; extensions append to an inbox the app drains at launch and on resume); shared locks only inside a finishing scope; change notification across processes by Darwin notification plus a revision re-read. To be designed with the first extension (spike S2 / W9), not before; nothing in phase 1 may assume one process |
 | Atomic changes | A command commits its state and its staged files together (S4) |
 | Schema evolution | Each store declares a version and migrations; a copy is kept before migrating; fixtures of every released schema are tests that run on Linux (S7) |
 | Recovery | Corrupt data is moved aside and reported, never silently replaced; newer data is refused (Pocket Library's `open_fresh` made general) |
@@ -307,19 +325,21 @@ One template, one architecture. `--minimal` becomes the same app with fewer scre
 
 ```
 MyApp/
-  forge.toml        [forge] version = "0.3"  ← the framework version the app is built on
+  forge.toml        [forge] version = "0.3.0"  ← the framework version the app is built on
   rust/
-    Cargo.toml      forge-app = "0.3" (plus the capabilities it uses), from a registry or git tag
+    Cargo.toml      forge-app = "=0.3.0" (plus the capabilities it uses, same pin), from a registry or a git tag
+    Cargo.lock      committed: third-party crates are pinned too
     src/lib.rs      the app's model and its exported interface
     tests/          Linux tests, including a migration fixture
   Sources/App/      @main, views, @Observable models (Foundation + Observation only)
-  Package.swift     .package(url: ".../ForgeKit", exact: "0.3.x")
+  Package.swift     .package(url: ".../ForgeKit", exact: "0.3.0")
+  Package.resolved  committed
   Tests/            Swift model tests (Linux via forge check swift; macOS XCTest)
   uitests/          smoke test with throwaway test data
   Generated/        UniFFI bindings only
 ```
 
-No absolute paths, no checkout. The `forge` binary carries its templates, build scripts and a `uniffi-bindgen` matching the pinned UniFFI, and refuses to build an app whose `[forge] version` it does not support, with the command to upgrade. Upgrading the framework is a visible change to two version numbers, reviewed like any dependency bump.
+No absolute paths, no checkout. The `forge` binary carries its templates, build scripts and a `uniffi-bindgen` matching the pinned UniFFI, and refuses to build an app whose `[forge] version` it does not support, with the command to upgrade. Upgrading the framework is a visible change to the same version in three places (`forge.toml`, `Cargo.toml`, `Package.swift`), which `forge` checks agree, reviewed like any dependency bump. Exact pins (`=0.3.0` in Cargo, `exact:` in SwiftPM) plus committed lock files make a build reproducible; a looser range would let `cargo update` change the framework under the app.
 
 ### Testing without Apple hardware
 
@@ -333,7 +353,7 @@ Each phase is small enough to review on its own and ends with something running.
 
 | Phase | What | Proves | Size |
 |---|---|---|---|
-| **0. Decide and spike** | (a) Can a framework crate own UniFFI types (phase, operation, error kind, `Changed`) that app crates use as external types, generating a second Swift module that SwiftPM and xtool build? (b) How the framework is distributed: crates.io, git tags, or a Forge-hosted registry; ForgeKit as a git SwiftPM package | Which design for the shared types: (a) works → `forge-app` is a UniFFI component and ffi-policy rule 1 is relaxed for it alone; (a) fails → keep `app_shell!`-style macros and make ForgeKit generic over a small protocol each app's generated types conform to | Days |
+| **0. Architecture experiments (strict gate)** | Three working demonstrations, not compile checks: (1) **shared UniFFI types**: a framework crate exposes the runtime contract (phase, cancellation, change events, error kinds) and an app crate uses them in its own API, with Swift that reads naturally on both sides; (2) **ForgeKit as a package**: a generated app consumes the framework's Swift as a real versioned dependency, not copied files; (3) **independent starter**: an app is generated, moved elsewhere and built with the Forge checkout absent | (1) works → `forge-app` is a UniFFI component and ffi-policy rule 1 is relaxed for it alone; fails → keep `app_shell!`-style macros and make ForgeKit generic over a protocol the app's types conform to. (2) and (3) decide how Forge is distributed. **No phase 1 work starts until all three have a result and Reuben has read it** | Days |
 | **1. `forge-app` runtime (Rust)** | Executor (from Counter), published state with revision, operations with foreground/lifetime scopes, data-directory lock and layout, error kinds, `export_runtime!`, test harness. Rewrite the starter on it; `--minimal` becomes the same app trimmed | One architecture; R1 closed; Linux model tests for every contract | 2 to 3 PRs |
 | **2. ForgeKit (Swift)** | `ForgeHost` at App level, application lifecycle, `beginBackgroundTask` for the finishing scope, event loop, cancellation wrapper, error presentation, native service adapters moved in from `Generated/`. Delete the copied files from the template | Framework Swift has one home and a version; F2 closed; R4's first half | 2 PRs, macOS CI |
 | **3. Independent apps** | Version the framework, publish or tag it, `[forge] version` in `forge.toml`, templates and bindgen in the `forge` binary, `check-fresh-app.sh` run with no checkout present | Reuben's "genuinely independent application" | 1 to 2 PRs |
@@ -351,6 +371,6 @@ Each phase is small enough to review on its own and ends with something running.
 **Decisions for Reuben.**
 
 1. Accept the diagnosis (an application runtime on both sides, Swift as a real package, a versioned framework) or reject parts of it.
-2. If accepted, approve phase 0. Its spike decides the shared-types design; nothing else starts before it.
+2. If accepted, approve phase 0. **Accepted 2026-11-09**: Reuben accepted this page as the architecture review and authorised phase 0 as a strict gate, with the three experiments above; results are reported before any runtime work.
 3. Whether Pocket Library's App Store release waits for phases 1 to 4 (recommended) or ships on the current shape and migrates later.
 4. How Forge is distributed (phase 0b): crates.io is the most conventional and makes `cargo` do the work; git tags need no account and can start today.
