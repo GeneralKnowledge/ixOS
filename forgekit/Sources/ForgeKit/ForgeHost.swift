@@ -1,4 +1,6 @@
-@preconcurrency import ForgeApp
+// Apps import ForgeKit only: the contract types (AppPhase, ErrorKind,
+// Cancellation, ...) come with it.
+@_exported @preconcurrency import ForgeApp
 import Foundation
 import Observation
 
