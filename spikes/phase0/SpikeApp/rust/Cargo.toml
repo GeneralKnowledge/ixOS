@@ -1,0 +1,36 @@
+# Phase 0 spike app crate (docs/app-model-review.md). Same shape as a
+# `forge init --minimal` crate, but it names the runtime contract types from
+# the `forge-app` component instead of declaring its own.
+[package]
+name = "spike-app-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# FRAMEWORK_DEPS_BEGIN
+# The framework, pinned to one commit of the Forge repository: no checkout
+# on this machine is involved. (A release would pin a tag or `=0.3.0` from a
+# registry; a commit is the same guarantee.) Cargo.lock is committed.
+forge-app = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
+forge-runtime = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
+forge-storage = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
+# FRAMEWORK_DEPS_END
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+[workspace]
+members = [".", "bindgen"]
+
+[profile.release]
+lto = true
+codegen-units = 1

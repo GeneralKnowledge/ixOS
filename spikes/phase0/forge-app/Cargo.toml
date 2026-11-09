@@ -1,0 +1,19 @@
+# Phase 0 spike (docs/app-model-review.md): the shared half of the runtime
+# contract as its own UniFFI component, so app crates use these types in their
+# own APIs instead of re-declaring them with app_shell!. Not production code.
+[package]
+name = "forge-app"
+version = "0.3.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "forge_app"
+crate-type = ["lib"]
+
+[dependencies]
+forge-runtime = { path = "../../../crates/forge-runtime" }
+uniffi = "=0.32.2"
+
+# Its own workspace, outside Forge's.
+[workspace]

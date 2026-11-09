@@ -4,6 +4,7 @@ members = [
     "crates/forge-storage",
     "crates/forge-net",
     "crates/forge-runtime",
+    "crates/forge-app",
     "crates/forge-services",
     "crates/forge-device",
     "crates/forge-devproto",
@@ -24,12 +25,13 @@ exclude = ["examples/kataster-ios"]
 [workspace.package]
 edition = "2021"
 license = "MIT OR Apache-2.0"
-rust-version = "1.88"
+rust-version = "1.89"
 
 [workspace.dependencies]
 forge-storage = { path = "crates/forge-storage" }
 forge-net = { path = "crates/forge-net" }
 forge-runtime = { path = "crates/forge-runtime" }
+forge-app = { path = "crates/forge-app" }
 forge-services = { path = "crates/forge-services" }
 chat-core = { path = "examples/chat-core" }
 serde = { version = "1.0", features = ["derive"] }

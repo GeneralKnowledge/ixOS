@@ -13,7 +13,7 @@ Last updated: 2026-11-06. Update this page in the same PR as any version bump.
 | Component | Tested version | Status | Where it is set |
 |-----------|----------------|--------|-----------------|
 | Rust toolchain | 1.97.0 | Pinned, CI | [`rust-toolchain.toml`](../rust-toolchain.toml) |
-| Rust MSRV | 1.88 | CI (`cargo check` on 1.88.0) | `rust-version` in [`Cargo.toml`](../Cargo.toml) |
+| Rust MSRV | 1.89 | CI (`cargo check` on 1.89.0) | `rust-version` in [`Cargo.toml`](../Cargo.toml) |
 | UniFFI | 0.32.2 | Pinned, CI | `[workspace.dependencies]` in [`Cargo.toml`](../Cargo.toml) |
 | rustls-platform-verifier | 0.7.1 (via ureq 3.5) | `Cargo.lock`, CI | On Android it needs `ForgeAndroid.init` and the matching Android library (below) |
 | jni | 0.22.4 | `Cargo.lock` | Only for the `ForgeAndroid.nativeInit` export; same version the verifier uses |

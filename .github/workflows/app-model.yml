@@ -1,0 +1,74 @@
+name: App model
+
+# Phase 1 of the application model (docs/app-model-review.md): the Checklist
+# app on forge-app and ForgeKit. On Linux, the app's Swift (ForgeKit's host,
+# the model, the cross-language tests) builds and runs against its real Rust
+# core; on macOS the same tests run and the app builds for an iPhone,
+# unsigned. Runs when the runtime, ForgeKit or the app changes.
+on:
+  push:
+    branches: [main, claude/project-thread-suviqy]
+    paths:
+      - "crates/forge-app/**"
+      - "crates/forge-runtime/**"
+      - "crates/forge-storage/**"
+      - "forgekit/**"
+      - "examples/checklist/**"
+      - "scripts/forgekit.sh"
+      - "scripts/generate-bindings.sh"
+      - ".github/workflows/app-model.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checklist:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    name: Checklist (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          swift --version
+
+      - name: ForgeKit matches forge-app (bindings, contract version)
+        run: ./scripts/forgekit.sh check
+
+      - name: Rust core (fmt, clippy, tests, binding drift)
+        run: ./scripts/check-app-crates.sh examples/checklist
+
+      - name: Host library for Swift
+        run: |
+          case "$RUNNER_OS" in macOS) dir=macos-host ;; *) dir=linux-host ;; esac
+          mkdir -p "examples/checklist/build/$dir/lib"
+          cp examples/checklist/rust/target/debug/libforge_ffi.a "examples/checklist/build/$dir/lib/"
+
+      - name: Swift build and cross-language tests
+        working-directory: examples/checklist
+        run: |
+          swift build
+          swift test
+          # Linux has no SwiftUI: the launcher opens the core through
+          # ForgeKit, runs a command and shuts down.
+          if [ "$RUNNER_OS" = Linux ]; then swift run Checklist; fi
+
+      - name: iOS device build (unsigned)
+        if: runner.os == 'macOS'
+        working-directory: examples/checklist
+        run: |
+          rustup target add aarch64-apple-ios
+          cargo build --manifest-path rust/Cargo.toml --target aarch64-apple-ios --release
+          mkdir -p build/ios-device/lib
+          cp rust/target/aarch64-apple-ios/release/libforge_ffi.a build/ios-device/lib/
+          xcodebuild build -scheme ChecklistXtool -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40

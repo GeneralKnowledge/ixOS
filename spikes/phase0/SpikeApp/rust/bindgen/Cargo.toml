@@ -1,0 +1,15 @@
+# The app's own uniffi-bindgen, pinned with the app's UniFFI, so generating
+# bindings needs no Forge checkout. (In the final design the `forge` binary
+# carries this; the spike keeps it in the app to prove independence.)
+[package]
+name = "uniffi-bindgen"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/main.rs"
+
+[dependencies]
+uniffi = { version = "=0.32.2", features = ["cli"] }

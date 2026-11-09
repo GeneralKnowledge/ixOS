@@ -11,7 +11,7 @@
 
 Logic lives in Rust; UniFFI is an adapter around it. These rules keep it that way:
 
-1. **Framework crates never depend on UniFFI.** `forge-runtime`, `forge-storage` and `forge-net` are plain Rust. Only app crates and the adapter macros (`forge_runtime::app_shell!`, `forge_services::native_services!`) produce UniFFI code, and the macros emit it in the app's crate.
+1. **Framework crates never depend on UniFFI, with one exception.** `forge-runtime`, `forge-storage` and `forge-net` are plain Rust. `forge-app` is the one UniFFI framework crate: it exports the application contract (phases, error kinds, runtime events, cancellation, the contract version) as UniFFI component `forge_app`, whose Swift lives in ForgeKit's `ForgeApp` module and which app crates use as external types ([app-model-review.md](app-model-review.md)). Otherwise only app crates and the adapter macros (`forge_runtime::app_shell!`, `forge_services::native_services!`, `forge_app::export_runtime!`) produce UniFFI code, and the macros emit it in the app's crate.
 2. **No internal Rust types cross the boundary.** Each app exports its own records, enums and errors and converts to and from its domain types. A framework type never appears in generated bindings.
 3. **Large data crosses as file paths or handles**, never as byte arrays in a call: attachments, audio, images, exports.
 4. **High-frequency data does not go through generated bindings or event streams.** Sensor samples, audio frames and frame timing use a narrow C ABI or shared memory, decided per capability (the planned real-time audio path is the first case).

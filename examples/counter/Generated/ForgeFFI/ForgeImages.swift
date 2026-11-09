@@ -2,6 +2,9 @@
 // Do not edit the copy; the source of truth is
 // crates/forge-services/swift/helpers/ForgeImages.swift.
 
+// ImageIO and CoreGraphics exist only on Apple platforms; on Linux (where
+// `swift test` runs an app's models) this file is empty.
+#if canImport(ImageIO)
 import CoreGraphics
 import Foundation
 import ImageIO
@@ -106,3 +109,4 @@ public enum ForgeImages {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary)
     }
 }
+#endif

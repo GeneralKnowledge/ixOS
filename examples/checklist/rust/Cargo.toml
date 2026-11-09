@@ -1,0 +1,38 @@
+# Checklist's own Rust library: the checklist rules, its saved file, and the
+# UniFFI API (ChecklistCore) the SwiftUI app calls. The first app on the ixOS
+# application runtime (forge-app, docs/app-model-review.md): the runtime owns
+# ordering, revisions, lifecycle, cancellation and shutdown; this crate owns
+# what a checklist is.
+[package]
+name = "checklist-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+# Forge's fixed library name (libforge_ffi.a, Swift module ForgeFFI).
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# The application runtime. Its contract types (AppPhase, ErrorKind,
+# RuntimeEvents, Cancellation) appear in this crate's API as UniFFI external
+# types; their Swift is ForgeKit's ForgeApp module.
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+forge-storage = { path = "../../../crates/forge-storage" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1
