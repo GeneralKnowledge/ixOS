@@ -368,6 +368,8 @@ Each phase is small enough to review on its own and ends with something running.
 - *Foundation review contracts.* Contracts 2 (application model) and 6 (boundary) are absorbed by phases 1 and 2; 1 (storage) is phase 4; 3 (resources), 4 (capabilities) and 5 (operations) follow, each attached to the runtime rather than to individual apps.
 - *Android.* Keep it building: `forge-app` is plain Rust apart from its UniFFI component, and the Kotlin host keeps its current shape until Android is picked up again.
 
+**Phase 0 result (2026-11-09).** All three experiments worked: shared UniFFI types across two Swift modules, ForgeKit consumed as a versioned package, and an app built with the Forge checkout deleted, on Linux and macOS including an unsigned iOS build. Details and the six things they found are in [spikes/phase0/RESULTS.md](../spikes/phase0/RESULTS.md). The shared-types design (`forge-app` as a UniFFI component) is therefore the one to build; the `app_shell!` fallback is not needed.
+
 **Decisions for Reuben.**
 
 1. Accept the diagnosis (an application runtime on both sides, Swift as a real package, a versioned framework) or reject parts of it.
