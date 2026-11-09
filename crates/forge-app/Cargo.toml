@@ -1,0 +1,21 @@
+[package]
+name = "forge-app"
+version = "0.3.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+description = "The ixOS application runtime: one core per process, serial commands, revisions, lifecycle, cancellation, shutdown and the shared contract types"
+publish = false
+
+[lib]
+name = "forge_app"
+
+[dependencies]
+forge-runtime = { workspace = true }
+# The one framework crate that is a UniFFI component (docs/ffi-policy.md):
+# its contract types appear in every app's API, as external types, and their
+# Swift ships in ForgeKit. No `cli` feature: apps generate bindings.
+uniffi = "=0.32.2"
+
+[dev-dependencies]
+tempfile = "3.14"
