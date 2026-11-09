@@ -159,6 +159,14 @@ impl<S: Send + 'static> Runtime<S> {
     ///
     /// Not cancellable once accepted. After `shutdown`, refused with
     /// `Stopped { kind: ShutDown }`.
+    ///
+    /// If iOS suspends the process mid-command, the command finishes on
+    /// resume. If the process is killed first, the command did not happen
+    /// (the caller never saw `Ok`), so the save inside it must be atomic
+    /// (`JsonFile`, `write_atomic`, an SQLite transaction): the file then
+    /// holds the previous state, never part of the new one. See
+    /// docs/app-model-review.md, "What the runtime guarantees when iOS
+    /// suspends or ends the process".
     pub fn command<T, E, F>(
         &self,
         name: &'static str,
