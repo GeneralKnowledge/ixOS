@@ -252,6 +252,10 @@ enum SetupCommands {
         /// newest Xcode*.xip in ~/Downloads, if the SDK isn't installed yet)
         #[arg(long, value_name = "PATH")]
         xip: Option<PathBuf>,
+        /// Install the SDK from the .xip even when a compatible one is
+        /// already installed (normally a rerun keeps it)
+        #[arg(long)]
+        reinstall_sdk: bool,
         /// Answer yes to every question, for scripts
         #[arg(long, short)]
         yes: bool,
@@ -948,7 +952,12 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
     let ios = ios_builder::XtoolBuilder;
     match cli.command {
         Commands::Setup {
-            cmd: SetupCommands::Ios { xip, yes },
+            cmd:
+                SetupCommands::Ios {
+                    xip,
+                    reinstall_sdk,
+                    yes,
+                },
         } => {
             use std::io::IsTerminal;
             let env = |k: &str| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned());
@@ -963,6 +972,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 },
                 &setup::Options {
                     xip: xip.map(|p| absolute_from_cwd(&p)),
+                    reinstall_sdk,
                     yes,
                     interactive: std::io::stdin().is_terminal() && !cli.json,
                 },

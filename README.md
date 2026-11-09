@@ -33,7 +33,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
    ```bash
    cd ~/projects
-   forge init MyApp --bundle-id org.example.myapp
+   forge init MyApp --minimal --bundle-id org.example.myapp
    cd MyApp
    forge run ios                  # build with xtool, sign and install on a connected iPhone; open it from the home screen
    forge test                     # your Rust tests (plus XCTest on macOS)
@@ -46,7 +46,7 @@ How it compares, briefly and honestly. **[Tauri](https://tauri.app/)** (webview 
 
 All the docs, by task, are listed in [docs/README.md](docs/README.md), and [docs/status.md](docs/status.md) says what works on an iPhone today.
 
-New to Forge? `forge init MyApp --minimal` starts from a one-screen app, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
+`--minimal` starts from a one-screen app to learn from, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. Leave it out for the full starter, a multi-screen notes app that shows events, networking, the app lifecycle and native services. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
 To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android examples (`examples/counter-android`, `examples/chat-android`) are work in progress.
 

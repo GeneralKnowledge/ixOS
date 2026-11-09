@@ -22,6 +22,9 @@ const SWIFT_RELEASE: &str = "6.2.3";
 pub struct Options {
     /// An Xcode.xip (or Xcode.app) to install the Darwin SDK from.
     pub xip: Option<PathBuf>,
+    /// Install the Darwin SDK from the .xip even when a compatible one is
+    /// already installed.
+    pub reinstall_sdk: bool,
     /// Answer yes to every question (for scripts). Still never downloads
     /// Xcode or signs in to Apple on the person's behalf.
     pub yes: bool,
@@ -83,22 +86,44 @@ pub fn setup_ios(host: &Host, opts: &Options) -> Result<(), String> {
             if w.ready { "ready" } else { "not ready" }
         );
     }
+    let ios = flows.iter().find(|w| w.name.starts_with("iOS from Linux"));
+    verdict(
+        &steps,
+        ios.is_some_and(|w| w.ready),
+        ios.map(|w| w.fixes.as_slice()).unwrap_or_default(),
+    )?;
+    println!(
+        "\nNext: create an app with `forge init MyApp --minimal --bundle-id com.yourname.myapp`, connect your iPhone, and run `forge run ios` in it (docs/getting-started.md)."
+    );
+    Ok(())
+}
+
+/// Setup succeeds only when no step needs the person and `forge doctor`
+/// agrees that iOS builds from Linux are ready: a step can't pass on its
+/// own say-so.
+fn verdict(steps: &[Step], ios_ready: bool, ios_fixes: &[String]) -> Result<(), String> {
     let todo = steps
         .iter()
         .filter(|s| matches!(s.outcome, Outcome::Todo(_)))
         .count();
-    if todo == 0 {
-        println!(
-            "\nNext: create an app with `forge init MyApp --bundle-id com.yourname.myapp`, connect your iPhone, and run `forge run ios` in it (docs/getting-started.md)."
-        );
-        Ok(())
-    } else {
-        Err(format!(
+    if todo > 0 {
+        return Err(format!(
             "{todo} step{} still need{} you (marked ! above). Run `forge setup ios` again afterwards.",
             if todo == 1 { "" } else { "s" },
             if todo == 1 { "s" } else { "" }
-        ))
+        ));
     }
+    if !ios_ready {
+        let fixes = if ios_fixes.is_empty() {
+            "run `forge doctor` to see why".to_string()
+        } else {
+            ios_fixes.join("; ")
+        };
+        return Err(format!(
+            "every step finished, but `forge doctor` says iOS builds from Linux aren't ready yet: {fixes}. Fix that, then run `forge setup ios` again."
+        ));
+    }
+    Ok(())
 }
 
 /// The steps in order. Later steps that depend on an unfinished earlier one
@@ -370,9 +395,15 @@ fn xtool(host: &Host, opts: &Options) -> Step {
         };
     }
     match xtool_state(host) {
-        XtoolState::Version(v) => Step {
+        XtoolState::Version(v) if is_pinned(&v) => Step {
             name,
             outcome: Outcome::Done(format!("installed xtool {v}")),
+        },
+        XtoolState::Version(v) => Step {
+            name,
+            outcome: Outcome::Todo(format!(
+                "the install script finished, but the `xtool` on your PATH is still {v}, not {pinned}: run `which -a xtool` and remove the older one"
+            )),
         },
         XtoolState::NeedsFuse => Step {
             name,
@@ -441,7 +472,7 @@ fn swift(host: &Host, opts: &Options) -> Step {
                 };
             }
             if succeeded(host, &Cmd::new("bash").args(["-c", &swift_install_script()]))
-                && ios_env::swift_version(host.runner).is_some()
+                && ios_env::swift_version(host.runner).is_some_and(|v| v >= (6, 2))
             {
                 Step {
                     name,
@@ -502,15 +533,22 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
         .as_deref()
         .and_then(ios_env::sdk_major)
         .is_some_and(|m| m < MIN_IOS_SDK_MAJOR);
-    if installed && !too_old && opts.xip.is_none() {
+    if let (true, false, false, Some(v)) = (installed, too_old, opts.reinstall_sdk, &version) {
+        let note = if opts.xip.is_some() {
+            " (already installed, so the .xip wasn't used; --reinstall-sdk replaces it)"
+        } else {
+            ""
+        };
         return Step {
             name,
-            outcome: Outcome::Ready(match version {
-                Some(v) => format!("iOS {v} SDK"),
-                None => "installed".into(),
-            }),
+            outcome: Outcome::Ready(format!("iOS {v} SDK{note}")),
         };
     }
+    let unknown = if installed && version.is_none() {
+        "a Darwin SDK is installed, but Forge can't read its iOS version; "
+    } else {
+        ""
+    };
     if let Some(missing) = waiting_for {
         return Step {
             name,
@@ -519,7 +557,9 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
             )),
         };
     }
-    let old = if too_old {
+    let old = if !unknown.is_empty() {
+        unknown.to_string()
+    } else if too_old {
         format!(
             "the installed SDK is iOS {}, which fails to link with Swift 6.2; ",
             version.as_deref().unwrap_or("?")
@@ -591,7 +631,9 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
         },
         None => Step {
             name,
-            outcome: Outcome::Done("installed".into()),
+            outcome: Outcome::Todo(
+                "`xtool sdk install` finished, but Forge can't find the iOS SDK it should have installed: run `swift sdk list` and `forge doctor`".into(),
+            ),
         },
     }
 }
@@ -699,6 +741,7 @@ mod tests {
     fn opts(interactive: bool) -> Options {
         Options {
             xip: None,
+            reinstall_sdk: false,
             yes: false,
             interactive,
         }
@@ -993,5 +1036,104 @@ mod tests {
         ]);
         assert!(text.contains("  ✓ xtool: xtool 1"), "{text}");
         assert!(text.contains("  ! Darwin SDK: download Xcode"), "{text}");
+    }
+    #[test]
+    fn a_rerun_with_xip_keeps_a_compatible_sdk() {
+        let mock = ready_machine();
+        let root = PathBuf::from("/forge");
+        let dir = tempfile::tempdir().unwrap();
+        let xip = dir.path().join("Xcode_26.xip");
+        std::fs::write(&xip, b"").unwrap();
+        let env = |_: &str| None;
+        let ask = |_: &str| true;
+        let with_xip = Options {
+            xip: Some(xip.clone()),
+            ..opts(true)
+        };
+        let steps = run_steps(&host(&mock, &root, &env, &ask), &with_xip);
+        match outcome(&steps, "Darwin SDK") {
+            Outcome::Ready(t) => assert!(
+                t.contains("iOS 26.0") && t.contains("--reinstall-sdk"),
+                "{t}"
+            ),
+            other => panic!("{other:?}"),
+        }
+        assert!(mock.call_lines().iter().all(|c| !c.contains("sdk install")));
+
+        mock.respond("xtool sdk install", 0, "");
+        let reinstall = Options {
+            reinstall_sdk: true,
+            ..with_xip
+        };
+        let steps = run_steps(&host(&mock, &root, &env, &ask), &reinstall);
+        assert!(
+            matches!(outcome(&steps, "Darwin SDK"), Outcome::Done(_)),
+            "{steps:?}"
+        );
+        assert!(mock.call_lines().iter().any(|c| c.contains("sdk install")));
+    }
+
+    #[test]
+    fn an_sdk_whose_version_cant_be_read_is_not_counted_as_installed() {
+        let mock = ready_machine();
+        mock.respond("swift sdk list", 0, "\n")
+            .respond("swift sdk configure", 1, "")
+            .respond("xtool sdk install", 0, "");
+        let root = PathBuf::from("/forge");
+        let dir = tempfile::tempdir().unwrap();
+        let xip = dir.path().join("Xcode_26.xip");
+        std::fs::write(&xip, b"").unwrap();
+        let env = |_: &str| None;
+        let ask = |_: &str| true;
+        let steps = run_steps(
+            &host(&mock, &root, &env, &ask),
+            &Options {
+                xip: Some(xip),
+                ..opts(true)
+            },
+        );
+        match outcome(&steps, "Darwin SDK") {
+            Outcome::Todo(t) => assert!(t.contains("can't find the iOS SDK"), "{t}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn xtool_that_is_still_not_the_pinned_version_after_install_needs_the_person() {
+        let mock = ready_machine();
+        mock.respond("xtool --version", 0, "xtool 1.0.0\n").respond(
+            "bash /forge/scripts/install-xtool.sh",
+            0,
+            "",
+        );
+        let root = PathBuf::from("/forge");
+        let env = |_: &str| None;
+        let ask = |_: &str| true;
+        let steps = run_steps(&host(&mock, &root, &env, &ask), &opts(true));
+        match outcome(&steps, "xtool") {
+            Outcome::Todo(t) => assert!(t.contains("1.0.0") && t.contains("which -a xtool"), "{t}"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn setup_fails_when_doctor_disagrees_with_the_steps() {
+        let all_ready = [Step {
+            name: "xtool",
+            outcome: Outcome::Ready("xtool 1".into()),
+        }];
+        assert!(verdict(&all_ready, true, &[]).is_ok());
+        let err = verdict(&all_ready, false, &["install Swift 6".into()]).unwrap_err();
+        assert!(
+            err.contains("aren't ready") && err.contains("install Swift 6"),
+            "{err}"
+        );
+        let todo = [Step {
+            name: "Darwin SDK",
+            outcome: Outcome::Todo("download Xcode".into()),
+        }];
+        assert!(verdict(&todo, true, &[])
+            .unwrap_err()
+            .contains("1 step still needs you"));
     }
 }
