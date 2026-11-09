@@ -2361,14 +2361,37 @@ ios_device = true
         );
         let pbx = read(dest.join("Xcode/PathApp.xcodeproj/project.pbxproj"));
         assert!(pbx.contains(r#""$(SRCROOT)/../build/ios-device/lib/libforge_ffi.a""#));
-        // The scripts and Forge crates still come from the workspace.
+        // The scripts come from the workspace.
         assert!(pbx.contains(&format!(r#"REPO_ROOT=\"$(cd \"{ws}\" && pwd)\""#)));
         assert!(!pbx.contains("SRCROOT}/../../.."));
+        // The framework: the release in forge-release.toml, or the workspace
+        // while it has unreleased framework changes.
         let cargo = read(dest.join("rust/Cargo.toml"));
-        assert!(
-            cargo.contains(&format!(r#"path = "{ws}/crates/forge-runtime""#)),
-            "{cargo}"
-        );
+        match framework_release(&root) {
+            Some(r) => {
+                assert!(
+                    cargo.contains(&format!(
+                        r#"forge-runtime = {{ git = "{IXOS_GIT}", rev = "{}" }}"#,
+                        r.ixos_rev
+                    )),
+                    "{cargo}"
+                );
+                assert!(
+                    pkg.contains(&format!(r#"exact: "{}")"#, r.version)),
+                    "{pkg}"
+                );
+            }
+            None => {
+                assert!(
+                    cargo.contains(&format!(r#"path = "{ws}/crates/forge-runtime""#)),
+                    "{cargo}"
+                );
+                assert!(
+                    pkg.contains(&format!(r#".package(path: "{ws}/forgekit")"#)),
+                    "{pkg}"
+                );
+            }
+        }
         assert!(!cargo.contains("FORGE_WORKSPACE"));
 
         // Bindings went to the app's own Generated/, and staging is gone.
