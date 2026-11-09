@@ -123,6 +123,9 @@ jobs:
         run: |
           rustup show active-toolchain || (cd rust && rustup toolchain install)
           cargo test --manifest-path rust/Cargo.toml
+          # cargo test builds the library for its tests only; the static
+          # library Swift links comes from cargo build.
+          cargo build --manifest-path rust/Cargo.toml
           mkdir -p build/linux-host/lib
           cp rust/target/debug/libforge_ffi.a build/linux-host/lib/
       - name: Swift with the published ForgeKit

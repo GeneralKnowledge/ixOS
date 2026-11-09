@@ -6,6 +6,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 export FORGEKIT_ALLOW_UNMERGED=1
+# The release commits; CI runners have no git identity.
+export GIT_AUTHOR_NAME=test GIT_AUTHOR_EMAIL=test@example.invalid
+export GIT_COMMITTER_NAME=test GIT_COMMITTER_EMAIL=test@example.invalid
 
 fail() { echo "FAIL: $*" >&2; exit 1; }
 release() { "$ROOT/scripts/forgekit.sh" release "$@" >"$TMP/out" 2>&1; }
