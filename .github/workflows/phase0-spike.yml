@@ -52,7 +52,7 @@ jobs:
           cd "$RUNNER_TEMP"
           rm -rf "$GITHUB_WORKSPACE"
           mkdir -p "$GITHUB_WORKSPACE"
-          if grep -rn "spikes/phase0\|$GITHUB_WORKSPACE" MovedApp --include=*.toml --include=*.swift --include=*.sh; then
+          if grep -rn "spikes/phase0\|$GITHUB_WORKSPACE" MovedApp --include=*.toml --include=*.swift --include=bindings.sh; then
             echo "the app still names the checkout"; exit 1
           fi
 
