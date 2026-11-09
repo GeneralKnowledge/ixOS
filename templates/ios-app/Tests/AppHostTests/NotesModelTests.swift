@@ -23,10 +23,10 @@ private func socketName(_ fd: Int32, _ sa: UnsafeMutablePointer<sockaddr>, _ len
 }
 private func closeSocket(_ fd: Int32) { _ = close(fd) }
 
-/// Drives the view model against the app's real Rust core (rust/) through the
-/// generated Swift bindings. `forge test ios` (or scripts/test-swift-host.sh)
-/// builds the host library first. It imports no SwiftUI, so
-/// `forge check swift` also runs it on Linux.
+/// Drives the view model and ForgeKit's host against the app's real Rust
+/// core (rust/) through the generated Swift bindings. `forge test ios` (or
+/// scripts/test-swift-host.sh) builds the host library first. It imports no
+/// SwiftUI, so `forge check swift` also runs it on Linux.
 final class NotesModelTests: XCTestCase {
     private func makeDirectory() throws -> URL {
         let url = FileManager.default.temporaryDirectory
@@ -36,39 +36,60 @@ final class NotesModelTests: XCTestCase {
         return url
     }
 
+    /// A host whose data lives in `dir`, as the app's own would in
+    /// Application Support.
     @MainActor
-    private func openModel(_ dir: URL) async -> NotesModel {
-        let model = NotesModel(storageDirectory: dir.path)
-        await model.open()
-        return model
+    private func makeHost(_ dir: URL) -> ForgeHost<AppCore> {
+        let environment = ForgeEnvironment(dataDirectory: dir.path, cachesDirectory: dir.path)
+        return ForgeHost(environment: { environment }) { env in
+            try AppCore(storageDirectory: env.dataDirectory)
+        }
+    }
+
+    @MainActor
+    private func open(_ dir: URL) async throws -> (ForgeHost<AppCore>, NotesModel) {
+        let host = makeHost(dir)
+        await host.start()
+        XCTAssertEqual(host.status, .ready)
+        return (host, NotesModel(core: try XCTUnwrap(host.core)))
+    }
+
+    @MainActor
+    private func eventually(_ what: String, _ condition: () -> Bool) async throws {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(condition(), "timed out waiting for \(what)")
     }
 
     @MainActor
     func testNotesAreSavedAndSurviveARestart() async throws {
         let dir = try makeDirectory()
-        let model = await openModel(dir)
-        XCTAssertEqual(model.phase, .ready)
-        XCTAssertEqual(model.notes, [])
+        do {
+            let (host, model) = try await open(dir)
+            XCTAssertEqual(model.notes, [])
 
-        try await model.add(text: "first")
-        try await model.add(text: "second\nwith more")
+            try await model.add(text: "first")
+            try await model.add(text: "second\nwith more")
+            XCTAssertEqual(model.notes.map(\.text), ["second\nwith more", "first"])
+            XCTAssertEqual(model.notes[0].title, "second")
+            XCTAssertEqual(model.notes[0].preview, "with more")
+            XCTAssertEqual(model.saveCount, 2)
+            host.close()
+        }
+        // The core is released with the host and model above, so the next
+        // launch can open the same folder.
+        let (host, model) = try await open(dir)
         XCTAssertEqual(model.notes.map(\.text), ["second\nwith more", "first"])
-        XCTAssertEqual(model.notes[0].title, "second")
-        XCTAssertEqual(model.notes[0].preview, "with more")
-        XCTAssertEqual(model.saveCount, 2)
-        model.close()
-
-        let reopened = await openModel(dir)
-        XCTAssertEqual(reopened.notes.map(\.text), ["second\nwith more", "first"])
-        await reopened.delete(reopened.notes[1])
-        XCTAssertEqual(reopened.notes.map(\.text), ["second\nwith more"])
-        reopened.close()
+        await model.delete(model.notes[1])
+        XCTAssertEqual(model.notes.map(\.text), ["second\nwith more"])
+        host.close()
     }
 
     @MainActor
     func testEditingAndSearchGoThroughRust() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
+        let (host, model) = try await open(try makeDirectory())
         try await model.add(text: "Buy milk")
         try await model.add(text: "Call Sam")
         let milk = try XCTUnwrap(model.notes.last)
@@ -89,41 +110,52 @@ final class NotesModelTests: XCTestCase {
         XCTAssertFalse(refused)
         XCTAssertNotNil(model.actionError)
         XCTAssertEqual(model.note(id: milk.id)?.text, "Buy oat milk")
-        model.close()
+        host.close()
     }
 
     @MainActor
     func testRustErrorsArriveTyped() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
+        let (host, model) = try await open(try makeDirectory())
         do {
             try await model.add(text: "   ")
             XCTFail("expected InvalidInput")
         } catch AppError.InvalidInput {}
         XCTAssertEqual(model.notes, [])
 
-        let core = try XCTUnwrap(model.core)
         do {
-            try await core.deleteNote(id: 42)
+            try await model.core.deleteNote(id: 42)
             XCTFail("expected NotFound")
         } catch AppError.NotFound(let id) {
             XCTAssertEqual(id, 42)
         }
-        model.close()
+        // Each error has a framework kind, for ForgeKit's default text.
+        XCTAssertEqual(AppError.Interrupted.forgeKind, .interrupted)
+        host.close()
     }
 
     @MainActor
-    func testChangesMadeInRustReachTheModelThroughEvents() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
-        let core = try XCTUnwrap(model.core)
-        _ = try await core.addNote(text: "from Rust")
-        let deadline = Date().addingTimeInterval(5)
-        while model.notes.isEmpty, Date() < deadline {
-            try await Task.sleep(for: .milliseconds(10))
-        }
+    func testTheHostHearsChangesCommittedInRust() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let before = host.changes
+        _ = try await model.core.addNote(text: "from Rust")
+        // What the screen does when `changes` moves.
+        try await eventually("Changed from Rust") { host.changes > before }
+        model.reload()
         XCTAssertEqual(model.notes.map(\.text), ["from Rust"])
-        model.close()
+        XCTAssertEqual(host.revision, 1)
+        host.close()
+    }
+
+    @MainActor
+    func testOneCorePerDataFolder() async throws {
+        let dir = try makeDirectory()
+        let (first, _) = try await open(dir)
+        let second = makeHost(dir)
+        await second.start()
+        guard case .failed = second.status else {
+            return XCTFail("a second core opened the same notes: \(second.status)")
+        }
+        first.close()
     }
 
     @MainActor
@@ -132,11 +164,12 @@ final class NotesModelTests: XCTestCase {
         let file = dir.appendingPathComponent("notes.json")
         let newer = #"{"schema_version": 99, "data": {}}"#
         try newer.write(to: file, atomically: true, encoding: .utf8)
-        let model = await openModel(dir)
-        guard case .failed = model.phase else {
-            return XCTFail("expected the failed phase, got \(model.phase)")
+        let host = makeHost(dir)
+        await host.start()
+        guard case .failed = host.status else {
+            return XCTFail("expected the failed status, got \(host.status)")
         }
-        XCTAssertNil(model.core)
+        XCTAssertNil(host.core)
         XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), newer)
     }
 
@@ -164,8 +197,7 @@ final class NotesModelTests: XCTestCase {
 
     @MainActor
     func testCancellingTheTaskStopsTheRequestInRust() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
+        let (host, model) = try await open(try makeDirectory())
         let (url, fd) = try silentServerURL()
         defer { closeSocket(fd) }
         model.url = url
@@ -177,60 +209,46 @@ final class NotesModelTests: XCTestCase {
         XCTAssertEqual(model.urlResult, "Cancelled.")
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
         XCTAssertFalse(model.isCheckingURL)
-        model.close()
+        host.close()
     }
 
     @MainActor
     func testGoingToTheBackgroundInterruptsTheRequestInRust() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
-        model.setPhase(.active)
+        let (host, model) = try await open(try makeDirectory())
+        host.report(.active)
         let (url, fd) = try silentServerURL()
         defer { closeSocket(fd) }
         model.url = url
         let started = Date()
         let check = Task { await model.checkURL() }
         try await Task.sleep(for: .milliseconds(200))
-        model.setPhase(.background)
+        host.report(.background)
         await check.value
         XCTAssertEqual(model.urlResult, NotesModel.describe(AppError.Interrupted))
         XCTAssertLessThan(Date().timeIntervalSince(started), 5)
-        XCTAssertEqual(model.core?.phase(), .background)
-        model.close()
+        XCTAssertEqual(model.core.phase(), .background)
+
+        // Back on screen, the host tells the screens to re-read.
+        let changes = host.changes
+        host.report(.active)
+        try await eventually("resume announced") { host.changes > changes }
+        host.close()
     }
 
     @MainActor
-    func testResumeIsReportedAndTerminateClosesTheCore() async throws {
+    func testTerminationShutsTheCoreDownAndKeepsWhatWasSaved() async throws {
         let dir = try makeDirectory()
         // Reported before Rust is open: applied when it opens.
-        let model = NotesModel(storageDirectory: dir.path)
-        model.setPhase(.active)
-        await model.open()
-        let core = try XCTUnwrap(model.core)
+        let host = makeHost(dir)
+        host.report(.active)
+        await host.start()
+        let core = try XCTUnwrap(host.core)
         XCTAssertEqual(core.phase(), .active)
+        _ = try await core.addNote(text: "kept")
 
-        let events = try core.events()
-        model.setPhase(.background)
-        model.setPhase(.inactive)
-        guard case .phaseChanged(.background, false)? = await events.next(),
-            case .phaseChanged(.inactive, true)? = await events.next()
-        else { return XCTFail("expected background, then a resume") }
-
-        model.setPhase(.terminated)
-        XCTAssertNil(model.core)
+        host.report(.terminated)
+        XCTAssertNil(host.core)
         XCTAssertEqual(core.phase(), .terminated)
-        do {
-            _ = try await core.addNote(text: "late")
-            XCTFail("expected ShutDown")
-        } catch AppError.ShutDown {}
-    }
-
-    @MainActor
-    func testClosedModelRefusesWork() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
-        let core = try XCTUnwrap(model.core)
-        model.close()
         do {
             _ = try await core.addNote(text: "late")
             XCTFail("expected ShutDown")

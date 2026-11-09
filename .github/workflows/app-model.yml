@@ -15,6 +15,7 @@ on:
       - "forgekit/**"
       - "examples/checklist/**"
       - "scripts/forgekit.sh"
+      - "scripts/test-forgekit-release.sh"
       - "scripts/generate-bindings.sh"
       - ".github/workflows/app-model.yml"
   workflow_dispatch:
@@ -44,6 +45,10 @@ jobs:
       - name: ForgeKit matches forge-app (bindings, contract version)
         run: ./scripts/forgekit.sh check
 
+      - name: ForgeKit release refuses anything but a clean ForgeKit clone
+        if: runner.os == 'Linux'
+        run: ./scripts/test-forgekit-release.sh
+
       - name: Rust core (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh examples/checklist
 
@@ -72,3 +77,62 @@ jobs:
           cp rust/target/aarch64-apple-ios/release/libforge_ffi.a build/ios-device/lib/
           xcodebuild build -scheme ChecklistXtool -destination 'generic/platform=iOS' \
             -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40
+
+  published:
+    # The app as someone outside this repository builds it: ForgeKit from
+    # its published repository (the latest release tag) and forge-app from
+    # git at the ixOS commit that release was made from, with the app's
+    # sources from that commit too. The Forge checkout
+    # is deleted first, so nothing local can stand in for either.
+    name: Checklist on the published ForgeKit
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Latest ForgeKit release and its ixOS commit
+        run: |
+          tag="$(git ls-remote --tags --refs https://github.com/GeneralKnowledge/ForgeKit.git \
+            | sed 's#.*refs/tags/##' | sort -V | tail -n 1)"
+          git clone -q --depth 1 --branch "$tag" https://github.com/GeneralKnowledge/ForgeKit.git "$RUNNER_TEMP/ForgeKit"
+          rev="$(sed -n 's#^Made from GeneralKnowledge/ixOS \([0-9a-f]*\) .*#\1#p' "$RUNNER_TEMP/ForgeKit/RELEASE")"
+          test -n "$rev"
+          echo "ForgeKit $tag from ixOS $rev"
+          echo "FORGEKIT_TAG=$tag" >>"$GITHUB_ENV"
+          echo "FORGE_REV=$rev" >>"$GITHUB_ENV"
+          rm -rf "$RUNNER_TEMP/ForgeKit"
+      - name: Move the app (as of that release) out and delete the Forge checkout
+        run: |
+          # The app as it was at the release, so a later ForgeKit change on
+          # this branch doesn't test the old release against new app code.
+          git fetch -q --depth 1 origin "$FORGE_REV"
+          git checkout -q "$FORGE_REV" -- examples/checklist rust-toolchain.toml
+          cp -R examples/checklist "$RUNNER_TEMP/Checklist"
+          cp rust-toolchain.toml "$RUNNER_TEMP/Checklist/rust/"
+          cd "$RUNNER_TEMP/Checklist"
+          url=https://github.com/GeneralKnowledge/ixOS
+          sed -i -E "s#^(forge-[a-z]+) = \{ path = \"[./]*crates/forge-[a-z]+\" \}#\1 = { git = \"$url\", rev = \"$FORGE_REV\" }#" rust/Cargo.toml
+          sed -i "s#.package(path: \"../../forgekit\")#.package(url: \"https://github.com/GeneralKnowledge/ForgeKit.git\", exact: \"$FORGEKIT_TAG\")#" Package.swift
+          rm -f rust/Cargo.lock
+          grep -n "forge-\|ForgeKit.git" rust/Cargo.toml Package.swift
+          cd "$RUNNER_TEMP"
+          rm -rf "$GITHUB_WORKSPACE" && mkdir -p "$GITHUB_WORKSPACE"
+          if grep -rn "path = \"\.\./\.\.\|package(path:" Checklist --include=*.toml --include=*.swift; then
+            echo "the app still names the checkout"; exit 1
+          fi
+      - name: Rust core from git
+        working-directory: ${{ runner.temp }}/Checklist
+        run: |
+          rustup show active-toolchain || (cd rust && rustup toolchain install)
+          cargo test --manifest-path rust/Cargo.toml
+          # cargo test builds the library for its tests only; the static
+          # library Swift links comes from cargo build.
+          cargo build --manifest-path rust/Cargo.toml
+          mkdir -p build/linux-host/lib
+          cp rust/target/debug/libforge_ffi.a build/linux-host/lib/
+      - name: Swift with the published ForgeKit
+        working-directory: ${{ runner.temp }}/Checklist
+        run: |
+          swift package resolve
+          grep -A3 '"forgekit"' Package.resolved
+          swift build
+          swift test
+          swift run Checklist

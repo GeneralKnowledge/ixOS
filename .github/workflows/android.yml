@@ -14,7 +14,7 @@ on:
       - "examples/chat-core/**"
       - "examples/chat-server/**"
       - "templates/android-app/**"
-      - "templates/app-rust/**"
+      - "templates/android-rust/**"
       - "scripts/**"
       - "Cargo.toml"
       - "Cargo.lock"

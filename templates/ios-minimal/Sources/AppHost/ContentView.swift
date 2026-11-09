@@ -1,37 +1,44 @@
 @preconcurrency import ForgeFFI
+@preconcurrency import ForgeKit
 import SwiftUI
+
+/// The app's root. ForgeKit's `ForgeRoot` shows a spinner while the Rust
+/// core opens, the list once it has, or a recovery screen if it failed.
+public struct ContentView: View {
+    @Bindable private var host: ForgeHost<AppCore>
+
+    public init(host: ForgeHost<AppCore>) {
+        self.host = host
+    }
+
+    public var body: some View {
+        ForgeRoot(host) { core in
+            ItemsScreen(core: core, changes: host.changes)
+        }
+    }
+}
 
 /// The app's only screen: the list, a field to add to it, tap to tick an
 /// item off, swipe to delete. Every control has an accessibility identifier
 /// (`screen.element`) so UI tests can find it.
-public struct ContentView: View {
-    @State private var model = ItemsModel()
+private struct ItemsScreen: View {
+    @State private var model: ItemsModel
     @State private var newTitle = ""
+    let changes: UInt64
 
-    public init() {}
+    init(core: AppCore, changes: UInt64) {
+        _model = State(initialValue: ItemsModel(core: core))
+        self.changes = changes
+    }
 
-    public var body: some View {
+    var body: some View {
         NavigationStack {
-            Group {
-                switch model.phase {
-                case .loading:
-                    ProgressView()
-                case .ready:
-                    list
-                case .failed(let message):
-                    ContentUnavailableView {
-                        Label("Can't Open the List", systemImage: "exclamationmark.triangle")
-                    } description: {
-                        Text(message)
-                    } actions: {
-                        Button("Try Again") { Task { await model.open() } }
-                            .accessibilityIdentifier("items.retry")
-                    }
-                }
-            }
-            .navigationTitle("FORGE_APP_NAME")
+            list
+                .navigationTitle("FORGE_APP_NAME")
         }
-        .task { await model.open() }
+        // Rust committed a change, or the app came back from the
+        // background: show what Rust holds now.
+        .onChange(of: changes) { model.reload() }
         .alert(
             "Something Went Wrong",
             isPresented: Binding(

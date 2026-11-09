@@ -159,6 +159,14 @@ impl<S: Send + 'static> Runtime<S> {
     ///
     /// Not cancellable once accepted. After `shutdown`, refused with
     /// `Stopped { kind: ShutDown }`.
+    ///
+    /// If iOS suspends the process mid-command, the command finishes on
+    /// resume. If the process is killed first, the command did not happen
+    /// (the caller never saw `Ok`), so the save inside it must be atomic
+    /// (`JsonFile`, `write_atomic`, an SQLite transaction): the file then
+    /// holds the previous state, never part of the new one. See
+    /// docs/app-model-review.md, "What the runtime guarantees when iOS
+    /// suspends or ends the process".
     pub fn command<T, E, F>(
         &self,
         name: &'static str,
@@ -273,6 +281,13 @@ impl<S: Send + 'static> Runtime<S> {
             }
             future.await
         }
+    }
+
+    /// The lifecycle the runtime follows, for framework parts that watch it
+    /// (`forge_devtools::DevTools::start`). Apps report phases with
+    /// `set_phase`, not through this.
+    pub fn lifecycle(&self) -> &Lifecycle {
+        &self.lifecycle
     }
 
     /// The last committed revision.

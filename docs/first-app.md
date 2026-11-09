@@ -43,15 +43,18 @@ Open `rust/src/lib.rs`. `AppCore` is the app; each `pub` method in its `#[uniffi
 ```rust
     /// Removes every ticked item. Returns the new list.
     pub async fn clear_done(&self) -> Result<Vec<Item>, AppError> {
-        self.change(|saved| {
-            saved.items.retain(|i| !i.done);
-            Ok(())
-        })
-        .await
+        self.rt
+            .command("clear-done", |state| {
+                state.change(|saved| {
+                    saved.items.retain(|i| !i.done);
+                    Ok(())
+                })
+            })
+            .await
     }
 ```
 
-`change` does the work every command shares: it applies your edit to a copy of the list, saves the copy to `items.json` on a background thread, and keeps it only if saving worked. The method is `async` because saving touches the disk; Swift will `await` it without freezing the screen.
+`rt.command` runs it on the app's command thread, after every change sent before it, so two taps can never race. `change` does the work every command shares: it applies your edit to a copy of the list, saves the copy to `items.json`, and keeps it only if saving worked. Once the command returns `Ok`, the runtime tells the Swift host that the list changed. The method is `async` because saving touches the disk; Swift will `await` it without freezing the screen.
 
 Add a test at the bottom, inside `mod tests`:
 

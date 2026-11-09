@@ -17,9 +17,10 @@ Everything here builds with xtool on Linux. Nothing requires a Mac.
 
 ```
 Sources/AppHost/
+  AppHost.swift           makeAppHost(): ForgeKit's ForgeHost for this app's Rust core
   NotesModel.swift        @Observable model: state the screens read, async actions that call Rust
   Note+Display.swift      Identifiable conformance and display helpers for the Rust record
-  ContentView.swift       root: owns the model, opens Rust, switches between loading, ready and failed
+  ContentView.swift       root: ForgeRoot shows loading, the notes, or a recovery screen; owns the model
   NoteListView.swift      screen 1 (NavigationStack, search, swipe actions, empty states)
   NoteDetailView.swift    screen 2 (edit in place, delete with confirmation)
   ComposeNoteView.swift   sheet (Form, Cancel and Add, focus, validation)
@@ -33,7 +34,7 @@ Keep each screen in its own file, named after what it shows. Put the model in it
 
 ### The model
 
-Keep the view model in its own files that import only Foundation and Observation (plus `ForgeFFI`), never SwiftUI or UIKit, and keep SwiftUI-only helpers (such as mapping `ScenePhase`) in view files. Then `forge check swift` can compile the model and run its tests on Linux without the iOS SDK. That is where most Swift–Rust boundary mistakes show up. The starter follows this rule.
+Keep the view model in its own files that import only Foundation and Observation (plus `ForgeFFI` and `ForgeKit`), never SwiftUI or UIKit, and keep SwiftUI-only helpers (such as mapping `ScenePhase`) in view files. Then `forge check swift` can compile the model and run its tests on Linux without the iOS SDK. That is where most Swift–Rust boundary mistakes show up. The starter follows this rule.
 
 The minimum deployment target is iOS 17, so models use the Observation framework:
 
@@ -41,11 +42,13 @@ The minimum deployment target is iOS 17, so models use the Observation framework
 @Observable
 @MainActor
 public final class NotesModel {
-    public private(set) var phase: Phase = .loading   // loading, ready, failed(String)
     public private(set) var notes: [Note] = []        // Rust's list, as last reported
     public var searchText = ""
     public var actionError: String?                   // shown by an alert
-    public private(set) var core: AppCore?
+    public let core: AppCore                          // opened by ForgeHost
+
+    public init(core: AppCore) { self.core = core; notes = core.notes() }
+    public func reload() { notes = core.notes() }     // when host.changes moves
     ...
 }
 ```
@@ -59,38 +62,38 @@ Don't use `ObservableObject` and `@Published` in new code. The older examples (C
 
 ### Opening Rust and the loading state
 
-Open the Rust core once, from the root view's `.task`, off the main actor:
+ForgeKit's `ForgeHost` opens the Rust core once per process, off the main actor. Make it once, in the `App`, and report the lifecycle to it there:
 
 ```swift
-.task { await model.open() }   // open() returns at once if already open
-```
-
-```swift
-let core = try await Task.detached { try AppCore(storageDirectory: directory) }.value
-let events = try core.events()   // subscribe before the first read, so no change is missed
-notes = core.notes()
-phase = .ready
-```
-
-The root view switches on `phase`. Show a bare `ProgressView()` while loading, because opening normally takes milliseconds and a label would only flash. If opening fails, show a `ContentUnavailableView` with a Try Again button. Opening fails when the data is unreadable or came from a newer build, and Rust leaves such files untouched, so a retry is safe.
-
-### Events from Rust
-
-Rust publishes changes as events, so the screen updates no matter where a change came from. Keep a single loop that runs for the model's lifetime:
-
-```swift
-eventTask = Task { [weak self] in
-    while let event = await events.next() {
-        guard let self else { return }
-        switch event {
-        case .notesChanged(let notes): self.notes = notes
-        case .eventsDropped: if let core = self.core { self.notes = core.notes() }
-        }
+@main
+struct MyApp: App {
+    @State private var host = makeAppHost()           // AppHost.swift
+    init() {
+        #if canImport(UIKit)
+        ForgeLifecycle.attach(host)                   // active, inactive, background, terminate
+        #endif
     }
+    var body: some Scene { WindowGroup { ContentView(host: host) } }
 }
 ```
 
-After a command succeeds, also read the state directly (`notes = core.notes()`). The screen then changes in the same frame as the tap, and the event that arrives a moment later carries the same list.
+The root view hands the host to `ForgeRoot`, which shows a bare `ProgressView()` while loading (opening normally takes milliseconds, so a label would only flash), the app once the core is open, and a recovery screen with Try Again if opening failed. Opening fails when the data is unreadable, came from a newer build, or is held by another copy of the core, and Rust leaves such files untouched, so a retry is safe. The screen's model is made with the open core and lives as long as it:
+
+```swift
+ForgeRoot(host) { core in
+    NotesScreen(core: core, changes: host.changes)    // @State model = NotesModel(core: core)
+}
+```
+
+### Changes from Rust
+
+Rust raises its revision after each command it has saved, and `ForgeHost` runs the event loop: when Rust commits a change (from any screen, or from Rust itself), when events were dropped, or when the app comes back from the background, `host.changes` moves. The screen re-reads:
+
+```swift
+.onChange(of: changes) { model.reload() }
+```
+
+After a command succeeds, the model also reads the state directly (`notes = core.notes()`), so the screen changes in the same frame as the tap. Reads are cheap: Rust hands over its published list without waiting for a command.
 
 ### Records in SwiftUI
 

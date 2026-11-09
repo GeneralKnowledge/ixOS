@@ -1,6 +1,6 @@
 # What is an ixOS application? (app model review)
 
-Review of `629c501` (main, 2026-11-09), done for Reuben's question "do these pieces form a usable application framework, or a collection of Rust libraries, Swift adapters and build tooling that happen to produce an iOS app?". It has two parts: an [assessment of the current code](#part-1-assessment) and a [proposed canonical application model](#part-2-the-canonical-ixos-application) with a [phased plan](#part-3-phased-plan). Nothing in it is implemented.
+Review of `629c501` (main, 2026-11-09), done for Reuben's question "do these pieces form a usable application framework, or a collection of Rust libraries, Swift adapters and build tooling that happen to produce an iOS app?". It has two parts: an [assessment of the current code](#part-1-assessment) and a [proposed canonical application model](#part-2-the-canonical-ixos-application) with a [phased plan](#part-3-phased-plan). **Status:** phases 0 and 1 are done and merged (PR #141): `crates/forge-app`, ForgeKit (`forgekit/`, released as [GeneralKnowledge/ForgeKit](https://github.com/GeneralKnowledge/ForgeKit) 0.3.0) and the Checklist example; see [Phase 1 result](#phase-1-result). The assessment below describes the code as it was before them.
 
 It builds on the [foundation review](foundation-review.md) (PR #129, fixes in #133) and does not repeat it. That review audited the primitives (storage, runtime, services) and found them sound but unowned. This one looks one level up: the application those primitives are supposed to add up to, as `forge init` generates it and as the demos built it. Finding ids from the earlier review (R1, S5, F4, ...) are referenced, not restated.
 
@@ -369,6 +369,27 @@ Each phase is small enough to review on its own and ends with something running.
 - *Android.* Keep it building: `forge-app` is plain Rust apart from its UniFFI component, and the Kotlin host keeps its current shape until Android is picked up again.
 
 **Phase 0 result (2026-11-09).** All three experiments worked: shared UniFFI types across two Swift modules, ForgeKit consumed as a versioned package, and an app built with the Forge checkout deleted, on Linux and macOS including an unsigned iOS build. Details and the six things they found are in [spikes/phase0/RESULTS.md](../spikes/phase0/RESULTS.md). The shared-types design (`forge-app` as a UniFFI component) is therefore the one to build; the `app_shell!` fallback is not needed.
+
+### Phase 1 result
+
+Done 2026-11-09 (PR #141, merged as `51c6e28`).
+
+- **`crates/forge-app`**: the runtime. One serial command thread per core; commands that save before the revision rises and `Changed` is sent; `Published` snapshots for queries; foreground and lifetime work with cancellation from the host; lifecycle phases; non-blocking shutdown; error kinds; the data-directory lock; the contract version; `export_runtime!`.
+- **ForgeKit**: `forgekit/` is its only source. `scripts/forgekit.sh` generates its contract bindings from `forge-app`, checks them and the contract versions, and releases into the [ForgeKit repository](https://github.com/GeneralKnowledge/ForgeKit), which holds releases only.
+- **Checklist** (`examples/checklist`): a usable app on both. Its Swift tests drive the real core (lifecycle, cancellation, shutdown, one core per data directory). The `app-model` workflow runs them on Linux and macOS, builds the app for iOS, and builds it outside the checkout against the published ForgeKit.
+- xtool built the phase 0 app on the Linux laptop (108 s). No phone run yet.
+- Not yet: `forge init` still generates the old architecture (phase 3 work, next).
+
+Decision 4 below is settled: Forge is distributed by git, and ForgeKit is its own repository (Reuben, 2026-11-09).
+
+### What the runtime guarantees when iOS suspends or ends the process
+
+- **A command is committed when its call returns `Ok`.** Whatever it saved is on disk before the revision rises and `Changed` is sent. A command is not cancellable once accepted.
+- **Suspension** freezes the process, command thread included. A command in the middle of running finishes when the app resumes.
+- **Termination** of a suspended app comes without notice (`willTerminate` is not guaranteed). A command that had not finished did not happen: its caller never got `Ok`. Because an app's save must be atomic (`forge_storage::JsonFile` and `write_atomic` are, and so are SQLite transactions), the file holds the previous state, never part of the new one.
+- So an app can lose the command in flight, but never data it was told was saved, and never gets a torn file.
+- **Not yet covered:** asking iOS for time to finish (`beginBackgroundTask`, the "finishing" scope) is phase 2, and work that must outlive the process (the "durable" scope) is phase 4. Until then, a command started just before the app goes to the background is lost if iOS kills the app while it is suspended.
+- **`shutdown()`** refuses new commands and stops running work. It lets commands already accepted finish on the command thread, and does not wait for them.
 
 **Decisions for Reuben.**
 

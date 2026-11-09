@@ -16,6 +16,7 @@ public let forgeKitContractVersion: UInt32 = 1
 public protocol ForgeCore: AnyObject {
     func setPhase(phase: AppPhase)
     func events() -> RuntimeEvents?
+    func revision() -> UInt64
     func shutdown()
 }
 
@@ -71,6 +72,9 @@ public final class ForgeHost<Core: ForgeCore> {
         case loading
         case ready
         case failed(String)
+        /// Shut down (the app is terminating, or `close()` was called).
+        /// `start()` opens the core again.
+        case closed
     }
 
     public private(set) var status: Status = .loading
@@ -131,7 +135,7 @@ public final class ForgeHost<Core: ForgeCore> {
             if let stream { listen(to: stream) }
             if phase != .launching { core.setPhase(phase: phase) }
             status = .ready
-            changes &+= 1
+            reconcile()
         } catch {
             status = .failed(ForgeErrors.describe(error))
         }
@@ -155,7 +159,16 @@ public final class ForgeHost<Core: ForgeCore> {
         listener?.cancel()
         core?.shutdown()
         stream = nil
+        listener = nil
         core = nil
+        status = .closed
+    }
+
+    /// Takes the revision from Rust, after anything that may have skipped
+    /// a `Changed` (dropped events, a resume), so `revision` is never stale.
+    private func reconcile() {
+        if let core { revision = core.revision() }
+        changes &+= 1
     }
 
     private func listen(to stream: RuntimeEvents) {
@@ -167,9 +180,9 @@ public final class ForgeHost<Core: ForgeCore> {
                     self.revision = revision
                     self.changes &+= 1
                 case .eventsDropped:
-                    self.changes &+= 1
+                    self.reconcile()
                 case .phaseChanged(_, let resumed):
-                    if resumed { self.changes &+= 1 }
+                    if resumed { self.reconcile() }
                 }
             }
         }

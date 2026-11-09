@@ -6,7 +6,7 @@ Versions this repository is built and tested with. If something does not build, 
 - **CI** means a GitHub Actions job exercises it on every pull request.
 - **Installed only** means the tool was installed and its basic commands run, but the full device flow has not been verified with it.
 
-Last updated: 2026-11-06. Update this page in the same PR as any version bump.
+Last updated: 2026-11-09. Update this page in the same PR as any version bump.
 
 ## Rust and FFI
 
@@ -57,7 +57,7 @@ Android is **work in progress** ([roadmap](roadmap.md#android--work-in-progress)
 | Combination | Problem | Status |
 |-------------|---------|--------|
 | AGP 9.x / Gradle 9.x | Broke the Android CI build; rolled back in the example and template | Migration paused while Android is work in progress, see [roadmap.md](roadmap.md#agp--gradle-stabilization--paused) |
-| `cargo-platform` > 0.3.2 | Raises its MSRV above 1.88 | Held at 0.3.2 in `Cargo.lock` |
+| `cargo-platform` > 0.3.2 | 0.3.3 needs Rust 1.91, above the 1.89 MSRV | Held at 0.3.2 in `Cargo.lock` |
 | Windows hosts | Scripts are bash; not tested | Not supported |
 
 ## Reporting a version that works (or does not)

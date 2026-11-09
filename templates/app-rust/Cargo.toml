@@ -1,5 +1,5 @@
 # This app's Rust library: its logic, state, persistence and networking, and the
-# UniFFI API the SwiftUI and Compose hosts call. Edit freely; `forge build`
+# UniFFI API the SwiftUI app calls. Edit freely; `forge build`
 # rebuilds it and regenerates the bindings.
 [package]
 name = "app-core"
@@ -15,7 +15,13 @@ name = "forge_ffi"
 crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
-# Forge's runtime crates, from the Forge checkout this app was created with.
+# The Forge framework. `forge init` pins every Forge crate to one framework
+# release (git, at the ixOS commit that release was made from), matching the
+# ForgeKit version in Package.swift; apps made inside a Forge checkout with
+# unreleased changes use the checkout's crates instead.
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "FORGE_WORKSPACE/crates/forge-app" }
 forge-runtime = { path = "FORGE_WORKSPACE/crates/forge-runtime" }
 forge-storage = { path = "FORGE_WORKSPACE/crates/forge-storage" }
 forge-net = { path = "FORGE_WORKSPACE/crates/forge-net", features = ["ureq"] }

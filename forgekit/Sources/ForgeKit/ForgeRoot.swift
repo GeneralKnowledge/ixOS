@@ -19,6 +19,8 @@ public struct ForgeRoot<Core: ForgeCore, Content: View>: View {
                 ProgressView()
             case .ready:
                 if let core = host.core { content(core) }
+            case .closed:
+                Color.clear
             case .failed(let message):
                 ContentUnavailableView {
                     Label("Can't Open", systemImage: "exclamationmark.triangle")

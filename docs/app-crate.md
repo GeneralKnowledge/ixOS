@@ -6,7 +6,7 @@ Every app made with `forge init` has its own Rust crate in `rust/`. Your logic, 
 MyApp/
   forge.toml           # [rust] path = "rust"
   rust/
-    Cargo.toml         # your dependencies; Forge crates by path
+    Cargo.toml         # your dependencies; Forge crates pinned to a release (or by path, see project-generation.md)
     Cargo.lock         # copied from the Forge checkout, so you start on tested versions
     src/lib.rs         # your API: #[uniffi::export], records, errors, events
   Generated/           # Swift or Kotlin bindings, rewritten by forge build / bindings generate
@@ -29,42 +29,31 @@ forge build android --install                # debug APK on a connected Android 
 
 ## What the starter shows
 
-`rust/src/lib.rs` is a small notes app. Each part is a pattern you will need, so replace them one at a time:
+`rust/src/lib.rs` is a small notes app on the ixOS application runtime, [`forge_app`](../crates/forge-app/src/lib.rs) ([app-model-review.md](app-model-review.md)). Each part is a pattern you will need, so replace them one at a time:
 
 | Pattern | In the starter | Forge piece |
 |---------|----------------|-------------|
-| An object the host creates once | `AppCore::new(storage_directory)` | `#[derive(uniffi::Object)]` |
+| An object the host creates once per process, on a data folder only it can hold | `AppCore::new(storage_directory)` | `#[derive(uniffi::Object)]`, [`forge_app::DataDirectory`](../crates/forge-app/src/runtime.rs) |
 | State that survives restarts, with a schema version | `notes.json` via `JsonFile` | [`forge_storage::JsonFile`](../crates/forge-storage/src/json_file.rs) |
-| `async` commands that never block the UI thread | `add_note`, `delete_note`, `check_url` | [`forge_runtime::background`](../crates/forge-runtime/src/background.rs) |
-| Typed errors, the same cases on both platforms | `AppError` | `#[derive(uniffi::Error)]` |
-| Events the host subscribes to | `events()` → `AppEvents.next()` | [`forge_runtime::EventHub`](../crates/forge-runtime/src/events.rs); `AppEvents` from `app_shell!` |
+| Commands: one at a time, in order, each saved before it returns; then the revision rises and the host hears `Changed` | `add_note`, `update_note`, `delete_note` | [`Runtime::command`](../crates/forge-app/src/runtime.rs) |
+| Queries that never wait for a command | `notes`, `search_notes` | [`forge_app::Published`](../crates/forge-app/src/published.rs) |
+| Work that is not a command, stopped by the background, the host or shutdown | `check_url(url, cancellation)` | `Runtime::foreground` + `Runtime::run`, `Cancellation`, `HttpClient::send_cancellable` |
+| Typed errors, each with a framework kind ForgeKit can present | `AppError`, `app_error_kind` | `#[derive(uniffi::Error)]`, `forge_app::ErrorKind`, `From<Stopped>` |
+| Lifecycle, events, revision and shutdown | `forge_app::export_runtime!(AppCore, rt)` | `set_phase`, `events`, `revision`, `shutdown` on `AppCore` |
 | HTTPS with the OS's certificate checks | `check_url` | [`forge_net::UreqClient`](../crates/forge-net/src/ureq_client.rs) |
-| A request the host can stop part way | `check_url(url, cancellation)`, `Cancellation` (from `app_shell!`) | [`forge_runtime::background_cancellable`](../crates/forge-runtime/src/background.rs), `HttpClient::send_cancellable` |
-| The app lifecycle: launch, foreground, inactive, background, resume, terminate | `set_phase(phase)`, `AppPhase` (from `app_shell!`), `PhaseChanged` | [`forge_runtime::Lifecycle`](../crates/forge-runtime/src/lifecycle.rs) |
-| Shutdown that refuses new work, stops requests and ends streams | `shutdown()` | `CancelHandle`, `EventHub::close` |
-| Logging to logcat (Android) and the system log (iOS), recent records kept for diagnostics, panics logged | `logging::init()` in `AppCore::new`, `logging::info!`; Swift writes the same log with `ForgeLog("Notes").warn(...)` because the crate calls `forge_runtime::log_export!()` | [`forge_runtime::logging`](../crates/forge-runtime/src/logging.rs), [`ForgeLog.swift`](../crates/forge-runtime/swift/ForgeLog.swift) |
+| Logging to the system log, recent records kept for diagnostics, panics logged | `logging::init()` in `AppCore::new`, `logging::info!`; Swift writes the same log with `ForgeLog("Notes").warn(...)` because the crate calls `forge_runtime::log_export!()` | [`forge_runtime::logging`](../crates/forge-runtime/src/logging.rs), [`ForgeLog.swift`](../crates/forge-runtime/swift/ForgeLog.swift) |
 | Native iOS services: Keychain, app directories, notifications, permissions, sharing, deep links | `forge_services::native_services!()` adds `crate::native`; the iOS host installs it with `AppServices.install()` | [`forge-services`](../crates/forge-services/src/lib.rs), [native-services.md](native-services.md) |
 
-The types every app repeats come from one macro, so each app keeps only what is its own:
+The Swift side is ForgeKit (`forgekit/`, released as the `ForgeKit` package). `Sources/AppHost/AppHost.swift` makes the app's `ForgeHost`, which opens the core once per process off the main thread, reports the application lifecycle (`ForgeLifecycle.attach`), runs the event loop, and moves `host.changes` when Rust commits a change or the app comes back from the background; the screens then re-read. `NotesModel.swift` only presents: it awaits commands and maps `AppError` to text. Its tests (`Tests/AppHostTests`) drive the model and the host against the real Rust library, not mocks, and `forge check swift` runs them on Linux.
 
-```rust
-forge_runtime::app_shell! {
-    phase: AppPhase,                             // enum AppPhase <-> forge_runtime::Phase
-    cancellation: Cancellation,                  // new(), cancel(); Rust reads `.handle`
-    events: AppEvents(AppEvent::EventsDropped),  // next(), cancel(); AppEvents::subscribe(&hub)
-}
-```
-
-Each line is optional and the names are the app's, so its Swift and Kotlin API reads the same as if it were written by hand. The logic stays in plain Rust (`Lifecycle`, `CancelHandle`, `Subscription`); the macro only emits the UniFFI wrappers. `forge_runtime::lock` (a mutex lock that survives poisoning) and `forge_runtime::now_ms` cover the two helpers every app also wrote. Chat and Pocket Library use it too.
-
-The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src/main/java/.../NotesViewModel.kt` and `AppLifecycle.kt`) show the matching Swift and Kotlin side: open once, subscribe before reading, await commands, map `AppError` to text. Their tests run against the real Rust library, not mocks.
+Android keeps its own starter crate (`templates/android-rust`), from before the runtime: it uses `forge_runtime::app_shell!` for `AppPhase`, `Cancellation` and `AppEvents`, and its Kotlin host (`NotesViewModel.kt`, `AppLifecycle.kt`) opens, subscribes and reports phases itself. Android is work in progress and gets no new features.
 
 ## Rules that keep it working
 
 - **Keep the library name.** `[lib] name = "forge_ffi"` and `uniffi::setup_scaffolding!("forge_ffi")` fix the native library name (`libforge_ffi.a` / `.so`), the Swift module (`ForgeFFI`) and the Kotlin package (`uniffi.forge_ffi`) that the host projects and build scripts expect. Rename the package (`app-core`) as you like.
 - **Keep `uniffi` pinned** to the version Forge's `uniffi-bindgen` uses (`=0.32.2` today; see [compatibility.md](compatibility.md)). A different version generates bindings that fail their checksum check at startup.
 - **Keep `forge-runtime` as a dependency** on Android: it carries the JNI entry point behind `ForgeAndroid.init(context)`, without which HTTPS requests fail with `TlsNotInitialised` ([android-setup.md](android-setup.md#https-certificate-verification)).
-- **Do blocking work in `background`.** An exported `async fn` runs on whatever thread polls it; file and network calls belong in `background(...)`. Plain (non-async) exports run on the caller's thread, which is the UI thread when the host calls them from a view.
+- **Save in commands, block elsewhere off the caller's thread.** An exported `async fn` runs on whatever thread polls it. Changes that save go through `rt.command`, which runs them on the command thread; other slow work goes through `rt.run` (or `forge_runtime::background` in a crate without the runtime). Plain (non-async) exports run on the caller's thread, which is the UI thread when the host calls them from a view, so keep them to reads of `Published` state.
 - **Errors carry `reason`, not `message`.** A field named `message` clashes with Kotlin's `Throwable.message`.
 - The FFI rules for the whole project are in [ffi-policy.md](ffi-policy.md).
 
@@ -77,9 +66,9 @@ The hosts (`Sources/AppHost/NotesModel.swift` and `AppLifecycle.swift`, `app/src
 
 DNS lookup and the TCP connect itself are not interrupted; the request timeout bounds them.
 
-**Shutdown.** `shutdown()` refuses new commands, cancels every request in flight (they fail with `ShutDown`), and ends every event stream. Saves already running finish, so a write is never cut short. Each command saves before it returns, so nothing is lost when the process is killed afterwards. The Android host calls `close()` from `ViewModel.onCleared`. The iOS host keeps one model for the life of the app.
+**Shutdown.** `shutdown()` refuses new commands, cancels every request in flight (they fail with `ShutDown`), and ends every event stream. Saves already running finish, so a write is never cut short. Each command saves before it returns, so nothing is lost when the process is killed afterwards. The Android host calls `close()` from `ViewModel.onCleared`. On iOS, ForgeKit's host keeps the core for the life of the process and calls `shutdown()` on `Terminated` or `host.close()`. What happens to a command when iOS suspends or ends the process is in [app-model-review.md](app-model-review.md#what-the-runtime-guarantees-when-ios-suspends-or-ends-the-process).
 
-**One instance per storage directory.** Two `AppCore`s on the same folder would each overwrite the other's `notes.json`. The hosts create one instance and share it. Instances on different folders are independent; the starter's tests check this.
+**One instance per storage directory.** Two `AppCore`s on the same folder would each overwrite the other's `notes.json`. The iOS core holds its folder with `DataDirectory`, so a second one fails with `InUse` until the first is released; the hosts create one instance and share it. Instances on different folders are independent; the starter's tests check this.
 
 **The app lifecycle.** The host reports where the app is with one call, `set_phase(phase)`, and Rust decides what that means. The starter's hosts already do this, so a new app gets it for free:
 
@@ -91,12 +80,12 @@ DNS lookup and the TCP connect itself are not interrupted; the request timeout b
 | `Background` | `scenePhase == .background` | `onStop`, unless the activity is only rotating | stops requests started on screen; they fail with `Interrupted` |
 | `Terminated` | `willTerminateNotification` | (the view model's `onCleared` calls `close()`) | `shutdown()` |
 
-On the way back from `Background`, Rust sends `PhaseChanged { resumed: true }` on the event stream, and the starter hosts re-read the notes. That is where an app refreshes data that may have changed while it was away and restarts work the background stopped (a live stream, a poll). Repeated reports are ignored, and nothing after `Terminated` counts.
+On the way back from `Background`, Rust sends `PhaseChanged { resumed: true }` on the event stream, and the starter hosts re-read the notes (on iOS, `ForgeHost` moves `changes`). That is where an app refreshes data that may have changed while it was away and restarts work the background stopped (a live stream, a poll). Repeated reports are ignored, and nothing after `Terminated` counts.
 
-- **iOS:** `ContentView` attaches `.forgeLifecycle { model.setPhase($0) }` (in `AppLifecycle.swift`). It reports the scene phase the view appears in, every change, and `willTerminate`.
+- **iOS:** the `App` calls `ForgeLifecycle.attach(host)` (ForgeKit). It reports the application's active, inactive and background notifications, and `willTerminate`.
 - **Android:** `MainActivity` calls `reportLifecycle { model.setPhase(it) }` (in `AppLifecycle.kt`). It ignores the `onStop` of a rotation, so a request survives turning the phone.
 
-In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes. `lifetime()` is cancelled on `Terminated`. `foreground()` is cancelled on `Background` and renewed on resume. Run work that only makes sense on screen under `lifecycle.foreground().child()`, as `check_url` does. Run work that should finish anyway under the lifetime, or keep it short: iOS suspends a backgrounded app within seconds. `lifecycle.subscribe()` lets code on other threads follow changes.
+In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes, and `forge_app::Runtime` exposes them as work scopes. `lifetime` is cancelled on `Terminated`. `foreground` is cancelled on `Background` and renewed on resume. Run work that only makes sense on screen with `rt.foreground(…)`, as `check_url` does (Android's crate: `lifecycle.foreground().child()`). Run work that should finish anyway under the lifetime, or keep it short: iOS suspends a backgrounded app within seconds. `lifecycle.subscribe()` lets code on other threads follow changes.
 
 Do not rely on `Terminated` to save anything. iOS sends `willTerminate` only when it ends an app that is still running, not one it has suspended, and either OS may kill a background process without notice. The starter saves before each command returns, so it loses nothing either way.
 

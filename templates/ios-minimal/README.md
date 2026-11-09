@@ -21,7 +21,7 @@ The first time, `forge run ios` explains the one-time steps on the phone (Trust,
 | Make a button do something new | Add a method to `AppCore` (Rust), call it from `ItemsModel.swift`, add the button in `ContentView.swift` |
 | Add a screen | A new `View` file in `Sources/AppHost/`, opened from `ContentView` with a `NavigationLink` or `.sheet` |
 
-Rust owns the state and the rules; Swift shows them. `ItemsModel.swift` is the bridge: it calls Rust and keeps what the screen shows. It imports no SwiftUI, so `forge check swift` compiles and tests it on Linux in seconds.
+Rust owns the state and the rules; Swift shows them. Each change is a Rust command that saves before it returns, on the Forge application runtime; ForgeKit then tells the screen to re-read. `ItemsModel.swift` is the bridge: it calls Rust and keeps what the screen shows. It imports no SwiftUI, so `forge check swift` compiles and tests it on Linux in seconds.
 
 [docs/first-app.md](https://github.com/GeneralKnowledge/ixOS/blob/main/docs/first-app.md) in the Forge checkout walks through adding a feature to this app.
 
@@ -30,6 +30,7 @@ Rust owns the state and the rules; Swift shows them. `ItemsModel.swift` is the b
 | Path | What it is |
 |------|------------|
 | `rust/src/lib.rs` | The app's logic and saved data. Everything marked `#[uniffi::export]` is callable from Swift. |
+| `Sources/AppHost/AppHost.swift` | Opens the Rust core once per process (ForgeKit's `ForgeHost`) and follows the app lifecycle. |
 | `Sources/AppHost/ItemsModel.swift` | The view model: calls Rust, holds what the screen shows. |
 | `Sources/AppHost/ContentView.swift` | The screen. |
 | `Tests/AppHostTests/` | Tests of the view model against the real Rust core. |

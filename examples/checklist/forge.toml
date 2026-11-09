@@ -11,7 +11,7 @@ ios_device = true
 ios_simulator = false
 
 # Built on the application runtime (docs/app-model-review.md): forge-app in
-# rust/Cargo.toml and ForgeKit in Package.swift, both 0.3.0. (A `[forge]
+# rust/Cargo.toml and ForgeKit in Package.swift, from this checkout. (A `[forge]
 # version` key that tools check comes with phase 3.)
 
 [ui_test]

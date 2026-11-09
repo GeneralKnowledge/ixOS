@@ -64,6 +64,8 @@ final class ChecklistTests: XCTestCase {
 
         // Once the first is closed and released, the data can be opened again.
         first.close()
+        XCTAssertEqual(first.status, .closed)
+        XCTAssertNil(first.core)
         await second.start()
         XCTAssertEqual(second.status, .ready)
         second.close()
@@ -145,6 +147,8 @@ final class ChecklistTests: XCTestCase {
         await next.start()
         XCTAssertEqual(next.status, .ready)
         XCTAssertEqual(next.core?.items().map(\.title), ["Keep me"])
+        // A fresh core starts at revision 0; the host takes Rust's value.
+        XCTAssertEqual(next.revision, next.core?.revision())
         next.close()
     }
 }

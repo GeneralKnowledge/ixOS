@@ -6,7 +6,7 @@
 // release repository by hand.
 //
 // Apps outside this checkout depend on a release:
-//     .package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "0.3.0")
+//     .package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "<version>")
 // Examples inside the checkout use this folder: .package(path: "../../forgekit")
 import PackageDescription
 

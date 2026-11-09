@@ -4,7 +4,7 @@
 // reports the lifecycle and runs the event loop; nothing here is a copy of
 // framework code. Inside the checkout ForgeKit comes from ../../forgekit; an
 // app outside it uses the release:
-//     .package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "0.3.0")
+//     .package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "<version>")
 
 import Foundation
 import PackageDescription

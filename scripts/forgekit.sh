@@ -25,6 +25,14 @@ forge_app_version() {
 rust_contract() {
   sed -n 's/^pub const CONTRACT_VERSION: u32 = \([0-9]*\);.*/\1/p' "$CRATE/src/contract.rs"
 }
+# The ForgeKit repository. Overridable only so tests can release into a
+# throwaway repository.
+REPOSITORY="${FORGEKIT_REPOSITORY:-https://github.com/GeneralKnowledge/ForgeKit.git}"
+# github.com/Owner/Repo in any spelling (https, ssh, .git, case).
+normalise_remote() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' \
+    | sed -E 's#^(https?://|ssh://)?(git@)?##; s#^github\.com:#github.com/#; s#\.git/?$##; s#/$##'
+}
 swift_contract() {
   sed -n 's/^public let forgeKitContractVersion: UInt32 = \([0-9]*\).*/\1/p' "$KIT/Sources/ForgeKit/ForgeHost.swift"
 }
@@ -77,20 +85,46 @@ case "${1:-}" in
   release)
     DEST="${2:?usage: scripts/forgekit.sh release DIR}"
     check
-    # The release names the ixOS commit it came from, so it must be that commit.
+    # The release names the ixOS commit it came from, so it must be that
+    # commit, and one on ixOS main (a branch commit can vanish in a squash).
     if [[ -n "$(git status --porcelain -- forgekit crates/forge-app)" ]]; then
       echo "error: forgekit/ or crates/forge-app has uncommitted changes; commit them first" >&2
       exit 1
     fi
+    if [[ -z "${FORGEKIT_ALLOW_UNMERGED:-}" ]]; then
+      git fetch -q origin main
+      if ! git merge-base --is-ancestor HEAD origin/main; then
+        echo "error: HEAD is not on ixOS main; release from a merged commit" >&2
+        exit 1
+      fi
+    fi
     version="$(forge_app_version)"
-    [[ -d "$DEST/.git" ]] || { echo "error: $DEST is not a git clone of the ForgeKit repository" >&2; exit 1; }
-    if git -C "$DEST" rev-parse -q --verify "refs/tags/$version" >/dev/null; then
+
+    # DEST must be a clean clone of the ForgeKit repository: nothing else is
+    # ever overwritten.
+    if [[ "$(git -C "$DEST" rev-parse --show-toplevel 2>/dev/null)" != "$(cd "$DEST" 2>/dev/null && pwd -P)" ]]; then
+      echo "error: $DEST is not the top of a git clone" >&2
+      exit 1
+    fi
+    remote="$(git -C "$DEST" remote get-url origin 2>/dev/null || true)"
+    if [[ "$(normalise_remote "$remote")" != "$(normalise_remote "$REPOSITORY")" ]]; then
+      echo "error: $DEST's origin is '${remote:-none}', not $REPOSITORY; refusing to touch it" >&2
+      exit 1
+    fi
+    if [[ -n "$(git -C "$DEST" status --porcelain)" ]]; then
+      echo "error: $DEST has uncommitted changes; refusing to touch it" >&2
+      exit 1
+    fi
+    if git -C "$DEST" rev-parse -q --verify "refs/tags/$version" >/dev/null \
+      || [[ -n "$(git -C "$DEST" ls-remote --tags origin "refs/tags/$version" 2>/dev/null)" ]]; then
       echo "error: ForgeKit $version is already released; bump forge-app's version first" >&2
       exit 1
     fi
-    # The release is exactly forgekit/: replace everything but .git.
-    find "$DEST" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
-    cp -R "$KIT"/. "$DEST"/
+
+    # The release is exactly the committed forgekit/: remove the tracked
+    # files of the previous release, then unpack this one.
+    git -C "$DEST" rm -rq --ignore-unmatch -- . >/dev/null
+    git archive --format=tar HEAD:forgekit | tar -x -C "$DEST"
     source_rev="$(git rev-parse HEAD)"
     cat >"$DEST/RELEASE" <<INFO
 ForgeKit $version, contract $(rust_contract)

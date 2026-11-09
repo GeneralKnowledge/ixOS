@@ -6,14 +6,19 @@
 //! `#[uniffi::export]` can be called from Swift (`import ForgeFFI`);
 //! `forge run ios` rebuilds this crate and regenerates that Swift API.
 //!
-//! The full starter (`forge init` without `--minimal`) adds events,
-//! networking with cancellation, the app lifecycle, native services and
-//! logging from Swift. See docs/first-app.md and docs/app-crate.md.
+//! It runs on the ixOS application runtime (`forge_app`): each change is a
+//! **command** that runs on the runtime's command thread, one at a time, and
+//! saves before it returns; then the runtime tells the Swift host
+//! (ForgeKit's `ForgeHost`), which re-reads. The lifecycle and shutdown come
+//! from `forge_app::export_runtime!`.
+//!
+//! The full starter (`forge init` without `--minimal`) adds networking with
+//! cancellation, native services and logging from Swift. See
+//! docs/first-app.md and docs/app-crate.md.
 
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use forge_runtime::{background, lock};
+use forge_app::{DataDirectory, ErrorKind, OpenError, Published, Runtime, Stopped};
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +46,19 @@ pub enum AppError {
     /// The list could not be read or saved.
     #[error("storage error: {reason}")]
     Storage { reason: String },
+    /// Another copy of the app has the list open (one core per data folder).
+    #[error("the list is open in another copy of the app")]
+    InUse,
+    /// The app is shutting down and takes no more changes.
+    #[error("the app has been shut down")]
+    ShutDown,
+}
+
+/// How the runtime refuses a command after shutdown.
+impl From<Stopped> for AppError {
+    fn from(_: Stopped) -> Self {
+        Self::ShutDown
+    }
 }
 
 impl From<StorageError> for AppError {
@@ -51,6 +69,29 @@ impl From<StorageError> for AppError {
     }
 }
 
+impl From<OpenError> for AppError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::InUse { .. } => Self::InUse,
+            other => Self::Storage {
+                reason: other.to_string(),
+            },
+        }
+    }
+}
+
+/// The framework kind of an error, so ForgeKit can present any of them.
+#[uniffi::export]
+pub fn app_error_kind(error: AppError) -> ErrorKind {
+    match error {
+        AppError::InvalidInput { .. } => ErrorKind::Invalid,
+        AppError::NotFound { .. } => ErrorKind::NotFound,
+        AppError::Storage { .. } => ErrorKind::Internal,
+        AppError::InUse => ErrorKind::Unavailable,
+        AppError::ShutDown => ErrorKind::ShutDown,
+    }
+}
+
 /// What is written to `items.json`.
 #[derive(Serialize, Deserialize, Default, Clone)]
 struct Saved {
@@ -58,16 +99,40 @@ struct Saved {
     items: Vec<Item>,
 }
 
-/// The app. Swift creates one (`AppCore(storageDirectory:)`) and keeps it.
+/// What the command thread owns: the list and the file it is saved in.
+struct State {
+    saved: Saved,
+    file: JsonFile<Saved>,
+    published: Arc<Published<Vec<Item>>>,
+}
+
+impl State {
+    /// Applies `edit` to a copy of the list, saves the copy, and only then
+    /// keeps and publishes it, so a failed save changes nothing.
+    fn change(
+        &mut self,
+        edit: impl FnOnce(&mut Saved) -> Result<(), AppError>,
+    ) -> Result<Vec<Item>, AppError> {
+        let mut next = self.saved.clone();
+        edit(&mut next)?;
+        self.file.save(&next)?;
+        self.saved = next;
+        self.published.set(self.saved.items.clone());
+        Ok(self.saved.items.clone())
+    }
+}
+
+/// The app. ForgeKit's `ForgeHost` opens one per process and keeps it.
 #[derive(uniffi::Object)]
 pub struct AppCore {
-    saved: Arc<Mutex<Saved>>,
-    file: Arc<JsonFile<Saved>>,
+    rt: Runtime<State>,
+    items: Arc<Published<Vec<Item>>>,
 }
 
 #[uniffi::export]
 impl AppCore {
     /// Opens the list saved in `storage_directory`, or starts an empty one.
+    /// Fails with `InUse` if another core has that folder open.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
         // Rust's log goes to the phone's system log (`forge device logs`).
@@ -77,20 +142,25 @@ impl AppCore {
                 reason: "storage directory must not be empty".into(),
             });
         }
-        let file = JsonFile::new(
-            PathBuf::from(storage_directory).join("items.json"),
-            SAVE_VERSION,
-        );
-        let saved = file.load()?.unwrap_or_default();
+        let directory = DataDirectory::open(&storage_directory)?;
+        let file = JsonFile::new(directory.path().join("items.json"), SAVE_VERSION);
+        let saved: Saved = file.load()?.unwrap_or_default();
+        let items = Arc::new(Published::new(saved.items.clone()));
+        let state = State {
+            saved,
+            file,
+            published: Arc::clone(&items),
+        };
         Ok(Arc::new(Self {
-            saved: Arc::new(Mutex::new(saved)),
-            file: Arc::new(file),
+            rt: Runtime::with_directory("app-core", directory, state),
+            items,
         }))
     }
 
-    /// The list, in the order items were added. Quick: it reads memory only.
+    /// The list, in the order items were added. Quick: it never waits for a
+    /// command.
     pub fn items(&self) -> Vec<Item> {
-        lock(&self.saved).items.clone()
+        self.items.get().as_ref().clone()
     }
 
     /// Adds an item and saves. Returns the new list.
@@ -101,60 +171,50 @@ impl AppCore {
                 reason: "an item needs a title".into(),
             });
         }
-        self.change(move |saved| {
-            saved.next_id += 1;
-            saved.items.push(Item {
-                id: saved.next_id,
-                title,
-                done: false,
-            });
-            Ok(())
-        })
-        .await
+        self.rt
+            .command("add-item", move |state| {
+                state.change(|saved| {
+                    saved.next_id += 1;
+                    saved.items.push(Item {
+                        id: saved.next_id,
+                        title,
+                        done: false,
+                    });
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// Ticks an item off, or back on. Returns the new list.
     pub async fn toggle_item(&self, id: u64) -> Result<Vec<Item>, AppError> {
-        self.change(move |saved| {
-            let item = find(saved, id)?;
-            item.done = !item.done;
-            Ok(())
-        })
-        .await
+        self.rt
+            .command("toggle-item", move |state| {
+                state.change(|saved| {
+                    let item = find(saved, id)?;
+                    item.done = !item.done;
+                    Ok(())
+                })
+            })
+            .await
     }
 
     /// Removes an item. Returns the new list.
     pub async fn delete_item(&self, id: u64) -> Result<Vec<Item>, AppError> {
-        self.change(move |saved| {
-            find(saved, id)?;
-            saved.items.retain(|i| i.id != id);
-            Ok(())
-        })
-        .await
+        self.rt
+            .command("delete-item", move |state| {
+                state.change(|saved| {
+                    find(saved, id)?;
+                    saved.items.retain(|i| i.id != id);
+                    Ok(())
+                })
+            })
+            .await
     }
 }
 
-impl AppCore {
-    /// Applies `edit` to a copy of the list, saves the copy, and only then
-    /// keeps it, so a failed save changes nothing. Saving touches the disk,
-    /// so it runs on a background thread and Swift `await`s it.
-    async fn change<F>(&self, edit: F) -> Result<Vec<Item>, AppError>
-    where
-        F: FnOnce(&mut Saved) -> Result<(), AppError> + Send + 'static,
-    {
-        let saved = Arc::clone(&self.saved);
-        let file = Arc::clone(&self.file);
-        background("save", move || {
-            let mut current = lock(&saved);
-            let mut next = current.clone();
-            edit(&mut next)?;
-            file.save(&next)?;
-            *current = next;
-            Ok(current.items.clone())
-        })
-        .await
-    }
-}
+// events(), set_phase(), phase(), revision() and shutdown(), for ForgeKit.
+forge_app::export_runtime!(AppCore, rt);
 
 fn find(saved: &mut Saved, id: u64) -> Result<&mut Item, AppError> {
     saved
@@ -185,6 +245,7 @@ mod tests {
             ["Milk", "Bread"]
         );
         block_on(core.toggle_item(items[0].id)).unwrap();
+        assert_eq!(core.revision(), 3);
         drop(core);
 
         let reopened = open(&dir);
@@ -210,6 +271,8 @@ mod tests {
             block_on(core.delete_item(7)),
             Err(AppError::NotFound { id: 7 })
         );
+        // A refused change is not a change.
+        assert_eq!(core.revision(), 0);
     }
 
     #[test]
@@ -221,6 +284,22 @@ mod tests {
         let items = block_on(core.delete_item(items[0].id)).unwrap();
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].title, "b");
+        drop(core);
         assert_eq!(open(&dir).items(), items);
+    }
+
+    #[test]
+    fn one_core_per_folder_and_nothing_after_shutdown() {
+        let dir = tempfile::tempdir().unwrap();
+        let core = open(&dir);
+        assert_eq!(
+            AppCore::new(dir.path().to_string_lossy().into_owned()).err(),
+            Some(AppError::InUse)
+        );
+        core.shutdown();
+        assert_eq!(
+            block_on(core.add_item("late".into())),
+            Err(AppError::ShutDown)
+        );
     }
 }

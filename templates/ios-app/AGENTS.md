@@ -5,7 +5,7 @@ FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust
 ## Rules
 
 1. **Rust owns the state and the rules.** Validation, persistence, networking and anything worth testing go in `rust/src/`. Swift shows Rust's state and sends it commands; it does not re-implement rules.
-2. **The model stays free of UI frameworks.** `Sources/AppHost/NotesModel.swift` imports `ForgeFFI`, Foundation and Observation only. Keep it (and any new model file) that way, so it compiles and tests without the iOS SDK. SwiftUI and UIKit belong in view files.
+2. **The model stays free of UI frameworks.** `Sources/AppHost/NotesModel.swift` imports `ForgeFFI`, `ForgeKit`, Foundation and Observation only. Keep it (and any new model file) that way, so it compiles and tests without the iOS SDK. SwiftUI and UIKit belong in view files.
 3. **Accessibility identifiers on every interactive control,** named `screen.element` (for example `notes.add`, `compose.save`), plus a label a VoiceOver user understands. UI tests find controls by identifier, never by screen coordinates.
 4. **Native first.** Use SwiftUI's own navigation, lists, forms, sheets and SF Symbols. Support light and dark mode and Dynamic Type up to the largest accessibility size.
 5. **Never edit `Generated/`.** After changing what `rust/src/lib.rs` exports, run `forge bindings generate`.

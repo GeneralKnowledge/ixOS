@@ -59,6 +59,8 @@ CI runs, on Ubuntu, the Rust checks, binding drift, a fresh `forge init` app out
 ## Repository layout
 
 ```
+crates/forge-app       # The application runtime every new iOS app's core embeds: ordered commands that save, then announce; lifecycle; cancellation; shutdown (docs/app-model-review.md)
+forgekit/              # ForgeKit, its Swift half: hosts the Rust core, reports the lifecycle, runs the event loop. Released to GeneralKnowledge/ForgeKit
 crates/forge-storage   # Atomic file writes, versioned JSON documents, SQLite (feature `sqlite`)
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, lifecycle, app_shell!, logging, Android HTTPS init
@@ -69,6 +71,7 @@ crates/forge-devtools  # the live connection's server inside a development build
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-cli       # `forge` CLI
 crates/forge-mcp       # `forge mcp`: Forge as a local MCP server for coding agents (docs/forge-mcp.md)
+examples/checklist        # The first app on the runtime and ForgeKit
 examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/counter-android  # (Android, work in progress) Compose + Gradle app on the same Rust crate as examples/counter
@@ -76,7 +79,8 @@ examples/chat             # SwiftUI chat app: long-lived event stream, room subs
 examples/chat-android     # (Android, work in progress) The chat app in Compose (frozen at its early features, own rust/ crate)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
-templates/app-rust        # Starter Rust crate every new app gets as rust/ (see docs/app-crate.md)
+templates/app-rust        # Starter Rust crate every new iOS app gets as rust/, on forge-app (see docs/app-crate.md)
+templates/android-rust    # Android's starter crate (work in progress, the shape from before forge-app)
 templates/ios-app         # `forge init --platform ios`
 templates/android-app     # (Android, work in progress) `forge init --platform android`
 scripts/               # Toolchain and build scripts
@@ -125,7 +129,7 @@ Where each of these stands on a real iPhone is kept current in [docs/status.md](
 
 New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
 
-Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. `forge init` creates the app in `./<NAME>`, or under the workspace's `examples/` when run inside the checkout, unless you pass `--path <dir>`; an app created outside the checkout points its build files at the checkout by absolute path.
+Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. `forge init` creates the app in `./<NAME>`, or under the workspace's `examples/` when run inside the checkout, unless you pass `--path <dir>`; an iOS app created outside the checkout pins the Forge crates and ForgeKit to the release in `forge-release.toml` (or, while the checkout has unreleased framework changes, points at the checkout by absolute path; see docs/project-generation.md).
 
 ## Configuration
 
