@@ -17,6 +17,8 @@ let package = Package(
     products: [
         .executable(name: "SpikeApp", targets: ["AppHostLauncher"]),
         .library(name: "AppHost", targets: ["AppHost"]),
+        // What xtool builds: @main in a library product (xtool.yml).
+        .library(name: "SpikeAppXtool", targets: ["AppHostXtoolApp"]),
     ],
     dependencies: [
         // The framework version this app is built on: exact, with
@@ -43,6 +45,12 @@ let package = Package(
             name: "AppHost",
             dependencies: ["ForgeFFI", .product(name: "ForgeKit", package: "ForgeKit")],
             path: "Sources/AppHost",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .target(
+            name: "AppHostXtoolApp",
+            dependencies: ["AppHost", .product(name: "ForgeKit", package: "ForgeKit")],
+            path: "Sources/AppHostXtoolApp",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .executableTarget(
