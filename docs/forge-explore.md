@@ -34,7 +34,7 @@ It exits with an error when it found an error-severity issue (a crash, an unlabe
 | `--text ID=TEXT` | `Forge` | What to type into the field with that identifier |
 | `--skip ID_OR_LABEL` | | Never touch this control |
 | `--allow-destructive` | off | Also tap delete, remove, reset, sign out… (test data only) |
-| `--real-data` | off | Explore the data already on the phone, only looking: nothing that saves, edits, rates, types or changes a setting |
+| `--real-data` | off | Explore the data already on the phone, only looking: rows, tabs, back and cancel; nothing else unless forge.toml lists it in `[ui_test] real_data_safe` |
 | `--largest-text` | off | Launch at the largest accessibility text size (UIKit's own launch argument) |
 | `--appearance dark\|light` | the phone's | Launch in dark or light mode (`-ForgeAppearance`, which Forge apps honour from their root view; M6.3) |
 | `--launch-arg <ARG>` | none | One of the app's own launch arguments, after Forge's; repeat for more. For an app that can start past onboarding with sample data, so the walk reaches the rest of the app (seen on Cati: a Good Dog walk never left onboarding) |
@@ -81,9 +81,31 @@ An explorer that taps "Save", stars and "Mark as finished" changes whatever data
   ```
 
   The explorer passes them on every launch (and the replay files include them), so every launch starts from the same empty state. That also makes a seed repeat the same walk. With test data the explorer may save, add, edit, rate and type; destructive controls still need `--allow-destructive`. It is the app's job to honour the argument. Pocket Library uses an `Application Support/PocketLibrary-UITest` folder, emptied at launch, instead of `PocketLibrary` (`LibraryModel.testDataArgument`). Settings kept in `UserDefaults` (the selected tab, reader text size, voice) are not separated.
-- **`--real-data`**: for an app without a test-data mode, or to look at the person's real content. The walk only navigates and reads. It skips any control whose identifier or label contains a data word (save, add, create, new, edit, update, rename, set, apply, confirm, done, rate, star, favourite, like, bookmark, flag, pin, mark, checkmark, status, progress, finish, complete, read, reading, continue, resume, start, import, export, move, archive, restore, upload, download, record, sync, refresh). It also skips switches, sliders, steppers, pickers and segmented controls, typing into anything but a search field, and every destructive control. `--allow-destructive` is refused.
+- **`--real-data`**: for an app without a test-data mode, or to look at the person's real content. The walk is **read-only by an allow list**: it taps list rows, tab bar items, the navigation bar's back button and buttons labelled Back, Cancel, Close or Dismiss, and types only into search fields. Everything else is skipped, including a button no word list knows (an alert's "OK" after "Remove all?" is skipped, not tapped), links (they leave the app), switches, sliders, pickers and other fields. A row whose identifier or label contains a data word (save, add, edit, rate, star, mark, status, read, continue, start, import, sync, refresh and the rest of `DATA_CHANGING` in `explore.rs`) or a destructive word is skipped too. `--allow-destructive` is refused.
 
-Without either, the command stops and says which to add. The word list errs towards skipping, so `--real-data` explores less. That is the point.
+  A developer who knows a control changes nothing (a button that opens a sheet, a filter) can declare it in forge.toml. It is a reviewed line in the project, not an option an agent or a script passes at run time, and it never overrides the never-lists below:
+
+  ```toml
+  [ui_test]
+  real_data_safe = ["library.settings"]
+  ```
+
+Without either mode, the command stops and says which to add. On real data the walk explores less. That is the point: the word lists only add reasons to skip, and what decides is the allow list, so a control nobody thought of is skipped rather than tapped.
+
+### The policy in one table
+
+The same for a person at the terminal, a script, and `forge mcp` (which passes neither `--allow-destructive` nor typed text of its own). Every skipped control is listed in `explore.json` with its reason.
+
+| Control | Test data | `--real-data` |
+|---|---|---|
+| System services (dictation, camera, keyboard switcher, file picker), secure fields | never | never |
+| Acts outside the phone (send, pay, share, call, …) | never | never |
+| Destructive words (delete, remove, reset, sign out, …) | only with `--allow-destructive` | never |
+| Data words (save, add, edit, rate, …), switches, pickers, text fields | tapped / typed | never |
+| Rows, tabs, back, Back/Cancel/Close/Dismiss, search fields | tapped / typed | tapped / typed |
+| Any other control (an unknown button, "OK", a link) | tapped | skipped unless in `real_data_safe` |
+
+On test data the word lists are a courtesy, not the protection: the protection is that the data is throwaway, which depends on the app honouring `test_data_args`. Forge can't check that from outside, so the first walk of a new app should be watched (see phone check 0 below). The word lists are heuristics, not a security boundary.
 
 ## Safety
 
@@ -93,7 +115,7 @@ The explorer touches the app the way a curious person would, so it has a floor o
 - **Never** starts a system service: dictation (it turns the microphone on), the camera, the keyboard switcher (Next keyboard, globe, emoji) or the system file picker (import), which is another app's interface. This is matched as whole words in every mode.
 - **Only cancels** iOS's Shake to Undo alert ("Undo Typing"): it is the system's, and tapping its Undo once emptied a field the walk had filled (Good Dog on Cati, 2026-11-08).
 - **Never** types into secure fields, and **never** taps a control whose identifier or label (as whole words, camelCase split) says it acts outside the phone or on someone else: send, post, reply, pay, buy, purchase, checkout, subscribe, transfer, share, call, publish, submit, invite, follow, report, block, donate.
-- **Never changes the person's data**: see [Test data](#test-data).
+- **Never changes the person's data**: see [Test data](#test-data). On real data only navigation is tapped, by an allow list.
 - **Skips destructive controls** (delete, remove, erase, reset, clear, wipe, discard, trash, sign out, log out) unless `--allow-destructive`, which only works with test data.
 - Every skipped control is listed per screen in `explore.json` with the reason, so coverage gaps are visible.
 - Nothing typed is logged beyond the fixture text the person chose; trees and screenshots stay in the app's `.forge/runs`, which is not committed.

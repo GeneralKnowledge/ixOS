@@ -939,7 +939,10 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
     })?;
     let forge = crate::config::ForgeConfig::parse(&text)?;
     let bundle_id = forge.app.bundle_id;
-    let test_data_args = forge.ui_test.map(|u| u.test_data_args).unwrap_or_default();
+    let (test_data_args, real_data_safe) = forge
+        .ui_test
+        .map(|u| (u.test_data_args, u.real_data_safe))
+        .unwrap_or_default();
     // Never change the person's data: either the app starts on throwaway
     // data, or the walk only looks (seen on Cati 2026-11-08: a walk on a
     // real library rated a book and saved entries).
@@ -1003,6 +1006,7 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             args
         },
         test_data,
+        real_data_safe,
         fixtures,
         allow_destructive: options.allow_destructive,
         skip: options.skip.clone(),
@@ -1574,6 +1578,15 @@ mod tests {
             ..options()
         };
         assert!(!explore_config(dir.path(), &real).unwrap().test_data);
+        // Controls the developer declared safe on real data reach the walk.
+        std::fs::write(
+            dir.path().join("forge.toml"),
+            format!("{without}\n[ui_test]\nreal_data_safe = [\"library.settings\"]\n"),
+        )
+        .unwrap();
+        let config = explore_config(dir.path(), &real).unwrap();
+        assert!(!config.test_data);
+        assert_eq!(config.real_data_safe, vec!["library.settings".to_owned()]);
     }
 
     #[test]

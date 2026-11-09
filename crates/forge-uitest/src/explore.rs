@@ -58,6 +58,11 @@ pub struct Config {
     /// never touches anything that could change the person's own data, and
     /// destructive controls stay off whatever `allow_destructive` says.
     pub test_data: bool,
+    /// On the person's own data (`test_data` false), identifiers the app's
+    /// developer declared safe to tap besides navigation (`[ui_test]
+    /// real_data_safe` in forge.toml): a button that opens a sheet, say.
+    /// The never-lists (system services, outside the phone) still apply.
+    pub real_data_safe: Vec<String>,
     /// Identifiers or labels never to touch.
     pub skip: Vec<String>,
     /// At most this many controls tried per screen.
@@ -88,6 +93,7 @@ impl Default for Config {
             default_text: "Forge".into(),
             allow_destructive: false,
             test_data: false,
+            real_data_safe: Vec::new(),
             skip: Vec::new(),
             per_screen: 15,
             find_timeout: Duration::from_secs(5),
@@ -319,8 +325,60 @@ fn words(text: &str) -> Vec<String> {
     out
 }
 
+/// Where a control sits, for the real-data policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Place {
+    /// The first button of a navigation bar: the back button.
+    back_button: bool,
+    /// Inside a tab bar.
+    tab_bar: bool,
+}
+
+/// Labels that leave a screen without saving: the only buttons outside
+/// navigation that the explorer taps on the person's own data. "Done" and
+/// "OK" are left out: they can confirm (an alert's OK after "Remove all?").
+const LEAVE_LABELS: &[&str] = &["back", "cancel", "close", "dismiss"];
+
+/// On the person's own data, only navigation is tapped. This is an allow
+/// list, so a control the word lists don't know is skipped, not tapped:
+/// list rows, tab bar items, the back button, Back/Cancel/Close/Dismiss,
+/// typing into a search field, and what the developer declared in
+/// [`Config::real_data_safe`]. Returns why anything else is skipped.
+fn real_data_gate(node: &UiNode, config: &Config, place: Place) -> Option<String> {
+    let id = node.identifier.as_deref();
+    if id.is_some_and(|id| {
+        config
+            .real_data_safe
+            .iter()
+            .any(|s| s == id || normalise_identifier(s) == normalise_identifier(id))
+    }) {
+        return None;
+    }
+    let label = node.label.as_deref().unwrap_or("").to_lowercase();
+    let navigation = match node.kind.as_str() {
+        "Cell" | "Tab" => true,
+        "SearchField" => true,
+        "Button" => {
+            place.back_button
+                || place.tab_bar
+                || id == Some("BackButton")
+                || LEAVE_LABELS.contains(&label.as_str())
+        }
+        _ => false,
+    };
+    if navigation {
+        None
+    } else {
+        Some(format!(
+            "real data: only navigation is tapped (rows, tabs, back, cancel); a {} could change something. \
+             Declare it in forge.toml `[ui_test] real_data_safe` if it is safe, or explore on test data",
+            node.kind
+        ))
+    }
+}
+
 /// Why a control must not be touched, if it mustn't.
-fn gate(node: &UiNode, config: &Config) -> Option<String> {
+fn gate(node: &UiNode, config: &Config, place: Place) -> Option<String> {
     for skip in &config.skip {
         if node.identifier.as_deref() == Some(skip) || node.label.as_deref() == Some(skip) {
             return Some("on the skip list".into());
@@ -360,6 +418,9 @@ fn gate(node: &UiNode, config: &Config) -> Option<String> {
         if TYPEABLE.contains(&node.kind.as_str()) && node.kind != "SearchField" {
             return Some(format!("typing may be saved; {WHY}"));
         }
+        // The word lists above only add reasons; what decides is the
+        // allow list.
+        return real_data_gate(node, config, place);
     }
     if config.allow_destructive {
         return None;
@@ -522,14 +583,21 @@ fn candidates(tree: &UiNode, config: &Config) -> (Vec<Candidate>, Vec<Skipped>) 
     let mut found = Vec::new();
     let mut skipped = Vec::new();
     let mut keys = HashSet::new();
-    visit(tree, config, false, &mut found, &mut skipped, &mut keys);
+    visit(
+        tree,
+        config,
+        Place::default(),
+        &mut found,
+        &mut skipped,
+        &mut keys,
+    );
     (found, skipped)
 }
 
 fn visit(
     node: &UiNode,
     config: &Config,
-    back_button: bool,
+    place: Place,
     found: &mut Vec<Candidate>,
     skipped: &mut Vec<Skipped>,
     keys: &mut HashSet<String>,
@@ -545,7 +613,7 @@ fn visit(
         for button in node.walk().filter(|n| n.kind == "Button") {
             let label = button.label.as_deref().unwrap_or("");
             if label.eq_ignore_ascii_case("cancel") {
-                consider(button, config, false, found, skipped, keys);
+                consider(button, config, Place::default(), found, skipped, keys);
             } else {
                 skipped.push(Skipped {
                     element: button.summary(),
@@ -556,26 +624,34 @@ fn visit(
         return;
     }
     if node.visible && node.enabled {
-        consider(node, config, back_button, found, skipped, keys);
+        consider(node, config, place, found, skipped, keys);
     }
     // A navigation bar's first button is its back button: its label is the
     // previous screen's title, not "Back".
     if node.kind == "NavigationBar" {
         for (i, child) in node.children.iter().enumerate() {
             let first_button = i == 0 && child.kind == "Button";
-            visit(child, config, first_button, found, skipped, keys);
+            let place = Place {
+                back_button: first_button,
+                ..place
+            };
+            visit(child, config, place, found, skipped, keys);
         }
         return;
     }
+    let inner = Place {
+        back_button: false,
+        tab_bar: place.tab_bar || node.kind == "TabBar",
+    };
     for child in &node.children {
-        visit(child, config, false, found, skipped, keys);
+        visit(child, config, inner, found, skipped, keys);
     }
 }
 
 fn consider(
     node: &UiNode,
     config: &Config,
-    back_button: bool,
+    place: Place,
     found: &mut Vec<Candidate>,
     skipped: &mut Vec<Skipped>,
     keys: &mut HashSet<String>,
@@ -615,7 +691,7 @@ fn consider(
     if !keys.insert(key.clone()) {
         return;
     }
-    if let Some(reason) = gate(node, config) {
+    if let Some(reason) = gate(node, config, place) {
         skipped.push(Skipped {
             element: node.summary(),
             reason,
@@ -637,7 +713,7 @@ fn consider(
     let exit = kind == "Button"
         && (node.identifier.as_deref() == Some("BackButton")
             || EXIT_LABELS.contains(&label.as_str())
-            || back_button);
+            || place.back_button);
     let strength = node
         .identifier
         .as_deref()
@@ -2239,7 +2315,12 @@ mod tests {
             ("bookForm.save", "Save"),
         ] {
             assert!(
-                gate(&node("Button", Some(id), Some(label)), &config).is_some(),
+                gate(
+                    &node("Button", Some(id), Some(label)),
+                    &config,
+                    Place::default()
+                )
+                .is_some(),
                 "{id}"
             );
         }
@@ -2248,14 +2329,85 @@ mod tests {
             Some("settings.catalogue"),
             Some("Online catalogue search"),
         );
-        assert!(gate(&switch, &config).is_some());
+        assert!(gate(&switch, &config, Place::default()).is_some());
         let search = node(
             "SearchField",
             Some("library.search"),
             Some("Title or author"),
         );
-        assert!(gate(&search, &config).is_none());
-        assert!(gate(&node("Cell", Some("library.book.1"), Some("Dune")), &config).is_none());
+        assert!(gate(&search, &config, Place::default()).is_none());
+        assert!(gate(
+            &node("Cell", Some("library.book.1"), Some("Dune")),
+            &config,
+            Place::default()
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn on_real_data_an_unknown_control_is_skipped_not_tapped() {
+        let config = Config::default();
+        let real = |kind: &str, id: Option<&str>, label: &str, place: Place| {
+            gate(&node(kind, id, Some(label)), &config, place)
+        };
+        // A confirmation after "Remove all?": no word list knows "OK" or
+        // "Yes", and the allow list doesn't either.
+        assert!(real("Button", None, "Done", Place::default()).is_some());
+        for label in ["OK", "Yes", "Go"] {
+            let why = real("Button", None, label, Place::default()).unwrap();
+            assert!(why.starts_with("real data: only navigation"), "{why}");
+        }
+        assert!(real(
+            "Button",
+            Some("library.settings"),
+            "Settings",
+            Place::default()
+        )
+        .is_some());
+        assert!(real("Link", Some("detail.web"), "Website", Place::default()).is_some());
+        // Navigation is tapped.
+        assert!(real("Cell", Some("library.book.1"), "Dune", Place::default()).is_none());
+        assert!(real("Button", None, "Cancel", Place::default()).is_none());
+        let back = Place {
+            back_button: true,
+            ..Place::default()
+        };
+        assert!(real("Button", None, "Library", back).is_none());
+        let tab = Place {
+            tab_bar: true,
+            ..Place::default()
+        };
+        assert!(real("Button", Some("tab.activity"), "Activity", tab).is_none());
+        // A row whose words say it changes data is still skipped.
+        assert!(real(
+            "Cell",
+            Some("library.continue"),
+            "Continue Reading",
+            Place::default()
+        )
+        .is_some());
+    }
+
+    #[test]
+    fn the_developer_can_declare_controls_safe_on_real_data_but_not_external_ones() {
+        let config = Config {
+            real_data_safe: vec!["library.settings".into(), "library.share".into()],
+            ..Config::default()
+        };
+        let settings = node("Button", Some("library.settings"), Some("Settings"));
+        assert!(gate(&settings, &config, Place::default()).is_none());
+        let share = node("Button", Some("library.share"), Some("Share List"));
+        assert!(gate(&share, &config, Place::default())
+            .unwrap()
+            .starts_with("acts outside the phone"));
+    }
+
+    #[test]
+    fn on_test_data_the_allow_list_does_not_apply() {
+        let ok = node("Button", None, Some("OK"));
+        assert!(gate(&ok, &config(), Place::default()).is_none());
+        let settings = node("Button", Some("library.settings"), Some("Settings"));
+        assert!(gate(&settings, &config(), Place::default()).is_none());
     }
 
     fn explore(config: &Config, dir: Option<&Path>) -> (Report, ModelApp) {
@@ -2494,7 +2646,12 @@ mod tests {
             ("library.import", "Import EPUB"),
             ("scan.camera", "Scan with Camera"),
         ] {
-            let why = gate(&node("Button", Some(id), Some(label)), &config).unwrap_or_default();
+            let why = gate(
+                &node("Button", Some(id), Some(label)),
+                &config,
+                Place::default(),
+            )
+            .unwrap_or_default();
             assert!(why.starts_with("starts a system service"), "{id}: {why}");
         }
     }
@@ -2565,7 +2722,13 @@ mod tests {
             test_data: true,
             ..Config::default()
         };
-        let gated = |id: &str, label: &str| gate(&node("Button", Some(id), Some(label)), &config);
+        let gated = |id: &str, label: &str| {
+            gate(
+                &node("Button", Some(id), Some(label)),
+                &config,
+                Place::default(),
+            )
+        };
         assert!(gated("account.signOut", "Sign Out").is_some());
         assert!(gated("chat.send", "Send").is_some());
         // Tipster's ids are not payments.

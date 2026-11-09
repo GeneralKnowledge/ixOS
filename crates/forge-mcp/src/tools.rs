@@ -281,7 +281,7 @@ pub const SPECS: &[Spec] = &[
             "skip": {"type": "array", "items": {"type": "string"}, "description": "Identifiers or labels never to touch"},
             "largest_text": {"type": "boolean", "description": "Launch at the largest accessibility text size"},
             "appearance": {"type": "string", "enum": APPEARANCES, "description": "Launch in dark or light mode (-ForgeAppearance; default system). A walk compares its screenshots only with earlier walks in the same appearance and text size"},
-            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, only looking (for an app without a test-data mode)"},
+            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, read-only: taps only rows, tabs, back and cancel, plus identifiers the developer listed in forge.toml [ui_test] real_data_safe (for an app without a test-data mode)"},
             "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"},
             "focus_changes": {"type": "boolean", "description": "Aim at the files changed since this server started (default true; false is the plain seeded walk)"},
             "focus": {"type": "array", "items": {"type": "string"}, "description": "Also aim at these identifiers (record.save), or prefixes (record.result.*)"},
