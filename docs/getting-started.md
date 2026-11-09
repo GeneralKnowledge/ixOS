@@ -48,13 +48,13 @@ Anywhere outside the Forge checkout:
 
 ```bash
 cd ~/projects
-forge init MyApp --bundle-id org.example.myapp
+forge init MyApp --minimal --bundle-id org.example.myapp
 cd MyApp
 ```
 
-`forge init` prints the next steps. For your first app, add `--minimal`: you get one screen and a list saved on the phone, and [first-app.md](first-app.md) walks you through adding a feature to it. Without it you get the full starter described below, which shows every pattern a bigger app needs. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
+`--minimal` gives you the starter to learn from: one screen with a list that is saved on the phone. [first-app.md](first-app.md) walks you through adding a feature to it. `forge init` prints the next steps. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
 
-The app has its own Rust crate in `rust/`, a SwiftUI screen in `Sources/AppHost/`, and a `README.md` that maps out the rest. See [app-crate.md](app-crate.md) for the Rust side.
+The app has its own Rust crate in `rust/`, its SwiftUI screen and view model in `Sources/AppHost/`, and a `README.md` that maps out the rest. See [app-crate.md](app-crate.md) for the Rust side.
 
 ## 4. Run it on the iPhone
 
@@ -76,7 +76,7 @@ The loop is Rust first, then the screen:
 $EDITOR rust/src/lib.rs                     # add a method to AppCore, a field to a record...
 cargo test --manifest-path rust/Cargo.toml  # seconds, no SDK or phone
 forge bindings generate                     # optional: the new Swift API, for your editor
-$EDITOR Sources/AppHost/NotesModel.swift    # call it from the view model
+$EDITOR Sources/AppHost/ItemsModel.swift    # call it from the view model
 forge check swift                           # seconds: the model + bindings + their tests, plain Swift, no SDK
 $EDITOR Sources/AppHost/ContentView.swift   # show it
 forge run ios
@@ -86,7 +86,11 @@ forge run ios
 
 `forge test` runs your crate's tests from anywhere in the app. On a Mac it also runs the XCTest suite in `Tests/`; on Linux that part is skipped and CI runs it.
 
-`forge check swift` catches most Swift mistakes at the Swift–Rust boundary without the iOS SDK, a Mac or the phone. It builds your Rust for this computer and compiles every Swift file that imports nothing Apple-only (in the starter, `NotesModel.swift`, `Note+Display.swift` and the UniFFI bindings) with the plain Swift toolchain. It then runs the tests that need no SwiftUI: 9 of the starter's 10, in about 15 seconds. It lists the files it left out. SwiftUI views still need `forge run ios` or `forge build ios`. Without Swift installed, `FORGE_SWIFT_DOCKER=swift:6.2 forge check swift` runs it in Docker. If the app has a `requirements.toml`, it also reports which requirements those tests prove and writes an evidence bundle to `.forge/runs/` ([evidence.md](evidence.md)).
+`forge check swift` catches most Swift mistakes at the Swift–Rust boundary without the iOS SDK, a Mac or the phone. It builds your Rust for this computer and compiles every Swift file that imports nothing Apple-only (in the minimal starter, `ItemsModel.swift` and the UniFFI bindings) with the plain Swift toolchain. It then runs the tests that need no SwiftUI, the view-model tests in `Tests/`, in seconds. It lists the files it left out. SwiftUI views still need `forge run ios` or `forge build ios`. Without Swift installed, `FORGE_SWIFT_DOCKER=swift:6.2 forge check swift` runs it in Docker. If the app has a `requirements.toml`, it also reports which requirements those tests prove and writes an evidence bundle to `.forge/runs/` ([evidence.md](evidence.md)).
+
+### The full starter, once you need more
+
+`forge init MyApp` without `--minimal` creates the full starter: a notes app with several screens that also shows events from Rust, networking with cancellation, the app lifecycle, native services and logging from Swift. Its view model is `NotesModel.swift`. It is the better starting point once your app needs those patterns, and a worked example of a larger Forge app; [app-crate.md](app-crate.md) and [ios-ui.md](ios-ui.md) describe it.
 
 ## 6. When something fails
 
