@@ -81,7 +81,8 @@ jobs:
   published:
     # The app as someone outside this repository builds it: ForgeKit from
     # its published repository (the latest release tag) and forge-app from
-    # git at the ixOS commit that release was made from. The Forge checkout
+    # git at the ixOS commit that release was made from, with the app's
+    # sources from that commit too. The Forge checkout
     # is deleted first, so nothing local can stand in for either.
     name: Checklist on the published ForgeKit
     runs-on: ubuntu-24.04
@@ -98,8 +99,12 @@ jobs:
           echo "FORGEKIT_TAG=$tag" >>"$GITHUB_ENV"
           echo "FORGE_REV=$rev" >>"$GITHUB_ENV"
           rm -rf "$RUNNER_TEMP/ForgeKit"
-      - name: Move the app out and delete the Forge checkout
+      - name: Move the app (as of that release) out and delete the Forge checkout
         run: |
+          # The app as it was at the release, so a later ForgeKit change on
+          # this branch doesn't test the old release against new app code.
+          git fetch -q --depth 1 origin "$FORGE_REV"
+          git checkout -q "$FORGE_REV" -- examples/checklist rust-toolchain.toml
           cp -R examples/checklist "$RUNNER_TEMP/Checklist"
           cp rust-toolchain.toml "$RUNNER_TEMP/Checklist/rust/"
           cd "$RUNNER_TEMP/Checklist"
