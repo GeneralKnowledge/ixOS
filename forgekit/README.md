@@ -30,3 +30,7 @@ This repository holds releases only. ForgeKit is developed in
 `scripts/forgekit.sh release` copies it here and tags it. That script also
 checks that the Rust and Swift contract versions agree. Don't open changes
 here; change ixOS. `RELEASE` names the ixOS commit each release came from.
+
+## License
+
+MIT (see LICENSE).
