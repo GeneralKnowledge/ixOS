@@ -13,17 +13,17 @@ public enum Checklist {
     /// The app's host: one per process, made in the App.
     @MainActor
     public static func makeHost() -> ForgeHost<ChecklistCore> {
-        ForgeHost(app: "Checklist", open: open)
+        ForgeHost(app: "Checklist", open: openCore)
     }
 
     /// A host on throwaway data, for tests.
     @MainActor
     public static func makeTemporaryHost() -> ForgeHost<ChecklistCore> {
-        ForgeHost(environment: { try ForgeEnvironment.temporary() }, open: open)
+        ForgeHost(environment: { try ForgeEnvironment.temporary() }, open: openCore)
     }
 
     @Sendable
-    static func open(_ environment: ForgeEnvironment) throws -> ChecklistCore {
+    static func openCore(_ environment: ForgeEnvironment) throws -> ChecklistCore {
         try ChecklistCore(
             dataDirectory: environment.dataDirectory,
             cachesDirectory: environment.cachesDirectory
