@@ -33,6 +33,7 @@ jobs:
           workspaces: |
             . -> target
             examples/chat/rust -> target
+            examples/checklist/rust -> target
             examples/counter/rust -> target
             examples/device-lab/rust -> target
             examples/good-dog/rust -> target
@@ -53,6 +54,8 @@ jobs:
       # Cargo workspace, so the steps above do not reach them.
       - name: App-owned crates (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh
+      - name: ForgeKit's contract bindings and version match forge-app
+        run: ./scripts/forgekit.sh check
       - name: Kotlin bindings match committed files
         run: ./scripts/check-bindings.sh
       - name: Templates pin the workspace's UniFFI and verifier versions

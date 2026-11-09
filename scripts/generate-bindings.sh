@@ -54,7 +54,15 @@ else
     --language swift \
     --out-dir "$STAGE"
   mkdir -p "$OUT/ForgeFFI" "$OUT/forge_ffiFFI"
-  mv "$STAGE/forge_ffi.swift" "$OUT/ForgeFFI/forge_ffi.swift"
+  if [[ -f "$STAGE/forge_app.swift" ]]; then
+    # The crate uses the application runtime (forge-app). Its contract
+    # types' Swift ships in ForgeKit's ForgeApp module, not here; UniFFI
+    # writes no import for a module of external types, so add it.
+    sed 's/^import Foundation$/import Foundation\n@preconcurrency import ForgeApp/' \
+      "$STAGE/forge_ffi.swift" >"$OUT/ForgeFFI/forge_ffi.swift"
+  else
+    mv "$STAGE/forge_ffi.swift" "$OUT/ForgeFFI/forge_ffi.swift"
+  fi
   mv "$STAGE/forge_ffiFFI.h" "$OUT/forge_ffiFFI/forge_ffiFFI.h"
   mv "$STAGE/forge_ffiFFI.modulemap" "$OUT/forge_ffiFFI/module.modulemap"
   # Older layout kept everything at the top level, which SwiftPM rejects.

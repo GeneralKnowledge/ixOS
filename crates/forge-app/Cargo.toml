@@ -9,6 +9,9 @@ publish = false
 
 [lib]
 name = "forge_app"
+# cdylib: ForgeKit's Swift for the contract types is generated from it
+# (scripts/forgekit.sh). Apps link the rlib.
+crate-type = ["lib", "cdylib"]
 
 [dependencies]
 forge-runtime = { workspace = true }
