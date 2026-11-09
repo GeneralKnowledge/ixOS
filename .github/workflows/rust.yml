@@ -86,6 +86,13 @@ jobs:
         env:
           FORGE_SWIFT_DOCKER: swift:6.2
         run: ./scripts/check-fresh-app.sh "$RUNNER_TEMP/fresh-app"
+      # The human-only workflow (docs/human-workflow.md): a default app,
+      # outside the checkout, changed in Rust and Swift, tested, inspected
+      # and its evidence reviewed with the CLI alone. No agent files, no MCP.
+      - name: check-human-workflow
+        env:
+          FORGE_SWIFT_DOCKER: swift:6.2
+        run: ./scripts/check-human-workflow.sh "$RUNNER_TEMP/human-workflow"
       # The headless twin (docs/evidence.md): each app's real view model
       # against its real Rust core, on Linux, judged against the app's
       # requirements.toml. Every example with a requirements.toml is found,

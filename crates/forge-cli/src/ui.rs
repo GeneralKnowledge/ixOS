@@ -550,6 +550,62 @@ fn broke_off(
     }
 }
 
+/// The one-step test file `forge ui launch` runs: stop the app, or open it
+/// (restarting it first when there are launch arguments: a running app
+/// keeps the ones it started with, seen on Cati 2026-11-07).
+pub fn launch_script(bundle_id: &str, terminate: bool, args: &[String]) -> String {
+    let mut doc = toml::Table::new();
+    doc.insert("name".into(), "forge ui launch".into());
+    doc.insert("app".into(), bundle_id.into());
+    let step = |key: &str, value: toml::Table| {
+        let mut t = toml::Table::new();
+        t.insert(key.into(), toml::Value::Table(value));
+        toml::Value::Table(t)
+    };
+    let mut steps = Vec::new();
+    if terminate || !args.is_empty() {
+        steps.push(step("terminate", toml::Table::new()));
+    }
+    if !terminate {
+        let mut launch = toml::Table::new();
+        if !args.is_empty() {
+            launch.insert(
+                "args".into(),
+                toml::Value::Array(args.iter().map(|a| a.as_str().into()).collect()),
+            );
+        }
+        steps.push(step("launch", launch));
+    }
+    doc.insert("step".into(), toml::Value::Array(steps));
+    toml::to_string(&doc).unwrap_or_default()
+}
+
+/// `forge ui launch`: opens (or stops) the app at `project` on the phone,
+/// as a one-step UI test in `<app>/.forge/ui/<UTC>-launch/`. Not evidence:
+/// no requirement names it.
+pub fn launch(
+    runner: &dyn CommandRunner,
+    udid: Option<&str>,
+    project: &Path,
+    terminate: bool,
+    args: &[String],
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let forge_toml = project.join("forge.toml");
+    let text = std::fs::read_to_string(&forge_toml)
+        .map_err(|e| format!("{}: {e} (pass --project <app>)", forge_toml.display()))?;
+    let cfg = crate::config::ForgeConfig::parse(&text)?;
+    let dir = project
+        .join(".forge")
+        .join("ui")
+        .join(format!("{}-launch", report::timestamp()));
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = dir.join("steps.toml");
+    std::fs::write(&file, launch_script(&cfg.app.bundle_id, terminate, args))
+        .map_err(|e| format!("{}: {e}", file.display()))?;
+    run(runner, udid, &file, Some(&dir), false, None, false, out)
+}
+
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
 /// `visual` `Some(Check)`) if a screenshot differs from its baseline.
 #[allow(clippy::too_many_arguments)]
@@ -939,7 +995,10 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
     })?;
     let forge = crate::config::ForgeConfig::parse(&text)?;
     let bundle_id = forge.app.bundle_id;
-    let test_data_args = forge.ui_test.map(|u| u.test_data_args).unwrap_or_default();
+    let (test_data_args, real_data_safe) = forge
+        .ui_test
+        .map(|u| (u.test_data_args, u.real_data_safe))
+        .unwrap_or_default();
     // Never change the person's data: either the app starts on throwaway
     // data, or the walk only looks (seen on Cati 2026-11-08: a walk on a
     // real library rated a book and saved entries).
@@ -1003,6 +1062,7 @@ pub fn explore_config(project: &Path, options: &ExploreOptions) -> Result<explor
             args
         },
         test_data,
+        real_data_safe,
         fixtures,
         allow_destructive: options.allow_destructive,
         skip: options.skip.clone(),
@@ -1560,6 +1620,38 @@ mod tests {
     }
 
     #[test]
+    fn launch_files_restart_only_for_new_arguments() {
+        let plain: toml::Table = toml::from_str(&launch_script("org.x.app", false, &[])).unwrap();
+        assert_eq!(plain["app"].as_str(), Some("org.x.app"));
+        let steps = plain["step"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].get("launch").is_some());
+        let dark: toml::Table = toml::from_str(&launch_script(
+            "org.x.app",
+            false,
+            &["-ForgeAppearance".into(), "dark".into()],
+        ))
+        .unwrap();
+        let steps = dark["step"].as_array().unwrap();
+        assert!(steps[0].get("terminate").is_some());
+        assert_eq!(steps[1]["launch"]["args"][1].as_str(), Some("dark"));
+        let stop: toml::Table = toml::from_str(&launch_script("org.x.app", true, &[])).unwrap();
+        let steps = stop["step"].as_array().unwrap();
+        assert_eq!(steps.len(), 1);
+        assert!(steps[0].get("terminate").is_some());
+        // Every file is one forge ui run accepts.
+        for text in [
+            launch_script("org.x.app", false, &[]),
+            launch_script("org.x.app", true, &[]),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let f = dir.path().join("s.toml");
+            std::fs::write(&f, text).unwrap();
+            Script::load(&f).unwrap();
+        }
+    }
+
+    #[test]
     fn explore_refuses_an_app_without_test_data() {
         let dir = tempfile::tempdir().unwrap();
         let forge = std::fs::read_to_string(pocket_library().join("forge.toml")).unwrap();
@@ -1574,6 +1666,15 @@ mod tests {
             ..options()
         };
         assert!(!explore_config(dir.path(), &real).unwrap().test_data);
+        // Controls the developer declared safe on real data reach the walk.
+        std::fs::write(
+            dir.path().join("forge.toml"),
+            format!("{without}\n[ui_test]\nreal_data_safe = [\"library.settings\"]\n"),
+        )
+        .unwrap();
+        let config = explore_config(dir.path(), &real).unwrap();
+        assert!(!config.test_data);
+        assert_eq!(config.real_data_safe, vec!["library.settings".to_owned()]);
     }
 
     #[test]

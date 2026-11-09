@@ -62,7 +62,7 @@ The app has its own Rust crate in `rust/`, its SwiftUI screen and view model in 
 forge run ios
 ```
 
-This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it. It ends with a short list of what it did and a **Next** step. It does not open the app (xtool cannot launch apps on iOS 17 and later): tap its icon on the home screen.
+This checks the toolchain, your Apple sign-in and the iPhone first (seconds), then builds the Rust library for iOS, regenerates the Swift bindings, compiles the app with xtool, signs it with your Apple ID and installs it. It ends with a short list of what it did and a **Next** step. It does not open the app (xtool cannot launch apps on iOS 17 and later): tap its icon on the home screen, or, once the UI testing runner is set up (`forge ui setup`, [forge-ui-testing.md](forge-ui-testing.md)), run `forge ui launch` (add `--appearance dark` or `--largest-text` to check those).
 
 The first install of each app needs one step on the phone before it opens: Settings > General > VPN & Device Management, tap your Apple ID, then **Trust**.
 

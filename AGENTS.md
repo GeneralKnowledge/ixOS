@@ -7,6 +7,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 - It makes Apple's frameworks productive from Linux. It does not replace SwiftUI, and it is not a cross-platform UI layer or a game engine.
 - iOS is the focus. Android is work in progress: keep it building, add no Android features ([roadmap](docs/roadmap.md#android--work-in-progress)).
 - Linux first. Write instructions for Linux with xtool; macOS and Xcode are optional extras, never assumed.
+- Human first, agent optional. Every step of developing an app works from the `forge` CLI for a person with no AI agent, MCP server or API key ([human-workflow.md](docs/human-workflow.md)). Agents get the same commands, plus optional integration (`forge mcp`, `forge agent setup`).
 
 ## Layout
 
@@ -18,7 +19,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 | `crates/forge-cli` | The `forge` command |
 | `crates/forge-device`, `forge-devproto`, `forge-devtools` | Talking to a USB iPhone from Linux, and the live session with development builds |
 | `examples/` | Apps. Each owns its Rust crate in `rust/` |
-| `templates/` | What `forge init` copies |
+| `templates/` | What `forge init` copies; `templates/agent/` is what `forge agent setup` adds |
 | `docs/` | Developer docs. `docs/research/` holds investigations |
 
 ## Rules
@@ -31,7 +32,8 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 6. **Never edit `Generated/` by hand.** Regenerate with `forge bindings generate --project <app>` and commit the result.
 7. **Update the [capability ledger](docs/capability-ledger.md) in the same PR as a capability change.** Edit or add its record under `docs/ledger/` and run `forge ledger generate`, which also rewrites the summary in `docs/status.md`; never edit either generated page. "iPhone: Yes" needs a run on a physical iPhone reported by a person; never record a skipped run as passing.
 8. **Physical device steps:** say which step needs the iPhone and what it proves. Don't claim device results you didn't see.
-9. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
+9. **A capability lives in the CLI, not only in MCP.** Build it as a `forge` command (with `--json`) or in a library the CLI uses; `forge mcp` runs that command and adds only schemas, argument checks and session state. A default app needs no agent files, and safety rules (exploration, installing, `forge verify --accept`) are the same whoever calls. `scripts/check-human-workflow.sh` must keep passing.
+10. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
 
 ## Checking your work
 

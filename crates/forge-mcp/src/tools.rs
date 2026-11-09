@@ -88,7 +88,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_inspect_app",
         title: "Describe an app",
-        description: "One call for 'what is this project': effective forge.toml settings (bundle id, permissions, entitlements, signing team type), Swift files split into model and view by their imports, accessibility identifiers in use, UI test files, and the last failure.",
+        description: "One call for 'what is this project' (runs `forge inspect`, which a person can run too): effective forge.toml settings (bundle id, permissions, entitlements, signing team type), the Rust crate, Swift files with their imports and whether they import a UI framework, accessibility identifiers written as literals (identifiers_note says what that misses), UI test files, generated files, convention warnings, and the last failure in this session.",
         tier: Tier::Observe,
         device: false,
         needs_ui: false,
@@ -281,7 +281,7 @@ pub const SPECS: &[Spec] = &[
             "skip": {"type": "array", "items": {"type": "string"}, "description": "Identifiers or labels never to touch"},
             "largest_text": {"type": "boolean", "description": "Launch at the largest accessibility text size"},
             "appearance": {"type": "string", "enum": APPEARANCES, "description": "Launch in dark or light mode (-ForgeAppearance; default system). A walk compares its screenshots only with earlier walks in the same appearance and text size"},
-            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, only looking (for an app without a test-data mode)"},
+            "real_data": {"type": "boolean", "description": "Explore the data already on the phone, read-only: taps only rows, tabs, back and cancel, plus identifiers the developer listed in forge.toml [ui_test] real_data_safe (for an app without a test-data mode)"},
             "per_screen": {"type": "integer", "minimum": 1, "maximum": 50, "description": "At most this many controls tried per screen (default 15)"},
             "focus_changes": {"type": "boolean", "description": "Aim at the files changed since this server started (default true; false is the plain seeded walk)"},
             "focus": {"type": "array", "items": {"type": "string"}, "description": "Also aim at these identifiers (record.save), or prefixes (record.result.*)"},
@@ -463,7 +463,10 @@ impl crate::Server {
                     .arg("--bundle-id")
                     .arg(args.str("bundle_id").unwrap_or(crate::SANDBOX_BUNDLE_ID))
                     .arg("--path")
-                    .arg(dest.display().to_string());
+                    .arg(dest.display().to_string())
+                    // An app an agent creates gets the agent files; a
+                    // person's `forge init` doesn't unless asked.
+                    .arg("--agent");
                 let mut result = self.forge(inv, cancel).await;
                 if result["ok"] == json!(true) {
                     // Every later tool takes the folder relative to the root.
@@ -476,22 +479,25 @@ impl crate::Server {
             }
             "forge_inspect_app" => {
                 let app = app_or_fail!();
+                let dir = app.dir.display().to_string();
                 let mut result = self
                     .forge(
-                        Invocation::new(&["config", "show"], &app.dir, secs(MIN), "forge"),
+                        Invocation::new(
+                            &["inspect", "--project", &dir],
+                            &app.dir,
+                            secs(MIN),
+                            "forge",
+                        ),
                         cancel,
                     )
                     .await;
-                let extra = crate::inspect::scan(&app.dir);
                 if let Some(obj) = result.as_object_mut() {
                     let data = obj.entry("data").or_insert(json!({}));
                     if !data.is_object() {
                         *data = json!({});
                     }
                     let data = data.as_object_mut().expect("object");
-                    for (k, v) in extra {
-                        data.insert(k, v);
-                    }
+                    // The session's own memory: only the server has it.
                     data.insert(
                         "last_failure".into(),
                         self.last_failure()
@@ -689,24 +695,37 @@ impl crate::Server {
             "forge_diagnose" => Answer::of(self.diagnose()),
             "forge_launch_app" => {
                 let app = app_or_fail!();
-                let steps = if args.bool("terminate") {
-                    vec![("terminate", json!({}))]
+                // `forge ui launch`, as a person would run it: it restarts
+                // the app when there are launch arguments.
+                let mut inv = Invocation::new(&["ui", "launch"], &app.dir, secs(10 * MIN), "test")
+                    .arg("--project")
+                    .arg(app.dir.display().to_string());
+                if args.bool("terminate") {
+                    inv = inv.arg("--terminate");
                 } else {
                     match launch_args(&args) {
-                        // A running app keeps its launch arguments, so a
-                        // text size or appearance only applies after a
-                        // fresh start (seen on Cati, 2026-11-07).
-                        Ok(launch)
-                            if args.str("text_size").is_some()
-                                || args.str("appearance").is_some() =>
-                        {
-                            vec![("terminate", json!({})), ("launch", launch)]
+                        Ok(launch) => {
+                            for a in launch["args"].as_array().into_iter().flatten() {
+                                if let Some(a) = a.as_str() {
+                                    inv = inv.arg(format!("--launch-arg={a}"));
+                                }
+                            }
                         }
-                        Ok(launch) => vec![("launch", launch)],
                         Err(e) => return Answer::of(refusal(name, "usage", &e, None)),
                     }
-                };
-                self.one_step(&app, name, steps, cancel).await
+                }
+                let result = self.forge(self.with_udid(inv), cancel).await;
+                // On failure, the screen at the failed step.
+                let image = result["data"]["failed_step"]["step"]
+                    .as_u64()
+                    .zip(result["data"]["out"].as_str())
+                    .map(|(n, out)| PathBuf::from(out).join(format!("failure-step{n}.png")))
+                    .filter(|p| p.is_file());
+                Answer {
+                    result,
+                    untrusted: true,
+                    image,
+                }
             }
             "forge_screenshot" => {
                 let app = app_or_fail!();

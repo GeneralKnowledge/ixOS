@@ -190,7 +190,7 @@ pub fn init(
     platform: &str,
     path: Option<&Path>,
 ) -> Result<(), String> {
-    init_with(runner, root, name, bundle_id, platform, path, false)
+    init_with(runner, root, name, bundle_id, platform, path, false).map(|_| ())
 }
 
 /// `forge init`, with `minimal` for the one-screen starter (iOS only).
@@ -202,7 +202,7 @@ pub fn init_with(
     platform: &str,
     path: Option<&Path>,
     minimal: bool,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     if minimal && platform != "ios" {
         return Err("--minimal is for iOS apps only (Android is work in progress)".into());
     }
@@ -342,7 +342,7 @@ android = true
     if minimal {
         println!("This is the minimal starter: rust/src/lib.rs, Sources/AppHost/ItemsModel.swift and ContentView.swift are the whole app. docs/first-app.md adds a feature to it.");
     }
-    Ok(())
+    Ok(dest)
 }
 
 /// What to type after `forge init`, starting with `cd` into the app (a
@@ -401,19 +401,6 @@ fn populate_app(
             }
         }
         copy_template(&root.join(MINIMAL_TEMPLATE), dir)?;
-        let agents = dir.join("AGENTS.md");
-        if let Ok(text) = fs::read_to_string(&agents) {
-            let text = text
-                .replace(
-                    "Sources/AppHost/NotesModel.swift",
-                    "Sources/AppHost/ItemsModel.swift",
-                )
-                .replace(
-                    "`notes.add`, `compose.save`",
-                    "`items.add`, `items.newTitle`",
-                );
-            fs::write(&agents, text).map_err(|e| e.to_string())?;
-        }
     }
     for file in ["Cargo.lock", "rust-toolchain.toml"] {
         let src = root.join(file);
@@ -2259,17 +2246,11 @@ ios_device = true
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         let readme = fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
-        // Agent instructions come with the app, named after it.
-        let agents = fs::read_to_string(dest.join("AGENTS.md")).unwrap();
-        assert!(
-            agents.contains("InitTestApp is a native iOS app"),
-            "{agents}"
-        );
-        assert!(!agents.contains("FORGE_APP_NAME"));
-        assert!(dest.join("CLAUDE.md").is_file());
-        assert!(agents.contains("--process InitTestAppXtool"), "{agents}");
-        let mcp = fs::read_to_string(dest.join(".mcp.json")).unwrap();
-        assert!(mcp.contains("\"args\": [\"mcp\"]"), "{mcp}");
+        // No agent configuration unless asked for (forge init --agent,
+        // forge agent setup): a new app is complete without it.
+        for file in crate::inspect::AGENT_FILES {
+            assert!(!dest.join(file).exists(), "{file}");
+        }
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));
