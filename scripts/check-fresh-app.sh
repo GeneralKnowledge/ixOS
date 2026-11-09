@@ -49,6 +49,15 @@ for app in FreshIos FreshMini FreshDroid; do
     fail "$app still has template placeholders (files above)"
   fi
   grep -q '^path = "rust"' "$dir/forge.toml" || fail "$app forge.toml does not name its crate"
+  if [[ "$app" != FreshDroid ]]; then
+    # The iOS starters are on the application runtime: a forge-app core,
+    # hosted by ForgeKit (docs/app-model-review.md).
+    grep -q '^forge-app = ' "$dir/rust/Cargo.toml" || fail "$app's crate does not use forge-app"
+    grep -q 'forge_app::export_runtime!' "$dir/rust/src/lib.rs" || fail "$app's core does not export the runtime"
+    grep -qE '\.package\((path: "[^"]*/forgekit"|url: "https://github.com/GeneralKnowledge/ForgeKit.git")' "$dir/Package.swift" \
+      || fail "$app's Package.swift does not depend on ForgeKit"
+    grep -q 'ForgeHost(' "$dir/Sources/AppHost/AppHost.swift" || fail "$app is not hosted by ForgeKit"
+  fi
   if [[ "$app" == FreshMini ]]; then
     # The minimal starter has no native services or lifecycle: nothing may still use them.
     if grep -rlE 'AppServices|receivesDeepLinks|forgeLifecycle|NotesModel' --include='*.swift' "$dir/Sources" "$dir/Xcode" "$dir/Tests"; then

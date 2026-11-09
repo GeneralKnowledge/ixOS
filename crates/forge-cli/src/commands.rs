@@ -13,16 +13,57 @@ const PLACEHOLDER_APP_NAME: &str = "FORGE_APP_NAME";
 const PLACEHOLDER_BUNDLE: &str = "FORGE_BUNDLE_ID";
 const PLACEHOLDER_SUPPORT_DIR: &str = "FORGE_APP_SUPPORT_DIR";
 const PLACEHOLDER_JAVA_PACKAGE: &str = "FORGE_JAVA_PACKAGE";
-/// The starter Rust crate every new app gets as `rust/`.
+/// The starter Rust crate every new iOS app gets as `rust/`: a core on the
+/// forge-app runtime, which ForgeKit hosts.
 const RUST_TEMPLATE: &str = "templates/app-rust";
+/// Android's starter crate, from before the runtime. Android is work in
+/// progress and gets no new features (docs/roadmap.md).
+const ANDROID_RUST_TEMPLATE: &str = "templates/android-rust";
+/// The ixOS repository the Forge crates come from in a pinned app.
+const IXOS_GIT: &str = "https://github.com/GeneralKnowledge/ixOS";
+/// ForgeKit's release repository (scripts/forgekit.sh).
+const FORGEKIT_GIT: &str = "https://github.com/GeneralKnowledge/ForgeKit.git";
+
+fn rust_template(platform: &str) -> &'static str {
+    if platform == "android" {
+        ANDROID_RUST_TEMPLATE
+    } else {
+        RUST_TEMPLATE
+    }
+}
+
+/// The framework release in `forge-release.toml`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Release {
+    version: String,
+    ixos_rev: String,
+}
+
+/// The release a new app outside the checkout pins to: `forge-release.toml`,
+/// but only while the checkout's forge-app is that version. Otherwise the
+/// checkout has framework changes no release has, and the app uses them.
+fn framework_release(root: &Path) -> Option<Release> {
+    let text = fs::read_to_string(root.join("forge-release.toml")).ok()?;
+    let doc: toml::Table = text.parse().ok()?;
+    let fw = doc.get("framework")?.as_table()?;
+    let release = Release {
+        version: fw.get("version")?.as_str()?.to_string(),
+        ixos_rev: fw.get("ixos_rev")?.as_str()?.to_string(),
+    };
+    let app_crate: toml::Table = fs::read_to_string(root.join("crates/forge-app/Cargo.toml"))
+        .ok()?
+        .parse()
+        .ok()?;
+    let checkout = app_crate.get("package")?.get("version")?.as_str()?;
+    (checkout == release.version).then_some(release)
+}
 /// `forge init --minimal`: laid over templates/ios-app (and app-rust as
 /// `rust/`), after removing [`MINIMAL_REMOVES`].
 const MINIMAL_TEMPLATE: &str = "templates/ios-minimal";
 /// Files of the full iOS starter that the minimal one doesn't have: the notes
-/// screens and model, the lifecycle (it needs the full crate's `AppPhase`)
-/// and native services (the minimal crate doesn't export them).
+/// screens and model, and native services (the minimal crate doesn't export
+/// them). Both keep AppHost.swift, the ForgeKit host.
 const MINIMAL_REMOVES: &[&str] = &[
-    "Sources/AppHost/AppLifecycle.swift",
     "Sources/AppHost/AppServices.swift",
     "Sources/AppHost/ComposeNoteView.swift",
     "Sources/AppHost/ErrorAlert.swift",
@@ -31,7 +72,6 @@ const MINIMAL_REMOVES: &[&str] = &[
     "Sources/AppHost/NoteListView.swift",
     "Sources/AppHost/NotesModel.swift",
     "Sources/AppHost/SettingsView.swift",
-    "Tests/AppHostTests/AppLifecycleTests.swift",
     "Tests/AppHostTests/NativeServicesTests.swift",
     "Tests/AppHostTests/NotesModelTests.swift",
 ];
@@ -230,8 +270,9 @@ android = true
     if !template.is_dir() {
         return Err(format!("template missing at templates/{platform}-app"));
     }
-    if !root.join(RUST_TEMPLATE).join("Cargo.toml").is_file() {
-        return Err(format!("template missing at {RUST_TEMPLATE}"));
+    let rust_template = rust_template(platform);
+    if !root.join(rust_template).join("Cargo.toml").is_file() {
+        return Err(format!("template missing at {rust_template}"));
     }
     if minimal
         && !root
@@ -255,8 +296,23 @@ android = true
     if staging.exists() {
         fs::remove_dir_all(&staging).map_err(|e| e.to_string())?;
     }
+    // An iOS app outside the checkout pins to the framework release; one
+    // inside it (like the examples) and Android use the checkout's.
+    let release = match &workspace {
+        WorkspaceRef::Absolute(_) if platform == "ios" => framework_release(root),
+        _ => None,
+    };
     let result = populate_app(
-        runner, root, &template, &staging, name, bundle_id, platform, &workspace, minimal,
+        runner,
+        root,
+        &template,
+        &staging,
+        name,
+        bundle_id,
+        platform,
+        &workspace,
+        release.as_ref(),
+        minimal,
     )
     .and_then(|()| fs::rename(&staging, &dest).map_err(|e| e.to_string()));
     if let Err(err) = result {
@@ -269,10 +325,14 @@ android = true
         "path": dest.display().to_string(),
         "platform": platform,
     }));
-    match &workspace {
-        WorkspaceRef::Relative(_) => {}
-        WorkspaceRef::Absolute(ws) => println!(
-            "Note: this app's Rust crate uses the Forge crates at {ws}. If that checkout moves, update the paths in rust/Cargo.toml (and REPO_ROOT in the Xcode project's \"Build Rust FFI\" phase on iOS)."
+    match (&workspace, &release) {
+        (WorkspaceRef::Relative(_), _) => {}
+        (WorkspaceRef::Absolute(ws), Some(r)) => println!(
+            "This app uses framework release {} (the Forge crates from git, ForgeKit {}). Its build scripts come from the checkout at {ws}; if that moves, update REPO_ROOT in the Xcode project's \"Build Rust FFI\" phase.",
+            r.version, r.version
+        ),
+        (WorkspaceRef::Absolute(ws), None) => println!(
+            "Note: this app uses the Forge crates (and on iOS, ForgeKit) at {ws}, because that checkout has framework changes no release has yet. If it moves, update the paths in rust/Cargo.toml, Package.swift and REPO_ROOT in the Xcode project's \"Build Rust FFI\" phase."
         ),
     }
     print!(
@@ -325,13 +385,14 @@ fn populate_app(
     bundle_id: &str,
     platform: &str,
     workspace: &WorkspaceRef,
+    release: Option<&Release>,
     minimal: bool,
 ) -> Result<(), String> {
     copy_template(template, dir)?;
     // The app's own Rust crate, with the workspace's lock file and toolchain
     // pin so it starts on exactly the versions Forge is tested with.
     let rust = dir.join("rust");
-    copy_template(&root.join(RUST_TEMPLATE), &rust)?;
+    copy_template(&root.join(rust_template(platform)), &rust)?;
     if minimal {
         for rel in MINIMAL_REMOVES {
             let file = dir.join(rel);
@@ -361,7 +422,7 @@ fn populate_app(
         }
     }
     substitute_placeholders(dir, name, bundle_id)?;
-    rewrite_workspace_paths(dir, platform, workspace)?;
+    rewrite_workspace_paths(dir, platform, workspace, release)?;
     if platform == "ios" {
         relocate_ios_xcode_host(dir, name)?;
         // Info.plist, App.entitlements and xtool.yml come from forge.toml.
@@ -463,21 +524,50 @@ impl WorkspaceRef {
     }
 }
 
-/// Points the app's build files at the workspace. The templates assume the
-/// default `examples/<Name>` location (`../..`); every reference is rewritten so
-/// apps created anywhere else (`forge init --path`) build too.
+/// Points the app's build files at the framework: the Forge crates and
+/// ForgeKit at `release` when given, else at the workspace's own. The scripts
+/// (the Xcode build phase) always come from the workspace.
 fn rewrite_workspace_paths(
     dir: &Path,
     platform: &str,
     workspace: &WorkspaceRef,
+    release: Option<&Release>,
 ) -> Result<(), String> {
-    // rust/Cargo.toml: path dependencies on the Forge crates.
-    let mut edits: Vec<(&str, String, String)> = vec![(
-        "rust/Cargo.toml",
-        r#"path = "FORGE_WORKSPACE/"#.into(),
-        format!(r#"path = "{}/"#, workspace.seen_from("..", 0)),
-    )];
+    let mut edits: Vec<(&str, String, String)> = Vec::new();
+    match release {
+        // rust/Cargo.toml: the Forge crates from git at the release's commit.
+        Some(r) => {
+            let cargo_path = dir.join("rust/Cargo.toml");
+            let text = fs::read_to_string(&cargo_path)
+                .map_err(|e| format!("cannot read {}: {e}", cargo_path.display()))?;
+            let pinned = pin_forge_crates(&text, &r.ixos_rev);
+            if pinned.contains("FORGE_WORKSPACE") {
+                return Err(format!(
+                    "{} has a FORGE_WORKSPACE path outside crates/; update pin_forge_crates in forge-cli",
+                    cargo_path.display()
+                ));
+            }
+            fs::write(&cargo_path, pinned).map_err(|e| e.to_string())?;
+        }
+        // rust/Cargo.toml: path dependencies on the Forge crates.
+        None => edits.push((
+            "rust/Cargo.toml",
+            r#"path = "FORGE_WORKSPACE/"#.into(),
+            format!(r#"path = "{}/"#, workspace.seen_from("..", 0)),
+        )),
+    }
     if platform == "ios" {
+        // Package.swift: ForgeKit, released or the checkout's forgekit/.
+        let forgekit = match (release, workspace) {
+            (Some(r), _) => format!(r#".package(url: "{FORGEKIT_GIT}", exact: "{}")"#, r.version),
+            (None, WorkspaceRef::Relative(rel)) => format!(r#".package(path: "{rel}/forgekit")"#),
+            (None, WorkspaceRef::Absolute(abs)) => format!(r#".package(path: "{abs}/forgekit")"#),
+        };
+        edits.push((
+            "Package.swift",
+            r#".package(path: "FORGE_WORKSPACE/forgekit")"#.into(),
+            forgekit,
+        ));
         // The Xcode project's "Build Rust FFI" phase runs the workspace's
         // scripts. `SRCROOT` is the app's `Xcode/` directory.
         edits.push((
@@ -506,6 +596,29 @@ fn rewrite_workspace_paths(
         fs::write(&path, content.replace(&old, &new)).map_err(|e| e.to_string())?;
     }
     Ok(())
+}
+
+/// `forge-x = { path = "FORGE_WORKSPACE/crates/forge-x", … }` becomes
+/// `forge-x = { git = "<ixOS>", rev = "<rev>", … }`.
+fn pin_forge_crates(cargo_toml: &str, rev: &str) -> String {
+    const PREFIX: &str = r#"path = "FORGE_WORKSPACE/crates/"#;
+    cargo_toml
+        .lines()
+        .map(|line| match line.find(PREFIX) {
+            Some(start) => {
+                let rest = &line[start + PREFIX.len()..];
+                let end = rest.find('"').map_or(rest.len(), |i| i + 1);
+                format!(
+                    r#"{}git = "{IXOS_GIT}", rev = "{rev}"{}"#,
+                    &line[..start],
+                    &rest[end..]
+                )
+            }
+            None => line.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        + "\n"
 }
 
 fn find_pbxproj(dir: &Path) -> Result<PathBuf, String> {
@@ -2179,8 +2292,14 @@ ios_device = true
         assert!(dest
             .join("Xcode/InitTestApp.xcodeproj/project.pbxproj")
             .is_file());
-        let model = fs::read_to_string(dest.join("Sources/AppHost/NotesModel.swift")).unwrap();
-        assert!(model.contains("InitTestApp"));
+        // ForgeKit hosts the core; its data folder is named after the app.
+        let host = fs::read_to_string(dest.join("Sources/AppHost/AppHost.swift")).unwrap();
+        assert!(host.contains(r#"ForgeHost(app: "InitTestApp")"#), "{host}");
+        let pkg_deps = fs::read_to_string(dest.join("Package.swift")).unwrap();
+        assert!(
+            pkg_deps.contains(r#".package(path: "../../forgekit")"#),
+            "{pkg_deps}"
+        );
         assert!(dest
             .join("Tests/AppHostTests/NotesModelTests.swift")
             .is_file());
@@ -2261,6 +2380,89 @@ ios_device = true
             .map(|e| e.unwrap().file_name())
             .collect();
         assert_eq!(left, vec![std::ffi::OsString::from("PathApp")]);
+    }
+
+    #[test]
+    fn a_release_pins_the_forge_crates_and_forgekit() {
+        let cargo = "[dependencies]\nforge-app = { path = \"FORGE_WORKSPACE/crates/forge-app\" }\nforge-net = { path = \"FORGE_WORKSPACE/crates/forge-net\", features = [\"ureq\"] }\nserde = \"1\"\n";
+        assert_eq!(
+            pin_forge_crates(cargo, "abc123"),
+            format!(
+                "[dependencies]\nforge-app = {{ git = \"{IXOS_GIT}\", rev = \"abc123\" }}\nforge-net = {{ git = \"{IXOS_GIT}\", rev = \"abc123\", features = [\"ureq\"] }}\nserde = \"1\"\n"
+            )
+        );
+
+        // The real templates, as `forge init` lays them out.
+        let root = workspace_root();
+        let dir = tempfile::tempdir().unwrap();
+        let dir = dir.path();
+        copy_template(&root.join("templates/ios-app"), dir).unwrap();
+        copy_template(&root.join(RUST_TEMPLATE), &dir.join("rust")).unwrap();
+        let release = Release {
+            version: "9.8.7".into(),
+            ixos_rev: "abc123".into(),
+        };
+        let ws = WorkspaceRef::Absolute("/opt/ixos".into());
+        rewrite_workspace_paths(dir, "ios", &ws, Some(&release)).unwrap();
+        let cargo = fs::read_to_string(dir.join("rust/Cargo.toml")).unwrap();
+        assert!(!cargo.contains("FORGE_WORKSPACE"), "{cargo}");
+        assert!(
+            cargo.contains(&format!(
+                r#"forge-app = {{ git = "{IXOS_GIT}", rev = "abc123" }}"#
+            )),
+            "{cargo}"
+        );
+        let pkg = fs::read_to_string(dir.join("Package.swift")).unwrap();
+        assert!(
+            pkg.contains(&format!(
+                r#".package(url: "{FORGEKIT_GIT}", exact: "9.8.7")"#
+            )),
+            "{pkg}"
+        );
+        // The scripts still come from the checkout.
+        let pbx = fs::read_to_string(find_pbxproj(dir).unwrap()).unwrap();
+        assert!(pbx.contains(r#"REPO_ROOT=\"$(cd \"/opt/ixos\" && pwd)\""#));
+    }
+
+    #[test]
+    fn unreleased_framework_changes_mean_the_checkout() {
+        let root = workspace_root();
+        let tmp = tempfile::tempdir().unwrap();
+        let fake = tmp.path();
+        fs::create_dir_all(fake.join("crates/forge-app")).unwrap();
+        let release = "[framework]\nversion = \"1.2.0\"\nixos_rev = \"abc\"\n";
+        fs::write(fake.join("forge-release.toml"), release).unwrap();
+        let crate_at = |v: &str| {
+            fs::write(
+                fake.join("crates/forge-app/Cargo.toml"),
+                format!("[package]\nname = \"forge-app\"\nversion = \"{v}\"\n"),
+            )
+            .unwrap()
+        };
+        crate_at("1.2.0");
+        assert_eq!(
+            framework_release(fake),
+            Some(Release {
+                version: "1.2.0".into(),
+                ixos_rev: "abc".into()
+            })
+        );
+        crate_at("1.3.0");
+        assert_eq!(framework_release(fake), None);
+
+        // In path mode the iOS template points at the checkout's forgekit/.
+        let dir = tmp.path().join("app");
+        copy_template(&root.join("templates/ios-app"), &dir).unwrap();
+        copy_template(&root.join(RUST_TEMPLATE), &dir.join("rust")).unwrap();
+        rewrite_workspace_paths(&dir, "ios", &WorkspaceRef::Relative("../..".into()), None)
+            .unwrap();
+        let pkg = fs::read_to_string(dir.join("Package.swift")).unwrap();
+        assert!(pkg.contains(r#".package(path: "../../forgekit")"#), "{pkg}");
+        let cargo = fs::read_to_string(dir.join("rust/Cargo.toml")).unwrap();
+        assert!(
+            cargo.contains(r#"path = "../../../crates/forge-app""#),
+            "{cargo}"
+        );
     }
 
     #[test]

@@ -25,15 +25,19 @@ For Android, add `--platform android` and use `forge build android --install` (n
 ### Paths written into the app
 
 - A relative `--path` is resolved against the current directory. Missing parent directories are created.
-- `rust/Cargo.toml` points at the Forge crates: by a relative path when the app is inside the checkout (so the checkout can move as a whole), by the checkout's absolute path when it is outside. The iOS Xcode project's "Build Rust FFI" phase points at the checkout's scripts the same way. If you move the checkout, update those paths.
+- The framework an iOS app builds on (the Forge crates in `rust/Cargo.toml`, ForgeKit in `Package.swift`) comes from one of two places:
+  - **a release**, for an app outside the checkout: the Forge crates from git at the commit in `forge-release.toml`, ForgeKit at exactly that version (`.package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: …)`). The app then builds whatever happens to the checkout;
+  - **the checkout**, for an app inside it (like the examples), and for any app while the checkout's `crates/forge-app` version differs from the release in `forge-release.toml` (framework changes no release has yet): relative paths inside the checkout, the checkout's absolute path outside it. `forge init` says which it used.
+- Android apps always use the checkout's crates (Android is work in progress).
+- The iOS Xcode project's "Build Rust FFI" phase always points at the checkout's scripts, relatively or absolutely as above. If you move the checkout, update that path, and the crate and ForgeKit paths of an app that uses the checkout.
 - Native libraries are the app's own and stay inside it: `rust/target/` (Cargo), `build/ios-device/lib` and `build/macos-host/lib` (iOS), `app/src/main/jniLibs` (Android). The generated `.gitignore` leaves them out of version control.
 
 ### iOS (`--platform ios`, default)
 
 - `forge.toml` (app name, bundle ID, version, permissions, entitlements, signing: [app-config.md](app-config.md)), `Package.swift`, `.gitignore`, `README.md`
 - `Info.plist`, `App.entitlements`, `xtool.yml`: generated from `forge.toml`, rewritten by every `forge build ios` / `forge run ios` (`forge config sync`)
-- `rust/`: the app's Rust crate (a notes starter; see [app-crate.md](app-crate.md))
-- `Sources/AppHost/`: the SwiftUI app (notes list, editor, compose and settings screens) and its `@Observable` `NotesModel`, calling the Rust API in `ForgeFFI` directly. See [ios-ui.md](ios-ui.md) for the conventions it follows
+- `rust/`: the app's Rust crate, a notes starter on the application runtime (`forge-app`; see [app-crate.md](app-crate.md))
+- `Sources/AppHost/`: the SwiftUI app. `AppHost.swift` makes ForgeKit's `ForgeHost`, which opens the Rust core once per process, reports the lifecycle and tells the screens when Rust committed a change; `ContentView` shows it with `ForgeRoot`. The screens (notes list, editor, compose, settings) use the `@Observable` `NotesModel`, which calls the Rust API in `ForgeFFI` directly. See [ios-ui.md](ios-ui.md) for the conventions it follows
 - `Sources/AppHostXtoolApp/`: xtool entry point; `Sources/AppHostLauncher/`: entry point for `swift run` and Xcode
 - `Tests/AppHostTests/`: XCTest suite against the real Rust library (macOS: `forge test`)
 - `Xcode/<Name>.xcodeproj`: conventional iOS application host (macOS)
@@ -41,12 +45,12 @@ For Android, add `--platform android` and use `forge build android --install` (n
 
 ### The minimal starter (`--minimal`, iOS)
 
-`--minimal` starts from the same iOS template and Rust crate, removes the notes screens, the lifecycle and native services, and lays `templates/ios-minimal/` over them: a one-screen checklist saved on the phone, with `ItemsModel.swift`, `ContentView.swift`, its tests, a smoke UI test and its own README. [first-app.md](first-app.md) adds a feature to it. `MINIMAL_REMOVES` in `crates/forge-cli/src/commands.rs` lists what it removes, and a test checks that each of those files exists in the full template.
+`--minimal` starts from the same iOS template and Rust crate, removes the notes screens and native services, and lays `templates/ios-minimal/` over them: a one-screen checklist saved on the phone, on the same runtime and ForgeKit host, with `ItemsModel.swift`, `ContentView.swift`, its tests, a smoke UI test and its own README. [first-app.md](first-app.md) adds a feature to it. `MINIMAL_REMOVES` in `crates/forge-cli/src/commands.rs` lists what it removes, and a test checks that each of those files exists in the full template.
 
 ### Android (`--platform android`)
 
 - `forge.toml` with `[android]` (min SDK, ABIs), `.gitignore`
-- `rust/`: the app's Rust crate
+- `rust/`: the app's Rust crate, from `templates/android-rust` (the shape from before the application runtime)
 - Gradle + Compose host under `app/`: `NotesScreen`, `NotesViewModel`, and JVM unit tests against the real Rust library
 - `Generated/`: Kotlin UniFFI output, plus `ForgeAndroid.kt` (HTTPS setup)
 
@@ -67,12 +71,12 @@ Template sources use explicit tokens (never substring-replace product names):
 | `FORGE_BUNDLE_ID` | `--bundle-id` argument |
 | `FORGE_APP_SUPPORT_DIR` | Project name (Application Support subfolder, iOS) |
 | `FORGE_JAVA_PACKAGE` | Same as `--bundle-id` (Android Kotlin/Gradle namespace) |
-| `FORGE_WORKSPACE` | Path to the Forge checkout, in `rust/Cargo.toml` (relative or absolute, see above) |
+| `FORGE_WORKSPACE` | Path to the Forge checkout, in `rust/Cargo.toml` and the iOS `Package.swift` (relative or absolute), or the release pins instead (see above) |
 
 ## Requirements
 
 - The destination (`examples/<Name>` or `--path`) must not already exist.
-- Templates must contain the required files (see `validate_ios_template` / `validate_android_template` in `forge-cli`), and `templates/app-rust` must exist.
+- Templates must contain the required files (see `validate_ios_template` / `validate_android_template` in `forge-cli`), and the starter crate must exist (`templates/app-rust` for iOS, `templates/android-rust` for Android).
 - `cargo` must be able to build the starter crate on the host, because `forge init` generates the bindings from it.
 
 ## Regenerating bindings

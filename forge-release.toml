@@ -1,0 +1,8 @@
+# The latest framework release. `forge init` pins new apps to it: forge-app
+# and the other Forge crates from git at `ixos_rev`, ForgeKit at exactly
+# `version`. Update it (in a PR) after each `scripts/forgekit.sh release`.
+# When the checkout's forge-app version differs (unreleased framework
+# changes), `forge init` uses the checkout's crates and forgekit/ instead.
+[framework]
+version = "0.3.0"
+ixos_rev = "2f0722db72589ae6f0cd0d8898cc695e6895926c"

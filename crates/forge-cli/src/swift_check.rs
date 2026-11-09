@@ -40,6 +40,9 @@ const PORTABLE_MODULES: &[&str] = &[
     "ForgeFFI",
     "forge_ffiFFI",
     "AppHost",
+    // The ixOS runtime's Swift package (forgekit/); it builds on Linux.
+    "ForgeKit",
+    "ForgeApp",
 ];
 
 /// The UniFFI bindings. The other files in `Generated/ForgeFFI` are the
@@ -146,13 +149,75 @@ pub fn select(app: &Path) -> Selection {
     sel
 }
 
+/// The app's ForgeKit dependency, as its Package.swift declares it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForgeKit {
+    /// `.package(path: …)`, made absolute: the staging package is elsewhere,
+    /// and Docker must mount it.
+    Path(PathBuf),
+    /// `.package(url: …, exact: …)` (or any other requirement), copied as is.
+    Remote(String),
+}
+
+impl ForgeKit {
+    fn package_line(&self) -> String {
+        match self {
+            ForgeKit::Path(p) => format!(".package(path: \"{}\")", p.display()),
+            ForgeKit::Remote(line) => line.clone(),
+        }
+    }
+}
+
+/// Finds `.package(path: ".../forgekit")` or `.package(url: ".../ForgeKit.git", …)`
+/// in the app's Package.swift. `None` for an app that predates ForgeKit.
+pub fn forgekit_dependency(app: &Path) -> Option<ForgeKit> {
+    let text = fs::read_to_string(app.join("Package.swift")).ok()?;
+    for line in text.lines() {
+        let code = line.trim();
+        if code.starts_with("//") {
+            continue;
+        }
+        let Some(start) = code.find(".package(") else {
+            continue;
+        };
+        let code = &code[start..];
+        let quoted = code.split('"').nth(1)?;
+        let named = quoted
+            .trim_end_matches('/')
+            .trim_end_matches(".git")
+            .rsplit('/')
+            .next()
+            .is_some_and(|n| n.eq_ignore_ascii_case("forgekit"));
+        if !named {
+            continue;
+        }
+        if code.starts_with(".package(path:") {
+            let p = app.join(quoted);
+            return Some(ForgeKit::Path(p.canonicalize().unwrap_or(p)));
+        }
+        let end = code.rfind(')')?;
+        return Some(ForgeKit::Remote(code[..=end].to_string()));
+    }
+    None
+}
+
 /// The staging package's manifest.
-fn manifest(lib_dir: &Path, with_tests: bool) -> String {
+fn manifest(lib_dir: &Path, with_tests: bool, forgekit: Option<&ForgeKit>) -> String {
+    let (deps, ffi_dep, kit_dep) = match forgekit {
+        Some(kit) => (
+            format!("\n    dependencies: [{}],", kit.package_line()),
+            r#", .product(name: "ForgeApp", package: "forgekit")"#,
+            r#", .product(name: "ForgeKit", package: "forgekit")"#,
+        ),
+        None => (String::new(), "", ""),
+    };
     let tests = if with_tests {
-        r#"
-        .testTarget(name: "AppHostTests", dependencies: ["AppHost", "ForgeFFI"], path: "Tests/AppHostTests"),"#
+        format!(
+            r#"
+        .testTarget(name: "AppHostTests", dependencies: ["AppHost", "ForgeFFI"{kit_dep}], path: "Tests/AppHostTests"),"#
+        )
     } else {
-        ""
+        String::new()
     };
     format!(
         r#"// swift-tools-version: 6.0
@@ -161,16 +226,17 @@ import PackageDescription
 
 let package = Package(
     name: "ForgeSwiftCheck",
+    platforms: [.macOS(.v14)],{deps}
     targets: [
         .systemLibrary(name: "forge_ffiFFI", path: "Generated/forge_ffiFFI"),
         .target(
             name: "ForgeFFI",
-            dependencies: ["forge_ffiFFI"],
+            dependencies: ["forge_ffiFFI"{ffi_dep}],
             path: "Generated/ForgeFFI",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedLibrary("forge_ffi"), .unsafeFlags(["-L", "{lib}"])]
         ),
-        .target(name: "AppHost", dependencies: ["ForgeFFI"], path: "Sources/AppHost"),{tests}
+        .target(name: "AppHost", dependencies: ["ForgeFFI"{kit_dep}], path: "Sources/AppHost"),{tests}
     ]
 )
 "#,
@@ -254,7 +320,11 @@ pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, St
     }
     fs::write(
         st.join("Package.swift"),
-        manifest(&st.join("lib"), !sel.tests.is_empty()),
+        manifest(
+            &st.join("lib"),
+            !sel.tests.is_empty(),
+            forgekit_dependency(app).as_ref(),
+        ),
     )
     .map_err(io("write", &st))?;
     Ok(st)
@@ -283,16 +353,25 @@ pub fn unstage_paths(output: &str, app: &Path) -> String {
 fn swift_cmd(st: &Path, app: &Path, args: &[&str]) -> Cmd {
     match std::env::var("FORGE_SWIFT_DOCKER") {
         Ok(image) if !image.is_empty() => {
-            let mount = format!("{0}:{0}", app.display());
-            Cmd::new("docker")
-                .args(["run", "--rm", "-v", &mount, "-w"])
-                .arg(st)
-                .arg(image)
-                .arg("swift")
-                .args(args)
+            let mut cmd = Cmd::new("docker").args(["run", "--rm"]);
+            for dir in docker_mounts(app) {
+                cmd = cmd.arg("-v").arg(format!("{0}:{0}", dir.display()));
+            }
+            cmd.arg("-w").arg(st).arg(image).arg("swift").args(args)
         }
         _ => Cmd::new("swift").args(args).cwd(st),
     }
+}
+
+/// What the container sees: the app, and a ForgeKit outside it.
+fn docker_mounts(app: &Path) -> Vec<PathBuf> {
+    let mut dirs = vec![app.to_path_buf()];
+    if let Some(ForgeKit::Path(kit)) = forgekit_dependency(app) {
+        if !kit.starts_with(app) {
+            dirs.push(kit);
+        }
+    }
+    dirs
 }
 
 /// `swiftc -parse` of `files` (syntax only, no SDK), on this computer or in
@@ -647,6 +726,41 @@ mod tests {
             unconditional_imports("import struct Foundation.URL\nimport os.log\n"),
             ["Foundation", "os"]
         );
+    }
+
+    #[test]
+    fn the_apps_forgekit_dependency_reaches_the_staging_package() {
+        let ws = tempfile::tempdir().unwrap();
+        let ws = ws.path().canonicalize().unwrap();
+        let app = ws.join("examples/App");
+        fs::create_dir_all(&app).unwrap();
+        fs::create_dir_all(ws.join("forgekit")).unwrap();
+        let write = |text: &str| fs::write(app.join("Package.swift"), text).unwrap();
+
+        write("// .package(url: \"x/ForgeKit.git\", exact: \"1.0.0\")\nlet p = 1\n");
+        assert_eq!(forgekit_dependency(&app), None);
+
+        write("    dependencies: [\n        .package(path: \"../../forgekit\"),\n    ],\n");
+        let kit = forgekit_dependency(&app).unwrap();
+        assert_eq!(kit, ForgeKit::Path(ws.join("forgekit")));
+        assert_eq!(docker_mounts(&app), [app.clone(), ws.join("forgekit")]);
+
+        let url =
+            r#".package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "0.3.0")"#;
+        write(&format!("    dependencies: [{url}],\n"));
+        let kit = forgekit_dependency(&app).unwrap();
+        assert_eq!(kit, ForgeKit::Remote(url.into()));
+        assert_eq!(docker_mounts(&app), vec![app.clone()]);
+
+        let m = manifest(Path::new("/lib"), true, Some(&kit));
+        assert!(m.contains(&format!("dependencies: [{url}]")), "{m}");
+        assert!(
+            m.contains(r#"["forge_ffiFFI", .product(name: "ForgeApp", package: "forgekit")]"#),
+            "{m}"
+        );
+        assert!(m.contains(r#"["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")], path: "Sources/AppHost""#), "{m}");
+        let plain = manifest(Path::new("/lib"), true, None);
+        assert!(!plain.contains("forgekit"), "{plain}");
     }
 
     #[test]
