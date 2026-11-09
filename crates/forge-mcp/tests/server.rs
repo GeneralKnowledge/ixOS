@@ -29,7 +29,7 @@ case "$1 $2" in
   "ui run") echo '{"schema":"forge.result/1","command":"ui run","ok":true,"stage":"ok","duration_ms":3,"diagnostics":[],"hints":[],"data":{"passed_steps":1}}' ;;
   "verify --project") echo "env FORGE_MCP_CHILD=$FORGE_MCP_CHILD" >> "$FAKE_LOG"
     echo '{"schema":"forge.result/1","command":"verify","ok":true,"stage":"ok","duration_ms":2,"diagnostics":[],"hints":[],"data":{}}' ;;
-  "config show") echo 'not json at all'; exit 3 ;;
+  "inspect --project") echo 'not json at all'; exit 3 ;;
   *) echo "error: unrecognized subcommand '$1'" >&2; exit 2 ;;
 esac
 "#;
@@ -333,7 +333,7 @@ async fn failures_carry_diagnostics_and_feed_diagnose() {
     let diag = c.call("forge_diagnose", json!({})).await;
     assert_eq!(
         diag["structuredContent"]["data"]["last_failure"]["command"],
-        "config show"
+        "inspect"
     );
 }
 

@@ -88,7 +88,7 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_inspect_app",
         title: "Describe an app",
-        description: "One call for 'what is this project': effective forge.toml settings (bundle id, permissions, entitlements, signing team type), Swift files split into model and view by their imports, accessibility identifiers in use, UI test files, and the last failure.",
+        description: "One call for 'what is this project' (runs `forge inspect`, which a person can run too): effective forge.toml settings (bundle id, permissions, entitlements, signing team type), the Rust crate, Swift files with their imports and whether they import a UI framework, accessibility identifiers written as literals (identifiers_note says what that misses), UI test files, generated files, convention warnings, and the last failure in this session.",
         tier: Tier::Observe,
         device: false,
         needs_ui: false,
@@ -476,22 +476,25 @@ impl crate::Server {
             }
             "forge_inspect_app" => {
                 let app = app_or_fail!();
+                let dir = app.dir.display().to_string();
                 let mut result = self
                     .forge(
-                        Invocation::new(&["config", "show"], &app.dir, secs(MIN), "forge"),
+                        Invocation::new(
+                            &["inspect", "--project", &dir],
+                            &app.dir,
+                            secs(MIN),
+                            "forge",
+                        ),
                         cancel,
                     )
                     .await;
-                let extra = crate::inspect::scan(&app.dir);
                 if let Some(obj) = result.as_object_mut() {
                     let data = obj.entry("data").or_insert(json!({}));
                     if !data.is_object() {
                         *data = json!({});
                     }
                     let data = data.as_object_mut().expect("object");
-                    for (k, v) in extra {
-                        data.insert(k, v);
-                    }
+                    // The session's own memory: only the server has it.
                     data.insert(
                         "last_failure".into(),
                         self.last_failure()

@@ -9,6 +9,7 @@ mod diagnose;
 mod doctor;
 mod evidence;
 mod focus;
+mod inspect;
 mod ios_builder;
 mod ios_env;
 mod ledger;
@@ -172,6 +173,16 @@ enum Commands {
         /// screenshots, logs, UI tests), even if one is plugged in
         #[arg(long, conflicts_with_all = ["allow", "udid"])]
         no_device: bool,
+    },
+    /// What an app folder holds, from its files: Swift files and their
+    /// imports, accessibility identifiers written as literals, UI tests,
+    /// generated files, the Rust crate, convention warnings. Changes nothing
+    Inspect {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
     },
     /// Does every requirement in the app's requirements.toml have current
     /// evidence? Reads the bundles that `forge check swift` (Linux twin) and
@@ -846,6 +857,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Test { .. } => return "test".into(),
         Commands::Mcp { .. } => return "mcp".into(),
         Commands::Verify { .. } => return "verify".into(),
+        Commands::Inspect { .. } => return "inspect".into(),
         Commands::Crash { .. } => return "crash".into(),
         Commands::Devices => return "devices".into(),
         Commands::Diagnose { .. } => return "diagnose".into(),
@@ -918,6 +930,7 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         | Commands::Test { project, .. }
         | Commands::Diagnose { project, .. }
         | Commands::Verify { project, .. }
+        | Commands::Inspect { project }
         | Commands::Crash { project, .. }
         | Commands::Device {
             cmd: DeviceCommands::Crashes { project, .. },
@@ -1110,6 +1123,16 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         },
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
+        Commands::Inspect { project } => {
+            let project = project_or_default(project, "");
+            if project.as_os_str().is_empty() {
+                return Err(
+                    "no app here: run inside an app directory (with forge.toml) or pass --project"
+                        .into(),
+                );
+            }
+            inspect::run(&project)
+        }
         Commands::Crash {
             files,
             project,

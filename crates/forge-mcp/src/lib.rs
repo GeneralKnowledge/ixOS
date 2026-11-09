@@ -16,7 +16,6 @@
 mod content;
 mod correlate;
 mod exec;
-mod inspect;
 pub mod journal;
 mod project;
 mod tools;
