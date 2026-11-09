@@ -52,7 +52,7 @@ forge init MyApp --bundle-id org.example.myapp
 cd MyApp
 ```
 
-`forge init` prints the next steps. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
+`forge init` prints the next steps. For your first app, add `--minimal`: you get one screen and a list saved on the phone, and [first-app.md](first-app.md) walks you through adding a feature to it. Without it you get the full starter described below, which shows every pattern a bigger app needs. The bundle identifier must be unique to you (reverse DNS, like `com.yourname.myapp`). A free Apple account can register 10 new ones a week, so reuse one while experimenting.
 
 The app has its own Rust crate in `rust/`, a SwiftUI screen in `Sources/AppHost/`, and a `README.md` that maps out the rest. See [app-crate.md](app-crate.md) for the Rust side.
 
@@ -109,7 +109,7 @@ The layers are:
 | Signing and provisioning | xtool not signed in, free-account limits, a revoked certificate |
 | iPhone | not connected or not trusted, locked, Developer Mode off, profile not trusted, usbmuxd stuck |
 
-If the app installs but opens to a blank screen or closes at once, see [troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away): `forge device logs` and `forge device crashes` show what happened on the phone.
+If the app installs but opens to a blank screen or closes at once, run `forge diagnose` in the app's folder and open the app when it asks. It checks the last run, the phone, the install and its signing, the newest crash and the app's log, and ends with what to do next ([troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away)).
 
 If a check before the build is wrong about your setup, `FORGE_SKIP_PREFLIGHT=1 forge run ios` skips it.
 
@@ -117,8 +117,11 @@ For scripts and coding agents, add `--json` to any command: stdout then carries 
 
 ## Next
 
+- [first-app.md](first-app.md): add a feature to the minimal starter, touching Rust, the view model and the screen once each.
 - [builds.md](builds.md): every way to build, debug and release, and what is not supported yet.
 - [first-app-store-release.md](first-app-store-release.md): publishing. Forge doesn't do App Store builds yet; this is the plan, including the steps that need a Mac.
 - [ios-signing.md](ios-signing.md): Apple accounts, signing and devices in more depth.
 - [android-setup.md](android-setup.md): the same app on Android (`forge init MyApp --platform android`). Android is work in progress.
 - On a Mac, the app's `Xcode/` project gives you the debugger and Instruments ([ios-xcode.md](ios-xcode.md)). It is optional.
+- [status.md](status.md): what works on an iPhone today, and what is built but not yet proven on a phone.
+- [README.md](README.md): every doc, grouped by what you want to do.

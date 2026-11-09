@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Start with `forge doctor`: it lists each missing tool, SDK, sign-in or device with the command that fixes it. `forge build ios` and `forge run ios` run the quick checks again before building (set `FORGE_SKIP_PREFLIGHT=1` to skip them), and when a build or install fails they end with a "What went wrong" section that names the layer (Rust library, Swift build, signing and provisioning, or iPhone) and a fix. The sections below explain those fixes.
+Start with `forge doctor` when something won't build or install, and `forge diagnose` (in the app's folder) when an installed app doesn't work. `forge doctor` lists each missing tool, SDK, sign-in or device with the command that fixes it. `forge build ios` and `forge run ios` run the quick checks again before building (set `FORGE_SKIP_PREFLIGHT=1` to skip them), and when a build or install fails they end with a "What went wrong" section that names the layer (Rust library, Swift build, signing and provisioning, or iPhone) and a fix. The sections below explain those fixes.
 
 ## `SDKROOT is not set` when building Rust for iOS
 
@@ -52,7 +52,22 @@ That is expected: `xtool dev run` installs the app but does not launch it, and `
 
 ## The app opens to a blank screen, or closes straight away
 
-The build and install worked, so the problem is in the running app. With the iPhone still connected:
+The build and install worked, so the problem is in the running app. With the iPhone still connected, run this in the app's folder:
+
+```bash
+forge diagnose
+```
+
+It checks, in order:
+- whether the last `forge run ios` finished;
+- that the iPhone is connected with Developer Mode on;
+- that the app is installed and its signing hasn't expired (free accounts get 7 days);
+- the newest crash report for the app, symbolicated;
+- what the app logs while you open it (it asks you to, and listens for 15 seconds; `--for 1m` listens longer).
+
+It ends with one **Next:** step, and exits non-zero while something is wrong. `--json` gives the same checks for scripts and agents.
+
+To look yourself, the same information comes from these commands:
 
 ```bash
 forge device logs --process <App>Xtool --for 30s   # then open the app; Rust and Swift log here
@@ -88,7 +103,7 @@ These come from the last step of `forge run ios`, when xtool signs the app and i
 | Message contains | Problem | Fix |
 |------------------|---------|-----|
 | `requires logging in with xtool auth`, `Logged out` | xtool has no Apple sign-in | `xtool auth login`, check with `xtool auth status` |
-| `maximum number of apps for free development profiles` | Free accounts: 3 sideloaded apps per device | Remove another development app from the iPhone |
+| `maximum number of apps for free development profiles` | A free account can have 3 development apps on a device at once | Remove another development app from the iPhone |
 | `App ID limit` | Free accounts: 10 new bundle ids per 7 days | Reuse a bundle id (`bundle_id` in forge.toml), or wait |
 | `provisioning profile`, `certificate has been revoked`, `maximum number of certificates` | Apple refused the certificate or profile | `xtool auth logout`, `xtool auth login`; revoke old development certificates at developer.apple.com if at the limit |
 | `Developer Mode` | Developer Mode is off (iOS 16+) | Settings > Privacy & Security > Developer Mode, restart |

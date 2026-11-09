@@ -138,6 +138,16 @@ for app in "${APPS[@]}"; do
       group "template: iOS device build (unsigned)"
       xcode_build "$APP/Xcode/CiTemplateApp.xcodeproj"
       endgroup
+      # The minimal starter (forge init --minimal) is laid over the same template.
+      MINI="${RUNNER_TEMP:-$(mktemp -d)}/CiMinimalApp"
+      rm -rf "$MINI"
+      group "template: forge init --minimal, forge test"
+      cargo run -q -p forge-cli -- init CiMinimalApp --minimal --bundle-id org.example.ciminimal --path "$MINI"
+      cargo run -q -p forge-cli -- test --project "$MINI"
+      endgroup
+      group "template (minimal): iOS device build (unsigned)"
+      xcode_build "$MINI/Xcode/CiMinimalApp.xcodeproj"
+      endgroup
       ;;
     services-check)
       APP="${RUNNER_TEMP:-$(mktemp -d)}/ServicesCheck"

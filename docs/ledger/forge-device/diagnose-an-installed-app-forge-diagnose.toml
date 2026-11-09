@@ -1,0 +1,9 @@
+order = 39
+capability = "Why an installed app doesn't work, for a person: the last run, the phone, the install and its signing, the newest crash and the app's log, with one next step (`forge diagnose`)"
+framework = "Yes: forge-cli (app_diagnose.rs)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a"
+iphone = "No"
+documented = "Yes: troubleshooting.md, getting-started.md"
+limits = "Tested on Linux with a fake phone only. The log is read live while the person opens the app; a crash report's date is shown but not compared with the last install"

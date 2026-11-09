@@ -2,7 +2,7 @@
 
 ## Contract
 
-`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>]` creates an app at `<dir>`. Without `--path` it creates `./<Name>` in the current directory, or `examples/<Name>/` when you run it inside the Forge checkout. It then prints the next commands to run, and the app gets a `README.md` describing its layout.
+`forge init <Name> --bundle-id org.example.app [--platform ios|android] [--path <dir>] [--minimal]` creates an app at `<dir>`. Without `--path` it creates `./<Name>` in the current directory, or `examples/<Name>/` when you run it inside the Forge checkout. It then prints the next commands to run, and the app gets a `README.md` describing its layout.
 
 The app **owns its Rust logic**: `rust/` is its own crate, with its own `Cargo.toml`, lock file and target directory, and `forge.toml` names it (`[rust] path = "rust"`). It depends on Forge's runtime crates (`forge-runtime`, `forge-storage`, `forge-net`) by path, and the Forge checkout supplies the build scripts and `uniffi-bindgen`. So an app is not fully standalone yet: it needs a Forge checkout on the same machine, but nothing of the app lives inside that checkout. See [app-crate.md](app-crate.md) for how to work in the crate.
 
@@ -39,6 +39,10 @@ For Android, add `--platform android` and use `forge build android --install` (n
 - `Xcode/<Name>.xcodeproj`: conventional iOS application host (macOS)
 - `Generated/`: Swift UniFFI output
 
+### The minimal starter (`--minimal`, iOS)
+
+`--minimal` starts from the same iOS template and Rust crate, removes the notes screens, the lifecycle and native services, and lays `templates/ios-minimal/` over them: a one-screen checklist saved on the phone, with `ItemsModel.swift`, `ContentView.swift`, its tests, a smoke UI test and its own README. [first-app.md](first-app.md) adds a feature to it. `MINIMAL_REMOVES` in `crates/forge-cli/src/commands.rs` lists what it removes, and a test checks that each of those files exists in the full template.
+
 ### Android (`--platform android`)
 
 - `forge.toml` with `[android]` (min SDK, ABIs), `.gitignore`
@@ -48,7 +52,7 @@ For Android, add `--platform android` and use `forge build android --install` (n
 
 ### Checked in CI
 
-`scripts/check-fresh-app.sh` (CI job "Fresh app outside the checkout", or `make check-fresh-app`) runs `forge init --path` outside the checkout for both platforms, tests, lints and formats each app's crate on its own, checks that nothing was written into the checkout, then adds a Rust export and checks that `forge bindings generate --project` puts it in the Swift and Kotlin bindings. It also checks that the iOS app's Info.plist, App.entitlements and xtool.yml come from `forge.toml`, and that a permission, version, entitlement and `minimum_ios` edited in `forge.toml` reach them (`forge config sync`, `forge config check`). CI also runs, on apps created outside the checkout, the XCTest suite via `forge test` (macOS), an unsigned `xcodebuild` (macOS), and the JVM unit tests plus a debug APK via `forge build android` (Linux).
+`scripts/check-fresh-app.sh` (CI job "Fresh app outside the checkout", or `make check-fresh-app`) runs `forge init --path` outside the checkout for both platforms (and `--minimal` for iOS), tests, lints and formats each app's crate on its own, checks that nothing was written into the checkout, then adds a Rust export and checks that `forge bindings generate --project` puts it in the Swift and Kotlin bindings. It also checks that the iOS app's Info.plist, App.entitlements and xtool.yml come from `forge.toml`, and that a permission, version, entitlement and `minimum_ios` edited in `forge.toml` reach them (`forge config sync`, `forge config check`). CI also runs, on apps created outside the checkout, the XCTest suite via `forge test` (macOS), an unsigned `xcodebuild` (macOS), and the JVM unit tests plus a debug APK via `forge build android` (Linux).
 
 What CI cannot check is a physical device: see [toolchain-validation.md](toolchain-validation.md) for the manual device checklist and what has been recorded.
 

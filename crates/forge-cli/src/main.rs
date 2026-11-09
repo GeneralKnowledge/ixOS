@@ -1,4 +1,5 @@
 mod app_config;
+mod app_diagnose;
 mod check;
 mod commands;
 mod config;
@@ -74,6 +75,11 @@ enum Commands {
         /// Relative paths are resolved against the current directory.
         #[arg(long, value_name = "DIR")]
         path: Option<PathBuf>,
+        /// Start from the minimal starter: one screen, a list saved on the
+        /// phone, nothing else (iOS). Without it you get the full starter,
+        /// which shows every pattern a larger app needs
+        #[arg(long)]
+        minimal: bool,
     },
     /// iOS app configuration from forge.toml: Info.plist, App.entitlements, xtool.yml
     Config {
@@ -118,6 +124,23 @@ enum Commands {
     Run {
         #[command(subcommand)]
         cmd: RunCommands,
+    },
+    /// Why isn't my app working? Checks the last `forge run ios`, the iPhone,
+    /// whether the app is installed and still signed, its newest crash report,
+    /// and what it logs while you open it, then says what to do next
+    Diagnose {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// The iPhone to check, when more than one is connected
+        #[arg(long)]
+        udid: Option<String>,
+        /// How long to read the app's log while you open it: 15s (the
+        /// default), 1m; 0 skips it
+        #[arg(long = "for", value_name = "DURATION", value_parser = report::parse_duration)]
+        duration: Option<std::time::Duration>,
     },
     /// A connected iPhone over USB, from Linux: its details, system log and
     /// crash reports, and the live connection to a development build of your
@@ -633,9 +656,9 @@ enum ConfigCommands {
 
 #[derive(Subcommand)]
 enum LedgerCommands {
-    /// Write docs/capability-ledger.md from the records in docs/ledger/
+    /// Write docs/capability-ledger.md and docs/status.md from the records in docs/ledger/
     Generate,
-    /// Fail if docs/capability-ledger.md differs from the records (for CI)
+    /// Fail if docs/capability-ledger.md or docs/status.md differs from the records (for CI)
     Check,
     /// List the records, optionally only those mentioning TEXT
     List {
@@ -776,7 +799,7 @@ fn main() {
     let fallback_stage = match cli.command {
         Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
         // usbmuxd missing, no phone, not paired, the app not listening.
-        Commands::Device { .. } | Commands::Devices => "device",
+        Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
         Commands::Ui {
             cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
         } => "test",
@@ -821,6 +844,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Verify { .. } => return "verify".into(),
         Commands::Crash { .. } => return "crash".into(),
         Commands::Devices => return "devices".into(),
+        Commands::Diagnose { .. } => return "diagnose".into(),
         Commands::Config { cmd } => match cmd {
             ConfigCommands::Sync { .. } => "config sync",
             ConfigCommands::Check { .. } => "config check",
@@ -888,6 +912,7 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
             cmd: RunCommands::Ios { project, .. },
         }
         | Commands::Test { project, .. }
+        | Commands::Diagnose { project, .. }
         | Commands::Verify { project, .. }
         | Commands::Crash { project, .. }
         | Commands::Device {
@@ -943,6 +968,11 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 },
             )
         }
+        Commands::Diagnose {
+            project,
+            udid,
+            duration,
+        } => diagnose_app(&root, project, udid, duration, cli.json),
         Commands::Doctor if cli.json => doctor::print_json(runner, &root),
         Commands::Doctor => doctor::print_text(runner, &root),
         Commands::Verify {
@@ -995,11 +1025,20 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             bundle_id,
             platform,
             path,
+            minimal,
         } => {
             let path = path
                 .map(|p| absolute_from_cwd(&p))
                 .or_else(|| default_init_dest(&root, &name));
-            commands::init(runner, &root, &name, &bundle_id, &platform, path.as_deref())
+            commands::init_with(
+                runner,
+                &root,
+                &name,
+                &bundle_id,
+                &platform,
+                path.as_deref(),
+                minimal,
+            )
         }
         Commands::Config { cmd } => {
             let (project, action) = match cmd {
@@ -1298,6 +1337,61 @@ fn absolute_from_cwd(path: &std::path::Path) -> PathBuf {
             .unwrap_or_else(|_| PathBuf::from("."))
             .join(path)
     }
+}
+
+/// `forge diagnose`: the checklist, its next step, and a non-zero exit while
+/// something is wrong.
+fn diagnose_app(
+    root: &std::path::Path,
+    project: Option<PathBuf>,
+    udid: Option<String>,
+    duration: Option<std::time::Duration>,
+    json: bool,
+) -> Result<(), String> {
+    let project_dir = match project {
+        Some(p) => commands::resolve_project_dir(root, &p),
+        None => app_in_cwd().ok_or_else(|| {
+            report::usage_error(
+                "run `forge diagnose` in your app's folder (the one with forge.toml), or pass --project <dir>",
+            )
+        })?,
+    };
+    let cfg = commands::load_config(&project_dir)?;
+    let usb = forge_device::UsbBackend::new().map_err(|e| e.to_string());
+    let backend = usb
+        .as_ref()
+        .map(|b| b as &dyn forge_device::DeviceBackend)
+        .map_err(Clone::clone);
+    let diagnosis = app_diagnose::diagnose(
+        &app_diagnose::Inputs {
+            app_dir: &project_dir,
+            cfg: &cfg,
+            backend,
+            udid: udid.as_deref(),
+            listen: duration.unwrap_or(std::time::Duration::from_secs(15)),
+            now: now_secs(),
+        },
+        &mut |line| {
+            if !json {
+                println!("{line}");
+            }
+        },
+    );
+    if json {
+        report::set_data(app_diagnose::to_json(&diagnosis));
+    } else {
+        app_diagnose::print(&diagnosis, &mut std::io::stdout().lock())
+            .map_err(|e| e.to_string())?;
+    }
+    let problems = diagnosis
+        .checks
+        .iter()
+        .filter(|c| c.mark == app_diagnose::Mark::Fail)
+        .count();
+    if problems > 0 {
+        return Err(format!("{problems} problem(s) found: see Next above"));
+    }
+    Ok(())
 }
 
 fn now_secs() -> i64 {
