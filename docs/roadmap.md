@@ -4,11 +4,27 @@ Forge Mobile is an **integration reference**: a working Counter app on iOS (and 
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
-Last reviewed: 2026-11-07.
+Last reviewed: 2026-11-09.
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
 What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](framework-extraction-audit.md).
+
+## Product direction: a native application framework
+
+Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust application core and a SwiftUI design system, not a Rust-to-iOS bridge with increasingly sophisticated tools. The test for every feature: does it make it easier to build a complete, attractive, reliable app? SwiftUI stays the UI framework (no new renderer, DSL, navigation or state framework); Forge adds a design system and application patterns on top of it; Rust owns domain rules, validation and persistence; the CLI builds and operates the app, and agents are optional.
+
+| Priority | Work | Status |
+|---|---|---|
+| P0 | Existing runtime and native integration stability | Maintain |
+| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md)) | **Proposed, next** |
+| P2 | Forge AppKit: alerts and confirmations as model values, destinations, load and submission state, settings and form patterns | Planned |
+| P3 | Rust application foundations: domain errors, validation, repositories, query (modules in existing crates first) | Planned, alongside |
+| P4 | A complete reference app (personal library) built only on the above | Required proof |
+| P5 | Developer experience: `forge init` on ForgeUI, component docs, feature templates | After the foundation |
+| P6 | Autonomous-agent tooling expansion (M6, general device control) | **Deferred.** Device, build, diagnostics and MCP work stays as supporting infrastructure |
+
+No Android work and no cross-platform components until the iOS experience is right.
 
 ## Platform focus
 
