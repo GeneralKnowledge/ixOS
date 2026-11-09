@@ -4,10 +4,14 @@ Forge Mobile splits **portable Rust application logic** from **thin platform hos
 
 ## Framework principles
 
-ixOS is a framework of reusable capabilities, not only a way to build Rust-backed SwiftUI apps. Two rules decide what goes into it.
+ixOS is a framework of reusable capabilities, not only a way to build Rust-backed SwiftUI apps. Two rules decide what goes into it, and a third how it is used.
 
 1. **Move reusable infrastructure into ixOS, not app identity or domain logic.** Persistence, networking, file handling, logging, background work, notifications, media and device integration are machinery every app needs, and the framework maintains one version of each. What an app is and does stays in the app: Chat's conversations, Pocket Library's books and reading rules, Weather's forecasts, an assistant's personality.
 2. **Extract when there is a real second use, or when the code is clearly platform-level.** A second app (or a second feature) that needs the same thing is the signal. Platform-level code, such as a wrapper over an Apple framework that any app would write the same way, can move on its first use. Code that only might be reused stays in the app until it is.
+
+A third rule decides how the framework is used:
+
+3. **Human first, agent optional.** Every ixOS app must be buildable, testable, debuggable and maintainable by a person with the documented tools. Capabilities live in the CLI (or a library it uses) with `--json` output; `forge mcp` is a thin layer that runs those commands and adds schemas, argument checks and session state, never its own implementation of a build, test, inspection or device operation. Agent configuration is generated on request (`forge agent setup`), never required. Deterministic work (configuration, builds, bindings, signing, device access, logs, screenshots, accessibility measurements, UI test runs, evidence) is Forge's, not an agent's, and only a person records an acceptance. [human-workflow.md](human-workflow.md) is the contract, and `scripts/check-human-workflow.sh` tests it in CI.
 
 In practice:
 

@@ -225,5 +225,6 @@ The demos prove that we can build apps with ixOS, not that someone else can. In 
 | Implement Rust application logic | app-crate.md | Not run | | |
 | Build and install on a physical iPhone | builds.md, ios-signing.md | Not run | | |
 | Diagnose a configuration error we introduce on purpose | troubleshooting.md | Not run | | |
+| Develop an app without an AI agent: create, inspect, change Rust and SwiftUI, test, build, install, launch, diagnose, review evidence with the CLI alone | human-workflow.md | Linux steps 1–6 and 12 automated (scripts/check-human-workflow.sh, CI), 2026-11-09; the iPhone steps 7–11 not run for this workflow | About 2 minutes on Linux, plus the Swift image's first pull | Before 2026-11-09, launching the app had no CLI command, inspection existed only in MCP, a person's builds were missing from run records, and every new app carried agent files |
 
 Also recorded for each run: time to the first successful iPhone build, every time they had to read framework source, missing or wrong documentation, confusing APIs, and any platform workaround they needed.

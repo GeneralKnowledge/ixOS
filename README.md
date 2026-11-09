@@ -112,7 +112,9 @@ cargo run -p forge-cli -- --json run ios --project examples/counter        # one
 cargo run -p forge-cli -- device logs --process CounterXtool --for 20s    # the app's log on a USB iPhone (docs/forge-device.md)
 ```
 
-## For coding agents
+## Without an agent, and with one
+
+Everything Forge does is a `forge` command a person runs at a terminal: [docs/human-workflow.md](docs/human-workflow.md) takes a fresh app from `forge init` to reviewed evidence with no AI agent, MCP server or API key, and CI runs it. AI coding agents use the same commands; the integration below is optional.
 
 An agent edits Rust and SwiftUI with its own tools; Forge gives it the toolchain, signing, the phone and structured results. What exists today:
 
@@ -127,7 +129,7 @@ Where each of these stands on a real iPhone is kept current in [docs/status.md](
 | UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built. On an iPhone: setup, launch, finding by identifier, tapping, typing, the tree and screenshots work (a UI test passed 11 of 11 steps). Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |
 | Apple's accessibility service from Linux (no runner or disk image) | Experimental probe: reading identifiers and labels and pressing by identifier work on an iPhone; no typing, and Apple's audit doesn't answer yet ([docs/research/ax-audit.md](docs/research/ax-audit.md)) |
 
-New apps from `forge init` come with `AGENTS.md` (the rules) and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
+New apps from `forge init` have no agent files. `forge agent setup` (or `forge init --agent`) adds `AGENTS.md` (the rules), `CLAUDE.md` and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
 
 Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. `forge init` creates the app in `./<NAME>`, or under the workspace's `examples/` when run inside the checkout, unless you pass `--path <dir>`; an iOS app created outside the checkout pins the Forge crates and ForgeKit to the release in `forge-release.toml` (or, while the checkout has unreleased framework changes, points at the checkout by absolute path; see docs/project-generation.md).
 
