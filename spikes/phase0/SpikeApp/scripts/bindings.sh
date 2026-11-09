@@ -20,9 +20,11 @@ cargo build --manifest-path "$APP/rust/Cargo.toml" -p spike-app-core
 case "$(uname -s)" in Darwin) EXT=dylib ;; *) EXT=so ;; esac
 STAGE="$(mktemp -d)"
 trap 'rm -rf "$STAGE"' EXIT
-cargo run --quiet --manifest-path "$APP/rust/Cargo.toml" -p uniffi-bindgen -- generate \
-  --library "$APP/rust/target/debug/libforge_ffi.$EXT" --language swift --out-dir "$STAGE" \
-  2>&1 | grep -v "swift-format" || true
+# Run from rust/: library mode calls `cargo metadata` in the current
+# directory, and from the app root it would walk up to whatever Cargo
+# workspace encloses the app (inside a Forge checkout, Forge's own).
+(cd "$APP/rust" && cargo run --quiet -p uniffi-bindgen -- generate \
+  --library "target/debug/libforge_ffi.$EXT" --language swift --out-dir "$STAGE")
 
 mkdir -p "$APP/Generated/ForgeFFI" "$APP/Generated/forge_ffiFFI"
 # UniFFI writes no `import` for a Swift module holding external types (it

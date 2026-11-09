@@ -13,9 +13,12 @@ crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
 # FRAMEWORK_DEPS_BEGIN
-forge-app = { path = "../../forge-app" }
-forge-runtime = { path = "../../../../crates/forge-runtime" }
-forge-storage = { path = "../../../../crates/forge-storage" }
+# The framework, pinned to one commit of the Forge repository: no checkout
+# on this machine is involved. (A release would pin a tag or `=0.3.0` from a
+# registry; a commit is the same guarantee.) Cargo.lock is committed.
+forge-app = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
+forge-runtime = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
+forge-storage = { git = "https://github.com/GeneralKnowledge/ixOS", rev = "d003d59314664193a7b7b4decdf617c97eeb3dce" }
 # FRAMEWORK_DEPS_END
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }

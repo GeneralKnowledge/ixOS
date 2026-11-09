@@ -1,0 +1,99 @@
+name: Phase 0 spike
+
+# The app model experiments in spikes/phase0 (docs/app-model-review.md):
+# shared UniFFI types across two Swift modules, ForgeKit consumed as a real
+# versioned package, and an app moved out of the checkout and built with the
+# checkout deleted. Runs only when the spike changes; not a gate for anything.
+on:
+  push:
+    branches: [claude/project-thread-suviqy]
+    paths: ["spikes/phase0/**", ".github/workflows/phase0-spike.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  spike:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    name: Independent app (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Stand in for a published ForgeKit 0.3.0
+        # There is no ForgeKit repository yet, so serve the package from a
+        # local git repository tagged 0.3.0. The app's manifest keeps its
+        # real URL; SwiftPM is pointed at this one.
+        run: |
+          cp -R spikes/phase0/ForgeKit "$RUNNER_TEMP/ForgeKit"
+          cd "$RUNNER_TEMP/ForgeKit"
+          git init -q -b main
+          git -c user.name=ci -c user.email=ci@example.invalid add .
+          git -c user.name=ci -c user.email=ci@example.invalid commit -qm "ForgeKit 0.3.0"
+          git tag 0.3.0
+
+      - name: Move the app out and delete the Forge checkout
+        run: |
+          cp -R spikes/phase0/SpikeApp "$RUNNER_TEMP/MovedApp"
+          cd "$RUNNER_TEMP/MovedApp"
+          cp -R Generated "$RUNNER_TEMP/committed-generated"
+          sed -i.bak "s#https://github.com/GeneralKnowledge/ForgeKit.git#file://$RUNNER_TEMP/ForgeKit#" Package.swift
+          rm Package.swift.bak
+          # Nothing of the checkout is left: the app must get the framework
+          # from git (Rust) and the package URL (Swift).
+          cd "$RUNNER_TEMP"
+          rm -rf "$GITHUB_WORKSPACE"
+          mkdir -p "$GITHUB_WORKSPACE"
+          if grep -rn "spikes/phase0\|$GITHUB_WORKSPACE" MovedApp --include=*.toml --include=*.swift --include=*.sh; then
+            echo "the app still names the checkout"; exit 1
+          fi
+
+      - name: Toolchain
+        working-directory: ${{ runner.temp }}/MovedApp/rust
+        run: |
+          rustup show active-toolchain || rustup toolchain install
+          swift --version
+
+      - name: Rust tests (framework from git, pinned commit)
+        working-directory: ${{ runner.temp }}/MovedApp
+        run: cargo test --locked --manifest-path rust/Cargo.toml -p spike-app-core
+
+      - name: Bindings with the app's own uniffi-bindgen match the committed ones
+        working-directory: ${{ runner.temp }}/MovedApp
+        run: |
+          ./scripts/bindings.sh
+          diff -r "$RUNNER_TEMP/committed-generated" Generated
+
+      - name: Host library for Swift
+        working-directory: ${{ runner.temp }}/MovedApp
+        run: |
+          mkdir -p build/host/lib
+          cp rust/target/debug/libforge_ffi.a build/host/lib/
+
+      - name: Swift build and tests (two UniFFI modules, ForgeKit as a package)
+        working-directory: ${{ runner.temp }}/MovedApp
+        run: |
+          swift build
+          swift test
+          # Linux has no SwiftUI, so the launcher is a command-line check.
+          if [ "$RUNNER_OS" = Linux ]; then swift run SpikeApp; fi
+
+      - name: iOS device build (unsigned)
+        if: runner.os == 'macOS'
+        working-directory: ${{ runner.temp }}/MovedApp
+        run: |
+          rustup target add aarch64-apple-ios
+          cargo build --locked --manifest-path rust/Cargo.toml -p spike-app-core --target aarch64-apple-ios --release
+          mkdir -p build/ios-device/lib
+          cp rust/target/aarch64-apple-ios/release/libforge_ffi.a build/ios-device/lib/
+          xcodebuild -version
+          xcodebuild build -scheme SpikeApp -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40
