@@ -533,7 +533,8 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
         .as_deref()
         .and_then(ios_env::sdk_major)
         .is_some_and(|m| m < MIN_IOS_SDK_MAJOR);
-    if let (true, false, false, Some(v)) = (installed, too_old, opts.reinstall_sdk, &version) {
+    let compatible = version.as_deref().is_some_and(sdk_is_compatible);
+    if let (true, true, false, Some(v)) = (installed, compatible, opts.reinstall_sdk, &version) {
         let note = if opts.xip.is_some() {
             " (already installed, so the .xip wasn't used; --reinstall-sdk replaces it)"
         } else {
@@ -544,10 +545,15 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
             outcome: Outcome::Ready(format!("iOS {v} SDK{note}")),
         };
     }
-    let unknown = if installed && version.is_none() {
-        "a Darwin SDK is installed, but Forge can't read its iOS version; "
+    let unknown = if installed && !compatible && !too_old {
+        match &version {
+            Some(v) => format!(
+                "a Darwin SDK is installed, but Forge can't tell which iOS it is for (\"{v}\"); "
+            ),
+            None => "a Darwin SDK is installed, but Forge can't read its iOS version; ".to_string(),
+        }
     } else {
-        ""
+        String::new()
     };
     if let Some(missing) = waiting_for {
         return Step {
@@ -558,7 +564,7 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
         };
     }
     let old = if !unknown.is_empty() {
-        unknown.to_string()
+        unknown
     } else if too_old {
         format!(
             "the installed SDK is iOS {}, which fails to link with Swift 6.2; ",
@@ -625,9 +631,15 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
                 "that Xcode has the iOS {v} SDK, which fails to link with Swift 6.2: use Xcode 26's .xip"
             )),
         },
-        Some(v) => Step {
+        Some(v) if sdk_is_compatible(&v) => Step {
             name,
             outcome: Outcome::Done(format!("installed the iOS {v} SDK")),
+        },
+        Some(v) => Step {
+            name,
+            outcome: Outcome::Todo(format!(
+                "`xtool sdk install` finished, but Forge can't tell which iOS the SDK is for (\"{v}\"): run `forge doctor`, and use Xcode 26's .xip"
+            )),
         },
         None => Step {
             name,
@@ -636,6 +648,12 @@ fn darwin_sdk(host: &Host, opts: &Options, waiting_for: Option<&str>) -> Step {
             ),
         },
     }
+}
+
+/// Only a version Forge can read and that is new enough counts: an
+/// unreadable one is never taken as compatible.
+fn sdk_is_compatible(version: &str) -> bool {
+    ios_env::sdk_major(version).is_some_and(|m| m >= MIN_IOS_SDK_MAJOR)
 }
 
 fn apple_sign_in(host: &Host, opts: &Options, xtool_ready: bool) -> Step {
@@ -1135,5 +1153,28 @@ mod tests {
         assert!(verdict(&todo, true, &[])
             .unwrap_err()
             .contains("1 step still needs you"));
+    }
+    #[test]
+    fn an_sdk_version_forge_cant_parse_is_never_compatible() {
+        assert!(sdk_is_compatible("26.0"));
+        assert!(sdk_is_compatible("27.1"));
+        assert!(!sdk_is_compatible("18.0"));
+        assert!(!sdk_is_compatible("iPhoneOS"));
+        assert!(!sdk_is_compatible(""));
+
+        let mock = ready_machine();
+        mock.respond(
+            "swift sdk configure",
+            0,
+            "sdkRootPath: /nonexistent/iPhoneOSbeta.sdk\n",
+        );
+        let root = PathBuf::from("/forge");
+        let env = |_: &str| None;
+        let ask = |_: &str| false;
+        let steps = run_steps(&host(&mock, &root, &env, &ask), &opts(false));
+        assert!(
+            !matches!(outcome(&steps, "Darwin SDK"), Outcome::Ready(_)),
+            "{steps:?}"
+        );
     }
 }
