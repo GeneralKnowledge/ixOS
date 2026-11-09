@@ -134,7 +134,7 @@ pub(crate) fn script(root: &Path, name: &str) -> Cmd {
         .cwd(root)
 }
 
-fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
+pub(crate) fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
     let forge_toml = project_dir.join("forge.toml");
     let content = fs::read_to_string(&forge_toml)
         .map_err(|e| format!("cannot read {}: {e}", forge_toml.display()))?;
@@ -1180,7 +1180,7 @@ fn install_summary(s: &InstallSummary) -> String {
         );
     }
     out.push_str(&format!(
-        "If it opens to a blank screen or closes at once: `forge device logs --process {} --for 30s`, then open it; `forge device crashes` lists crashes (docs/troubleshooting.md).\n",
+        "If it opens to a blank screen or closes at once: run `forge diagnose` in the app's folder and open the app when it asks, or `forge device logs --process {} --for 30s` (docs/troubleshooting.md).\n",
         s.process
     ));
     if s.devtools {

@@ -12,7 +12,7 @@ Read these in order the first time.
 |---|---|
 | [getting-started.md](getting-started.md) | From a bare Linux machine to your first app on your iPhone, about an hour |
 | [first-app.md](first-app.md) | Add a feature to the minimal starter app (Rust rule, test, view model, button), about 20 minutes |
-| [troubleshooting.md](troubleshooting.md) | A build, install or launch failed, or the app opens to a blank screen |
+| [troubleshooting.md](troubleshooting.md) | A build, install or launch failed, or the app opens to a blank screen (`forge diagnose` checks it for you) |
 | [linux-setup.md](linux-setup.md) | Each toolchain step by hand, if `forge setup ios` couldn't do one |
 
 ## Building an app

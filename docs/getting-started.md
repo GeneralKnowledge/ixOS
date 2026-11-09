@@ -109,7 +109,7 @@ The layers are:
 | Signing and provisioning | xtool not signed in, free-account limits, a revoked certificate |
 | iPhone | not connected or not trusted, locked, Developer Mode off, profile not trusted, usbmuxd stuck |
 
-If the app installs but opens to a blank screen or closes at once, see [troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away): `forge device logs` and `forge device crashes` show what happened on the phone.
+If the app installs but opens to a blank screen or closes at once, run `forge diagnose` in the app's folder and open the app when it asks. It checks the last run, the phone, the install and its signing, the newest crash and the app's log, and ends with what to do next ([troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away)).
 
 If a check before the build is wrong about your setup, `FORGE_SKIP_PREFLIGHT=1 forge run ios` skips it.
 

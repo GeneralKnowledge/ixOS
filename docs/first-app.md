@@ -123,7 +123,7 @@ forge run ios
 
 It builds the Rust for iOS, regenerates the bindings, compiles the app, signs it and installs it, and ends with what to do next. Open Shopping on the phone, add a few items, tick some off and tap **Clear Done**. Close the app and open it again: the list is still there, because Rust saved it.
 
-If it opens to a blank screen or closes at once, `forge device logs --process ShoppingXtool --for 30s` shows the app's log while you open it ([troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away)).
+If it opens to a blank screen or closes at once, run `forge diagnose` and open the app when it asks: it checks the install, reads the newest crash report and the app's log, and says what to do next ([troubleshooting.md](troubleshooting.md#the-app-opens-to-a-blank-screen-or-closes-straight-away)).
 
 ## Next
 
