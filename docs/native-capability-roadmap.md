@@ -48,6 +48,17 @@ Each capability lands in its own PR, and the ledger keeps **compiled**, **tested
 
 The ledger record is updated in the same PR as the capability ([AGENTS.md rule 7](../AGENTS.md)).
 
+## Where current code departs from native first
+
+The native-first rule is in [architecture.md](architecture.md#framework-principles). Reviewed 2026-11-10: the architecture is close to it, so this is a short list of corrections, not a refactor. In priority order:
+
+1. **Platform limits checked in portable Rust.** `crates/forge-services/src/notify.rs` rejects repeating notifications under `MIN_REPEAT_SECONDS = 60` ("the minimum iOS accepts"), and `src/sensors.rs` rejects motion intervals under 10 ms ("the most the iPhone's motion coprocessor delivers"). Rust keeps the general checks (a repeat interval above zero, a motion interval in a sane range); the iOS adapters check the iOS limits and return `NativeServiceError` with a clear message.
+2. **iOS networking in Rust.** `forge-net`'s `UreqClient` (ureq and Rustls) is the HTTP transport on iOS. Its request types, `Backoff`, cancellation and byte limits are portable and stay. The decision is whether iOS gets a native `URLSession` transport behind the existing `HttpClient` trait, which background transfers (Tier 1) need in any case.
+3. **The reader lives in Pocket Library.** `examples/pocket-library/rust/src/reader.rs` is EPUB-specific and `ReaderView.swift` holds the reading experience, so another app would copy them. Positions are chapter-and-fraction (block indexes inside a chapter), which drift when content changes. Fixed by the ForgeReader extraction with block anchors (Tier 1), when the second consumer arrives.
+4. **Chat duplicates file helpers.** `examples/chat/Sources/AppHost/Attachments.swift` does its own security-scoped copy in `prepareDocument`, which `ForgeFiles.importCopy` already does. Its photo and thumbnail code already calls `ForgeImages`. Chat moves the document copy onto `ForgeFiles` and keeps its naming, staging and MIME rules. This is the smallest item.
+
+Swift presentation models such as Pocket Library's `LibraryModel` and Chat's `ChatModel` were checked and are fine: they present the domain, and Rust owns it. Everything else is left alone unless building an app exposes a problem.
+
 ## What exists and what is missing
 
 Checked against `main` on 2026-11-10.
