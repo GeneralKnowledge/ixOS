@@ -36,6 +36,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 | Area | Capability | What was seen |
 |---|---|---|
 | Foundation | Native SwiftUI structure (navigation, lists, sheets, search) | Pocket Library list, add sheet and form on iPhone16,2, iOS 26.3.1, 2026-11-07 (UI test m0 11/11, watched by Reuben); navigation pushes and search not exercised |
+| Foundation | ForgeUI design system (tokens, light/dark themes, styles and components on SwiftUI controls) | ForgeUI showcase, every page and option, light and dark, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-10; Dynamic Type sizes not checked on the phone |
 | Foundation | Logging (platform log, recent records, extra sinks, panics logged) | Warn reached the USB log on iPhone (iOS 26.3.1, 2026-11-07); Info did not (LOG_INFO dropped by the relay), fixed to notice priority, recheck pending |
 | Foundation | `forge.toml` app config (Info.plist, entitlements, xtool.yml) | builds only |
 | Media, sensors and rendering | Audio session handling | playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run |
@@ -51,7 +52,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 
 The code exists and is tested on Linux, but nobody has recorded it working on a phone. Expect it to work, and expect surprises.
 
-- **Foundation:** ForgeUI design system (tokens, light/dark themes, styles and components on SwiftUI controls); ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust
+- **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust
 - **Data and files:** Relational store with queries (SQLite); Full-text search; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel
@@ -91,5 +92,5 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Attachments | Planned | Partial: Chat M3 (#56) |
 | Documents | Planned | Partial: Pocket Library (#53) |
 | Audio | Experimental | Partial: compiled and tested in CI (macOS), not yet run on an iPhone |
-| ForgeUI | Experimental | Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone |
+| ForgeUI | Experimental | Yes: showcase built with xtool on Linux and run on an iPhone (light and dark, both themes), 2026-11-10 |
 | ForgeAppKit | Experimental | Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone |
