@@ -166,13 +166,14 @@ A Rust HTTP request and an iOS background `URLSession` transfer are not intercha
 
 **Acceptance tests.** Background `URLSession` behaviour is where an implementation can pass ordinary testing and still fail on an iPhone, so the capability is not marked working until each of these has passed on a physical phone:
 
-1. **Reattach after relaunch:** start a transfer, quit the app from the app switcher, relaunch; the app recreates the session with the same identifier and finds the transfer still running, with its progress.
+1. **Reattach after the system ends the app:** start a transfer, send the app to the background and let it be terminated the way iOS does it while suspended, then relaunch; the app recreates the session with the same identifier, and the session reports the transfer's state (still running with its progress, or finished). A development build simulates the system's termination by calling `exit(0)` from a devtools command while in the background, as Apple suggests for testing background sessions. **Force-quitting from the app switcher is not this test:** it is a different event (see 6).
 2. **Session completion callback:** with the app suspended, let a transfer finish; iOS wakes the app through `application(_:handleEventsForBackgroundURLSession:completionHandler:)`, the app processes the events, and calls the stored completion handler only after `urlSessionDidFinishEvents`.
-3. **Completed while terminated:** a transfer that finished while the app was not running is reported to Rust as complete on the next launch, with its file in place.
+3. **Completed while terminated:** a transfer that finished while the app was not running (ended by the system as in 1, not force-quit) is reported to Rust as complete on the next launch, with its file in place.
 4. **File moved before the handler is released:** the temporary download file is moved into `FileStore` inside `didFinishDownloadingTo`, before that method returns, because iOS deletes it afterwards; verification and Rust's record update happen after the move, and the system completion handler is called only after all of it.
 5. **Orphans:** a transfer the session reports but Rust has no record of (deleted, or from an older install) is cancelled and its file removed; a Rust record whose transfer the session no longer has is marked failed and retried or dropped by the app's rule.
+6. **Force quit:** swiping the app away in the app switcher cancels its background transfers and stops iOS relaunching it for session events until the person opens it again. The expected behaviour is documented and tested, not avoided: on the next launch the session reports those transfers as cancelled, Rust marks their records interrupted, and the app retries them (or not) by its own rule, never treating a partial file as complete.
 
-Items 1 to 3 need the device; 4 and 5 also have unit tests against a fake session. This is spike S6 in the capability plan.
+Items 1, 2, 3 and 6 need the device; 4 and 5 also have unit tests against a fake session. This is spike S6 in the capability plan.
 
 ### Tier 2: application data and system reach
 
