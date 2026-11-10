@@ -16,9 +16,10 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 | `crates/forge-runtime` | Background work, cancellation, event streams, lifecycle, `app_shell!`, logging |
 | `crates/forge-services` | Native services: Rust traits in `src/`, Swift adapters in `swift/` (copied into each app's `Generated/`) |
 | `crates/forge-storage`, `crates/forge-net` | Persistence (JSON, SQLite) and networking |
+| `forgekit/` | The Swift package: ForgeKit (the runtime host) and ForgeUI (the design system), released as GeneralKnowledge/ForgeKit |
 | `crates/forge-cli` | The `forge` command |
 | `crates/forge-device`, `forge-devproto`, `forge-devtools` | Talking to a USB iPhone from Linux, and the live session with development builds |
-| `examples/` | Apps. Each owns its Rust crate in `rust/` |
+| `examples/` | Apps. Each Forge app owns its Rust crate in `rust/`; `forgeui-showcase` is a plain SwiftUI app on ForgeUI only |
 | `templates/` | What `forge init` copies; `templates/agent/` is what `forge agent setup` adds |
 | `docs/` | Developer docs. `docs/research/` holds investigations |
 
@@ -60,7 +61,7 @@ Every doc is listed by task in [docs/README.md](docs/README.md).
 
 | Task | Read |
 |---|---|
-| A new app or app feature | [getting-started.md](docs/getting-started.md), [app-crate.md](docs/app-crate.md), [ios-ui.md](docs/ios-ui.md) |
+| A new app or app feature | [getting-started.md](docs/getting-started.md), [app-crate.md](docs/app-crate.md), [ios-ui.md](docs/ios-ui.md), [forgeui.md](docs/forgeui.md) |
 | A native iOS capability | [native-services.md](docs/native-services.md), the ledger, [framework-extraction-audit.md](docs/framework-extraction-audit.md) |
 | App settings, permissions, entitlements | [app-config.md](docs/app-config.md) |
 | Proving a feature works (requirements, evidence) | [evidence.md](docs/evidence.md) |

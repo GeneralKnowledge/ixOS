@@ -1,0 +1,12 @@
+order = 160
+module = "ForgeUI"
+layer = "Optional"
+crate = "ForgeKit package, `ForgeUI` product (Swift)"
+provides = "Theme tokens with a contrast check, button and field styles, fields with validation messages, cards, rows, badges, status, state views, headers, form toolbar"
+native_apis = "SwiftUI"
+dependencies = "None (no Rust, no generated bindings)"
+ios = "Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone"
+android = "n/a"
+desktop = "Partial: compiles for macOS"
+status = "Experimental"
+exercised_by = "ForgeUI showcase"
