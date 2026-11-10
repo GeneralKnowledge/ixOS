@@ -1,0 +1,7 @@
+# The ForgeUI showcase is a plain SwiftUI app (no Rust core, no forge.toml),
+# built with xtool directly: `xtool dev` from this folder.
+version: 1
+bundleID: org.forgemobile.agentlab
+# The library product holding the app's @main; xtool names the built app after it.
+product: ForgeUIShowcaseXtool
+infoPath: Info.plist

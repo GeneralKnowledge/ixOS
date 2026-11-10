@@ -1,0 +1,60 @@
+name: ForgeUI
+
+# ForgeUI, the design system (forgekit/Sources/ForgeUI, docs/forgeui.md), and
+# its showcase app (examples/forgeui-showcase), a plain SwiftUI app with no
+# Rust core. On Linux: the tokens, the contrast check and the showcase's
+# models build and their tests run (SwiftUI isn't there, so the views are
+# skipped by `#if canImport(SwiftUI)`). On macOS: the same tests, and the
+# showcase built for an iPhone (unsigned), which compiles every view against
+# the iOS SDK. Runs when ForgeUI or the showcase changes.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "forgekit/**"
+      - "examples/forgeui-showcase/**"
+      - ".github/workflows/forgeui.yml"
+  pull_request:
+    paths:
+      - "forgekit/**"
+      - "examples/forgeui-showcase/**"
+      - ".github/workflows/forgeui.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  forgeui:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15]
+    name: ForgeUI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Toolchain
+        run: swift --version
+
+      - name: ForgeUI tokens and contrast
+        working-directory: forgekit
+        run: swift test --filter ForgeUITests
+
+      - name: Showcase models
+        working-directory: examples/forgeui-showcase
+        run: |
+          swift build
+          swift test
+
+      - name: Showcase for iPhone (unsigned)
+        if: runner.os == 'macOS'
+        working-directory: examples/forgeui-showcase
+        run: |
+          xcodebuild build -scheme ForgeUIShowcaseXtool -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40
+          test "${PIPESTATUS[0]}" -eq 0
