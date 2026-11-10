@@ -1,5 +1,6 @@
 import AppHost
 @preconcurrency import ForgeFFI
+import ForgeAppKit
 import Foundation
 import XCTest
 
@@ -108,7 +109,8 @@ final class NotesModelTests: XCTestCase {
         // Rust's validation reaches the alert, and nothing changes.
         let refused = await model.update(milk, text: "   ")
         XCTAssertFalse(refused)
-        XCTAssertNotNil(model.actionError)
+        XCTAssertNotNil(model.alert)
+        XCTAssertEqual(model.alert?.buttons.map(\.identifier), ["alert.ok"])
         XCTAssertEqual(model.note(id: milk.id)?.text, "Buy oat milk")
         host.close()
     }

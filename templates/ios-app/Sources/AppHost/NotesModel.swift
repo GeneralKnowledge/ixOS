@@ -1,5 +1,6 @@
 @preconcurrency import ForgeFFI
 @preconcurrency import ForgeKit
+import ForgeAppKit
 import Foundation
 import Observation
 
@@ -26,8 +27,9 @@ public final class NotesModel {
     public private(set) var notes: [Note] = []
     /// The search field's text. `visibleNotes` filters by it.
     public var searchText = ""
-    /// A failed action, for an alert. The view clears it when dismissed.
-    public var actionError: String?
+    /// A failed action, as a ForgeAppKit alert value. The list presents it
+    /// with `.forgeAlert`, which clears it when dismissed.
+    public var alert: ForgeAlert<Never>?
     /// Increases after each successful save; views use it as a haptic trigger.
     public private(set) var saveCount = 0
 
@@ -74,7 +76,7 @@ public final class NotesModel {
         saveCount += 1
     }
 
-    /// Saves new text for a note. Returns false (and sets `actionError`) on failure.
+    /// Saves new text for a note. Returns false (and sets `alert`) on failure.
     @discardableResult
     public func update(_ note: Note, text: String) async -> Bool {
         guard text != note.text else { return true }
@@ -127,8 +129,7 @@ public final class NotesModel {
 
     /// Runs one Rust command, then shows Rust's list straight away (the
     /// host's `changes` moves moments later, and `reload()` reads the same
-    /// list). A failure goes to `actionError`, which the list presents as an
-    /// alert.
+    /// list). A failure goes to `alert`, which the list presents.
     @discardableResult
     private func perform(_ command: (AppCore) async throws -> Void) async -> Bool {
         do {
@@ -138,7 +139,7 @@ public final class NotesModel {
             return true
         } catch {
             log.warn("command failed: \(error)")
-            actionError = Self.describe(error)
+            alert = .failure(error)
             return false
         }
     }
@@ -160,5 +161,23 @@ public final class NotesModel {
         case .Interrupted: return "Stopped when the app went to the background. Try again."
         case .ShutDown: return "The app is closing."
         }
+    }
+}
+
+/// Every alert and failed save shows `NotesModel.describe`'s words
+/// (ForgeAppKit). A cancelled request is not a failure: nothing is shown.
+extension AppError: ForgeDescribedError {
+    public var failure: ForgeFailure {
+        let retryable: Bool
+        switch self {
+        case .Offline, .Timeout, .Network, .Interrupted: retryable = true
+        default: retryable = false
+        }
+        return ForgeFailure(title: "Something Went Wrong", message: NotesModel.describe(self), isRetryable: retryable)
+    }
+
+    public var isCancellation: Bool {
+        if case .Cancelled = self { return true }
+        return false
     }
 }

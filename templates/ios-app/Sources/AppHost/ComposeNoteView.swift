@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
 import SwiftUI
 
 /// The New Note sheet: a form with Cancel and Add. The keyboard opens at
@@ -8,8 +9,8 @@ struct ComposeNoteView: View {
     let model: NotesModel
 
     @State private var text = ""
-    @State private var isSaving = false
-    @State private var error: String?
+    /// Add's work: busy while it runs, its failure shown here (ForgeAppKit).
+    @State private var saving = ForgeSubmission()
     @FocusState private var isFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -35,8 +36,9 @@ struct ComposeNoteView: View {
                         .accessibilityIdentifier("compose.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if isSaving {
+                    if saving.isWorking {
                         ProgressView()
+                            .accessibilityLabel("Saving")
                     } else {
                         Button("Add") { Task { await add() } }
                             .disabled(trimmed.isEmpty)
@@ -45,20 +47,17 @@ struct ComposeNoteView: View {
                 }
             }
             .interactiveDismissDisabled(!trimmed.isEmpty)
-            .errorAlert("Couldn't Add Note", message: $error)
+            .forgeAlert(failure: $saving.failure)
             .onAppear { isFocused = true }
         }
     }
 
+    /// On failure the sheet stays open with the text intact, so it can be
+    /// fixed or retried.
     private func add() async {
-        isSaving = true
-        defer { isSaving = false }
-        do {
-            try await model.add(text: trimmed)
+        let text = trimmed
+        if await saving.run({ try await model.add(text: text) }) {
             dismiss()
-        } catch {
-            // Stay open with the text intact so it can be fixed or retried.
-            self.error = NotesModel.describe(error)
         }
     }
 }
