@@ -280,9 +280,6 @@ impl AppCore {
     pub async fn open_article(&self, article_id: i64) -> Result<ArticleText, AppError> {
         self.rt
             .command("open-article", move |state| {
-                // Ids only, never titles. Kept while the Cati F2 issue (the
-                // feed list still counting an opened article unread) is open.
-                forge_runtime::logging::info!("open-article {article_id}: marked read");
                 state.store.set_flag(article_id, Flag::Read, true)?;
                 let text = state.store.article_text(article_id)?;
                 state.publish();
@@ -294,7 +291,6 @@ impl AppCore {
     pub async fn set_read(&self, article_id: i64, read: bool) -> Result<(), AppError> {
         self.rt
             .command("set-read", move |state| {
-                forge_runtime::logging::info!("set-read {article_id}: read = {read}");
                 state.store.set_flag(article_id, Flag::Read, read)?;
                 state.publish();
                 Ok(())
