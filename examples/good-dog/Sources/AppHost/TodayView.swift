@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// Today's plan: two or three short activities, each with why it was chosen.
@@ -23,7 +24,7 @@ struct TodayView: View {
                                     Button("Try Something Else", systemImage: "arrow.triangle.2.circlepath") {
                                         Task { await model.swap(activity) }
                                     }
-                                    .tint(.indigo)
+                                    .forgeTint(.accent)
                                 }
                             }
                             .contextMenu {
@@ -53,10 +54,10 @@ struct TodayView: View {
             }
             .overlay {
                 if model.today?.activities.isEmpty == true {
-                    ContentUnavailableView(
+                    ForgeStateView.empty(
                         "Nothing Planned",
                         systemImage: "pawprint",
-                        description: Text("There's nothing that suits today. Have a look in Learn.")
+                        description: "There's nothing that suits today. Have a look in Learn."
                     )
                 }
             }
@@ -119,7 +120,7 @@ private struct ActivityRow: View {
     var body: some View {
         layout {
             Image(systemName: activity.result == nil ? "circle" : "checkmark.circle.fill")
-                .foregroundStyle(activity.result == nil ? Color.secondary : Color.green)
+                .forgeForeground(activity.result == nil ? .neutral : .success)
                 .font(.title3)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {

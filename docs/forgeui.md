@@ -76,6 +76,8 @@ Text("Due today")
     .padding(theme.spacing.m)
 ```
 
+For the common cases there are two shorthands: `.forgeForeground(.warning)` draws text or a symbol in the tone's readable colour, and `.forgeTint(.success)` tints a control (a progress bar, a swipe action) with its solid colour.
+
 Colours follow light and dark mode wherever they are drawn, sheets and menus included.
 
 ### Contrast

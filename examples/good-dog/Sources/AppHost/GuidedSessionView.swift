@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// An exercise followed one card at a time: "get ready", each step, then
@@ -103,7 +104,7 @@ struct GuidedSessionView: View {
                         LinkedTextView(text: safety)
                     } icon: {
                         Image(systemName: "heart.text.square")
-                            .foregroundStyle(.orange)
+                            .forgeForeground(.warning)
                     }
                     .font(.title3)
                 }
