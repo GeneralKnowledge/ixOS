@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 99 capabilities, 14 work on an iPhone, 11 partly work, 49 are built but haven't been run on an iPhone, and 25 aren't built yet.**
+**Of 99 capabilities, 14 work on an iPhone, 12 partly work, 48 are built but haven't been run on an iPhone, and 25 aren't built yet.**
 
 ## Works on an iPhone
 
