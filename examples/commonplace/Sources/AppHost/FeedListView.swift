@@ -53,10 +53,6 @@ struct FeedListView: View {
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
-            // Coming back to the list, show what Rust holds now. (On Cati,
-            // 2026-11-10, an opened article was still counted unread here
-            // even with this; gap `opened-article-counted-unread`.)
-            .onAppear { model.reload() }
             .navigationTitle("Commonplace")
             .navigationDestination(for: Route.self) { route in
                 switch route {

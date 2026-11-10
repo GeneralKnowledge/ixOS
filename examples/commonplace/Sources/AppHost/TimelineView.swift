@@ -43,8 +43,6 @@ struct TimelineView: View {
             if articles.isEmpty { emptyState }
         }
         .refreshable { await model.refresh() }
-        // As in the feed list: read Rust again when coming back to it.
-        .onAppear { model.reload() }
         .navigationTitle(timeline.title(in: model))
         .toolbar {
             if timeline != .bookmarked {

@@ -133,14 +133,3 @@ layer = "cli"
 cost = "small"
 blocks = false
 second_use = "Every new example or forge init app on a free team"
-
-[[gap]]
-id = "opened-article-counted-unread"
-reference = "NetNewsWire's unread counts drop as soon as you go back from an article"
-ixos_today = "On Cati (2026-11-10) Commonplace's feed list kept the old unread counts after an article was opened and marked read in Rust; changes made by buttons (bookmark, mark all read) did redraw it"
-workaround = "None yet. Reloading the lists on appear (44e93ce) didn't help: with it, the bookmark made after the open showed in the same list that still counted the article unread, so the read flag itself seems to be undone after the article screen. Rust keeps it (test bookmarking_an_opened_article_keeps_it_read)"
-missing = "The cause. Commonplace logs open-article and set-read by article id (8827c30), so the next run's device log shows whether something marks it unread"
-layer = "swift"
-cost = "small"
-blocks = false
-second_use = "Any app whose detail screen changes state its list shows"
