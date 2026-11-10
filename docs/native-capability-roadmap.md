@@ -29,7 +29,10 @@ Each capability is one of three shapes. Most Apple APIs should not become Rust a
 
 **A capability doesn't need a Rust interface just because it is in ixOS.** App Intents, widgets, share extensions and many other system features are native Swift. Rust takes part only where there is real domain logic or persistent state to share, and then through the same records and stores the app already uses.
 
-Privacy-sensitive frameworks (camera, photos, microphone, location, anything App Store review asks a usage string for) are always opt-in optional services, so an app that doesn't select one has none of that code.
+Privacy is decided by what the API reaches, not by which framework it is in:
+
+- **Protected resources and broad access** (camera capture, microphone, location, the whole photo library, contacts or calendar in bulk, anything that needs a usage string and a permission prompt) are opt-in optional services, so an app that doesn't select one has none of that code.
+- **User-mediated system pickers** (the photo picker, the document picker, the contact picker, the event editor) are ordinary helpers. The person chooses what to hand over, so they need no permission, and ixOS never asks for one on their behalf.
 
 ## How a capability is proven
 
@@ -141,7 +144,12 @@ ForgeReader is the reusable reading experience, extracted from Pocket Library wh
 | Reader view | The SwiftUI reading interface: scrolling per section, contents, read-aloud | Swift helper |
 | Reader theme | Typography, spacing, text size and appearance, from ForgeUI tokens | Swift helper |
 
-Blocks carry stable ids, so a position survives a change of text size or layout, and survives an article being edited as long as its block still exists. When the block has gone, the reader falls back to the nearest surviving block in the same section, then to the section's start. Pocket Library saves chapter and fraction today; extracting the reader converts those positions to anchors, and EPUB blocks get ids from their place in the chapter (or the source's own element ids where present).
+Block ids are what make positions stable, so they never come from a block's place in the document: an index changes when content is inserted earlier, and an old position would then point at a different paragraph. A block's id is, in order of preference:
+
+1. **The source's own id** where it has one (an EPUB element `id`, an HTML `id` or anchor).
+2. Otherwise **derived from the block's content**: a hash of its normalised text (and kind), with an occurrence number when the same text appears more than once in the section, so repeated short blocks such as "* * *" still get distinct ids.
+
+With ids like these, a position survives a change of text size or layout, and survives an article being edited as long as its block still exists. An edited block gets a new content id, so a saved anchor can stop matching. Recovery then tries, in order: the same id; a block in the same section whose text closely matches the saved block's opening words (the anchor stores them); the nearest surviving neighbour, using the saved ids of the blocks before and after; the section's start. Pocket Library saves chapter and fraction today; extracting the reader converts those positions to anchors once.
 
 Each format converts into a reader document: Pocket Library's EPUB parser does now, and readable-text extraction (Tier 2) converts web pages for the feed reader. `ForgeWebView` stays separate: it shows the original page, the reader shows the extracted text.
 
@@ -156,7 +164,15 @@ A Rust HTTP request and an iOS background `URLSession` transfer are not intercha
 - **Cancellation** by id, from Rust.
 - **Verification before keeping a file:** size limit and, where known, the SHA-256 (`FileStore`'s `hash` feature); a file that fails is deleted, never kept.
 
-This is spike S6 in the capability plan.
+**Acceptance tests.** Background `URLSession` behaviour is where an implementation can pass ordinary testing and still fail on an iPhone, so the capability is not marked working until each of these has passed on a physical phone:
+
+1. **Reattach after relaunch:** start a transfer, quit the app from the app switcher, relaunch; the app recreates the session with the same identifier and finds the transfer still running, with its progress.
+2. **Session completion callback:** with the app suspended, let a transfer finish; iOS wakes the app through `application(_:handleEventsForBackgroundURLSession:completionHandler:)`, the app processes the events, and calls the stored completion handler only after `urlSessionDidFinishEvents`.
+3. **Completed while terminated:** a transfer that finished while the app was not running is reported to Rust as complete on the next launch, with its file in place.
+4. **File moved before the handler is released:** the temporary download file is moved into `FileStore` inside `didFinishDownloadingTo`, before that method returns, because iOS deletes it afterwards; verification and Rust's record update happen after the move, and the system completion handler is called only after all of it.
+5. **Orphans:** a transfer the session reports but Rust has no record of (deleted, or from an older install) is cancelled and its file removed; a Rust record whose transfer the session no longer has is marked failed and retried or dropped by the app's rule.
+
+Items 1 to 3 need the device; 4 and 5 also have unit tests against a fake session. This is spike S6 in the capability plan.
 
 ### Tier 2: application data and system reach
 
