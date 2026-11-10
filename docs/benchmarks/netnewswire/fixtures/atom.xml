@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Atom Fixture</title>
+  <link href="http://fixtures.local/atom/"/>
+  <id>urn:fixtures:atom</id>
+  <updated>2026-11-09T10:00:00Z</updated>
+  <entry>
+    <title type="html">Caf&amp;eacute; notes</title>
+    <id>urn:fixtures:atom:1</id>
+    <link rel="alternate" href="http://fixtures.local/atom/1"/>
+    <updated>2026-11-09T10:00:00Z</updated>
+    <author><name>Grace Fixture</name></author>
+    <content type="html">&lt;p&gt;An Atom entry with an entity in its title and HTML content.&lt;/p&gt;</content>
+  </entry>
+  <entry>
+    <title>Summary only</title>
+    <id>urn:fixtures:atom:2</id>
+    <link rel="alternate" href="http://fixtures.local/atom/2"/>
+    <updated>2026-11-08T07:00:00Z</updated>
+    <summary>An entry that has a summary and no content.</summary>
+  </entry>
+</feed>

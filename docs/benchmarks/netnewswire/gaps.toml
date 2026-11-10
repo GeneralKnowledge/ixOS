@@ -1,0 +1,124 @@
+# Platform gaps found by the NetNewsWire benchmark. Format: ../README.md#gap-records.
+# Recorded while building Commonplace slice 1 (2026-11-10), before the
+# reference was walked on the phone.
+
+[[gap]]
+id = "feed-parsing"
+reference = "Reads RSS, Atom and JSON Feed"
+ixos_today = "Nothing for feeds; forge-net fetches bytes"
+workaround = "The app depends on the feed-rs crate (MIT, pure Rust) in examples/commonplace/rust/src/feed.rs"
+missing = "Nothing yet: a third-party crate in the app is the right shape until a second app reads feeds"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "none yet"
+
+[[gap]]
+id = "html-to-reader-text"
+reference = "Shows the article's HTML as laid-out text with images and links"
+ixos_today = "No shared reader. Pocket Library turns EPUB XHTML into styled text blocks in its own crate (rust/src/epub.rs, model.rs TextBlock)"
+workaround = "A small tolerant HTML-to-paragraphs function in the app (feed.rs `paragraphs`); no images, links or styling in the reader"
+missing = "The native reader (ForgeReader, capability roadmap Tier 1): a document of blocks with anchors, an HTML importer, and a SwiftUI reading view"
+layer = "rust"
+cost = "large"
+blocks = false
+second_use = "Pocket Library (EPUB) is the first; Commonplace is the second, which is what the roadmap waits for"
+
+[[gap]]
+id = "http-conditional-fetch"
+reference = "Refreshes without downloading unchanged feeds"
+ixos_today = "forge-net sends any header and returns status and headers; no cache or validator helper"
+workaround = "The app stores ETag and Last-Modified per feed in SQLite and sends If-None-Match / If-Modified-Since itself (lib.rs `fetch`)"
+missing = "A conditional-GET helper in forge-net: validators in, NotModified or a body with new validators out"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "Weather (forecast polling) could use it; not checked"
+
+[[gap]]
+id = "concurrent-fetches"
+reference = "Refreshes many feeds at once"
+ixos_today = "Runtime::run gives one cancellable unit of work on its own thread"
+workaround = "Feeds are fetched one after another inside one run; fine for a dozen fixture feeds, slow for hundreds"
+missing = "A bounded fan-out for cancellable work (N requests at a time, all stopped together)"
+layer = "rust"
+cost = "medium"
+blocks = false
+second_use = "none yet"
+
+[[gap]]
+id = "background-refresh"
+reference = "Refreshes in the background"
+ixos_today = "Not built; BGTaskScheduler is on the capability roadmap (Tier 1)"
+workaround = "none: refresh only on screen (button, pull to refresh)"
+missing = "Background tasks from the roadmap"
+layer = "swift"
+cost = "medium"
+blocks = false
+second_use = "Planned on the roadmap"
+
+[[gap]]
+id = "sqlite-reads-off-the-command-thread"
+reference = "Large libraries stay fast"
+ixos_today = "forge-storage Database lives on the command thread; queries read a Published snapshot"
+workaround = "The whole library (feeds and article rows, without bodies) is re-read into the snapshot after every command; the body is read by a command (open_article)"
+missing = "A read-only connection (or paged queries) that queries can use without waiting for commands"
+layer = "rust"
+cost = "medium"
+blocks = false
+second_use = "Any app with a large SQLite store; none yet"
+
+[[gap]]
+id = "feed-discovery"
+reference = "Expected: given a web page, finds the feed it links to"
+ixos_today = "Nothing"
+workaround = "none: a page that isn't a feed is refused"
+missing = "App code (read <link rel=alternate> from the page); not a platform gap"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "none"
+
+[[gap]]
+id = "local-network-from-rust"
+reference = "n/a: the benchmark's fixture server is on the laptop"
+ixos_today = "forge-net (ureq) connects with plain sockets, so App Transport Security doesn't apply but iOS's local network permission does"
+workaround = "NSLocalNetworkUsageDescription in forge.toml ([ios.permissions] local_network)"
+missing = "A line in docs/native-services.md or forge-net's docs: Rust networking follows the local network permission, not ATS"
+layer = "docs"
+cost = "small"
+blocks = false
+second_use = "Any app talking to a LAN device or a dev server"
+
+[[gap]]
+id = "gestures-in-explore"
+reference = "Swipe actions, context menus and pull to refresh"
+ixos_today = "forge ui explore taps, types and (since B0) scrolls; it never swipes or long-presses"
+workaround = "Every gesture in Commonplace also has a button (refresh, mark all read, bookmark), so the walk reaches the behaviour"
+missing = "Swipe and long-press actions in forge_uitest, with the same safety gates as taps"
+layer = "tooling"
+cost = "small"
+blocks = false
+second_use = "Pocket Library (swipe to delete), the starter template"
+
+[[gap]]
+id = "cross-app-screen-mapping"
+reference = "n/a: comparing two apps"
+ixos_today = "graph.json per walk; screen ids depend on each app's identifiers"
+workaround = "The mapping from Commonplace screens to NetNewsWire screens is written by hand in spec.md"
+missing = "Deferred (P6): matching screens across apps from their structure"
+layer = "tooling"
+cost = "large"
+blocks = false
+second_use = "Every future benchmark"
+
+[[gap]]
+id = "swift-check-in-this-session"
+reference = "n/a"
+ixos_today = "forge check swift needs a Swift toolchain or Docker on Linux"
+workaround = "The cloud session that built slice 1 had neither (download.swift.org refused), so the Swift was checked by macOS CI only"
+missing = "Nothing in ixOS; an environment limit"
+layer = "tooling"
+cost = "small"
+blocks = false
+second_use = "n/a"

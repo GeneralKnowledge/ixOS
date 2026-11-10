@@ -1,0 +1,37 @@
+# Launch on an empty library, open Add Feed, type an address, cancel.
+# Changes nothing. Run with the phone plugged in:
+#   forge ui run uitests/smoke.toml
+# Format: docs/forge-ui-testing.md.
+
+name = "Smoke: open Add Feed, type an address, cancel"
+app = "org.forgemobile.commonplace"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+expect = { id = "feeds.addFirst" }
+
+[[step]]
+screenshot = "1-empty"
+
+[[step]]
+tap = { id = "feeds.add" }
+
+[[step]]
+type = { id = "addFeed.url", text = "example.com/feed.xml" }
+
+[[step]]
+expect = { id = "addFeed.save", enabled = true }
+
+[[step]]
+screenshot = "2-add-feed"
+
+[[step]]
+tap = { id = "addFeed.cancel" }
+
+[[step]]
+expect = { id = "addFeed.url", gone = true }

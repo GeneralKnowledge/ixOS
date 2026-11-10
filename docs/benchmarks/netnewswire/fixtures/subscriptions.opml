@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Replace HOST with the laptop's address and port (serve.py prints it). -->
+<opml version="1.1">
+  <head><title>Benchmark fixtures</title></head>
+  <body>
+    <outline text="Fixture Daily" type="rss" xmlUrl="http://HOST/rss.xml"/>
+    <outline text="Atom Fixture" type="rss" xmlUrl="http://HOST/atom.xml"/>
+    <outline text="JSON Fixture" type="rss" xmlUrl="http://HOST/feed.json"/>
+    <outline text="Empty Fixture" type="rss" xmlUrl="http://HOST/empty.xml"/>
+  </body>
+</opml>
