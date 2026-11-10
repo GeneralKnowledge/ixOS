@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
 import Foundation
 
 /// User-facing text for Rust's typed errors. `reason` fields are
@@ -7,7 +8,7 @@ public enum ErrorText {
     public static func title(_ error: Error) -> String {
         guard let error = error as? LibraryError else { return "Something Went Wrong" }
         switch error {
-        case .InvalidInput: return "Check the Details"
+        case .InvalidInput, .InvalidFields: return "Check the Details"
         case .NotFound: return "Book Not Found"
         case .AlreadyInLibrary: return "Already in Your Library"
         case .Storage, .NewerLibrary: return "Couldn't Save"
@@ -29,6 +30,7 @@ public enum ErrorText {
         guard let error = error as? LibraryError else { return error.localizedDescription }
         switch error {
         case .InvalidInput(let reason): return String(reason.prefix(1)).uppercased() + String(reason.dropFirst()) + "."
+        case .InvalidFields(let fields): return fields.map(\.message).joined(separator: "\n")
         case .NotFound: return "It may have been deleted on another screen."
         case .AlreadyInLibrary: return "This book is already in your library."
         case .Storage(let reason): return "Your library was not changed. \(reason)"
@@ -55,5 +57,26 @@ public enum ErrorText {
         case .Offline, .Timeout, .CatalogueUnavailable, .Network: return true
         default: return false
         }
+    }
+}
+
+/// Every alert, failed load and failed save in the app (ForgeAppKit) uses
+/// ErrorText's words. A cancelled request is not a failure: nothing is shown.
+extension LibraryError: ForgeDescribedError {
+    public var failure: ForgeFailure {
+        ForgeFailure(title: ErrorText.title(self), message: ErrorText.message(self), isRetryable: ErrorText.isRetryable(self))
+    }
+
+    public var isCancellation: Bool {
+        if case .Cancelled = self { return true }
+        return false
+    }
+}
+
+extension ForgeFieldErrors {
+    /// The form's errors from Rust's validation (`forge_app::Validator`):
+    /// field names are `BookInput`'s, in Rust's spelling.
+    init(_ fields: [FieldError]) {
+        self.init(fields.map { ($0.field, $0.message) })
     }
 }

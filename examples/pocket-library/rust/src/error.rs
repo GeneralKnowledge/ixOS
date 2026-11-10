@@ -1,3 +1,4 @@
+use forge_app::{FieldError, Invalid};
 use forge_net::NetError;
 use forge_storage::{FileStoreError, StorageError};
 
@@ -9,6 +10,10 @@ pub enum LibraryError {
     /// The form or request is not acceptable; `reason` says which field.
     #[error("invalid input: {reason}")]
     InvalidInput { reason: String },
+    /// The book form was refused: each entry names a `BookInput` field and
+    /// says what to fix, so the form shows it under that field.
+    #[error("invalid book details: {}", fields.iter().map(|f| f.message.as_str()).collect::<Vec<_>>().join(" "))]
+    InvalidFields { fields: Vec<FieldError> },
     #[error("no book with id {id}")]
     NotFound { id: u64 },
     /// That book is already in the library (importing the same catalogue
@@ -64,6 +69,12 @@ impl LibraryError {
         Self::InvalidInput {
             reason: reason.into(),
         }
+    }
+}
+
+impl From<Invalid> for LibraryError {
+    fn from(err: Invalid) -> Self {
+        Self::InvalidFields { fields: err.fields }
     }
 }
 

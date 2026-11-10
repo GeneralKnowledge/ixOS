@@ -2,7 +2,7 @@
 
 An offline-first reading tracker for iPhone, built with Forge from Linux. Keep a list of the books you want to read, are reading and have finished; record the page you're on; see what you've read this week.
 
-It is also Forge's acceptance test for real apps: it was created with `forge init`, owns its Rust crate, talks to SwiftUI only through generated UniFFI bindings, and is built and installed with xtool. [ACCEPTANCE.md](ACCEPTANCE.md) records what has been checked and how.
+It is ixOS's reference app: it draws with [ForgeUI](../../docs/forgeui.md), keeps its alerts, confirmations, sheets, search state and form errors as [ForgeAppKit](../../docs/forgeappkit.md) values, and validates its forms with `forge_app::Validator` ([app-foundations.md](../../docs/app-foundations.md)). It is also Forge's acceptance test for real apps: it was created with `forge init`, owns its Rust crate, talks to SwiftUI only through generated UniFFI bindings, and is built and installed with xtool. [ACCEPTANCE.md](ACCEPTANCE.md) records what has been checked and how.
 
 <!-- Screenshots go here once the app has run on a device: docs/images/pocket-library-*.png -->
 
@@ -43,7 +43,9 @@ examples/pocket-library/
 - Progress updates on one book within an hour are one history entry ("Read 25 pages"), so stepping through pages does not flood the history. Corrections backwards are not counted as reading.
 - Titles sort without "The", "A" and "An"; search ignores case and common accents.
 
-**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and on each `LibraryEvent`; it holds no rules of its own.
+**Validation** is field by field: Rust's `validate` (domain.rs) returns `InvalidFields` with one `FieldError` per field, in `BookInput`'s field names, and the form shows each message under its field (`ForgeFieldErrors`).
+
+**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and on each `LibraryEvent`; it holds no rules of its own. Presentation state is ForgeAppKit values: the Library screen's sheets are one `LibraryDestination`, its delete confirmation and errors one `ForgeAlert`, so the model tests check "Delete asks first" without SwiftUI. `LibraryError` conforms to `ForgeDescribedError` (ErrorText.swift), so every alert uses the same words, and a cancelled request shows nothing.
 
 **Threads.** Every Rust method that touches the disk or network is `async` and runs on its own thread (`forge_runtime::background`), so SwiftUI awaits it from the main actor. Reads (`books`, `stats`, `history`) are plain memory reads.
 

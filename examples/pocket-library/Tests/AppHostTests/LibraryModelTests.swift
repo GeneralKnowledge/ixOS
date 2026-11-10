@@ -1,5 +1,6 @@
 import AppHost
 @preconcurrency import ForgeFFI
+import ForgeAppKit
 import Foundation
 import XCTest
 
@@ -74,8 +75,11 @@ final class LibraryModelTests: XCTestCase {
         let model = await openModel(try makeDirectory())
         do {
             try await model.add(input("   "))
-            XCTFail("expected InvalidInput")
-        } catch LibraryError.InvalidInput {
+            XCTFail("expected InvalidFields")
+        } catch LibraryError.InvalidFields(let fields) {
+            // Rust names the field, so the form shows it under Title.
+            let errors = ForgeFieldErrors(fields.map { ($0.field, $0.message) })
+            XCTAssertEqual(errors["title"], .error("Enter a title."))
         }
         do {
             try await model.updateProgress(42, page: 1)
@@ -154,5 +158,33 @@ final class LibraryModelTests: XCTestCase {
         } catch LibraryError.Cancelled {
         }
         model.close()
+    }
+
+    @MainActor
+    func testDeletingAsksFirstAndConfirmingDeletes() async throws {
+        let model = await openModel(try makeDirectory())
+        let book = try await model.add(input("Doomed"))
+        model.askToDelete(book)
+        let alert = try XCTUnwrap(model.libraryAlert)
+        XCTAssertEqual(alert.style, .confirmationDialog)
+        XCTAssertEqual(alert.buttons.map(\.identifier), ["library.delete.confirm", "library.delete.cancel"])
+        XCTAssertEqual(model.totalBooks, 1, "asking deletes nothing")
+
+        await model.handle(try XCTUnwrap(alert.action(for: "Delete Book")))
+        XCTAssertEqual(model.totalBooks, 0)
+
+        // Deleting it again fails, and says so in the app's words.
+        await model.handle(.delete(book.id))
+        XCTAssertEqual(model.libraryAlert?.title, "Book Not Found")
+        XCTAssertEqual(model.libraryAlert?.buttons.map(\.identifier), ["alert.ok"])
+        model.close()
+    }
+
+    func testCancelledRequestsAreNotShownAsFailures() {
+        XCTAssertTrue(ForgeFailure.isCancellation(LibraryError.Cancelled))
+        XCTAssertNil(ForgeAlert<Never>.failure(LibraryError.Cancelled as Error))
+        let offline = ForgeFailure(LibraryError.Offline(reason: "no route"))
+        XCTAssertEqual(offline.title, "You're Offline")
+        XCTAssertTrue(offline.isRetryable)
     }
 }

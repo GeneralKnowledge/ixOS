@@ -43,6 +43,11 @@ const PORTABLE_MODULES: &[&str] = &[
     // The ixOS runtime's Swift package (forgekit/); it builds on Linux.
     "ForgeKit",
     "ForgeApp",
+    // Its design system and application patterns: their model values
+    // import only Foundation and Observation, and their SwiftUI is behind
+    // `#if canImport(SwiftUI)`.
+    "ForgeUI",
+    "ForgeAppKit",
 ];
 
 /// The UniFFI bindings. The other files in `Generated/ForgeFFI` are the
@@ -201,15 +206,39 @@ pub fn forgekit_dependency(app: &Path) -> Option<ForgeKit> {
     None
 }
 
+/// The ForgeKit products beyond ForgeKit itself that the app's
+/// Package.swift uses (ForgeUI, ForgeAppKit). Only those are added to the
+/// staging package, so an app pinned to a release without them still checks.
+pub fn forgekit_extra_products(app: &Path) -> Vec<&'static str> {
+    let manifest = fs::read_to_string(app.join("Package.swift")).unwrap_or_default();
+    ["ForgeUI", "ForgeAppKit"]
+        .into_iter()
+        .filter(|p| manifest.contains(&format!("\"{p}\"")))
+        .collect()
+}
+
 /// The staging package's manifest.
-fn manifest(lib_dir: &Path, with_tests: bool, forgekit: Option<&ForgeKit>) -> String {
+fn manifest(
+    lib_dir: &Path,
+    with_tests: bool,
+    forgekit: Option<&ForgeKit>,
+    extra_products: &[&str],
+) -> String {
     let (deps, ffi_dep, kit_dep) = match forgekit {
-        Some(kit) => (
-            format!("\n    dependencies: [{}],", kit.package_line()),
-            r#", .product(name: "ForgeApp", package: "forgekit")"#,
-            r#", .product(name: "ForgeKit", package: "forgekit")"#,
-        ),
-        None => (String::new(), "", ""),
+        Some(kit) => {
+            let mut kit_dep = r#", .product(name: "ForgeKit", package: "forgekit")"#.to_string();
+            for product in extra_products {
+                kit_dep.push_str(&format!(
+                    r#", .product(name: "{product}", package: "forgekit")"#
+                ));
+            }
+            (
+                format!("\n    dependencies: [{}],", kit.package_line()),
+                r#", .product(name: "ForgeApp", package: "forgekit")"#,
+                kit_dep,
+            )
+        }
+        None => (String::new(), "", String::new()),
     };
     let tests = if with_tests {
         format!(
@@ -324,6 +353,7 @@ pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, St
             &st.join("lib"),
             !sel.tests.is_empty(),
             forgekit_dependency(app).as_ref(),
+            &forgekit_extra_products(app),
         ),
     )
     .map_err(io("write", &st))?;
@@ -752,15 +782,31 @@ mod tests {
         assert_eq!(kit, ForgeKit::Remote(url.into()));
         assert_eq!(docker_mounts(&app), vec![app.clone()]);
 
-        let m = manifest(Path::new("/lib"), true, Some(&kit));
+        let m = manifest(Path::new("/lib"), true, Some(&kit), &[]);
         assert!(m.contains(&format!("dependencies: [{url}]")), "{m}");
         assert!(
             m.contains(r#"["forge_ffiFFI", .product(name: "ForgeApp", package: "forgekit")]"#),
             "{m}"
         );
         assert!(m.contains(r#"["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")], path: "Sources/AppHost""#), "{m}");
-        let plain = manifest(Path::new("/lib"), true, None);
+        let plain = manifest(Path::new("/lib"), true, None, &[]);
         assert!(!plain.contains("forgekit"), "{plain}");
+
+        // ForgeAppKit only when the app's own Package.swift uses it.
+        assert!(!m.contains("ForgeAppKit"), "{m}");
+        let with_kit = manifest(
+            Path::new("/lib"),
+            true,
+            Some(&kit),
+            &["ForgeUI", "ForgeAppKit"],
+        );
+        assert!(with_kit.contains(r#"["ForgeFFI", .product(name: "ForgeKit", package: "forgekit"), .product(name: "ForgeUI", package: "forgekit"), .product(name: "ForgeAppKit", package: "forgekit")], path: "Sources/AppHost""#), "{with_kit}");
+        fs::write(
+            app.join("Package.swift"),
+            r#".product(name: "ForgeAppKit", package: "forgekit")"#,
+        )
+        .unwrap();
+        assert_eq!(forgekit_extra_products(&app), ["ForgeAppKit"]);
     }
 
     #[test]

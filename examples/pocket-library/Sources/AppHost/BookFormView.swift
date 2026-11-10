@@ -1,4 +1,6 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The add and edit form. It only collects text: Rust validates it and
@@ -18,8 +20,10 @@ struct BookFormView: View {
     @State private var currentPage: String
     @State private var totalPages: String
     @State private var coverURL: String
-    @State private var saving = false
-    @State private var error: PresentedError?
+    /// The Save button's work and its failure (ForgeAppKit).
+    @State private var saving = ForgeSubmission()
+    /// Rust's validation, shown under each field it names.
+    @State private var errors = ForgeFieldErrors()
     @FocusState private var focused: Field?
 
     private enum Field: Hashable { case title, author, currentPage, totalPages, notes, description, cover }
@@ -59,12 +63,14 @@ struct BookFormView: View {
                         .accessibilityLabel("Title")
                         .accessibilityIdentifier("bookForm.title")
                         .submitLabel(.next)
+                    fieldMessage("title")
                     TextField("Author", text: $input.author)
                         .wordsEntry()
                         .focused($focused, equals: .author)
                         .accessibilityLabel("Author")
                         .accessibilityIdentifier("bookForm.author")
                         .submitLabel(.next)
+                    fieldMessage("author")
                 }
                 .onSubmit { advance() }
 
@@ -84,6 +90,7 @@ struct BookFormView: View {
                             .focused($focused, equals: .currentPage)
                             .accessibilityIdentifier("bookForm.currentPage")
                     }
+                    fieldMessage("current_page")
                     LabeledContent("Pages") {
                         TextField("Unknown", text: $totalPages)
                             .numberEntry()
@@ -91,10 +98,12 @@ struct BookFormView: View {
                             .focused($focused, equals: .totalPages)
                             .accessibilityIdentifier("bookForm.totalPages")
                     }
+                    fieldMessage("total_pages")
                 }
 
                 Section("Rating") {
                     StarRating(rating: input.rating, idPrefix: "bookForm") { input.rating = $0 }
+                    fieldMessage("rating")
                 }
 
                 Section("Notes") {
@@ -103,6 +112,7 @@ struct BookFormView: View {
                         .focused($focused, equals: .notes)
                         .accessibilityLabel("Notes")
                         .accessibilityIdentifier("bookForm.notes")
+                    fieldMessage("notes")
                 }
 
                 Section {
@@ -111,6 +121,7 @@ struct BookFormView: View {
                         .focused($focused, equals: .description)
                         .accessibilityLabel("Description")
                         .accessibilityIdentifier("bookForm.description")
+                    fieldMessage("description")
                     TextField("Cover image link (https://…)", text: $coverURL)
                         .autocorrectionDisabled()
                         .focused($focused, equals: .cover)
@@ -121,6 +132,7 @@ struct BookFormView: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         #endif
+                    fieldMessage("cover_url")
                 } header: {
                     Text("Details")
                 } footer: {
@@ -136,8 +148,9 @@ struct BookFormView: View {
                         .accessibilityIdentifier("bookForm.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    if saving {
+                    if saving.isWorking {
                         ProgressView()
+                            .accessibilityLabel("Saving")
                     } else {
                         Button(isEditing ? "Save" : "Add") { save() }
                             .disabled(input.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -151,8 +164,8 @@ struct BookFormView: View {
                 }
                 #endif
             }
-            .interactiveDismissDisabled(saving || hasChanges)
-            .errorAlert($error)
+            .interactiveDismissDisabled(saving.isWorking || hasChanges)
+            .forgeAlert(failure: $saving.failure)
             .onAppear { if !isEditing { focused = .title } }
         }
     }
@@ -184,25 +197,42 @@ struct BookFormView: View {
         return result
     }
 
-    private func save() {
-        let numbers = [currentPage, totalPages].map { $0.trimmingCharacters(in: .whitespaces) }
-        if numbers.contains(where: { !$0.isEmpty && UInt32($0) == nil }) {
-            error = PresentedError(LibraryError.InvalidInput(reason: "page numbers must be whole numbers"))
-            return
+    /// The field's problem from the last save, if any, under the field.
+    @ViewBuilder
+    private func fieldMessage(_ field: String) -> some View {
+        if let message = errors[field] {
+            ForgeFieldMessageView(message: message)
         }
-        saving = true
+    }
+
+    private func save() {
+        // Text that isn't a number never reaches Rust; say so where it is.
+        var local = ForgeFieldErrors()
+        for (field, text) in [("current_page", currentPage), ("total_pages", totalPages)] {
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty && UInt32(trimmed) == nil {
+                local.add(field, "Enter a whole number.")
+            }
+        }
+        errors = local
+        guard local.isEmpty else { return }
+        let input = assembled()
         Task {
-            defer { saving = false }
-            do {
-                let book: Book
-                switch mode {
-                case .add: book = try await model.add(assembled())
-                case .edit(let original): book = try await model.update(original.id, assembled())
+            var saved: Book?
+            await saving.run {
+                do {
+                    switch mode {
+                    case .add: saved = try await model.add(input)
+                    case .edit(let original): saved = try await model.update(original.id, input)
+                    }
+                } catch LibraryError.InvalidFields(let fields) {
+                    // Shown under the fields, not as an alert.
+                    errors = ForgeFieldErrors(fields)
                 }
+            }
+            if let saved {
                 dismiss()
-                onSaved(book)
-            } catch {
-                self.error = PresentedError(error)
+                onSaved(saved)
             }
         }
     }

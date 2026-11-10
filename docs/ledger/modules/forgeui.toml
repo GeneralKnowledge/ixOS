@@ -9,4 +9,4 @@ ios = "Partial: compiled in CI (macOS), not yet built with xtool or run on an iP
 android = "n/a"
 desktop = "Partial: compiles for macOS"
 status = "Experimental"
-exercised_by = "ForgeUI showcase"
+exercised_by = "ForgeUI showcase, Pocket Library"

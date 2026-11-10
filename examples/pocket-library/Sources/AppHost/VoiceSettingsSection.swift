@@ -1,5 +1,6 @@
 @preconcurrency import AVFoundation
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// Settings > Read Aloud: which voice reads books, a sample to hear it,
