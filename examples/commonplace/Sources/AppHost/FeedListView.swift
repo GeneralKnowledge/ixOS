@@ -53,10 +53,9 @@ struct FeedListView: View {
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
-            // Coming back from an article, read it again from Rust. On Cati
-            // (2026-11-10) the counts here stayed at what they were before
-            // the article was opened, though Rust had marked it read; why
-            // SwiftUI didn't redraw is not yet understood.
+            // Coming back to the list, show what Rust holds now. (On Cati,
+            // 2026-11-10, an opened article was still counted unread here
+            // even with this; gap `opened-article-counted-unread`.)
             .onAppear { model.reload() }
             .navigationTitle("Commonplace")
             .navigationDestination(for: Route.self) { route in

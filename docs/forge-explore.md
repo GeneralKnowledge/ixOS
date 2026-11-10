@@ -173,6 +173,10 @@ Three walks on Pocket Library: seed 1 (79 s, 40 actions, 27 screens, 44 issues, 
 
 On test data, with Pocket Library's own labels fixed by #116: 0 `no_label` errors in the app itself. But after typing in the library search the walk carried on in the keyboard. It tapped Next keyboard into third-party keyboards (Czech, GIF Keyboard's "Search Tenor", Grammarly's panel), typed on their keys, opened the EPUB import picker, and tapped `dictation`, which **turned the microphone on**. Most of the 73 issues were keyboard keys. In the second walk, WebDriverAgent closed the connection right after `dictation` and the phone dropped off USB, so no journal was saved and determinism is still unproven. Fixed by the keyboard cut, keyboard dismissal and the system-service list above; not yet re-run on the phone.
 
+### Third run, 2026-11-10 (Cati, NetNewsWire from the App Store, `observe`)
+
+The first walk of an app Forge didn't build, run by Reuben from his terminal: `forge ui explore --app com.ranchero.NetNewsWire.iOS --any-app --actions 40 --seed 1` with the policy at `observe`. At def409e the policy held (every row tap, the search typing and Back were refused, and nothing in his library changed), but three things were wrong: nothing scrolled, because WDA reports NetNewsWire's `CollectionView` with `visible` false; the walk ended in an error although refusals are what `observe` means; and a refused row tap printed an article's title and excerpt from his feeds. All three were fixed in a81e116 and the rerun passed: 2 screens, 3 actions (launch and two scrolls, about 10 s each), exit 0, and every row shown as `(row text)`.
+
 ### Still to run
 
 Run through the iPhone test session, not separately. Each proves something the Linux tests cannot:
