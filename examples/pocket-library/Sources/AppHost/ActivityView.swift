@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// The Activity tab: what you're reading, a few totals, and your reading
@@ -95,6 +96,7 @@ private struct StatRow: View {
 struct ActivityRow: View {
     let entry: ActivityEntry
     let showTitle: Bool
+    @Environment(\.forgeTheme) private var theme
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -145,10 +147,10 @@ struct ActivityRow: View {
 
     private var tint: Color {
         switch entry.kind {
-        case .added: return .secondary
-        case .started, .progress: return .blue
-        case .finished: return .green
-        case .statusChanged(let status): return status.tint
+        case .added: return theme.colors.textSecondary
+        case .started, .progress: return theme.colors.tone(ReadingStatus.reading.tone).solid
+        case .finished: return theme.colors.tone(ReadingStatus.finished.tone).solid
+        case .statusChanged(let status): return theme.colors.tone(status.tone).solid
         }
     }
 }

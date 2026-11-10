@@ -23,6 +23,15 @@ let package = Package(
         // lifecycle, runs the event loop, forwards cancellation, presents
         // errors by kind.
         .library(name: "ForgeKit", targets: ["ForgeKit"]),
+        // The design system (docs/forgeui.md): tokens, a theme, and styles
+        // and components on SwiftUI's own controls. No dependency on the
+        // Rust side: an app that imports only ForgeUI links no Rust.
+        .library(name: "ForgeUI", targets: ["ForgeUI"]),
+        // Application patterns on ForgeUI (docs/forgeappkit.md): alerts,
+        // confirmations and destinations as model values, load and
+        // submission state, form errors. Optional; depends only on ForgeUI,
+        // so it links no Rust either.
+        .library(name: "ForgeAppKit", targets: ["ForgeAppKit"]),
     ],
     targets: [
         .systemLibrary(name: "forge_appFFI", path: "Sources/forge_appFFI"),
@@ -37,6 +46,34 @@ let package = Package(
             name: "ForgeKit",
             dependencies: ["ForgeApp"],
             path: "Sources/ForgeKit",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Tokens/ is Foundation only and builds everywhere; the SwiftUI
+        // files are wrapped in `#if canImport(SwiftUI)`, so on Linux the
+        // target builds and its token tests run.
+        .target(
+            name: "ForgeUI",
+            path: "Sources/ForgeUI",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Model/ is Foundation and Observation only and is tested on Linux;
+        // Views/ is wrapped in `#if canImport(SwiftUI)`.
+        .target(
+            name: "ForgeAppKit",
+            dependencies: ["ForgeUI"],
+            path: "Sources/ForgeAppKit",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "ForgeAppKitTests",
+            dependencies: ["ForgeAppKit"],
+            path: "Tests/ForgeAppKitTests",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "ForgeUITests",
+            dependencies: ["ForgeUI"],
+            path: "Tests/ForgeUITests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
     ]

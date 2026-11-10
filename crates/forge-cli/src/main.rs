@@ -1,3 +1,4 @@
+mod agent;
 mod app_config;
 mod app_diagnose;
 mod check;
@@ -9,6 +10,8 @@ mod diagnose;
 mod doctor;
 mod evidence;
 mod focus;
+mod history;
+mod inspect;
 mod ios_builder;
 mod ios_env;
 mod ledger;
@@ -80,6 +83,15 @@ enum Commands {
         /// which shows every pattern a larger app needs
         #[arg(long)]
         minimal: bool,
+        /// Also write the optional AI coding agent files (AGENTS.md,
+        /// CLAUDE.md, .mcp.json), as `forge agent setup` does
+        #[arg(long)]
+        agent: bool,
+    },
+    /// Optional files for AI coding agents. Nothing in Forge needs them
+    Agent {
+        #[command(subcommand)]
+        cmd: AgentCommands,
     },
     /// iOS app configuration from forge.toml: Info.plist, App.entitlements, xtool.yml
     Config {
@@ -172,6 +184,16 @@ enum Commands {
         /// screenshots, logs, UI tests), even if one is plugged in
         #[arg(long, conflicts_with_all = ["allow", "udid"])]
         no_device: bool,
+    },
+    /// What an app folder holds, from its files: Swift files and their
+    /// imports, accessibility identifiers written as literals, UI tests,
+    /// generated files, the Rust crate, convention warnings. Changes nothing
+    Inspect {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
     },
     /// Does every requirement in the app's requirements.toml have current
     /// evidence? Reads the bundles that `forge check swift` (Linux twin) and
@@ -314,6 +336,31 @@ enum UiCommands {
         /// ~/.config/forge/device-control.toml allows
         #[arg(long)]
         any_app: bool,
+    },
+    /// Open the app on the phone (or stop it with --terminate), optionally
+    /// in dark or light mode or at the largest text size. Needs `forge ui
+    /// setup`; `forge run ios` installs but does not open the app
+    Launch {
+        #[arg(long)]
+        udid: Option<String>,
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Stop the app instead of opening it
+        #[arg(long, conflicts_with_all = ["appearance", "largest_text", "launch_arg"])]
+        terminate: bool,
+        /// Dark or light mode for this launch (the app is restarted)
+        #[arg(long, value_parser = ["dark", "light"])]
+        appearance: Option<String>,
+        /// The largest accessibility text size for this launch (the app is
+        /// restarted)
+        #[arg(long)]
+        largest_text: bool,
+        /// Another launch argument (repeatable; the app is restarted)
+        #[arg(long = "launch-arg", value_name = "ARG", allow_hyphen_values = true)]
+        launch_arg: Vec<String>,
     },
     /// Save a screenshot of the phone's screen here
     Screenshot {
@@ -626,6 +673,23 @@ struct LiveArgs {
 }
 
 #[derive(Subcommand)]
+enum AgentCommands {
+    /// Write AGENTS.md (the app's rules and commands), CLAUDE.md and
+    /// .mcp.json (starts `forge mcp`) into the app. Existing files are kept
+    Setup {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml)"
+        )]
+        project: Option<PathBuf>,
+        /// Also add the hosted sosumi.ai MCP server (Apple's developer
+        /// documentation as text) to .mcp.json
+        #[arg(long)]
+        apple_docs: bool,
+    },
+}
+
+#[derive(Subcommand)]
 enum ConfigCommands {
     /// Regenerate Info.plist, App.entitlements and xtool.yml (and Package.swift's
     /// iOS platform) from forge.toml. `forge build ios` and `forge run ios` do this too.
@@ -790,7 +854,25 @@ fn main() {
     let runner = runner::RealRunner;
     // doctor --json has its own report shape (it predates the result contract).
     if !cli.json || matches!(cli.command, Commands::Doctor) {
-        if let Err(err) = dispatch(cli, &runner) {
+        let started = std::time::Instant::now();
+        let command = command_name(&cli.command);
+        let project = result_project(&cli.command);
+        let fallback = fallback_stage(&cli.command);
+        let res = dispatch(cli, &runner);
+        if let Some(app) = &project {
+            history::append(
+                app,
+                &history::Entry {
+                    command: &command,
+                    ok: res.is_ok(),
+                    stage: if res.is_ok() { "ok" } else { fallback },
+                    error: res.as_ref().err().map(String::as_str),
+                    duration_ms: started.elapsed().as_millis() as u64,
+                    log: None,
+                },
+            );
+        }
+        if let Err(err) = res {
             eprintln!("error: {err}");
             std::process::exit(1);
         }
@@ -800,20 +882,7 @@ fn main() {
     let started = std::time::Instant::now();
     let command = command_name(&cli.command);
     let project = result_project(&cli.command);
-    let fallback_stage = match cli.command {
-        Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
-        // usbmuxd missing, no phone, not paired, the app not listening.
-        Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
-        Commands::Ui {
-            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
-        } => "test",
-        Commands::Ui {
-            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
-        } => "forge",
-        // No DDI, no runner, WebDriverAgent not answering.
-        Commands::Ui { .. } => "device",
-        _ => "forge",
-    };
+    let fallback_stage = fallback_stage(&cli.command);
     if let (Some(dir), true) = (&project, logs_to_file(&cli.command)) {
         report::open_log(dir, &command);
     }
@@ -829,7 +898,40 @@ fn main() {
             .filter(|p| p.join("forge.toml").is_file()),
         fallback_stage,
     };
-    std::process::exit(report::finish(&outcome, res));
+    let log = report::log_path();
+    let (code, value) = report::finish(&outcome, res);
+    if let Some(app) = outcome.project {
+        history::append(
+            app,
+            &history::Entry {
+                command: &command,
+                ok: value["ok"] == serde_json::json!(true),
+                stage: value["stage"].as_str().unwrap_or(""),
+                error: value["error"].as_str(),
+                duration_ms: value["duration_ms"].as_u64().unwrap_or(0),
+                log: log.as_deref(),
+            },
+        );
+    }
+    std::process::exit(code);
+}
+
+/// The stage an unrecognised failure of `command` counts as.
+fn fallback_stage(command: &Commands) -> &'static str {
+    match command {
+        Commands::Test { .. } | Commands::Check { .. } | Commands::Verify { .. } => "test",
+        // usbmuxd missing, no phone, not paired, the app not listening.
+        Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
+        Commands::Ui {
+            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
+        } => "test",
+        Commands::Ui {
+            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
+        } => "forge",
+        // No DDI, no runner, WebDriverAgent not answering.
+        Commands::Ui { .. } => "device",
+        _ => "forge",
+    }
 }
 
 /// `run ios`, `device logs`, ...: the command as the result names it.
@@ -846,6 +948,8 @@ fn command_name(command: &Commands) -> String {
         Commands::Test { .. } => return "test".into(),
         Commands::Mcp { .. } => return "mcp".into(),
         Commands::Verify { .. } => return "verify".into(),
+        Commands::Inspect { .. } => return "inspect".into(),
+        Commands::Agent { .. } => return "agent setup".into(),
         Commands::Crash { .. } => return "crash".into(),
         Commands::Devices => return "devices".into(),
         Commands::Diagnose { .. } => return "diagnose".into(),
@@ -884,6 +988,7 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Tree { .. } => "ui tree",
             UiCommands::Audit { .. } => "ui audit",
             UiCommands::Screenshot { .. } => "ui screenshot",
+            UiCommands::Launch { .. } => "ui launch",
             UiCommands::Run { .. } => "ui run",
             UiCommands::Explore { .. } => "ui explore",
             UiCommands::Focus { .. } => "ui focus",
@@ -918,6 +1023,10 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         | Commands::Test { project, .. }
         | Commands::Diagnose { project, .. }
         | Commands::Verify { project, .. }
+        | Commands::Inspect { project }
+        | Commands::Agent {
+            cmd: AgentCommands::Setup { project, .. },
+        }
         | Commands::Crash { project, .. }
         | Commands::Device {
             cmd: DeviceCommands::Crashes { project, .. },
@@ -1036,11 +1145,17 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             platform,
             path,
             minimal,
+            agent,
         } => {
+            if agent && platform != "ios" {
+                return Err(
+                    "--agent is for iOS apps (Android is work in progress, docs/roadmap.md)".into(),
+                );
+            }
             let path = path
                 .map(|p| absolute_from_cwd(&p))
                 .or_else(|| default_init_dest(&root, &name));
-            commands::init_with(
+            let dest = commands::init_with(
                 runner,
                 &root,
                 &name,
@@ -1048,7 +1163,26 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 &platform,
                 path.as_deref(),
                 minimal,
-            )
+            )?;
+            if agent {
+                agent::run(&root, &dest, false)?;
+            }
+            Ok(())
+        }
+        Commands::Agent {
+            cmd: AgentCommands::Setup {
+                project,
+                apple_docs,
+            },
+        } => {
+            let project = project_or_default(project, "");
+            if project.as_os_str().is_empty() {
+                return Err(
+                    "no app here: run inside an app directory (with forge.toml) or pass --project"
+                        .into(),
+                );
+            }
+            agent::run(&root, &project, apple_docs)
         }
         Commands::Config { cmd } => {
             let (project, action) = match cmd {
@@ -1110,6 +1244,16 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         },
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
+        Commands::Inspect { project } => {
+            let project = project_or_default(project, "");
+            if project.as_os_str().is_empty() {
+                return Err(
+                    "no app here: run inside an app directory (with forge.toml) or pass --project"
+                        .into(),
+                );
+            }
+            inspect::run(&project)
+        }
         Commands::Crash {
             files,
             project,
@@ -1161,6 +1305,28 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Tree { udid, app, any_app } => ui::tree(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Audit { udid, app, any_app } => ui::audit(udid.as_deref(), app.as_deref(), any_app, &mut out),
                 UiCommands::Screenshot { udid, path, any_app } => ui::screenshot(udid.as_deref(), &path, any_app, &mut out),
+                UiCommands::Launch {
+                    udid,
+                    project,
+                    terminate,
+                    appearance,
+                    largest_text,
+                    launch_arg,
+                } => {
+                    let project = project_or_default(project, "");
+                    if project.as_os_str().is_empty() {
+                        return Err("no app here: run inside an app directory (with forge.toml) or pass --project".into());
+                    }
+                    let mut args = Vec::new();
+                    if let Some(mode) = &appearance {
+                        args.extend([forge_uitest::explore::APPEARANCE_ARG.to_string(), mode.clone()]);
+                    }
+                    if largest_text {
+                        args.extend(forge_uitest::explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
+                    }
+                    args.extend(launch_arg);
+                    ui::launch(runner, udid.as_deref(), &project, terminate, &args, &mut out)
+                }
                 UiCommands::Run {
                     udid,
                     file,

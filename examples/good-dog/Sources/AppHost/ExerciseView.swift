@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// One exercise: why, how, what to look for, and what to do if it's hard.
@@ -76,7 +77,7 @@ struct ExerciseView: View {
                             LinkedTextView(text: safety)
                         } icon: {
                             Image(systemName: "heart.text.square")
-                                .foregroundStyle(.orange)
+                                .forgeForeground(.warning)
                         }
                     } header: {
                         Text("Keep it safe")

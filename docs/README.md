@@ -12,6 +12,7 @@ Read these in order the first time.
 |---|---|
 | [getting-started.md](getting-started.md) | From a bare Linux machine to your first app on your iPhone, about an hour |
 | [first-app.md](first-app.md) | Add a feature to the minimal starter app (Rust rule, test, view model, button), about 20 minutes |
+| [human-workflow.md](human-workflow.md) | The whole loop with the CLI alone, from `forge init` to reviewing evidence: no AI agent, MCP server or API key at any step |
 | [troubleshooting.md](troubleshooting.md) | A build, install or launch failed, or the app opens to a blank screen (`forge diagnose` checks it for you) |
 | [linux-setup.md](linux-setup.md) | Each toolchain step by hand, if `forge setup ios` couldn't do one |
 
@@ -21,9 +22,13 @@ Read these in order the first time.
 |---|---|
 | [app-crate.md](app-crate.md) | Your app's Rust crate: state, rules, saving, networking, events |
 | [ios-ui.md](ios-ui.md) | The SwiftUI side: how a Forge app should look and how to show Rust state |
+| [forgeui.md](forgeui.md) | ForgeUI, the design system: theme tokens, button and field styles, rows, cards, badges, states; usable in any SwiftUI app |
+| [app-foundations.md](app-foundations.md) | Rust application foundations in `forge-app`: saved state as one versioned document with recovery rules, field-by-field validation |
+| [forgeappkit.md](forgeappkit.md) | ForgeAppKit, application patterns on ForgeUI: alerts, confirmations and destinations as model values, load and submission state, form errors |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
+| [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, reader, documents, media, background tasks, identity, maps, charts), in what order, and how each is proven |
 | [app-config.md](app-config.md) | `forge.toml`: name, version, icon, permission prompts, entitlements |
 | [project-generation.md](project-generation.md) | What `forge init` creates, with and without `--minimal` |
 
@@ -48,7 +53,9 @@ Read these in order the first time.
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
 | [evidence.md](evidence.md) | Recording what a run proved, so a feature is shown to work rather than said to |
 
-## For coding agents
+## For coding agents (optional)
+
+Nothing on the pages above needs an agent. Agents use the same commands; these pages add the optional integration (`forge agent setup`, `forge mcp`).
 
 | Page | What it's for |
 |---|---|

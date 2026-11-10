@@ -37,10 +37,24 @@ pub(crate) struct Saved {
     items: Vec<Item>,
 }
 
-#[derive(Default, Clone, Debug, PartialEq, Eq)]
+/// Saved as [`Saved`] (`checklist.json`, through `forge_app::Document`).
+#[derive(Serialize, Deserialize, Default, Clone, Debug, PartialEq, Eq)]
+#[serde(from = "Saved", into = "Saved")]
 pub(crate) struct Checklist {
     next_id: u64,
     items: Vec<Item>,
+}
+
+impl From<Saved> for Checklist {
+    fn from(saved: Saved) -> Self {
+        Checklist::from_saved(saved)
+    }
+}
+
+impl From<Checklist> for Saved {
+    fn from(list: Checklist) -> Self {
+        list.to_saved()
+    }
 }
 
 impl Checklist {

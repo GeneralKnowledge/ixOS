@@ -43,6 +43,11 @@ const PORTABLE_MODULES: &[&str] = &[
     // The ixOS runtime's Swift package (forgekit/); it builds on Linux.
     "ForgeKit",
     "ForgeApp",
+    // Its design system and application patterns: their model values
+    // import only Foundation and Observation, and their SwiftUI is behind
+    // `#if canImport(SwiftUI)`.
+    "ForgeUI",
+    "ForgeAppKit",
 ];
 
 /// The UniFFI bindings. The other files in `Generated/ForgeFFI` are the
@@ -201,15 +206,47 @@ pub fn forgekit_dependency(app: &Path) -> Option<ForgeKit> {
     None
 }
 
+/// The ForgeKit package's products the app's Package.swift uses. Only those
+/// go into the staging package: an app pinned to a release without ForgeUI
+/// still checks, and an app on ForgeUI alone (no runtime) links no ForgeApp
+/// bindings its Rust library doesn't implement.
+pub fn forgekit_products(app: &Path) -> Vec<&'static str> {
+    let manifest = fs::read_to_string(app.join("Package.swift")).unwrap_or_default();
+    ["ForgeApp", "ForgeKit", "ForgeUI", "ForgeAppKit"]
+        .into_iter()
+        .filter(|p| manifest.contains(&format!("\"{p}\"")))
+        .collect()
+}
+
 /// The staging package's manifest.
-fn manifest(lib_dir: &Path, with_tests: bool, forgekit: Option<&ForgeKit>) -> String {
+fn manifest(
+    lib_dir: &Path,
+    with_tests: bool,
+    forgekit: Option<&ForgeKit>,
+    products: &[&str],
+) -> String {
+    let product = |name: &str| format!(r#", .product(name: "{name}", package: "forgekit")"#);
     let (deps, ffi_dep, kit_dep) = match forgekit {
-        Some(kit) => (
-            format!("\n    dependencies: [{}],", kit.package_line()),
-            r#", .product(name: "ForgeApp", package: "forgekit")"#,
-            r#", .product(name: "ForgeKit", package: "forgekit")"#,
-        ),
-        None => (String::new(), "", ""),
+        Some(kit) => {
+            // The bindings use the runtime's contract types (ForgeApp); the
+            // app's own code uses the rest.
+            let ffi_dep = if products.contains(&"ForgeApp") {
+                product("ForgeApp")
+            } else {
+                String::new()
+            };
+            let kit_dep: String = products
+                .iter()
+                .filter(|p| **p != "ForgeApp")
+                .map(|p| product(p))
+                .collect();
+            (
+                format!("\n    dependencies: [{}],", kit.package_line()),
+                ffi_dep,
+                kit_dep,
+            )
+        }
+        None => (String::new(), String::new(), String::new()),
     };
     let tests = if with_tests {
         format!(
@@ -324,6 +361,7 @@ pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, St
             &st.join("lib"),
             !sel.tests.is_empty(),
             forgekit_dependency(app).as_ref(),
+            &forgekit_products(app),
         ),
     )
     .map_err(io("write", &st))?;
@@ -752,15 +790,43 @@ mod tests {
         assert_eq!(kit, ForgeKit::Remote(url.into()));
         assert_eq!(docker_mounts(&app), vec![app.clone()]);
 
-        let m = manifest(Path::new("/lib"), true, Some(&kit));
+        let m = manifest(
+            Path::new("/lib"),
+            true,
+            Some(&kit),
+            &["ForgeApp", "ForgeKit"],
+        );
         assert!(m.contains(&format!("dependencies: [{url}]")), "{m}");
         assert!(
             m.contains(r#"["forge_ffiFFI", .product(name: "ForgeApp", package: "forgekit")]"#),
             "{m}"
         );
         assert!(m.contains(r#"["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")], path: "Sources/AppHost""#), "{m}");
-        let plain = manifest(Path::new("/lib"), true, None);
+        let plain = manifest(Path::new("/lib"), true, None, &[]);
         assert!(!plain.contains("forgekit"), "{plain}");
+
+        // ForgeAppKit only when the app's own Package.swift uses it.
+        assert!(!m.contains("ForgeAppKit"), "{m}");
+        let with_kit = manifest(
+            Path::new("/lib"),
+            true,
+            Some(&kit),
+            &["ForgeUI", "ForgeAppKit"],
+        );
+        assert!(with_kit.contains(r#"["ForgeFFI", .product(name: "ForgeUI", package: "forgekit"), .product(name: "ForgeAppKit", package: "forgekit")], path: "Sources/AppHost""#), "{with_kit}");
+        fs::write(
+            app.join("Package.swift"),
+            r#".product(name: "ForgeAppKit", package: "forgekit")"#,
+        )
+        .unwrap();
+        assert_eq!(forgekit_products(&app), ["ForgeAppKit"]);
+        // An app on ForgeUI alone gets no runtime bindings to link.
+        let ui_only = manifest(Path::new("/lib"), true, Some(&kit), &["ForgeUI"]);
+        assert!(
+            ui_only.contains(r#"dependencies: ["forge_ffiFFI"]"#),
+            "{ui_only}"
+        );
+        assert!(!ui_only.contains("ForgeApp\""), "{ui_only}");
     }
 
     #[test]

@@ -1,37 +1,7 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import Foundation
 import SwiftUI
-
-/// An error a screen is showing.
-struct PresentedError: Identifiable {
-    let id = UUID()
-    let title: String
-    let message: String
-
-    init(_ error: Error) {
-        title = ErrorText.title(error)
-        message = ErrorText.message(error)
-    }
-}
-
-extension View {
-    /// Shows `error` as an alert with an OK button.
-    func errorAlert(_ error: Binding<PresentedError?>) -> some View {
-        alert(
-            error.wrappedValue?.title ?? "",
-            isPresented: Binding(
-                get: { error.wrappedValue != nil },
-                set: { if !$0 { error.wrappedValue = nil } }
-            ),
-            presenting: error.wrappedValue
-        ) { _ in
-            Button("OK", role: .cancel) {}
-                .accessibilityIdentifier("alert.ok")
-        } message: { presented in
-            Text(presented.message)
-        }
-    }
-}
 
 extension ReadingStatus: CaseIterable, Identifiable {
     public static var allCases: [ReadingStatus] { [.wantToRead, .reading, .finished] }
@@ -53,11 +23,13 @@ extension ReadingStatus: CaseIterable, Identifiable {
         }
     }
 
-    public var tint: Color {
+    /// The status's ForgeUI tone: badges, swipe actions and progress bars
+    /// take their colour from the theme through it.
+    public var tone: ForgeTone {
         switch self {
-        case .wantToRead: return .orange
-        case .reading: return .blue
-        case .finished: return .green
+        case .wantToRead: return .warning
+        case .reading: return .info
+        case .finished: return .success
         }
     }
 }

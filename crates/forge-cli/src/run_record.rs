@@ -39,7 +39,8 @@ pub struct Inputs {
     /// Every bundle of the app, oldest first (the person column reads
     /// acceptances from before the run too).
     pub bundles: Vec<Value>,
-    /// The `forge mcp` journal lines of the run (start line included).
+    /// The `forge mcp` journal lines of the run (start line included) and
+    /// the app's command history (`via: "cli"`), in time order.
     pub journal: Vec<Value>,
     pub journal_path: Option<String>,
     /// Commits made since the start, oldest first.
@@ -100,11 +101,18 @@ pub fn build(i: &Inputs, id: &str) -> Value {
         .filter(|c| {
             matches!(
                 c["tool"].as_str(),
-                Some("forge_build_ios" | "forge_install_device")
+                Some(
+                    "forge_build_ios"
+                        | "forge_install_device"
+                        // The same steps at the terminal (history.rs).
+                        | "build ios"
+                        | "run ios"
+                        | "install ios"
+                )
             )
         })
         .map(|c| {
-            json!({"seq": c["seq"], "at": c["at"], "tool": c["tool"], "ok": c["ok"], "error": c["error"]})
+            json!({"seq": c["seq"], "at": c["at"], "tool": c["tool"], "via": c["via"].as_str().unwrap_or("mcp"), "ok": c["ok"], "error": c["error"]})
         })
         .collect();
 
@@ -407,14 +415,19 @@ pub fn report_md(r: &Value) -> String {
     }
     s.push_str("\n## What ran\n\n");
     s.push_str(&format!(
-        "- Tool calls in the journal: {} ({}).\n",
+        "- Commands and tool calls recorded: {} ({}).\n",
         r["tool_calls"],
         r["journal"].as_str().unwrap_or("no journal found")
     ));
     for b in list(&r["builds"]) {
         s.push_str(&format!(
-            "- {} at {}: {}\n",
+            "- {} ({}) at {}: {}\n",
             text(&b["tool"]),
+            if b["via"] == "cli" {
+                "terminal"
+            } else {
+                "forge mcp"
+            },
             text(&b["at"]),
             if b["ok"] == json!(true) {
                 "ok".to_string()
@@ -547,6 +560,15 @@ fn journals(app: &Path, repo: Option<&Path>, since: &str) -> Vec<PathBuf> {
     found
 }
 
+/// Calls in the order they happened, MCP's and the terminal's together
+/// (stable, so each journal keeps its own order within a second).
+fn sort_calls(lines: &mut [Value]) {
+    lines.sort_by(|a, b| {
+        let at = |v: &Value| v["at"].as_str().unwrap_or("").to_owned();
+        at(a).cmp(&at(b))
+    });
+}
+
 fn read_journal(path: &Path) -> Vec<Value> {
     fs::read_to_string(path)
         .unwrap_or_default()
@@ -612,17 +634,35 @@ pub fn record(
         Some(p) => return Err(format!("--journal {}: no such file", p.display())),
         None => journals(app, repository.as_deref().map(Path::new), since),
     };
-    let journal_lines: Vec<Value> = journal_files.iter().flat_map(|p| read_journal(p)).collect();
+    let mut journal_lines: Vec<Value> =
+        journal_files.iter().flat_map(|p| read_journal(p)).collect();
+    // What a person (or a script) ran at the terminal: the app's history.
+    let history = crate::history::since(app, since);
+    let history_used = !history.is_empty();
+    journal_lines.extend(history);
+    if history_used {
+        // One numbering for both: #n is the nth call or command of the run.
+        sort_calls(&mut journal_lines);
+        let mut n = 0;
+        for line in journal_lines.iter_mut().filter(|l| l["event"] == "call") {
+            n += 1;
+            line["seq"] = json!(n);
+        }
+    }
+    let mut journal_files: Vec<String> = journal_files
+        .iter()
+        .map(|p| p.display().to_string())
+        .collect();
+    if history_used {
+        journal_files.push(app.join(crate::history::FILE).display().to_string());
+    }
     let inputs = Inputs {
         app: app.to_path_buf(),
         since: since.to_owned(),
         requirements,
         bundles: verify::bundles(app),
         journal: journal_lines,
-        journal_path: journal_files
-            .iter()
-            .map(|p| p.display().to_string())
-            .reduce(|a, b| format!("{a}, {b}")),
+        journal_path: journal_files.into_iter().reduce(|a, b| format!("{a}, {b}")),
         commits,
         dirty_at_end,
         repository,
@@ -928,6 +968,47 @@ mod tests {
             "{md}"
         );
         assert!(md.contains("Never passed afterwards."), "{md}");
+    }
+
+    #[test]
+    fn builds_a_person_ran_at_the_terminal_are_in_the_record() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = tmp.path();
+        fs::write(app.join("forge.toml"), "").unwrap();
+        fs::create_dir_all(app.join(".forge")).unwrap();
+        let line = |at: &str, tool: &str, ok: bool| {
+            json!({"schema": crate::history::SCHEMA, "event": "call", "via": "cli", "at": at, "tool": tool, "ok": ok, "stage": if ok {"ok"} else {"swift"}, "error": if ok {Value::Null} else {json!("xtool dev build failed")}})
+                .to_string()
+        };
+        fs::write(
+            app.join(crate::history::FILE),
+            [
+                line("2026-11-08T09-00-00", "build ios", true),
+                line("2026-11-08T10-01-00", "build ios", false),
+                line("2026-11-08T10-09-00", "run ios", true),
+                line("2026-11-08T10-10-00", "inspect", true),
+            ]
+            .join("\n"),
+        )
+        .unwrap();
+        let history = crate::history::since(app, "2026-11-08T10-00-00");
+        assert_eq!(history.len(), 3);
+        let mut journal = history;
+        for (n, l) in journal.iter_mut().enumerate() {
+            l["seq"] = json!(n + 1);
+        }
+        let r = build(&inputs(vec![], journal, vec![]), "x");
+        let builds = r["builds"].as_array().unwrap();
+        assert_eq!(builds.len(), 2, "{builds:?}");
+        assert_eq!(builds[0]["via"], "cli");
+        assert_eq!(r["failures"][0]["tool"], "build ios");
+        let md = report_md(&r);
+        assert!(
+            md.contains(
+                "build ios (terminal) at 2026-11-08T10-01-00: failed: xtool dev build failed"
+            ),
+            "{md}"
+        );
     }
 
     #[test]

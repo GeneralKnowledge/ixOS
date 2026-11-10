@@ -20,10 +20,13 @@ mod checklist;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use forge_app::{Cancellation, DataDirectory, ErrorKind, OpenError, Published, Runtime, Stopped};
-use forge_storage::{JsonFile, StorageError};
+use forge_app::{
+    Cancellation, DataDirectory, Document, DocumentError, ErrorKind, OpenError, Published, Runtime,
+    Stopped,
+};
+use forge_storage::StorageError;
 
-use checklist::{Checklist, Saved};
+use checklist::Checklist;
 pub use checklist::{Item, Summary, MAX_TITLE_CHARS};
 
 uniffi::setup_scaffolding!("forge_ffi");
@@ -75,6 +78,16 @@ impl From<StorageError> for ChecklistError {
     }
 }
 
+impl From<DocumentError> for ChecklistError {
+    fn from(err: DocumentError) -> Self {
+        match err {
+            DocumentError::Unreadable { reason } => Self::Corrupt { reason },
+            DocumentError::Newer { .. } => Self::NewerData,
+            DocumentError::Io { reason } => Self::Storage { reason },
+        }
+    }
+}
+
 impl From<OpenError> for ChecklistError {
     fn from(err: OpenError) -> Self {
         match err {
@@ -100,25 +113,22 @@ pub fn checklist_error_kind(error: ChecklistError) -> ErrorKind {
     }
 }
 
-/// What the command thread owns: the checklist and the file it is saved in.
+/// What the command thread owns: the checklist, saved in its document.
 struct State {
-    checklist: Checklist,
-    file: JsonFile<Saved>,
+    checklist: Document<Checklist>,
     published: Arc<Published<Vec<Item>>>,
 }
 
 impl State {
-    /// Changes a copy, saves it, then keeps it: a failed save leaves the
-    /// checklist as it was, which the runtime requires of a failed command.
+    /// Changes the checklist through its document (a copy is changed and
+    /// saved, then kept: a failed save leaves it as it was, which the
+    /// runtime requires of a failed command), then publishes the items.
     fn change<T>(
         &mut self,
         edit: impl FnOnce(&mut Checklist) -> Result<T, ChecklistError>,
     ) -> Result<T, ChecklistError> {
-        let mut next = self.checklist.clone();
-        let value = edit(&mut next)?;
-        self.file.save(&next.to_saved())?;
-        self.checklist = next;
-        self.published.set(self.checklist.items().to_vec());
+        let value = self.checklist.change(edit)?;
+        self.published.set(self.checklist.value().items().to_vec());
         Ok(value)
     }
 }
@@ -143,15 +153,11 @@ impl ChecklistCore {
         caches_directory: String,
     ) -> Result<Arc<Self>, ChecklistError> {
         let directory = DataDirectory::open(&data_directory)?;
-        let file = JsonFile::new(directory.path().join(SAVE_FILE), SAVE_VERSION);
-        let checklist = match file.load()? {
-            Some(saved) => Checklist::from_saved(saved),
-            None => Checklist::default(),
-        };
-        let items = Arc::new(Published::new(checklist.items().to_vec()));
+        let checklist =
+            Document::<Checklist>::open(directory.path().join(SAVE_FILE), SAVE_VERSION)?;
+        let items = Arc::new(Published::new(checklist.value().items().to_vec()));
         let state = State {
             checklist,
-            file,
             published: Arc::clone(&items),
         };
         Ok(Arc::new(Self {

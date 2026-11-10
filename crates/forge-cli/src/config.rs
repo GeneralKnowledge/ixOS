@@ -25,6 +25,13 @@ pub struct UiTestSection {
     /// `forge ui explore` refuses to change data without them.
     #[serde(default)]
     pub test_data_args: Vec<String>,
+    /// Identifiers `forge ui explore --real-data` may tap besides
+    /// navigation (rows, tabs, back, cancel), because the developer knows
+    /// they change nothing: a button that opens a sheet, a filter. Never
+    /// overrides the never-lists (system services, acting outside the
+    /// phone).
+    #[serde(default)]
+    pub real_data_safe: Vec<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]

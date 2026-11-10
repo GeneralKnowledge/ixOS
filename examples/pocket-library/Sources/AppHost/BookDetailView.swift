@@ -1,18 +1,23 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// One book: progress, status, rating, notes, history; edit, share, delete.
 struct BookDetailView: View {
+    enum DetailAction { case delete }
+
     let bookID: UInt64
     @Environment(LibraryModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var pageText = ""
     @State private var editing = false
-    @State private var confirmDelete = false
-    @State private var error: PresentedError?
+    /// The delete confirmation, or an error (ForgeAppKit).
+    @State private var alert: ForgeAlert<DetailAction>?
     @State private var finishedCount = 0
     @FocusState private var pageFieldFocused: Bool
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.forgeTheme) private var theme
 
     /// Read from the model each time, so edits elsewhere show at once.
     private var book: Book? {
@@ -33,7 +38,11 @@ struct BookDetailView: View {
         .navigationDestination(for: ReaderRoute.self) { route in
             ReaderView(bookID: route.bookID)
         }
-        .errorAlert($error)
+        .forgeAlert($alert) { action in
+            switch action {
+            case .delete: deleteBook()
+            }
+        }
         .sensoryFeedback(.success, trigger: finishedCount)
     }
 
@@ -95,7 +104,16 @@ struct BookDetailView: View {
                 }
             }
             Section {
-                Button("Delete Book", role: .destructive) { confirmDelete = true }
+                Button("Delete Book", role: .destructive) {
+                    alert = .confirm(
+                        "Delete \u{201C}\(book.title)\u{201D}?",
+                        message: "Your notes and progress for this book are deleted. Its reading history stays.",
+                        confirm: "Delete Book",
+                        action: .delete,
+                        identifier: "bookDetail.delete",
+                        destructive: true
+                    )
+                }
                     .accessibilityIdentifier("bookDetail.delete")
             }
         }
@@ -121,20 +139,6 @@ struct BookDetailView: View {
         }
         .sheet(isPresented: $editing) {
             BookFormView(mode: .edit(book))
-        }
-        .confirmationDialog("Delete \u{201C}\(book.title)\u{201D}?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete Book", role: .destructive) {
-                Task {
-                    do {
-                        try await model.delete(book.id)
-                        dismiss()
-                    } catch {
-                        self.error = PresentedError(error)
-                    }
-                }
-            }
-        } message: {
-            Text("Your notes and progress for this book are deleted. Its reading history stays.")
         }
         .onAppear { pageText = String(book.currentPage) }
         // The number pad has no Return key: save when the field loses focus
@@ -180,9 +184,7 @@ struct BookDetailView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(book.displayAuthor)
                     .foregroundStyle(.secondary)
-                Label(book.status.label, systemImage: book.status.symbol)
-                    .font(.subheadline)
-                    .foregroundStyle(book.status.tint)
+                ForgeBadge(book.status.label, systemImage: book.status.symbol, tone: book.status.tone)
                 if case .epub(let fileName) = book.source {
                     Label(fileName, systemImage: "doc")
                         .font(.caption)
@@ -203,7 +205,7 @@ struct BookDetailView: View {
         if let total = book.totalPages {
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: book.progress)
-                    .tint(book.status.tint)
+                    .tint(theme.colors.tone(book.status.tone).solid)
                 Text("\(Int((book.progress * 100).rounded()))% · page \(book.currentPage) of \(total)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -241,10 +243,21 @@ struct BookDetailView: View {
         }
     }
 
+    private func deleteBook() {
+        Task {
+            do {
+                try await model.delete(bookID)
+                dismiss()
+            } catch {
+                alert = .failure(error)
+            }
+        }
+    }
+
     private func savePage(_ book: Book, page: Int? = nil) {
         let value = page ?? Int(pageText.trimmingCharacters(in: .whitespaces)) ?? -1
         guard value >= 0, let page = UInt32(exactly: value) else {
-            error = PresentedError(LibraryError.InvalidInput(reason: "enter a page number"))
+            alert = .failure(ForgeFailure(title: "Check the Details", message: "Enter a page number."))
             pageText = String(book.currentPage)
             return
         }
@@ -263,7 +276,7 @@ struct BookDetailView: View {
                     finishedCount += 1
                 }
             } catch {
-                self.error = PresentedError(error)
+                alert = .failure(error)
                 if let book { pageText = String(book.currentPage) }
             }
         }

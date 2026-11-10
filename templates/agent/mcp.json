@@ -3,10 +3,6 @@
     "forge": {
       "command": "forge",
       "args": ["mcp"]
-    },
-    "sosumi": {
-      "type": "http",
-      "url": "https://sosumi.ai/mcp"
     }
   }
 }

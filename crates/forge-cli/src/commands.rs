@@ -66,7 +66,6 @@ const MINIMAL_TEMPLATE: &str = "templates/ios-minimal";
 const MINIMAL_REMOVES: &[&str] = &[
     "Sources/AppHost/AppServices.swift",
     "Sources/AppHost/ComposeNoteView.swift",
-    "Sources/AppHost/ErrorAlert.swift",
     "Sources/AppHost/Note+Display.swift",
     "Sources/AppHost/NoteDetailView.swift",
     "Sources/AppHost/NoteListView.swift",
@@ -190,7 +189,7 @@ pub fn init(
     platform: &str,
     path: Option<&Path>,
 ) -> Result<(), String> {
-    init_with(runner, root, name, bundle_id, platform, path, false)
+    init_with(runner, root, name, bundle_id, platform, path, false).map(|_| ())
 }
 
 /// `forge init`, with `minimal` for the one-screen starter (iOS only).
@@ -202,7 +201,7 @@ pub fn init_with(
     platform: &str,
     path: Option<&Path>,
     minimal: bool,
-) -> Result<(), String> {
+) -> Result<PathBuf, String> {
     if minimal && platform != "ios" {
         return Err("--minimal is for iOS apps only (Android is work in progress)".into());
     }
@@ -342,7 +341,7 @@ android = true
     if minimal {
         println!("This is the minimal starter: rust/src/lib.rs, Sources/AppHost/ItemsModel.swift and ContentView.swift are the whole app. docs/first-app.md adds a feature to it.");
     }
-    Ok(())
+    Ok(dest)
 }
 
 /// What to type after `forge init`, starting with `cd` into the app (a
@@ -401,19 +400,6 @@ fn populate_app(
             }
         }
         copy_template(&root.join(MINIMAL_TEMPLATE), dir)?;
-        let agents = dir.join("AGENTS.md");
-        if let Ok(text) = fs::read_to_string(&agents) {
-            let text = text
-                .replace(
-                    "Sources/AppHost/NotesModel.swift",
-                    "Sources/AppHost/ItemsModel.swift",
-                )
-                .replace(
-                    "`notes.add`, `compose.save`",
-                    "`items.add`, `items.newTitle`",
-                );
-            fs::write(&agents, text).map_err(|e| e.to_string())?;
-        }
     }
     for file in ["Cargo.lock", "rust-toolchain.toml"] {
         let src = root.join(file);
@@ -2224,6 +2210,61 @@ ios_device = true
         }
     }
 
+    /// The minimal starter needs only the runtime and ForgeKit: ForgeUI and
+    /// ForgeAppKit are optional, and only the full starter uses them.
+    #[test]
+    fn minimal_starter_needs_only_the_runtime_and_forgekit() {
+        let root = workspace_root();
+        let full = root.join("templates/ios-app");
+        let minimal = root.join(MINIMAL_TEMPLATE);
+        let manifest = fs::read_to_string(minimal.join("Package.swift")).unwrap();
+        for product in ["ForgeUI", "ForgeAppKit"] {
+            assert!(!manifest.contains(&format!("\"{product}\"")), "{product}");
+        }
+        assert!(manifest.contains(r#""ForgeKit""#), "{manifest}");
+        // Every Swift file the minimal app ends up with: the overlay's, and
+        // the full starter's that it keeps.
+        fn swift_files(dir: &Path, out: &mut Vec<PathBuf>) {
+            for entry in fs::read_dir(dir).into_iter().flatten() {
+                let path = entry.unwrap().path();
+                if path.is_dir() {
+                    swift_files(&path, out);
+                } else if path.extension().is_some_and(|e| e == "swift") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        for base in [&full, &minimal] {
+            for dir in ["Sources", "Tests"] {
+                let mut found = Vec::new();
+                swift_files(&base.join(dir), &mut found);
+                for path in found {
+                    {
+                        let rel = path.strip_prefix(base).unwrap().to_path_buf();
+                        let kept = !MINIMAL_REMOVES.iter().any(|r| Path::new(r) == rel);
+                        let overlaid = base == &full && minimal.join(&rel).exists();
+                        if kept && !overlaid {
+                            files.push(path);
+                        }
+                    }
+                }
+            }
+        }
+        assert!(files.len() > 3, "{files:?}");
+        for path in files {
+            let text = fs::read_to_string(&path).unwrap();
+            for module in ["ForgeUI", "ForgeAppKit"] {
+                assert!(
+                    !text.lines().any(|l| l.trim_start().starts_with("import")
+                        && l.split_whitespace().any(|w| w == module)),
+                    "{} imports {module}",
+                    path.display()
+                );
+            }
+        }
+    }
+
     #[test]
     fn minimal_is_ios_only() {
         let err = init_with(
@@ -2259,17 +2300,11 @@ ios_device = true
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         let readme = fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
-        // Agent instructions come with the app, named after it.
-        let agents = fs::read_to_string(dest.join("AGENTS.md")).unwrap();
-        assert!(
-            agents.contains("InitTestApp is a native iOS app"),
-            "{agents}"
-        );
-        assert!(!agents.contains("FORGE_APP_NAME"));
-        assert!(dest.join("CLAUDE.md").is_file());
-        assert!(agents.contains("--process InitTestAppXtool"), "{agents}");
-        let mcp = fs::read_to_string(dest.join(".mcp.json")).unwrap();
-        assert!(mcp.contains("\"args\": [\"mcp\"]"), "{mcp}");
+        // No agent configuration unless asked for (forge init --agent,
+        // forge agent setup): a new app is complete without it.
+        for file in crate::inspect::AGENT_FILES {
+            assert!(!dest.join(file).exists(), "{file}");
+        }
         // Info.plist, App.entitlements and xtool.yml are generated from forge.toml.
         let plist = fs::read_to_string(dest.join("Info.plist")).unwrap();
         assert!(plist.contains("<string>InitTestApp</string>"));

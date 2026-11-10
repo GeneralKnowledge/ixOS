@@ -3,6 +3,7 @@
 
 // swiftlint:disable all
 import Foundation
+@preconcurrency import ForgeApp
 
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
@@ -2992,6 +2993,12 @@ enum LibraryError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case InvalidInput(reason: String
     )
+    /**
+     * The book form was refused: each entry names a `BookInput` field and
+     * says what to fix, so the form shows it under that field.
+     */
+    case InvalidFields(fields: [FieldError]
+    )
     case NotFound(id: UInt64
     )
     /**
@@ -3092,44 +3099,47 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
         case 1: return .InvalidInput(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 2: return .NotFound(
+        case 2: return .InvalidFields(
+            fields: try FfiConverterSequenceTypeFieldError.read(from: &buf)
+            )
+        case 3: return .NotFound(
             id: try FfiConverterUInt64.read(from: &buf)
             )
-        case 3: return .AlreadyInLibrary(
+        case 4: return .AlreadyInLibrary(
             id: try FfiConverterUInt64.read(from: &buf)
             )
-        case 4: return .Storage(
+        case 5: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 5: return .NewerLibrary(
+        case 6: return .NewerLibrary(
             found: try FfiConverterUInt32.read(from: &buf), 
             supported: try FfiConverterUInt32.read(from: &buf)
             )
-        case 6: return .CatalogueDisabled
-        case 7: return .Offline(
+        case 7: return .CatalogueDisabled
+        case 8: return .Offline(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 8: return .Timeout
-        case 9: return .CatalogueUnavailable(
+        case 9: return .Timeout
+        case 10: return .CatalogueUnavailable(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 10: return .BadResponse(
+        case 11: return .BadResponse(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Certificate(
+        case 12: return .Certificate(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 12: return .Network(
+        case 13: return .Network(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .UnsupportedFile(
+        case 14: return .UnsupportedFile(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .NotReadable(
+        case 15: return .NotReadable(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 15: return .Cancelled
-        case 16: return .ShutDown
+        case 16: return .Cancelled
+        case 17: return .ShutDown
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3147,76 +3157,81 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .NotFound(id):
+        case let .InvalidFields(fields):
             writeInt(&buf, Int32(2))
-            FfiConverterUInt64.write(id, into: &buf)
+            FfiConverterSequenceTypeFieldError.write(fields, into: &buf)
             
         
-        case let .AlreadyInLibrary(id):
+        case let .NotFound(id):
             writeInt(&buf, Int32(3))
             FfiConverterUInt64.write(id, into: &buf)
             
         
-        case let .Storage(reason):
+        case let .AlreadyInLibrary(id):
             writeInt(&buf, Int32(4))
+            FfiConverterUInt64.write(id, into: &buf)
+            
+        
+        case let .Storage(reason):
+            writeInt(&buf, Int32(5))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .NewerLibrary(found,supported):
-            writeInt(&buf, Int32(5))
+            writeInt(&buf, Int32(6))
             FfiConverterUInt32.write(found, into: &buf)
             FfiConverterUInt32.write(supported, into: &buf)
             
         
         case .CatalogueDisabled:
-            writeInt(&buf, Int32(6))
+            writeInt(&buf, Int32(7))
         
         
         case let .Offline(reason):
-            writeInt(&buf, Int32(7))
+            writeInt(&buf, Int32(8))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .Timeout:
-            writeInt(&buf, Int32(8))
+            writeInt(&buf, Int32(9))
         
         
         case let .CatalogueUnavailable(reason):
-            writeInt(&buf, Int32(9))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case let .BadResponse(reason):
             writeInt(&buf, Int32(10))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Certificate(reason):
+        case let .BadResponse(reason):
             writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Network(reason):
+        case let .Certificate(reason):
             writeInt(&buf, Int32(12))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .UnsupportedFile(reason):
+        case let .Network(reason):
             writeInt(&buf, Int32(13))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .NotReadable(reason):
+        case let .UnsupportedFile(reason):
             writeInt(&buf, Int32(14))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .Cancelled:
+        case let .NotReadable(reason):
             writeInt(&buf, Int32(15))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(16))
         
         
         case .ShutDown:
-            writeInt(&buf, Int32(16))
+            writeInt(&buf, Int32(17))
         
         }
     }
@@ -3926,6 +3941,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeFieldError: FfiConverterRustBuffer {
+    typealias SwiftType = [FieldError]
+
+    public static func write(_ value: [FieldError], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeFieldError.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [FieldError] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [FieldError]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeFieldError.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeActivityEntry: FfiConverterRustBuffer {
     typealias SwiftType = [ActivityEntry]
 
@@ -4253,6 +4293,7 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()
 

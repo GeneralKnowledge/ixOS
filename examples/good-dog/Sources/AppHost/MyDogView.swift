@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// The dog's details, progress in plain English, recent sessions, and erasing everything.
@@ -39,7 +40,7 @@ struct MyDogView: View {
                                     Spacer()
                                     Text(skill.level.title)
                                         .font(.subheadline)
-                                        .foregroundStyle(skill.level == .makingEasier ? .orange : .secondary)
+                                        .forgeForeground(skill.level == .makingEasier ? .warning : .neutral)
                                 }
                                 if !skill.description.isEmpty {
                                     Text(skill.description)
@@ -63,7 +64,7 @@ struct MyDogView: View {
                                     Label(session.result.title, systemImage: session.result.systemImage)
                                     if session.welfareConcern {
                                         Label("Seemed uncomfortable", systemImage: "heart")
-                                            .foregroundStyle(.orange)
+                                            .forgeForeground(.warning)
                                     }
                                 }
                                 .font(.subheadline)

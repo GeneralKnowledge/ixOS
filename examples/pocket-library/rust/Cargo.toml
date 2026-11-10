@@ -16,6 +16,10 @@ crate-type = ["staticlib", "cdylib", "lib"]
 
 [dependencies]
 # Forge's runtime crates, from the Forge checkout this app was created with.
+# The application runtime's foundations: field-by-field validation
+# (`forge_app::Validator`, `FieldError`, whose Swift is ForgeKit's ForgeApp
+# module) and the library document's save and recovery rules.
+forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-storage = { path = "../../../crates/forge-storage" }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }

@@ -389,7 +389,7 @@ fn rust_links(file: &str, rust: &[Source], swift: &[Source], links: &mut Vec<Lin
 /// `.accessibilityIdentifier("…")` literals: the identifier, or for an
 /// interpolated one its literal prefix (kept only when it ends at a dot,
 /// so a prefix never covers a whole screen by accident).
-fn identifiers(text: &str) -> Vec<(String, bool)> {
+pub(crate) fn identifiers(text: &str) -> Vec<(String, bool)> {
     let mut out = Vec::new();
     let needle = ".accessibilityIdentifier(\"";
     let mut rest = text;

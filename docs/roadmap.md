@@ -4,11 +4,29 @@ Forge Mobile is an **integration reference**: a working Counter app on iOS (and 
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
-Last reviewed: 2026-11-07.
+Last reviewed: 2026-11-09.
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
 What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](framework-extraction-audit.md).
+
+## Product direction: a native application framework
+
+Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust application core and a SwiftUI design system, not a Rust-to-iOS bridge with increasingly sophisticated tools. The test for every feature: does it make it easier to build a complete, attractive, reliable app? SwiftUI stays the UI framework (no new renderer, DSL, navigation or state framework); Forge adds a design system and application patterns on top of it; Rust owns domain rules, validation and persistence; the CLI builds and operates the app, and agents are optional.
+
+| Priority | Work | Status |
+|---|---|---|
+| P0 | Existing runtime and native integration stability | Maintain |
+| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **In progress: 0.1 built, not yet on an iPhone** |
+| P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built, tested on Linux, not yet on an iPhone** |
+| P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **In progress: document and validation in `forge-app`** |
+| P4 | A complete reference app (personal library) built only on the above | Required proof |
+| P5 | Developer experience: `forge init` on ForgeUI, component docs, feature templates | After the foundation |
+| P6 | Autonomous-agent tooling expansion (M6, general device control) | **Deferred.** Device, build, diagnostics and MCP work stays as supporting infrastructure |
+
+No Android work and no cross-platform components until the iOS experience is right.
+
+Native capabilities (web view, documents, media, background tasks, identity, system integration such as universal links, share extensions and App Intents, offline data, maps, charts) are planned in [native-capability-roadmap.md](native-capability-roadmap.md): ixOS wraps Apple's frameworks rather than replacing them, proves each wrapper in the services check app and on an iPhone, and judges usability in real apps (Pocket Library, Chat, and a feed reader benchmarked against NetNewsWire as the reader's second consumer). Its first tier is `forge-services` work and runs alongside P1 and P2.
 
 ## Platform focus
 
@@ -93,7 +111,7 @@ Good first project for someone with a Mac.
 
 ### Native iOS services (M3) — In progress
 
-`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: camera, photos and location as opt-in permission adapters. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: the tiers in [native-capability-roadmap.md](native-capability-roadmap.md), starting with the web view, documents, the native reader, photos and camera, and background tasks. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
 
 ### Store distribution (App Store, Google Play) — Open
 

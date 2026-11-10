@@ -81,8 +81,9 @@ fn file(workspace: &Path, rel: &str) -> Result<String, String> {
 
 /// The rules every Forge app's AGENTS.md carries, plus how the tools fit in.
 fn conventions(workspace: &Path) -> Result<String, String> {
-    let agents =
-        file(workspace, "templates/ios-app/AGENTS.md")?.replace("FORGE_APP_NAME", "the app");
+    let agents = file(workspace, "templates/agent/AGENTS.md")?
+        .replace("FORGE_APP_NAME", "the app")
+        .replace("FORGE_XTOOL_PRODUCT", "<xtool_product>");
     let rules = section(&agents, "## Rules").unwrap_or(&agents);
     Ok(format!(
         "# Forge conventions for coding agents\n\n{rules}\n## Working with the Forge tools\n\n\

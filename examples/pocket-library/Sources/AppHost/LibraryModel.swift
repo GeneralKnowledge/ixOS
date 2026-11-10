@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
 import Foundation
 import Observation
 
@@ -23,6 +24,43 @@ public final class LibraryModel {
     public private(set) var stats: LibraryStats?
     public private(set) var history: [ActivityEntry] = []
     public private(set) var settings = LibrarySettings(defaultSort: .recentlyAdded, catalogueEnabled: true)
+
+    // MARK: The Library screen's presentation (ForgeAppKit)
+
+    /// Where the Library screen is going: one sheet or picker at a time.
+    public enum LibraryDestination: Equatable {
+        case addBook
+        case catalogue
+        case importEpub
+    }
+
+    /// What the Library screen's alerts can ask the model to do.
+    public enum LibraryAction: Equatable {
+        case delete(UInt64)
+    }
+
+    public var libraryDestination: LibraryDestination?
+    /// The Library screen's alert: a delete confirmation or an error.
+    public var libraryAlert: ForgeAlert<LibraryAction>?
+
+    /// Asks before deleting; confirming sends `.delete` to `handle`.
+    public func askToDelete(_ book: Book) {
+        libraryAlert = .confirm(
+            "Delete \u{201C}\(book.title)\u{201D}?",
+            message: "Your notes and progress for this book are deleted. Its reading history stays.",
+            confirm: "Delete Book",
+            action: .delete(book.id),
+            identifier: "library.delete",
+            destructive: true
+        )
+    }
+
+    public func handle(_ action: LibraryAction) async {
+        switch action {
+        case .delete(let id):
+            do { try await delete(id) } catch { libraryAlert = .failure(error) }
+        }
+    }
 
     public var searchText = "" { didSet { reload() } }
     public var statusFilter: ReadingStatus? { didSet { reload() } }

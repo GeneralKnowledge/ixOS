@@ -35,7 +35,7 @@ The first time you run on an iPhone:
 | `Info.plist`, `App.entitlements`, `xtool.yml` | Generated from `forge.toml` by every `forge build ios` / `forge run ios`. Edit `forge.toml` instead. |
 | `Xcode/` | An Xcode project, for when you are on a Mac and want the debugger. Never required. |
 | `build/`, `rust/target/` | Build output. Safe to delete. |
-| `AGENTS.md`, `CLAUDE.md`, `.mcp.json` | Instructions and tool setup for AI coding agents working on this app. Add your own project notes to `AGENTS.md`. |
+| `AGENTS.md`, `CLAUDE.md`, `.mcp.json` | Not here by default. If you use an AI coding agent, `forge agent setup` adds its instructions (with a place for your project notes) and tool setup; nothing else needs them. |
 
 ## The loop
 

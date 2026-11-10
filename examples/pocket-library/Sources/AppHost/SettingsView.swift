@@ -1,14 +1,18 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The Settings tab: preferences, and the user's local data.
 struct SettingsView: View {
+    enum SettingsAction { case erase }
+
     @Environment(LibraryModel.self) private var model
     @State private var exportURL: URL?
     @State private var exporting = false
-    @State private var confirmErase = false
     @State private var storage: StorageInfo?
-    @State private var error: PresentedError?
+    /// The erase confirmation, or an error (ForgeAppKit).
+    @State private var alert: ForgeAlert<SettingsAction>?
 
     var body: some View {
         NavigationStack {
@@ -55,7 +59,16 @@ struct SettingsView: View {
                         .disabled(exporting)
                         .accessibilityIdentifier("settings.export")
                     }
-                    Button("Erase Library…", role: .destructive) { confirmErase = true }
+                    Button("Erase Library…", role: .destructive) {
+                        alert = .confirm(
+                            "Erase your whole library?",
+                            message: "All books, notes, history and saved covers are deleted from this iPhone. This can't be undone.",
+                            confirm: "Erase Library",
+                            action: .erase,
+                            identifier: "settings.erase",
+                            destructive: true
+                        )
+                    }
                         .accessibilityIdentifier("settings.erase")
                 } header: {
                     Text("Your Data")
@@ -74,16 +87,11 @@ struct SettingsView: View {
                 storage = model.storageInfo()
                 exportURL = nil
             }
-            .confirmationDialog(
-                "Erase your whole library?",
-                isPresented: $confirmErase,
-                titleVisibility: .visible
-            ) {
-                Button("Erase Library", role: .destructive) { erase() }
-            } message: {
-                Text("All books, notes, history and saved covers are deleted from this iPhone. This can't be undone.")
+            .forgeAlert($alert) { action in
+                switch action {
+                case .erase: erase()
+                }
             }
-            .errorAlert($error)
         }
     }
 
@@ -118,7 +126,7 @@ struct SettingsView: View {
             do {
                 try await model.updateSettings(settings)
             } catch {
-                self.error = PresentedError(error)
+                alert = .failure(error)
             }
         }
     }
@@ -130,7 +138,7 @@ struct SettingsView: View {
             do {
                 exportURL = try await model.exportLibrary()
             } catch {
-                self.error = PresentedError(error)
+                alert = .failure(error)
             }
         }
     }
@@ -142,7 +150,7 @@ struct SettingsView: View {
                 storage = model.storageInfo()
                 exportURL = nil
             } catch {
-                self.error = PresentedError(error)
+                alert = .failure(error)
             }
         }
     }
