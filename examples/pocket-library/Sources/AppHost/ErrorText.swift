@@ -1,3 +1,4 @@
+@preconcurrency import ForgeApp
 @preconcurrency import ForgeFFI
 import ForgeAppKit
 import Foundation

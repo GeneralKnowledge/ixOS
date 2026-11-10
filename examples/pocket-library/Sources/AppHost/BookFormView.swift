@@ -217,9 +217,9 @@ struct BookFormView: View {
         errors = local
         guard local.isEmpty else { return }
         let input = assembled()
-        Task {
+        Task { @MainActor in
             var saved: Book?
-            await saving.run {
+            _ = await saving.run {
                 do {
                     switch mode {
                     case .add: saved = try await model.add(input)

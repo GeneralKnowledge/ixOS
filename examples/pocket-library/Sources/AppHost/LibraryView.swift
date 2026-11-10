@@ -9,6 +9,7 @@ import UniformTypeIdentifiers
 struct LibraryView: View {
     @Environment(LibraryModel.self) private var model
     @State private var importing = false
+    @Environment(\.forgeTheme) private var theme
     @State private var path = NavigationPath()
 
     private var bindable: Bindable<LibraryModel> { Bindable(model) }
