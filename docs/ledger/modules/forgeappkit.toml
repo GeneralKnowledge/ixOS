@@ -1,0 +1,12 @@
+order = 161
+module = "ForgeAppKit"
+layer = "Optional"
+crate = "ForgeKit package, `ForgeAppKit` product (Swift)"
+provides = "Alerts and confirmation dialogs as model values, destinations as one optional enum, load state, submission state for busy buttons, form errors by field"
+native_apis = "SwiftUI, Observation"
+dependencies = "ForgeUI (no Rust, no generated bindings)"
+ios = "Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone"
+android = "n/a"
+desktop = "Partial: compiles for macOS"
+status = "Experimental"
+exercised_by = "Linux model tests (forgekit/Tests/ForgeAppKitTests)"

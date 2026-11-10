@@ -1,0 +1,9 @@
+order = 26
+capability = "ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors)"
+framework = "Yes: ForgeAppKit product of the ForgeKit package"
+rust_api = "n/a"
+ios_native = "Yes"
+in_app = "No: no app uses it yet"
+iphone = "No"
+documented = "Yes: forgeappkit.md"
+limits = "0.1: model values tested on Linux; SwiftUI side checked by macOS CI only; no navigation path or tab state"
