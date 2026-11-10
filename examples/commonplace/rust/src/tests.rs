@@ -342,3 +342,18 @@ fn errors_have_framework_kinds() {
         ErrorKind::Unavailable
     );
 }
+
+#[test]
+fn bookmarking_an_opened_article_keeps_it_read() {
+    // Cati, 2026-11-10: after opening and bookmarking an article, the feed
+    // list still counted it unread. Rust keeps it read.
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = subscribed(dir.path());
+    let before = core.counts(Timeline::All).unread;
+    let first = core.timeline(Timeline::All)[0].clone();
+    block_on(core.open_article(first.id)).unwrap();
+    block_on(core.set_bookmarked(first.id, true)).unwrap();
+    assert_eq!(core.counts(Timeline::All).unread, before - 1);
+    assert_eq!(core.feeds()[0].unread_count, before - 1);
+    assert!(core.article(first.id).unwrap().read);
+}
