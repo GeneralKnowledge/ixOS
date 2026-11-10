@@ -105,6 +105,11 @@ impl Team {
     }
 }
 
+/// First on a runner start failure: a phone that locked itself while idle is
+/// the usual cause ("unexpected response from device"), and an expired
+/// signature the rarer one.
+const LOCKED_HINT: &str = "If the iPhone is locked (it locks itself after a few idle minutes), unlock it, keep it awake (Settings > Display & Brightness > Auto-Lock > Never while testing) and run again.";
+
 pub(crate) const NO_RUNNER: &str = "the WebDriverAgent runner is not installed: run `forge ui setup --runner <WebDriverAgentRunner-Runner.app>` (see docs/forge-ui-testing.md)";
 
 /// `forge ui setup`: mount the Developer Disk Image, install the runner,
@@ -311,7 +316,7 @@ fn start(
 ) -> Result<(Runner, WdaDriver<forge_uitest::phone::UsbHttp>), String> {
     let runner = phone
         .start_runner(runner_id)
-        .map_err(|e| format!("{e}\n{}", team.expiry_hint()))?;
+        .map_err(|e| format!("{e}\n{LOCKED_HINT}\n{}", team.expiry_hint()))?;
     let driver = WdaDriver::connect(phone.transport()).map_err(err)?;
     Ok((runner, driver))
 }

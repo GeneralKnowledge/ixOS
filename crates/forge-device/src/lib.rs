@@ -71,8 +71,9 @@ pub struct DeviceInfo {
 pub enum DeviceError {
     #[error(
         "cannot reach usbmuxd ({reason}). Plug the iPhone in and unlock it: on Linux \
-         usbmuxd only runs while a phone is connected. If it is plugged in, install \
-         usbmuxd: `sudo apt install usbmuxd`"
+         usbmuxd only runs while a phone is connected, so this is what an unplugged \
+         phone looks like. Only if it is plugged in, unlocked and `lsusb` lists it \
+         is usbmuxd missing: `sudo apt install usbmuxd`"
     )]
     Usbmuxd { reason: String },
     #[error("no iPhone connected. Plug it in with a cable, unlock it and tap Trust if asked")]
