@@ -5,7 +5,7 @@
 # address with the laptop's. Starts on an empty, throwaway library.
 
 name = "Mark all as read"
-app = "org.forgemobile.commonplace"
+app = "org.forgemobile.agentlab"
 
 [[step]]
 terminate = {}

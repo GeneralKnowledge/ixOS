@@ -1553,7 +1553,7 @@ mod example_files {
             "mark-all-read.toml",
         ] {
             let script = super::Script::load(&dir.join(file)).unwrap();
-            assert_eq!(script.app, "org.forgemobile.commonplace", "{file}");
+            assert_eq!(script.app, "org.forgemobile.agentlab", "{file}");
         }
         let flow = std::fs::read_to_string(dir.join("subscribe-and-read.toml")).unwrap();
         let relaunch = flow.rfind("-ForgeKeepTestData").unwrap();

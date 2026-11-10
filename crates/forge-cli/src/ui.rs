@@ -1680,6 +1680,16 @@ pub fn explore_app(
         "report": dir.join("explore.json"),
         "graph": dir.join("graph.json"),
     }));
+    // At `observe` taps and typing are refused by design: a walk that only
+    // launched, read and scrolled did what was asked.
+    if tried == 0 && level == policy::Level::Observe {
+        writeln!(
+            out,
+            "Looked only (`observe`): taps and typing were skipped by the policy, as expected; each is listed under skipped in explore.json"
+        )
+        .map_err(err)?;
+        return Ok(());
+    }
     if tried == 0 {
         return Err(format!(
             "exploring tried no control: {} screen(s) seen, every control skipped or refused (see skipped in {})",

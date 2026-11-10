@@ -4,7 +4,7 @@
 # Format: docs/forge-ui-testing.md.
 
 name = "Smoke: open Add Feed, type an address, cancel"
-app = "org.forgemobile.commonplace"
+app = "org.forgemobile.agentlab"
 
 [[step]]
 terminate = {}

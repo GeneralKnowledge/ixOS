@@ -8,7 +8,7 @@
 # that library with -ForgeKeepTestData, so the person's own is never used.
 
 name = "Subscribe, read and bookmark"
-app = "org.forgemobile.commonplace"
+app = "org.forgemobile.agentlab"
 
 [[step]]
 terminate = {}

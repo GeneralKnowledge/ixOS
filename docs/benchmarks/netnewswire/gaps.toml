@@ -122,3 +122,14 @@ layer = "tooling"
 cost = "small"
 blocks = false
 second_use = "n/a"
+
+[[gap]]
+id = "free-team-app-id-limit"
+reference = "n/a: found installing Commonplace on Cati, 2026-11-10"
+ixos_today = "Each example app has had its own bundle id; a free Apple team registers at most 10 App IDs in 7 days, and the install was refused once they were used up"
+workaround = "Commonplace uses the shared sandbox id org.forgemobile.agentlab, replacing whichever agentlab app is installed"
+missing = "forge run ios saying plainly that the week's App ID allowance is used up, and when it frees, instead of xtool's raw error"
+layer = "cli"
+cost = "small"
+blocks = false
+second_use = "Every new example or forge init app on a free team"

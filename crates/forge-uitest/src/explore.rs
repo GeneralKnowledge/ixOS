@@ -139,19 +139,30 @@ const NOT_RECORDED: &str = "(not recorded: ";
 /// What stands in for typed text that the app echoed back.
 const ECHOED: &str = "(typed text)";
 
-/// Takes typed text out of a string the app may have echoed it into.
-/// Single characters are left: they would blank out ordinary words.
-fn scrub(typed: &[String], text: &str) -> String {
+/// What stands in for the text of a list row in another developer's app:
+/// rows hold the person's content (article titles, messages, names).
+const ROW_TEXT: &str = "(row text)";
+
+/// Text kept out of the records, and what is written in its place.
+type Hidden = Vec<(String, &'static str)>;
+
+/// Takes hidden text out of a string: typed text the app may have echoed,
+/// and the person's content in list rows. The longest first, so a row
+/// that contains another hidden text is replaced whole. Single characters
+/// are left: they would blank out ordinary words.
+fn scrub(hidden: &[(String, &'static str)], text: &str) -> String {
     let mut text = text.to_owned();
-    for secret in typed {
+    let mut order: Vec<&(String, &'static str)> = hidden.iter().collect();
+    order.sort_by_key(|(secret, _)| std::cmp::Reverse(secret.len()));
+    for (secret, shown) in order {
         if secret.chars().count() > 1 && text.contains(secret.as_str()) {
-            text = text.replace(secret.as_str(), ECHOED);
+            text = text.replace(secret.as_str(), shown);
         }
     }
     text
 }
 
-fn scrub_value(typed: &[String], value: &mut serde_json::Value) {
+fn scrub_value(typed: &[(String, &'static str)], value: &mut serde_json::Value) {
     if typed.is_empty() {
         return;
     }
@@ -167,7 +178,7 @@ fn scrub_value(typed: &[String], value: &mut serde_json::Value) {
 /// text taken out, as in the files.
 struct ScrubbedOut<'a> {
     inner: &'a mut dyn Write,
-    typed: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    typed: std::rc::Rc<std::cell::RefCell<Hidden>>,
     line: Vec<u8>,
 }
 
@@ -839,6 +850,17 @@ const SCROLLABLE: &[&str] = &["Table", "CollectionView", "ScrollView"];
 /// first visible one, by identifier when it has one, else by kind and its
 /// place among elements of that kind (never by coordinates).
 fn scroll_target(tree: &UiNode) -> Option<Locator> {
+    // WDA doesn't always call a list visible (NetNewsWire's on Cati,
+    // 2026-11-10), so a list with a size on screen will do when none is.
+    scroll_target_where(tree, |n| n.visible).or_else(|| {
+        scroll_target_where(tree, |n| {
+            n.frame
+                .is_some_and(|f| f.width > 0.0 && f.height > 0.0 && f.y >= 0.0)
+        })
+    })
+}
+
+fn scroll_target_where(tree: &UiNode, usable: impl Fn(&UiNode) -> bool) -> Option<Locator> {
     let mut seen: HashMap<&str, usize> = HashMap::new();
     for node in tree.walk() {
         if !SCROLLABLE.contains(&node.kind.as_str()) {
@@ -847,7 +869,7 @@ fn scroll_target(tree: &UiNode) -> Option<Locator> {
         let index = seen.entry(node.kind.as_str()).or_default();
         let this = *index;
         *index += 1;
-        if !node.visible {
+        if !usable(node) {
             continue;
         }
         return Some(match &node.identifier {
@@ -1060,7 +1082,7 @@ pub struct Report {
     /// `scrub_json` can take it out of anything the app echoed it into
     /// (a title, an alert, a label). Never serialised.
     #[serde(skip)]
-    pub typed: Vec<String>,
+    pub typed: Hidden,
 }
 
 impl Report {
@@ -1213,7 +1235,7 @@ struct Explorer<'a> {
     typed: HashMap<(Locator, String), String>,
     /// The same texts, to take out of whatever the app echoed them into;
     /// shared with the terminal's `ScrubbedOut`.
-    echo: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    echo: std::rc::Rc<std::cell::RefCell<Hidden>>,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -1766,6 +1788,30 @@ impl Explorer<'_> {
         }
     }
 
+    /// Keeps `text` out of everything written for another developer's app.
+    fn hide(&self, text: &str, shown: &'static str) {
+        let mut hidden = self.echo.borrow_mut();
+        if !text.is_empty() && !hidden.iter().any(|(t, _)| t == text) {
+            hidden.push((text.to_owned(), shown));
+        }
+    }
+
+    /// In another developer's app, list rows show the person's content: the
+    /// labels and values of cells and of the text inside them are written
+    /// down as `(row text)`.
+    fn hide_rows(&self) {
+        if !self.redact {
+            return;
+        }
+        for cell in self.tree.walk().filter(|n| n.kind == "Cell") {
+            for node in cell.walk() {
+                for text in [&node.label, &node.value].into_iter().flatten() {
+                    self.hide(text, ROW_TEXT);
+                }
+            }
+        }
+    }
+
     /// The policy's view of a control. In another developer's app its label
     /// and identifier lose any typed text the app echoed into them, since
     /// the policy's journal writes them down.
@@ -1833,6 +1879,7 @@ impl Explorer<'_> {
             }
         }
         self.tree = tree;
+        self.hide_rows();
         self.current = id.clone();
         if !self.index.contains_key(&id) {
             self.discover(&id, step)?;
@@ -1851,6 +1898,7 @@ impl Explorer<'_> {
     }
 
     fn discover(&mut self, id: &str, step: usize) -> Result<()> {
+        self.hide_rows();
         let (mut found, skipped) = candidates(&self.tree, self.config);
         if self.redact {
             // In another developer's app the walk keeps what it typed out of
@@ -1860,9 +1908,7 @@ impl Explorer<'_> {
             for candidate in &mut found {
                 if let Action::Type(locator, text) = &mut candidate.action {
                     let shown = not_recorded(text);
-                    if !self.echo.borrow().contains(text) {
-                        self.echo.borrow_mut().push(text.clone());
-                    }
+                    self.hide(text, ECHOED);
                     self.typed
                         .insert((locator.clone(), shown.clone()), std::mem::take(text));
                     *text = shown;
@@ -2984,6 +3030,67 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(parsed.first(), Some(Action::Scroll(_, d)) if d == "down"));
+    }
+
+    #[test]
+    fn in_another_developers_app_row_content_is_not_written_down() {
+        // NetNewsWire on Cati, 2026-11-10: at `observe`, the refusal of a
+        // row tap printed the row's article title and excerpt.
+        const ROW: &str = "Daring Feed";
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Observe,
+            Box::new(policy::NoApprover),
+            Some(policy::Journal::create(dir.path()).unwrap()),
+        );
+        let mut model = long_list();
+        // WDA called NetNewsWire's list not visible: it is scrolled anyway.
+        if let Some(list) = model
+            .screens
+            .get_mut("library")
+            .unwrap()
+            .children
+            .iter_mut()
+            .find(|n| n.kind == "Table")
+        {
+            list.visible = false;
+            list.frame = Some(Rect {
+                x: 0.0,
+                y: 100.0,
+                width: 400.0,
+                height: 600.0,
+            });
+        }
+        let report =
+            run_gated(&config(), &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        drop(gate);
+        assert!(
+            model.log.iter().any(|l| l == "scroll down"),
+            "{:?}",
+            model.log
+        );
+        assert!(!model.log.iter().any(|l| l.starts_with("tap")));
+        let out = String::from_utf8(out).unwrap();
+        assert!(!out.contains(ROW), "{out}");
+        assert!(out.contains("(row text)"), "{out}");
+        let mut stack = vec![dir.path().to_path_buf()];
+        while let Some(path) = stack.pop() {
+            if path.is_dir() {
+                if !path.ends_with("screens") {
+                    stack.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                }
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            assert!(!text.contains(ROW), "{}: {text}", path.display());
+        }
+        let mut json = serde_json::to_value(&report).unwrap();
+        report.scrub_json(&mut json);
+        assert!(!json.to_string().contains(ROW));
+        // A control that isn't a row keeps its label.
+        assert!(json.to_string().contains("Manage Feeds"), "{json}");
     }
 
     #[test]

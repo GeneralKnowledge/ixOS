@@ -1,7 +1,9 @@
 [app]
 name = "Commonplace"
-# Its own bundle id, so it keeps one sideload slot on the test phone.
-bundle_id = "org.forgemobile.commonplace"
+# The shared sandbox id for apps made by agents: a free Apple team can
+# register only 10 App IDs a week, and a new id per example ran out on
+# Cati on 2026-11-10. It takes the place of any other agentlab app.
+bundle_id = "org.forgemobile.agentlab"
 minimum_ios = "17.0"
 display_name = "Commonplace"     # home-screen name
 version = "1.0.0"                   # CFBundleShortVersionString
