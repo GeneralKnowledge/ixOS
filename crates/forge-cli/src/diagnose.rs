@@ -106,6 +106,15 @@ const RULES: &[Rule] = &[
         "Reinstall it: `xtool sdk install` with your Xcode.xip (Xcode 26).",
     ),
     rule(
+        &[
+            "is not a valid precompiled module file",
+            "file too small to contain ast file magic",
+        ],
+        Stage::Swift,
+        "Clang's module cache is damaged, usually because an earlier build was killed part way (a dropped Remote Control or SSH session, Ctrl-C). Errors such as \"could not build Objective-C module 'AVFoundation'\" follow from it; the code is fine.",
+        "Delete the app's module cache, `rm -rf .build/arm64-apple-ios/*/ModuleCache` in the app folder, then build again. Nothing else needs cleaning.",
+    ),
+    rule(
         &["no such module 'forgeffi'", "no such module 'forge_ffiffi'", "missing required module 'forge_ffiffi'"],
         Stage::Swift,
         "The Swift bindings for your Rust crate are missing.",
@@ -326,6 +335,16 @@ mod tests {
         let hints =
             diagnose("ld.lld: error: undefined symbol: uniffi_forge_ffi_checksum_method_notes_add");
         assert!(hints[0].fix.contains("build/ios-device"), "{hints:?}");
+    }
+
+    #[test]
+    fn a_damaged_module_cache_says_which_folder_to_delete() {
+        // Seen after a Remote Control disconnect killed `xtool dev build`.
+        let out = "error: /app/.build/arm64-apple-ios/debug/ModuleCache/3K/MediaToolbox-2V.pcm is not a valid precompiled module file: file too small to contain AST file magic\nerror: could not build Objective-C module 'AVFoundation'";
+        let hints = diagnose(out);
+        assert_eq!(hints.len(), 1, "{hints:?}");
+        assert_eq!(hints[0].stage, Stage::Swift);
+        assert!(hints[0].fix.contains("ModuleCache"), "{hints:?}");
     }
 
     #[test]
