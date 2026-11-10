@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed (2026-11-09). Waiting for Reuben.
+Accepted (2026-11-09, Reuben).
 
 ## Context
 
@@ -30,6 +30,19 @@ Option 1. ForgeUI is a library product of the ForgeKit package. Forge AppKit wil
 - **Independent where it matters.** SwiftPM builds only the targets a product needs, so an app that imports only `ForgeUI` builds no UniFFI bindings and links no Rust. ForgeUI can be used in a plain SwiftUI app.
 - **One version.** Apps pin one framework version; ForgeUI and the runtime they were tested with move together. A design-system change that needs a runtime change (AppKit's load state over `ForgeHost`, for instance) lands in one PR and one release.
 - **Option 3** would make every app resolve the whole ixOS repository (Rust crates, docs, examples and their history) to get a few Swift files, and reverses the 2026-11-09 decision that ForgeKit is its own repository.
+
+## Package strategy (Reuben, 2026-11-09)
+
+| Foundation | Responsibility | Independence |
+|---|---|---|
+| ForgeUI | Native SwiftUI design system | Standalone: no Rust, no generated bindings, no AppKit |
+| ForgeAppKit | Reusable application composition | Optional; depends on ForgeUI |
+| forge-app | Rust runtime and domain logic | Independent of SwiftUI |
+| ForgeKit (integration) | The UniFFI boundary and native adapters | Connects Swift and Rust |
+
+No separate bridge or testing package yet. The rule: **a package should be independently useful before it becomes independently complicated.** ForgeUI must be useful in an ordinary SwiftUI app, ForgeAppKit optional, the Rust runtime testable without an iOS app; new packages appear only when an existing boundary becomes genuinely hard to maintain.
+
+Three development environments, each with one job: the **ForgeUI showcase** (`examples/forgeui-showcase`, a plain SwiftUI app) proves the components; **Pocket Library** proves the whole framework as the reference app; a **minimal app** will prove ixOS can be used without adopting all of it.
 
 ## Consequences
 

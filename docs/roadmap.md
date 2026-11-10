@@ -17,7 +17,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 | Priority | Work | Status |
 |---|---|---|
 | P0 | Existing runtime and native integration stability | Maintain |
-| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md)) | **Proposed, next** |
+| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **In progress: 0.1 built, not yet on an iPhone** |
 | P2 | Forge AppKit: alerts and confirmations as model values, destinations, load and submission state, settings and form patterns | Planned |
 | P3 | Rust application foundations: domain errors, validation, repositories, query (modules in existing crates first) | Planned, alongside |
 | P4 | A complete reference app (personal library) built only on the above | Required proof |

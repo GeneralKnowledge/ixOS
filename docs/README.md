@@ -22,6 +22,7 @@ Read these in order the first time.
 |---|---|
 | [app-crate.md](app-crate.md) | Your app's Rust crate: state, rules, saving, networking, events |
 | [ios-ui.md](ios-ui.md) | The SwiftUI side: how a Forge app should look and how to show Rust state |
+| [forgeui.md](forgeui.md) | ForgeUI, the design system: theme tokens, button and field styles, rows, cards, badges, states; usable in any SwiftUI app |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |

@@ -10,7 +10,7 @@ Method: the ixOS side was read at `f2e7ea9` (main after #144). The outside proje
 - **ForgeUI styles SwiftUI's own controls; it does not replace them.** Buttons are `ButtonStyle`s, fields are a `TextFieldStyle` plus a labelled container, cards and rows are small views on top of `GroupBox`, `LabeledContent` and `Label`, empty and error states build on `ContentUnavailableView`. A developer can always drop to plain SwiftUI, and ForgeUI pieces mix with it.
 - **Theme = plain values in the SwiftUI environment.** Light and dark are two palettes resolved from `\.colorScheme`, as DaVinci does. No singleton, no asset catalog, no custom fonts, no JSON theme engine. Text uses the system text styles, so Dynamic Type works with no extra code.
 - **Tokens and contrast maths are Foundation-only**, so they compile and are tested on Linux. SwiftUI files are wrapped in `#if canImport(SwiftUI)`, as ForgeKit's are today, and compile on the laptop with xtool or on macOS CI.
-- **The showcase is an ordinary Forge app** (`examples/forgeui-showcase`): a gallery of every component with live controls, and three example screens (settings, list, create/edit form) that are the 0.1 acceptance test. #Preview is not used anywhere: it needs Xcode's macro plugin and breaks xtool on Linux.
+- **The showcase is a plain SwiftUI app** (`examples/forgeui-showcase`, built with xtool, no Rust core): a gallery of every component with live controls, and three example screens (settings, list, create/edit form) that are the 0.1 acceptance test. #Preview is not used anywhere: it needs Xcode's macro plugin and breaks xtool on Linux.
 - **No new test dependencies.** Linux XCTest for tokens and contrast, macOS CI to compile, and the existing Forge screenshot baselines for visual regressions. SnapshotTesting and ViewInspector are deferred, with reasons below.
 - **Revised [roadmap](../roadmap.md#product-direction-a-native-application-framework)**: ForgeUI 0.1 next, then AppKit, then Rust application foundations, the reference app and developer experience. Agent tooling expansion is paused; existing device, MCP and diagnostic work is kept as supporting infrastructure.
 
@@ -136,15 +136,16 @@ Rules every component follows:
 ### The showcase app (`examples/forgeui-showcase`)
 
 - **Gallery tab:** components grouped as Foundations (colours, spacing, type), Controls, Content, Feedback. Each page shows the component's variants, live controls to change them (style, size, tone, disabled, working), and the code to use it. A registry list (name, group, view, usage string) drives the index, as in ThemeKit's demo.
-- **Screens tab:** the three acceptance screens, built only from ForgeUI and plain SwiftUI with no custom styling: **Settings** (the exact layout in Reuben's message: Account, Appearance, About), **Tasks** (searchable list with badges, empty state, swipe to delete with confirmation, loading and error states), **New / Edit task** (a form with labelled fields, validation messages, a busy Save button). The task form's rule ("title is required and at most 80 characters") is checked by a small Rust function, so the screen also shows the intended split: Rust owns the rule, Swift shows the message.
+- **Screens tab:** the three acceptance screens, built only from ForgeUI and plain SwiftUI with no custom styling: **Settings** (the exact layout in Reuben's message: Account, Appearance, About), **Tasks** (searchable list with badges, empty state, swipe to delete with confirmation, loading and error states), **New / Edit task** (a form with labelled fields, validation messages, a busy Save button). The form's rule ("title is required and at most 80 characters") turns into `ForgeFieldMessage` values in the view model, which is how a Rust validation result reaches the field in a full ixOS app.
 - **Appearance toolbar** on every page: light/dark, a Dynamic Type size, and two themes (default and an alternative accent) to show that one value changes the whole app.
-- The app is an ordinary Forge app (`forge.toml`, its own small Rust crate, built with `forge build ios`), because Forge requires a Rust crate and the form rule earns its place. Bundle id `org.forgemobile.agentlab`.
+- The app is a plain SwiftUI package that depends only on ForgeUI: no Rust core, no generated bindings, no `forge.toml`, built with `xtool dev`. That proves ForgeUI works in any SwiftUI app (Reuben's package strategy, [ADR 002](../adr/002-forgeui-in-forgekit.md#package-strategy-reuben-2026-11-09)); the Rust-owned rule moves to Pocket Library, the reference app. Bundle id `org.forgemobile.agentlab`.
+- *Changed during the build:* this section first proposed a small Rust crate for the form's title rule. It was dropped so the showcase proves the components and nothing else; `forge` building apps without a Rust crate is left to the minimal-app work.
 
 ### Tests (proportionate)
 
 - **Linux, every PR (`swift test` in `forgekit/`):** every text and tone pair in both default palettes passes WCAG contrast (4.5:1 for text, 3:1 for large text and non-text); the palettes define every role in both appearances; spacing and radius scales ascend; the contrast maths matches known values. About ten tests.
-- **macOS CI:** the `app-model` workflow already builds ForgeKit on macOS; it also builds the showcase for iOS (unsigned) when `forgekit/` or the showcase changes.
-- **Laptop:** `forge build ios --project examples/forgeui-showcase` with xtool, before asking for the phone.
+- **CI (`forgeui.yml`):** on Linux and macOS, the token tests and the showcase's model tests; on macOS, the showcase built for iOS (unsigned) when `forgekit/` or the showcase changes.
+- **Laptop:** `xtool dev build` in `examples/forgeui-showcase`, before asking for the phone.
 - **Phone (next sitting, about 5 minutes):** install the showcase, look through both tabs in light and dark and at a large text size. It proves the components render and read well on a real iPhone, which the CI build cannot. Recorded only if Reuben sees it.
 - **Visual baselines:** added to `screenshots.yml` once the screens settle, not in 0.1.
 
@@ -160,4 +161,4 @@ Forge AppKit's state values (alerts as data, destinations, load state, submissio
 
 ## Size and order
 
-One PR for ForgeUI 0.1 and the showcase: about 1,500 lines of Swift, a small Rust crate, docs. Then a ForgeKit release (0.4.0, because forge-app's version is the framework version and the release script refuses to reuse a tag), so apps outside the checkout get it. Then the template adopts it, so every `forge init` app starts on ForgeUI.
+One PR for ForgeUI 0.1 and the showcase: about 2,000 lines of Swift, docs. Then a ForgeKit release (0.4.0, because forge-app's version is the framework version and the release script refuses to reuse a tag), so apps outside the checkout get it. Then the template adopts it, so every `forge init` app starts on ForgeUI.

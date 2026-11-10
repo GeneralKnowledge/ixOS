@@ -8,8 +8,8 @@ Everything here builds with xtool on Linux. Nothing requires a Mac.
 
 ## Principles
 
-- **Use the real component.** SwiftUI already provides navigation, lists, forms, sheets, menus, search, swipe actions and empty states that behave exactly as users expect. Use them as they are. Don't rebuild them from stacks and rounded rectangles, and don't wrap them in a component library.
-- **Let the system style it.** System fonts, semantic colours, SF Symbols and the standard list and form styles adapt automatically to light and dark mode, Dynamic Type, accessibility settings and future iOS releases. Every hardcoded colour or point size is one more place where the app can fall out of step.
+- **Use the real component.** SwiftUI already provides navigation, lists, forms, sheets, menus, search, swipe actions and empty states that behave exactly as users expect. Use them as they are, and don't rebuild them from stacks and rounded rectangles. To give them a consistent look, use [ForgeUI](forgeui.md): its styles and components sit on these same controls, so they keep their native behaviour.
+- **Let the system and the theme style it.** System fonts, semantic colours (or ForgeUI's theme tokens, which follow light and dark mode the same way), SF Symbols and the standard list and form styles adapt automatically to light and dark mode, Dynamic Type, accessibility settings and future iOS releases. Every hardcoded colour or point size is one more place where the app can fall out of step.
 - **Rules in Rust, presentation in Swift.** If a behaviour should match on Android, or should be tested without a UI, it belongs in Rust: validation, sorting, search, state transitions. How something looks and moves belongs in Swift: titles, dates, layout, animation, haptics.
 - **Add abstractions only for real duplication.** The starter has one helper, `errorAlert`, because every screen that can fail needs the same alert. Everything else is plain SwiftUI.
 
