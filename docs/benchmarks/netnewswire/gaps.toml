@@ -133,3 +133,14 @@ layer = "cli"
 cost = "small"
 blocks = false
 second_use = "Every new example or forge init app on a free team"
+
+[[gap]]
+id = "list-not-redrawn-after-open"
+reference = "NetNewsWire's unread counts drop as soon as you go back from an article"
+ixos_today = "On Cati (2026-11-10) Commonplace's feed list kept the old unread counts after an article was opened and marked read in Rust; changes made by buttons (bookmark, mark all read) did redraw it"
+workaround = "The feed list and timelines call model.reload() in onAppear, so they read Rust again when navigation comes back to them"
+missing = "The cause: the model reloads after the open, and the same path works from buttons. Until it is understood, it may affect any ForgeAppKit list behind a NavigationStack"
+layer = "swift"
+cost = "small"
+blocks = false
+second_use = "Any app whose detail screen changes state its list shows"
