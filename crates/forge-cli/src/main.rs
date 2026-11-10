@@ -418,10 +418,19 @@ enum UiCommands {
     Explore {
         #[arg(long)]
         udid: Option<String>,
-        /// The app to explore: its folder with forge.toml (only Forge apps
-        /// for now; the any-app policy is not wired in yet)
+        /// The app to explore: its folder with forge.toml
         #[arg(long, default_value = ".")]
         project: PathBuf,
+        /// Explore an installed app Forge didn't build, by bundle id (a
+        /// reference app for a replication benchmark). Needs --any-app and a
+        /// line for the app in ~/.config/forge/device-control.toml:
+        /// `operate` looks only (with --real-data), `full` may change its data
+        #[arg(long, value_name = "BUNDLE_ID", conflicts_with = "project")]
+        app: Option<String>,
+        /// Allow --app to name an app Forge didn't build, as far as the
+        /// person's device-control policy allows
+        #[arg(long)]
+        any_app: bool,
         /// Stop after this many actions
         #[arg(long, default_value_t = 60)]
         actions: usize,
@@ -1348,6 +1357,8 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Explore {
                     udid,
                     project,
+                    app,
+                    any_app,
                     actions,
                     minutes,
                     seed,
@@ -1390,7 +1401,10 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                         per_screen,
                         screenshots: !no_screenshots,
                     };
-                    ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out)
+                    match app {
+                        Some(app) => ui::explore_app(udid.as_deref(), &app, any_app, options, dir.as_deref(), &mut out),
+                        None => ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out),
+                    }
                 }
                 UiCommands::Focus { project, since, changed } => focus::show(&project, since.as_deref(), &changed, &mut out),
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),

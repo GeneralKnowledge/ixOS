@@ -950,6 +950,7 @@ fn scenario_of(run_dir: &Path) -> Result<PathBuf, String> {
 }
 
 /// `forge ui explore`'s options, as given on the command line.
+#[derive(Clone)]
 pub struct ExploreOptions {
     /// M6.2: aim at what changed since this commit.
     pub since: Option<String>,
@@ -1477,6 +1478,189 @@ pub fn explore(
     }
 }
 
+/// The explorer's settings for an app Forge didn't build, at the level the
+/// person's device-control policy gives it. Tapping needs `operate` or
+/// `full`: at `operate` the walk only looks (`--real-data`), as on a
+/// person's own data in a Forge app; at `full` the person has said the app
+/// holds nothing they mind changing (a reference app subscribed to test
+/// feeds), so it may save, edit and type as on test data.
+pub fn foreign_explore_config(
+    installed: &str,
+    level: policy::Level,
+    options: &ExploreOptions,
+) -> Result<explore::Config, String> {
+    let aimed = options.since.is_some()
+        || !options.changed.is_empty()
+        || !options.focus.is_empty()
+        || options.previous.is_some()
+        || options.fixture.is_some();
+    if aimed {
+        return Err(
+            "--since, --changed, --focus, --previous and --fixture read a Forge app's source and earlier walks; they don't apply with --app"
+                .into(),
+        );
+    }
+    if options.appearance.is_some() {
+        return Err(
+            "--appearance works through -ForgeAppearance, which only Forge apps honour; set the phone's appearance instead"
+                .into(),
+        );
+    }
+    let test_data = match level {
+        policy::Level::Deny | policy::Level::Observe => {
+            return Err(format!(
+                "{installed} is at `{}` in your device-control policy, and exploring taps: give it `operate` (look only, with --real-data) or `full` (the app holds only test data) in {}",
+                level.name(),
+                policy::policy_path()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|| "~/.config/forge/device-control.toml".into())
+            ))
+        }
+        policy::Level::Operate if !options.real_data => {
+            return Err(format!(
+                "{installed} is at `operate`: the walk may only look around, so pass --real-data (or give it `full` if everything in it is test data)"
+            ))
+        }
+        policy::Level::Operate => false,
+        policy::Level::Full => !options.real_data,
+    };
+    if !test_data && options.allow_destructive {
+        return Err(
+            "--allow-destructive needs an app at `full` whose data is all test data, without --real-data"
+                .into(),
+        );
+    }
+    let mut fixtures = std::collections::HashMap::new();
+    for pair in &options.texts {
+        let (id, text) = pair
+            .split_once('=')
+            .ok_or_else(|| format!("--text {pair:?}: write IDENTIFIER=TEXT"))?;
+        fixtures.insert(id.to_owned(), text.to_owned());
+    }
+    if options.actions < 2 {
+        return Err("--actions must be at least 2".into());
+    }
+    if !(options.minutes > 0.0 && options.minutes.is_finite()) {
+        return Err("--minutes must be more than 0".into());
+    }
+    let mut launch_args = Vec::new();
+    if options.largest_text {
+        launch_args.extend(explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
+    }
+    launch_args.extend(options.launch_args.iter().cloned());
+    Ok(explore::Config {
+        app: installed.to_owned(),
+        script_app: installed.to_owned(),
+        max_actions: options.actions,
+        budget: Duration::from_secs_f64(options.minutes * 60.0),
+        seed: options.seed.unwrap_or_else(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(1)
+        }),
+        launch_args,
+        fixtures,
+        test_data,
+        allow_destructive: options.allow_destructive,
+        skip: options.skip.clone(),
+        per_screen: options.per_screen.max(1),
+        screenshots: options.screenshots,
+        ..explore::Config::default()
+    })
+}
+
+/// `forge ui explore --app <bundle id> --any-app`: walk an app Forge didn't
+/// build (a reference app for a replication benchmark, docs/benchmarks/).
+/// Every action goes through the any-app policy's gate and its journal;
+/// screens go to a folder outside every project, because another app's
+/// screens are the person's data. Findings in someone else's app are
+/// information, so only a walk that tried nothing fails.
+pub fn explore_app(
+    udid: Option<&str>,
+    app: &str,
+    any_app: bool,
+    options: ExploreOptions,
+    out_dir: Option<&Path>,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    if !any_app {
+        return Err(format!(
+            "{app} is not one of your Forge apps. Forge only explores apps it didn't build when the person passes --any-app, and then only as far as their device-control policy allows (docs/forge-explore.md#apps-forge-didnt-build)"
+        ));
+    }
+    if let Some(why) = policy::never(app) {
+        return Err(why);
+    }
+    let policy = Policy::load()?;
+    let (phone, mut apps, held, mut driver) = connect(udid, out)?;
+    let installed = resolve(&phone, &mut apps, &held, app)?;
+    if let Some(why) = policy::never(&installed) {
+        return Err(why);
+    }
+    let level = match policy.rule_for(&installed).level() {
+        Some(level) => level,
+        None => policy::Approver::choose(&mut TerminalApprover, &installed).ok_or_else(|| {
+            format!(
+                "{installed} is not in {} (default: ask), and there is nobody at a terminal to ask. Add a line for it, e.g. \"{installed}\" = \"operate\"",
+                policy.where_()
+            )
+        })?,
+    };
+    let config = foreign_explore_config(&installed, level, &options)?;
+    let dir = match out_dir {
+        Some(d) => d.to_path_buf(),
+        None => policy::session_root()
+            .ok_or("no home folder for the any-app session; pass --out")?
+            .join(format!("{}-ui-explore", report::timestamp())),
+    };
+    let journal = Journal::create(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    writeln!(
+        out,
+        "{installed} is not a Forge app: exploring at the `{}` level from {}, {}. Screens, the graph and the journal go to {}",
+        level.name(),
+        policy.where_(),
+        if config.test_data {
+            "and its data may change (the policy says it holds only test data)"
+        } else {
+            "looking only"
+        },
+        dir.display()
+    )
+    .map_err(err)?;
+    let mut gate = Gate::foreign(&installed, level, Box::new(TerminalApprover), Some(journal));
+    let report =
+        explore::run_gated(&config, &mut driver, Some(&dir), out, &mut gate).map_err(err)?;
+    writeln!(out, "Report: {}", dir.join("explore.json").display()).map_err(err)?;
+    writeln!(out, "Graph: {}", dir.join("graph.json").display()).map_err(err)?;
+    let tried = report
+        .journal
+        .iter()
+        .filter(|s| s.action != "launch")
+        .count();
+    report::set_data(serde_json::json!({
+        "kind": "device",
+        "any_app": { "app": installed, "level": level.name() },
+        "app": report.app,
+        "seed": report.seed,
+        "stopped": report.stopped,
+        "actions": report.actions,
+        "screens": report.screens.len(),
+        "issues": report.issues,
+        "out": dir.display().to_string(),
+        "report": dir.join("explore.json"),
+        "graph": dir.join("graph.json"),
+    }));
+    if tried == 0 {
+        return Err(format!(
+            "exploring tried no control: {} screen(s) seen, every control skipped or refused (see skipped in {})",
+            report.screens.len(),
+            dir.join("explore.json").display()
+        ));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1503,6 +1687,49 @@ mod tests {
             per_screen: 15,
             screenshots: true,
         }
+    }
+
+    #[test]
+    fn another_apps_walk_follows_the_persons_policy_level() {
+        use forge_uitest::policy::Level;
+        const NNW: &str = "com.ranchero.NetNewsWire-iOS";
+        // Observe can't tap, so a walk is refused with what to change.
+        let e = foreign_explore_config(NNW, Level::Observe, &options()).unwrap_err();
+        assert!(e.contains("`observe`") && e.contains("operate"), "{e}");
+        // Operate looks only, and says so.
+        let e = foreign_explore_config(NNW, Level::Operate, &options()).unwrap_err();
+        assert!(e.contains("--real-data"), "{e}");
+        let looking = ExploreOptions {
+            real_data: true,
+            ..options()
+        };
+        let c = foreign_explore_config(NNW, Level::Operate, &looking).unwrap();
+        assert!(!c.test_data);
+        assert_eq!(c.app, NNW);
+        // Full: the person said its data is all test data.
+        let c = foreign_explore_config(NNW, Level::Full, &options()).unwrap();
+        assert!(c.test_data);
+        assert!(c
+            .launch_args
+            .iter()
+            .any(|a| a.contains("ContentSizeCategory")));
+        // Destructive taps only at full, on test data.
+        let destructive = ExploreOptions {
+            allow_destructive: true,
+            ..looking.clone()
+        };
+        assert!(foreign_explore_config(NNW, Level::Full, &destructive).is_err());
+        // Options that read a Forge app's source don't apply.
+        let aimed = ExploreOptions {
+            since: Some("HEAD".into()),
+            ..options()
+        };
+        assert!(foreign_explore_config(NNW, Level::Full, &aimed).is_err());
+        let dark = ExploreOptions {
+            appearance: Some("dark".into()),
+            ..options()
+        };
+        assert!(foreign_explore_config(NNW, Level::Full, &dark).is_err());
     }
 
     fn unplugged() -> Result<Box<dyn forge_device::DeviceBackend>, String> {

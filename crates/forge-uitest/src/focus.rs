@@ -263,10 +263,11 @@ pub fn parse_route(steps: &[Value]) -> Result<Vec<Action>, String> {
         .step
         .into_iter()
         .filter(|s| s.launch.is_none())
-        .map(|s| match (s.tap, s.type_text) {
-            (Some(target), None) => Ok(Action::Tap(target.locator()?)),
-            (None, Some(t)) => Ok(Action::Type(t.target.locator()?, t.text)),
-            _ => Err("a route step is a tap or a type".to_string()),
+        .map(|s| match (s.tap, s.type_text, s.scroll) {
+            (Some(target), None, None) => Ok(Action::Tap(target.locator()?)),
+            (None, Some(t), None) => Ok(Action::Type(t.target.locator()?, t.text)),
+            (None, None, Some(sc)) => Ok(Action::Scroll(sc.target.locator()?, sc.direction)),
+            _ => Err("a route step is a tap, a type or a scroll".to_string()),
         })
         .collect()
 }

@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::focus::{Focus, Route, Strength};
+use crate::policy::{self, Gate};
 use crate::{wait_for, Driver, Locator, Result, UiError, UiNode};
 
 /// What an exploration may do and how long it may take.
@@ -78,6 +79,9 @@ pub struct Config {
     /// whether they reproduce (errors first, then warnings on the focus).
     /// These replays are not counted in `max_actions`.
     pub verify: usize,
+    /// When a screen has nothing left to try, scroll its list down at most
+    /// this many times to reach controls below the fold (0: never scroll).
+    pub scrolls_per_screen: usize,
 }
 
 impl Default for Config {
@@ -100,6 +104,7 @@ impl Default for Config {
             screenshots: true,
             focus: Focus::default(),
             verify: 0,
+            scrolls_per_screen: 3,
         }
     }
 }
@@ -122,6 +127,9 @@ pub enum Action {
     Launch,
     Tap(Locator),
     Type(Locator, String),
+    /// Scroll a list or scroll view (`down`, `up`…) to reach controls below
+    /// the fold.
+    Scroll(Locator, String),
 }
 
 impl Action {
@@ -130,6 +138,7 @@ impl Action {
             Action::Launch => "launch".into(),
             Action::Tap(locator) => format!("tap {locator}"),
             Action::Type(locator, text) => format!("type {text:?} into {locator}"),
+            Action::Scroll(locator, direction) => format!("scroll {locator} {direction}"),
         }
     }
 
@@ -150,6 +159,11 @@ impl Action {
             Action::Type(locator, text) => {
                 format!("type = {{ {}, text = {} }}", target(locator), quote(text))
             }
+            Action::Scroll(locator, direction) => format!(
+                "scroll = {{ {}, direction = {} }}",
+                target(locator),
+                quote(direction)
+            ),
         }
     }
 }
@@ -727,6 +741,68 @@ fn consider(
     });
 }
 
+/// Element kinds that scroll.
+const SCROLLABLE: &[&str] = &["Table", "CollectionView", "ScrollView"];
+
+/// The list or scroll view to scroll for controls below the fold: the
+/// first visible one, by identifier when it has one, else by kind and its
+/// place among elements of that kind (never by coordinates).
+fn scroll_target(tree: &UiNode) -> Option<Locator> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for node in tree.walk() {
+        if !SCROLLABLE.contains(&node.kind.as_str()) {
+            continue;
+        }
+        let index = seen.entry(node.kind.as_str()).or_default();
+        let this = *index;
+        *index += 1;
+        if !node.visible {
+            continue;
+        }
+        return Some(match &node.identifier {
+            Some(id) => Locator::Id(id.clone()),
+            None => Locator::Kind {
+                kind: node.kind.clone(),
+                label: None,
+                index: Some(this),
+            },
+        });
+    }
+    None
+}
+
+/// What the any-app policy needs to know about the element `locator`
+/// names on `tree`: its label, identifier and kind.
+fn target_of(tree: &UiNode, locator: &Locator) -> policy::Target {
+    let found = match locator {
+        Locator::Id(id) => tree
+            .walk()
+            .find(|n| n.visible && n.identifier.as_deref() == Some(id)),
+        Locator::Label(label) => tree
+            .walk()
+            .find(|n| n.visible && n.label.as_deref() == Some(label)),
+        _ => None,
+    };
+    match found {
+        Some(n) => policy::Target {
+            label: n.label.clone(),
+            identifier: n.identifier.clone(),
+            kind: Some(n.kind.clone()),
+        },
+        None => match locator {
+            Locator::Id(id) => policy::Target {
+                identifier: Some(id.clone()),
+                ..Default::default()
+            },
+            Locator::Label(label) => policy::Target {
+                label: Some(label.clone()),
+                ..Default::default()
+            },
+            _ => policy::Target::default(),
+        },
+    }
+}
+
 /// Words in a field's identifier or label that ask for a number.
 const NUMBER_WORDS: &[&str] = &[
     "number", "count", "amount", "price", "cost", "total", "quantity", "qty", "age", "year",
@@ -895,6 +971,60 @@ impl Report {
     pub fn errors(&self) -> usize {
         self.issues.iter().filter(|i| i.severity == "error").count()
     }
+
+    /// The walk as a transition graph (`graph.json`): its screens, and for
+    /// each action tried from a screen, where it led each time. An action
+    /// is `repeatable` when it was done more than once from the same screen
+    /// and always led to the same place. Built from the journal, so it
+    /// holds only what was seen, not what the app could do.
+    pub fn graph(&self) -> serde_json::Value {
+        let mut edges: BTreeMap<(String, String), Vec<(usize, String)>> = BTreeMap::new();
+        for s in &self.journal {
+            if s.action == "launch" || s.from.is_empty() {
+                continue;
+            }
+            edges
+                .entry((s.from.clone(), s.action.clone()))
+                .or_default()
+                .push((s.step, s.outcome.clone()));
+        }
+        let edges: Vec<serde_json::Value> = edges
+            .into_iter()
+            .map(|((from, action), seen)| {
+                let to: BTreeSet<&str> = seen.iter().map(|(_, o)| o.as_str()).collect();
+                serde_json::json!({
+                    "from": from,
+                    "action": action,
+                    "to": to,
+                    "times": seen.len(),
+                    "repeatable": seen.len() > 1 && to.len() == 1,
+                    "steps": seen.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        let screens: Vec<serde_json::Value> = self
+            .screens
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.id,
+                    "title": s.title,
+                    "screenshot": s.screenshot,
+                    "identifiers": s.identifiers,
+                    "path": s.path,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "format": "forge.explore-graph/1",
+            "app": self.app,
+            "seed": self.seed,
+            "launch_args": self.launch_args,
+            "root": self.screens.first().map(|s| s.id.clone()),
+            "screens": screens,
+            "edges": edges,
+        })
+    }
 }
 
 struct Screen {
@@ -912,6 +1042,8 @@ struct Screen {
     identifiers: BTreeSet<String>,
     /// The shortest known way here without no-op taps.
     route: Vec<Action>,
+    /// Scrolls done here to reach controls below the fold.
+    scrolls: usize,
 }
 
 /// Where an action left the app.
@@ -924,6 +1056,10 @@ enum Landed {
 struct Explorer<'a> {
     config: &'a Config,
     driver: &'a mut dyn Driver,
+    /// The any-app policy's gate: allows everything in the developer's own
+    /// app; in another developer's app it checks each action against the
+    /// person's level and the commit gate, and journals it.
+    gate: &'a mut Gate,
     out_dir: Option<&'a Path>,
     out: &'a mut dyn Write,
     rng: Rng,
@@ -969,6 +1105,20 @@ pub fn run(
     out_dir: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<Report> {
+    run_gated(config, driver, out_dir, out, &mut Gate::own(&config.app))
+}
+
+/// [`run`] in an app the any-app policy decides about: every launch, tap,
+/// typing and scroll is put to `gate` first. A refused tap or typing is
+/// skipped (and listed with the policy's reason); a refused launch ends
+/// the walk.
+pub fn run_gated(
+    config: &Config,
+    driver: &mut dyn Driver,
+    out_dir: Option<&Path>,
+    out: &mut dyn Write,
+    gate: &mut Gate,
+) -> Result<Report> {
     let started = Instant::now();
     let deadline = started + config.budget;
     if let Some(dir) = out_dir {
@@ -978,6 +1128,7 @@ pub fn run(
     let mut explorer = Explorer {
         config,
         driver,
+        gate,
         out_dir,
         out,
         rng: Rng(config.seed),
@@ -1077,6 +1228,20 @@ impl Explorer<'_> {
         if let Some(candidate) = self.next_untried(here, Strength::None) {
             self.try_candidate(here, candidate)?;
             return Ok(true);
+        }
+        // Nothing left in view: scroll the list for controls below the fold.
+        if self.screens[here].scrolls < self.config.scrolls_per_screen {
+            if let Some(list) = scroll_target(&self.tree) {
+                self.screens[here].scrolls += 1;
+                self.perform(Action::Scroll(list, "down".into()), true)?;
+                // The end of the list: nothing moved, so stop scrolling here.
+                if self.last_unchanged {
+                    if let Some(&i) = self.index.get(&self.current) {
+                        self.screens[i].scrolls = self.config.scrolls_per_screen;
+                    }
+                }
+                return Ok(true);
+            }
         }
         // Nothing left here. Is anything left anywhere?
         let Some(target) = self.frontier(Strength::None) else {
@@ -1268,11 +1433,32 @@ impl Explorer<'_> {
         let from = self.current.clone();
         let before = self.tree.clone();
         let started = Instant::now();
+        if let Err(why) = self.gate.check(&self.policy_action(&action)) {
+            if matches!(action, Action::Launch) {
+                return Err(UiError::Refused(why));
+            }
+            // Refused by the person's policy: not done, and listed as
+            // skipped on the screen, so the gap in coverage is visible.
+            self.actions -= 1;
+            if let Some(&i) = self.index.get(&from) {
+                self.screens[i].skipped.insert(Skipped {
+                    element: action.describe(),
+                    reason: format!("the any-app policy: {why}"),
+                });
+            }
+            writeln!(self.out, "          refused {}: {why}", action.describe())?;
+            self.last_outcome = "refused".into();
+            self.last_unchanged = true;
+            return Ok(());
+        }
         let result = match &action {
             Action::Launch => self
                 .driver
                 .launch(&self.config.app, &self.config.launch_args),
             Action::Tap(locator) => self.on_element(locator, &mut |d, e| d.tap(e)),
+            Action::Scroll(locator, direction) => {
+                self.on_element(locator, &mut |d, e| d.scroll(e, direction))
+            }
             Action::Type(locator, text) => self
                 .on_element(locator, &mut |d, e| d.type_text(e, text))
                 // Put the keyboard away so the walk carries on in the app.
@@ -1422,6 +1608,21 @@ impl Explorer<'_> {
         recovered
     }
 
+    /// The action as the any-app policy sees it: what a tap or typing will
+    /// touch, read from the screen in front.
+    fn policy_action(&self, action: &Action) -> policy::Action {
+        match action {
+            Action::Launch => policy::Action::Launch,
+            Action::Scroll(..) => policy::Action::Scroll,
+            Action::Tap(locator) => policy::Action::Tap(target_of(&self.tree, locator)),
+            Action::Type(locator, text) => policy::Action::Type {
+                target: target_of(&self.tree, locator),
+                chars: text.chars().count(),
+                presses_return: text.contains('\n'),
+            },
+        }
+    }
+
     /// Finds the element and acts on it, finding it again once if the
     /// screen re-rendered in between.
     fn on_element(
@@ -1530,6 +1731,7 @@ impl Explorer<'_> {
             title: title(&self.tree),
             path: self.trail.clone(),
             route: self.route_trail.clone(),
+            scrolls: 0,
             untried: found,
             tried_keys: HashSet::new(),
             tried: 0,
@@ -1724,6 +1926,10 @@ impl Explorer<'_> {
             std::fs::write(
                 dir.join("explore.json"),
                 serde_json::to_vec_pretty(&report).map_err(std::io::Error::other)?,
+            )?;
+            std::fs::write(
+                dir.join("graph.json"),
+                serde_json::to_vec_pretty(&report.graph()).map_err(std::io::Error::other)?,
             )?;
         }
         let count = |s: &str| report.issues.iter().filter(|i| i.severity == s).count();
@@ -2167,7 +2373,19 @@ mod tests {
         fn background(&mut self, _: f64) -> Result<()> {
             Ok(())
         }
-        fn scroll(&mut self, _: &ElementRef, _: &str) -> Result<()> {
+        fn scroll(&mut self, _: &ElementRef, direction: &str) -> Result<()> {
+            self.log.push(format!("scroll {direction}"));
+            // Everything in the screen's lists comes into view.
+            for list in self
+                .screen()
+                .children
+                .iter_mut()
+                .filter(|n| n.kind == "Table")
+            {
+                for row in &mut list.children {
+                    row.visible = true;
+                }
+            }
             Ok(())
         }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
@@ -2422,6 +2640,164 @@ mod tests {
             .iter()
             .find(|i| i.issue == kind)
             .unwrap_or_else(|| panic!("no {kind} in {:#?}", report.issues))
+    }
+
+    /// A feed list whose last control is below the fold until scrolled.
+    fn long_list() -> ModelApp {
+        let mut model = ModelApp::pocket_library();
+        let mut hidden = node("Button", Some("feeds.manage"), Some("Manage Feeds"));
+        hidden.visible = false;
+        let list = UiNode {
+            children: vec![
+                node("Cell", Some("feeds.row.1"), Some("Daring Feed")),
+                hidden,
+            ],
+            ..node("Table", None, None)
+        };
+        model
+            .screens
+            .insert("library", app(vec![nav("Feeds", vec![]), list]));
+        model.screens.insert(
+            "manage",
+            app(vec![nav(
+                "Manage",
+                vec![node("Button", None, Some("Feeds"))],
+            )]),
+        );
+        model.taps = HashMap::from([
+            (("library", "feeds.manage"), To::Screen("manage")),
+            (("manage", "Feeds"), To::Screen("library")),
+        ]);
+        model
+    }
+
+    #[test]
+    fn scrolls_a_list_to_reach_controls_below_the_fold() {
+        let mut model = long_list();
+        let report = run(&config(), &mut model, None, &mut Vec::new()).unwrap();
+        assert!(
+            model.log.iter().any(|l| l == "scroll down"),
+            "{:?}",
+            model.log
+        );
+        assert!(
+            model.log.iter().any(|l| l == "tap feeds.manage"),
+            "{:?}",
+            model.log
+        );
+        assert!(report
+            .screens
+            .iter()
+            .any(|s| s.title.as_deref() == Some("Manage")));
+        // The scroll is part of the way there, as a step `forge ui run` takes.
+        let manage = report
+            .screens
+            .iter()
+            .find(|s| s.title.as_deref() == Some("Manage"))
+            .unwrap();
+        assert!(
+            manage
+                .route
+                .iter()
+                .any(|r| r.starts_with("scroll = { kind = \"Table\", index = 0")),
+            "{:?}",
+            manage.route
+        );
+        let parsed = crate::focus::parse_route(
+            &manage
+                .route
+                .iter()
+                .map(|r| serde_json::json!(r))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert!(matches!(parsed.first(), Some(Action::Scroll(_, d)) if d == "down"));
+    }
+
+    #[test]
+    fn scrolling_can_be_turned_off_and_stops_at_the_end_of_a_list() {
+        let off = Config {
+            scrolls_per_screen: 0,
+            ..config()
+        };
+        let mut model = long_list();
+        run(&off, &mut model, None, &mut Vec::new()).unwrap();
+        assert!(!model.log.iter().any(|l| l.starts_with("scroll")));
+        // With scrolling on, a list that no longer moves is scrolled once
+        // more at most, not up to the limit on every visit.
+        let many = Config {
+            scrolls_per_screen: 5,
+            ..config()
+        };
+        let mut model = long_list();
+        run(&many, &mut model, None, &mut Vec::new()).unwrap();
+        let scrolls = model.log.iter().filter(|l| l.starts_with("scroll")).count();
+        assert!(scrolls <= 3, "{scrolls} scrolls: {:?}", model.log);
+    }
+
+    #[test]
+    fn in_another_developers_app_the_policy_decides_each_action() {
+        // `observe`: launching and reading are allowed, tapping is not.
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Observe,
+            Box::new(policy::NoApprover),
+            None,
+        );
+        let mut model = ModelApp::pocket_library();
+        let report = run_gated(&config(), &mut model, None, &mut Vec::new(), &mut gate).unwrap();
+        assert!(
+            !model.log.iter().any(|l| l.starts_with("tap")),
+            "{:?}",
+            model.log
+        );
+        let skipped: Vec<&Skipped> = report.screens.iter().flat_map(|s| &s.skipped).collect();
+        assert!(
+            skipped
+                .iter()
+                .any(|s| s.reason.starts_with("the any-app policy") && s.reason.contains("operate")),
+            "{skipped:#?}"
+        );
+        // `deny`: not even launched.
+        let mut gate = Gate::foreign(APP, policy::Level::Deny, Box::new(policy::NoApprover), None);
+        let mut model = ModelApp::pocket_library();
+        let refused = run_gated(&config(), &mut model, None, &mut Vec::new(), &mut gate);
+        assert!(matches!(refused, Err(UiError::Refused(_))));
+        assert!(model.log.is_empty(), "{:?}", model.log);
+    }
+
+    #[test]
+    fn writes_the_walk_as_a_transition_graph() {
+        let dir = tempfile::tempdir().unwrap();
+        let (report, _) = explore(&config(), Some(dir.path()));
+        let graph: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("graph.json")).unwrap()).unwrap();
+        assert_eq!(graph["format"], "forge.explore-graph/1");
+        assert_eq!(
+            graph["screens"].as_array().unwrap().len(),
+            report.screens.len()
+        );
+        let root = report.screens[0].id.clone();
+        let settings = report
+            .screens
+            .iter()
+            .find(|s| s.title.as_deref() == Some("Settings"))
+            .unwrap()
+            .id
+            .clone();
+        let edge = graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["from"] == root && e["action"] == "tap id `library.settings`")
+            .expect("the settings edge");
+        assert_eq!(edge["to"], serde_json::json!([settings]));
+        // The crash is an edge too, so a later comparison sees it.
+        assert!(graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["to"] == serde_json::json!(["app_closed"])));
     }
 
     #[test]
