@@ -49,7 +49,28 @@ if ! grep -q "XCTAssertEqual(nativeServicesVersion(), ${rust_services})" "$templ
   status=1
 fi
 
+# No framework crate may declare a dylib target (cdylib or dylib). Apps link
+# them into their own static library, and Cargo links a dependency's dylib
+# target too: an iOS build on Linux then fails, because a Linux host has no
+# Apple linker (the Checklist build on the laptop, forge-app 0.4.0). macOS CI
+# cannot catch this, because there the link succeeds.
+dylibs="$(cargo metadata --no-deps --format-version 1 --manifest-path "$ROOT/Cargo.toml" | python3 -c '
+import json, sys
+for p in json.load(sys.stdin)["packages"]:
+    for t in p["targets"]:
+        bad = sorted(set(t["crate_types"]) & {"cdylib", "dylib"})
+        if bad:
+            print(p["name"], ",".join(bad))
+')"
+if [[ -n "$dylibs" ]]; then
+  while read -r name kinds; do
+    echo "error: crates/$name declares a $kinds target; apps would link it when building for iOS on Linux. Build it only where it is needed (cargo rustc --crate-type cdylib)" >&2
+  done <<<"$dylibs"
+  status=1
+fi
+
 if [[ $status -eq 0 ]]; then
+  echo "[forge] No framework crate declares a dylib target (iOS builds on Linux link)."
   echo "[forge] Starter crates use uniffi ${workspace_uniffi}, like the workspace."
   echo "[forge] Android hosts use rustls-platform-verifier ${lock_version}, matching Cargo.lock."
   echo "[forge] Native services interface v${rust_services} in Rust and Swift."
