@@ -146,7 +146,7 @@ public final class NotesModel {
 
     /// Text for the screen. Replace with your own copy; `reason` fields are
     /// diagnostics from Rust.
-    public static func describe(_ error: Error) -> String {
+    nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? AppError else { return error.localizedDescription }
         switch error {
         case .InvalidInput(let reason): return "Check your input: \(reason)"
