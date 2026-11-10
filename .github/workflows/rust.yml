@@ -58,7 +58,7 @@ jobs:
         run: ./scripts/forgekit.sh check
       - name: Kotlin bindings match committed files
         run: ./scripts/check-bindings.sh
-      - name: Templates pin the workspace's UniFFI and verifier versions
+      - name: Templates pin the workspace's UniFFI and verifier versions; no framework crate has a dylib target
         run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
         run: |

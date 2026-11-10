@@ -9,9 +9,10 @@ publish = false
 
 [lib]
 name = "forge_app"
-# cdylib: ForgeKit's Swift for the contract types is generated from it
-# (scripts/forgekit.sh). Apps link the rlib.
-crate-type = ["lib", "cdylib"]
+# A plain library only. Every app links it into its own static library, and a
+# cdylib here would be linked too when an app builds for iOS, which needs an
+# Apple linker a Linux host does not have. scripts/forgekit.sh builds the
+# cdylib it generates ForgeKit's Swift from with `cargo rustc --crate-type cdylib`.
 
 [dependencies]
 forge-runtime = { workspace = true }

@@ -39,7 +39,9 @@ swift_contract() {
 
 generate_into() {
   local out="$1"
-  cargo build -p forge-app >&2
+  # The cdylib is built only here: forge-app's Cargo.toml declares a plain
+  # library, so apps never link a dylib of it (an iOS build on Linux cannot).
+  cargo rustc -p forge-app --lib --crate-type cdylib >&2
   case "$(uname -s)" in Darwin) ext=dylib ;; *) ext=so ;; esac
   local stage
   stage="$(mktemp -d)"
