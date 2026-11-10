@@ -27,6 +27,8 @@ Each capability is one of three shapes. Most Apple APIs should not become Rust a
 - **Helper**: SwiftUI needs a native component and Rust doesn't. A Swift file in `crates/forge-services/swift/helpers/` (like `ForgeImages`), handing data to Rust as records or file paths. The web view is a helper.
 - **Recipe**: Apple already does it well in SwiftUI. A documented pattern in `docs/`, no wrapper code at all.
 
+**A capability doesn't need a Rust interface just because it is in ixOS.** App Intents, widgets, share extensions and many other system features are native Swift. Rust takes part only where there is real domain logic or persistent state to share, and then through the same records and stores the app already uses.
+
 Privacy-sensitive frameworks (camera, photos, microphone, location, anything App Store review asks a usage string for) are always opt-in optional services, so an app that doesn't select one has none of that code.
 
 ## How a capability is proven
@@ -93,6 +95,11 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 | 7 | **Notification actions** (reply, mark done) delivered to Rust | Extend `LocalNotifier` | UserNotifications | Chat, Good Dog reminders |
 | 8 | **App lock with Face ID / Touch ID** | Optional service `biometrics` | LocalAuthentication | Pocket Library or Chat (opt-in lock) |
 | 9 | **OAuth sign-in**: open the provider, return the callback URL to Rust; tokens kept in the Keychain | Helper plus a Rust token record on `SecureStore` | AuthenticationServices (`ASWebAuthenticationSession`) | First app that signs in to a service |
+| 10 | **Universal links**: `https://` links that open the app, routed through the existing deep-link path (Swift receives, Rust resolves the destination) | `forge.toml` `associated_domains` plus the existing deep-link service; a recipe for the `apple-app-site-association` file | Associated Domains | Pocket Library (shared book links). **Needs the paid team**: built and unit-tested now, proven on a phone after the switch |
+| 11 | **Receiving shared content**: URLs, text, images and PDFs from other apps' share sheets, handed to the app | Share extension template plus a helper; Rust sees only an inbox of files it drains | Share extension, Uniform Type Identifiers, App Groups | Pocket Library (save a link or book), the feed reader (add a feed). Spike first: whether a free team can sign an App Group (S2) |
+| 12 | **App Intents and Shortcuts**: a few app actions available to Siri, Shortcuts and Spotlight | Swift (`AppIntent` types in the app), calling the app's Rust core | App Intents | Pocket Library ("log reading"), Good Dog ("start a session"). Spike first: App Shortcuts need build-time metadata Xcode generates; check what xtool on Linux produces |
+
+Items 10 to 12 make an app reachable from outside itself: from the web, from other apps and from the system. They come after the first nine and are not started until those are under way.
 
 Background tasks and background transfers are separate capabilities with separate contracts. A task is a short slot of time iOS grants when it chooses; a transfer is work iOS carries on in another process while the app is suspended or closed.
 
@@ -151,24 +158,44 @@ A Rust HTTP request and an iOS background `URLSession` transfer are not intercha
 
 This is spike S6 in the capability plan.
 
-### Tier 2: application data
+### Tier 2: application data and system reach
 
 | # | Capability | Shape | Notes |
 |---|---|---|---|
-| 10 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for the feed reader |
-| 11 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Feed reader, Weather, Pocket Library covers |
-| 12 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](framework-extraction-audit.md) |
-| 13 | **Backup and export archive** of an app's data | Rust (`forge-storage`) plus `ShareLink` | Already a "No" row in the ledger |
-| 14 | **Search history** and **navigation restoration** | ForgeAppKit | Stored through `forge_app::document` |
+| 13 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for the feed reader |
+| 14 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Feed reader, Weather, Pocket Library covers |
+| 15 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](framework-extraction-audit.md) |
+| 16 | **Backup and export archive** of an app's data | Rust (`forge-storage`) plus `ShareLink` | Already a "No" row in the ledger |
+| 17 | **Search history** and **navigation restoration** | ForgeAppKit | Stored through `forge_app::document` |
+| 18 | **Vision**: text recognition (OCR), document scanning, barcode and QR detection, live scanning | Optional service for still images (Rust gets text and codes); helper for the live scanner | Vision, VisionKit (`DataScannerViewController`, `VNDocumentCameraViewController`). Investigate before writing any image processing of our own. Live scanning needs the `camera` permission |
+| 19 | **Contacts and Calendar**: pick a contact, read the chosen details, add an event or reminder | Helpers for the system pickers and editors (no broad permission); optional services only for reading or writing in bulk | Contacts, ContactsUI, EventKit, EventKitUI. The pickers and the event editor need no full-access permission |
+| 20 | **Widgets and Live Activities** | Extension template; the widget reads a small shared snapshot the app writes | WidgetKit, ActivityKit, App Intents. Good Dog (today's plan, a session timer). Same App Group spike as item 11; the shared-store contract is in [app-model-review.md](app-model-review.md) |
+| 21 | **In-app purchases and subscriptions**: products, purchase, transaction verification, entitlement state Rust can read | Optional service `store` | StoreKit 2. Needs the paid team and App Store Connect; comes with the first commercial app |
 
 ### Tier 3: optional
 
 | # | Capability | Shape | Notes |
 |---|---|---|---|
-| 15 | **Maps** with annotations, **geocoding** and place search | Recipe for `Map`; geocoding added to the `location` service | MapKit has no offline tiles |
-| 16 | **Charts**: line, bar, area, pie and point marks styled from ForgeUI tokens | Recipe plus a small style helper | Swift Charts; no charting engine |
-| 17 | **Localization** | Spike first | String Catalogs (`.xcstrings`) are compiled by Xcode; check what xtool on Linux can do |
-| 18 | **Analytics interface** and **feature configuration** | Rust traits with no vendor | Only once an app ships to people other than its developer |
+| 22 | **Maps** with annotations, **geocoding** and place search | Recipe for `Map`; geocoding added to the `location` service | MapKit has no offline tiles |
+| 23 | **Charts**: line, bar, area, pie and point marks styled from ForgeUI tokens | Recipe plus a small style helper | Swift Charts; no charting engine |
+| 24 | **Localization** | Spike first | String Catalogs (`.xcstrings`) are compiled by Xcode; check what xtool on Linux can do |
+| 25 | **Analytics interface** and **feature configuration** | Rust traits with no vendor | Only once an app ships to people other than its developer |
+| 26 | **Speech recognition** | Optional service | Speech; useful but app-dependent (Chat voice messages are the likely first user) |
+| 27 | **HealthKit** | Optional service | For a subset of apps; free-team signing unproven (S5) |
+| 28 | **Bluetooth accessories and NFC** | Optional services (`bluetooth` grows scanning and connections) | Core Bluetooth works on the free team; Core NFC needs the paid team |
+
+### Recipes and small helpers
+
+Common enough to document, too small for a service. None is scheduled; each is written when an app first needs it.
+
+| Capability | Apple framework | Treatment |
+|---|---|---|
+| Clipboard and pasteboard | `UIPasteboard`, SwiftUI `PasteButton` | Helper |
+| Haptics | SwiftUI `sensoryFeedback` | Recipe; already used in Good Dog |
+| In-app review prompt | StoreKit `requestReview` | Helper, with a rule for when to ask |
+| Ratings and feedback links | App Store review URL, `mailto:` | Helper |
+| Notification settings and Focus | UserNotifications (`openSettings`, time-sensitive and Focus filter behaviour) | Recipe |
+| Video playback | AVKit `VideoPlayer` | Recipe |
 
 ## Backlog
 
@@ -178,17 +205,13 @@ Recorded so they aren't forgotten, not scheduled ahead of the tiers above.
 |---|---|---|
 | **Native text editing** | Notes, messaging, documents and composition: creating content, not only reading it | The most likely to be promoted. `TextEditor` and `AttributedString` first; a `UITextView` helper only if rich text needs it |
 | Keyboard and input handling | Search, forms, editors and hardware keyboard shortcuts | Mostly recipes (`@FocusState`, `.keyboardShortcut`, toolbar above the keyboard) |
-| Haptics | Feedback throughout an app | Already works through SwiftUI's `sensoryFeedback` (Good Dog); needs a recipe, not a wrapper |
-| Widgets and Live Activities | Timers, tracking, reminders and status outside the app | Needs an app extension (spike S2); each extension uses a free-team App ID |
 | Accessibility helpers | Consistent VoiceOver and Dynamic Type behaviour | Partly in ForgeUI and the `forge ui` audits; add helpers where apps repeat the same fixes |
-| App extensions | Share extension (receiving shared content) and other system integrations | xtool supports extensions; unproven in ixOS |
-| In-app purchases | Subscriptions and paid apps | StoreKit; needs the paid team and App Store Connect |
 
 ## Not planned
 
-- **Push notifications, Sign in with Apple, universal links.** All need the paid Apple Developer Program, and APNs is a non-goal since 2026-11-05. Revisit when the team is paid ([ios-signing.md](ios-signing.md)).
-- **A navigation framework, a charting engine, a map renderer or a browser engine.** SwiftUI, Swift Charts, MapKit and WebKit already exist.
+- **Push notifications and Sign in with Apple.** Both need the paid Apple Developer Program, and APNs is a non-goal since 2026-11-05. Revisit when the team is paid ([ios-signing.md](ios-signing.md)). Universal links, StoreKit and NFC also need the paid team; they are planned above and proven on a phone after the switch.
+- **A second version of iOS.** No custom navigation, form, animation or authentication framework, no database abstraction over SQLite beyond `forge-storage`, and no charting engine, map renderer or browser engine. SwiftUI, ForgeUI, Keychain and AuthenticationServices, Swift Charts, MapKit and WebKit already do these. ixOS makes native capabilities easier to use.
 - **An unrestricted JavaScript bridge.** See the web view spec.
-- **Generic sync and conflict resolution.** No app has a server that needs it yet; Chat's "server order wins" stands.
+- **A synchronisation engine.** No app has a server that needs it yet; Chat's "server order wins" stands.
 - **Unrestricted background execution.** iOS decides when background tasks run. ixOS integrates with that, and doesn't pretend otherwise.
 - **Demo apps made only to justify a capability.** A consumer app is added only when usability can't be judged in the apps we have, as with the NetNewsWire-benchmarked feed reader.
