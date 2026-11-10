@@ -42,6 +42,16 @@ Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
 
 On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter and Weather were installed and opened the same way. Pocket Library, which began as a `forge init` app with its own Rust crate, was built this way on 2026-11-07 and runs on the iPhone. A freshly generated app from today's template has not yet been recorded installing on a phone; CI builds it with Xcode on macOS.
 
+## `... .pcm is not a valid precompiled module file` or `could not build Objective-C module 'AVFoundation'`
+
+An earlier build was killed part way through (a dropped Remote Control or SSH session, Ctrl-C) and left truncated files in clang's module cache. The code is fine. In the app folder, delete the cache and build again:
+
+```bash
+rm -rf .build/arm64-apple-ios/*/ModuleCache
+```
+
+Forge recognises this failure and prints the same fix.
+
 ## `forge run ios` says usbmuxd is not running, or xtool seems to hang
 
 xtool talks to the iPhone through usbmuxd. When usbmuxd is not running, xtool waits for a device forever without printing anything. On Linux, `forge run ios` and `forge doctor` check for usbmuxd's socket (`/var/run/usbmuxd`) first. On many distributions udev starts usbmuxd when an iPhone is plugged in, so plug it in and unlock it, or run `sudo systemctl start usbmuxd`.
