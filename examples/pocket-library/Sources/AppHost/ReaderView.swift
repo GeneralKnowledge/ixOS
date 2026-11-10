@@ -1,5 +1,7 @@
 @preconcurrency import AVFoundation
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// Pushed from a book's detail screen to open it in the reader.
@@ -23,8 +25,8 @@ struct ReaderView: View {
 
     @State private var contents: ReaderContents?
     @State private var chapter: ReaderChapter?
-    @State private var openError: PresentedError?
-    @State private var error: PresentedError?
+    @State private var openError: ForgeFailure?
+    @State private var error: ForgeAlert<Never>?
     /// The block at the top of the screen (the chapter's end view is
     /// `blocks.count`).
     @State private var topBlock: Int?
@@ -65,7 +67,7 @@ struct ReaderView: View {
                 .presentationDetents([.medium, .large])
             }
         }
-        .errorAlert($error)
+        .forgeAlert($error)
         .sensoryFeedback(.success, trigger: finishedCount)
         .task { await open() }
         // Save a moment after scrolling stops, when leaving, and when the
@@ -312,7 +314,7 @@ struct ReaderView: View {
             prepareReadAloud(contents)
             await show(chapter: contents.start.chapter, fraction: contents.start.fraction)
         } catch {
-            openError = PresentedError(error)
+            openError = ForgeFailure(error)
         }
     }
 
@@ -334,9 +336,9 @@ struct ReaderView: View {
             if wasPlaying { readAloud.play(from: pendingScroll ?? 0) }
         } catch {
             if contents == nil || chapter == nil {
-                openError = PresentedError(error)
+                openError = ForgeFailure(error)
             } else {
-                self.error = PresentedError(error)
+                self.error = .failure(error)
             }
         }
     }
@@ -374,7 +376,7 @@ struct ReaderView: View {
             do {
                 try await model.saveReadingPosition(bookID, chapter: position.chapter, fraction: position.fraction)
             } catch {
-                self.error = PresentedError(error)
+                self.error = .failure(error)
             }
         }
     }
@@ -385,7 +387,7 @@ struct ReaderView: View {
                 try await model.setStatus(bookID, .finished)
                 finishedCount += 1
             } catch {
-                self.error = PresentedError(error)
+                self.error = .failure(error)
             }
         }
     }

@@ -1,6 +1,7 @@
 //! The library's rules, as plain functions over [`LibraryData`]. No I/O and no
 //! clock: callers pass `now`, so every rule is tested directly.
 
+use forge_app::Validator;
 use serde::{Deserialize, Serialize};
 
 use crate::error::LibraryError;
@@ -134,61 +135,77 @@ pub struct ValidInput {
     pub cover_url: Option<String>,
 }
 
-fn too_long(field: &str, text: &str, max: usize) -> Result<(), LibraryError> {
-    if text.chars().count() > max {
-        Err(LibraryError::invalid(format!(
-            "{field} is too long (at most {max} characters)"
-        )))
-    } else {
-        Ok(())
-    }
-}
-
+/// Checks the book form, field by field (`forge_app::Validator`), and
+/// tidies it. Field names are `BookInput`'s, so the form can show each
+/// problem under its own field.
 pub fn validate(input: BookInput) -> Result<ValidInput, LibraryError> {
     let title = input.title.trim().to_string();
-    if title.is_empty() {
-        return Err(LibraryError::invalid("a book needs a title"));
-    }
-    too_long("the title", &title, MAX_TITLE_CHARS)?;
     let author = input.author.trim().to_string();
-    too_long("the author", &author, MAX_AUTHOR_CHARS)?;
     let description = input.description.trim().to_string();
-    too_long("the description", &description, MAX_DESCRIPTION_CHARS)?;
     let notes = input.notes.trim_end().to_string();
-    too_long("the notes", &notes, MAX_NOTES_CHARS)?;
     let total_pages = match input.total_pages {
         Some(0) | None => None,
-        Some(pages) if pages > MAX_PAGES => {
-            return Err(LibraryError::invalid(format!(
-                "the page count must be at most {MAX_PAGES}"
-            )))
-        }
         Some(pages) => Some(pages),
     };
-    if let Some(total) = total_pages {
-        if input.current_page > total {
-            return Err(LibraryError::invalid(format!(
-                "the current page ({}) is past the last page ({total})",
-                input.current_page
-            )));
-        }
-    } else if input.current_page > MAX_PAGES {
-        return Err(LibraryError::invalid("the current page is too large"));
-    }
-    if let Some(rating) = input.rating {
-        if !(1..=5).contains(&rating) {
-            return Err(LibraryError::invalid("ratings are 1 to 5 stars"));
-        }
-    }
-    let cover_url = match input.cover_url.map(|u| u.trim().to_string()) {
-        Some(url) if url.is_empty() => None,
-        Some(url) if !url.starts_with("https://") || url.len() <= "https://".len() => {
-            return Err(LibraryError::invalid(
-                "cover links must start with https://",
-            ))
-        }
-        other => other,
+    let cover_url = input
+        .cover_url
+        .map(|u| u.trim().to_string())
+        .filter(|u| !u.is_empty());
+
+    let mut v = Validator::new();
+    v.required("title", &title, "Enter a title.")
+        .max_chars(
+            "title",
+            &title,
+            MAX_TITLE_CHARS,
+            &format!("Keep the title under {MAX_TITLE_CHARS} characters."),
+        )
+        .max_chars(
+            "author",
+            &author,
+            MAX_AUTHOR_CHARS,
+            &format!("Keep the author under {MAX_AUTHOR_CHARS} characters."),
+        )
+        .max_chars(
+            "description",
+            &description,
+            MAX_DESCRIPTION_CHARS,
+            &format!("Keep the description under {MAX_DESCRIPTION_CHARS} characters."),
+        )
+        .max_chars(
+            "notes",
+            &notes,
+            MAX_NOTES_CHARS,
+            &format!("Keep your notes under {MAX_NOTES_CHARS} characters."),
+        )
+        .in_range(
+            "total_pages",
+            total_pages,
+            1..=MAX_PAGES,
+            &format!("A book can have at most {MAX_PAGES} pages."),
+        );
+    match total_pages {
+        Some(total) => v.check(
+            "current_page",
+            input.current_page <= total,
+            &format!("The current page is past the last page ({total})."),
+        ),
+        None => v.check(
+            "current_page",
+            input.current_page <= MAX_PAGES,
+            "That page number is too large.",
+        ),
     };
+    v.in_range("rating", input.rating, 1..=5, "Give 1 to 5 stars.");
+    v.check(
+        "cover_url",
+        cover_url
+            .as_deref()
+            .is_none_or(|url| url.starts_with("https://") && url.len() > "https://".len()),
+        "Cover links must start with https://.",
+    );
+    v.finish()?;
+
     Ok(ValidInput {
         title,
         author,
@@ -719,6 +736,27 @@ mod tests {
     }
 
     #[test]
+    fn validation_names_each_field_with_its_problem() {
+        let err = validate(BookInput {
+            current_page: 11,
+            rating: Some(9),
+            cover_url: Some("http://insecure.test/c.jpg".into()),
+            ..input("  ", Some(10))
+        })
+        .unwrap_err();
+        let LibraryError::InvalidFields { fields } = err else {
+            panic!("expected InvalidFields, got {err:?}")
+        };
+        let names: Vec<&str> = fields.iter().map(|f| f.field.as_str()).collect();
+        assert_eq!(names, ["title", "current_page", "rating", "cover_url"]);
+        assert_eq!(fields[0].message, "Enter a title.");
+        assert_eq!(
+            fields[1].message,
+            "The current page is past the last page (10)."
+        );
+    }
+
+    #[test]
     fn validation_trims_and_rejects_bad_input() {
         let ok = validate(BookInput {
             title: "  Dune ".into(),
@@ -731,7 +769,7 @@ mod tests {
         assert_eq!(ok.total_pages, None, "0 pages means unknown");
         assert_eq!(ok.cover_url, None);
 
-        let bad = |i: BookInput| matches!(validate(i), Err(LibraryError::InvalidInput { .. }));
+        let bad = |i: BookInput| matches!(validate(i), Err(LibraryError::InvalidFields { .. }));
         assert!(bad(input("   ", None)));
         assert!(bad(input(&"x".repeat(MAX_TITLE_CHARS + 1), None)));
         assert!(bad(BookInput {

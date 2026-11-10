@@ -11,7 +11,7 @@ Everything here builds with xtool on Linux. Nothing requires a Mac.
 - **Use the real component.** SwiftUI already provides navigation, lists, forms, sheets, menus, search, swipe actions and empty states that behave exactly as users expect. Use them as they are, and don't rebuild them from stacks and rounded rectangles. To give them a consistent look, use [ForgeUI](forgeui.md): its styles and components sit on these same controls, so they keep their native behaviour.
 - **Let the system and the theme style it.** System fonts, semantic colours (or ForgeUI's theme tokens, which follow light and dark mode the same way), SF Symbols and the standard list and form styles adapt automatically to light and dark mode, Dynamic Type, accessibility settings and future iOS releases. Every hardcoded colour or point size is one more place where the app can fall out of step.
 - **Rules in Rust, presentation in Swift.** If a behaviour should match on Android, or should be tested without a UI, it belongs in Rust: validation, sorting, search, state transitions. How something looks and moves belongs in Swift: titles, dates, layout, animation, haptics.
-- **Add abstractions only for real duplication.** The starter has one helper, `errorAlert`, because every screen that can fail needs the same alert. Everything else is plain SwiftUI.
+- **Add abstractions only for real duplication.** The starter's shared pieces come from the framework: [ForgeUI](forgeui.md) for the look and [ForgeAppKit](forgeappkit.md) for alerts and busy buttons, because every screen that can fail needs the same ones. Everything else is plain SwiftUI.
 
 ## App structure
 
@@ -25,8 +25,9 @@ Sources/AppHost/
   NoteDetailView.swift    screen 2 (edit in place, delete with confirmation)
   ComposeNoteView.swift   sheet (Form, Cancel and Add, focus, validation)
   SettingsView.swift      sheet (Form, an async Rust request you can cancel)
-  ErrorAlert.swift        the one shared helper
 ```
+
+The minimal starter (`forge init --minimal`) depends on the runtime only (ForgeKit); add ForgeUI or ForgeAppKit to its `Package.swift` when you want them.
 
 Keep each screen in its own file, named after what it shows. Put the model in its own file too, and give it no SwiftUI import, so you can test it without the UI (`Tests/AppHostTests` drives it against the real Rust library).
 
@@ -111,10 +112,10 @@ Display helpers belong in the same Swift extension: a `Date` built from Rust's m
 
 Every Rust command is `async throws`, and the error is the crate's `AppError` enum. Two patterns cover most screens:
 
-- **Fire-and-forget actions** (swipe to delete, save on leaving a screen) catch the error into `actionError`. The list presents it with `.errorAlert("Something Went Wrong", message: $model.actionError)`.
-- **Form submissions** let the error propagate (`try await model.add(text:)`), so the sheet stays open with the text intact and presents the error itself. A view covered by a sheet can't present an alert, so every presented screen needs its own `errorAlert`.
+- **Fire-and-forget actions** (swipe to delete, save on leaving a screen) catch the error into the model's `alert` (`alert = .failure(error)`, a ForgeAppKit `ForgeAlert`). The list presents it with `.forgeAlert($model.alert)`.
+- **Form submissions** run through a `ForgeSubmission` (`await saving.run { try await model.add(text:) }`): the button shows a spinner while it works, a second tap does nothing, and on failure the sheet stays open with the text intact and presents the error itself (`.forgeAlert(failure: $saving.failure)`). A view covered by a sheet can't present an alert, so every presented screen needs its own `.forgeAlert`.
 
-`NotesModel.describe(_:)` turns an `AppError` into user-facing text. The `reason` fields are diagnostics from Rust, not finished copy.
+`NotesModel.describe(_:)` turns an `AppError` into user-facing text, and `AppError`'s `ForgeDescribedError` conformance hands it to every alert. A cancelled request is not shown. For forms with several fields, return `FieldError`s from Rust (`forge_app::Validator`) and show each under its field; see [forgeappkit.md](forgeappkit.md#form-errors-forgefielderrors). The `reason` fields are diagnostics from Rust, not finished copy.
 
 Rust is the authority on validation. Swift may still disable a button for an obviously invalid input, such as an empty field, but if Rust refuses, show Rust's error.
 
@@ -163,7 +164,7 @@ Start that work from `.task` or `.task(id:)`. SwiftUI then cancels it when the v
 | No data yet | `ContentUnavailableView` with a label, one sentence and the action that fixes it |
 | No search results | `ContentUnavailableView.search(text:)` |
 | Can't open at all | `ContentUnavailableView` with Try Again |
-| An action failed | An alert (`errorAlert`) |
+| An action failed | An alert (`ForgeAlert`, `.forgeAlert`) |
 | Content is stale or offline | A `Label` row at the top of the list, in `.secondary` (see Weather) |
 
 Don't show errors as red text inside a list. An alert names what failed and has to be acknowledged; a red row is easy to miss and stays on screen.

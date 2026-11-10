@@ -118,6 +118,40 @@ extension View {
     }
 }
 
+extension View {
+    /// Draws text and symbols in a tone's readable colour (`text`), which
+    /// passes contrast on the theme's backgrounds in light and dark:
+    ///
+    ///     Label("Seemed uncomfortable", systemImage: "heart")
+    ///         .forgeForeground(.warning)
+    ///
+    /// For fills (a progress bar, a swipe action) use
+    /// `theme.colors.tone(_:).solid` or `.forgeTint(_:)`.
+    public func forgeForeground(_ tone: ForgeTone) -> some View {
+        modifier(ForgeToneModifier(tone: tone, tint: false))
+    }
+
+    /// Tints a control (a progress bar, a swipe action, a gauge) with a
+    /// tone's solid colour.
+    public func forgeTint(_ tone: ForgeTone) -> some View {
+        modifier(ForgeToneModifier(tone: tone, tint: true))
+    }
+}
+
+private struct ForgeToneModifier: ViewModifier {
+    let tone: ForgeTone
+    let tint: Bool
+    @Environment(\.forgeTheme) private var theme
+
+    func body(content: Content) -> some View {
+        if tint {
+            content.tint(theme.colors.tone(tone).solid)
+        } else {
+            content.foregroundStyle(theme.colors.tone(tone).text)
+        }
+    }
+}
+
 private struct ForgeGroupedBackground: ViewModifier {
     @Environment(\.forgeTheme) private var theme
 

@@ -1,8 +1,9 @@
 name: ForgeUI
 
-# ForgeUI, the design system (forgekit/Sources/ForgeUI, docs/forgeui.md), and
-# its showcase app (examples/forgeui-showcase), a plain SwiftUI app with no
-# Rust core. On Linux: the tokens, the contrast check and the showcase's
+# ForgeUI, the design system (forgekit/Sources/ForgeUI, docs/forgeui.md),
+# ForgeAppKit, the application patterns on it (forgekit/Sources/ForgeAppKit,
+# docs/forgeappkit.md), and the ForgeUI showcase app
+# (examples/forgeui-showcase), a plain SwiftUI app with no Rust core. On Linux: the tokens, the contrast check and the showcase's
 # models build and their tests run (SwiftUI isn't there, so the views are
 # skipped by `#if canImport(SwiftUI)`). On macOS: the same tests, and the
 # showcase built for an iPhone (unsigned), which compiles every view against
@@ -41,9 +42,17 @@ jobs:
       - name: Toolchain
         run: swift --version
 
-      - name: ForgeUI tokens and contrast
+      - name: ForgeUI tokens and contrast, ForgeAppKit models
         working-directory: forgekit
-        run: swift test --filter ForgeUITests
+        run: swift test --filter 'ForgeUITests|ForgeAppKitTests'
+
+      - name: ForgeAppKit for iPhone (unsigned)
+        if: runner.os == 'macOS'
+        working-directory: forgekit
+        run: |
+          xcodebuild build -scheme ForgeAppKit -destination 'generic/platform=iOS' \
+            -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40
+          test "${PIPESTATUS[0]}" -eq 0
 
       - name: Showcase models
         working-directory: examples/forgeui-showcase

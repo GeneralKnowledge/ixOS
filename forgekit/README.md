@@ -22,6 +22,13 @@ SwiftUI's own controls: button and field styles, `ForgeField`, `ForgeCard`,
 `ForgeDetailHeader`. `import ForgeUI` needs no Rust core, so any SwiftUI app
 can use it. Guide: [docs/forgeui.md](https://github.com/GeneralKnowledge/ixOS/blob/main/docs/forgeui.md).
 
+And **ForgeAppKit**, optional application patterns on ForgeUI: alerts and
+confirmations as model values (`ForgeAlert`), destinations as one optional
+enum (`.forgeSheet`), load state (`ForgeLoad`, `ForgeLoadView`), submission
+state for busy buttons (`ForgeSubmission`) and form errors by field
+(`ForgeFieldErrors`). It needs no Rust core either. Guide:
+[docs/forgeappkit.md](https://github.com/GeneralKnowledge/ixOS/blob/main/docs/forgeappkit.md).
+
 ```swift
 .package(url: "https://github.com/GeneralKnowledge/ForgeKit.git", exact: "<version>")
 ```

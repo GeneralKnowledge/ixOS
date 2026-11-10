@@ -27,6 +27,11 @@ let package = Package(
         // and components on SwiftUI's own controls. No dependency on the
         // Rust side: an app that imports only ForgeUI links no Rust.
         .library(name: "ForgeUI", targets: ["ForgeUI"]),
+        // Application patterns on ForgeUI (docs/forgeappkit.md): alerts,
+        // confirmations and destinations as model values, load and
+        // submission state, form errors. Optional; depends only on ForgeUI,
+        // so it links no Rust either.
+        .library(name: "ForgeAppKit", targets: ["ForgeAppKit"]),
     ],
     targets: [
         .systemLibrary(name: "forge_appFFI", path: "Sources/forge_appFFI"),
@@ -49,6 +54,20 @@ let package = Package(
         .target(
             name: "ForgeUI",
             path: "Sources/ForgeUI",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        // Model/ is Foundation and Observation only and is tested on Linux;
+        // Views/ is wrapped in `#if canImport(SwiftUI)`.
+        .target(
+            name: "ForgeAppKit",
+            dependencies: ["ForgeUI"],
+            path: "Sources/ForgeAppKit",
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .testTarget(
+            name: "ForgeAppKitTests",
+            dependencies: ["ForgeAppKit"],
+            path: "Tests/ForgeAppKitTests",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .testTarget(

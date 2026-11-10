@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 97 capabilities, 14 work on an iPhone, 10 partly work, 48 are built but haven't been run on an iPhone, and 25 aren't built yet.**
+**Of 99 capabilities, 14 work on an iPhone, 10 partly work, 50 are built but haven't been run on an iPhone, and 25 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -50,7 +50,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 
 The code exists and is tested on Linux, but nobody has recorded it working on a phone. Expect it to work, and expect surprises.
 
-- **Foundation:** ForgeUI design system (tokens, light/dark themes, styles and components on SwiftUI controls); Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust
+- **Foundation:** ForgeUI design system (tokens, light/dark themes, styles and components on SwiftUI controls); ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust
 - **Data and files:** Relational store with queries (SQLite); Full-text search; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel
@@ -91,3 +91,4 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Documents | Planned | Partial: Pocket Library (#53) |
 | Audio | Experimental | Partial: compiled and tested in CI (macOS), not yet run on an iPhone |
 | ForgeUI | Experimental | Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone |
+| ForgeAppKit | Experimental | Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone |

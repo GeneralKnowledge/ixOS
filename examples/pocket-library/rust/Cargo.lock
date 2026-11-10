@@ -236,6 +236,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-app"
+version = "0.4.0"
+dependencies = [
+ "forge-runtime",
+ "forge-storage",
+ "serde",
+ "uniffi",
+]
+
+[[package]]
 name = "forge-net"
 version = "0.1.0"
 dependencies = [
@@ -510,6 +520,7 @@ name = "pocket-library-core"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "forge-app",
  "forge-net",
  "forge-runtime",
  "forge-storage",

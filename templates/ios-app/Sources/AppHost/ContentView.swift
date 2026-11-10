@@ -1,5 +1,6 @@
 @preconcurrency import ForgeFFI
 @preconcurrency import ForgeKit
+import ForgeUI
 import SwiftUI
 
 /// The app's root. ForgeKit's `ForgeRoot` shows a spinner while the Rust
@@ -15,6 +16,9 @@ public struct ContentView: View {
         ForgeRoot(host) { core in
             NotesScreen(core: core, changes: host.changes)
         }
+        // ForgeUI's theme for the whole app: change the look by changing
+        // this one value (docs/forgeui.md).
+        .forgeTheme(.standard)
     }
 }
 

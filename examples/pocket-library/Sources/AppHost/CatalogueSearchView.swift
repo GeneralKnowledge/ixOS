@@ -1,4 +1,6 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// Finds a book in the online catalogue (Open Library) and adds it. Every
@@ -12,10 +14,11 @@ struct CatalogueSearchView: View {
     /// The search being shown. Changing it (a new query, or a retry of the
     /// same one) cancels the previous `.task`.
     @State private var submitted: SearchRequest?
-    @State private var state: SearchState = .idle
+    /// The search's state as one value (ForgeAppKit).
+    @State private var state: ForgeLoad<[CatalogueBook]> = .idle
     @State private var importingKey: String?
     @State private var importNotes: ImportNotes?
-    @State private var error: PresentedError?
+    @State private var error: ForgeAlert<Never>?
     @State private var showingManualForm = false
     /// Starts with the search field active and the keyboard up.
     @State private var searchActive = true
@@ -23,13 +26,6 @@ struct CatalogueSearchView: View {
     struct SearchRequest: Equatable {
         let text: String
         let attempt: Int
-    }
-
-    enum SearchState {
-        case idle
-        case searching
-        case results([CatalogueBook])
-        case failed(Error)
     }
 
     struct ImportNotes: Identifiable {
@@ -52,7 +48,7 @@ struct CatalogueSearchView: View {
                     }
                 }
         }
-        .errorAlert($error)
+        .forgeAlert($error)
         .alert(
             "Added Without Some Details",
             isPresented: Binding(get: { importNotes != nil }, set: { if !$0 { finish(importNotes?.book) } }),
@@ -76,30 +72,34 @@ struct CatalogueSearchView: View {
                 systemImage: "magnifyingglass",
                 description: Text("Find a book by title or author and add it with its cover and description.")
             )
-        case .searching:
-            ProgressView("Searching…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loading:
+            ForgeStateView.loading("Searching…")
         case .failed(let failure):
             ContentUnavailableView {
-                Label(ErrorText.title(failure), systemImage: "wifi.exclamationmark")
+                Label(failure.title, systemImage: "wifi.exclamationmark")
             } description: {
-                Text(ErrorText.message(failure))
+                Text(failure.message)
             } actions: {
-                if ErrorText.isRetryable(failure) {
+                if failure.isRetryable {
                     Button("Try Again") { retry() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.forgePrimary)
+                        .accessibilityIdentifier("catalogue.retry")
                 }
                 Button("Enter Details by Hand") { showingManualForm = true }
+                    .buttonStyle(.forgeTertiary)
+                    .accessibilityIdentifier("catalogue.manual")
             }
-        case .results(let results) where results.isEmpty:
+        case .loaded(let results) where results.isEmpty:
             ContentUnavailableView {
                 Label("No Results", systemImage: "book.closed")
             } description: {
                 Text("Try other words, or enter the book's details yourself.")
             } actions: {
                 Button("Enter Details by Hand") { showingManualForm = true }
+                    .buttonStyle(.forgeTertiary)
+                    .accessibilityIdentifier("catalogue.noResults.manual")
             }
-        case .results(let results):
+        case .loaded(let results):
             List(results, id: \.key) { result in
                 CatalogueRow(
                     result: result,
@@ -127,17 +127,12 @@ struct CatalogueSearchView: View {
 
     private func search() async {
         guard let submitted else { return }
-        state = .searching
-        do {
-            let results = try await model.searchCatalogue(submitted.text)
-            // A newer search replaced this one, or the sheet closed: the
-            // model has already stopped the Rust request.
-            guard !Task.isCancelled else { return }
-            state = .results(results)
-        } catch {
-            guard !Task.isCancelled else { return }
-            state = .failed(error)
-        }
+        state = .loading
+        // A newer search replaced this one, or the sheet closed: the model
+        // has already stopped the Rust request, and nothing is shown.
+        let outcome = await ForgeLoad.capture { try await model.searchCatalogue(submitted.text) }
+        guard !Task.isCancelled else { return }
+        state = outcome
     }
 
     private func importBook(_ result: CatalogueBook) {
@@ -156,7 +151,7 @@ struct CatalogueSearchView: View {
                     importNotes = ImportNotes(book: imported.book, warnings: imported.warnings)
                 }
             } catch {
-                self.error = PresentedError(error)
+                self.error = .failure(error)
             }
         }
     }

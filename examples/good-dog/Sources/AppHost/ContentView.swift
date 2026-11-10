@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+import ForgeUI
 import SwiftUI
 
 /// The app's root. It owns the model, opens the Rust core once, and shows
@@ -18,17 +19,16 @@ public struct ContentView: View {
             case .ready:
                 MainTabs(model: model)
             case .failed(let message):
-                ContentUnavailableView {
-                    Label("Can't Open Good Dog", systemImage: "exclamationmark.triangle")
-                } description: {
-                    Text(message)
-                } actions: {
-                    Button("Try Again") { Task { await model.open() } }
-                        .accessibilityIdentifier("content.retry")
-                        .buttonStyle(.borderedProminent)
-                }
+                ForgeStateView.failed(
+                    "Can't Open Good Dog",
+                    message: message,
+                    retry: ForgeStateAction("Try Again", identifier: "content.retry") {
+                        Task { await model.open() }
+                    }
+                )
             }
         }
+        .forgeTheme(.standard)
         .task { await model.open() }
         .forgeLifecycle { model.setPhase($0) }
     }

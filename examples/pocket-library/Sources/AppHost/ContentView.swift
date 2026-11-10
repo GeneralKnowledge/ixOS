@@ -1,4 +1,6 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// The app's root: three tabs over one library.
@@ -43,6 +45,9 @@ public struct ContentView: View {
             }
         }
         .environment(model)
+        // ForgeUI's theme for the whole app: tokens in the environment, and
+        // its accent on plain SwiftUI controls.
+        .forgeTheme(.standard)
         .task { await model.open() }
         // One event loop for the app, started whenever the library opens.
         .task(id: model.phase == .open) {
@@ -57,33 +62,36 @@ public struct ContentView: View {
 /// Shown when the saved library cannot be read. Nothing is deleted without
 /// the user saying so, and even then the old file is kept as a backup.
 private struct OpenFailedView: View {
+    enum Action { case startFresh }
+
     let message: String
     let canStartFresh: Bool
     let model: LibraryModel
-    @State private var confirmFresh = false
+    @State private var alert: ForgeAlert<Action>?
 
     var body: some View {
-        ContentUnavailableView {
-            Label("Can't Open Library", systemImage: "exclamationmark.triangle")
-        } description: {
-            Text(message)
-        } actions: {
-            Button("Try Again") { Task { await model.open() } }
-                .buttonStyle(.borderedProminent)
+        VStack(spacing: 0) {
+            ForgeStateView.failed(
+                "Can't Open Library",
+                message: message,
+                retry: ForgeStateAction("Try Again", identifier: "open.retry") { Task { await model.open() } }
+            )
             if canStartFresh {
-                Button("Start a New Library…") { confirmFresh = true }
+                Button("Start a New Library…") {
+                    alert = .confirm(
+                        "Start a new, empty library?",
+                        message: "The unreadable library is kept as a backup file in the app's storage.",
+                        confirm: "Start New Library",
+                        action: .startFresh,
+                        identifier: "open.startFresh",
+                        destructive: true
+                    )
+                }
+                .buttonStyle(.forgeTertiary)
+                .accessibilityIdentifier("open.startFresh")
+                .padding(.bottom)
             }
         }
-        .confirmationDialog(
-            "Start a new, empty library?",
-            isPresented: $confirmFresh,
-            titleVisibility: .visible
-        ) {
-            Button("Start New Library", role: .destructive) {
-                Task { await model.startFresh() }
-            }
-        } message: {
-            Text("The unreadable library is kept as a backup file in the app's storage.")
-        }
+        .forgeAlert($alert) { _ in Task { await model.startFresh() } }
     }
 }

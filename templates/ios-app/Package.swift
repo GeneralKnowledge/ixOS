@@ -4,6 +4,10 @@
 // reports the lifecycle and runs the event loop. `forge init` points the
 // ForgeKit line at a release, or at the checkout when the framework has
 // changes since the last release (forge-release.toml).
+//
+// The screens draw with ForgeUI and keep their alerts and busy buttons as
+// ForgeAppKit values (docs/forgeui.md, docs/forgeappkit.md). Both are
+// products of the same package; ForgeAppKit brings ForgeUI.
 
 import Foundation
 import PackageDescription
@@ -59,7 +63,11 @@ let package = Package(
         // SwiftUI views and the view model; they call the Rust API in ForgeFFI.
         .target(
             name: "AppHost",
-            dependencies: ["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")],
+            dependencies: [
+                "ForgeFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
+            ],
             path: "Sources/AppHost"
         ),
         .target(
@@ -74,7 +82,12 @@ let package = Package(
         ),
         .testTarget(
             name: "AppHostTests",
-            dependencies: ["AppHost", "ForgeFFI", .product(name: "ForgeKit", package: "forgekit")],
+            dependencies: [
+                "AppHost",
+                "ForgeFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeAppKit", package: "forgekit"),
+            ],
             path: "Tests/AppHostTests"
         ),
     ]

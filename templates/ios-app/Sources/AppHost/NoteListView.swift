@@ -1,4 +1,6 @@
 @preconcurrency import ForgeFFI
+import ForgeAppKit
+import ForgeUI
 import SwiftUI
 
 /// Screen 1: every note, newest first, with search, swipe-to-delete and a
@@ -53,23 +55,20 @@ struct NoteListView: View {
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView(model: model)
             }
-            .errorAlert("Something Went Wrong", message: $model.actionError)
+            .forgeAlert($model.alert)
             .sensoryFeedback(.success, trigger: model.saveCount)
         }
     }
 
     @ViewBuilder private var emptyState: some View {
         if model.notes.isEmpty {
-            ContentUnavailableView {
-                Label("No Notes", systemImage: "note.text")
-            } description: {
-                Text("Notes you write are saved on this device.")
-            } actions: {
-                Button("New Note") { isComposing = true }
-                    .accessibilityIdentifier("notes.addFirst")
-            }
+            ForgeStateView.empty(
+                "No Notes", systemImage: "note.text",
+                description: "Notes you write are saved on this device.",
+                action: ForgeStateAction("New Note", identifier: "notes.addFirst") { isComposing = true }
+            )
         } else if model.visibleNotes.isEmpty {
-            ContentUnavailableView.search(text: model.searchText)
+            ForgeStateView.noResults(for: model.searchText)
         }
     }
 }

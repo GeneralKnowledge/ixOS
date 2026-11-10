@@ -76,6 +76,8 @@ Text("Due today")
     .padding(theme.spacing.m)
 ```
 
+For the common cases there are two shorthands: `.forgeForeground(.warning)` draws text or a symbol in the tone's readable colour, and `.forgeTint(.success)` tints a control (a progress bar, a swipe action) with its solid colour.
+
 Colours follow light and dark mode wherever they are drawn, sheets and menus included.
 
 ### Contrast
@@ -210,7 +212,7 @@ The buttons get the identifiers `taskForm.cancel` and `taskForm.confirm`.
 
 ## What's not in 0.1
 
-Application patterns (alerts and destinations as model values, load and submission state: Forge AppKit, next), moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android.
+Application patterns (alerts and destinations as model values, load and submission state) are [ForgeAppKit](forgeappkit.md), a separate, optional product on top of ForgeUI. Also not in 0.1: moving the template and demos onto ForgeUI, snapshot tests, custom fonts, and Android.
 
 ## Building on Linux
 

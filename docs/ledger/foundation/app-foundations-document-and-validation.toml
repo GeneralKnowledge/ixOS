@@ -1,0 +1,9 @@
+order = 27
+capability = "Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation"
+framework = "Yes: `forge_app::document` and `forge_app::validation`; `FieldError` is part of the shared contract"
+rust_api = "Yes"
+ios_native = "n/a"
+in_app = "Partial: Checklist uses the document; Pocket Library uses validation"
+iphone = "No"
+documented = "Yes: app-foundations.md"
+limits = "JSON documents only (SQLite apps keep forge-storage's Database); no repository or query layer yet"
