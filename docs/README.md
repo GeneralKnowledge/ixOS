@@ -28,6 +28,7 @@ Read these in order the first time.
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
+| [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, documents, media, background tasks, identity, maps, charts), and in what order |
 | [app-config.md](app-config.md) | `forge.toml`: name, version, icon, permission prompts, entitlements |
 | [project-generation.md](project-generation.md) | What `forge init` creates, with and without `--minimal` |
 
