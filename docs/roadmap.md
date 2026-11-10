@@ -26,7 +26,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 
 No Android work and no cross-platform components until the iOS experience is right.
 
-Native capabilities (web view, documents, media, background tasks, identity, offline data, maps, charts) are planned in [native-capability-roadmap.md](native-capability-roadmap.md): ixOS wraps Apple's frameworks rather than replacing them, proves each wrapper in the services check app and on an iPhone, and judges usability in real apps (Pocket Library, Chat, and an original feed reader as the reader's second consumer). Its first tier is `forge-services` work and runs alongside P1 and P2.
+Native capabilities (web view, documents, media, background tasks, identity, offline data, maps, charts) are planned in [native-capability-roadmap.md](native-capability-roadmap.md): ixOS wraps Apple's frameworks rather than replacing them, proves each wrapper in the services check app and on an iPhone, and judges usability in real apps (Pocket Library, Chat, and a feed reader benchmarked against NetNewsWire as the reader's second consumer). Its first tier is `forge-services` work and runs alongside P1 and P2.
 
 ## Platform focus
 

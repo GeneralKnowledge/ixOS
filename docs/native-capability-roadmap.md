@@ -36,7 +36,7 @@ There are two different things to prove, and they need different evidence:
 1. **Does the wrapper integrate correctly with iOS?** A screen in the services check app (`scripts/make-services-check-app.sh`) proves this, with Rust tests and a device run.
 2. **Does it make building an app easier?** Only a real app that adopts it proves this. Pocket Library and Chat are the main consumers; Good Dog, Weather and Device Lab adopt where they already need something.
 
-A consumer app may be added when a capability's usability can't be judged in the apps we have. The one planned now is an **original feed reader**, written for ixOS, not a recreation of an existing app. It is the reader's second consumer (see Tier 1), and it exercises the web view, readable-text extraction, the HTTP cache and background refresh. It is added for that reason only, not to justify capabilities nobody needs.
+A consumer app may be added when a capability's usability can't be judged in the apps we have. The one planned now is a **feed reader benchmarked against [NetNewsWire](https://github.com/Ranchero-Software/NetNewsWire)**, the established open-source (MIT) reader for Apple platforms. NetNewsWire is the external reference: we compare navigation, article presentation, reader behaviour, refresh, search and interaction against it, which is a more demanding test than a reader whose features we choose ourselves. It is built on ixOS from scratch (no NetNewsWire code is copied in) and ships under its own name and icon, because NetNewsWire's are its authors'. It is the reader's second consumer (see Tier 1), with a different implementation and UX from Pocket Library, and it exercises the web view, readable-text extraction, the HTTP cache and background refresh. Feature parity is not the goal: a gap is recorded as a finding about ixOS, not a reason to add features.
 
 Each capability lands in its own PR, and the ledger keeps **compiled**, **tested** and **device-verified** strictly apart. Before a capability's ledger row says it works on an iPhone, it needs all of:
 
@@ -56,9 +56,9 @@ Checked against `main` on 2026-11-10.
 |---|---|---|
 | Web and reading | Pocket Library's EPUB reader: Rust parses chapters into styled text blocks, maps a position (chapter and fraction) to pages and saves it; SwiftUI lays it out with text size and serif settings and reads aloud. All of it is Pocket Library's own and EPUB-specific | Web view, a reader not tied to EPUB, readable-text extraction from web pages |
 | Documents and files | File import (`forgeFileImporter`), share sheet and Save to Files (`ForgeShareLink`), managed file store (`FileStore`), app directories | PDF view, Quick Look preview, clipboard, receiving shared content (share extension) |
-| Media | `ForgeImages` thumbnails and downscaled JPEGs, audio record and play (`audio`), `ForgeAudioSession`; Chat uses `PhotosPicker` directly | Photo picker helper, camera capture, video playback, camera and photos permissions |
+| Media | `ForgeImages` thumbnails and downscaled JPEGs, audio record and play (`audio`), `ForgeAudioSession`; Chat uses `PhotosPicker` directly | Photo picker helper, camera capture, video playback, camera permission |
 | Notifications and background | Local notifications with grouping and tap-to-open; `Backoff`; Rust background work while the app runs; file-backed downloads in `forge-net` (foreground only) | Notification actions, background refresh and processing tasks, background transfers, a reusable durable task queue (Chat's outbox is Chat's own) |
-| Identity and security | Keychain; permissions for notifications, location, motion, Bluetooth, microphone | Face ID / Touch ID, OAuth sign-in callback, token lifecycle, camera and photos permissions |
+| Identity and security | Keychain; permissions for notifications, location, motion, Bluetooth, microphone | Face ID / Touch ID, OAuth sign-in callback, token lifecycle, camera permission |
 | App infrastructure | Custom URL scheme deep links, lifecycle phases, ForgeUI empty/loading/error states, ForgeAppKit destinations and alerts, saved settings (`forge_app::document`), haptics (SwiftUI, in Good Dog) | Navigation restoration, search history |
 | Data and offline | SQLite with migrations and full-text search, JSON documents, connectivity, `Backoff` | HTTP cache with expiry and revalidation, generic upload and download queue, backup and export archive, conflict handling |
 | Location and maps | Location fixes, headings and motion (`location`, `motion`) | Map view, geocoding and place search |
@@ -76,8 +76,8 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 | 1 | **Web view** (spec below) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
 | 2 | **Documents**: PDF view, Quick Look preview of any file in the file store | Helpers (`ForgePDFView`, `ForgeQuickLook`) | PDFKit, Quick Look | Chat (attachments); Pocket Library if it imports PDFs |
 | 3 | **Native reader** (spec below) | Rust module plus Swift helper, extracted from Pocket Library | SwiftUI text layout, AVSpeechSynthesizer for read-aloud | Pocket Library, then the feed reader |
-| 4 | **Photos and camera**: picker that returns files in the file store, camera capture, `photos` and `camera` permissions | Helper (picker, from Chat's code) and optional service `camera` | PhotosUI, AVFoundation | Chat (attachments) |
-| 5 | **Background tasks**: Rust registers refresh and processing work, iOS runs it when it chooses, Rust gets the deadline as a `Cancellation` | Optional service `background` | BackgroundTasks | Feed reader (refresh), Chat (catch-up) |
+| 4 | **Photos and camera**: the system photo picker returning the chosen items as files in the file store, and camera capture with its `camera` permission | Helper (picker, from Chat's code, no permission) and optional service `camera` | PhotosUI, AVFoundation | Chat (attachments) |
+| 5 | **Background tasks** (contract below): Swift registers them at launch, Rust does the work in the window iOS grants | Optional service `background` | BackgroundTasks | Feed reader (refresh), Chat (catch-up) |
 | 6 | **Background transfers** (spec below) | Service, native side of `forge-net` downloads | Background `URLSession` | Local AI model downloads, Chat attachments, Pocket Library |
 | 7 | **Notification actions** (reply, mark done) delivered to Rust | Extend `LocalNotifier` | UserNotifications | Chat, Good Dog reminders |
 | 8 | **App lock with Face ID / Touch ID** | Optional service `biometrics` | LocalAuthentication | Pocket Library or Chat (opt-in lock) |
@@ -85,15 +85,31 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 
 Background tasks and background transfers are separate capabilities with separate contracts. A task is a short slot of time iOS grants when it chooses; a transfer is work iOS carries on in another process while the app is suspended or closed.
 
+#### Photos and camera
+
+The system photo picker (`PhotosPicker`) runs outside the app and hands over only the items the person chooses, so it needs **no photo library permission** and ixOS never asks for one to pick images. Full or limited library access (`NSPhotoLibraryUsageDescription`) is only for an app that browses or changes the library itself, which no planned consumer does. The camera is different: capture needs the `camera` permission and its usage string, so it is an optional service.
+
+#### Background tasks
+
+`BGTaskScheduler` requires every task identifier to be registered by the app during launch, before it finishes launching. So ownership is split:
+
+- **Swift** registers the permitted identifiers at launch (listed in `forge.toml`, which writes `BGTaskSchedulerPermittedIdentifiers`), schedules requests, and receives each task from iOS.
+- **Rust** provides the work handler for each identifier and its cancellation contract.
+- **Swift** forwards the granted window to Rust: it starts the handler and turns the task's expiration into a `Cancellation`.
+- **Rust** reports completion (success or failure) back for `setTaskCompleted`, and persists unfinished work so the next window, or the next launch, continues it.
+
 #### Web view
 
-`ForgeWebView` displays original web content. It is safe by default, and anything more powerful is an explicit opt-in.
+`ForgeWebView` displays original web content. It is a **constrained web view, not a sandbox for arbitrary untrusted websites**: its defaults are restrictive, and anything more powerful is an explicit opt-in, but an allowed page is still a web page running its own code. Its five security boundaries (top-level navigation, subresources, external URL schemes, JavaScript execution and the native message bridge) are separate settings, because one doesn't imply another:
 
-- **Navigation:** loading progress, title, navigation errors as values the view can show with ForgeUI's error state, back and forward, and redirects followed only while they stay inside the allow-list.
-- **Links:** hosts on the app's allow-list open in place; other web links open in Safari (or `SFSafariViewController`); other URL schemes (`mailto:`, `tel:`, app links) are refused unless the app lists them.
+- **Navigation state:** loading progress, title, navigation errors as values the view can show with ForgeUI's error state, back and forward, and redirects followed only while they stay inside the allow-list.
+- **Top-level navigation:** hosts on the app's allow-list open in place; other web links open in Safari (or `SFSafariViewController`). This controls where the view goes, not what a page loads.
+- **Subresources:** the allow-list does **not** restrict the scripts, images, styles and frames an allowed page loads from other hosts. An app that needs that restricted opts into a content rule list (`WKContentRuleList`) that blocks loads outside named hosts; the default is WebKit's normal loading.
+- **External URL schemes:** `mailto:`, `tel:`, app links and other non-web schemes are refused unless the app lists them, and listed ones are handed to the system, never loaded in the view.
 - **Downloads:** off by default. When enabled, the file goes into the app's `FileStore`, never straight to a path the page chooses.
 - **Website data:** non-persistent by default (no cookies or storage kept between launches); an app opts into a persistent store when it needs sign-in to stick.
-- **JavaScript:** on, because most pages need it, but with **no JavaScript-to-Rust or JavaScript-to-Swift bridge by default**. A message bridge is an opt-in with a named handler and typed messages, never arbitrary calls.
+- **JavaScript execution:** on, because most pages need it; an app can turn it off for content it only displays.
+- **Native message bridge:** **none by default**, so page script can't reach Swift or Rust. A bridge is an opt-in with a named handler, typed messages and the hosts allowed to send them, never arbitrary calls.
 - **Lifecycle and memory:** the `WKWebView` is released when the view goes away, a web content process crash reloads or shows an error rather than a blank view, and one screen never holds more than one live web view.
 
 #### Native reader
@@ -103,9 +119,11 @@ ForgeReader is the reusable reading experience, extracted from Pocket Library wh
 | Responsibility | What it is | Side |
 |---|---|---|
 | Reader document | Generic readable content: sections of styled text blocks (headings, paragraphs, quotes, lists, images by file reference), with metadata | Rust |
-| Reading position | Section and fraction, saved and restored, mapped to pages or progress | Rust |
+| Reading position | A stable anchor: document id, section id, block id, and the relative position within that block. Saved and restored, mapped to pages or progress | Rust |
 | Reader view | The SwiftUI reading interface: scrolling per section, contents, read-aloud | Swift helper |
 | Reader theme | Typography, spacing, text size and appearance, from ForgeUI tokens | Swift helper |
+
+Blocks carry stable ids, so a position survives a change of text size or layout, and survives an article being edited as long as its block still exists. When the block has gone, the reader falls back to the nearest surviving block in the same section, then to the section's start. Pocket Library saves chapter and fraction today; extracting the reader converts those positions to anchors, and EPUB blocks get ids from their place in the chapter (or the source's own element ids where present).
 
 Each format converts into a reader document: Pocket Library's EPUB parser does now, and readable-text extraction (Tier 2) converts web pages for the feed reader. `ForgeWebView` stays separate: it shows the original page, the reader shows the extracted text.
 
@@ -126,7 +144,7 @@ This is spike S6 in the capability plan.
 
 | # | Capability | Shape | Notes |
 |---|---|---|---|
-| 10 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for the feed reader app |
+| 10 | **Readable text from a web page** into a reader document | Rust, alongside the reader | Feeds the reader for the feed reader |
 | 11 | **HTTP cache** with expiry, ETag and Last-Modified revalidation | Rust module in `forge-net` | Feed reader, Weather, Pocket Library covers |
 | 12 | **Durable work queue** (stored before the network call, retried with `Backoff`, recovered after termination) | Rust, from Chat's outbox | Extract on the second user, per the [extraction audit](framework-extraction-audit.md) |
 | 13 | **Backup and export archive** of an app's data | Rust (`forge-storage`) plus `ShareLink` | Already a "No" row in the ledger |
@@ -162,4 +180,4 @@ Recorded so they aren't forgotten, not scheduled ahead of the tiers above.
 - **An unrestricted JavaScript bridge.** See the web view spec.
 - **Generic sync and conflict resolution.** No app has a server that needs it yet; Chat's "server order wins" stands.
 - **Unrestricted background execution.** iOS decides when background tasks run. ixOS integrates with that, and doesn't pretend otherwise.
-- **Demo apps made only to justify a capability.** A consumer app is added only when usability can't be judged in the apps we have, as with the feed reader.
+- **Demo apps made only to justify a capability.** A consumer app is added only when usability can't be judged in the apps we have, as with the NetNewsWire-benchmarked feed reader.
