@@ -26,6 +26,8 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 
 No Android work and no cross-platform components until the iOS experience is right.
 
+Native capabilities (web view, documents, media, background tasks, identity, system integration such as universal links, share extensions and App Intents, offline data, maps, charts) are planned in [native-capability-roadmap.md](native-capability-roadmap.md): ixOS wraps Apple's frameworks rather than replacing them, proves each wrapper in the services check app and on an iPhone, and judges usability in real apps (Pocket Library, Chat, and a feed reader benchmarked against NetNewsWire as the reader's second consumer). Its first tier is `forge-services` work and runs alongside P1 and P2.
+
 ## Platform focus
 
 ### Android — Work in progress
@@ -109,7 +111,7 @@ Good first project for someone with a Mac.
 
 ### Native iOS services (M3) — In progress
 
-`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: camera, photos and location as opt-in permission adapters. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
+`crates/forge-services` gives Rust apps Keychain secrets, app directories and file import, local notifications, a single permission interface, the share sheet, and deep links. Each is a small Rust interface with a Swift implementation that Forge ships, and every `forge init` app has them installed ([native-services.md](native-services.md)). They are covered by Rust tests, macOS XCTest and an unsigned iOS build in CI. An iPhone run of [the device check](native-services-device-check.md) is still to be recorded. Next: the tiers in [native-capability-roadmap.md](native-capability-roadmap.md), starting with the web view, documents, the native reader, photos and camera, and background tasks. Android implementations of the same interfaces wait until Android work resumes ([above](#android--work-in-progress)).
 
 ### Store distribution (App Store, Google Play) — Open
 

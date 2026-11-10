@@ -4,7 +4,7 @@ Forge Mobile splits **portable Rust application logic** from **thin platform hos
 
 ## Framework principles
 
-ixOS is a framework of reusable capabilities, not only a way to build Rust-backed SwiftUI apps. Two rules decide what goes into it, and a third how it is used.
+ixOS is a framework of reusable capabilities, not only a way to build Rust-backed SwiftUI apps. Two rules decide what goes into it, a third how it is used, and a fourth which side owns what.
 
 1. **Move reusable infrastructure into ixOS, not app identity or domain logic.** Persistence, networking, file handling, logging, background work, notifications, media and device integration are machinery every app needs, and the framework maintains one version of each. What an app is and does stays in the app: Chat's conversations, Pocket Library's books and reading rules, Weather's forecasts, an assistant's personality.
 2. **Extract when there is a real second use, or when the code is clearly platform-level.** A second app (or a second feature) that needs the same thing is the signal. Platform-level code, such as a wrapper over an Apple framework that any app would write the same way, can move on its first use. Code that only might be reused stays in the app until it is.
@@ -12,6 +12,20 @@ ixOS is a framework of reusable capabilities, not only a way to build Rust-backe
 A third rule decides how the framework is used:
 
 3. **Human first, agent optional.** Every ixOS app must be buildable, testable, debuggable and maintainable by a person with the documented tools. Capabilities live in the CLI (or a library it uses) with `--json` output; `forge mcp` is a thin layer that runs those commands and adds schemas, argument checks and session state, never its own implementation of a build, test, inspection or device operation. Agent configuration is generated on request (`forge agent setup`), never required. Deterministic work (configuration, builds, bindings, signing, device access, logs, screenshots, accessibility measurements, UI test runs, evidence) is Forge's, not an agent's, and only a person records an acceptance. [human-workflow.md](human-workflow.md) is the contract, and `scripts/check-human-workflow.sh` tests it in CI.
+
+A fourth rule decides which side of the boundary owns what:
+
+4. **Native first: use Rust to build an iOS app, not to own what Apple already provides.** Rust owns portable behaviour: domain rules, data, queues, retry decisions, state. Apple's frameworks own what they already do well, and ixOS wraps them rather than reimplementing them. Five consequences:
+
+| Rule | What it means |
+|---|---|
+| Don't recreate Apple functionality | Prefer the native framework (WebKit, PDFKit, PhotosUI, AVFoundation, URLSession, Swift Charts, MapKit) over a custom implementation, in Rust or in Swift |
+| Don't put OS-specific rules in portable Rust | Rust validates general invariants (a positive interval, a valid identifier, a coordinate in range). Platform limits, such as the shortest repeat iOS accepts, are checked by the native adapter, which returns a meaningful error. Where a limit affects portable logic, the service reports it as a capability instead of Rust hard-coding it |
+| Don't put domain logic in Swift | Swift presentation models manage screen state, turn Rust events into UI updates, coordinate sheets and alerts, and handle lifecycle callbacks. Decisions that are part of the app's domain stay in Rust. Don't move presentation into Rust just to have more Rust |
+| Don't duplicate native helpers in apps | A reusable operation (security-scoped copying, image downscaling) lives once in `forge-services`; apps keep their own policy (naming, staging, MIME handling) |
+| Don't confuse a Rust abstraction with a native implementation | A portable interface (`SecureStore`, `HttpClient`) can have a platform implementation behind it: the Keychain adapter is the model |
+
+Good examples to copy: the Keychain (`SecureStore` in Rust, Security framework in Swift), location and motion (native sensors, Rust receives values), read-aloud (AVSpeechSynthesizer speaks the text Rust structured), sharing (`ForgeShareLink` on SwiftUI's `ShareLink`) and `ForgeImages` (ImageIO, not image decoding in Rust). Where current code departs from this rule, and the plan for each, is in [native-capability-roadmap.md](native-capability-roadmap.md#where-current-code-departs-from-native-first).
 
 In practice:
 
