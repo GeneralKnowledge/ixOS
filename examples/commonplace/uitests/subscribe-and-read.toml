@@ -1,5 +1,6 @@
 # The benchmark's first flow (docs/benchmarks/netnewswire/spec.md, F1-F3):
-# subscribe to a fixture feed, open its timeline, read an article,
+# subscribe to a fixture feed, open its timeline, read an article (the
+# unread count drops),
 # bookmark it, see it under Bookmarks, then relaunch and see it there
 # still (saved, not just shown). Needs the fixture server on the laptop
 # (docs/benchmarks/netnewswire/fixtures/serve.py); replace the address with
@@ -52,6 +53,11 @@ tap = { id = "BackButton" }
 
 [[step]]
 tap = { id = "BackButton" }
+
+# Opening the article marked it read: the feed has 3 articles, 2 unread
+# (F2).
+[[step]]
+expect = { label_contains = "2 unread" }
 
 [[step]]
 tap = { id = "feeds.bookmarks" }

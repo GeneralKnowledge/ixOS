@@ -22,9 +22,9 @@ Each is a `forge ui run` file for Commonplace (in `examples/commonplace/uitests/
 | # | Flow | NetNewsWire | Commonplace |
 |---|---|---|---|
 | F1 | Add the fixture feed by address; its articles appear | Expected | `subscribe-and-read.toml` |
-| F2 | Open an article; it is marked read and the unread count drops | Expected | `subscribe-and-read.toml` (read), count to add |
+| F2 | Open an article; it is marked read and the unread count drops | Expected | `subscribe-and-read.toml` (the feed's count goes from 3 to 2 unread) |
 | F3 | Bookmark (star) an article; it appears under Bookmarks (Starred) | Expected | `subscribe-and-read.toml` |
-| F4 | Mark all as read in a feed | Expected | To write |
+| F4 | Mark all as read in a feed | Expected | `mark-all-read.toml` |
 | F5 | Refresh with nothing new: no new articles, no duplicates | Expected | Rust test `an_unchanged_or_failing_feed_is_reported_not_fatal` |
 | F6 | Unsubscribe; the feed and its articles are gone | Expected | Rust test `feeds_can_be_renamed_and_removed_and_everything_persists` |
 | F7 | Relaunch; feeds, read state and bookmarks are kept | Expected | Rust test; `subscribe-and-read.toml` relaunches and checks the bookmark |

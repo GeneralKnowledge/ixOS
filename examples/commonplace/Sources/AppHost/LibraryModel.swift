@@ -80,13 +80,18 @@ public final class LibraryModel {
     /// add sheet stays open with the address and shows why.
     public func add(url: String) async throws -> Feed {
         let cancellation = Cancellation()
-        let feed = try await withTaskCancellationHandler {
-            try await core.addFeed(url: url, cancellation: cancellation)
-        } onCancel: {
-            cancellation.cancel()
+        do {
+            let feed = try await withTaskCancellationHandler {
+                try await core.addFeed(url: url, cancellation: cancellation)
+            } onCancel: {
+                cancellation.cancel()
+            }
+            reload()
+            return feed
+        } catch {
+            log.warn("adding a feed failed: \(error)")
+            throw error
         }
-        reload()
-        return feed
     }
 
     public func remove(_ feed: Feed) async {
@@ -119,6 +124,7 @@ public final class LibraryModel {
             lastRefresh = RefreshSummary(report: report, at: Date())
             reload()
         } catch {
+            log.warn("refresh failed: \(error)")
             alert = .failure(error)
             reload()
         }
@@ -158,7 +164,8 @@ public final class LibraryModel {
         }
     }
 
-    /// Words for the screen. `reason` fields are diagnostics from Rust.
+    /// Words for the screen. `reason` fields are diagnostics from Rust:
+    /// they go to the log where the error is caught, never on screen.
     nonisolated public static func describe(_ error: Error) -> String {
         guard let error = error as? AppError else { return error.localizedDescription }
         switch error {
@@ -167,12 +174,12 @@ public final class LibraryModel {
         case .AlreadySubscribed: return "You're already subscribed to this feed."
         case .NotAFeed: return "There's no RSS, Atom or JSON feed at that address."
         case .Http(let status): return "The site answered with an error (HTTP \(status))."
-        case .Storage(let reason): return "Your library couldn't be read or saved (\(reason))."
+        case .Storage: return "Your library couldn't be read or saved. Try again, or restart the app."
         case .InUse: return "Your library is open in another copy of the app."
         case .Offline: return "You appear to be offline."
         case .Certificate: return "The site's security certificate was rejected."
         case .Timeout: return "The site took too long to answer."
-        case .Network(let reason): return "Network error: \(reason)"
+        case .Network: return "Couldn't reach the site. Check the address and your connection, then try again."
         case .Cancelled: return "Cancelled."
         case .Interrupted: return "Stopped when the app went to the background. Try again."
         case .ShutDown: return "The app is closing."

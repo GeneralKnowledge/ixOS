@@ -1547,7 +1547,11 @@ mod example_files {
     fn commonplace_tests_parse() {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../examples/commonplace/uitests");
-        for file in ["smoke.toml", "subscribe-and-read.toml"] {
+        for file in [
+            "smoke.toml",
+            "subscribe-and-read.toml",
+            "mark-all-read.toml",
+        ] {
             let script = super::Script::load(&dir.join(file)).unwrap();
             assert_eq!(script.app, "org.forgemobile.commonplace", "{file}");
         }

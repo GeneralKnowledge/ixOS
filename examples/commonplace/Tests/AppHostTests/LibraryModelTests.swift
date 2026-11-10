@@ -98,4 +98,13 @@ final class LibraryModelTests: XCTestCase {
         _ = try ForgeEnvironment.standard(app: "Commonplace", arguments: fresh, testRoot: root)
         XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
     }
+
+    /// Rust's `reason` fields are diagnostics: the screen gets plain words.
+    func testErrorReasonsStayOffTheScreen() {
+        let storage = LibraryModel.describe(AppError.Storage(reason: "disk I/O error at page 7"))
+        let network = LibraryModel.describe(AppError.Network(reason: "tls handshake eof"))
+        XCTAssertFalse(storage.contains("page 7"), storage)
+        XCTAssertFalse(network.contains("handshake"), network)
+        XCTAssertFalse(network.isEmpty)
+    }
 }

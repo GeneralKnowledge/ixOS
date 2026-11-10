@@ -221,9 +221,9 @@ These go into [ios-ui.md](ios-ui.md#accessibility) and the `forge init` starter:
 
 `forge ui audit` checks the current screen's tree for: buttons and controls with no label, images with no label that aren't hidden, interactive elements with no identifier (a test-robustness warning, not an accessibility error), duplicate identifiers, and tap targets smaller than 44 × 44 points. It runs inside test suites too, so each screen a test visits is audited for free.
 
-### Exploratory testing (later, separate)
+### Exploratory testing
 
-The exploratory tester is a separate command (`forge explore ios`). It never takes part in pass/fail acceptance. It reads the UI tree, picks valid actions (taps on enabled elements, text into fields, back navigation, background and resume), and watches for crashes (Forge Device crash reports), error alerts, error log lines and devtools state invariants. When it finds a problem it writes the action sequence out as a normal test file, which then becomes a deterministic regression test after a person reviews it. An AI model can choose the actions later, but the first version is seeded random walks so its results are reproducible.
+The exploratory tester is `forge ui explore` ([forge-explore.md](forge-explore.md)), a subcommand next to `forge ui run`. It never takes part in pass/fail acceptance. It reads the UI tree, tries each safe control once (taps, text into fields, back navigation, scrolling lists below the fold), and reports crashes, error alerts, dead ends and accessibility problems. Each issue comes with a normal `forge ui run` file that replays it, which becomes a deterministic regression test after a person reviews it. Walks are seeded random walks, so their results are reproducible. Apps Forge didn't build are walked through the any-app policy (`--app BUNDLE_ID --any-app`).
 
 ## Milestones
 
@@ -237,7 +237,7 @@ The same milestones serve apps Forge didn't build: [any app on the iPhone](resea
 | M2.5 | Runner-free inspection, if #79's probe passes | `AxDriver` behind `Driver`: `forge ui tree` and read-and-tap tests without the WDA runner |
 | M3 | Accessibility pass across the demos | Identifiers and labels in the starter, Pocket Library, Weather and Chat; `forge ui audit` clean on their main screens; a Dynamic Type run; conventions in ios-ui.md |
 | M4 | Screenshots and conditions | Screenshot comparison against approved baselines (with masked regions for times and dates): built and tested on Linux, not yet run on a phone ([visual-regression.md](visual-regression.md)); offline and slow-network runs through the instruments condition inducer; performance numbers from the devtools stream |
-| M5 | Exploratory testing | `forge ui explore` ([forge-explore.md](forge-explore.md)): seeded walks over a Forge app's screens, crash, alert, dead-end and accessibility checks, and a `forge ui run` replay file per issue. Built and tested on Linux 2026-11-08, not yet run on an iPhone. Still to come: invariants, scrolling below the fold, performance during the walk. Optionally Forge's own Swift XCTest runner if WDA becomes limiting |
+| M5 | Exploratory testing | `forge ui explore` ([forge-explore.md](forge-explore.md)): seeded walks over a Forge app's screens, crash, alert, dead-end and accessibility checks, and a `forge ui run` replay file per issue. Walked Pocket Library on Cati twice on 2026-11-08, before test data and on test data (forge-explore.md, Phone checks); the fixes since, scrolling below the fold (2026-11-10) and walks of other developers' apps through the any-app policy (2026-11-10) are Linux-tested only, not yet run on an iPhone. Still to come: invariants and performance during the walk. Optionally Forge's own Swift XCTest runner if WDA becomes limiting |
 
 ### M0 in detail
 

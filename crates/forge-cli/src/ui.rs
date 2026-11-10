@@ -1663,6 +1663,10 @@ pub fn explore_app(
         .iter()
         .filter(|s| s.action != "launch")
         .count();
+    // Typed text the app echoed into an alert or label is taken out, as in
+    // the files.
+    let mut issues = serde_json::to_value(&report.issues).unwrap_or_default();
+    report.scrub_json(&mut issues);
     report::set_data(serde_json::json!({
         "kind": "device",
         "any_app": { "app": installed, "level": level.name() },
@@ -1671,7 +1675,7 @@ pub fn explore_app(
         "stopped": report.stopped,
         "actions": report.actions,
         "screens": report.screens.len(),
-        "issues": report.issues,
+        "issues": issues,
         "out": dir.display().to_string(),
         "report": dir.join("explore.json"),
         "graph": dir.join("graph.json"),

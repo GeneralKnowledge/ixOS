@@ -136,6 +136,75 @@ pub enum Action {
 /// typed: only the number of characters (the any-app policy's promise).
 const NOT_RECORDED: &str = "(not recorded: ";
 
+/// What stands in for typed text that the app echoed back.
+const ECHOED: &str = "(typed text)";
+
+/// Takes typed text out of a string the app may have echoed it into.
+/// Single characters are left: they would blank out ordinary words.
+fn scrub(typed: &[String], text: &str) -> String {
+    let mut text = text.to_owned();
+    for secret in typed {
+        if secret.chars().count() > 1 && text.contains(secret.as_str()) {
+            text = text.replace(secret.as_str(), ECHOED);
+        }
+    }
+    text
+}
+
+fn scrub_value(typed: &[String], value: &mut serde_json::Value) {
+    if typed.is_empty() {
+        return;
+    }
+    match value {
+        serde_json::Value::String(s) => *s = scrub(typed, s),
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|v| scrub_value(typed, v)),
+        serde_json::Value::Object(map) => map.values_mut().for_each(|v| scrub_value(typed, v)),
+        _ => {}
+    }
+}
+
+/// The terminal in another developer's app: lines go out with the typed
+/// text taken out, as in the files.
+struct ScrubbedOut<'a> {
+    inner: &'a mut dyn Write,
+    typed: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
+    line: Vec<u8>,
+}
+
+impl ScrubbedOut<'_> {
+    fn emit(&mut self) -> std::io::Result<()> {
+        let line = String::from_utf8_lossy(&self.line).into_owned();
+        self.line.clear();
+        self.inner
+            .write_all(scrub(&self.typed.borrow(), &line).as_bytes())
+    }
+}
+
+impl Write for ScrubbedOut<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        for &b in buf {
+            self.line.push(b);
+            if b == b'\n' {
+                self.emit()?;
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if !self.line.is_empty() {
+            self.emit()?;
+        }
+        self.inner.flush()
+    }
+}
+
+impl Drop for ScrubbedOut<'_> {
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
 fn not_recorded(text: &str) -> String {
     format!("{NOT_RECORDED}{} characters)", text.chars().count())
 }
@@ -987,9 +1056,21 @@ pub struct Report {
     /// the routes followed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub focus: Option<serde_json::Value>,
+    /// In another developer's app: the text the walk typed, so that
+    /// `scrub_json` can take it out of anything the app echoed it into
+    /// (a title, an alert, a label). Never serialised.
+    #[serde(skip)]
+    pub typed: Vec<String>,
 }
 
 impl Report {
+    /// Replaces the text the walk typed wherever it appears in `value`:
+    /// what is written down for another developer's app says
+    /// `(typed text)` instead. Does nothing for the developer's own app.
+    pub fn scrub_json(&self, value: &mut serde_json::Value) {
+        scrub_value(&self.typed, value);
+    }
+
     pub fn errors(&self) -> usize {
         self.issues.iter().filter(|i| i.severity == "error").count()
     }
@@ -1130,6 +1211,9 @@ struct Explorer<'a> {
     redact: bool,
     /// The text behind each action whose text is not recorded.
     typed: HashMap<(Locator, String), String>,
+    /// The same texts, to take out of whatever the app echoed them into;
+    /// shared with the terminal's `ScrubbedOut`.
+    echo: std::rc::Rc<std::cell::RefCell<Vec<String>>>,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -1161,6 +1245,18 @@ pub fn run_gated(
         std::fs::create_dir_all(dir.join("repro"))?;
     }
     let redact = gate.is_foreign();
+    let echo = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut scrubbed;
+    let out: &mut dyn Write = if redact {
+        scrubbed = ScrubbedOut {
+            inner: out,
+            typed: echo.clone(),
+            line: Vec::new(),
+        };
+        &mut scrubbed
+    } else {
+        out
+    };
     let mut explorer = Explorer {
         config,
         driver,
@@ -1191,6 +1287,7 @@ pub fn run_gated(
         scroll_home: None,
         redact,
         typed: HashMap::new(),
+        echo,
     };
     writeln!(
         explorer.out,
@@ -1657,16 +1754,29 @@ impl Explorer<'_> {
         match action {
             Action::Launch => policy::Action::Launch,
             Action::Scroll(..) => policy::Action::Scroll,
-            Action::Tap(locator) => policy::Action::Tap(target_of(&self.tree, locator)),
+            Action::Tap(locator) => policy::Action::Tap(self.target(locator)),
             Action::Type(locator, text) => {
                 let text = self.real_text(locator, text);
                 policy::Action::Type {
-                    target: target_of(&self.tree, locator),
+                    target: self.target(locator),
                     chars: text.chars().count(),
                     presses_return: text.contains('\n'),
                 }
             }
         }
+    }
+
+    /// The policy's view of a control. In another developer's app its label
+    /// and identifier lose any typed text the app echoed into them, since
+    /// the policy's journal writes them down.
+    fn target(&self, locator: &Locator) -> policy::Target {
+        let mut target = target_of(&self.tree, locator);
+        if self.redact {
+            let typed = self.echo.borrow();
+            target.label = target.label.map(|l| scrub(&typed, &l));
+            target.identifier = target.identifier.map(|i| scrub(&typed, &i));
+        }
+        target
     }
 
     /// The text an action types: itself, or the text kept out of the
@@ -1750,6 +1860,9 @@ impl Explorer<'_> {
             for candidate in &mut found {
                 if let Action::Type(locator, text) = &mut candidate.action {
                     let shown = not_recorded(text);
+                    if !self.echo.borrow().contains(text) {
+                        self.echo.borrow_mut().push(text.clone());
+                    }
                     self.typed
                         .insert((locator.clone(), shown.clone()), std::mem::take(text));
                     *text = shown;
@@ -1951,7 +2064,10 @@ impl Explorer<'_> {
                 let name = format!("repro/issue-{}-{}.toml", issue.number, issue.issue);
                 std::fs::write(
                     dir.join(&name),
-                    repro_file(self.config, issue, &issue.actions),
+                    scrub(
+                        &self.echo.borrow(),
+                        &repro_file(self.config, issue, &issue.actions),
+                    ),
                 )?;
                 issue.repro_file = Some(name);
             }
@@ -1980,7 +2096,7 @@ impl Explorer<'_> {
                     .any(|id| self.config.focus.strength(id) >= Strength::Entry),
             })
             .collect();
-        let focus = (!self.config.focus.is_empty()).then(|| self.focus_report());
+        let focus = (!self.config.focus.is_empty()).then(|| self.focus_report(stopped));
         let report = Report {
             app: self.config.app.clone(),
             seed: self.config.seed,
@@ -1992,15 +2108,20 @@ impl Explorer<'_> {
             issues: self.issues,
             journal: self.journal,
             focus,
+            typed: self.echo.borrow().clone(),
         };
         if let Some(dir) = self.out_dir {
+            let mut json = serde_json::to_value(&report).map_err(std::io::Error::other)?;
+            report.scrub_json(&mut json);
             std::fs::write(
                 dir.join("explore.json"),
-                serde_json::to_vec_pretty(&report).map_err(std::io::Error::other)?,
+                serde_json::to_vec_pretty(&json).map_err(std::io::Error::other)?,
             )?;
+            let mut graph = report.graph();
+            report.scrub_json(&mut graph);
             std::fs::write(
                 dir.join("graph.json"),
-                serde_json::to_vec_pretty(&report.graph()).map_err(std::io::Error::other)?,
+                serde_json::to_vec_pretty(&graph).map_err(std::io::Error::other)?,
             )?;
         }
         let count = |s: &str| report.issues.iter().filter(|i| i.severity == s).count();
@@ -2070,7 +2191,7 @@ impl Explorer<'_> {
         }
     }
 
-    fn focus_report(&self) -> serde_json::Value {
+    fn focus_report(&self, stopped: &str) -> serde_json::Value {
         let focus = &self.config.focus;
         let targets = focus.direct_targets();
         let reached = |t: &String| match t.strip_suffix('*') {
@@ -2091,12 +2212,57 @@ impl Explorer<'_> {
             "first_direct_action": first_direct,
             "not_reached": not_reached,
             "not_reached_note": (!not_reached.is_empty()).then_some(
-                "Never on screen during the walk: behind data the test-data mode doesn't create, below the fold (scrolling isn't built), behind a skipped control, or out of budget. Not checked, so not passed."
+                "Never on screen during the walk, so not checked and not passed. not_reached_reasons lists what in this walk could explain it; a target can also be behind data the test-data mode doesn't create."
             ),
+            "not_reached_reasons": if not_reached.is_empty() {
+                Vec::new()
+            } else {
+                self.not_reached_reasons(stopped)
+            },
             "routes": self.routes_done,
             "routes_not_followed": self.routes.len(),
             "basis_note": crate::focus::BASIS_NOTE,
         })
+    }
+
+    /// What in this walk could have kept a target off screen: the scroll
+    /// budget, skipped controls, the action or time budget.
+    fn not_reached_reasons(&self, stopped: &str) -> Vec<String> {
+        let mut reasons = Vec::new();
+        let limit = self.config.scrolls_per_screen;
+        if limit == 0 {
+            reasons.push(
+                "scrolling was off (scrolls_per_screen = 0), so nothing below the fold was seen"
+                    .to_owned(),
+            );
+        } else {
+            let used_up: Vec<&str> = self
+                .screens
+                .iter()
+                .filter(|s| s.scroll_home == self.index[&s.id] && s.scrolls >= limit)
+                .map(|s| s.id.as_str())
+                .collect();
+            if !used_up.is_empty() {
+                reasons.push(format!(
+                    "not reached after scrolling: {} screen(s) used all {limit} scrolls or reached the end of the list ({})",
+                    used_up.len(),
+                    used_up.join(", ")
+                ));
+            }
+        }
+        let skipped: usize = self.screens.iter().map(|s| s.skipped.len()).sum();
+        if skipped > 0 {
+            reasons.push(format!(
+                "blocked by a skipped control: {skipped} control(s) were not touched (each screen's skipped list says why)"
+            ));
+        }
+        if stopped != "explored" {
+            reasons.push(format!(
+                "out of budget: the walk stopped at its {}",
+                stopped.replace('_', " ")
+            ));
+        }
+        reasons
     }
 
     /// Replays issues once more to see whether they come back: errors
@@ -2296,6 +2462,9 @@ mod tests {
         dismissals: usize,
         /// Each scroll brings new rows into view, as a long feed does.
         endless: usize,
+        /// Typing shows the text back in an alert and its button, as an
+        /// app that echoes a search term does.
+        echo: bool,
     }
 
     fn at(mut n: UiNode, y: f64) -> UiNode {
@@ -2420,6 +2589,7 @@ mod tests {
                 keyboard_dismissable: true,
                 dismissals: 0,
                 endless: 0,
+                echo: false,
             }
         }
 
@@ -2514,9 +2684,19 @@ mod tests {
         fn type_text(&mut self, element: &ElementRef, text: &str) -> Result<()> {
             let index: usize = element.0.parse().unwrap();
             self.log.push(format!("type {text}"));
-            let node = self.screen().nth_mut(index).expect("node");
-            node.value = Some(text.into());
+            let field = self.screen().nth_mut(index).expect("node");
+            field.value = Some(text.into());
             self.keyboard_up = true;
+            if self.echo {
+                let alert = UiNode {
+                    children: vec![
+                        node("StaticText", None, Some(&format!("Couldn't save “{text}”"))),
+                        node("Button", None, Some(&format!("Retry “{text}”"))),
+                    ],
+                    ..node("Alert", None, Some("Not Saved"))
+                };
+                self.screen().children.push(alert);
+            }
             Ok(())
         }
         fn dismiss_keyboard(&mut self) -> Result<()> {
@@ -2877,10 +3057,19 @@ mod tests {
             ..config()
         };
         let dir = tempfile::tempdir().unwrap();
+        let journal_dir = tempfile::tempdir().unwrap();
         let mut out = Vec::new();
-        let mut gate = Gate::foreign(APP, policy::Level::Full, Box::new(policy::NoApprover), None);
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Full,
+            Box::new(policy::NoApprover),
+            Some(policy::Journal::create(journal_dir.path()).unwrap()),
+        );
         let mut model = ModelApp::pocket_library();
-        run_gated(&config, &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        // The app echoes what was typed into an alert and a button label.
+        model.echo = true;
+        let report = run_gated(&config, &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        drop(gate);
         // The app got the real text...
         assert!(
             model.log.iter().any(|l| l == &format!("type {SECRET}")),
@@ -2893,7 +3082,7 @@ mod tests {
         assert!(!out.contains(SECRET), "{out}");
         assert!(out.contains("type 18 characters into"), "{out}");
         let mut written = 0;
-        let mut stack = vec![dir.path().to_path_buf()];
+        let mut stack = vec![dir.path().to_path_buf(), journal_dir.path().to_path_buf()];
         while let Some(path) = stack.pop() {
             if path.is_dir() {
                 // Trees and screenshots show what is on screen, typed text
@@ -2909,8 +3098,15 @@ mod tests {
             written += 1;
         }
         assert!(written >= 2, "explore.json and graph.json");
-        let report = std::fs::read_to_string(dir.path().join("explore.json")).unwrap();
-        assert!(report.contains("(the text is not recorded)"), "{report}");
+        let saved = std::fs::read_to_string(dir.path().join("explore.json")).unwrap();
+        assert!(saved.contains("(the text is not recorded)"), "{saved}");
+        // What the app echoed is reported, with the text taken out.
+        assert!(saved.contains("Couldn't save “(typed text)”"), "{saved}");
+        // The returned report scrubs the same way for `--json`.
+        let mut issues = serde_json::to_value(&report.issues).unwrap();
+        assert!(issues.to_string().contains(SECRET));
+        report.scrub_json(&mut issues);
+        assert!(!issues.to_string().contains(SECRET), "{issues}");
         // A repro step types a stand-in and says so.
         let step =
             Action::Type(Locator::Id("bookForm.title".into()), not_recorded(SECRET)).toml_step(&[]);
@@ -3367,6 +3563,48 @@ mod tests {
         let focus = report.focus.unwrap();
         assert_eq!(focus["not_reached"], serde_json::json!([]));
         assert!(focus["tried"]["detail.read"].is_number());
+    }
+
+    #[test]
+    fn a_target_not_reached_says_what_in_this_walk_could_explain_it() {
+        use crate::focus::Link;
+        let focus = || Focus {
+            links: vec![Link {
+                id: "feeds.nowhere".into(),
+                prefix: false,
+                strength: Strength::Direct,
+                file: "FeedListView.swift".into(),
+                how: "declared in FeedListView.swift".into(),
+            }],
+            ..Focus::default()
+        };
+        let reasons = |config: Config| {
+            let mut model = long_list();
+            let report = run(&config, &mut model, None, &mut Vec::new()).unwrap();
+            let focus = report.focus.unwrap();
+            assert_eq!(focus["not_reached"], serde_json::json!(["feeds.nowhere"]));
+            assert!(!focus["not_reached_note"]
+                .as_str()
+                .unwrap()
+                .contains("isn't built"));
+            focus["not_reached_reasons"].to_string()
+        };
+        // Scrolling ran to the end of the list.
+        let r = reasons(Config {
+            focus: focus(),
+            ..config()
+        });
+        assert!(r.contains("not reached after scrolling"), "{r}");
+        assert!(!r.contains("out of budget"), "{r}");
+        // Scrolling off, and the walk cut short.
+        let r = reasons(Config {
+            focus: focus(),
+            scrolls_per_screen: 0,
+            max_actions: 2,
+            ..config()
+        });
+        assert!(r.contains("scrolling was off"), "{r}");
+        assert!(r.contains("out of budget"), "{r}");
     }
 
     #[test]
