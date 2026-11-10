@@ -37,7 +37,7 @@ Everything runs from the laptop with the phone on USB (Linux, no Mac).
    forge ui explore --app com.ranchero.NetNewsWire-iOS --any-app --real-data --actions 40 --seed 1
    ```
 
-   The screens, `graph.json` and the policy journal go to `~/.cache/forge/any-app/`, never into the repository: they are screenshots of an app on the person's phone.
+   The screens, `graph.json` and the policy journal go to `~/.cache/forge/any-app/`, never into the repository: they are screenshots of an app on the person's phone. Typed text is recorded as its length only, but the saved trees and screenshots show whatever was on screen.
 3. **Our app.** `forge run ios --project examples/commonplace`, then the same walk on test data, and the flows:
 
    ```bash

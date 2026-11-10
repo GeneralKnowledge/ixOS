@@ -132,12 +132,29 @@ pub enum Action {
     Scroll(Locator, String),
 }
 
+/// What a walk in another developer's app records in place of the text it
+/// typed: only the number of characters (the any-app policy's promise).
+const NOT_RECORDED: &str = "(not recorded: ";
+
+fn not_recorded(text: &str) -> String {
+    format!("{NOT_RECORDED}{} characters)", text.chars().count())
+}
+
+/// The number of characters, if `text` stands in for text not recorded.
+fn recorded_length(text: &str) -> Option<&str> {
+    text.strip_prefix(NOT_RECORDED)?
+        .strip_suffix(" characters)")
+}
+
 impl Action {
     pub fn describe(&self) -> String {
         match self {
             Action::Launch => "launch".into(),
             Action::Tap(locator) => format!("tap {locator}"),
-            Action::Type(locator, text) => format!("type {text:?} into {locator}"),
+            Action::Type(locator, text) => match recorded_length(text) {
+                Some(n) => format!("type {n} characters into {locator} (the text is not recorded)"),
+                None => format!("type {text:?} into {locator}"),
+            },
             Action::Scroll(locator, direction) => format!("scroll {locator} {direction}"),
         }
     }
@@ -157,7 +174,12 @@ impl Action {
             ),
             Action::Tap(locator) => format!("tap = {{ {} }}", target(locator)),
             Action::Type(locator, text) => {
-                format!("type = {{ {}, text = {} }}", target(locator), quote(text))
+                let step = format!("type = {{ {}, text = {} }}", target(locator), quote(text));
+                if recorded_length(text).is_some() {
+                    format!("{step}  # another developer's app: the text typed is not recorded; put your own")
+                } else {
+                    step
+                }
             }
             Action::Scroll(locator, direction) => format!(
                 "scroll = {{ {}, direction = {} }}",
@@ -1104,6 +1126,10 @@ struct Explorer<'a> {
     /// While a scroll runs: the screen whose scroll budget it spends, so a
     /// screen the scroll reveals shares it.
     scroll_home: Option<usize>,
+    /// Another developer's app: typed text is never written down.
+    redact: bool,
+    /// The text behind each action whose text is not recorded.
+    typed: HashMap<(Locator, String), String>,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -1134,6 +1160,7 @@ pub fn run_gated(
         std::fs::create_dir_all(dir.join("screens"))?;
         std::fs::create_dir_all(dir.join("repro"))?;
     }
+    let redact = gate.is_foreign();
     let mut explorer = Explorer {
         config,
         driver,
@@ -1162,6 +1189,8 @@ pub fn run_gated(
         last_outcome: String::new(),
         last_unchanged: false,
         scroll_home: None,
+        redact,
+        typed: HashMap::new(),
     };
     writeln!(
         explorer.out,
@@ -1471,14 +1500,16 @@ impl Explorer<'_> {
             Action::Scroll(locator, direction) => {
                 self.on_element(locator, &mut |d, e| d.scroll(e, direction))
             }
-            Action::Type(locator, text) => self
-                .on_element(locator, &mut |d, e| d.type_text(e, text))
-                // Put the keyboard away so the walk carries on in the app.
-                // Not every keyboard can be dismissed this way; what stays
-                // up is cut from the tree by `app_part`.
-                .map(|()| {
-                    let _ = self.driver.dismiss_keyboard();
-                }),
+            Action::Type(locator, text) => {
+                let text = self.real_text(locator, text).to_owned();
+                self.on_element(locator, &mut |d, e| d.type_text(e, &text))
+                    // Put the keyboard away so the walk carries on in the app.
+                    // Not every keyboard can be dismissed this way; what stays
+                    // up is cut from the tree by `app_part`.
+                    .map(|()| {
+                        let _ = self.driver.dismiss_keyboard();
+                    })
+            }
         };
         let mut outcome = match result {
             Ok(()) => None,
@@ -1627,12 +1658,24 @@ impl Explorer<'_> {
             Action::Launch => policy::Action::Launch,
             Action::Scroll(..) => policy::Action::Scroll,
             Action::Tap(locator) => policy::Action::Tap(target_of(&self.tree, locator)),
-            Action::Type(locator, text) => policy::Action::Type {
-                target: target_of(&self.tree, locator),
-                chars: text.chars().count(),
-                presses_return: text.contains('\n'),
-            },
+            Action::Type(locator, text) => {
+                let text = self.real_text(locator, text);
+                policy::Action::Type {
+                    target: target_of(&self.tree, locator),
+                    chars: text.chars().count(),
+                    presses_return: text.contains('\n'),
+                }
+            }
         }
+    }
+
+    /// The text an action types: itself, or the text kept out of the
+    /// records in another developer's app.
+    fn real_text<'t>(&'t self, locator: &Locator, text: &'t str) -> &'t str {
+        self.typed
+            .get(&(locator.clone(), text.to_owned()))
+            .map(String::as_str)
+            .unwrap_or(text)
     }
 
     /// Finds the element and acts on it, finding it again once if the
@@ -1699,6 +1742,20 @@ impl Explorer<'_> {
 
     fn discover(&mut self, id: &str, step: usize) -> Result<()> {
         let (mut found, skipped) = candidates(&self.tree, self.config);
+        if self.redact {
+            // In another developer's app the walk keeps what it typed out of
+            // everything it writes: the reports, graph, repro files and the
+            // terminal show only the length. The text itself stays in memory
+            // so routes can be replayed.
+            for candidate in &mut found {
+                if let Action::Type(locator, text) = &mut candidate.action {
+                    let shown = not_recorded(text);
+                    self.typed
+                        .insert((locator.clone(), shown.clone()), std::mem::take(text));
+                    *text = shown;
+                }
+            }
+        }
         // Seeded order, exits last.
         let mut exits: Vec<Candidate> = Vec::new();
         found.retain(|c| {
@@ -2810,6 +2867,67 @@ mod tests {
         let refused = run_gated(&config(), &mut model, None, &mut Vec::new(), &mut gate);
         assert!(matches!(refused, Err(UiError::Refused(_))));
         assert!(model.log.is_empty(), "{:?}", model.log);
+    }
+
+    #[test]
+    fn in_another_developers_app_typed_text_is_never_written_down() {
+        const SECRET: &str = "Secret search term";
+        let config = Config {
+            fixtures: HashMap::from([("bookForm.title".to_owned(), SECRET.to_owned())]),
+            ..config()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut gate = Gate::foreign(APP, policy::Level::Full, Box::new(policy::NoApprover), None);
+        let mut model = ModelApp::pocket_library();
+        run_gated(&config, &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        // The app got the real text...
+        assert!(
+            model.log.iter().any(|l| l == &format!("type {SECRET}")),
+            "{:?}",
+            model.log
+        );
+        // ...and nothing the walk wrote has it: not the terminal, the report,
+        // the graph or a repro file. Only the length is kept.
+        let out = String::from_utf8(out).unwrap();
+        assert!(!out.contains(SECRET), "{out}");
+        assert!(out.contains("type 18 characters into"), "{out}");
+        let mut written = 0;
+        let mut stack = vec![dir.path().to_path_buf()];
+        while let Some(path) = stack.pop() {
+            if path.is_dir() {
+                // Trees and screenshots show what is on screen, typed text
+                // included; docs/forge-explore.md says so.
+                if path.ends_with("screens") {
+                    continue;
+                }
+                stack.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            assert!(!text.contains(SECRET), "{}: {text}", path.display());
+            written += 1;
+        }
+        assert!(written >= 2, "explore.json and graph.json");
+        let report = std::fs::read_to_string(dir.path().join("explore.json")).unwrap();
+        assert!(report.contains("(the text is not recorded)"), "{report}");
+        // A repro step types a stand-in and says so.
+        let step =
+            Action::Type(Locator::Id("bookForm.title".into()), not_recorded(SECRET)).toml_step(&[]);
+        assert!(
+            step.contains("not recorded") && !step.contains(SECRET),
+            "{step}"
+        );
+        assert!(crate::script::Script::parse(&format!(
+            "name = \"r\"\napp = \"{APP}\"\n[[step]]\n{step}\n"
+        ))
+        .is_ok());
+
+        // In the developer's own app the text is kept, so a repro retypes it.
+        let mut model = ModelApp::pocket_library();
+        let mut out = Vec::new();
+        run(&config, &mut model, None, &mut out).unwrap();
+        assert!(String::from_utf8(out).unwrap().contains(SECRET));
     }
 
     #[test]
