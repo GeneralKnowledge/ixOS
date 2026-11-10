@@ -43,7 +43,7 @@ The question: can a developer who uses no AI agent build, test, debug and mainta
 
 ## Remaining gaps
 
-- The iPhone steps of the workflow (7–11: build, install, launch, logs, UI test) have not been run as this workflow on a fresh app. Each command has run on an iPhone in other work. `FORGE_HUMAN_DEVICE=1 scripts/check-human-workflow.sh` runs them, and they belong in the next phone sitting.
-- `forge ui launch` is Linux-tested only. Its launch step is the one `forge ui run` uses on Cati.
+- The iPhone steps ran on 2026-11-10 (`FORGE_HUMAN_DEVICE=1`, iPhone 15 Pro Max). Build, install, `forge ui launch`, screenshot, audit, the smoke test and `forge diagnose` passed, and a person saw the reading time on the phone. The run found that a laptop with no rustup default couldn't run `cargo` in the app folder (fixed: `forge init` puts `rust-toolchain.toml` there too). Still unproven on the phone: a 10-second log capture came back empty, and `forge ui explore --real-data` wasn't part of the run.
+- `ui audit` warns on two of the starter's system controls: the search field has no identifier, and the New Note toolbar button is 90x33 pt.
 - The real-data allow list is Linux-tested on the model app only.
 - Text-mode commands record history but no log file. `--json` runs keep a log in `.forge/logs/`.
