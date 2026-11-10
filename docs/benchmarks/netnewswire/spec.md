@@ -22,7 +22,7 @@ Each is a `forge ui run` file for Commonplace (in `examples/commonplace/uitests/
 | # | Flow | NetNewsWire | Commonplace |
 |---|---|---|---|
 | F1 | Add the fixture feed by address; its articles appear | Expected | `subscribe-and-read.toml` |
-| F2 | Open an article; it is marked read and the unread count drops | Expected | `subscribe-and-read.toml` (the feed's count goes from 3 to 2 unread). **Fails on Cati (2026-11-10):** the article shows as read, but the feed list still counts 3 unread; see `opened-article-counted-unread` in gaps.toml |
+| F2 | Open an article; it is marked read and the unread count drops | Expected | `subscribe-and-read.toml` (the fixture feed's 4 articles go to 3 unread); passed on Cati 2026-11-10 up to that check, which expected the wrong number until it was corrected |
 | F3 | Bookmark (star) an article; it appears under Bookmarks (Starred) | Expected | `subscribe-and-read.toml` |
 | F4 | Mark all as read in a feed | Expected | `mark-all-read.toml`, passed on Cati 2026-11-10 |
 | F5 | Refresh with nothing new: no new articles, no duplicates | Expected | Rust test `an_unchanged_or_failing_feed_is_reported_not_fatal` |

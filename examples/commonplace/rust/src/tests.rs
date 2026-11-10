@@ -345,8 +345,7 @@ fn errors_have_framework_kinds() {
 
 #[test]
 fn bookmarking_an_opened_article_keeps_it_read() {
-    // Cati, 2026-11-10: after opening and bookmarking an article, the feed
-    // list still counted it unread. Rust keeps it read.
+    // The F2 flow on Cati: open, then bookmark; the article stays read.
     let dir = tempfile::tempdir().unwrap();
     let (core, _) = subscribed(dir.path());
     let before = core.counts(Timeline::All).unread;

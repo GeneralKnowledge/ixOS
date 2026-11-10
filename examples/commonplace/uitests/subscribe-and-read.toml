@@ -54,10 +54,10 @@ tap = { id = "BackButton" }
 [[step]]
 tap = { id = "BackButton" }
 
-# Opening the article marked it read: the feed has 3 articles, 2 unread
-# (F2).
+# Opening the article marked it read: the fixture feed has 4 articles
+# (one untitled), so 3 are left unread (F2).
 [[step]]
-expect = { label_contains = "2 unread" }
+expect = { label_contains = "3 unread" }
 
 [[step]]
 tap = { id = "feeds.bookmarks" }

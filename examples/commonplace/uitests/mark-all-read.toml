@@ -1,5 +1,5 @@
 # The benchmark's F4 (docs/benchmarks/netnewswire/spec.md): subscribe to
-# the fixture feed (3 articles, all unread), mark them all read from its
+# the fixture feed (4 articles, all unread), mark them all read from its
 # timeline, and see the unread count go. Needs the fixture server on the
 # laptop (docs/benchmarks/netnewswire/fixtures/serve.py); replace the
 # address with the laptop's. Starts on an empty, throwaway library.
@@ -41,7 +41,7 @@ tap = { id = "BackButton" }
 
 # The feed no longer shows an unread count.
 [[step]]
-expect = { label_contains = "3 unread", gone = true }
+expect = { label_contains = "4 unread", gone = true }
 
 [[step]]
 expect = { label_contains = "unread", gone = true }
