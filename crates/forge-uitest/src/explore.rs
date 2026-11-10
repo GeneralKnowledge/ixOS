@@ -1042,8 +1042,14 @@ struct Screen {
     identifiers: BTreeSet<String>,
     /// The shortest known way here without no-op taps.
     route: Vec<Action>,
-    /// Scrolls done here to reach controls below the fold.
+    /// Scrolls done here to reach controls below the fold. Counted on
+    /// the screen's `scroll_home`, not here.
     scrolls: usize,
+    /// The screen whose scroll budget this one shares. Scrolling a list
+    /// changes which rows are visible, and so the fingerprint: the rows
+    /// further down are a new screen record but the same logical screen,
+    /// so they spend the budget of the screen the scrolling started on.
+    scroll_home: usize,
 }
 
 /// Where an action left the app.
@@ -1095,6 +1101,9 @@ struct Explorer<'a> {
     /// The last action's outcome, and whether it left the tree as it was.
     last_outcome: String,
     last_unchanged: bool,
+    /// While a scroll runs: the screen whose scroll budget it spends, so a
+    /// screen the scroll reveals shares it.
+    scroll_home: Option<usize>,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -1152,6 +1161,7 @@ pub fn run_gated(
         quiet: false,
         last_outcome: String::new(),
         last_unchanged: false,
+        scroll_home: None,
     };
     writeln!(
         explorer.out,
@@ -1230,15 +1240,17 @@ impl Explorer<'_> {
             return Ok(true);
         }
         // Nothing left in view: scroll the list for controls below the fold.
-        if self.screens[here].scrolls < self.config.scrolls_per_screen {
+        let home = self.screens[here].scroll_home;
+        if self.screens[home].scrolls < self.config.scrolls_per_screen {
             if let Some(list) = scroll_target(&self.tree) {
-                self.screens[here].scrolls += 1;
-                self.perform(Action::Scroll(list, "down".into()), true)?;
+                self.screens[home].scrolls += 1;
+                self.scroll_home = Some(home);
+                let done = self.perform(Action::Scroll(list, "down".into()), true);
+                self.scroll_home = None;
+                done?;
                 // The end of the list: nothing moved, so stop scrolling here.
                 if self.last_unchanged {
-                    if let Some(&i) = self.index.get(&self.current) {
-                        self.screens[i].scrolls = self.config.scrolls_per_screen;
-                    }
+                    self.screens[home].scrolls = self.config.scrolls_per_screen;
                 }
                 return Ok(true);
             }
@@ -1725,8 +1737,10 @@ impl Explorer<'_> {
                 .unwrap_or_default(),
             found.len()
         )?;
-        self.index.insert(id.to_owned(), self.screens.len());
+        let index = self.screens.len();
+        self.index.insert(id.to_owned(), index);
         self.screens.push(Screen {
+            scroll_home: self.scroll_home.unwrap_or(index),
             id: id.to_owned(),
             title: title(&self.tree),
             path: self.trail.clone(),
@@ -2223,6 +2237,8 @@ mod tests {
         /// Whether `dismiss_keyboard` works (WDA can't always).
         keyboard_dismissable: bool,
         dismissals: usize,
+        /// Each scroll brings new rows into view, as a long feed does.
+        endless: usize,
     }
 
     fn at(mut n: UiNode, y: f64) -> UiNode {
@@ -2346,6 +2362,7 @@ mod tests {
                 keyboard_up: false,
                 keyboard_dismissable: true,
                 dismissals: 0,
+                endless: 0,
             }
         }
 
@@ -2375,6 +2392,24 @@ mod tests {
         }
         fn scroll(&mut self, _: &ElementRef, direction: &str) -> Result<()> {
             self.log.push(format!("scroll {direction}"));
+            if self.endless > 0 {
+                // The rows in view scroll off and a new one comes in.
+                self.endless += 1;
+                let row = format!("feeds.row.{}", self.endless);
+                for list in self
+                    .screen()
+                    .children
+                    .iter_mut()
+                    .filter(|n| n.kind == "Table")
+                {
+                    for row in &mut list.children {
+                        row.visible = false;
+                    }
+                    list.children
+                        .push(node("StaticText", Some(&row), Some("An article")));
+                }
+                return Ok(());
+            }
             // Everything in the screen's lists comes into view.
             for list in self
                 .screen()
@@ -2712,6 +2747,17 @@ mod tests {
         )
         .unwrap();
         assert!(matches!(parsed.first(), Some(Action::Scroll(_, d)) if d == "down"));
+    }
+
+    #[test]
+    fn the_scroll_limit_holds_for_a_list_that_never_ends() {
+        // Every scroll shows new rows, so a new fingerprint: the rows further
+        // down are still the same screen, and share its three scrolls.
+        let mut model = long_list();
+        model.endless = 1;
+        run(&config(), &mut model, None, &mut Vec::new()).unwrap();
+        let scrolls = model.log.iter().filter(|l| l.starts_with("scroll")).count();
+        assert_eq!(scrolls, 3, "{:?}", model.log);
     }
 
     #[test]

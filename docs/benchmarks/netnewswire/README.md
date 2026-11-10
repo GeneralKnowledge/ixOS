@@ -28,7 +28,7 @@ Everything runs from the laptop with the phone on USB (Linux, no Mac).
 
    ```toml
    [apps]
-   "com.ranchero.NetNewsWire-iOS" = "operate"   # look only; "full" lets the walk star and mark read
+   "com.ranchero.NetNewsWire-iOS" = "operate"   # taps on real data (marks articles read); "full" only if it holds test feeds alone
    ```
 
    Confirm the bundle id with `forge device apps` first. Then walk it:

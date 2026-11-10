@@ -83,9 +83,9 @@ why = "This is the second consumer the roadmap's reader waits for"
 
 [[pattern]]
 id = "throwaway-data-launch"
-does = "A launch argument starts the app on an empty temporary library, so UI tests and the explorer can change data freely"
-provided_by = "ForgeKit ForgeHost (-ForgeTemporaryData) and forge.toml [ui_test] test_data_args"
+does = "A launch argument starts the app on an empty temporary library, so UI tests and the explorer can change data freely; with -ForgeKeepTestData a relaunch finds the same library, so a test can check that something was saved"
+provided_by = "ForgeKit ForgeEnvironment (-ForgeTemporaryData, -ForgeKeepTestData since B0) and forge.toml [ui_test] test_data_args"
 app_code = "One line in forge.toml"
-duplicated = "nothing"
+duplicated = "Good Dog and Pocket Library each have their own -ForgeUITestData folder, which is emptied at every launch, so neither can check persistence by relaunching (Good Dog's journey.toml says so)"
 shared = "yes"
-why = "Already shared"
+why = "Already shared; keeping the data was added to the shared argument rather than to Commonplace. Good Dog and Pocket Library could move to it"

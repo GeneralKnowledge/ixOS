@@ -76,4 +76,26 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertEqual(appErrorKind(error: .Http(status: 503)), .unavailable)
         XCTAssertTrue(AppError.Cancelled.isCancellation)
     }
+
+    /// UI tests launch with `-ForgeTemporaryData`: each launch starts empty,
+    /// and adding `-ForgeKeepTestData` finds the last launch's data again,
+    /// so a relaunch can check that a bookmark was saved.
+    func testThrowawayDataStartsEmptyUnlessKept() throws {
+        let root = try makeDirectory()
+        let fresh = [ForgeEnvironment.temporaryDataArgument]
+        let first = try ForgeEnvironment.standard(app: "Commonplace", arguments: fresh, testRoot: root)
+        let marker = URL(fileURLWithPath: first.dataDirectory).appendingPathComponent("marker")
+        try Data("saved".utf8).write(to: marker)
+
+        let kept = try ForgeEnvironment.standard(
+            app: "Commonplace",
+            arguments: fresh + [ForgeEnvironment.keepTestDataArgument],
+            testRoot: root
+        )
+        XCTAssertEqual(kept.dataDirectory, first.dataDirectory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: marker.path))
+
+        _ = try ForgeEnvironment.standard(app: "Commonplace", arguments: fresh, testRoot: root)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+    }
 }

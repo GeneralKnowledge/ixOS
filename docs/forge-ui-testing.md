@@ -148,7 +148,7 @@ Steps that work today, one action per step (unknown keys are rejected):
 | Step | Form |
 |---|---|
 | `launch` | `{}` or `{ args = [...] }` (launch arguments; with arguments a running app is stopped first, so they apply) |
-| `activate`, `terminate` | `{}`: bring the app to the front, or quit it. `terminate` then `launch` is a relaunch |
+| `activate`, `terminate` | `{}`: bring the app to the front, or quit it. `terminate` then `launch` is a relaunch. A ForgeKit app launched with `-ForgeTemporaryData` starts on empty throwaway data each time; relaunch it with `args = ["-ForgeTemporaryData", "-ForgeKeepTestData"]` to find the same data again and check that something was saved |
 | `background` | seconds, then the app comes back |
 | `tap`, `clear` | a target |
 | `type` | a target plus `text`, and `clear = true` to empty the field first |

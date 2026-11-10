@@ -215,6 +215,10 @@ impl AppCore {
         let fetched = self
             .rt
             .run("refresh", work, move |cancel| {
+                // One feed after another for now. Nothing below depends on
+                // that: each fetch is independent and results are applied
+                // together in one command, so a bounded fan-out (gap
+                // `concurrent-fetches`) replaces only this loop.
                 let mut fetched = Vec::with_capacity(sources.len());
                 for source in &sources {
                     let result = fetch(

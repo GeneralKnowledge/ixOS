@@ -1484,6 +1484,15 @@ pub fn explore(
 /// person's own data in a Forge app; at `full` the person has said the app
 /// holds nothing they mind changing (a reference app subscribed to test
 /// feeds), so it may save, edit and type as on test data.
+fn policy_file() -> String {
+    policy::policy_path()
+        .map(|p| p.display().to_string())
+        .unwrap_or_else(|| "~/.config/forge/device-control.toml".into())
+}
+
+/// How a walk in another developer's app is set up from the person's policy
+/// level. The levels mean what the any-app policy says they mean; nothing
+/// here widens or redefines them.
 pub fn foreign_explore_config(
     installed: &str,
     level: policy::Level,
@@ -1506,28 +1515,44 @@ pub fn foreign_explore_config(
                 .into(),
         );
     }
+    // The levels keep the meanings the any-app policy gives them
+    // (forge_uitest::policy): the gate decides what each action may do, and
+    // the walk's own data rules only narrow it further.
     let test_data = match level {
-        policy::Level::Deny | policy::Level::Observe => {
+        policy::Level::Deny => {
             return Err(format!(
-                "{installed} is at `{}` in your device-control policy, and exploring taps: give it `operate` (look only, with --real-data) or `full` (the app holds only test data) in {}",
-                level.name(),
-                policy::policy_path()
-                    .map(|p| p.display().to_string())
-                    .unwrap_or_else(|| "~/.config/forge/device-control.toml".into())
+                "{installed} is at `deny` in your device-control policy ({}): Forge doesn't open it",
+                policy_file()
             ))
         }
+        // Launch, read, screenshot and scroll; the gate skips every tap and
+        // all typing. Nothing in the app is touched, so --real-data is fine
+        // either way.
+        policy::Level::Observe => false,
+        // Taps and typing on the person's own data, with each commit (send,
+        // delete, a tap that says nothing about what it does) put to the
+        // person. Ordinary taps can still change data, so the person says
+        // they know: --real-data.
         policy::Level::Operate if !options.real_data => {
             return Err(format!(
-                "{installed} is at `operate`: the walk may only look around, so pass --real-data (or give it `full` if everything in it is test data)"
+                "{installed} is at `operate`: the walk taps and types in it on your own data, and ordinary taps can change that data (opening an article can mark it read). Pass --real-data to go ahead; commits still ask you each time"
             ))
         }
         policy::Level::Operate => false,
-        policy::Level::Full => !options.real_data,
+        // Everything but the hard refusals: only for an app whose data is all
+        // throwaway test data. --real-data would not restrict the gate, so
+        // it is refused rather than seeming to.
+        policy::Level::Full if options.real_data => {
+            return Err(format!(
+                "{installed} is at `full`, which allows every action, so it is only for an app whose data is all test data; --real-data can't restrict it. Explore it at `operate` in {} to use your own data",
+                policy_file()
+            ))
+        }
+        policy::Level::Full => true,
     };
     if !test_data && options.allow_destructive {
         return Err(
-            "--allow-destructive needs an app at `full` whose data is all test data, without --real-data"
-                .into(),
+            "--allow-destructive needs an app at `full`, whose data is all test data".into(),
         );
     }
     let mut fixtures = std::collections::HashMap::new();
@@ -1620,10 +1645,10 @@ pub fn explore_app(
         "{installed} is not a Forge app: exploring at the `{}` level from {}, {}. Screens, the graph and the journal go to {}",
         level.name(),
         policy.where_(),
-        if config.test_data {
-            "and its data may change (the policy says it holds only test data)"
-        } else {
-            "looking only"
+        match level {
+            policy::Level::Observe => "looking only: launching, reading and scrolling; taps and typing are skipped",
+            policy::Level::Operate => "on your own data: it taps rows, tabs, back and search, and those ordinary taps can change data (an article opened is marked read); every commit asks you first",
+            _ => "and its data may change (the policy says it holds only test data)",
         },
         dir.display()
     )
@@ -1693,17 +1718,27 @@ mod tests {
     fn another_apps_walk_follows_the_persons_policy_level() {
         use forge_uitest::policy::Level;
         const NNW: &str = "com.ranchero.NetNewsWire-iOS";
-        // Observe can't tap, so a walk is refused with what to change.
-        let e = foreign_explore_config(NNW, Level::Observe, &options()).unwrap_err();
-        assert!(e.contains("`observe`") && e.contains("operate"), "{e}");
-        // Operate looks only, and says so.
-        let e = foreign_explore_config(NNW, Level::Operate, &options()).unwrap_err();
-        assert!(e.contains("--real-data"), "{e}");
-        let looking = ExploreOptions {
+        // The levels mean what the any-app policy says (forge_uitest::policy).
+        // Deny: not opened.
+        let e = foreign_explore_config(NNW, Level::Deny, &options()).unwrap_err();
+        assert!(e.contains("`deny`"), "{e}");
+        // Observe: a look-only walk; the gate skips taps and typing.
+        let c = foreign_explore_config(NNW, Level::Observe, &options()).unwrap();
+        assert!(!c.test_data);
+        let real = ExploreOptions {
             real_data: true,
             ..options()
         };
-        let c = foreign_explore_config(NNW, Level::Operate, &looking).unwrap();
+        assert!(
+            !foreign_explore_config(NNW, Level::Observe, &real)
+                .unwrap()
+                .test_data
+        );
+        // Operate: taps on the person's own data, so it needs --real-data,
+        // and the refusal says ordinary taps can change data.
+        let e = foreign_explore_config(NNW, Level::Operate, &options()).unwrap_err();
+        assert!(e.contains("--real-data") && e.contains("can change"), "{e}");
+        let c = foreign_explore_config(NNW, Level::Operate, &real).unwrap();
         assert!(!c.test_data);
         assert_eq!(c.app, NNW);
         // Full: the person said its data is all test data.
@@ -1713,12 +1748,21 @@ mod tests {
             .launch_args
             .iter()
             .any(|a| a.contains("ContentSizeCategory")));
-        // Destructive taps only at full, on test data.
+        // Full with --real-data is refused: the flag can't restrict the gate.
+        let e = foreign_explore_config(NNW, Level::Full, &real).unwrap_err();
+        assert!(e.contains("operate"), "{e}");
+        // Destructive taps only at full.
         let destructive = ExploreOptions {
             allow_destructive: true,
-            ..looking.clone()
+            ..options()
         };
-        assert!(foreign_explore_config(NNW, Level::Full, &destructive).is_err());
+        assert!(foreign_explore_config(NNW, Level::Full, &destructive).is_ok());
+        let destructive_real = ExploreOptions {
+            allow_destructive: true,
+            ..real.clone()
+        };
+        assert!(foreign_explore_config(NNW, Level::Operate, &destructive_real).is_err());
+        assert!(foreign_explore_config(NNW, Level::Observe, &destructive).is_err());
         // Options that read a Forge app's source don't apply.
         let aimed = ExploreOptions {
             since: Some("HEAD".into()),

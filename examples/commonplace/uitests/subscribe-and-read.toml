@@ -1,8 +1,10 @@
 # The benchmark's first flow (docs/benchmarks/netnewswire/spec.md, F1-F3):
 # subscribe to a fixture feed, open its timeline, read an article,
-# bookmark it, and see it under Bookmarks. Needs the fixture server on the
-# laptop (docs/benchmarks/netnewswire/fixtures/serve.sh); replace the
-# address with the laptop's. Starts on an empty, throwaway library.
+# bookmark it, see it under Bookmarks, then relaunch and see it there
+# still (saved, not just shown). Needs the fixture server on the laptop
+# (docs/benchmarks/netnewswire/fixtures/serve.py); replace the address with
+# the laptop's. Starts on an empty, throwaway library; the relaunch keeps
+# that library with -ForgeKeepTestData, so the person's own is never used.
 
 name = "Subscribe, read and bookmark"
 app = "org.forgemobile.commonplace"
@@ -43,3 +45,35 @@ tap = { id = "article.bookmark" }
 
 [[step]]
 expect = { label = "Remove Bookmark" }
+
+# Back to the feed list, and the article is under Bookmarks.
+[[step]]
+tap = { id = "BackButton" }
+
+[[step]]
+tap = { id = "BackButton" }
+
+[[step]]
+tap = { id = "feeds.bookmarks" }
+
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+screenshot = "3-bookmarks"
+
+# Quit and relaunch on the same throwaway library: the bookmark was saved.
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-ForgeKeepTestData"] }
+
+[[step]]
+tap = { id = "feeds.bookmarks" }
+
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+screenshot = "4-bookmarks-after-relaunch"

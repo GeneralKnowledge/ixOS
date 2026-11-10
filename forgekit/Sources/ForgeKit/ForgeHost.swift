@@ -34,16 +34,42 @@ public struct ForgeEnvironment: Sendable, Equatable {
 
     /// The launch argument that makes `standard(app:)` use throwaway data:
     /// UI tests and `forge ui explore` pass it so they never touch the
-    /// person's own data.
+    /// person's own data. Each launch with it starts on empty data.
     public static let temporaryDataArgument = "-ForgeTemporaryData"
 
-    /// Application Support/<app>/data and Caches/<app>, or a temporary
+    /// With `temporaryDataArgument`, keeps the throwaway data of the last
+    /// launch instead of starting empty: a UI test relaunches with both to
+    /// check that what it did was saved, still without touching the
+    /// person's data. iOS may clear temporary files while the app isn't
+    /// running, so use it right after the launch that made the data.
+    public static let keepTestDataArgument = "-ForgeKeepTestData"
+
+    /// Application Support/<app>/data and Caches/<app>, or a throwaway
     /// environment when the app was launched with `temporaryDataArgument`.
     public static func standard(app: String) throws -> ForgeEnvironment {
-        if ProcessInfo.processInfo.arguments.contains(temporaryDataArgument) {
-            return try temporary()
-        }
+        try standard(app: app, arguments: ProcessInfo.processInfo.arguments)
+    }
+
+    /// `standard(app:)` for the given launch arguments. `testRoot` is where
+    /// throwaway data goes (the temporary folder; tests pass their own).
+    public static func standard(
+        app: String,
+        arguments: [String],
+        testRoot: URL = FileManager.default.temporaryDirectory
+    ) throws -> ForgeEnvironment {
         let fm = FileManager.default
+        if arguments.contains(temporaryDataArgument) {
+            // One folder per app, emptied at launch unless kept, so a
+            // relaunch with `keepTestDataArgument` finds it again.
+            let base = testRoot.appendingPathComponent("forgekit-test-\(app)", isDirectory: true)
+            if !arguments.contains(keepTestDataArgument), fm.fileExists(atPath: base.path) {
+                try fm.removeItem(at: base)
+            }
+            let data = base.appendingPathComponent("data", isDirectory: true)
+            let cache = base.appendingPathComponent("caches", isDirectory: true)
+            for dir in [data, cache] { try fm.createDirectory(at: dir, withIntermediateDirectories: true) }
+            return ForgeEnvironment(dataDirectory: data.path, cachesDirectory: cache.path)
+        }
         let support = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let caches = try fm.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
         let data = support.appendingPathComponent(app).appendingPathComponent("data", isDirectory: true)
