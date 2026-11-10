@@ -241,6 +241,8 @@ name = "forge-app"
 version = "0.3.1"
 dependencies = [
  "forge-runtime",
+ "forge-storage",
+ "serde",
  "uniffi",
 ]
 

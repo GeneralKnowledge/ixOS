@@ -864,6 +864,65 @@ public func FfiConverterTypeRuntimeEvents_lower(_ value: RuntimeEvents) -> UInt6
 
 
 /**
+ * One problem with one field: `field` names it, `message` says what to do.
+ * Part of the shared contract, so every app's errors carry the same shape
+ * and ForgeKit ships its Swift.
+ */
+public struct FieldError: Equatable, Hashable {
+    public var field: String
+    public var message: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(field: String, message: String) {
+        self.field = field
+        self.message = message
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension FieldError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeFieldError: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> FieldError {
+        return
+            try FieldError(
+                field: FfiConverterString.read(from: &buf), 
+                message: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: FieldError, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.field, into: &buf)
+        FfiConverterString.write(value.message, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFieldError_lift(_ buf: RustBuffer) throws -> FieldError {
+    return try FfiConverterTypeFieldError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeFieldError_lower(_ value: FieldError) -> RustBuffer {
+    return FfiConverterTypeFieldError.lower(value)
+}
+
+
+/**
  * The application lifecycle phase, as the host reports it.
  */
 

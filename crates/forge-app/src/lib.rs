@@ -13,6 +13,11 @@
 //! storage. The executor runs the app's closures over whatever state the
 //! app keeps; JSON, SQLite, files or nothing stay the app's choice.
 //!
+//! Two optional foundations sit beside the runtime: [`document`], an app's
+//! state as one versioned JSON file with the save and recovery rules, and
+//! [`validation`], field-by-field input errors ([`FieldError`] is part of
+//! the shared contract, so hosts show every app's errors alike).
+//!
 //! ```ignore
 //! #[derive(uniffi::Object)]
 //! pub struct AppCore { rt: forge_app::Runtime<Notes> }
@@ -27,16 +32,20 @@
 //! ```
 
 mod contract;
+pub mod document;
 mod executor;
 mod published;
 mod runtime;
+pub mod validation;
 
 pub use contract::{
     forge_app_contract_version, AppPhase, Cancellation, ErrorKind, RuntimeEvent, RuntimeEvents,
     Stopped, CONTRACT_VERSION,
 };
+pub use document::{Document, DocumentError};
 pub use published::Published;
 pub use runtime::{DataDirectory, OpenError, Runtime, Work};
+pub use validation::{FieldError, Invalid, Validator};
 
 // Re-exported so `export_runtime!` and apps need no direct dependency.
 #[doc(hidden)]
