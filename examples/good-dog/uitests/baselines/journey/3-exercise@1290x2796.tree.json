@@ -245,7 +245,7 @@
                                                                             "x": -20.0,
                                                                             "y": -1767.0,
                                                                             "width": 470.0,
-                                                                            "height": 2112.0
+                                                                            "height": 2191.0
                                                                           }
                                                                         },
                                                                         {
@@ -665,12 +665,140 @@
                                                                           }
                                                                         },
                                                                         {
+                                                                          "kind": "Cell",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 20.0,
+                                                                            "y": 327.0,
+                                                                            "width": 390.0,
+                                                                            "height": 80.0
+                                                                          },
+                                                                          "children": [
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": false,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 327.0,
+                                                                                "width": 390.0,
+                                                                                "height": 80.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": false,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 327.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 80.0
+                                                                                  }
+                                                                                }
+                                                                              ]
+                                                                            },
+                                                                            {
+                                                                              "kind": "Other",
+                                                                              "enabled": true,
+                                                                              "visible": true,
+                                                                              "frame": {
+                                                                                "x": 20.0,
+                                                                                "y": 327.0,
+                                                                                "width": 390.0,
+                                                                                "height": 80.0
+                                                                              },
+                                                                              "children": [
+                                                                                {
+                                                                                  "kind": "Other",
+                                                                                  "enabled": true,
+                                                                                  "visible": true,
+                                                                                  "frame": {
+                                                                                    "x": 20.0,
+                                                                                    "y": 327.0,
+                                                                                    "width": 390.0,
+                                                                                    "height": 80.0
+                                                                                  },
+                                                                                  "children": [
+                                                                                    {
+                                                                                      "kind": "Other",
+                                                                                      "enabled": true,
+                                                                                      "visible": true,
+                                                                                      "frame": {
+                                                                                        "x": 20.0,
+                                                                                        "y": 327.0,
+                                                                                        "width": 390.0,
+                                                                                        "height": 80.0
+                                                                                      },
+                                                                                      "children": [
+                                                                                        {
+                                                                                          "kind": "Button",
+                                                                                          "identifier": "exercise.guided",
+                                                                                          "label": "Start Guided Session",
+                                                                                          "enabled": true,
+                                                                                          "visible": true,
+                                                                                          "frame": {
+                                                                                            "x": 20.0,
+                                                                                            "y": 327.0,
+                                                                                            "width": 390.0,
+                                                                                            "height": 80.0
+                                                                                          },
+                                                                                          "children": [
+                                                                                            {
+                                                                                              "kind": "Image",
+                                                                                              "identifier": "figure.walk",
+                                                                                              "label": "Walk",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 123.0,
+                                                                                                "y": 355.0,
+                                                                                                "width": 15.0,
+                                                                                                "height": 24.0
+                                                                                              }
+                                                                                            },
+                                                                                            {
+                                                                                              "kind": "StaticText",
+                                                                                              "label": "Start Guided Session",
+                                                                                              "value": "Start Guided Session",
+                                                                                              "enabled": true,
+                                                                                              "visible": true,
+                                                                                              "frame": {
+                                                                                                "x": 40.0,
+                                                                                                "y": 338.0,
+                                                                                                "width": 350.0,
+                                                                                                "height": 58.0
+                                                                                              }
+                                                                                            }
+                                                                                          ]
+                                                                                        }
+                                                                                      ]
+                                                                                    }
+                                                                                  ]
+                                                                                }
+                                                                              ]
+                                                                            }
+                                                                          ]
+                                                                        },
+                                                                        {
+                                                                          "kind": "Other",
+                                                                          "enabled": true,
+                                                                          "visible": true,
+                                                                          "frame": {
+                                                                            "x": 40.0,
+                                                                            "y": 326.0,
+                                                                            "width": 370.0,
+                                                                            "height": 1.0
+                                                                          }
+                                                                        },
+                                                                        {
                                                                           "kind": "Other",
                                                                           "enabled": true,
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": -20.0,
-                                                                            "y": 344.0,
+                                                                            "y": 423.0,
                                                                             "width": 470.0,
                                                                             "height": 181.0
                                                                           }
@@ -681,7 +809,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 344.0,
+                                                                            "y": 423.0,
                                                                             "width": 390.0,
                                                                             "height": 38.0
                                                                           },
@@ -692,7 +820,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 344.0,
+                                                                                "y": 423.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               }
@@ -703,7 +831,7 @@
                                                                               "visible": true,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 344.0,
+                                                                                "y": 423.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               },
@@ -714,7 +842,7 @@
                                                                                   "visible": true,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 344.0,
+                                                                                    "y": 423.0,
                                                                                     "width": 390.0,
                                                                                     "height": 38.0
                                                                                   },
@@ -725,7 +853,7 @@
                                                                                       "visible": true,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 344.0,
+                                                                                        "y": 423.0,
                                                                                         "width": 390.0,
                                                                                         "height": 38.0
                                                                                       },
@@ -738,7 +866,7 @@
                                                                                           "visible": true,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 344.0,
+                                                                                            "y": 423.0,
                                                                                             "width": 390.0,
                                                                                             "height": 38.0
                                                                                           }
@@ -757,7 +885,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 382.0,
+                                                                            "y": 461.0,
                                                                             "width": 390.0,
                                                                             "height": 126.0
                                                                           },
@@ -768,7 +896,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 382.0,
+                                                                                "y": 461.0,
                                                                                 "width": 390.0,
                                                                                 "height": 126.0
                                                                               },
@@ -779,7 +907,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 382.0,
+                                                                                    "y": 461.0,
                                                                                     "width": 390.0,
                                                                                     "height": 126.0
                                                                                   }
@@ -792,7 +920,7 @@
                                                                               "visible": true,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 382.0,
+                                                                                "y": 461.0,
                                                                                 "width": 390.0,
                                                                                 "height": 126.0
                                                                               },
@@ -803,7 +931,7 @@
                                                                                   "visible": true,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 382.0,
+                                                                                    "y": 461.0,
                                                                                     "width": 390.0,
                                                                                     "height": 126.0
                                                                                   },
@@ -814,7 +942,7 @@
                                                                                       "visible": true,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 382.0,
+                                                                                        "y": 461.0,
                                                                                         "width": 390.0,
                                                                                         "height": 126.0
                                                                                       },
@@ -827,7 +955,7 @@
                                                                                           "visible": true,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 382.0,
+                                                                                            "y": 461.0,
                                                                                             "width": 390.0,
                                                                                             "height": 126.0
                                                                                           },
@@ -840,7 +968,7 @@
                                                                                               "visible": true,
                                                                                               "frame": {
                                                                                                 "x": 109.0,
-                                                                                                "y": 435.0,
+                                                                                                "y": 514.0,
                                                                                                 "width": 163.0,
                                                                                                 "height": 21.0
                                                                                               }
@@ -861,7 +989,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": -20.0,
-                                                                            "y": 524.0,
+                                                                            "y": 603.0,
                                                                             "width": 470.0,
                                                                             "height": 139.0
                                                                           }
@@ -872,7 +1000,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 524.0,
+                                                                            "y": 603.0,
                                                                             "width": 390.0,
                                                                             "height": 38.0
                                                                           },
@@ -883,7 +1011,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 524.0,
+                                                                                "y": 603.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               }
@@ -894,7 +1022,7 @@
                                                                               "visible": true,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 524.0,
+                                                                                "y": 603.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               },
@@ -905,7 +1033,7 @@
                                                                                   "visible": true,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 524.0,
+                                                                                    "y": 603.0,
                                                                                     "width": 390.0,
                                                                                     "height": 38.0
                                                                                   },
@@ -916,7 +1044,7 @@
                                                                                       "visible": true,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 524.0,
+                                                                                        "y": 603.0,
                                                                                         "width": 390.0,
                                                                                         "height": 38.0
                                                                                       },
@@ -929,7 +1057,7 @@
                                                                                           "visible": true,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 524.0,
+                                                                                            "y": 603.0,
                                                                                             "width": 390.0,
                                                                                             "height": 38.0
                                                                                           }
@@ -948,7 +1076,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 562.0,
+                                                                            "y": 641.0,
                                                                             "width": 390.0,
                                                                             "height": 84.0
                                                                           },
@@ -959,7 +1087,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 562.0,
+                                                                                "y": 641.0,
                                                                                 "width": 390.0,
                                                                                 "height": 84.0
                                                                               },
@@ -970,7 +1098,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 562.0,
+                                                                                    "y": 641.0,
                                                                                     "width": 390.0,
                                                                                     "height": 84.0
                                                                                   }
@@ -983,7 +1111,7 @@
                                                                               "visible": true,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 562.0,
+                                                                                "y": 641.0,
                                                                                 "width": 390.0,
                                                                                 "height": 84.0
                                                                               },
@@ -994,7 +1122,7 @@
                                                                                   "visible": true,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 562.0,
+                                                                                    "y": 641.0,
                                                                                     "width": 390.0,
                                                                                     "height": 84.0
                                                                                   },
@@ -1005,7 +1133,7 @@
                                                                                       "visible": true,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 562.0,
+                                                                                        "y": 641.0,
                                                                                         "width": 390.0,
                                                                                         "height": 84.0
                                                                                       },
@@ -1018,7 +1146,7 @@
                                                                                           "visible": true,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 562.0,
+                                                                                            "y": 641.0,
                                                                                             "width": 390.0,
                                                                                             "height": 84.0
                                                                                           },
@@ -1031,7 +1159,7 @@
                                                                                               "visible": true,
                                                                                               "frame": {
                                                                                                 "x": 40.0,
-                                                                                                "y": 615.0,
+                                                                                                "y": 694.0,
                                                                                                 "width": 50.0,
                                                                                                 "height": 20.0
                                                                                               }
@@ -1052,7 +1180,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": -20.0,
-                                                                            "y": 663.0,
+                                                                            "y": 742.0,
                                                                             "width": 470.0,
                                                                             "height": 328.0
                                                                           }
@@ -1063,7 +1191,7 @@
                                                                           "visible": true,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 663.0,
+                                                                            "y": 742.0,
                                                                             "width": 390.0,
                                                                             "height": 38.0
                                                                           },
@@ -1074,7 +1202,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 663.0,
+                                                                                "y": 742.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               }
@@ -1085,7 +1213,7 @@
                                                                               "visible": true,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 663.0,
+                                                                                "y": 742.0,
                                                                                 "width": 390.0,
                                                                                 "height": 38.0
                                                                               },
@@ -1096,7 +1224,7 @@
                                                                                   "visible": true,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 663.0,
+                                                                                    "y": 742.0,
                                                                                     "width": 390.0,
                                                                                     "height": 38.0
                                                                                   },
@@ -1107,7 +1235,7 @@
                                                                                       "visible": true,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 663.0,
+                                                                                        "y": 742.0,
                                                                                         "width": 390.0,
                                                                                         "height": 38.0
                                                                                       },
@@ -1120,7 +1248,7 @@
                                                                                           "visible": true,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 663.0,
+                                                                                            "y": 742.0,
                                                                                             "width": 390.0,
                                                                                             "height": 38.0
                                                                                           }
@@ -1136,10 +1264,10 @@
                                                                         {
                                                                           "kind": "Cell",
                                                                           "enabled": true,
-                                                                          "visible": true,
+                                                                          "visible": false,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 700.0,
+                                                                            "y": 779.0,
                                                                             "width": 390.0,
                                                                             "height": 63.0
                                                                           },
@@ -1150,7 +1278,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 700.0,
+                                                                                "y": 779.0,
                                                                                 "width": 390.0,
                                                                                 "height": 63.0
                                                                               },
@@ -1161,7 +1289,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 700.0,
+                                                                                    "y": 779.0,
                                                                                     "width": 390.0,
                                                                                     "height": 63.0
                                                                                   }
@@ -1171,10 +1299,10 @@
                                                                             {
                                                                               "kind": "Other",
                                                                               "enabled": true,
-                                                                              "visible": true,
+                                                                              "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 700.0,
+                                                                                "y": 779.0,
                                                                                 "width": 390.0,
                                                                                 "height": 63.0
                                                                               },
@@ -1182,10 +1310,10 @@
                                                                                 {
                                                                                   "kind": "Other",
                                                                                   "enabled": true,
-                                                                                  "visible": true,
+                                                                                  "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 700.0,
+                                                                                    "y": 779.0,
                                                                                     "width": 390.0,
                                                                                     "height": 63.0
                                                                                   },
@@ -1193,10 +1321,10 @@
                                                                                     {
                                                                                       "kind": "Other",
                                                                                       "enabled": true,
-                                                                                      "visible": true,
+                                                                                      "visible": false,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 700.0,
+                                                                                        "y": 779.0,
                                                                                         "width": 390.0,
                                                                                         "height": 63.0
                                                                                       },
@@ -1207,10 +1335,10 @@
                                                                                           "label": "Step 1: Wait until your dog is not already looking at you.",
                                                                                           "value": "Step 1: Wait until your dog is not already looking at you.",
                                                                                           "enabled": true,
-                                                                                          "visible": true,
+                                                                                          "visible": false,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 700.0,
+                                                                                            "y": 779.0,
                                                                                             "width": 390.0,
                                                                                             "height": 63.0
                                                                                           },
@@ -1220,10 +1348,10 @@
                                                                                               "label": "1",
                                                                                               "value": "1",
                                                                                               "enabled": true,
-                                                                                              "visible": true,
+                                                                                              "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 40.0,
-                                                                                                "y": 711.0,
+                                                                                                "y": 790.0,
                                                                                                 "width": 8.0,
                                                                                                 "height": 20.0
                                                                                               }
@@ -1233,10 +1361,10 @@
                                                                                               "label": "Wait until your dog is not already looking at you.",
                                                                                               "value": "Wait until your dog is not already looking at you.",
                                                                                               "enabled": true,
-                                                                                              "visible": true,
+                                                                                              "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 59.0,
-                                                                                                "y": 711.0,
+                                                                                                "y": 790.0,
                                                                                                 "width": 299.0,
                                                                                                 "height": 41.0
                                                                                               }
@@ -1254,10 +1382,10 @@
                                                                         {
                                                                           "kind": "Cell",
                                                                           "enabled": true,
-                                                                          "visible": true,
+                                                                          "visible": false,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 762.0,
+                                                                            "y": 841.0,
                                                                             "width": 390.0,
                                                                             "height": 63.0
                                                                           },
@@ -1268,7 +1396,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 762.0,
+                                                                                "y": 841.0,
                                                                                 "width": 390.0,
                                                                                 "height": 63.0
                                                                               },
@@ -1279,7 +1407,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 762.0,
+                                                                                    "y": 841.0,
                                                                                     "width": 390.0,
                                                                                     "height": 63.0
                                                                                   }
@@ -1289,10 +1417,10 @@
                                                                             {
                                                                               "kind": "Other",
                                                                               "enabled": true,
-                                                                              "visible": true,
+                                                                              "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 762.0,
+                                                                                "y": 841.0,
                                                                                 "width": 390.0,
                                                                                 "height": 63.0
                                                                               },
@@ -1300,10 +1428,10 @@
                                                                                 {
                                                                                   "kind": "Other",
                                                                                   "enabled": true,
-                                                                                  "visible": true,
+                                                                                  "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 762.0,
+                                                                                    "y": 841.0,
                                                                                     "width": 390.0,
                                                                                     "height": 63.0
                                                                                   },
@@ -1311,10 +1439,10 @@
                                                                                     {
                                                                                       "kind": "Other",
                                                                                       "enabled": true,
-                                                                                      "visible": true,
+                                                                                      "visible": false,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 762.0,
+                                                                                        "y": 841.0,
                                                                                         "width": 390.0,
                                                                                         "height": 63.0
                                                                                       },
@@ -1325,10 +1453,10 @@
                                                                                           "label": "Step 2: Say their name once in a friendly voice. Their name is the cue for checking in.",
                                                                                           "value": "Step 2: Say their name once in a friendly voice. Their name is the cue for checking in.",
                                                                                           "enabled": true,
-                                                                                          "visible": true,
+                                                                                          "visible": false,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 762.0,
+                                                                                            "y": 841.0,
                                                                                             "width": 390.0,
                                                                                             "height": 63.0
                                                                                           },
@@ -1341,7 +1469,7 @@
                                                                                               "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 40.0,
-                                                                                                "y": 773.0,
+                                                                                                "y": 852.0,
                                                                                                 "width": 10.0,
                                                                                                 "height": 20.0
                                                                                               }
@@ -1354,7 +1482,7 @@
                                                                                               "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 62.0,
-                                                                                                "y": 773.0,
+                                                                                                "y": 852.0,
                                                                                                 "width": 328.0,
                                                                                                 "height": 41.0
                                                                                               },
@@ -1367,7 +1495,7 @@
                                                                                                   "visible": false,
                                                                                                   "frame": {
                                                                                                     "x": 149.0,
-                                                                                                    "y": 794.0,
+                                                                                                    "y": 873.0,
                                                                                                     "width": 28.0,
                                                                                                     "height": 20.0
                                                                                                   }
@@ -1387,10 +1515,10 @@
                                                                         {
                                                                           "kind": "Other",
                                                                           "enabled": true,
-                                                                          "visible": true,
+                                                                          "visible": false,
                                                                           "frame": {
                                                                             "x": 40.0,
-                                                                            "y": 762.0,
+                                                                            "y": 841.0,
                                                                             "width": 370.0,
                                                                             "height": 1.0
                                                                           }
@@ -1401,7 +1529,7 @@
                                                                           "visible": false,
                                                                           "frame": {
                                                                             "x": 20.0,
-                                                                            "y": 825.0,
+                                                                            "y": 904.0,
                                                                             "width": 390.0,
                                                                             "height": 105.0
                                                                           },
@@ -1412,7 +1540,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 825.0,
+                                                                                "y": 904.0,
                                                                                 "width": 390.0,
                                                                                 "height": 105.0
                                                                               },
@@ -1423,7 +1551,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 825.0,
+                                                                                    "y": 904.0,
                                                                                     "width": 390.0,
                                                                                     "height": 105.0
                                                                                   }
@@ -1436,7 +1564,7 @@
                                                                               "visible": false,
                                                                               "frame": {
                                                                                 "x": 20.0,
-                                                                                "y": 825.0,
+                                                                                "y": 904.0,
                                                                                 "width": 390.0,
                                                                                 "height": 105.0
                                                                               },
@@ -1447,7 +1575,7 @@
                                                                                   "visible": false,
                                                                                   "frame": {
                                                                                     "x": 20.0,
-                                                                                    "y": 825.0,
+                                                                                    "y": 904.0,
                                                                                     "width": 390.0,
                                                                                     "height": 105.0
                                                                                   },
@@ -1458,7 +1586,7 @@
                                                                                       "visible": false,
                                                                                       "frame": {
                                                                                         "x": 20.0,
-                                                                                        "y": 825.0,
+                                                                                        "y": 904.0,
                                                                                         "width": 390.0,
                                                                                         "height": 105.0
                                                                                       },
@@ -1472,7 +1600,7 @@
                                                                                           "visible": false,
                                                                                           "frame": {
                                                                                             "x": 20.0,
-                                                                                            "y": 825.0,
+                                                                                            "y": 904.0,
                                                                                             "width": 390.0,
                                                                                             "height": 105.0
                                                                                           },
@@ -1485,7 +1613,7 @@
                                                                                               "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 40.0,
-                                                                                                "y": 836.0,
+                                                                                                "y": 915.0,
                                                                                                 "width": 11.0,
                                                                                                 "height": 20.0
                                                                                               }
@@ -1498,7 +1626,7 @@
                                                                                               "visible": false,
                                                                                               "frame": {
                                                                                                 "x": 62.0,
-                                                                                                "y": 836.0,
+                                                                                                "y": 915.0,
                                                                                                 "width": 309.0,
                                                                                                 "height": 83.0
                                                                                               },
@@ -1511,7 +1639,7 @@
                                                                                                   "visible": false,
                                                                                                   "frame": {
                                                                                                     "x": 98.0,
-                                                                                                    "y": 857.0,
+                                                                                                    "y": 936.0,
                                                                                                     "width": 92.0,
                                                                                                     "height": 21.0
                                                                                                   }
@@ -1524,7 +1652,7 @@
                                                                                                   "visible": false,
                                                                                                   "frame": {
                                                                                                     "x": 105.0,
-                                                                                                    "y": 878.0,
+                                                                                                    "y": 957.0,
                                                                                                     "width": 46.0,
                                                                                                     "height": 21.0
                                                                                                   }
@@ -1547,143 +1675,14 @@
                                                                           "visible": false,
                                                                           "frame": {
                                                                             "x": 40.0,
-                                                                            "y": 824.0,
-                                                                            "width": 370.0,
-                                                                            "height": 1.0
-                                                                          }
-                                                                        },
-                                                                        {
-                                                                          "kind": "Cell",
-                                                                          "enabled": true,
-                                                                          "visible": false,
-                                                                          "frame": {
-                                                                            "x": 20.0,
-                                                                            "y": 929.0,
-                                                                            "width": 390.0,
-                                                                            "height": 45.0
-                                                                          },
-                                                                          "children": [
-                                                                            {
-                                                                              "kind": "Other",
-                                                                              "enabled": true,
-                                                                              "visible": false,
-                                                                              "frame": {
-                                                                                "x": 20.0,
-                                                                                "y": 929.0,
-                                                                                "width": 390.0,
-                                                                                "height": 45.0
-                                                                              },
-                                                                              "children": [
-                                                                                {
-                                                                                  "kind": "Other",
-                                                                                  "enabled": true,
-                                                                                  "visible": false,
-                                                                                  "frame": {
-                                                                                    "x": 20.0,
-                                                                                    "y": 929.0,
-                                                                                    "width": 390.0,
-                                                                                    "height": 45.0
-                                                                                  }
-                                                                                }
-                                                                              ]
-                                                                            },
-                                                                            {
-                                                                              "kind": "Other",
-                                                                              "enabled": true,
-                                                                              "visible": false,
-                                                                              "frame": {
-                                                                                "x": 20.0,
-                                                                                "y": 929.0,
-                                                                                "width": 390.0,
-                                                                                "height": 45.0
-                                                                              },
-                                                                              "children": [
-                                                                                {
-                                                                                  "kind": "Other",
-                                                                                  "enabled": true,
-                                                                                  "visible": false,
-                                                                                  "frame": {
-                                                                                    "x": 20.0,
-                                                                                    "y": 929.0,
-                                                                                    "width": 390.0,
-                                                                                    "height": 45.0
-                                                                                  },
-                                                                                  "children": [
-                                                                                    {
-                                                                                      "kind": "Other",
-                                                                                      "enabled": true,
-                                                                                      "visible": false,
-                                                                                      "frame": {
-                                                                                        "x": 20.0,
-                                                                                        "y": 929.0,
-                                                                                        "width": 390.0,
-                                                                                        "height": 45.0
-                                                                                      },
-                                                                                      "children": [
-                                                                                        {
-                                                                                          "kind": "StaticText",
-                                                                                          "identifier": "exercise.step.3",
-                                                                                          "label": "Step 4: Repeat a few times, allowing short breaks.",
-                                                                                          "value": "Step 4: Repeat a few times, allowing short breaks.",
-                                                                                          "enabled": true,
-                                                                                          "visible": false,
-                                                                                          "frame": {
-                                                                                            "x": 20.0,
-                                                                                            "y": 929.0,
-                                                                                            "width": 390.0,
-                                                                                            "height": 45.0
-                                                                                          },
-                                                                                          "children": [
-                                                                                            {
-                                                                                              "kind": "StaticText",
-                                                                                              "label": "4",
-                                                                                              "value": "4",
-                                                                                              "enabled": true,
-                                                                                              "visible": false,
-                                                                                              "frame": {
-                                                                                                "x": 40.0,
-                                                                                                "y": 941.0,
-                                                                                                "width": 11.0,
-                                                                                                "height": 20.0
-                                                                                              }
-                                                                                            },
-                                                                                            {
-                                                                                              "kind": "StaticText",
-                                                                                              "label": "Repeat a few times, allowing short breaks.",
-                                                                                              "value": "Repeat a few times, allowing short breaks.",
-                                                                                              "enabled": true,
-                                                                                              "visible": false,
-                                                                                              "frame": {
-                                                                                                "x": 62.0,
-                                                                                                "y": 941.0,
-                                                                                                "width": 306.0,
-                                                                                                "height": 20.0
-                                                                                              }
-                                                                                            }
-                                                                                          ]
-                                                                                        }
-                                                                                      ]
-                                                                                    }
-                                                                                  ]
-                                                                                }
-                                                                              ]
-                                                                            }
-                                                                          ]
-                                                                        },
-                                                                        {
-                                                                          "kind": "Other",
-                                                                          "enabled": true,
-                                                                          "visible": false,
-                                                                          "frame": {
-                                                                            "x": 40.0,
-                                                                            "y": 929.0,
+                                                                            "y": 903.0,
                                                                             "width": 370.0,
                                                                             "height": 1.0
                                                                           }
                                                                         },
                                                                         {
                                                                           "kind": "Other",
-                                                                          "label": "Vertical scroll bar, 2 pages",
+                                                                          "label": "Vertical scroll bar, 3 pages",
                                                                           "value": "0%",
                                                                           "enabled": true,
                                                                           "visible": true,
@@ -1709,7 +1708,7 @@
                                                                         },
                                                                         {
                                                                           "kind": "Other",
-                                                                          "label": "Vertical scroll bar, 2 pages",
+                                                                          "label": "Vertical scroll bar, 3 pages",
                                                                           "value": "0%",
                                                                           "enabled": true,
                                                                           "visible": true,
