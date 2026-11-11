@@ -140,6 +140,16 @@ public enum EmbeddedApps {
     static let checklist = Checklist.makeHost()
     static let commonplace = CommonplaceApp.makeAppHost()
 
+    /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
+    /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
+    /// only through its own. Returns false for links that are Device Lab's.
+    static func openDeepLink(_ url: URL) -> Bool {
+        switch url.scheme {
+        case "forgechat": ChatFFI.ForgeDeepLinks.shared.open(url)
+        default: false
+        }
+    }
+
     /// Call once, from the App's init, after `AppServices.install()`.
     public static func install() {
         // Each app with native services has its own Rust side for them, so

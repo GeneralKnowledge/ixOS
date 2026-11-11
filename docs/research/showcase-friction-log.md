@@ -35,6 +35,7 @@ names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
 | F16 | Natural library names already taken (`chat_core`) | Annoyance | `chat_app`, `good_dog_app` | — |
 | F17 | Counter shares its crate with the frozen Android app | Left out | Not hosted | Retire Counter, as planned |
 | F18 | Module aliases reach only the targets a product's own target names | Broke two builds | An `<App>Embed` wrapper target per app that names them all | Unique module names (F4, F5), then no aliases |
+| F19 | Every app's bindings declare the same public View helpers (`forgeOpenURLs()`), and each has its own `ForgeDeepLinks` | Broke the third build | Device Lab calls `onOpenURL` itself and routes `forgechat` links to Chat's | Helpers in ForgeKit once; one deep link router per process |
 
 What went well is at the end.
 
@@ -258,6 +259,20 @@ re-exports the app and names every target of the app that imports
 each app's bindings and views a module name of its own, so no aliases are
 needed.
 
+## F19. The same View helpers in every app's bindings
+
+The native services' Swift is copied into each app's `ForgeFFI`, so each
+one declares `View.forgeOpenURLs()` and `onForgeDeepLink`. With four
+bindings modules visible in Device Lab's AppHost, the call is ambiguous
+(Swift extension members leak across files of a module), as F11 was for
+`forgeLaunchAppearance`. Worse, each module has its own
+`ForgeDeepLinks.shared`: a link fed to Device Lab's never reaches Chat.
+Device Lab now calls `onOpenURL` itself and sends `forgechat://` links to
+Chat's `ForgeDeepLinks`. Notification taps that carry a deep link go to
+whichever app installed its notification adapter last (F15). The fix is
+the same as F15's: native services' Swift in ForgeKit, once per process,
+with one router that every app's Rust registers with.
+
 ## What went well
 
 - The Rust side composes once the names differ: four cores, two of them on
@@ -283,4 +298,5 @@ needed.
 | After the F1 framework fix: Device Lab, Weather, Checklist, Pocket Library each built with xtool | Laptop | All pass; each stages `libforge_ffi.a`; no new warnings |
 | Seven apps: first build | Laptop | SwiftPM refused the package: conflicting `ForgeFFI` and `AppHost` targets (F18) |
 | Seven apps: with wrapper targets | Laptop | Weather's `WeatherBridge` missed its alias (F18) |
+| Seven apps: aliases fixed | Laptop | Every app compiled; Device Lab's AppHost failed on an ambiguous `forgeOpenURLs()` (F19) |
 | Opening each app on the iPhone | Next sitting | Not run |

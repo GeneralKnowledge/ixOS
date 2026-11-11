@@ -21,6 +21,13 @@ extension View {
     /// Attach once, to the root view.
     @MainActor
     public func receivesDeepLinks() -> some View {
-        forgeOpenURLs()
+        // Not `forgeOpenURLs()`: every hosted app's bindings declare it too
+        // (friction log F19). Links for a hosted app go to that app's
+        // ForgeDeepLinks; the rest are Device Lab's.
+        onOpenURL { url in
+            if !EmbeddedApps.openDeepLink(url) {
+                ForgeDeepLinks.shared.open(url)
+            }
+        }
     }
 }
