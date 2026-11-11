@@ -112,7 +112,7 @@ else
       echo "[forge] Added ForgeLog (Swift logging into the Rust log pipeline)."
     fi
     # Swift helpers with no Rust side and no privacy-sensitive framework
-    # (ImageIO thumbnails, the audio session), for every app. Source of truth:
+    # (ImageIO thumbnails, the audio session, web views), for every app. Source of truth:
     # crates/forge-services/swift/helpers/.
     cp "$ROOT/crates/forge-services/swift/helpers/"*.swift "$dir/ForgeFFI/"
     # Native services: when the crate uses `forge_services::native_services!()`,

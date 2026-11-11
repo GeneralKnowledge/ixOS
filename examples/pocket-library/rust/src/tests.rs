@@ -778,3 +778,44 @@ fn shutdown_stops_a_request_in_flight() {
     assert_eq!(result, Err(LibraryError::ShutDown));
     assert!(took < std::time::Duration::from_secs(2), "took {took:?}");
 }
+
+#[test]
+fn books_go_out_and_come_back_as_a_spreadsheet() {
+    let dir = tempfile::tempdir().unwrap();
+    let lib = open(dir.path());
+    let mut dune = input("Dune", Some(412));
+    dune.author = "Frank Herbert".into();
+    dune.current_page = 100;
+    dune.status = ReadingStatus::Reading;
+    block_on(lib.add_book(dune)).unwrap();
+    let path = block_on(lib.export_books_csv()).unwrap();
+    let csv = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        csv.contains("Title,Author,Status,Pages Read,Total Pages,Rating,Notes"),
+        "{csv}"
+    );
+    assert!(
+        csv.contains("Dune,Frank Herbert,Reading,100,412,,"),
+        "{csv}"
+    );
+
+    // Another app's spreadsheet: different columns, one bad row.
+    let other = dir.path().join("other.csv");
+    std::fs::write(
+        &other,
+        "title,author,status,rating\nEmma,Jane Austen,read,5\nNo Name,,Lost,\n,Nobody,,\n",
+    )
+    .unwrap();
+    let summary = block_on(lib.import_books_csv(other.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(summary.added, 1);
+    assert_eq!(summary.skipped.len(), 2, "{:?}", summary.skipped);
+    let emma = lib
+        .books(all())
+        .into_iter()
+        .find(|b| b.title == "Emma")
+        .unwrap();
+    assert_eq!(
+        (emma.status, emma.rating),
+        (ReadingStatus::Finished, Some(5))
+    );
+}

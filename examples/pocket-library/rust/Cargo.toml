@@ -23,7 +23,7 @@ crate-type = ["staticlib", "lib"]
 # module) and the library document's save and recovery rules.
 forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
-forge-storage = { path = "../../../crates/forge-storage" }
+forge-storage = { path = "../../../crates/forge-storage", features = ["csv"] }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"

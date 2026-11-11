@@ -39,6 +39,9 @@
 //! crate keeps one namespace. The logic that does not cross the boundary
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
+#[doc(hidden)]
+pub mod background;
+mod biometrics;
 mod feed;
 #[cfg(feature = "http")]
 pub mod http;
@@ -257,6 +260,109 @@ macro_rules! native_services {
                 /// same path as any other deep link.
                 pub deep_link: Option<String>,
                 pub trigger: NotificationTrigger,
+                /// The category whose action buttons the notification shows
+                /// (`set_notification_categories`). None: no buttons.
+                #[uniffi(default)]
+                pub category: Option<String>,
+            }
+
+            /// What an action button does.
+            #[derive(::uniffi::Enum, Clone, Debug, PartialEq, Eq)]
+            pub enum NotificationActionKind {
+                /// A button handled without opening the app (Mark as Read,
+                /// Snooze); `destructive` shows it in red.
+                Button { destructive: bool },
+                /// A button that opens the app (View, Open).
+                OpensApp,
+                /// A text field, for a quick reply.
+                TextInput { send_title: String, placeholder: String },
+            }
+
+            /// One action button on a notification.
+            #[derive(::uniffi::Record, Clone, Debug, PartialEq, Eq)]
+            pub struct NotificationAction {
+                /// Comes back in `NotificationResponse::action_id`.
+                pub id: String,
+                pub title: String,
+                pub kind: NotificationActionKind,
+                /// iOS asks the person to unlock the phone first.
+                pub requires_unlock: bool,
+            }
+
+            impl NotificationAction {
+                /// A button handled in the background (Mark as Read, Done,
+                /// Snooze).
+                pub fn button(id: impl Into<String>, title: impl Into<String>) -> Self {
+                    Self { id: id.into(), title: title.into(), kind: NotificationActionKind::Button { destructive: false }, requires_unlock: false }
+                }
+                /// A red button handled in the background (Delete); needs
+                /// the phone unlocked.
+                pub fn destructive(id: impl Into<String>, title: impl Into<String>) -> Self {
+                    Self { id: id.into(), title: title.into(), kind: NotificationActionKind::Button { destructive: true }, requires_unlock: true }
+                }
+                /// A button that opens the app.
+                pub fn opens_app(id: impl Into<String>, title: impl Into<String>) -> Self {
+                    Self { id: id.into(), title: title.into(), kind: NotificationActionKind::OpensApp, requires_unlock: false }
+                }
+                /// A quick reply: "Reply" with a text field and a Send button.
+                pub fn reply(id: impl Into<String>) -> Self {
+                    Self {
+                        id: id.into(),
+                        title: "Reply".into(),
+                        kind: NotificationActionKind::TextInput { send_title: "Send".into(), placeholder: "Message".into() },
+                        requires_unlock: false,
+                    }
+                }
+            }
+
+            /// A set of action buttons notifications can name.
+            #[derive(::uniffi::Record, Clone, Debug, PartialEq, Eq)]
+            pub struct NotificationCategory {
+                pub id: String,
+                pub actions: Vec<NotificationAction>,
+            }
+
+            /// What the person did with a notification: tapped it
+            /// (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+            /// ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+            /// action.
+            #[derive(::uniffi::Record, Clone, Debug, PartialEq, Eq)]
+            pub struct NotificationResponse {
+                pub notification_id: String,
+                pub action_id: String,
+                /// What they typed, for a `TextInput` action.
+                pub text: Option<String>,
+                pub category: Option<String>,
+                /// The notification's `thread_id` (its group: a chat room, a
+                /// list).
+                pub thread_id: Option<String>,
+                pub deep_link: Option<String>,
+            }
+
+            /// `NotificationResponse::action_id` for a tap on the
+            /// notification itself.
+            pub const NOTIFICATION_OPENED: &str = "forge.opened";
+            /// `NotificationResponse::action_id` for a dismissed one.
+            pub const NOTIFICATION_DISMISSED: &str = "forge.dismissed";
+
+            static NOTIFICATION_RESPONSES: $crate::notify::Inbox<NotificationResponse> =
+                $crate::notify::Inbox::new();
+
+            /// Called by the host when the person responds to a
+            /// notification. Kept until the app sets a handler with
+            /// [`on_notification_response`].
+            #[::uniffi::export]
+            pub fn deliver_notification_response(response: NotificationResponse) {
+                NOTIFICATION_RESPONSES.deliver(response);
+            }
+
+            /// Where notification responses go: set it when the core opens.
+            /// Responses that arrived first (the app was launched by one) are
+            /// handed over at once. Called on the host's thread; hand long
+            /// work to the runtime as finishing work, since iOS gives an
+            /// action handled in the background only a few seconds.
+            pub fn on_notification_response(handler: impl Fn(NotificationResponse) + Send + Sync + 'static) {
+                NOTIFICATION_RESPONSES.set_handler(handler);
             }
 
             impl LocalNotification {
@@ -274,6 +380,7 @@ macro_rules! native_services {
                         thread_id: None,
                         deep_link: None,
                         trigger: NotificationTrigger::Now,
+                        category: None,
                     }
                 }
             }
@@ -358,6 +465,9 @@ macro_rules! native_services {
                 /// Ids of the notifications that are scheduled and not yet
                 /// delivered.
                 async fn pending(&self) -> Vec<String>;
+                /// Replaces the app's notification categories (their action
+                /// buttons).
+                fn set_categories(&self, categories: Vec<NotificationCategory>);
             }
 
             /// Permission status and requests, one interface for every
@@ -569,6 +679,28 @@ macro_rules! native_services {
                     self.notifier.cancel(id.to_string());
                 }
 
+                /// Sets the action buttons notifications can show, by
+                /// category. Call it each time the core opens (iOS keeps the
+                /// last set, but the app's code may have changed).
+                pub fn set_notification_categories(
+                    &self,
+                    categories: Vec<NotificationCategory>,
+                ) -> Result<(), NativeServiceError> {
+                    let checked: Vec<(&str, Vec<(&str, &str)>)> = categories
+                        .iter()
+                        .map(|c| {
+                            (
+                                c.id.as_str(),
+                                c.actions.iter().map(|a| (a.id.as_str(), a.title.as_str())).collect(),
+                            )
+                        })
+                        .collect();
+                    $crate::notify::validate_categories(&checked)
+                        .map_err(|reason| NativeServiceError::InvalidInput { reason })?;
+                    self.notifier.set_categories(categories);
+                    Ok(())
+                }
+
                 pub async fn permission_status(&self, permission: NativePermission) -> PermissionStatus {
                     self.permissions.status(permission).await
                 }
@@ -628,6 +760,7 @@ macro_rules! native_services {
                 pub struct RecordingNotifier {
                     pending: Mutex<Vec<LocalNotification>>,
                     denied: ::std::sync::atomic::AtomicBool,
+                    categories: Mutex<Vec<NotificationCategory>>,
                 }
 
                 impl RecordingNotifier {
@@ -637,6 +770,10 @@ macro_rules! native_services {
                     /// Everything scheduled and not cancelled, oldest first.
                     pub fn scheduled(&self) -> Vec<LocalNotification> {
                         lock(&self.pending).clone()
+                    }
+                    /// The categories last set.
+                    pub fn categories(&self) -> Vec<NotificationCategory> {
+                        lock(&self.categories).clone()
                     }
                 }
 
@@ -661,6 +798,9 @@ macro_rules! native_services {
                     }
                     async fn pending(&self) -> Vec<String> {
                         lock(&self.pending).iter().map(|n| n.id.clone()).collect()
+                    }
+                    fn set_categories(&self, categories: Vec<NotificationCategory>) {
+                        *lock(&self.categories) = categories;
                     }
                 }
 

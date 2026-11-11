@@ -21,6 +21,7 @@ mod run_record;
 mod runner;
 mod setup;
 mod status;
+mod string_catalog;
 mod swift_check;
 mod ui;
 mod ui_session;

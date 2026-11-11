@@ -581,3 +581,32 @@ fn photos_and_documents_through_the_ffi() {
             || walk(&dir.path().join("ben").join("accounts")).is_empty()
     );
 }
+
+#[test]
+fn the_app_lock_needs_a_way_to_unlock_and_survives_a_relaunch() {
+    use native::biometrics::{BiometricAvailability, BiometricsService, BiometryKind};
+
+    let dir = tempfile::tempdir().unwrap();
+    let credentials = Arc::new(MemoryCredentials::default());
+    let core = ChatCore::open(dir.path().join("chats"), credentials.clone()).unwrap();
+    assert!(!core.app_lock());
+    // No biometrics service (or no passcode): turning it on is refused.
+    assert!(core.set_app_lock(true).is_err());
+
+    let (service, _fake) = BiometricsService::for_tests(BiometricAvailability {
+        kind: BiometryKind::FaceId,
+        biometrics_usable: true,
+        passcode_set: true,
+    });
+    service.install();
+    assert_eq!(app_lock_method().as_deref(), Some("Face ID"));
+    core.set_app_lock(true).unwrap();
+    BiometricsService::uninstall();
+    drop(core);
+    let again = ChatCore::open(dir.path().join("chats"), credentials).unwrap();
+    assert!(again.app_lock());
+    // Turning it off works without the service, twice over.
+    again.set_app_lock(false).unwrap();
+    again.set_app_lock(false).unwrap();
+    assert!(!again.app_lock());
+}

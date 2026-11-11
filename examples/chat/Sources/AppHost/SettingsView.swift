@@ -49,6 +49,22 @@ struct SettingsView: View {
                 )
             }
             Section {
+                Toggle(
+                    "Require \(model.appLockMethod ?? "Passcode")",
+                    isOn: Binding(get: { model.appLock }, set: { model.setAppLock($0) })
+                )
+                .disabled(model.appLockMethod == nil && !model.appLock)
+                .accessibilityIdentifier("settings.appLock")
+            } header: {
+                Text("Privacy")
+            } footer: {
+                Text(
+                    model.appLockMethod == nil
+                        ? "Set a passcode on this iPhone to lock Chat."
+                        : "Chat asks when it opens and after a minute in the background, and hides its content in the app switcher."
+                )
+            }
+            Section {
                 Button("Sign Out", role: .destructive) { confirmingSignOut = true }
             } footer: {
                 Text(

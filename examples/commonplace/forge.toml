@@ -28,6 +28,8 @@ xtool_product = "CommonplaceXtool"
 orientations = ["portrait"]
 # url_schemes = ["myapp"]           # opens myapp://... links
 # background_modes = ["remote-notification"]
+# Refreshing feeds while the app is closed (native_services!(background)).
+background_tasks = ["org.forgemobile.agentlab.commonplace.refresh"]
 
 # The text iOS shows when the app asks for a permission.
 [ios.permissions]

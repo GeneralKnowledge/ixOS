@@ -275,6 +275,13 @@ typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiFore
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -315,6 +322,19 @@ typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, d
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
+typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD1
+typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
 typedef struct UniffiVTableCallbackInterfaceLocalModelEngine {
@@ -333,6 +353,7 @@ typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
     UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
     UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
     UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
 } UniffiVTableCallbackInterfaceLocalNotifier;
 
 #endif
@@ -366,6 +387,16 @@ typedef struct UniffiVTableCallbackInterfaceAudioFiles {
 } UniffiVTableCallbackInterfaceAudioFiles;
 
 #endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR
+typedef struct UniffiVTableCallbackInterfaceBiometricAuthenticator {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBiometricAuthenticatorMethod0 _Nonnull availability;
+    UniffiCallbackInterfaceBiometricAuthenticatorMethod1 _Nonnull authenticate;
+} UniffiVTableCallbackInterfaceBiometricAuthenticator;
+
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_CHATCORE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_CHATCORE
 uint64_t uniffi_chat_app_fn_clone_chatcore(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -389,6 +420,11 @@ uint64_t uniffi_chat_app_fn_constructor_chatcore_with_memory_credentials(RustBuf
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_ACCOUNT
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_ACCOUNT
 RustBuffer uniffi_chat_app_fn_method_chatcore_account(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_APP_LOCK
+int8_t uniffi_chat_app_fn_method_chatcore_app_lock(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_ASSISTANT
@@ -494,6 +530,11 @@ uint64_t uniffi_chat_app_fn_method_chatcore_send_message(uint64_t ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SEND_REPLY
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SEND_REPLY
 uint64_t uniffi_chat_app_fn_method_chatcore_send_reply(uint64_t ptr, RustBuffer conversation_id, RustBuffer body, RustBuffer reply_to
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SET_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SET_APP_LOCK
+void uniffi_chat_app_fn_method_chatcore_set_app_lock(uint64_t ptr, int8_t enabled, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_CHATCORE_SET_DRAFT
@@ -761,6 +802,11 @@ void uniffi_chat_app_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id,
 uint64_t uniffi_chat_app_fn_method_localnotifier_pending(uint64_t ptr
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_chat_app_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_PERMISSIONPROVIDER
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_PERMISSIONPROVIDER
 uint64_t uniffi_chat_app_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -836,6 +882,37 @@ void uniffi_chat_app_fn_init_callback_vtable_audiofiles(const UniffiVTableCallba
 double uniffi_chat_app_fn_method_audiofiles_duration(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BIOMETRICAUTHENTICATOR
+uint64_t uniffi_chat_app_fn_clone_biometricauthenticator(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BIOMETRICAUTHENTICATOR
+void uniffi_chat_app_fn_free_biometricauthenticator(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BIOMETRICAUTHENTICATOR
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BIOMETRICAUTHENTICATOR
+void uniffi_chat_app_fn_init_callback_vtable_biometricauthenticator(const UniffiVTableCallbackInterfaceBiometricAuthenticator* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+RustBuffer uniffi_chat_app_fn_method_biometricauthenticator_availability(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+uint64_t uniffi_chat_app_fn_method_biometricauthenticator_authenticate(uint64_t ptr, RustBuffer reason
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_APP_LOCK_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_APP_LOCK_METHOD
+RustBuffer uniffi_chat_app_fn_func_app_lock_method(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG
 void uniffi_chat_app_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -844,6 +921,17 @@ void uniffi_chat_app_fn_func_forge_log(RustBuffer level, RustBuffer category, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG_ENABLED
 int8_t uniffi_chat_app_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+RustBuffer uniffi_chat_app_fn_func_message_notification_category(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_chat_app_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_SERVICES
@@ -871,6 +959,11 @@ RustBuffer uniffi_chat_app_fn_func_parse_deep_link(RustBuffer url, RustCallStatu
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AUDIO
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AUDIO
 void uniffi_chat_app_fn_func_install_native_audio(uint64_t files, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
+void uniffi_chat_app_fn_func_install_native_biometrics(uint64_t authenticator, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_DELIVERY
@@ -1144,6 +1237,12 @@ void ffi_chat_app_rust_future_free_void(uint64_t handle
 void ffi_chat_app_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_APP_LOCK_METHOD
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_APP_LOCK_METHOD
+uint16_t uniffi_chat_app_checksum_func_app_lock_method(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG
 uint16_t uniffi_chat_app_checksum_func_forge_log(void
@@ -1153,6 +1252,18 @@ uint16_t uniffi_chat_app_checksum_func_forge_log(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 uint16_t uniffi_chat_app_checksum_func_forge_log_enabled(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+uint16_t uniffi_chat_app_checksum_func_message_notification_category(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_chat_app_checksum_func_deliver_notification_response(void
     
 );
 #endif
@@ -1186,6 +1297,12 @@ uint16_t uniffi_chat_app_checksum_func_install_native_audio(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
+uint16_t uniffi_chat_app_checksum_func_install_native_biometrics(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_DELIVERY
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_DELIVERY
 uint16_t uniffi_chat_app_checksum_func_chat_delivery(void
@@ -1201,6 +1318,12 @@ uint16_t uniffi_chat_app_checksum_func_storage_engine(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_ACCOUNT
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_ACCOUNT
 uint16_t uniffi_chat_app_checksum_method_chatcore_account(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_APP_LOCK
+uint16_t uniffi_chat_app_checksum_method_chatcore_app_lock(void
     
 );
 #endif
@@ -1327,6 +1450,12 @@ uint16_t uniffi_chat_app_checksum_method_chatcore_send_message(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_SEND_REPLY
 uint16_t uniffi_chat_app_checksum_method_chatcore_send_reply(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_SET_APP_LOCK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_CHATCORE_SET_APP_LOCK
+uint16_t uniffi_chat_app_checksum_method_chatcore_set_app_lock(void
     
 );
 #endif
@@ -1564,6 +1693,12 @@ uint16_t uniffi_chat_app_checksum_method_localnotifier_pending(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_chat_app_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
 uint16_t uniffi_chat_app_checksum_method_permissionprovider_status(void
@@ -1597,6 +1732,18 @@ uint16_t uniffi_chat_app_checksum_method_securestore_delete(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AUDIOFILES_DURATION
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AUDIOFILES_DURATION
 uint16_t uniffi_chat_app_checksum_method_audiofiles_duration(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AVAILABILITY
+uint16_t uniffi_chat_app_checksum_method_biometricauthenticator_availability(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
+uint16_t uniffi_chat_app_checksum_method_biometricauthenticator_authenticate(void
     
 );
 #endif

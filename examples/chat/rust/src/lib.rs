@@ -49,7 +49,7 @@ forge_runtime::app_shell! {
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
 // `ForgeServices.install()`; see docs/native-services.md.
-forge_services::native_services!(audio);
+forge_services::native_services!(audio, biometrics);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).
@@ -86,7 +86,10 @@ impl ChatCore {
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, ChatError> {
         let credentials = KeychainCredentials::installed()?;
-        Self::open(PathBuf::from(storage_directory), Arc::new(credentials)).map(Arc::new)
+        let core =
+            Self::open(PathBuf::from(storage_directory), Arc::new(credentials)).map(Arc::new)?;
+        core.handle_notification_actions();
+        Ok(core)
     }
 
     /// Like `new`, but the account is only kept in memory, so it is gone at
@@ -248,6 +251,35 @@ impl ChatCore {
         self.client()?
             .set_marked_unread(&conversation_id, marked)
             .map_err(Into::into)
+    }
+
+    /// Whether Chat asks for Face ID, Touch ID or the passcode when it
+    /// opens and after a minute in the background. This device only.
+    pub fn app_lock(&self) -> bool {
+        self.storage_directory.join(APP_LOCK_FILE).exists()
+    }
+
+    /// Turns the app lock on or off. Turning it on is refused when this
+    /// iPhone has neither biometrics nor a passcode, since the lock could
+    /// never open.
+    pub fn set_app_lock(&self, enabled: bool) -> Result<(), ChatError> {
+        let path = self.storage_directory.join(APP_LOCK_FILE);
+        if !enabled {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(ChatError::Storage {
+                    reason: format!("turn off the lock: {e}"),
+                }),
+                _ => Ok(()),
+            };
+        }
+        if app_lock_method().is_none() {
+            return Err(ChatError::InvalidInput {
+                reason: "set a passcode on this iPhone first".into(),
+            });
+        }
+        std::fs::write(&path, b"").map_err(|e| ChatError::Storage {
+            reason: format!("turn on the lock: {e}"),
+        })
     }
 
     /// Mutes the room (no notifications) or unmutes it. This device only.
@@ -583,7 +615,90 @@ impl ChatCore {
     }
 }
 
+/// The notification category of a new message (`LocalChatNotifier`), with
+/// Reply and Mark as Read on it.
+pub const MESSAGE_NOTIFICATION: &str = "chat.message";
+
+/// The file whose presence turns the app lock on.
+const APP_LOCK_FILE: &str = "app-lock";
+
+/// How the app lock would unlock on this iPhone ("Face ID", "Touch ID",
+/// "Passcode"), or nil when it can't lock at all.
+#[uniffi::export]
+pub fn app_lock_method() -> Option<String> {
+    let biometrics = native::biometrics::BiometricsService::installed().ok()?;
+    let availability = biometrics.availability();
+    availability
+        .can_lock()
+        .then(|| availability.name().to_string())
+}
+
+/// [`MESSAGE_NOTIFICATION`], for the Swift notifier.
+#[uniffi::export]
+pub fn message_notification_category() -> String {
+    MESSAGE_NOTIFICATION.into()
+}
+
 impl ChatCore {
+    /// Reply and Mark as Read on message notifications, handled without
+    /// opening the app. A reply goes through the outbox like any message, so
+    /// it is sent later if the phone is offline.
+    fn handle_notification_actions(self: &Arc<Self>) {
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        let actions = native::NotificationCategory {
+            id: MESSAGE_NOTIFICATION.into(),
+            actions: vec![
+                native::NotificationAction::reply("reply"),
+                native::NotificationAction::button("read", "Mark as Read"),
+            ],
+        };
+        if let Err(e) = services.set_notification_categories(vec![actions]) {
+            forge_runtime::logging::warn!("notification actions not set: {e}");
+        }
+        let core = Arc::downgrade(self);
+        native::on_notification_response(move |response| {
+            let Some(core) = core.upgrade() else { return };
+            core.notification_response(response);
+        });
+    }
+
+    fn notification_response(&self, response: native::NotificationResponse) {
+        // The room is the notification's thread (LocalChatNotifier).
+        let Some(room) = response.thread_id else {
+            return;
+        };
+        let Ok(client) = self.client() else { return };
+        let work = match response.action_id.as_str() {
+            "reply" => {
+                let Some(text) = response.text.filter(|t| !t.trim().is_empty()) else {
+                    return;
+                };
+                let reply_to = Some(response.notification_id);
+                std::thread::Builder::new()
+                    .name("chat-notification-reply".into())
+                    .spawn(move || {
+                        // Never log the reply itself.
+                        if let Err(e) = client.send_reply(&room, &text, reply_to.as_deref()) {
+                            forge_runtime::logging::warn!("reply from a notification failed: {e}");
+                        }
+                    })
+            }
+            "read" => std::thread::Builder::new()
+                .name("chat-notification-read".into())
+                .spawn(move || {
+                    if let Err(e) = client.mark_read(&room) {
+                        forge_runtime::logging::warn!("mark read from a notification failed: {e}");
+                    }
+                }),
+            _ => return,
+        };
+        if let Err(e) = work {
+            forge_runtime::logging::warn!("notification action not started: {e}");
+        }
+    }
+
     /// Opens with any credential store (tests pass fakes).
     pub fn open(
         storage_directory: PathBuf,

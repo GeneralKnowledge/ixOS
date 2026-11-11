@@ -20,6 +20,8 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>1</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>Chat uses Face ID to unlock when you turn on the app lock in Settings.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Chat connects to the demo chat server on your local network.</string>
 	<key>NSMicrophoneUsageDescription</key>

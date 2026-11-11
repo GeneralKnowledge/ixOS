@@ -536,6 +536,22 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -1157,6 +1173,645 @@ public func FfiConverterTypeAppCore_lower(_ value: AppCore) -> UInt64 {
 
 
 /**
+ * Implemented by the host (iOS: `BGTaskScheduler`).
+ */
+public protocol BackgroundScheduler: AnyObject, Sendable {
+    
+    /**
+     * Submits `request`, replacing an earlier one with the same
+     * identifier.
+     */
+    func submit(request: BackgroundTaskRequest) throws 
+    
+    /**
+     * Withdraws the request with `identifier`, if any.
+     */
+    func cancel(identifier: String) 
+    
+    /**
+     * The identifiers the host registered at launch (iOS: the
+     * app's `BGTaskSchedulerPermittedIdentifiers`).
+     */
+    func permitted()  -> [String]
+    
+}
+/**
+ * Implemented by the host (iOS: `BGTaskScheduler`).
+ */
+open class BackgroundSchedulerImpl: BackgroundScheduler, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundscheduler(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundscheduler(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Submits `request`, replacing an earlier one with the same
+     * identifier.
+     */
+open func submit(request: BackgroundTaskRequest)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_backgroundscheduler_submit(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeBackgroundTaskRequest_lower(request),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Withdraws the request with `identifier`, if any.
+     */
+open func cancel(identifier: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_backgroundscheduler_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(identifier),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The identifiers the host registered at launch (iOS: the
+     * app's `BGTaskSchedulerPermittedIdentifiers`).
+     */
+open func permitted() -> [String]  {
+    return try!  FfiConverterSequenceString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_backgroundscheduler_permitted(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBackgroundScheduler {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBackgroundScheduler = UniffiVTableCallbackInterfaceBackgroundScheduler(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBackgroundScheduler.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BackgroundScheduler: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBackgroundScheduler.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BackgroundScheduler: handle missing in uniffiClone")
+            }
+        },
+        submit: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.submit(
+                     request: try FfiConverterTypeBackgroundTaskRequest_lift(request)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            identifier: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     identifier: try FfiConverterString.lift(identifier)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        permitted: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> [String] in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundScheduler.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.permitted(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterSequenceString.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBackgroundScheduler> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBackgroundScheduler>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBackgroundScheduler() {
+    uniffi_commonplace_core_fn_init_callback_vtable_backgroundscheduler(UniffiCallbackInterfaceBackgroundScheduler.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundScheduler: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BackgroundScheduler>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundScheduler
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundScheduler {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BackgroundSchedulerImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BackgroundScheduler) -> UInt64 {
+         if let rustImpl = value as? BackgroundSchedulerImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundScheduler {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundScheduler, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundScheduler_lift(_ handle: UInt64) throws -> BackgroundScheduler {
+    return try FfiConverterTypeBackgroundScheduler.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundScheduler_lower(_ value: BackgroundScheduler) -> UInt64 {
+    return FfiConverterTypeBackgroundScheduler.lower(value)
+}
+
+
+
+
+
+
+/**
+ * How the host learns that a run has finished. iOS:
+ * `BGTask.setTaskCompleted(success:)`.
+ */
+public protocol BackgroundTaskCompletion: AnyObject, Sendable {
+    
+    func finished(success: Bool) 
+    
+}
+/**
+ * How the host learns that a run has finished. iOS:
+ * `BGTask.setTaskCompleted(success:)`.
+ */
+open class BackgroundTaskCompletionImpl: BackgroundTaskCompletion, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundtaskcompletion(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundtaskcompletion(handle, $0) }
+    }
+
+    
+
+    
+open func finished(success: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_backgroundtaskcompletion_finished(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(success),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBackgroundTaskCompletion {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBackgroundTaskCompletion = UniffiVTableCallbackInterfaceBackgroundTaskCompletion(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBackgroundTaskCompletion.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BackgroundTaskCompletion: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBackgroundTaskCompletion.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BackgroundTaskCompletion: handle missing in uniffiClone")
+            }
+        },
+        finished: { (
+            uniffiHandle: UInt64,
+            success: Int8,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeBackgroundTaskCompletion.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.finished(
+                     success: try FfiConverterBool.lift(success)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBackgroundTaskCompletion> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBackgroundTaskCompletion>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBackgroundTaskCompletion() {
+    uniffi_commonplace_core_fn_init_callback_vtable_backgroundtaskcompletion(UniffiCallbackInterfaceBackgroundTaskCompletion.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskCompletion: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BackgroundTaskCompletion>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundTaskCompletion
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundTaskCompletion {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BackgroundTaskCompletionImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BackgroundTaskCompletion) -> UInt64 {
+         if let rustImpl = value as? BackgroundTaskCompletionImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskCompletion {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundTaskCompletion, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskCompletion_lift(_ handle: UInt64) throws -> BackgroundTaskCompletion {
+    return try FfiConverterTypeBackgroundTaskCompletion.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskCompletion_lower(_ value: BackgroundTaskCompletion) -> UInt64 {
+    return FfiConverterTypeBackgroundTaskCompletion.lower(value)
+}
+
+
+
+
+
+
+/**
+ * One window iOS granted. The handler does its work, checks
+ * `is_cancelled` (or waits on `cancelled`) as it goes, and calls
+ * `finish` exactly once; later calls are ignored. A run dropped
+ * without `finish` reports failure.
+ */
+public protocol BackgroundTaskRunProtocol: AnyObject, Sendable {
+    
+    /**
+     * Called by the host when the window runs out. The handler
+     * should stop soon after and `finish(false)`; if it has not
+     * finished when iOS insists, iOS ends the run anyway.
+     */
+    func expire() 
+    
+}
+/**
+ * One window iOS granted. The handler does its work, checks
+ * `is_cancelled` (or waits on `cancelled`) as it goes, and calls
+ * `finish` exactly once; later calls are ignored. A run dropped
+ * without `finish` reports failure.
+ */
+open class BackgroundTaskRun: BackgroundTaskRunProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundtaskrun(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundtaskrun(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Called by the host when the window runs out. The handler
+     * should stop soon after and `finish(false)`; if it has not
+     * finished when iOS insists, iOS ends the run anyway.
+     */
+open func expire()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_backgroundtaskrun_expire(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskRun: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = BackgroundTaskRun
+
+    public static func lift(_ handle: UInt64) throws -> BackgroundTaskRun {
+        return BackgroundTaskRun(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: BackgroundTaskRun) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskRun {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BackgroundTaskRun, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRun_lift(_ handle: UInt64) throws -> BackgroundTaskRun {
+    return try FfiConverterTypeBackgroundTaskRun.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRun_lower(_ value: BackgroundTaskRun) -> UInt64 {
+    return FfiConverterTypeBackgroundTaskRun.lower(value)
+}
+
+
+
+
+
+
+/**
  * Implemented by the host (iOS: `URLSession`). `send` blocks
  * its calling thread, a Rust worker thread.
  */
@@ -1422,6 +2077,12 @@ public protocol LocalNotifier: AnyObject, Sendable {
      */
     func pending() async  -> [String]
     
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    func setCategories(categories: [NotificationCategory]) 
+    
 }
 /**
  * Local notifications (no push server involved).
@@ -1531,6 +2192,19 @@ open func pending()async  -> [String]  {
             errorHandler: nil
             
         )
+}
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_localnotifier_set_categories(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
+    )
+}
 }
     
 
@@ -1664,6 +2338,30 @@ fileprivate struct UniffiCallbackInterfaceLocalNotifier {
                 handleSuccess: uniffiHandleSuccess,
                 handleError: uniffiHandleError,
                 droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        setCategories: { (
+            uniffiHandle: UInt64,
+            categories: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.setCategories(
+                     categories: try FfiConverterSequenceTypeNotificationCategory.lift(categories)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
             )
         }
     )
@@ -2635,6 +3333,75 @@ public func FfiConverterTypeArticleText_lower(_ value: ArticleText) -> RustBuffe
 
 
 /**
+ * One request to iOS.
+ */
+public struct BackgroundTaskRequest: Equatable, Hashable {
+    public var identifier: String
+    public var kind: BackgroundTaskKind
+    /**
+     * Not before this many seconds from now. iOS treats it as
+     * the earliest time, never a promise.
+     */
+    public var earliestBeginSeconds: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(identifier: String, kind: BackgroundTaskKind, 
+        /**
+         * Not before this many seconds from now. iOS treats it as
+         * the earliest time, never a promise.
+         */earliestBeginSeconds: Double) {
+        self.identifier = identifier
+        self.kind = kind
+        self.earliestBeginSeconds = earliestBeginSeconds
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BackgroundTaskRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskRequest {
+        return
+            try BackgroundTaskRequest(
+                identifier: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeBackgroundTaskKind.read(from: &buf), 
+                earliestBeginSeconds: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BackgroundTaskRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.identifier, into: &buf)
+        FfiConverterTypeBackgroundTaskKind.write(value.kind, into: &buf)
+        FfiConverterDouble.write(value.earliestBeginSeconds, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRequest_lift(_ buf: RustBuffer) throws -> BackgroundTaskRequest {
+    return try FfiConverterTypeBackgroundTaskRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskRequest_lower(_ value: BackgroundTaskRequest) -> RustBuffer {
+    return FfiConverterTypeBackgroundTaskRequest.lower(value)
+}
+
+
+/**
  * A URL the app was opened with (custom scheme, universal link
  * or notification tap), split into parts.
  */
@@ -3155,6 +3922,11 @@ public struct LocalNotification: Equatable, Hashable {
      */
     public var deepLink: String?
     public var trigger: NotificationTrigger
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    public var category: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3165,7 +3937,11 @@ public struct LocalNotification: Equatable, Hashable {
         /**
          * Opened when the user taps the notification, through the
          * same path as any other deep link.
-         */deepLink: String?, trigger: NotificationTrigger) {
+         */deepLink: String?, trigger: NotificationTrigger, 
+        /**
+         * The category whose action buttons the notification shows
+         * (`set_notification_categories`). None: no buttons.
+         */category: String? = nil) {
         self.id = id
         self.title = title
         self.body = body
@@ -3173,6 +3949,7 @@ public struct LocalNotification: Equatable, Hashable {
         self.threadId = threadId
         self.deepLink = deepLink
         self.trigger = trigger
+        self.category = category
     }
 
     
@@ -3197,7 +3974,8 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
                 subtitle: FfiConverterOptionString.read(from: &buf), 
                 threadId: FfiConverterOptionString.read(from: &buf), 
                 deepLink: FfiConverterOptionString.read(from: &buf), 
-                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf)
+                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -3209,6 +3987,7 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.threadId, into: &buf)
         FfiConverterOptionString.write(value.deepLink, into: &buf)
         FfiConverterTypeNotificationTrigger.write(value.trigger, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
     }
 }
 
@@ -3225,6 +4004,230 @@ public func FfiConverterTypeLocalNotification_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeLocalNotification_lower(_ value: LocalNotification) -> RustBuffer {
     return FfiConverterTypeLocalNotification.lower(value)
+}
+
+
+/**
+ * One action button on a notification.
+ */
+public struct NotificationAction: Equatable, Hashable {
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    public var id: String
+    public var title: String
+    public var kind: NotificationActionKind
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    public var requiresUnlock: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Comes back in `NotificationResponse::action_id`.
+         */id: String, title: String, kind: NotificationActionKind, 
+        /**
+         * iOS asks the person to unlock the phone first.
+         */requiresUnlock: Bool) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.requiresUnlock = requiresUnlock
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationAction {
+        return
+            try NotificationAction(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNotificationActionKind.read(from: &buf), 
+                requiresUnlock: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeNotificationActionKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.requiresUnlock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lift(_ buf: RustBuffer) throws -> NotificationAction {
+    return try FfiConverterTypeNotificationAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lower(_ value: NotificationAction) -> RustBuffer {
+    return FfiConverterTypeNotificationAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+public struct NotificationCategory: Equatable, Hashable {
+    public var id: String
+    public var actions: [NotificationAction]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, actions: [NotificationAction]) {
+        self.id = id
+        self.actions = actions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationCategory {
+        return
+            try NotificationCategory(
+                id: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeNotificationAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceTypeNotificationAction.write(value.actions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lift(_ buf: RustBuffer) throws -> NotificationCategory {
+    return try FfiConverterTypeNotificationCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lower(_ value: NotificationCategory) -> RustBuffer {
+    return FfiConverterTypeNotificationCategory.lower(value)
+}
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+public struct NotificationResponse: Equatable, Hashable {
+    public var notificationId: String
+    public var actionId: String
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    public var text: String?
+    public var category: String?
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    public var threadId: String?
+    public var deepLink: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(notificationId: String, actionId: String, 
+        /**
+         * What they typed, for a `TextInput` action.
+         */text: String?, category: String?, 
+        /**
+         * The notification's `thread_id` (its group: a chat room, a
+         * list).
+         */threadId: String?, deepLink: String?) {
+        self.notificationId = notificationId
+        self.actionId = actionId
+        self.text = text
+        self.category = category
+        self.threadId = threadId
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationResponse {
+        return
+            try NotificationResponse(
+                notificationId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.notificationId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lift(_ buf: RustBuffer) throws -> NotificationResponse {
+    return try FfiConverterTypeNotificationResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResponse) -> RustBuffer {
+    return FfiConverterTypeNotificationResponse.lower(value)
 }
 
 
@@ -3604,6 +4607,86 @@ public func FfiConverterTypeAppError_lift(_ buf: RustBuffer) throws -> AppError 
 public func FfiConverterTypeAppError_lower(_ value: AppError) -> RustBuffer {
     return FfiConverterTypeAppError.lower(value)
 }
+
+
+/**
+ * The kind of window to ask iOS for.
+ */
+
+public enum BackgroundTaskKind: Equatable, Hashable {
+    
+    /**
+     * A short refresh (about 30 seconds): fetch new content.
+     */
+    case refresh
+    /**
+     * A longer window (minutes), usually overnight: upkeep,
+     * indexing, uploads. iOS can wait for power or a network.
+     */
+    case processing(requiresExternalPower: Bool, requiresNetwork: Bool
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension BackgroundTaskKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBackgroundTaskKind: FfiConverterRustBuffer {
+    typealias SwiftType = BackgroundTaskKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BackgroundTaskKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .refresh
+        
+        case 2: return .processing(requiresExternalPower: try FfiConverterBool.read(from: &buf), requiresNetwork: try FfiConverterBool.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: BackgroundTaskKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .refresh:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .processing(requiresExternalPower,requiresNetwork):
+            writeInt(&buf, Int32(2))
+            FfiConverterBool.write(requiresExternalPower, into: &buf)
+            FfiConverterBool.write(requiresNetwork, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskKind_lift(_ buf: RustBuffer) throws -> BackgroundTaskKind {
+    return try FfiConverterTypeBackgroundTaskKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBackgroundTaskKind_lower(_ value: BackgroundTaskKind) -> RustBuffer {
+    return FfiConverterTypeBackgroundTaskKind.lower(value)
+}
+
 
 
 /**
@@ -4075,6 +5158,99 @@ public func FfiConverterTypeNativeServiceError_lift(_ buf: RustBuffer) throws ->
 public func FfiConverterTypeNativeServiceError_lower(_ value: NativeServiceError) -> RustBuffer {
     return FfiConverterTypeNativeServiceError.lower(value)
 }
+
+
+/**
+ * What an action button does.
+ */
+
+public enum NotificationActionKind: Equatable, Hashable {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    case button(destructive: Bool
+    )
+    /**
+     * A button that opens the app (View, Open).
+     */
+    case opensApp
+    /**
+     * A text field, for a quick reply.
+     */
+    case textInput(sendTitle: String, placeholder: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationActionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationActionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationActionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationActionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .button(destructive: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .opensApp
+        
+        case 3: return .textInput(sendTitle: try FfiConverterString.read(from: &buf), placeholder: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationActionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .button(destructive):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(destructive, into: &buf)
+            
+        
+        case .opensApp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .textInput(sendTitle,placeholder):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(sendTitle, into: &buf)
+            FfiConverterString.write(placeholder, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lift(_ buf: RustBuffer) throws -> NotificationActionKind {
+    return try FfiConverterTypeNotificationActionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lower(_ value: NotificationActionKind) -> RustBuffer {
+    return FfiConverterTypeNotificationActionKind.lower(value)
+}
+
 
 
 /**
@@ -4730,6 +5906,56 @@ fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationAction]
+
+    public static func write(_ value: [NotificationAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationCategory]
+
+    public static func write(_ value: [NotificationCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -4926,6 +6152,18 @@ public func appErrorKind(error: AppError) -> ErrorKind  {
 })
 }
 /**
+ * Called by the host when the person responds to a
+ * notification. Kept until the app sets a handler with
+ * [`on_notification_response`].
+ */
+public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_deliver_notification_response(
+        FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
+    )
+}
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -4973,6 +6211,27 @@ public func parseDeepLink(url: String)throws  -> DeepLink  {
     )
 })
 }
+public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_install_native_background(
+        FfiConverterTypeBackgroundScheduler_lower(scheduler),uniffiCallStatus
+    )
+}
+}
+/**
+ * Called by the host when iOS starts a task. Runs the handler
+ * registered for `identifier`, or finishes at once (failure) if
+ * there is none.
+ */
+public func runNativeBackgroundTask(identifier: String, completion: BackgroundTaskCompletion) -> BackgroundTaskRun  {
+    return try!  FfiConverterTypeBackgroundTaskRun_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_run_native_background_task(
+        FfiConverterString.lower(identifier),
+        FfiConverterTypeBackgroundTaskCompletion_lower(completion),uniffiCallStatus
+    )
+})
+}
 /**
  * Called by the host at launch (`ForgeServices.install()`).
  */
@@ -5008,6 +6267,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_func_app_error_kind() != 31479) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_func_deliver_notification_response() != 41140) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_func_install_native_services() != 23861) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5018,6 +6280,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_parse_deep_link() != 15687) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_func_install_native_background() != 62275) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_func_run_native_background_task() != 57156) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_install_native_http() != 36437) {
@@ -5092,6 +6360,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_localnotifier_pending() != 36415) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_localnotifier_set_categories() != 63197) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_permissionprovider_status() != 55249) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5107,6 +6378,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_securestore_delete() != 25197) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_submit() != 41112) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_cancel() != 3046) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_permitted() != 59703) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_backgroundtaskcompletion_finished() != 46037) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire() != 42460) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_httptransport_send() != 59421) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5117,6 +6403,8 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitBackgroundScheduler()
+    uniffiCallbackInitBackgroundTaskCompletion()
     uniffiCallbackInitHttpTransport()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()

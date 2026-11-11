@@ -2,5 +2,6 @@
 // app's Rust crate selects in forge_services::native_services!(...). Do not edit.
 
 public let forgeSelectedServices: [(name: String, install: @Sendable () throws -> Void)] = [
+    ("Background", ForgeServices.installBackground),
     ("Http", ForgeServices.installHttp),
 ]

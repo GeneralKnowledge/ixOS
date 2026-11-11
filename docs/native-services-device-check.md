@@ -37,6 +37,7 @@ About five seconds after the run, a **Forge services check** banner appears. It 
 
 - Section 2 should show `PASS forgecheck://check/notification?from=tap → route ["check", "notification"]`.
 - Open Safari, type `forgecheck://check/url` and allow the switch to the app. A second `PASS` line appears.
+- Run the checks again and, when the banner appears, long-press it (or pull it down on the lock screen). **Reply**, **Done** and **Open** appear. Tap **Reply**, type a word and send; then run again and choose **Done**. Back in the app, tap **Show notification responses**: `PASS notification response: reply` and `... done` appear (and `forge.opened` for the earlier tap).
 
 ## 4. Share and import
 
@@ -52,8 +53,24 @@ In Settings → Services check → Notifications, turn notifications off. Go bac
 
 This is the correct behaviour: Rust receives a typed `PermissionDenied`. **Open Settings** goes straight to the app's settings page.
 
+## 6. Web pages
+
+Section 4 of the app, about two minutes:
+
+- **Web page in the app** opens swift.org's About page in a sheet, with a progress bar while it loads and the page title at the top. Tap a link to another page on swift.org: it opens in the sheet and **Back** appears. Tap a link to another site (GitHub, say): Safari opens instead. **Done** closes the sheet.
+- **HTML from the app** shows "Forge" with no image (the network is blocked). Its link opens Safari.
+- **Safari in the app** opens swift.org in Safari's own view, inside the app; **Done** returns.
+- Turn on Airplane Mode and tap **Web page in the app**: an error view appears with **Try Again**. Turn Airplane Mode off and tap it: the page loads.
+
+## 7. Languages
+
+Section 5 of the app, about a minute:
+
+- In English, the section shows "This text follows the iPhone's language", and the stepper reads "1 book", then "2 books". The grey line lists `en, es` and ends with `es.lproj: Este texto sigue el idioma del iPhone`, which proves the compiled Spanish table is in the app.
+- In Settings > ServicesCheck > Language, choose Español and go back to the app: the text is in Spanish and the stepper reads "1 libro", "2 libros". Set the language back afterwards.
+
 ## Report back
 
-Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 5.
+Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 7.
 
 To remove the app, delete it from the home screen, then run `rm -rf ~/forge-services-check`.

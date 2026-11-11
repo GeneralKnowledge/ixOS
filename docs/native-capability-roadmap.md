@@ -89,18 +89,18 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 
 | # | Capability | Shape | Apple framework | First consumer |
 |---|---|---|---|---|
-| 1 | **Web view** (spec below) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
+| 1 | **Web view** (spec below). Built 2026-11-11: `ForgeWeb.swift` ([native-services.md](native-services.md#web-pages)) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
 | 2 | **Documents**: PDF view, Quick Look preview of any file in the file store | Helpers (`ForgePDFView`, `ForgeQuickLook`) | PDFKit, Quick Look | Chat (attachments); Pocket Library if it imports PDFs |
 | 3 | **Native reader** (spec below) | Rust module plus Swift helper, extracted from Pocket Library | SwiftUI text layout, AVSpeechSynthesizer for read-aloud | Pocket Library, then the feed reader |
 | 4 | **Photos and camera**: the system photo picker returning the chosen items as files in the file store, and camera capture with its `camera` permission | Helper (picker, from Chat's code, no permission) and optional service `camera` | PhotosUI, AVFoundation | Chat (attachments) |
-| 5 | **Background tasks** (contract below): Swift registers them at launch, Rust does the work in the window iOS grants | Optional service `background` | BackgroundTasks | Feed reader (refresh), Chat (catch-up) |
+| 5 | **Background tasks** (contract below). Built 2026-11-11: optional service `background` ([native-services.md](native-services.md#background-tasks-background)): Swift registers them at launch, Rust does the work in the window iOS grants | Optional service `background` | BackgroundTasks | Feed reader (refresh), Chat (catch-up) |
 | 6 | **Background transfers** (spec below) | Service, native side of `forge-net` downloads | Background `URLSession` | Local AI model downloads, Chat attachments, Pocket Library |
-| 7 | **Notification actions** (reply, mark done) delivered to Rust | Extend `LocalNotifier` | UserNotifications | Chat, Good Dog reminders |
-| 8 | **App lock with Face ID / Touch ID** | Optional service `biometrics` | LocalAuthentication | Pocket Library or Chat (opt-in lock) |
+| 7 | **Notification actions** (reply, mark done) delivered to Rust. Built 2026-11-11 ([native-services.md](native-services.md#notification-actions)) | Extend `LocalNotifier` | UserNotifications | Chat, Good Dog reminders |
+| 8 | **App lock with Face ID / Touch ID**. Built 2026-11-11: optional service `biometrics` ([native-services.md](native-services.md#face-id-and-the-app-lock-biometrics)) | Optional service `biometrics` | LocalAuthentication | Pocket Library or Chat (opt-in lock) |
 | 9 | **OAuth sign-in**: open the provider, return the callback URL to Rust; tokens kept in the Keychain | Helper plus a Rust token record on `SecureStore` | AuthenticationServices (`ASWebAuthenticationSession`) | First app that signs in to a service |
 | 10 | **Universal links**: `https://` links that open the app, routed through the existing deep-link path (Swift receives, Rust resolves the destination) | `forge.toml` `associated_domains` plus the existing deep-link service; a recipe for the `apple-app-site-association` file | Associated Domains | Pocket Library (shared book links). **Needs the paid team**: built and unit-tested now, proven on a phone after the switch |
 | 11 | **Receiving shared content**: URLs, text, images and PDFs from other apps' share sheets, handed to the app | Share extension template plus a helper; Rust sees only an inbox of files it drains | Share extension, Uniform Type Identifiers, App Groups | Pocket Library (save a link or book), the feed reader (add a feed). Spike first: whether a free team can sign an App Group (S2) |
-| 12 | **App Intents and Shortcuts**: a few app actions available to Siri, Shortcuts and Spotlight | Swift (`AppIntent` types in the app), calling the app's Rust core | App Intents | Pocket Library ("log reading"), Good Dog ("start a session"). Spike first: App Shortcuts need build-time metadata Xcode generates; check what xtool on Linux produces |
+| 12 | **App Intents and Shortcuts**: a few app actions available to Siri, Shortcuts and Spotlight | Swift (`AppIntent` types in the app), calling the app's Rust core | App Intents | Pocket Library ("log reading"), Good Dog ("start a session"). Spike first: App Shortcuts need build-time metadata Xcode generates. Spike written 2026-11-11 ([research/app-intents-on-linux.md](research/app-intents-on-linux.md)): an open-source replacement for Xcode's metadata tool runs on Linux; two laptop and phone checks decide it |
 
 Items 10 to 12 make an app reachable from outside itself: from the web, from other apps and from the system. They come after the first nine and are not started until those are under way.
 
@@ -197,7 +197,7 @@ Items 1, 2, 3 and 6 need the device; 4 and 5 also have unit tests against a fake
 |---|---|---|---|
 | 22 | **Maps** with annotations, **geocoding** and place search | Recipe for `Map`; geocoding added to the `location` service | MapKit has no offline tiles |
 | 23 | **Charts**: line, bar, area, pie and point marks styled from ForgeUI tokens | Recipe plus a small style helper | Swift Charts; no charting engine |
-| 24 | **Localization** | Spike first | String Catalogs (`.xcstrings`) are compiled by Xcode; check what xtool on Linux can do |
+| 24 | **Localization**. Built 2026-11-11: Forge compiles String Catalogs on Linux ([localization.md](localization.md)) | `forge.toml` `[ios] languages`, `string_catalogs` | String Catalogs (`.xcstrings`) are compiled by Xcode; Forge writes the same `.strings` and `.stringsdict` files and xtool copies them in |
 | 25 | **Analytics interface** and **feature configuration** | Rust traits with no vendor | Only once an app ships to people other than its developer |
 | 26 | **Speech recognition** | Optional service | Speech; useful but app-dependent (Chat voice messages are the likely first user) |
 | 27 | **HealthKit** | Optional service | For a subset of apps; free-team signing unproven (S5) |

@@ -20,7 +20,7 @@
 //! `forge config check` fails when they are stale (for CI), and
 //! `forge config show` prints the effective settings.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -58,6 +58,19 @@ pub struct IosSection {
     /// UIBackgroundModes values, e.g. "remote-notification", "fetch".
     #[serde(default)]
     pub background_modes: Vec<String>,
+    /// Background task identifiers (`native_services!(background)`): written
+    /// to BGTaskSchedulerPermittedIdentifiers, and add the "fetch" and
+    /// "processing" background modes.
+    #[serde(default)]
+    pub background_tasks: Vec<String>,
+    /// The languages the app is in, development language first ("en",
+    /// "es", "pt-BR"). Written to CFBundleLocalizations.
+    #[serde(default)]
+    pub languages: Vec<String>,
+    /// String Catalogs (`.xcstrings`) inside the app, compiled on Linux into
+    /// Generated/Localization/<lang>.lproj (docs/localization.md).
+    #[serde(default)]
+    pub string_catalogs: Vec<String>,
     /// Permission prompt texts: friendly name (or raw NS…UsageDescription key) → text.
     #[serde(default)]
     pub permissions: BTreeMap<String, String>,
@@ -401,10 +414,29 @@ pub fn info_plist(cfg: &ForgeConfig) -> Result<BTreeMap<String, Plist>, String> 
             Plist::Array(vec![Plist::Dict(url_type)]),
         );
     }
-    if !ios.background_modes.is_empty() {
+    let mut modes = ios.background_modes.clone();
+    if !ios.background_tasks.is_empty() {
+        for mode in ["fetch", "processing"] {
+            if !modes.iter().any(|m| m == mode) {
+                modes.push(mode.into());
+            }
+        }
         map.insert(
-            "UIBackgroundModes".into(),
-            Plist::strings(ios.background_modes.iter().cloned()),
+            "BGTaskSchedulerPermittedIdentifiers".into(),
+            Plist::strings(ios.background_tasks.iter().cloned()),
+        );
+    }
+    if !modes.is_empty() {
+        map.insert("UIBackgroundModes".into(), Plist::strings(modes));
+    }
+    if let Some(first) = ios.languages.first() {
+        map.insert(
+            "CFBundleDevelopmentRegion".into(),
+            Plist::String(first.clone()),
+        );
+        map.insert(
+            "CFBundleLocalizations".into(),
+            Plist::strings(ios.languages.iter().cloned()),
         );
     }
     for (name, text) in &ios.permissions {
@@ -502,6 +534,21 @@ fn render_xtool_yml(cfg: &ForgeConfig, has_entitlements: bool) -> String {
     if let Some(icon) = &ios(cfg).icon {
         let _ = writeln!(out, "iconPath: {icon}");
     }
+    let ios = ios(cfg);
+    if !ios.string_catalogs.is_empty() {
+        let _ = writeln!(
+            out,
+            "# Compiled from [ios] string_catalogs; xtool copies each folder to the bundle root."
+        );
+        let _ = writeln!(out, "resources:");
+        for language in &ios.languages {
+            let _ = writeln!(
+                out,
+                "  - {}/{language}.lproj",
+                crate::string_catalog::OUTPUT_DIR
+            );
+        }
+    }
     out
 }
 
@@ -551,6 +598,100 @@ fn is_safe_relative_path(p: &str) -> bool {
             .any(|c| c == std::path::Component::ParentDir)
         && p.chars()
             .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-' | '/'))
+}
+
+/// A catalog's table name: "Resources/Localizable.xcstrings" → "Localizable".
+fn catalog_table(path: &str) -> String {
+    Path::new(path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_default()
+}
+
+/// A generated file: path relative to the app, and content.
+type GeneratedFile = (String, String);
+
+/// The compiled String Catalogs: (path relative to the app, content), and
+/// warnings about missing translations.
+fn localization_files(
+    cfg: &ForgeConfig,
+    app_dir: &Path,
+) -> Result<(Vec<GeneratedFile>, Vec<String>), String> {
+    let ios = ios(cfg);
+    let mut files = Vec::new();
+    let mut warnings = Vec::new();
+    for catalog in &ios.string_catalogs {
+        let path = app_dir.join(catalog);
+        let json = fs::read_to_string(&path)
+            .map_err(|e| format!("[ios] string_catalogs: cannot read {}: {e}", path.display()))?;
+        let table = catalog_table(catalog);
+        let compiled = crate::string_catalog::compile(&table, &json, &ios.languages)?;
+        if Some(&compiled.source_language) != ios.languages.first() {
+            warnings.push(format!(
+                "{catalog} is written in \"{}\" but [ios] languages starts with \"{}\"; put the development language first",
+                compiled.source_language,
+                ios.languages.first().map(String::as_str).unwrap_or_default()
+            ));
+        }
+        for extra in crate::string_catalog::catalog_languages(&json) {
+            if !ios.languages.contains(&extra) {
+                warnings.push(format!(
+                    "{catalog} has \"{extra}\" translations but [ios] languages doesn't list it, so they are left out"
+                ));
+            }
+        }
+        for (language, keys) in &compiled.missing {
+            warnings.push(format!(
+                "{catalog}: {} of {} strings have no {language} translation yet (they show in {})",
+                keys.len(),
+                json_string_count(&json),
+                compiled.source_language
+            ));
+        }
+        for (language, (strings, stringsdict)) in compiled.languages {
+            let dir = format!("{}/{language}.lproj", crate::string_catalog::OUTPUT_DIR);
+            if let Some(strings) = strings {
+                files.push((format!("{dir}/{table}.strings"), strings));
+            }
+            if let Some(dict) = stringsdict {
+                files.push((format!("{dir}/{table}.stringsdict"), dict));
+            }
+        }
+    }
+    Ok((files, warnings))
+}
+
+/// How many strings a catalog has (for the missing-translation warning).
+fn json_string_count(json: &str) -> usize {
+    serde_json::from_str::<serde_json::Value>(json)
+        .ok()
+        .and_then(|v| {
+            v.get("strings")
+                .and_then(|s| s.as_object())
+                .map(|s| s.len())
+        })
+        .unwrap_or(0)
+}
+
+/// Files under Generated/Localization now, relative to the app.
+fn existing_localization_files(app_dir: &Path) -> Vec<String> {
+    let mut out = Vec::new();
+    let root = app_dir.join(crate::string_catalog::OUTPUT_DIR);
+    let Ok(dirs) = fs::read_dir(&root) else {
+        return out;
+    };
+    for dir in dirs.flatten() {
+        let Ok(files) = fs::read_dir(dir.path()) else {
+            continue;
+        };
+        for file in files.flatten() {
+            if let Ok(rel) = file.path().strip_prefix(app_dir) {
+                out.push(rel.to_string_lossy().into_owned());
+            }
+        }
+    }
+    out.sort();
+    out
 }
 
 fn one_of(table: &[(&str, &str)]) -> String {
@@ -629,6 +770,53 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
         ) {
             return Err(format!(
                 "[ios] url_schemes: \"{scheme}\" belongs to the system; use your own scheme, or [ios.entitlements] associated_domains for https links"
+            ));
+        }
+    }
+    for task in &ios.background_tasks {
+        if task.is_empty() || task.contains(char::is_whitespace) {
+            return Err(format!(
+                "[ios] background_tasks: \"{task}\" is not a task identifier; use reverse-DNS such as \"org.example.app.refresh\""
+            ));
+        }
+    }
+    if !ios.background_tasks.is_empty()
+        && ios.info.contains_key("BGTaskSchedulerPermittedIdentifiers")
+    {
+        return Err("set background task identifiers in [ios] background_tasks or in [ios.info] BGTaskSchedulerPermittedIdentifiers, not both".into());
+    }
+    for language in &ios.languages {
+        let mut parts = language.split(['-', '_']);
+        let base = parts.next().unwrap_or_default();
+        if !(2..=3).contains(&base.len())
+            || !base.chars().all(|c| c.is_ascii_lowercase())
+            || !parts.all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric()))
+        {
+            return Err(format!(
+                "[ios] languages: \"{language}\" is not a language code; use codes such as \"en\", \"es\" or \"pt-BR\""
+            ));
+        }
+    }
+    if ios.languages.iter().collect::<BTreeSet<_>>().len() != ios.languages.len() {
+        return Err("[ios] languages lists a language twice".into());
+    }
+    if !ios.languages.is_empty() && ios.info.contains_key("CFBundleLocalizations") {
+        return Err("set the app's languages in [ios] languages or in [ios.info] CFBundleLocalizations, not both".into());
+    }
+    if !ios.string_catalogs.is_empty() && ios.languages.is_empty() {
+        return Err("[ios] string_catalogs needs [ios] languages, development language first, such as languages = [\"en\", \"es\"]".into());
+    }
+    let mut tables = BTreeSet::new();
+    for catalog in &ios.string_catalogs {
+        if !is_safe_relative_path(catalog) || !catalog.ends_with(".xcstrings") {
+            return Err(format!(
+                "[ios] string_catalogs: \"{catalog}\" must be an .xcstrings path inside the app, such as \"Resources/Localizable.xcstrings\""
+            ));
+        }
+        if !tables.insert(catalog_table(catalog)) {
+            return Err(format!(
+                "[ios] string_catalogs: two catalogs are named {}; each file name is a table and must be unique",
+                catalog_table(catalog)
             ));
         }
     }
@@ -793,9 +981,10 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
         ));
     }
     if modes.iter().any(|m| m == "processing")
+        && ios.background_tasks.is_empty()
         && !ios.info.contains_key("BGTaskSchedulerPermittedIdentifiers")
     {
-        out.push("background_modes has \"processing\"; list your task identifiers in [ios.info] BGTaskSchedulerPermittedIdentifiers".into());
+        out.push("background_modes has \"processing\"; list your task identifiers in [ios] background_tasks".into());
     }
     for (service, permission) in selected_services_missing_permissions(cfg, app_dir) {
         out.push(format!(
@@ -832,6 +1021,7 @@ fn add_permission_line(permission: &str) -> String {
 /// the `[ios.permissions]` name that permission needs. The names are the
 /// `ForgeServices+<Name>.swift` adapters in crates/forge-services/swift/optional/.
 pub const SERVICE_PERMISSIONS: &[(&str, &str)] = &[
+    ("Biometrics", "face_id"),
     ("Bluetooth", "bluetooth"),
     ("Location", "location_when_in_use"),
     ("Motion", "motion"),
@@ -1062,9 +1252,27 @@ pub fn sync(app_dir: &Path, cfg: &ForgeConfig, mode: Mode) -> Result<Outcome, St
         }
     }
 
+    // Compiled String Catalogs: Forge owns Generated/Localization, so stale
+    // files are removed.
+    let (localized, localization_warnings) = localization_files(cfg, app_dir)?;
+    let mut removes: Vec<PathBuf> = Vec::new();
+    for (rel, content) in &localized {
+        let path = app_dir.join(rel);
+        if fs::read_to_string(&path).ok().as_deref() != Some(content.as_str()) {
+            writes.push((path, content.clone()));
+        }
+    }
+    for rel in existing_localization_files(app_dir) {
+        if !localized.iter().any(|(r, _)| *r == rel) {
+            removes.push(app_dir.join(rel));
+        }
+    }
+
     outcome.changed = writes
         .iter()
-        .map(|(p, _)| {
+        .map(|(p, _)| p)
+        .chain(&removes)
+        .map(|p| {
             p.strip_prefix(app_dir)
                 .unwrap_or(p)
                 .to_string_lossy()
@@ -1088,11 +1296,24 @@ pub fn sync(app_dir: &Path, cfg: &ForgeConfig, mode: Mode) -> Result<Outcome, St
         Mode::Check => {}
         Mode::Write { .. } => {
             for (path, content) in &writes {
+                if let Some(parent) = path.parent() {
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+                }
                 fs::write(path, content)
                     .map_err(|e| format!("cannot write {}: {e}", path.display()))?;
             }
+            for path in &removes {
+                fs::remove_file(path)
+                    .map_err(|e| format!("cannot remove {}: {e}", path.display()))?;
+                if let Some(parent) = path.parent() {
+                    // Only succeeds once the folder is empty.
+                    let _ = fs::remove_dir(parent);
+                }
+            }
         }
     }
+    outcome.warnings.extend(localization_warnings);
     outcome.warnings.extend(warnings(cfg, app_dir));
     Ok(outcome)
 }
@@ -1422,6 +1643,87 @@ LSApplicationQueriesSchemes = ["maps"]
     }
 
     #[test]
+    fn string_catalogs_compile_into_the_bundle() {
+        const CATALOG: &str = r#"{"sourceLanguage":"en","strings":{
+            "Settings":{"localizations":{"es":{"stringUnit":{"state":"translated","value":"Ajustes"}}}},
+            "Library":{}}}"#;
+        let (tmp, c) = app("[ios]\nlanguages = [\"en\", \"es\"]\nstring_catalogs = [\"Resources/Localizable.xcstrings\"]\n");
+        let dir = tmp.path();
+        fs::create_dir_all(dir.join("Resources")).unwrap();
+        fs::write(dir.join("Resources/Localizable.xcstrings"), CATALOG).unwrap();
+
+        let info = info_plist(&c).unwrap();
+        assert_eq!(
+            info["CFBundleDevelopmentRegion"],
+            Plist::String("en".into())
+        );
+        assert_eq!(
+            info["CFBundleLocalizations"],
+            Plist::strings(["en".to_string(), "es".to_string()])
+        );
+
+        let out = sync(dir, &c, Mode::Write { force: false }).unwrap();
+        assert!(
+            out.changed
+                .contains(&"Generated/Localization/es.lproj/Localizable.strings".to_string()),
+            "{:?}",
+            out.changed
+        );
+        assert_eq!(
+            read(dir, "Generated/Localization/es.lproj/Localizable.strings"),
+            "\"Settings\" = \"Ajustes\";\n"
+        );
+        // English needs no translations, but the folder marks the language.
+        assert_eq!(
+            read(dir, "Generated/Localization/en.lproj/Localizable.strings"),
+            ""
+        );
+        let yml = read(dir, XTOOL_YML);
+        assert!(yml.contains("resources:\n  - Generated/Localization/en.lproj\n  - Generated/Localization/es.lproj\n"), "{yml}");
+        let warnings = out.warnings.join("\n");
+        assert!(
+            warnings.contains("1 of 2 strings have no es translation"),
+            "{warnings}"
+        );
+        assert!(sync(dir, &c, Mode::Check).unwrap().changed.is_empty());
+
+        // A changed translation is drift; a dropped language is removed.
+        fs::write(
+            dir.join("Resources/Localizable.xcstrings"),
+            CATALOG.replace("Ajustes", "Configuración"),
+        )
+        .unwrap();
+        assert!(sync(dir, &c, Mode::Check)
+            .unwrap_err()
+            .contains("es.lproj/Localizable.strings"));
+        let (_, english) = app("[ios]\nlanguages = [\"en\"]\nstring_catalogs = [\"Resources/Localizable.xcstrings\"]\n");
+        let out = sync(dir, &english, Mode::Write { force: false }).unwrap();
+        assert!(
+            !dir.join("Generated/Localization/es.lproj").exists(),
+            "{:?}",
+            out.changed
+        );
+        assert!(out
+            .warnings
+            .join("\n")
+            .contains("\"es\" translations but [ios] languages doesn't list it"));
+    }
+
+    #[test]
+    fn rejects_bad_localization_settings() {
+        let e = cfg("[ios]\nstring_catalogs = [\"Localizable.xcstrings\"]\n").unwrap_err();
+        assert!(e.contains("needs [ios] languages"), "{e}");
+        let e = cfg("[ios]\nlanguages = [\"English\"]\n").unwrap_err();
+        assert!(e.contains("not a language code"), "{e}");
+        let e = cfg("[ios]\nlanguages = [\"en\"]\nstring_catalogs = [\"a/L.xcstrings\", \"b/L.xcstrings\"]\n").unwrap_err();
+        assert!(e.contains("two catalogs"), "{e}");
+        let e = cfg("[ios]\nlanguages = [\"en\"]\nstring_catalogs = [\"../L.xcstrings\"]\n")
+            .unwrap_err();
+        assert!(e.contains("inside the app"), "{e}");
+        assert!(cfg("[ios]\nlanguages = [\"en\", \"pt-BR\", \"zh-Hans\"]\n").is_ok());
+    }
+
+    #[test]
     fn sync_writes_then_is_clean_and_check_detects_drift() {
         let (tmp, c) = app("[ios.permissions]\ncamera = \"Scan.\"\n");
         let dir = tmp.path();
@@ -1523,7 +1825,26 @@ LSApplicationQueriesSchemes = ["maps"]
         let w = warnings(&c, tmp.path()).join("\n");
         assert!(w.contains("associated domains"), "{w}");
         assert!(w.contains("push_notifications"), "{w}");
-        assert!(w.contains("BGTaskSchedulerPermittedIdentifiers"), "{w}");
+        assert!(w.contains("background_tasks"), "{w}");
+    }
+
+    #[test]
+    fn background_tasks_are_permitted_and_add_their_modes() {
+        let c = cfg("[ios]\nbackground_modes = [\"audio\", \"fetch\"]\nbackground_tasks = [\"org.example.demo.refresh\"]\n").unwrap();
+        validate(&c).unwrap();
+        let info = info_plist(&c).unwrap();
+        assert_eq!(
+            info["BGTaskSchedulerPermittedIdentifiers"],
+            Plist::strings(["org.example.demo.refresh"])
+        );
+        assert_eq!(
+            info["UIBackgroundModes"],
+            Plist::strings(["audio", "fetch", "processing"])
+        );
+        let bad = cfg("[ios]\nbackground_tasks = [\"not an id\"]\n").unwrap_err();
+        assert!(bad.contains("background_tasks"), "{bad}");
+        let both = cfg("[ios]\nbackground_tasks = [\"a.b\"]\n[ios.info]\nBGTaskSchedulerPermittedIdentifiers = [\"a.b\"]\n").unwrap_err();
+        assert!(both.contains("not both"), "{both}");
     }
 
     #[test]

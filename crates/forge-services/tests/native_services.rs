@@ -186,3 +186,47 @@ fn rust_can_implement_the_host_interfaces() {
         "platform error -25308: interaction not allowed"
     );
 }
+
+#[test]
+fn notification_categories_are_checked_and_responses_reach_the_handler() {
+    let dir = tempfile::tempdir().unwrap();
+    let (services, fakes) = NativeServices::for_tests(dir.path());
+    let message = NotificationCategory {
+        id: "message".into(),
+        actions: vec![
+            NotificationAction::reply("reply"),
+            NotificationAction::button("read", "Mark as Read"),
+            NotificationAction::destructive("delete", "Delete"),
+        ],
+    };
+    services
+        .set_notification_categories(vec![message.clone()])
+        .unwrap();
+    assert_eq!(fakes.notifier.categories(), vec![message]);
+    let twice = NotificationCategory {
+        id: "c".into(),
+        actions: vec![
+            NotificationAction::button("a", "A"),
+            NotificationAction::button("a", "B"),
+        ],
+    };
+    assert!(matches!(
+        services.set_notification_categories(vec![twice]),
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+
+    // A response that arrives before the handler (a cold launch) waits.
+    let reply = NotificationResponse {
+        notification_id: "m1".into(),
+        action_id: "reply".into(),
+        text: Some("On my way".into()),
+        category: Some("message".into()),
+        thread_id: Some("room-1".into()),
+        deep_link: None,
+    };
+    deliver_notification_response(reply.clone());
+    let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    on_notification_response(move |r| sink.lock().unwrap().push(r));
+    assert_eq!(*seen.lock().unwrap(), vec![reply]);
+}

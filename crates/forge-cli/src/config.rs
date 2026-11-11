@@ -171,6 +171,9 @@ impl ForgeConfig {
                 }
                 add(&mut ours.background_modes, theirs.background_modes);
                 add(&mut ours.url_schemes, theirs.url_schemes);
+                // A hosted app's background tasks (Commonplace's refresh)
+                // must be permitted by the host's Info.plist.
+                add(&mut ours.background_tasks, theirs.background_tasks);
             }
             if let Some(theirs) = other.ui_test {
                 let ours = self.ui_test.get_or_insert_with(Default::default);

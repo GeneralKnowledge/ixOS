@@ -356,3 +356,41 @@ fn bookmarking_an_opened_article_keeps_it_read() {
     assert_eq!(core.feeds()[0].unread_count, before - 1);
     assert!(core.article(first.id).unwrap().read);
 }
+
+#[test]
+fn background_refresh_runs_while_the_app_is_in_the_background() {
+    use native::background::testing::FakeScheduler;
+    use native::background::BackgroundService;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _feed) = subscribed(dir.path());
+    drop(core);
+    let http = StaticClient::new().route(
+        Method::Get,
+        URL,
+        ok(rss(&[("a", "Alpha"), ("b", "Beta"), ("c", "Gamma")]), None),
+    );
+    let (core, _) = open_with(dir.path(), http);
+    // In the background, on-screen work stops; the background refresh is
+    // not on-screen work.
+    core.set_phase(AppPhase::Background);
+
+    let (service, fake) = BackgroundService::for_tests(&[BACKGROUND_REFRESH]);
+    service.clone().install();
+    core.register_background_refresh();
+    BackgroundService::uninstall();
+    assert_eq!(
+        fake.submitted.lock().unwrap()[0].identifier,
+        BACKGROUND_REFRESH
+    );
+
+    let (_run, results) = FakeScheduler::start(&service, BACKGROUND_REFRESH);
+    for _ in 0..300 {
+        if !results.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(*results.lock().unwrap(), vec![true]);
+    assert_eq!(core.timeline(Timeline::All).len(), 3);
+}

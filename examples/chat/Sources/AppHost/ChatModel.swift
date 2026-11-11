@@ -118,6 +118,8 @@ public final class ChatModel {
             assistant = AssistantModel(core: core.assistant(), engine: assistantEngine)
             listen(to: events)
             if lifecyclePhase != .launching { core.setPhase(phase: lifecyclePhase) }
+            // Before the tabs appear, so a locked app never shows them.
+            appLock = core.appLock()
             showAccount(core.account())
         } catch {
             phase = .failed(Self.describe(error))
@@ -240,6 +242,16 @@ public final class ChatModel {
     /// Mutes or unmutes the room's notifications on this iPhone.
     public func setMuted(_ conversationId: String, _ muted: Bool) {
         perform { try $0.setMuted(conversationId: conversationId, muted: muted) }
+    }
+
+    /// The app lock setting (Rust keeps it); `appLockMethod` says how it
+    /// would unlock here, nil when this iPhone can't lock at all.
+    public private(set) var appLock = false
+    public var appLockMethod: String? { ChatFFI.appLockMethod() }
+
+    public func setAppLock(_ enabled: Bool) {
+        perform { try $0.setAppLock(enabled: enabled) }
+        appLock = core?.appLock() ?? false
     }
 
     private func perform(_ action: (ChatCore) throws -> Void) {

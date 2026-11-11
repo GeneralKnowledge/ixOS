@@ -1396,6 +1396,279 @@ public func FfiConverterTypeAudioFiles_lower(_ value: AudioFiles) -> UInt64 {
 
 
 /**
+ * Implemented by the host (iOS: `LAContext`).
+ */
+public protocol BiometricAuthenticator: AnyObject, Sendable {
+    
+    func availability()  -> BiometricAvailability
+    
+    /**
+     * Asks for Face ID or Touch ID, falling back to the
+     * passcode. `reason` is shown under Touch ID (Face ID shows
+     * the usage text from forge.toml).
+     */
+    func authenticate(reason: String) async  -> AuthenticationResult
+    
+}
+/**
+ * Implemented by the host (iOS: `LAContext`).
+ */
+open class BiometricAuthenticatorImpl: BiometricAuthenticator, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_chat_app_fn_clone_biometricauthenticator(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_chat_app_fn_free_biometricauthenticator(handle, $0) }
+    }
+
+    
+
+    
+open func availability() -> BiometricAvailability  {
+    return try!  FfiConverterTypeBiometricAvailability_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_biometricauthenticator_availability(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Asks for Face ID or Touch ID, falling back to the
+     * passcode. `reason` is shown under Touch ID (Face ID shows
+     * the usage text from forge.toml).
+     */
+open func authenticate(reason: String)async  -> AuthenticationResult  {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_chat_app_fn_method_biometricauthenticator_authenticate(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(reason)
+                )
+            },
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeAuthenticationResult_lift,
+            errorHandler: nil
+            
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceBiometricAuthenticator {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceBiometricAuthenticator = UniffiVTableCallbackInterfaceBiometricAuthenticator(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeBiometricAuthenticator.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface BiometricAuthenticator: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeBiometricAuthenticator.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface BiometricAuthenticator: handle missing in uniffiClone")
+            }
+        },
+        availability: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> BiometricAvailability in
+                guard let uniffiObj = try? FfiConverterTypeBiometricAuthenticator.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.availability(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeBiometricAvailability_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        authenticate: { (
+            uniffiHandle: UInt64,
+            reason: RustBuffer,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> AuthenticationResult in
+                guard let uniffiObj = try? FfiConverterTypeBiometricAuthenticator.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return await uniffiObj.authenticate(
+                     reason: try FfiConverterString.lift(reason)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: AuthenticationResult) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterTypeAuthenticationResult_lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceBiometricAuthenticator> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceBiometricAuthenticator>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitBiometricAuthenticator() {
+    uniffi_chat_app_fn_init_callback_vtable_biometricauthenticator(UniffiCallbackInterfaceBiometricAuthenticator.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometricAuthenticator: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<BiometricAuthenticator>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = BiometricAuthenticator
+
+    public static func lift(_ handle: UInt64) throws -> BiometricAuthenticator {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return BiometricAuthenticatorImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: BiometricAuthenticator) -> UInt64 {
+         if let rustImpl = value as? BiometricAuthenticatorImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometricAuthenticator {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: BiometricAuthenticator, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAuthenticator_lift(_ handle: UInt64) throws -> BiometricAuthenticator {
+    return try FfiConverterTypeBiometricAuthenticator.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAuthenticator_lower(_ value: BiometricAuthenticator) -> UInt64 {
+    return FfiConverterTypeBiometricAuthenticator.lower(value)
+}
+
+
+
+
+
+
+/**
  * The app instance. Create one at launch and share it. Thread-safe.
  */
 public protocol ChatCoreProtocol: AnyObject, Sendable {
@@ -1405,6 +1678,12 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * offline from its store without asking the server.
      */
     func account()  -> ChatAccount?
+    
+    /**
+     * Whether Chat asks for Face ID, Touch ID or the passcode when it
+     * opens and after a minute in the background. This device only.
+     */
+    func appLock()  -> Bool
     
     /**
      * The on-device assistant. Works without an account, and keeps its
@@ -1537,6 +1816,13 @@ public protocol ChatCoreProtocol: AnyObject, Sendable {
      * conversation.
      */
     func sendReply(conversationId: String, body: String, replyTo: String?) async throws  -> ChatMessage
+    
+    /**
+     * Turns the app lock on or off. Turning it on is refused when this
+     * iPhone has neither biometrics nor a passcode, since the lock could
+     * never open.
+     */
+    func setAppLock(enabled: Bool) throws 
     
     /**
      * Saves the composer's unsent text (empty clears it). Kept on this
@@ -1713,6 +1999,19 @@ open func account() -> ChatAccount?  {
     return try!  FfiConverterOptionTypeChatAccount.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_chat_app_fn_method_chatcore_account(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Whether Chat asks for Face ID, Touch ID or the passcode when it
+     * opens and after a minute in the background. This device only.
+     */
+open func appLock() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_app_lock(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -2082,6 +2381,20 @@ open func sendReply(conversationId: String, body: String, replyTo: String?)async
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
+}
+    
+    /**
+     * Turns the app lock on or off. Turning it on is refused when this
+     * iPhone has neither biometrics nor a passcode, since the lock could
+     * never open.
+     */
+open func setAppLock(enabled: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_chatcore_set_app_lock(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(enabled),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -2796,6 +3109,12 @@ public protocol LocalNotifier: AnyObject, Sendable {
      */
     func pending() async  -> [String]
     
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    func setCategories(categories: [NotificationCategory]) 
+    
 }
 /**
  * Local notifications (no push server involved).
@@ -2905,6 +3224,19 @@ open func pending()async  -> [String]  {
             errorHandler: nil
             
         )
+}
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_localnotifier_set_categories(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
+    )
+}
 }
     
 
@@ -3038,6 +3370,30 @@ fileprivate struct UniffiCallbackInterfaceLocalNotifier {
                 handleSuccess: uniffiHandleSuccess,
                 handleError: uniffiHandleError,
                 droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        setCategories: { (
+            uniffiHandle: UInt64,
+            categories: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.setCategories(
+                     categories: try FfiConverterSequenceTypeNotificationCategory.lift(categories)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
             )
         }
     )
@@ -4332,6 +4688,81 @@ public func FfiConverterTypeAssistantStats_lower(_ value: AssistantStats) -> Rus
 
 
 /**
+ * What the device can do now.
+ */
+public struct BiometricAvailability: Equatable, Hashable {
+    public var kind: BiometryKind
+    /**
+     * A face or finger is enrolled and allowed for this app.
+     */
+    public var biometricsUsable: Bool
+    /**
+     * A device passcode is set (the fallback, and the minimum
+     * for an app lock).
+     */
+    public var passcodeSet: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(kind: BiometryKind, 
+        /**
+         * A face or finger is enrolled and allowed for this app.
+         */biometricsUsable: Bool, 
+        /**
+         * A device passcode is set (the fallback, and the minimum
+         * for an app lock).
+         */passcodeSet: Bool) {
+        self.kind = kind
+        self.biometricsUsable = biometricsUsable
+        self.passcodeSet = passcodeSet
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BiometricAvailability: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometricAvailability: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometricAvailability {
+        return
+            try BiometricAvailability(
+                kind: FfiConverterTypeBiometryKind.read(from: &buf), 
+                biometricsUsable: FfiConverterBool.read(from: &buf), 
+                passcodeSet: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BiometricAvailability, into buf: inout [UInt8]) {
+        FfiConverterTypeBiometryKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.biometricsUsable, into: &buf)
+        FfiConverterBool.write(value.passcodeSet, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAvailability_lift(_ buf: RustBuffer) throws -> BiometricAvailability {
+    return try FfiConverterTypeBiometricAvailability.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometricAvailability_lower(_ value: BiometricAvailability) -> RustBuffer {
+    return FfiConverterTypeBiometricAvailability.lower(value)
+}
+
+
+/**
  * The signed-in account, without its token (the token never leaves Rust
  * and the Keychain).
  */
@@ -5265,6 +5696,11 @@ public struct LocalNotification: Equatable, Hashable {
      */
     public var deepLink: String?
     public var trigger: NotificationTrigger
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    public var category: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5275,7 +5711,11 @@ public struct LocalNotification: Equatable, Hashable {
         /**
          * Opened when the user taps the notification, through the
          * same path as any other deep link.
-         */deepLink: String?, trigger: NotificationTrigger) {
+         */deepLink: String?, trigger: NotificationTrigger, 
+        /**
+         * The category whose action buttons the notification shows
+         * (`set_notification_categories`). None: no buttons.
+         */category: String? = nil) {
         self.id = id
         self.title = title
         self.body = body
@@ -5283,6 +5723,7 @@ public struct LocalNotification: Equatable, Hashable {
         self.threadId = threadId
         self.deepLink = deepLink
         self.trigger = trigger
+        self.category = category
     }
 
     
@@ -5307,7 +5748,8 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
                 subtitle: FfiConverterOptionString.read(from: &buf), 
                 threadId: FfiConverterOptionString.read(from: &buf), 
                 deepLink: FfiConverterOptionString.read(from: &buf), 
-                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf)
+                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -5319,6 +5761,7 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.threadId, into: &buf)
         FfiConverterOptionString.write(value.deepLink, into: &buf)
         FfiConverterTypeNotificationTrigger.write(value.trigger, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
     }
 }
 
@@ -5335,6 +5778,230 @@ public func FfiConverterTypeLocalNotification_lift(_ buf: RustBuffer) throws -> 
 #endif
 public func FfiConverterTypeLocalNotification_lower(_ value: LocalNotification) -> RustBuffer {
     return FfiConverterTypeLocalNotification.lower(value)
+}
+
+
+/**
+ * One action button on a notification.
+ */
+public struct NotificationAction: Equatable, Hashable {
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    public var id: String
+    public var title: String
+    public var kind: NotificationActionKind
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    public var requiresUnlock: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Comes back in `NotificationResponse::action_id`.
+         */id: String, title: String, kind: NotificationActionKind, 
+        /**
+         * iOS asks the person to unlock the phone first.
+         */requiresUnlock: Bool) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.requiresUnlock = requiresUnlock
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationAction {
+        return
+            try NotificationAction(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNotificationActionKind.read(from: &buf), 
+                requiresUnlock: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeNotificationActionKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.requiresUnlock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lift(_ buf: RustBuffer) throws -> NotificationAction {
+    return try FfiConverterTypeNotificationAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lower(_ value: NotificationAction) -> RustBuffer {
+    return FfiConverterTypeNotificationAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+public struct NotificationCategory: Equatable, Hashable {
+    public var id: String
+    public var actions: [NotificationAction]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, actions: [NotificationAction]) {
+        self.id = id
+        self.actions = actions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationCategory {
+        return
+            try NotificationCategory(
+                id: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeNotificationAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceTypeNotificationAction.write(value.actions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lift(_ buf: RustBuffer) throws -> NotificationCategory {
+    return try FfiConverterTypeNotificationCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lower(_ value: NotificationCategory) -> RustBuffer {
+    return FfiConverterTypeNotificationCategory.lower(value)
+}
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+public struct NotificationResponse: Equatable, Hashable {
+    public var notificationId: String
+    public var actionId: String
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    public var text: String?
+    public var category: String?
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    public var threadId: String?
+    public var deepLink: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(notificationId: String, actionId: String, 
+        /**
+         * What they typed, for a `TextInput` action.
+         */text: String?, category: String?, 
+        /**
+         * The notification's `thread_id` (its group: a chat room, a
+         * list).
+         */threadId: String?, deepLink: String?) {
+        self.notificationId = notificationId
+        self.actionId = actionId
+        self.text = text
+        self.category = category
+        self.threadId = threadId
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationResponse {
+        return
+            try NotificationResponse(
+                notificationId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.notificationId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lift(_ buf: RustBuffer) throws -> NotificationResponse {
+    return try FfiConverterTypeNotificationResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResponse) -> RustBuffer {
+    return FfiConverterTypeNotificationResponse.lower(value)
 }
 
 
@@ -6074,6 +6741,190 @@ public func FfiConverterTypeAssistantUpdate_lift(_ buf: RustBuffer) throws -> As
 #endif
 public func FfiConverterTypeAssistantUpdate_lower(_ value: AssistantUpdate) -> RustBuffer {
     return FfiConverterTypeAssistantUpdate.lower(value)
+}
+
+
+
+/**
+ * How an authentication ended.
+ */
+
+public enum AuthenticationResult: Equatable, Hashable {
+    
+    case authenticated
+    /**
+     * The person (or the system, or another app) cancelled.
+     */
+    case cancelled
+    /**
+     * Too many failed attempts: biometrics are locked until the
+     * passcode is entered.
+     */
+    case lockedOut
+    /**
+     * No biometrics or passcode, or the app's permission was
+     * refused.
+     */
+    case unavailable
+    case failed
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AuthenticationResult: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAuthenticationResult: FfiConverterRustBuffer {
+    typealias SwiftType = AuthenticationResult
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AuthenticationResult {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .authenticated
+        
+        case 2: return .cancelled
+        
+        case 3: return .lockedOut
+        
+        case 4: return .unavailable
+        
+        case 5: return .failed
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AuthenticationResult, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .authenticated:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .cancelled:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .lockedOut:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .unavailable:
+            writeInt(&buf, Int32(4))
+        
+        
+        case .failed:
+            writeInt(&buf, Int32(5))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAuthenticationResult_lift(_ buf: RustBuffer) throws -> AuthenticationResult {
+    return try FfiConverterTypeAuthenticationResult.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAuthenticationResult_lower(_ value: AuthenticationResult) -> RustBuffer {
+    return FfiConverterTypeAuthenticationResult.lower(value)
+}
+
+
+
+/**
+ * The biometric sensor the device has.
+ */
+
+public enum BiometryKind: Equatable, Hashable {
+    
+    case none
+    case touchId
+    case faceId
+    case opticId
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension BiometryKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBiometryKind: FfiConverterRustBuffer {
+    typealias SwiftType = BiometryKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BiometryKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .none
+        
+        case 2: return .touchId
+        
+        case 3: return .faceId
+        
+        case 4: return .opticId
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: BiometryKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .none:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .touchId:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .faceId:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .opticId:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometryKind_lift(_ buf: RustBuffer) throws -> BiometryKind {
+    return try FfiConverterTypeBiometryKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBiometryKind_lower(_ value: BiometryKind) -> RustBuffer {
+    return FfiConverterTypeBiometryKind.lower(value)
 }
 
 
@@ -7004,6 +7855,99 @@ public func FfiConverterTypeNativeServiceError_lower(_ value: NativeServiceError
 
 
 /**
+ * What an action button does.
+ */
+
+public enum NotificationActionKind: Equatable, Hashable {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    case button(destructive: Bool
+    )
+    /**
+     * A button that opens the app (View, Open).
+     */
+    case opensApp
+    /**
+     * A text field, for a quick reply.
+     */
+    case textInput(sendTitle: String, placeholder: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationActionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationActionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationActionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationActionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .button(destructive: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .opensApp
+        
+        case 3: return .textInput(sendTitle: try FfiConverterString.read(from: &buf), placeholder: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationActionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .button(destructive):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(destructive, into: &buf)
+            
+        
+        case .opensApp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .textInput(sendTitle,placeholder):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(sendTitle, into: &buf)
+            FfiConverterString.write(placeholder, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lift(_ buf: RustBuffer) throws -> NotificationActionKind {
+    return try FfiConverterTypeNotificationActionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lower(_ value: NotificationActionKind) -> RustBuffer {
+    return FfiConverterTypeNotificationActionKind.lower(value)
+}
+
+
+
+/**
  * When a local notification fires.
  */
 
@@ -7904,6 +8848,56 @@ fileprivate struct FfiConverterSequenceTypeChatReaction: FfiConverterRustBuffer 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationAction]
+
+    public static func write(_ value: [NotificationAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationCategory]
+
+    public static func write(_ value: [NotificationCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePromptTurn: FfiConverterRustBuffer {
     typealias SwiftType = [PromptTurn]
 
@@ -8089,6 +9083,17 @@ public func uniffiForeignFutureHandleCountChatApp() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
+ * How the app lock would unlock on this iPhone ("Face ID", "Touch ID",
+ * "Passcode"), or nil when it can't lock at all.
+ */
+public func appLockMethod() -> String?  {
+    return try!  FfiConverterOptionString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_app_lock_method(uniffiCallStatus
+    )
+})
+}
+/**
  * Writes one record from host code into Forge's log, with
  * `category` as its target. Never log secrets.
  */
@@ -8112,6 +9117,28 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
         FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
     )
 })
+}
+/**
+ * [`MESSAGE_NOTIFICATION`], for the Swift notifier.
+ */
+public func messageNotificationCategory() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_message_notification_category(uniffiCallStatus
+    )
+})
+}
+/**
+ * Called by the host when the person responds to a
+ * notification. Kept until the app sets a handler with
+ * [`on_notification_response`].
+ */
+public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_deliver_notification_response(
+        FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
+    )
+}
 }
 /**
  * Called once by the host at launch (on iOS by
@@ -8168,6 +9195,13 @@ public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
     )
 }
 }
+public func installNativeBiometrics(authenticator: BiometricAuthenticator)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_install_native_biometrics(
+        FfiConverterTypeBiometricAuthenticator_lower(authenticator),uniffiCallStatus
+    )
+}
+}
 /**
  * The delivery state of `message` in `conversation`: `Read` once another
  * account's read cursor has passed one of our sent messages. Only
@@ -8209,10 +9243,19 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
+    if (uniffi_chat_app_checksum_func_app_lock_method() != 62170) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_func_forge_log() != 51202) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_func_forge_log_enabled() != 31764) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_func_message_notification_category() != 43766) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_func_deliver_notification_response() != 25229) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_func_install_native_services() != 35364) {
@@ -8230,6 +9273,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_func_install_native_audio() != 19805) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_func_install_native_biometrics() != 20041) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_func_chat_delivery() != 12086) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8237,6 +9283,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_account() != 27146) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_app_lock() != 7460) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_assistant() != 10095) {
@@ -8300,6 +9349,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_send_reply() != 42370) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_chatcore_set_app_lock() != 45331) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_chatcore_set_draft() != 19456) {
@@ -8419,6 +9471,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_localnotifier_pending() != 38189) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_method_localnotifier_set_categories() != 43663) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_method_permissionprovider_status() != 22495) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8437,6 +9492,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_audiofiles_duration() != 5070) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_method_biometricauthenticator_availability() != 47880) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_biometricauthenticator_authenticate() != 30162) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_constructor_chatcore_new() != 29475) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8445,6 +9506,7 @@ private let initializationResult: InitializationResult = {
     }
 
     uniffiCallbackInitAudioFiles()
+    uniffiCallbackInitBiometricAuthenticator()
     uniffiCallbackInitLocalModelEngine()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()

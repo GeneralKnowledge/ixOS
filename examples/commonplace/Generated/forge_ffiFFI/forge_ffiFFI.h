@@ -262,6 +262,13 @@ typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiFore
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -295,6 +302,34 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod2)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundTaskCompletionMethod0)(uint64_t, int8_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
 typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
@@ -317,6 +352,7 @@ typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
     UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
     UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
     UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
 } UniffiVTableCallbackInterfaceLocalNotifier;
 
 #endif
@@ -339,6 +375,26 @@ typedef struct UniffiVTableCallbackInterfaceSecureStore {
     UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
     UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
 } UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+typedef struct UniffiVTableCallbackInterfaceBackgroundScheduler {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod0 _Nonnull submit;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod2 _Nonnull permitted;
+} UniffiVTableCallbackInterfaceBackgroundScheduler;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+typedef struct UniffiVTableCallbackInterfaceBackgroundTaskCompletion {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundTaskCompletionMethod0 _Nonnull finished;
+} UniffiVTableCallbackInterfaceBackgroundTaskCompletion;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
@@ -496,6 +552,11 @@ void uniffi_commonplace_core_fn_method_localnotifier_cancel(uint64_t ptr, RustBu
 uint64_t uniffi_commonplace_core_fn_method_localnotifier_pending(uint64_t ptr
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_commonplace_core_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_PERMISSIONPROVIDER
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_PERMISSIONPROVIDER
 uint64_t uniffi_commonplace_core_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -551,6 +612,71 @@ void uniffi_commonplace_core_fn_method_securestore_set(uint64_t ptr, RustBuffer 
 void uniffi_commonplace_core_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDSCHEDULER
+uint64_t uniffi_commonplace_core_fn_clone_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDSCHEDULER
+void uniffi_commonplace_core_fn_free_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+void uniffi_commonplace_core_fn_init_callback_vtable_backgroundscheduler(const UniffiVTableCallbackInterfaceBackgroundScheduler* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+void uniffi_commonplace_core_fn_method_backgroundscheduler_submit(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+void uniffi_commonplace_core_fn_method_backgroundscheduler_cancel(uint64_t ptr, RustBuffer identifier, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+RustBuffer uniffi_commonplace_core_fn_method_backgroundscheduler_permitted(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDTASKCOMPLETION
+uint64_t uniffi_commonplace_core_fn_clone_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDTASKCOMPLETION
+void uniffi_commonplace_core_fn_free_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+void uniffi_commonplace_core_fn_init_callback_vtable_backgroundtaskcompletion(const UniffiVTableCallbackInterfaceBackgroundTaskCompletion* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+void uniffi_commonplace_core_fn_method_backgroundtaskcompletion_finished(uint64_t ptr, int8_t success, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_BACKGROUNDTASKRUN
+uint64_t uniffi_commonplace_core_fn_clone_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_BACKGROUNDTASKRUN
+void uniffi_commonplace_core_fn_free_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+void uniffi_commonplace_core_fn_method_backgroundtaskrun_expire(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPTRANSPORT
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPTRANSPORT
 uint64_t uniffi_commonplace_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -591,6 +717,11 @@ int8_t uniffi_commonplace_core_fn_func_forge_log_enabled(RustBuffer level, RustC
 RustBuffer uniffi_commonplace_core_fn_func_app_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_commonplace_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
 void uniffi_commonplace_core_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
@@ -611,6 +742,16 @@ uint32_t uniffi_commonplace_core_fn_func_native_services_version(RustCallStatus 
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_PARSE_DEEP_LINK
 RustBuffer uniffi_commonplace_core_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+void uniffi_commonplace_core_fn_func_install_native_background(uint64_t scheduler, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint64_t uniffi_commonplace_core_fn_func_run_native_background_task(RustBuffer identifier, uint64_t completion, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
@@ -896,6 +1037,12 @@ uint16_t uniffi_commonplace_core_checksum_func_app_error_kind(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_commonplace_core_checksum_func_deliver_notification_response(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
 uint16_t uniffi_commonplace_core_checksum_func_install_native_services(void
@@ -917,6 +1064,18 @@ uint16_t uniffi_commonplace_core_checksum_func_native_services_version(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
 uint16_t uniffi_commonplace_core_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+uint16_t uniffi_commonplace_core_checksum_func_install_native_background(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint16_t uniffi_commonplace_core_checksum_func_run_native_background_task(void
     
 );
 #endif
@@ -1064,6 +1223,12 @@ uint16_t uniffi_commonplace_core_checksum_method_localnotifier_pending(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_commonplace_core_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
 uint16_t uniffi_commonplace_core_checksum_method_permissionprovider_status(void
@@ -1091,6 +1256,36 @@ uint16_t uniffi_commonplace_core_checksum_method_securestore_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
 uint16_t uniffi_commonplace_core_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+uint16_t uniffi_commonplace_core_checksum_method_backgroundscheduler_submit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+uint16_t uniffi_commonplace_core_checksum_method_backgroundscheduler_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+uint16_t uniffi_commonplace_core_checksum_method_backgroundscheduler_permitted(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+uint16_t uniffi_commonplace_core_checksum_method_backgroundtaskcompletion_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+uint16_t uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire(void
     
 );
 #endif

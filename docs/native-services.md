@@ -86,6 +86,35 @@ Things to know:
 - **Notifications and permissions are `async`.** The Swift side awaits `UNUserNotificationCenter`. Scheduling fails with `PermissionDenied` if the user has said no, or has not been asked yet, so request the permission first, from something the user did. A notification with the `id` of a pending one replaces it.
 - **Store paths relative to `AppDirectories`.** iOS changes the container path between installs, so a stored absolute path breaks after an update.
 
+### Notification actions
+
+Buttons on a notification (Reply, Mark as Read, Done, Delete), handled in Rust, mostly without opening the app. Set the categories when the core opens, name one on each notification, and set one handler for the responses:
+
+```rust
+use crate::native::{on_notification_response, NotificationAction, NotificationCategory};
+
+services.set_notification_categories(vec![NotificationCategory {
+    id: "message".into(),
+    actions: vec![
+        NotificationAction::reply("reply"),                  // a text field with Send
+        NotificationAction::button("read", "Mark as Read"),  // handled in the background
+        NotificationAction::destructive("delete", "Delete"), // red, needs the phone unlocked
+        NotificationAction::opens_app("view", "View"),       // opens the app, and the deep link
+    ],
+}])?;
+reminder.category = Some("message".into());
+
+on_notification_response(move |response| match response.action_id.as_str() {
+    "reply" => { /* response.text, response.thread_id, response.notification_id */ }
+    "read" => { /* ... */ }
+    native::NOTIFICATION_OPENED => {}    // a tap on the notification itself
+    native::NOTIFICATION_DISMISSED => {} // swiped away (categories only)
+    _ => {}
+});
+```
+
+Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each); Chat's message notifications are the first user (Reply and Mark as Read).
+
 ### Tests
 
 `NativeServices::for_tests(dir)` returns in-memory services and the fakes behind them: `MemorySecureStore`, `RecordingNotifier` (`.scheduled()`, `.deny()`) and `FixedPermissions` (`.set(..)`). They run with `cargo test` on Linux and need no device:
@@ -134,7 +163,29 @@ Some platform code has no Rust side at all. These files are copied into every ap
 | Helper | What it does |
 |--------|--------------|
 | `ForgeAudioSession` | `activate(.playback)` (spoken audio, plays with the ring switch on silent) or `activate(.record)`, and `deactivate()` so other apps' audio resumes. Needs no permission, so an app that only plays sound (Pocket Library's read-aloud) uses it without selecting `audio`. AVFoundation, iOS only; does nothing elsewhere |
+| `ForgeWeb` | Web pages inside the app, on WebKit and SafariServices; see [Web pages](#web-pages) below. iOS only |
 | `ForgeImages` | `thumbnail(of: url, maxPixels:, cached:)` and `thumbnail(of: data, maxPixels:)` decode an image straight to the size shown, the right way up, off the main actor; `writeDownscaledJPEG(from:maxPixels:to:)` turns a picked photo into a smaller JPEG without its location or other metadata; `pixels(_ points:, scale:)` converts a view size. Uses ImageIO only |
+
+### Web pages
+
+The jobs apps keep repeating, each in a line or two. All of them are iOS only (`#if os(iOS)`).
+
+| Job | Use |
+|-----|-----|
+| A help page, privacy policy, terms, or an article's original page | `.forgeWebSheet($page)` with `page = .link(url, title: "Privacy")`. The page's own site opens in the sheet, every other link in Safari |
+| HTML the app already has (an article body, a feed's rich text) | `page = .html(html, title:)`: no scripts, nothing from the network, links open in Safari |
+| A help page bundled with the app | `page = .bundled(Bundle.main.url(forResource: "help", withExtension: "html")!)`: may read files in its own folder only |
+| A link the app doesn't control | `.forgeSafari($url)`, Safari inside the app (`SFSafariViewController`): the person's own Safari, which the app can't see into |
+| A web page as part of the app's own flow | `ForgeWebScreen(page)` pushed in a `NavigationStack`, or `ForgeWebView(source, policy:, state:)` with a `ForgeWebState` for a custom screen |
+
+`ForgeWebScreen` adds a progress bar, Back, Open in Safari and an error view with Try Again around the page (identifiers `web.page`, `web.back`, `web.openInSafari`, `web.retry`, and `web.done` on the sheet). `ForgeWebState` exposes the title, address, progress, back and forward, and a `ForgeWebError` (`loadFailed`, `downloadRefused`, `contentCrashed`).
+
+`ForgeWebPolicy` keeps each power a separate opt-in (the spec is in [native-capability-roadmap.md](native-capability-roadmap.md#web-view)):
+
+- `allowedHosts`: where top-level navigation may go; a host includes its subdomains. Other web links open in Safari, and only when the person tapped them.
+- `externalSchemes`: non-web schemes (`mailto`, `tel`) handed to the system; any other scheme is refused.
+- `javaScript` (on by default), `persistentWebsiteData` (off: nothing kept between launches), `remoteContent` (on; off blocks every http and https load with a content rule list).
+- Never configurable here: downloads (refused, with `downloadRefused`), a JavaScript message bridge (there is none), a second window (`window.open` loads in place or not at all). A crashed web process reloads the page once, then reports `contentCrashed`.
 
 ## Optional services
 
@@ -146,6 +197,8 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 
 | Service | Rust (`crate::native::<name>`) | iOS adapter | Permission and `forge.toml` |
 |---------|------------------------------|-------------|-----------------------------|
+| `biometrics` | `BiometricsService`: `availability()`, `confirm(reason)`; see [Face ID and the app lock](#face-id-and-the-app-lock-biometrics) | `ForgeBiometrics` (`LAContext`), `.forgeAppLock` | `[ios.permissions] face_id` |
+| `background` | `BackgroundService`: `register_refresh`, `register_processing`, `register_handler`, `schedule`, `cancel`; see [Background tasks](#background-tasks-background) | `ForgeBackgroundScheduler` (`BGTaskScheduler`) | None; `forge.toml` `[ios] background_tasks` |
 | `connectivity` | `ConnectivityService`: `current()`, `watch(..)`; `ConnectivityStatus` (online, interfaces, metered, Low Data Mode, offline reason), `allows(TransferPolicy::Unmetered)` | `ForgeConnectivityMonitor` (`NWPathMonitor`) | None |
 | `device_status` | `DeviceStatusService`: `info()` (model, iOS version, cores, RAM, screen), `status()` (battery, Low Power Mode, thermal state, storage, memory left), `watch(..)`; `DeviceStatus::defer_heavy_work(memory)` | `ForgeDeviceStatus` (`UIDevice`, `ProcessInfo`, file system, `os_proc_available_memory`) | None |
 | `motion` | `MotionService`: `availability()`, `watch(sensor, interval_ms, ..)` for the accelerometer, gyroscope, magnetometer, fused device motion (attitude, gravity, user acceleration, heading) and the barometer | `ForgeMotionSensors` (Core Motion) | The barometer needs `NativePermission::Motion` and `[ios.permissions] motion`; the other sensors need nothing |
@@ -210,6 +263,57 @@ let seconds = try ForgeAudio.duration(of: url)
 ```
 
 `ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
+
+### Face ID and the app lock (`biometrics`)
+
+Face ID, Touch ID or the device passcode, through LocalAuthentication. Declare `face_id` under `[ios.permissions]` too: iOS ends an app that asks for Face ID without it. Chat's "Require Face ID" setting is its first user.
+
+| Job | Use |
+|-----|-----|
+| Lock the app | `.forgeAppLock(isEnabled: model.appLock, graceSeconds: 60, reason: "Unlock Chat")` on the root view. It asks at launch and after `graceSeconds` in the background, shows a lock screen with an Unlock button (`appLock.unlock`) between attempts, and covers the content whenever the app is not active, so the app switcher's snapshot shows nothing private. Turning the setting on doesn't lock the open app; turning it off unlocks it |
+| A "Require Face ID" setting | `BiometricsService::installed()?.availability()`: `can_lock()` (biometrics or at least a passcode) and `name()` ("Face ID", "Touch ID", "Passcode") for the toggle's label. Refuse to turn the lock on when `can_lock()` is false. Keep the setting in Rust |
+| Confirm before something sensitive (show a secret, delete everything) | `BiometricsService::installed()?.confirm("show your recovery key").await`: `Authenticated`, `Cancelled`, `LockedOut`, `Unavailable` or `Failed`. From SwiftUI, `await ForgeBiometrics.shared.authenticate(reason:)` |
+
+Face ID falls back to the passcode, so a person whose face isn't recognised can still get in. Every request uses a new `LAContext`, so one success is never reused for the next.
+
+### Background tasks (`background`)
+
+Work iOS runs while the app is in the background or closed, when it chooses (`BGTaskScheduler`). It works on a free team. Commonplace's hourly feed refresh is its first user.
+
+1. List each task in `forge.toml`: `[ios] background_tasks = ["org.example.app.refresh"]`. Forge writes `BGTaskSchedulerPermittedIdentifiers` and adds the `fetch` and `processing` background modes.
+2. Select the service: `forge_services::native_services!(background)`. `ForgeServices.install()` registers every listed task at launch, which iOS requires before launch ends.
+3. Register a handler from Rust when the core opens. The two jobs apps repeat are built in, and each asks for its own next window:
+
+```rust
+use native::background::BackgroundService;
+
+if let Ok(background) = BackgroundService::installed() {
+    let core = Arc::downgrade(&core);
+    // Fetch new content about hourly, so it is there when the app opens.
+    background.register_refresh("org.example.app.refresh", 3600.0, move |run| {
+        let core = core.clone();
+        async move {
+            let Some(core) = core.upgrade() else { return false };
+            let cancellation = Cancellation::new();
+            let stop = cancellation.clone();
+            run.on_cancel(move || stop.cancel());           // iOS ending the window stops the work
+            let work = core.rt.lifetime(Some(&*cancellation)); // not on-screen work
+            core.refresh_in(work).await.is_ok()
+        }
+    })?;
+}
+```
+
+| Job | Use |
+|-----|-----|
+| Fetch new content regularly (feeds, mail, weather) | `register_refresh(id, every_seconds, handler)`: a short window (about 30 seconds) |
+| Upkeep: compact a database, rebuild an index, a backup, uploads | `register_processing(id, every_seconds, requires_external_power, requires_network, handler)`: minutes, usually overnight on power |
+| Finish one job later | `register_handler(id, handler)`, then `schedule(BackgroundTaskRequest { .. })` when there is something to do |
+| Stop a recurring task | `cancel(id)` |
+
+A handler is async and returns whether it succeeded; each run gets its own thread. `run.on_cancel`, `run.is_cancelled()` and `run.cancelled()` tell it when iOS ends the window; a cancelled run reports failure. When iOS launches the app in the background for a task, `ForgeLifecycle` opens the core (no view will), and the run waits for its handler; it fails if the window ends first.
+
+iOS decides whether and when a task runs, from how the person uses the app, battery and Low Power Mode. Nothing runs after the person force-quits the app, or while Background App Refresh is off for it (`submit` then fails with `PermissionDenied`). To try a task on a phone without waiting, pause the app in a debugger and run `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"org.example.app.refresh"]`; that needs Xcode, so on Linux leave the app in the background and check the next day with `forge device logs`.
 
 ### Background transfers (`transfers`)
 

@@ -1,9 +1,9 @@
 order = 30
 capability = "Notification actions and grouping"
-framework = "Partial: grouping (`thread_id`), subtitle, tap opens a deep link; no actions"
+framework = "Yes: grouping (`thread_id`), subtitle, tap opens a deep link; categories of action buttons (`set_notification_categories`: button, destructive, opens the app, text reply) with responses to Rust (`on_notification_response`), kept until a handler is set"
 rust_api = "Yes"
-ios_native = "Yes"
-in_app = "Yes: Chat groups by room and opens the room on tap"
+ios_native = "Yes: `UNNotificationCategory`, `UNTextInputNotificationAction`; dismissals reported"
+in_app = "Yes: Chat groups by room, opens the room on tap, and has Reply and Mark as Read on message notifications"
 iphone = "No"
 documented = "Partial: native-services.md, chat-demo.md"
-limits = "No action buttons or categories yet"
+limits = "Actions handled in the background get a few seconds from iOS. Compiled on macOS CI only so far"

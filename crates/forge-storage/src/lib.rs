@@ -7,7 +7,11 @@
 //! `docs/persistence.md`.
 
 mod atomic;
+#[cfg(feature = "backup")]
+pub mod backup;
 pub mod copies;
+#[cfg(feature = "csv")]
+pub mod csv_file;
 #[cfg(feature = "sqlite")]
 mod database;
 pub mod files;

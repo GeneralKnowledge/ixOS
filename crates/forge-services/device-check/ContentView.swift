@@ -15,7 +15,23 @@ public struct ContentView: View {
     @State private var shareItem: ShareItem?
     @State private var importing = false
     @State private var links: [String] = []
+    @State private var responses: [String] = []
     @State private var permission = "unknown"
+    @State private var books = 1
+    #if os(iOS)
+        @State private var webPage: ForgeWebPage?
+        @State private var safariURL: URL?
+    #endif
+
+    /// Proves the compiled String Catalog is in the bundle: the languages
+    /// iOS sees, and the Spanish text read straight from es.lproj.
+    private var languageReport: String {
+        let spanish = Bundle.main.path(forResource: "es", ofType: "lproj").flatMap(Bundle.init(path:))
+        let text = spanish?.localizedString(forKey: "This text follows the iPhone's language", value: "MISSING", table: nil)
+        return "Languages: \(Bundle.main.localizations.sorted().joined(separator: ", ")); "
+            + "using \(Bundle.main.preferredLocalizations.first ?? "?"); "
+            + "es.lproj: \(text ?? "not in the bundle")"
+    }
 
     public var body: some View {
         NavigationStack {
@@ -45,6 +61,8 @@ public struct ContentView: View {
                 Section("2. Deep links (tap the notification, or open forgecheck://check/url)") {
                     if links.isEmpty { Text("None yet").foregroundStyle(.secondary) }
                     ForEach(links, id: \.self) { Text($0).font(.footnote.monospaced()) }
+                    ForEach(responses, id: \.self) { Text($0).font(.footnote.monospaced()) }
+                    Button("Show notification responses") { responses = servicesCheckResponses() }
                 }
                 Section("3. Share and import") {
                     if let shareItem {
@@ -54,8 +72,31 @@ public struct ContentView: View {
                     }
                     Button("Import a file") { importing = true }
                 }
+                #if os(iOS)
+                    Section("4. Web pages (links off the site should open Safari)") {
+                        Button("Web page in the app") {
+                            webPage = .link(URL(string: "https://www.swift.org/about/")!, title: "Swift")
+                        }
+                        Button("HTML from the app (no network)") {
+                            webPage = .html(
+                                "<h1>Forge</h1><p>Shown offline. <img src='https://www.swift.org/favicon.ico' alt='blocked image'> <a href='https://www.swift.org'>This link opens Safari</a>.</p>",
+                                title: "HTML")
+                        }
+                        Button("Safari in the app") { safariURL = URL(string: "https://www.swift.org") }
+                    }
+                #endif
+                Section("5. Languages (Settings > ServicesCheck > Language)") {
+                    Text("This text follows the iPhone's language")
+                    Stepper("\(books) books", value: $books, in: 0...5)
+                        .accessibilityIdentifier("check.books")
+                    Text(languageReport).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             .navigationTitle("Services check")
+            #if os(iOS)
+                .forgeWebSheet($webPage)
+                .forgeSafari($safariURL)
+            #endif
             .onForgeDeepLink { link in
                 links.append("PASS \(link.url) → route \(link.route)")
             }
