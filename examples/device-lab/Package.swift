@@ -10,6 +10,13 @@ let iosLibSearch = "\(packageDir)/build/ios-device/lib"
 // Host (macOS) static library for `swift test`; see scripts/test-swift-host.sh.
 let macosLibSearch = "\(packageDir)/build/macos-host/lib"
 
+// Each hosted app's bindings declare the same public View helpers
+// (forgeOpenURLs, forgeLaunchAppearance, ...). Without this, Swift sees an
+// imported module's extension members in every file of a target, even files
+// that don't import it, and calls to them are ambiguous (friction log F19).
+// With it, a file sees only the members of the modules it imports.
+let hostSettings: [SwiftSetting] = [.enableUpcomingFeature("MemberImportVisibility")]
+
 let package = Package(
     name: "DeviceLab",
     platforms: [
@@ -95,17 +102,20 @@ let package = Package(
                     moduleAliases: ["ForgeFFI": "ChatFFI", "AppHost": "ChatApp"]
                 ),
             ],
-            path: "Sources/AppHost"
+            path: "Sources/AppHost",
+            swiftSettings: hostSettings
         ),
         .target(
             name: "AppHostXtoolApp",
             dependencies: ["AppHost"],
-            path: "Sources/AppHostXtoolApp"
+            path: "Sources/AppHostXtoolApp",
+            swiftSettings: hostSettings
         ),
         .executableTarget(
             name: "AppHostLauncher",
             dependencies: ["AppHost"],
-            path: "Sources/AppHostLauncher"
+            path: "Sources/AppHostLauncher",
+            swiftSettings: hostSettings
         ),
         .testTarget(
             name: "AppHostTests",
