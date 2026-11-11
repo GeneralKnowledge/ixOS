@@ -179,3 +179,17 @@ so on the Record sheet.
 **Framework.** An option on `LocationOptions` for background updates, which
 the iOS adapter honours, plus the background mode in forge.toml. Planned for
 F3.
+
+## A11. Absolute checkout path in the Xcode project
+
+**What happened.** `forge init` wrote the checkout's absolute path
+(`/home/user/ixOS`) into the Xcode project's "Build Rust FFI" phase, even
+though the app sits inside that checkout. The Xcode build on macOS CI then
+failed with `cd: /home/user/ixOS: No such file or directory`.
+
+**Workaround.** Set `REPO_ROOT` to `${SRCROOT}/../../..` by hand, as the
+template and the other examples have it.
+
+**Framework.** `forge init` should write a path relative to `${SRCROOT}` when
+the app is inside the checkout, and keep the absolute path only for an app
+outside it.

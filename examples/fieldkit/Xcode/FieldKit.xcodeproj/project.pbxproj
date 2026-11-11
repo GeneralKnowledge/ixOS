@@ -130,7 +130,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -euo pipefail\nREPO_ROOT=\"$(cd \"/home/user/ixOS\" && pwd)\"\nexport FORGE_APP_DIR=\"$(cd \"${SRCROOT}/..\" && pwd)\"\nGENERATED=\"${FORGE_APP_DIR}/Generated\"\ncd \"${REPO_ROOT}\"\n./scripts/package-ios-library.sh \"${GENERATED}\"\n";
+			shellScript = "set -euo pipefail\nREPO_ROOT=\"$(cd \"${SRCROOT}/../../..\" && pwd)\"\nexport FORGE_APP_DIR=\"$(cd \"${SRCROOT}/..\" && pwd)\"\nGENERATED=\"${FORGE_APP_DIR}/Generated\"\ncd \"${REPO_ROOT}\"\n./scripts/package-ios-library.sh \"${GENERATED}\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
