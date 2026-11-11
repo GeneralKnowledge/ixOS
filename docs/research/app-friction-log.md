@@ -32,6 +32,10 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
 | A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Open |
+| A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Open |
+| A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
+| A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
+| A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -118,3 +122,60 @@ way to query data too large to publish.
 **Framework.** Accept for now. If a second app needs dates in Rust, add a
 small `forge_runtime::time` with ISO 8601 in and out, or allow the `time`
 crate in app crates.
+
+## A7. Template names
+
+**What happened.** The new template names the library from the app's name
+split into words, so `FieldKit` becomes `field_kit_core`. FieldKit's crate
+was already `fieldkit_core`, so the Package.swift from `forge init` needed
+its C module renamed by hand. The template also still puts the app's Swift
+in `Sources/AppHost` and calls the test target `AppHostTests`; only the
+module names changed.
+
+**Workaround.** Kept `fieldkit_core` and edited one line of Package.swift.
+
+**Framework.** Let `forge init` take a `--library` name, and name the
+folders and test target after the app too, so nothing in a new app says
+`AppHost`.
+
+## A8. `allowsUse` in Swift
+
+**What happened.** Rust's `PermissionStatus::allows_use` isn't exported, so
+Device Lab defines `allowsUse` in Swift, and FieldKit had to again.
+
+**Workaround.** A two-line extension in TripsModel.swift.
+
+**Framework.** Ship it once with the native services' Swift (or export it
+from Rust).
+
+## A9. From a native service's events to commands
+
+**What happened.** FieldKit follows the location service while a trip
+records. The watch listener runs on the host's thread and can't await, but
+each fix has to reach the command thread, which owns the database. The
+runtime queues a command when `rt.command` is called, so the listener calls
+it and drops the future. That works, but nothing says it does, and the
+listener needs a `Weak` to the core (`Arc::new_cyclic`) so it doesn't keep
+the core alive.
+
+**Workaround.** Exactly that, with tests on the fake location service
+(follows while recording, stops on Stop, resumes after a relaunch, explains
+denied location).
+
+**Framework.** A `rt.post(name, command)` that queues without a future, and
+a paragraph in app-model-review.md on feeding service events into commands.
+
+## A10. No background location
+
+**What happened.** A walk is recorded with the phone in a pocket, so
+recording has to carry on with the screen off. The location adapter only
+asks for "when in use" updates and doesn't set
+`allowsBackgroundLocationUpdates`, and forge.toml has no way to say a
+service needs the `location` background mode.
+
+**Workaround.** None yet: F2 records while FieldKit is on screen, and says
+so on the Record sheet.
+
+**Framework.** An option on `LocationOptions` for background updates, which
+the iOS adapter honours, plus the background mode in forge.toml. Planned for
+F3.

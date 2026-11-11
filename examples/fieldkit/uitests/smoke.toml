@@ -1,0 +1,28 @@
+# Smoke test: open the Record sheet, check it, cancel. Changes nothing.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+name = "Smoke: open the Record sheet and cancel"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+screenshot = "1-trips"
+
+[[step]]
+tap = { id = "trips.recordFirst" }
+
+[[step]]
+expect = { id = "start.go", enabled = true }
+
+[[step]]
+screenshot = "2-new-trip"
+
+[[step]]
+tap = { id = "start.cancel" }
+
+[[step]]
+expect = { id = "start.title", gone = true }

@@ -28,7 +28,7 @@ mod store;
 pub mod track;
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use forge_app::{Cancellation, DataDirectory, ErrorKind, Published, Runtime};
 use forge_runtime::{lock, now_ms};
@@ -45,6 +45,20 @@ pub use track::{LocationSample, TrackPoint};
 use track::{Skip, Totals};
 
 uniffi::setup_scaffolding!();
+
+// Native services the host implements: Keychain, directories, permissions
+// and the rest of the defaults, plus location (docs/native-services.md).
+forge_services::native_services!(location);
+
+// `forge_log` for the host: Swift's `ForgeLog("Category")` writes to the same
+// log as Rust.
+forge_runtime::log_export!();
+
+use forge_services::Watch;
+use native::location::{
+    LocationAccuracy, LocationEvent, LocationFix, LocationOptions, LocationService,
+};
+use native::{NativePermission, NativeServiceError, NativeServices, PermissionStatus};
 
 /// Photos and voice memos larger than this are refused (a long 4K video is
 /// not a note).
@@ -108,6 +122,40 @@ impl State {
         })
     }
 
+    /// Keeps the good fixes among `samples` in the recording trip.
+    fn record(&mut self, samples: &[LocationSample]) -> Result<Recorded, FieldKitError> {
+        let recording = self.recording.as_ref().ok_or(FieldKitError::NotRecording)?;
+        let mut totals = recording.totals;
+        let mut last = recording.last;
+        let first_seq = totals.point_count;
+        let mut kept = Vec::new();
+        let mut result = Recorded::default();
+        for sample in samples {
+            match track::check(last.as_ref(), sample) {
+                Ok(()) => {
+                    let point = TrackPoint::from(*sample);
+                    totals.add(last.as_ref(), &point);
+                    last = Some(point);
+                    kept.push(point);
+                }
+                Err(Skip::Invalid | Skip::Inaccurate) => result.inaccurate += 1,
+                Err(_) => result.skipped += 1,
+            }
+        }
+        result.kept = kept.len() as u32;
+        if !kept.is_empty() {
+            let trip_id = recording.trip_id;
+            self.store.append(trip_id, first_seq, &kept, &totals)?;
+            self.recording = Some(Recording {
+                trip_id,
+                totals,
+                last,
+            });
+            self.publish()?;
+        }
+        Ok(result)
+    }
+
     fn add_note(
         &mut self,
         trip_id: i64,
@@ -133,6 +181,14 @@ pub struct FieldKitCore {
     reader: Arc<Mutex<Connection>>,
     media_root: PathBuf,
     caches: PathBuf,
+    /// The location service, when the host installed one.
+    location: Option<LocationService>,
+    /// Following the location service while a trip records.
+    watch: Mutex<Option<Watch>>,
+    /// Why following location stopped or never started, for the screen.
+    location_problem: Mutex<Option<String>>,
+    /// This core, for the location listener (which must not keep it alive).
+    me: Weak<FieldKitCore>,
 }
 
 #[uniffi::export]
@@ -146,34 +202,12 @@ impl FieldKitCore {
         data_directory: String,
         caches_directory: String,
     ) -> Result<Arc<Self>, FieldKitError> {
-        let directory = DataDirectory::open(&data_directory)?;
-        let (store, opened) = Store::open(directory.path())?;
-        if let Opened::Recovered { reason, .. } = &opened {
-            forge_runtime::logging::warn!("trips were damaged and set aside: {reason}");
-        }
-        let media = FileStore::new(directory.path().join("media")).with_max_bytes(MAX_MEDIA_BYTES);
-        media.sweep_temporaries();
-        let recording = store.recording()?.map(|(trip_id, totals, last)| Recording {
-            trip_id,
-            totals,
-            last,
-        });
-        let trips = Arc::new(Published::new(store.trips()?));
-        let reader = Arc::new(Mutex::new(store.reader()?));
-        let media_root = media.root().to_path_buf();
-        let state = State {
-            store,
-            media,
-            recording,
-            published: Arc::clone(&trips),
-        };
-        Ok(Arc::new(Self {
-            rt: Runtime::with_directory("fieldkit", directory, state),
-            trips,
-            reader,
-            media_root,
-            caches: PathBuf::from(caches_directory),
-        }))
+        forge_runtime::logging::init();
+        Self::open(
+            &data_directory,
+            &caches_directory,
+            LocationService::installed().ok(),
+        )
     }
 
     /// Every trip, newest first. Never waits for a command.
@@ -187,8 +221,9 @@ impl FieldKitCore {
         self.trips.get().iter().find(|t| t.recording).cloned()
     }
 
-    /// Starts recording a new trip; returns it. Only one trip records at a
-    /// time.
+    /// Starts recording a new trip and following the location service;
+    /// returns the trip. Only one trip records at a time. Ask for location
+    /// permission first (`request_location_permission`).
     pub async fn start_trip(&self, title: String) -> Result<TripSummary, FieldKitError> {
         self.rt
             .command("start-trip", move |state| {
@@ -208,53 +243,22 @@ impl FieldKitCore {
                     .ok_or(FieldKitError::NotFound { id: trip_id })
             })
             .await
+            .inspect(|_| self.follow_location())
     }
 
     /// Adds location fixes to the recording trip, keeping the good ones
-    /// (see [`track::check`]). Pass fixes in the order Core Location gave
-    /// them; batching a few seconds' worth saves battery.
+    /// (see [`track::check`]), in the order Core Location gave them. The
+    /// core follows the location service itself while a trip records; this
+    /// is for fixes from elsewhere (an imported track, tests).
     pub async fn record(&self, samples: Vec<LocationSample>) -> Result<Recorded, FieldKitError> {
         self.rt
-            .command("record", move |state| {
-                let recording = state
-                    .recording
-                    .as_ref()
-                    .ok_or(FieldKitError::NotRecording)?;
-                let mut totals = recording.totals;
-                let mut last = recording.last;
-                let first_seq = totals.point_count;
-                let mut kept = Vec::new();
-                let mut result = Recorded::default();
-                for sample in &samples {
-                    match track::check(last.as_ref(), sample) {
-                        Ok(()) => {
-                            let point = TrackPoint::from(*sample);
-                            totals.add(last.as_ref(), &point);
-                            last = Some(point);
-                            kept.push(point);
-                        }
-                        Err(Skip::Invalid | Skip::Inaccurate) => result.inaccurate += 1,
-                        Err(_) => result.skipped += 1,
-                    }
-                }
-                result.kept = kept.len() as u32;
-                if !kept.is_empty() {
-                    let trip_id = recording.trip_id;
-                    state.store.append(trip_id, first_seq, &kept, &totals)?;
-                    state.recording = Some(Recording {
-                        trip_id,
-                        totals,
-                        last,
-                    });
-                    state.publish()?;
-                }
-                Ok(result)
-            })
+            .command("record", move |state| state.record(&samples))
             .await
     }
 
     /// Stops recording; returns the finished trip.
     pub async fn stop_trip(&self) -> Result<TripSummary, FieldKitError> {
+        self.stop_following();
         self.rt
             .command("stop-trip", |state| {
                 let trip_id = state
@@ -285,6 +289,9 @@ impl FieldKitCore {
     /// Deletes a trip, its track, its notes and their files. Deleting the
     /// recording trip stops the recording.
     pub async fn delete_trip(&self, trip_id: i64) -> Result<(), FieldKitError> {
+        if self.recording().map(|t| t.id) == Some(trip_id) {
+            self.stop_following();
+        }
         self.rt
             .command("delete-trip", move |state| {
                 let files = state.store.delete_trip(trip_id)?;
@@ -295,6 +302,47 @@ impl FieldKitCore {
                 state.publish()
             })
             .await
+    }
+
+    /// Starts following the location service again for the recording trip,
+    /// if it isn't already: after location permission was granted, or when
+    /// the app comes back to the screen. Does nothing when no trip records.
+    pub fn resume_recording(&self) {
+        if self.recording().is_some() && lock(&self.watch).is_none() {
+            self.follow_location();
+        }
+    }
+
+    /// Whether fixes are reaching the recording trip.
+    pub fn is_following_location(&self) -> bool {
+        lock(&self.watch).is_some()
+    }
+
+    /// Why location isn't reaching the recording trip, in words for the
+    /// screen, or `None`.
+    pub fn location_problem(&self) -> Option<String> {
+        lock(&self.location_problem).clone()
+    }
+
+    /// Whether FieldKit may use location.
+    pub async fn location_permission(&self) -> PermissionStatus {
+        match NativeServices::installed() {
+            Ok(native) => native.permission_status(NativePermission::Location).await,
+            Err(_) => PermissionStatus::Unsupported,
+        }
+    }
+
+    /// Shows the system prompt (if never asked); call it from a button the
+    /// person tapped. Resumes a recording trip if it is now allowed.
+    pub async fn request_location_permission(&self) -> PermissionStatus {
+        let status = match NativeServices::installed() {
+            Ok(native) => native.request_permission(NativePermission::Location).await,
+            Err(_) => PermissionStatus::Unsupported,
+        };
+        if status.allows_use() {
+            self.resume_recording();
+        }
+        status
     }
 
     /// A trip with its notes. On-screen work: stopped by `cancellation`,
@@ -469,6 +517,115 @@ impl FieldKitCore {
 }
 
 impl FieldKitCore {
+    /// Opens the core with an explicit location service (tests pass a fake).
+    pub fn open(
+        data_directory: &str,
+        caches_directory: &str,
+        location: Option<LocationService>,
+    ) -> Result<Arc<Self>, FieldKitError> {
+        let directory = DataDirectory::open(data_directory)?;
+        let (store, opened) = Store::open(directory.path())?;
+        if let Opened::Recovered { reason, .. } = &opened {
+            forge_runtime::logging::warn!("trips were damaged and set aside: {reason}");
+        }
+        let media = FileStore::new(directory.path().join("media")).with_max_bytes(MAX_MEDIA_BYTES);
+        media.sweep_temporaries();
+        let recording = store.recording()?.map(|(trip_id, totals, last)| Recording {
+            trip_id,
+            totals,
+            last,
+        });
+        let trips = Arc::new(Published::new(store.trips()?));
+        let reader = Arc::new(Mutex::new(store.reader()?));
+        let media_root = media.root().to_path_buf();
+        let state = State {
+            store,
+            media,
+            recording,
+            published: Arc::clone(&trips),
+        };
+        let core = Arc::new_cyclic(|me| Self {
+            rt: Runtime::with_directory("fieldkit", directory, state),
+            trips,
+            reader,
+            media_root,
+            caches: PathBuf::from(caches_directory),
+            location,
+            watch: Mutex::new(None),
+            location_problem: Mutex::new(None),
+            me: me.clone(),
+        });
+        // A trip that was recording when the app ended carries on.
+        core.resume_recording();
+        Ok(core)
+    }
+
+    /// Follows the location service, sending each fix to the recording
+    /// trip as a command. The listener holds the core weakly, so the core
+    /// still closes when the app lets go of it.
+    fn follow_location(&self) {
+        let mut watch = lock(&self.watch);
+        if watch.is_some() {
+            return;
+        }
+        let Some(service) = &self.location else {
+            *lock(&self.location_problem) = Some("Location isn't available in this build.".into());
+            return;
+        };
+        let options = LocationOptions {
+            accuracy: LocationAccuracy::Best,
+            // Closer fixes are dropped anyway (track::MIN_STEP_M).
+            distance_filter_m: Some(2.0),
+            include_heading: false,
+        };
+        let me = self.me.clone();
+        let started = service.watch(options, move |event| {
+            let Some(core) = me.upgrade() else { return };
+            match event {
+                LocationEvent::Fix { fix } => {
+                    *lock(&core.location_problem) = None;
+                    let sample = sample_from(fix);
+                    // Queued now; nobody waits for the answer. A fix that
+                    // arrives after the trip stopped is refused, harmlessly.
+                    drop(
+                        core.rt
+                            .command("record-fix", move |state| state.record(&[sample])),
+                    );
+                }
+                LocationEvent::Failed {
+                    permission_denied, ..
+                } => {
+                    *lock(&core.location_problem) = Some(if *permission_denied {
+                        "Location is turned off for FieldKit. Allow it in Settings to keep recording.".into()
+                    } else {
+                        "Location isn't available right now.".into()
+                    });
+                }
+                LocationEvent::Heading { .. } => {}
+            }
+        });
+        match started {
+            Ok(w) => {
+                *watch = Some(w);
+                *lock(&self.location_problem) = None;
+            }
+            Err(err) => {
+                forge_runtime::logging::warn!("location watch failed: {err}");
+                *lock(&self.location_problem) = Some(match err {
+                    NativeServiceError::PermissionDenied { .. } => {
+                        "Allow location so FieldKit can record your track.".into()
+                    }
+                    _ => "Location isn't available right now.".into(),
+                });
+            }
+        }
+    }
+
+    fn stop_following(&self) {
+        // Dropping the watch stops the platform updates.
+        lock(&self.watch).take();
+    }
+
     fn summary(&self, trip_id: i64) -> Result<TripSummary, FieldKitError> {
         self.trips
             .get()
@@ -476,6 +633,16 @@ impl FieldKitCore {
             .find(|t| t.id == trip_id)
             .cloned()
             .ok_or(FieldKitError::NotFound { id: trip_id })
+    }
+}
+
+fn sample_from(fix: &LocationFix) -> LocationSample {
+    LocationSample {
+        latitude: fix.latitude,
+        longitude: fix.longitude,
+        altitude_m: fix.altitude_m,
+        horizontal_accuracy_m: fix.horizontal_accuracy_m,
+        timestamp_ms: fix.timestamp_ms,
     }
 }
 
@@ -500,3 +667,117 @@ fn export_name(title: &str) -> String {
 }
 
 forge_app::export_runtime!(FieldKitCore, rt);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn fix(i: i64) -> LocationEvent {
+        LocationEvent::Fix {
+            fix: LocationFix {
+                latitude: 51.5 + 0.0001 * i as f64,
+                longitude: -0.12,
+                horizontal_accuracy_m: 5.0,
+                altitude_m: None,
+                vertical_accuracy_m: None,
+                speed_mps: None,
+                speed_accuracy_mps: None,
+                course_degrees: None,
+                course_accuracy_degrees: None,
+                floor: None,
+                timestamp_ms: 1_000_000 + i * 5000,
+            },
+        }
+    }
+
+    fn block_on<F: std::future::Future>(future: F) -> F::Output {
+        forge_runtime::block_on(future)
+    }
+
+    /// Waits for the queued fix commands: a command runs after the ones
+    /// queued before it.
+    fn settle(core: &FieldKitCore) {
+        block_on(core.rt.command("settle", |_| Ok::<_, FieldKitError>(()))).unwrap();
+    }
+
+    fn open(dir: &tempfile::TempDir, location: Option<LocationService>) -> Arc<FieldKitCore> {
+        FieldKitCore::open(
+            dir.path().join("data").to_str().unwrap(),
+            dir.path().join("caches").to_str().unwrap(),
+            location,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn a_recording_trip_follows_location_until_stopped() {
+        let dir = tempfile::tempdir().unwrap();
+        let (service, fake) = LocationService::for_tests();
+        let core = open(&dir, Some(service.clone()));
+        assert!(fake.options().is_none(), "nothing follows location yet");
+
+        let trip = block_on(core.start_trip("Walk".into())).unwrap();
+        assert!(core.is_following_location());
+        assert_eq!(fake.options().unwrap().accuracy, LocationAccuracy::Best);
+        for i in 0..5 {
+            fake.send(fix(i));
+        }
+        settle(&core);
+        assert_eq!(core.recording().unwrap().point_count, 5);
+
+        block_on(core.stop_trip()).unwrap();
+        assert!(!core.is_following_location());
+        assert!(fake.options().is_none(), "the platform updates stopped");
+        fake.send(fix(9));
+        settle(&core);
+        assert_eq!(core.trips()[0].point_count, 5);
+        assert_eq!(core.trips()[0].id, trip.id);
+    }
+
+    #[test]
+    fn a_trip_recording_at_launch_follows_location_again() {
+        let dir = tempfile::tempdir().unwrap();
+        let (service, fake) = LocationService::for_tests();
+        let core = open(&dir, Some(service.clone()));
+        block_on(core.start_trip("Walk".into())).unwrap();
+        fake.send(fix(0));
+        settle(&core);
+        core.shutdown();
+        drop(core);
+
+        let core = open(&dir, Some(service));
+        assert!(core.is_following_location());
+        fake.send(fix(1));
+        settle(&core);
+        assert_eq!(core.recording().unwrap().point_count, 2);
+    }
+
+    #[test]
+    fn denied_or_missing_location_is_explained() {
+        let dir = tempfile::tempdir().unwrap();
+        let (service, fake) = LocationService::for_tests();
+        fake.denied.store(true, std::sync::atomic::Ordering::SeqCst);
+        let core = open(&dir, Some(service));
+        block_on(core.start_trip("Walk".into())).unwrap();
+        assert!(!core.is_following_location());
+        assert!(core.location_problem().unwrap().contains("Allow location"));
+
+        // Allowed later: resume picks it up.
+        fake.denied
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        core.resume_recording();
+        assert!(core.is_following_location());
+        assert_eq!(core.location_problem(), None);
+
+        fake.send(LocationEvent::Failed {
+            reason: "denied".into(),
+            permission_denied: true,
+        });
+        assert!(core.location_problem().unwrap().contains("Settings"));
+
+        let dir = tempfile::tempdir().unwrap();
+        let core = open(&dir, None);
+        block_on(core.start_trip("Walk".into())).unwrap();
+        assert!(core.location_problem().unwrap().contains("isn't available"));
+    }
+}

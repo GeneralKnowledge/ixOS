@@ -1,0 +1,35 @@
+[app]
+name = "FieldKit"
+# The free team's sandbox id: FieldKit is meant to run inside Device Lab
+# (one app slot for every demo); on its own it installs in that slot.
+bundle_id = "org.forgemobile.agentlab"
+minimum_ios = "17.0"
+version = "0.1.0"
+build_number = "1"
+
+[rust]
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
+
+# Named after the app, so Device Lab can host it (docs/app-crate.md).
+[swift]
+bindings_module = "FieldKitFFI"
+app_module = "FieldKitApp"
+
+[ui_test]
+# Fresh throwaway trips instead of the person's own.
+test_data_args = ["-ForgeTemporaryData"]
+
+[ios]
+xtool_product = "FieldKitXtool"
+orientations = ["portrait"]
+
+[ios.permissions]
+location_when_in_use = "FieldKit records your track while you record a trip."
+
+[ios.signing]
+# Built and installed with a free Apple account; no paid-only entitlements.
+team_type = "free"

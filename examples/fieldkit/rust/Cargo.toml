@@ -22,12 +22,14 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 # SQLite for trips, points and notes; content-addressed files for photos and
 # voice notes.
 forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite", "hash"] }
-# `sensors::distance_m`, the same great-circle distance Device Lab uses. The
-# location native service joins in F2, when the app shell arrives.
+# Native services (Keychain, permissions, ...) plus location, which the core
+# follows while a trip records; also `sensors::distance_m`.
 forge-services = { path = "../../../crates/forge-services" }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde_json = "1.0"
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
 thiserror = "2.0"
 
 [dev-dependencies]
