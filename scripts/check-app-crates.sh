@@ -57,14 +57,6 @@ for app in "${APPS[@]}"; do
         exit 1
       fi
     done
-    # Other app crates linked into this one (Device Lab's showcase): each
-    # one's whole module, Generated/Linked/<crate>/.
-    if [[ -d "$out/Linked" || -d "$app/Generated/Linked" ]]; then
-      if ! diff -ru "$app/Generated/Linked" "$out/Linked"; then
-        echo "error: $app/Generated/Linked is stale; run: forge bindings generate --project $app" >&2
-        exit 1
-      fi
-    fi
   fi
 done
 

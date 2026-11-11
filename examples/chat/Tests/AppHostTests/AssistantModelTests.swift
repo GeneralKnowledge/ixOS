@@ -1,5 +1,5 @@
-@testable import AppHost
-@preconcurrency import ForgeFFI
+@testable import ChatApp
+@preconcurrency import ChatFFI
 import XCTest
 
 /// A scripted Swift engine: pushes `pieces` with a pause between them, and

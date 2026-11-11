@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import ForgeUI
 import SwiftUI
 

@@ -7,8 +7,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(forge_ffiFFI)
-import forge_ffiFFI
+#if canImport(weather_coreFFI)
+import weather_coreFFI
 #endif
 
 fileprivate extension RustBuffer {

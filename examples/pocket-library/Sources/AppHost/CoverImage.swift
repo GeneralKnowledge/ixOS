@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import PocketLibraryFFI
 import SwiftUI
 
 /// A book cover: the copy saved on the device if there is one (works

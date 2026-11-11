@@ -1,4 +1,4 @@
-import AppHost
+import GoodDogApp
 import SwiftUI
 
 @main

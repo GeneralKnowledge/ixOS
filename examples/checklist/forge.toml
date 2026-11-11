@@ -24,3 +24,8 @@ xtool_product = "ChecklistXtool"
 [ios.signing]
 # Built and installed with a free Apple account; no paid-only entitlements.
 team_type = "free"
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "ChecklistFFI"
+app_module = "ChecklistApp"

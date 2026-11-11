@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import ForgeFFI
+@preconcurrency import WeatherFFI
 
 /// The Swift face of one Rust weather instance (`ForgeWeatherApp`).
 ///

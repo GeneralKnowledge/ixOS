@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		B10000010000000000000001 /* AppMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = B10000020000000000000001 /* AppMain.swift */; };
-		B10000010000000000000002 /* AppHost in Frameworks */ = {isa = PBXBuildFile; productRef = B10000050000000000000001 /* AppHost */; };
+		B10000010000000000000002 /* ChatApp in Frameworks */ = {isa = PBXBuildFile; productRef = B10000050000000000000001 /* ChatApp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -21,7 +21,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				B10000010000000000000002 /* AppHost in Frameworks */,
+				B10000010000000000000002 /* ChatApp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -69,7 +69,7 @@
 			);
 			name = Chat;
 			packageProductDependencies = (
-				B10000050000000000000001 /* AppHost */,
+				B10000050000000000000001 /* ChatApp */,
 			);
 			productName = Chat;
 			productReference = B10000030000000000000001 /* Chat.app */;
@@ -266,10 +266,10 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		B10000050000000000000001 /* AppHost */ = {
+		B10000050000000000000001 /* ChatApp */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = B100000F0000000000000001 /* XCLocalSwiftPackageReference "Chat" */;
-			productName = AppHost;
+			productName = ChatApp;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import PhotosUI
 import QuickLook
 import SwiftUI

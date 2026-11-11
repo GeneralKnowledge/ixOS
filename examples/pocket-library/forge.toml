@@ -18,6 +18,7 @@ ios_simulator = false
 # this section on every `forge build ios` / `forge run ios` (or `forge config
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.
 [ios]
+xtool_product = "PocketLibraryXtool"
 orientations = ["portrait"]
 # Read-aloud keeps speaking when the screen locks or the app is in the background.
 background_modes = ["audio"]
@@ -27,3 +28,8 @@ background_modes = ["audio"]
 # never changes the person's own books. docs/forge-explore.md
 [ui_test]
 test_data_args = ["-ForgeUITestData"]
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "PocketLibraryFFI"
+app_module = "PocketLibraryApp"

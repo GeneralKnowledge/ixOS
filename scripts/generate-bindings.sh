@@ -34,16 +34,17 @@ case "$(uname -s)" in
   *) LIB_EXT="so" ;;
 esac
 LIB="$CARGO_TARGET/debug/lib${LIB_NAME}.${LIB_EXT}"
-# Whatever the crate calls its library, its bindings are Forge's fixed
-# modules: Swift ForgeFFI over the C module forge_ffiFFI, Kotlin
-# uniffi.forge_ffi loading libforge_ffi. Only another app that links this
-# crate sees its own name.
+# The bindings' Swift module is SWIFT_BINDINGS (forge.toml `[swift]
+# bindings_module`, else ForgeFFI) over the C module <library>FFI. The files
+# keep Forge's fixed names (Generated/ForgeFFI/forge_ffi.swift,
+# Generated/forge_ffiFFI/forge_ffiFFI.h), so the tools find them in every
+# app. Kotlin stays uniffi.forge_ffi loading libforge_ffi.
 CONFIG="$(mktemp)"
-if [[ "$LIB_NAME" != forge_ffi ]]; then
+if [[ "$LIB_NAME" != forge_ffi || "$SWIFT_BINDINGS" != ForgeFFI ]]; then
   {
     echo "[crates.${LIB_NAME}.bindings.swift]"
-    echo 'module_name = "ForgeFFI"'
-    echo 'ffi_module_name = "forge_ffiFFI"'
+    echo "module_name = \"${SWIFT_BINDINGS}\""
+    echo "ffi_module_name = \"${LIB_NAME}FFI\""
     echo 'ffi_module_filename = "forge_ffiFFI"'
     echo ""
     echo "[crates.${LIB_NAME}.bindings.kotlin]"
@@ -81,8 +82,8 @@ else
     --language swift \
     --out-dir "$STAGE"
   # With the module_name override UniFFI names the file after the module.
-  if [[ -f "$STAGE/ForgeFFI.swift" ]]; then
-    mv "$STAGE/ForgeFFI.swift" "$STAGE/forge_ffi.swift"
+  if [[ -f "$STAGE/${SWIFT_BINDINGS}.swift" ]]; then
+    mv "$STAGE/${SWIFT_BINDINGS}.swift" "$STAGE/forge_ffi.swift"
   fi
   # One app's Swift module: DIR/ForgeFFI/<file>.swift over the C module
   # DIR/<ffi>FFI/, plus the Swift helpers, native services adapters and
@@ -159,27 +160,10 @@ else
   # Older layout kept everything at the top level, which SwiftPM rejects.
   rm -f "$OUT/forge_ffi.swift" "$OUT/forge_ffiFFI.h" "$OUT/forge_ffiFFI.modulemap"
 
-  # Other app crates linked into this library (the Device Lab showcase links
-  # Weather, Checklist, ... as weather_core, ...). Each gets a complete
-  # ForgeFFI module of its own, as if it were its own app, in
-  # Generated/Linked/<crate>/ (ForgeFFI/ and <crate>FFI/). The host app
-  # builds each with the app's Swift as a small package and imports it under
-  # another name (SwiftPM moduleAliases), so the apps' own `import ForgeFFI`
-  # and their framework names (Cancellation, ForgeServices, ...) never meet.
-  # forge_app's Swift is ForgeKit's.
+  # Other app crates linked into this library (Device Lab links Weather,
+  # Checklist, ...) are Swift packages of their own, built from their own
+  # Generated/ folders, so their bindings are left out here.
   rm -rf "$OUT/Linked"
-  linked=()
-  for extra in "$STAGE"/*.swift; do
-    [[ -f "$extra" ]] || continue
-    ns="${extra##*/}"
-    ns="${ns%.swift}"
-    [[ "$ns" == forge_ffi || "$ns" == forge_app ]] && continue
-    forge_swift_module "$OUT/Linked/$ns" "$ns" "$ns"
-    linked+=("$ns")
-  done
-  if [[ ${#linked[@]} -gt 0 ]]; then
-    echo "[forge] Added the bindings of the linked crates: ${linked[*]}."
-  fi
 fi
 
 echo "[forge] Bindings generated."

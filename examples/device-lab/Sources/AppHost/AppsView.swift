@@ -14,8 +14,8 @@ import WeatherApp
 
 /// The other example apps, run inside Device Lab: one app, one Rust library
 /// (Device Lab's, which links their Rust cores) and one ForgeKit, so the
-/// showcase checks that they all run on the same system. Each app's code is
-/// its own folder's (Apps/<App>, symlinked), unchanged. What was hard
+/// showcase checks that they all run on the same system. Each app is its own
+/// Swift package (examples/<app>), unchanged. What was hard
 /// about putting them together is in docs/research/showcase-friction-log.md.
 struct AppsView: View {
     @Binding var open: EmbeddedApp?

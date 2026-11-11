@@ -1,5 +1,5 @@
-@testable import AppHost
-@preconcurrency import ForgeFFI
+@testable import ChatApp
+@preconcurrency import ChatFFI
 import XCTest
 
 /// Records notifications instead of showing them.

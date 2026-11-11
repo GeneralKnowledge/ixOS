@@ -1,7 +1,0 @@
-module checklist_coreFFI {
-    header "checklist_coreFFI.h"
-    export *
-    use "Darwin"
-    use "_Builtin_stdbool"
-    use "_Builtin_stdint"
-}

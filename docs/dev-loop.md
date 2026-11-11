@@ -140,7 +140,7 @@ Smallest fixes:
 ### 4. Logs are incomplete and hard to filter — every diagnosis. Agent: partial
 
 - The live stream (`forge device connect`) carries only Rust's `forge_runtime::logging`. Swift `print`, `Logger` and caught Swift errors are not in it ("Swift-side logs not included", ledger). The fix is already planned as audit item C3 (a Swift log bridge into the same records); it should move up.
-- Every `forge init` app ran as `AppHostXtool`, so `forge device logs --process` and `crashes --app` couldn't tell two apps apart. Done (Phase 0.4): `forge init MyApp` now names the xtool product `MyAppXtool`. Pocket Library and Device Lab keep `AppHostXtool` for now.
+- Every `forge init` app ran as `AppHostXtool`, so `forge device logs --process` and `crashes --app` couldn't tell two apps apart. Done (Phase 0.4): `forge init MyApp` now names the xtool product `MyAppXtool`. Device Lab keeps `AppHostXtool` for now; Pocket Library is `PocketLibraryXtool`.
 - `forge device connect` has never run on the phone (ledger, M1 "iPhone: No"). Until it has, the main diagnosis tool is unproven. Run it at the next phone session.
 
 ### 5. The phone's state breaks the loop at random — weekly or worse; minutes to an hour each. Agent: **yes** when it needs hands on the phone

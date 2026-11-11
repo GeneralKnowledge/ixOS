@@ -23,3 +23,8 @@ url_schemes = ["forgechat"]
 local_network = "Chat connects to the demo chat server on your local network."
 # Voice messages (M4). Declaring it also brings Forge's Swift audio module.
 microphone = "Chat records a voice message while you tap the microphone button."
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "ChatFFI"
+app_module = "ChatApp"

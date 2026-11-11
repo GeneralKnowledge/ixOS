@@ -1,5 +1,5 @@
-@testable import AppHost
-@preconcurrency import ForgeFFI
+@testable import PocketLibraryApp
+@preconcurrency import PocketLibraryFFI
 import AVFoundation
 import XCTest
 

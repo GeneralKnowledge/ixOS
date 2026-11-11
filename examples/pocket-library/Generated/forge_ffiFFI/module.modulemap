@@ -1,4 +1,4 @@
-module forge_ffiFFI {
+module pocket_library_coreFFI {
     header "forge_ffiFFI.h"
     export *
     use "Darwin"

@@ -37,9 +37,8 @@ const PORTABLE_MODULES: &[&str] = &[
     "Testing",
     "Glibc",
     "Musl",
-    "ForgeFFI",
-    "forge_ffiFFI",
-    "AppHost",
+    // The app's own modules (bindings, C module, views and models) are
+    // added from its forge.toml: see `Modules`.
     // The ixOS runtime's Swift package (forgekit/); it builds on Linux.
     "ForgeKit",
     "ForgeApp",
@@ -97,15 +96,60 @@ pub fn unconditional_imports(source: &str) -> Vec<String> {
     modules
 }
 
+/// The app's own Swift module names: its bindings, their C module, and its
+/// views and models. Forge's fixed names unless forge.toml's `[swift]` names
+/// its own (an app another app hosts, docs/app-crate.md).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Modules {
+    pub bindings: String,
+    pub ffi: String,
+    pub app: String,
+}
+
+impl Default for Modules {
+    fn default() -> Self {
+        Modules {
+            bindings: crate::config::DEFAULT_BINDINGS_MODULE.into(),
+            ffi: "forge_ffiFFI".into(),
+            app: crate::config::DEFAULT_APP_MODULE.into(),
+        }
+    }
+}
+
+impl Modules {
+    /// The names in `cfg`, and the C module's from the app's generated
+    /// module map (`module <name> {`).
+    pub fn of(app: &Path, cfg: &crate::config::ForgeConfig) -> Self {
+        let map = fs::read_to_string(app.join("Generated/forge_ffiFFI/module.modulemap"))
+            .unwrap_or_default();
+        let ffi = map
+            .lines()
+            .find_map(|l| l.trim().strip_prefix("module ")?.split_whitespace().next())
+            .unwrap_or("forge_ffiFFI")
+            .to_string();
+        Modules {
+            bindings: cfg.bindings_module().into(),
+            ffi,
+            app: cfg.app_module().into(),
+        }
+    }
+
+    fn is_own(&self, module: &str) -> bool {
+        [&self.bindings, &self.ffi, &self.app]
+            .iter()
+            .any(|m| m.as_str() == module)
+    }
+}
+
 /// Whether a Swift file can build without Apple's frameworks.
-pub fn is_portable(source: &str) -> bool {
+pub fn is_portable(source: &str, modules: &Modules) -> bool {
     unconditional_imports(source)
         .iter()
-        .all(|m| PORTABLE_MODULES.contains(&m.as_str()))
+        .all(|m| PORTABLE_MODULES.contains(&m.as_str()) || modules.is_own(m))
 }
 
 /// The `.swift` files directly in `dir` that [`is_portable`], sorted.
-fn portable_files(dir: &Path) -> Vec<PathBuf> {
+fn portable_files(dir: &Path, modules: &Modules) -> Vec<PathBuf> {
     let Ok(entries) = fs::read_dir(dir) else {
         return Vec::new();
     };
@@ -113,7 +157,7 @@ fn portable_files(dir: &Path) -> Vec<PathBuf> {
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.extension().is_some_and(|e| e == "swift"))
-        .filter(|p| fs::read_to_string(p).is_ok_and(|s| is_portable(&s)))
+        .filter(|p| fs::read_to_string(p).is_ok_and(|s| is_portable(&s, modules)))
         .collect();
     files.sort();
     files
@@ -128,13 +172,13 @@ pub struct Selection {
     pub skipped: Vec<PathBuf>,
 }
 
-pub fn select(app: &Path) -> Selection {
+pub fn select(app: &Path, modules: &Modules) -> Selection {
     let mut sel = Selection::default();
     for (dir, into_tests) in [
         (app.join("Sources/AppHost"), false),
         (app.join("Tests/AppHostTests"), true),
     ] {
-        let portable = portable_files(&dir);
+        let portable = portable_files(&dir, modules);
         if let Ok(entries) = fs::read_dir(&dir) {
             let mut skipped: Vec<PathBuf> = entries
                 .flatten()
@@ -224,7 +268,9 @@ fn manifest(
     with_tests: bool,
     forgekit: Option<&ForgeKit>,
     products: &[&str],
+    modules: &Modules,
 ) -> String {
+    let Modules { bindings, ffi, app } = modules;
     let product = |name: &str| format!(r#", .product(name: "{name}", package: "forgekit")"#);
     let (deps, ffi_dep, kit_dep) = match forgekit {
         Some(kit) => {
@@ -251,7 +297,7 @@ fn manifest(
     let tests = if with_tests {
         format!(
             r#"
-        .testTarget(name: "AppHostTests", dependencies: ["AppHost", "ForgeFFI"{kit_dep}], path: "Tests/AppHostTests"),"#
+        .testTarget(name: "AppHostTests", dependencies: ["{app}", "{bindings}"{kit_dep}], path: "Tests/AppHostTests"),"#
         )
     } else {
         String::new()
@@ -265,15 +311,15 @@ let package = Package(
     name: "ForgeSwiftCheck",
     platforms: [.macOS(.v14)],{deps}
     targets: [
-        .systemLibrary(name: "forge_ffiFFI", path: "Generated/forge_ffiFFI"),
+        .systemLibrary(name: "{ffi}", path: "Generated/forge_ffiFFI"),
         .target(
-            name: "ForgeFFI",
-            dependencies: ["forge_ffiFFI"{ffi_dep}],
+            name: "{bindings}",
+            dependencies: ["{ffi}"{ffi_dep}],
             path: "Generated/ForgeFFI",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: [.linkedLibrary("forge_ffi"), .unsafeFlags(["-L", "{lib}"])]
         ),
-        .target(name: "AppHost", dependencies: ["ForgeFFI"{kit_dep}], path: "Sources/AppHost"),{tests}
+        .target(name: "{app}", dependencies: ["{bindings}"{kit_dep}], path: "Sources/AppHost"),{tests}
     ]
 )
 "#,
@@ -298,7 +344,12 @@ fn io<'a>(what: &'a str, path: &'a Path) -> impl FnOnce(std::io::Error) -> Strin
 /// Writes `.forge/swift-check/` for `app`: links to the selected files and
 /// the C header, a copy (hard link where possible) of the host library, and
 /// the manifest. Returns the staging directory.
-pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, String> {
+pub fn stage(
+    app: &Path,
+    sel: &Selection,
+    host_lib: &Path,
+    modules: &Modules,
+) -> Result<PathBuf, String> {
     let st = app.join(STAGE);
     if st.exists() {
         // Keep SwiftPM's .build cache between runs; replace everything else.
@@ -362,6 +413,7 @@ pub fn stage(app: &Path, sel: &Selection, host_lib: &Path) -> Result<PathBuf, St
             !sel.tests.is_empty(),
             forgekit_dependency(app).as_ref(),
             &forgekit_products(app),
+            modules,
         ),
     )
     .map_err(io("write", &st))?;
@@ -521,7 +573,7 @@ fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, Strin
 
 /// `forge check swift`
 pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> Result<(), String> {
-    let (app, _cfg) = crate::commands::ios_project(root, project)?;
+    let (app, cfg) = crate::commands::ios_project(root, project)?;
     let app = app.canonicalize().unwrap_or(app);
     // The bindings must match the Rust being checked. Generated first, so a
     // machine without Swift still leaves Generated/ matching the Rust API.
@@ -540,12 +592,13 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
         }
     }
     let lib = host_library(runner, &app)?;
-    let sel = select(&app);
+    let modules = Modules::of(&app, &cfg);
+    let sel = select(&app, &modules);
     if sel.sources.is_empty() {
         return Err("no Swift file in Sources/AppHost builds without SwiftUI or UIKit; keep the view model in its own file that imports only Foundation and Observation (docs/ios-ui.md)".into());
     }
     let reqs = evidence::load_requirements(&app)?;
-    let st = stage(&app, &sel, &lib)?;
+    let st = stage(&app, &sel, &lib, &modules)?;
     let rel = |p: &PathBuf| p.strip_prefix(&app).unwrap_or(p).display().to_string();
     println!(
         "[forge] Checking {} Swift file(s) and {} test file(s) without the iOS SDK; left out (they need Apple's frameworks): {}",
@@ -773,16 +826,24 @@ mod tests {
     #[test]
     fn imports_outside_if_blocks_decide() {
         let model = "import Foundation\nimport Observation\n@preconcurrency import ForgeFFI\n";
-        assert!(is_portable(model));
-        assert!(!is_portable("import Foundation\nimport SwiftUI\n"));
-        assert!(!is_portable("@testable import AppHost\nimport UIKit\n"));
+        assert!(is_portable(model, &Modules::default()));
+        assert!(!is_portable(
+            "import Foundation\nimport SwiftUI\n",
+            &Modules::default()
+        ));
+        assert!(!is_portable(
+            "@testable import AppHost\nimport UIKit\n",
+            &Modules::default()
+        ));
         // Guarded imports don't count.
         assert!(is_portable(
-            "import Foundation\n#if canImport(UIKit)\nimport UIKit\n#endif\n"
+            "import Foundation\n#if canImport(UIKit)\nimport UIKit\n#endif\n",
+            &Modules::default()
         ));
         // A whole file inside #if canImport(Security) is portable (it compiles to nothing).
         assert!(is_portable(
-            "#if canImport(Security)\nimport Security\nimport XCTest\n#endif\n"
+            "#if canImport(Security)\nimport Security\nimport XCTest\n#endif\n",
+            &Modules::default()
         ));
         assert_eq!(
             unconditional_imports("import struct Foundation.URL\nimport os.log\n"),
@@ -819,6 +880,7 @@ mod tests {
             true,
             Some(&kit),
             &["ForgeApp", "ForgeKit"],
+            &Modules::default(),
         );
         assert!(m.contains(&format!("dependencies: [{url}]")), "{m}");
         assert!(
@@ -826,7 +888,7 @@ mod tests {
             "{m}"
         );
         assert!(m.contains(r#"["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")], path: "Sources/AppHost""#), "{m}");
-        let plain = manifest(Path::new("/lib"), true, None, &[]);
+        let plain = manifest(Path::new("/lib"), true, None, &[], &Modules::default());
         assert!(!plain.contains("forgekit"), "{plain}");
 
         // ForgeAppKit only when the app's own Package.swift uses it.
@@ -836,6 +898,7 @@ mod tests {
             true,
             Some(&kit),
             &["ForgeUI", "ForgeAppKit"],
+            &Modules::default(),
         );
         assert!(with_kit.contains(r#"["ForgeFFI", .product(name: "ForgeUI", package: "forgekit"), .product(name: "ForgeAppKit", package: "forgekit")], path: "Sources/AppHost""#), "{with_kit}");
         fs::write(
@@ -845,12 +908,55 @@ mod tests {
         .unwrap();
         assert_eq!(forgekit_products(&app), ["ForgeAppKit"]);
         // An app on ForgeUI alone gets no runtime bindings to link.
-        let ui_only = manifest(Path::new("/lib"), true, Some(&kit), &["ForgeUI"]);
+        let ui_only = manifest(
+            Path::new("/lib"),
+            true,
+            Some(&kit),
+            &["ForgeUI"],
+            &Modules::default(),
+        );
         assert!(
             ui_only.contains(r#"dependencies: ["forge_ffiFFI"]"#),
             "{ui_only}"
         );
         assert!(!ui_only.contains("ForgeApp\""), "{ui_only}");
+    }
+
+    #[test]
+    fn an_apps_own_module_names_reach_the_staging_package() {
+        let own = Modules {
+            bindings: "ChatFFI".into(),
+            ffi: "chat_appFFI".into(),
+            app: "ChatApp".into(),
+        };
+        assert!(is_portable(
+            "import Foundation\n@preconcurrency import ChatFFI\n",
+            &own
+        ));
+        assert!(is_portable("@testable import ChatApp\n", &own));
+        assert!(!is_portable("import ChatFFI\n", &Modules::default()));
+        let m = manifest(Path::new("/lib"), true, None, &[], &own);
+        assert!(
+            m.contains(r#".systemLibrary(name: "chat_appFFI", path: "Generated/forge_ffiFFI")"#),
+            "{m}"
+        );
+        assert!(
+            m.contains(
+                r#"name: "ChatFFI",
+            dependencies: ["chat_appFFI"]"#
+            ),
+            "{m}"
+        );
+        assert!(
+            m.contains(
+                r#".target(name: "ChatApp", dependencies: ["ChatFFI"], path: "Sources/AppHost")"#
+            ),
+            "{m}"
+        );
+        assert!(
+            m.contains(r#"dependencies: ["ChatApp", "ChatFFI"], path: "Tests/AppHostTests""#),
+            "{m}"
+        );
     }
 
     #[test]
@@ -899,7 +1005,7 @@ mod tests {
             fs::create_dir_all(p.parent().unwrap()).unwrap();
             fs::write(p, text).unwrap();
         }
-        let sel = select(app);
+        let sel = select(app, &Modules::default());
         assert_eq!(sel.sources, [app.join("Sources/AppHost/NotesModel.swift")]);
         assert_eq!(
             sel.tests,
@@ -907,7 +1013,13 @@ mod tests {
         );
         assert_eq!(sel.skipped.len(), 2);
 
-        let st = stage(app, &sel, &app.join("lib/libforge_ffi.a")).unwrap();
+        let st = stage(
+            app,
+            &sel,
+            &app.join("lib/libforge_ffi.a"),
+            &Modules::default(),
+        )
+        .unwrap();
         assert!(st.join("Sources/AppHost/NotesModel.swift").is_file());
         assert!(!st.join("Sources/AppHost/ContentView.swift").exists());
         // Only the bindings, not the Apple-only service adapters.
@@ -917,7 +1029,13 @@ mod tests {
         let manifest = fs::read_to_string(st.join("Package.swift")).unwrap();
         assert!(manifest.contains("testTarget"), "{manifest}");
         // Staging again replaces it cleanly.
-        stage(app, &sel, &app.join("lib/libforge_ffi.a")).unwrap();
+        stage(
+            app,
+            &sel,
+            &app.join("lib/libforge_ffi.a"),
+            &Modules::default(),
+        )
+        .unwrap();
 
         let msg = format!(
             "{}/Sources/AppHost/NotesModel.swift:3:5: error: nope",

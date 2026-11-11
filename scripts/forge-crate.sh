@@ -6,7 +6,7 @@
 # (FORGE_APP_DIR/build). Without FORGE_APP_DIR the app is found from the
 # script's first argument: the app directory itself, or its Generated/ folder.
 #
-# Sets: APP_DIR, CRATE_DIR, CARGO_SELECT (array), LIB_NAME, CARGO_TARGET, NATIVE_OUT, SCAN_DIRS (array).
+# Sets: APP_DIR, CRATE_DIR, CARGO_SELECT (array), LIB_NAME, SWIFT_BINDINGS, CARGO_TARGET, NATIVE_OUT, SCAN_DIRS (array).
 # Expects ROOT (the Forge workspace).
 
 # The `path` under [rust] in a forge.toml, if any.
@@ -44,12 +44,18 @@ CRATE_DIR="$(cd "$CRATE_DIR" && pwd)"
 CARGO_SELECT=(--manifest-path "$CRATE_DIR/Cargo.toml")
 # The crate's library name (`[lib] name`, else the package name). Each app may
 # name its own library (weather_core, ...), so that another app can link it;
-# whatever the name, the library is staged as libforge_ffi.a and its Swift is
-# the ForgeFFI module, so the Swift package never changes.
+# whatever the name, the library is staged as libforge_ffi.a.
 LIB_NAME="$(sed -n '/^\[lib\]/,/^\[/ s/^name *= *"\([^"]*\)".*/\1/p' "$CRATE_DIR/Cargo.toml" | head -n 1)"
 if [[ -z "$LIB_NAME" ]]; then
   LIB_NAME="$(sed -n '/^\[package\]/,/^\[/ s/^name *= *"\([^"]*\)".*/\1/p' "$CRATE_DIR/Cargo.toml" | head -n 1 | tr - _)"
 fi
+# The Swift module of the app's bindings: forge.toml `[swift] bindings_module`,
+# else ForgeFFI. An app another app hosts names its own (WeatherFFI, ...).
+SWIFT_BINDINGS=""
+if [[ -f "$APP_DIR/forge.toml" ]]; then
+  SWIFT_BINDINGS="$(sed -n '/^\[swift\]/,/^\[/ s/^bindings_module *= *"\([^"]*\)".*/\1/p' "$APP_DIR/forge.toml" | head -n 1)"
+fi
+SWIFT_BINDINGS="${SWIFT_BINDINGS:-ForgeFFI}"
 CARGO_TARGET="${CARGO_TARGET_DIR:-$CRATE_DIR/target}"
 NATIVE_OUT="$APP_DIR/build"
 # The app's crate plus the Forge crates it depends on by path.

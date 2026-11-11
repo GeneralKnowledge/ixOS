@@ -1,5 +1,5 @@
 #if canImport(SwiftUI)
-import ForgeFFI
+import ChecklistFFI
 import ForgeKit
 import SwiftUI
 

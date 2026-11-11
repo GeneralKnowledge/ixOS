@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import PocketLibraryFFI
 import ForgeAppKit
 import Foundation
 import Observation
