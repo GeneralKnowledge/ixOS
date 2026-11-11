@@ -27,7 +27,7 @@ use std::time::{Duration, Instant};
 use serde::Deserialize;
 
 use crate::policy::{self, Action, Gate};
-use crate::{ensure_front, wait_for, wait_gone, Driver, Locator, Result, UiError};
+use crate::{ensure_front, wait_for, wait_gone, Driver, Locator, Result, UiError, UiNode};
 
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -94,6 +94,38 @@ pub struct Step {
     pub type_text: Option<TypeText>,
     pub clear: Option<Target>,
     pub scroll: Option<Scroll>,
+    pub swipe: Option<Swipe>,
+    pub long_press: Option<LongPress>,
+    pub double_tap: Option<Target>,
+    pub drag: Option<Drag>,
+    /// `return`, `delete`, or `dismiss` to hide the keyboard.
+    pub key: Option<String>,
+    pub pinch: Option<Pinch>,
+    pub rotate: Option<Rotate>,
+    pub two_finger_tap: Option<Target>,
+    /// Set a picker wheel to a value.
+    pub pick: Option<Pick>,
+    /// The Home button.
+    pub home: Option<toml::Table>,
+    /// A hardware button: `volume_up`, `volume_down`, `action`, `camera`.
+    pub button: Option<String>,
+    /// Open a URL: a web page, a deep link, a universal link.
+    pub open_url: Option<String>,
+    /// Answer (or check) a system alert or permission prompt.
+    pub alert: Option<Alert>,
+    /// Tap the navigation bar's back button.
+    pub back: Option<toml::Table>,
+    /// Wait until the app is `foreground`, `background` or `not_running`.
+    pub app_state: Option<String>,
+    /// Forget the app's answer to a permission prompt (`camera`,
+    /// `photos`, `location`…), so the next request asks again.
+    pub reset_permission: Option<String>,
+    /// `portrait` or `landscape`.
+    pub orientation: Option<String>,
+    pub lock: Option<toml::Table>,
+    pub unlock: Option<toml::Table>,
+    /// Wait until the screen stops changing.
+    pub settle: Option<toml::Table>,
     pub expect: Option<Expect>,
     pub screenshot: Option<String>,
     pub tree: Option<bool>,
@@ -141,13 +173,100 @@ pub struct TypeText {
 
 /// `scroll = { id = "list", direction = "down" }` scrolls a scroll view;
 /// `direction = "visible"` (the default) scrolls until the target itself is
-/// on screen.
+/// on screen. A row a lazy list hasn't drawn yet isn't in the tree to scroll
+/// to: then the list (`in`, or the first list on screen) is scrolled a page
+/// at a time `toward` the row (default `down`) until it appears, at most
+/// `pages` times (default 10).
 #[derive(Debug, Deserialize)]
 pub struct Scroll {
     #[serde(flatten)]
     pub target: Target,
     #[serde(default = "default_direction")]
     pub direction: String,
+    /// The list or scroll view to page through for a row not drawn yet.
+    #[serde(rename = "in")]
+    pub within: Option<Target>,
+    pub toward: Option<String>,
+    pub pages: Option<usize>,
+}
+
+/// `swipe = { id = "transfers.row", direction = "left" }`: a finger swipe
+/// across the element, which shows a row's swipe actions.
+#[derive(Debug, Deserialize)]
+pub struct Swipe {
+    #[serde(flatten)]
+    pub target: Target,
+    pub direction: String,
+}
+
+/// `long_press = { id = "library.book.1" }`: touch and hold (default 1 s),
+/// which opens a context menu.
+#[derive(Debug, Deserialize)]
+pub struct LongPress {
+    #[serde(flatten)]
+    pub target: Target,
+    #[serde(default = "default_hold")]
+    pub seconds: f64,
+}
+
+/// `pinch = { id = "photo", scale = 2.0 }`: above 1 zooms in, below 1 out.
+#[derive(Debug, Deserialize)]
+pub struct Pinch {
+    #[serde(flatten)]
+    pub target: Target,
+    pub scale: f64,
+}
+
+/// `rotate = { id = "map", degrees = 90 }`: two fingers turning, clockwise
+/// when positive.
+#[derive(Debug, Deserialize)]
+pub struct Rotate {
+    #[serde(flatten)]
+    pub target: Target,
+    pub degrees: f64,
+}
+
+/// `pick = { id = "form.month", value = "March" }`: turns a picker wheel to
+/// the value.
+#[derive(Debug, Deserialize)]
+pub struct Pick {
+    #[serde(flatten)]
+    pub target: Target,
+    pub value: String,
+}
+
+/// `alert = { accept = true }` taps the alert's default button,
+/// `{ button = "Allow" }` the one with that label, `{ dismiss = true }` its
+/// Cancel or Don't Allow. `text` (part of the title or message) checks the
+/// alert first; on its own it only checks that such an alert is open.
+#[derive(Debug, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Alert {
+    #[serde(default)]
+    pub accept: bool,
+    #[serde(default)]
+    pub dismiss: bool,
+    pub button: Option<String>,
+    pub text: Option<String>,
+}
+
+fn default_hold() -> f64 {
+    1.0
+}
+
+/// `drag = { id = "a", to = { id = "b" } }` presses the element (`hold`
+/// seconds, default 1, long enough to pick it up), drags it onto `to` and
+/// lets go. `drag = { kind = "CollectionView", by = "down" }` drags from the
+/// element's centre `distance` of its size (default 0.5) with no hold: a
+/// list pulled down to refresh.
+#[derive(Debug, Deserialize)]
+pub struct Drag {
+    #[serde(flatten)]
+    pub target: Target,
+    pub to: Option<Target>,
+    pub by: Option<String>,
+    pub distance: Option<f64>,
+    pub hold: Option<f64>,
 }
 
 fn default_direction() -> String {
@@ -155,6 +274,12 @@ fn default_direction() -> String {
 }
 
 const DIRECTIONS: &[&str] = &["visible", "up", "down", "left", "right"];
+
+/// Pages a scroll looks through for a row a lazy list hasn't drawn yet.
+const DEFAULT_PAGES: usize = 10;
+
+/// How long a scroll looks for its target before it starts paging.
+const QUICK_LOOK: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Deserialize)]
 pub struct Expect {
@@ -165,6 +290,14 @@ pub struct Expect {
     /// The element's label equals this.
     pub has_label: Option<String>,
     pub enabled: Option<bool>,
+    /// On screen (true) or off it (false), as WebDriverAgent sees it.
+    pub visible: Option<bool>,
+    /// A tap would reach it.
+    pub hittable: Option<bool>,
+    /// Selected (a tab, a segment, a chosen row).
+    pub selected: Option<bool>,
+    /// Exactly this many elements match the target.
+    pub count: Option<usize>,
     /// Nothing matches the target any more.
     #[serde(default)]
     pub gone: bool,
@@ -241,6 +374,26 @@ impl Step {
             self.type_text.is_some(),
             self.clear.is_some(),
             self.scroll.is_some(),
+            self.swipe.is_some(),
+            self.long_press.is_some(),
+            self.double_tap.is_some(),
+            self.drag.is_some(),
+            self.key.is_some(),
+            self.pinch.is_some(),
+            self.rotate.is_some(),
+            self.two_finger_tap.is_some(),
+            self.pick.is_some(),
+            self.home.is_some(),
+            self.button.is_some(),
+            self.open_url.is_some(),
+            self.alert.is_some(),
+            self.back.is_some(),
+            self.app_state.is_some(),
+            self.reset_permission.is_some(),
+            self.orientation.is_some(),
+            self.lock.is_some(),
+            self.unlock.is_some(),
+            self.settle.is_some(),
             self.expect.is_some(),
             self.screenshot.is_some(),
             self.tree.is_some(),
@@ -254,14 +407,144 @@ impl Step {
         if self.actions() != 1 {
             return Err("each step needs exactly one action".into());
         }
-        for target in [&self.tap, &self.clear].into_iter().flatten() {
+        for target in [
+            &self.tap,
+            &self.clear,
+            &self.double_tap,
+            &self.two_finger_tap,
+        ]
+        .into_iter()
+        .flatten()
+        {
             target.locator()?;
+        }
+        let direction = |d: &str, what: &str| {
+            if crate::DIRECTIONS.contains(&d) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{what} direction `{d}`: use one of {}",
+                    crate::DIRECTIONS.join(", ")
+                ))
+            }
+        };
+        if let Some(s) = &self.swipe {
+            s.target.locator()?;
+            direction(&s.direction, "swipe")?;
+        }
+        if let Some(l) = &self.long_press {
+            l.target.locator()?;
+            if !(0.0..=10.0).contains(&l.seconds) {
+                return Err("long_press `seconds`: between 0 and 10".into());
+            }
+        }
+        if let Some(d) = &self.drag {
+            d.target.locator()?;
+            match (&d.to, &d.by) {
+                (Some(to), None) => {
+                    to.locator().map_err(|e| format!("drag `to`: {e}"))?;
+                    if d.distance.is_some() {
+                        return Err("drag `distance` goes with `by`".into());
+                    }
+                }
+                (None, Some(by)) => {
+                    direction(by, "drag")?;
+                    if d.distance.is_some_and(|f| !(0.0..=2.0).contains(&f)) {
+                        return Err(
+                            "drag `distance`: a fraction of the element's size, 0 to 2".into()
+                        );
+                    }
+                }
+                _ => {
+                    return Err(
+                        "drag needs `to` (an element) or `by` (a direction), not both".into(),
+                    )
+                }
+            }
+            if d.hold.is_some_and(|h| !(0.0..=10.0).contains(&h)) {
+                return Err("drag `hold`: between 0 and 10 seconds".into());
+            }
+        }
+        if let Some(p) = &self.pinch {
+            p.target.locator()?;
+            if !(p.scale > 0.0 && p.scale <= 10.0) || p.scale == 1.0 {
+                return Err(
+                    "pinch `scale`: above 1 zooms in, below 1 zooms out (0 to 10, not 1)".into(),
+                );
+            }
+        }
+        if let Some(r) = &self.rotate {
+            r.target.locator()?;
+            if r.degrees == 0.0 || r.degrees.abs() > 360.0 {
+                return Err("rotate `degrees`: -360 to 360, not 0".into());
+            }
+        }
+        if let Some(p) = &self.pick {
+            p.target.locator()?;
+        }
+        if let Some(b) = &self.button {
+            if !crate::BUTTONS.iter().any(|(n, _)| n == b) {
+                let names: Vec<_> = crate::BUTTONS.iter().map(|(n, _)| *n).collect();
+                return Err(format!(
+                    "button `{b}`: use one of {} (Home is its own step: `home = {{}}`)",
+                    names.join(", ")
+                ));
+            }
+        }
+        if let Some(url) = &self.open_url {
+            if !url.contains(':') || url.contains(char::is_whitespace) {
+                return Err(format!("open_url `{url}`: a URL with a scheme, such as https://example.com or myapp://path"));
+            }
+        }
+        if let Some(a) = &self.alert {
+            let answers =
+                usize::from(a.accept) + usize::from(a.dismiss) + usize::from(a.button.is_some());
+            if answers > 1 || (answers == 0 && a.text.is_none()) {
+                return Err("alert: one of `accept = true`, `dismiss = true` or `button = \"…\"`, and optionally `text`".into());
+            }
+        }
+        if let Some(state) = &self.app_state {
+            if !crate::AppState::NAMES.contains(&state.as_str()) {
+                return Err(format!(
+                    "app_state `{state}`: use one of {}",
+                    crate::AppState::NAMES.join(", ")
+                ));
+            }
+        }
+        if let Some(r) = &self.reset_permission {
+            if crate::Permission::parse(r).is_none() {
+                return Err(format!(
+                    "reset_permission `{r}`: use one of {}",
+                    crate::Permission::names().join(", ")
+                ));
+            }
+        }
+        if let Some(o) = &self.orientation {
+            if !["portrait", "landscape"].contains(&o.as_str()) {
+                return Err(format!("orientation `{o}`: portrait or landscape"));
+            }
+        }
+        if let Some(k) = &self.key {
+            if crate::Key::parse(k).is_none() {
+                return Err(format!(
+                    "key `{k}`: use one of {}",
+                    crate::Key::NAMES.join(", ")
+                ));
+            }
         }
         if let Some(t) = &self.type_text {
             t.target.locator()?;
         }
         if let Some(e) = &self.expect {
             e.target.locator()?;
+            if e.gone
+                && (e.count.is_some()
+                    || e.visible.is_some()
+                    || e.hittable.is_some()
+                    || e.selected.is_some())
+            {
+                return Err("expect `gone` stands alone".into());
+            }
         }
         if let Some(s) = &self.scroll {
             s.target.locator()?;
@@ -271,6 +554,17 @@ impl Step {
                     s.direction,
                     DIRECTIONS.join(", ")
                 ));
+            }
+            if let Some(within) = &s.within {
+                within.locator().map_err(|e| format!("scroll `in`: {e}"))?;
+            }
+            if let Some(toward) = &s.toward {
+                direction(toward, "scroll `toward`")?;
+            }
+            if (s.within.is_some() || s.toward.is_some() || s.pages.is_some())
+                && s.direction != "visible"
+            {
+                return Err("scroll `in`, `toward` and `pages` go with `direction = \"visible\"` (the default)".into());
             }
         }
         Ok(())
@@ -311,6 +605,84 @@ impl Step {
                 format!("scroll {} {}", loc(&s.target), s.direction)
             };
         }
+        if let Some(s) = &self.swipe {
+            return format!("swipe {} {}", loc(&s.target), s.direction);
+        }
+        if let Some(l) = &self.long_press {
+            return format!("long press {} for {} s", loc(&l.target), l.seconds);
+        }
+        if let Some(t) = &self.double_tap {
+            return format!("double tap {}", loc(t));
+        }
+        if let Some(d) = &self.drag {
+            return match (&d.to, &d.by) {
+                (Some(to), _) => format!("drag {} onto {}", loc(&d.target), loc(to)),
+                (_, Some(by)) => format!("drag {} {by}", loc(&d.target)),
+                _ => format!("drag {}", loc(&d.target)),
+            };
+        }
+        if let Some(p) = &self.pinch {
+            return format!("pinch {} to {}x", loc(&p.target), p.scale);
+        }
+        if let Some(r) = &self.rotate {
+            return format!("rotate {} by {}°", loc(&r.target), r.degrees);
+        }
+        if let Some(t) = &self.two_finger_tap {
+            return format!("tap {} with two fingers", loc(t));
+        }
+        if let Some(p) = &self.pick {
+            return format!("turn {} to {:?}", loc(&p.target), p.value);
+        }
+        if self.home.is_some() {
+            return "press Home".into();
+        }
+        if let Some(b) = &self.button {
+            return format!("press the {} button", b.replace('_', " "));
+        }
+        if let Some(url) = &self.open_url {
+            return format!("open {url}");
+        }
+        if let Some(a) = &self.alert {
+            let check = a
+                .text
+                .as_ref()
+                .map(|t| format!(" saying {t:?}"))
+                .unwrap_or_default();
+            return match (&a.button, a.accept, a.dismiss) {
+                (Some(b), _, _) => format!("tap {b:?} on the alert{check}"),
+                (_, true, _) => format!("accept the alert{check}"),
+                (_, _, true) => format!("dismiss the alert{check}"),
+                _ => format!("check an alert is open{check}"),
+            };
+        }
+        if self.back.is_some() {
+            return "go back".into();
+        }
+        if let Some(state) = &self.app_state {
+            return format!("wait until the app is {}", state.replace('_', " "));
+        }
+        if let Some(r) = &self.reset_permission {
+            return format!("reset the {r} permission");
+        }
+        if let Some(o) = &self.orientation {
+            return format!("turn the screen {o}");
+        }
+        if self.lock.is_some() {
+            return "lock the phone".into();
+        }
+        if self.unlock.is_some() {
+            return "unlock the phone".into();
+        }
+        if self.settle.is_some() {
+            return "wait for the screen to settle".into();
+        }
+        if let Some(k) = &self.key {
+            return if k == "dismiss" {
+                "hide the keyboard".into()
+            } else {
+                format!("press {k}")
+            };
+        }
         if let Some(e) = &self.expect {
             let mut what = vec![];
             if e.gone {
@@ -324,6 +696,18 @@ impl Step {
             }
             if let Some(v) = e.enabled {
                 what.push(if v { "is enabled" } else { "is disabled" }.to_string());
+            }
+            for (name, v) in [
+                ("visible", e.visible),
+                ("hittable", e.hittable),
+                ("selected", e.selected),
+            ] {
+                if let Some(v) = v {
+                    what.push(format!("is {}{name}", if v { "" } else { "not " }));
+                }
+            }
+            if let Some(n) = e.count {
+                what.push(format!("matches {n}"));
             }
             if what.is_empty() {
                 what.push("is on screen".into());
@@ -449,6 +833,13 @@ fn run_step(
         Action::Background
     } else if step.scroll.is_some() {
         Action::Scroll
+    } else if let Some(device) = device_action(step) {
+        device
+    } else if let Some(name) = step.key.as_deref().and_then(crate::Key::parse) {
+        Action::Key {
+            name: name.name(),
+            presses_return: name == crate::Key::Return,
+        }
     } else {
         // Reading; or a tap, typing or clear, checked with its element below.
         Action::Read
@@ -472,6 +863,50 @@ fn run_step(
     }
     if let Some(seconds) = step.background {
         return driver.background(seconds);
+    }
+    // Steps on the phone rather than the app's screen.
+    if step.home.is_some() {
+        return driver.home();
+    }
+    if let Some(b) = &step.button {
+        let wda = crate::BUTTONS
+            .iter()
+            .find(|(n, _)| n == b)
+            .map(|(_, w)| *w)
+            .unwrap_or(b.as_str());
+        return driver.press_button(wda);
+    }
+    if let Some(url) = &step.open_url {
+        return driver.open_url(url);
+    }
+    if let Some(wanted) = &step.app_state {
+        let deadline = Instant::now() + timeout;
+        loop {
+            let state = driver.app_state(app)?;
+            if state.name() == wanted {
+                return Ok(());
+            }
+            if Instant::now() >= deadline {
+                return Err(UiError::Mismatch {
+                    locator: Locator::Id(app.to_owned()),
+                    expected: wanted.replace('_', " "),
+                    found: state.name().replace('_', " "),
+                });
+            }
+            std::thread::sleep(crate::POLL);
+        }
+    }
+    if step.lock.is_some() {
+        return driver.lock();
+    }
+    if step.unlock.is_some() {
+        return driver.unlock();
+    }
+    if let Some(o) = &step.orientation {
+        return driver.set_orientation(o);
+    }
+    if let Some(alert) = &step.alert {
+        return self::alert(driver, alert, app, timeout, gate);
     }
     // Everything below reads or touches the screen: only ever the app under
     // test. Expecting an element gone is the exception, since it also holds
@@ -521,21 +956,134 @@ fn run_step(
             d.clear(e)
         });
     }
-    if let Some(scroll) = &step.scroll {
-        // A swipe that crosses the keyboard types into the field: on Cati
-        // a CollectionView scroll turned "Moss" into "MossSsss". Refuse
-        // rather than change the person's text.
-        if driver
+    if let Some(name) = step.key.as_deref().and_then(crate::Key::parse) {
+        return driver.press_key(name);
+    }
+    if let Some(r) = step
+        .reset_permission
+        .as_deref()
+        .and_then(crate::Permission::parse)
+    {
+        return driver.reset_permission(r);
+    }
+    if step.settle.is_some() {
+        return settle(driver, timeout);
+    }
+    if step.back.is_some() {
+        let locator = back_button(&driver.tree()?).ok_or_else(|| {
+            UiError::Device("no back button: the screen has no navigation bar with a button at its leading edge".into())
+        })?;
+        return tap(driver, &locator, timeout, gate);
+    }
+    if let Some(p) = &step.pinch {
+        return gesture(
+            driver,
+            &locate(&p.target)?,
+            timeout,
+            gate,
+            "pinch",
+            &mut |d, e| d.pinch(e, p.scale),
+        );
+    }
+    if let Some(r) = &step.rotate {
+        return gesture(
+            driver,
+            &locate(&r.target)?,
+            timeout,
+            gate,
+            "rotate",
+            &mut |d, e| d.rotate(e, r.degrees.to_radians()),
+        );
+    }
+    if let Some(t) = &step.two_finger_tap {
+        return gesture(
+            driver,
+            &locate(t)?,
+            timeout,
+            gate,
+            "two_finger_tap",
+            &mut |d, e| d.two_finger_tap(e),
+        );
+    }
+    if let Some(p) = &step.pick {
+        let mut checked = false;
+        return act(driver, &locate(&p.target)?, timeout, &mut |d, e| {
+            if !checked && gate.wants_targets() {
+                let action = Action::Type {
+                    target: target_of(d, e)?,
+                    chars: p.value.chars().count(),
+                    presses_return: false,
+                };
+                allow(gate, action)?;
+                checked = true;
+            }
+            // WDA turns a picker wheel to the typed value.
+            d.type_text(e, &p.value)
+        });
+    }
+    // A swipe that crosses the keyboard types into the field: on Cati a
+    // CollectionView scroll turned "Moss" into "MossSsss". Refuse rather
+    // than change the person's text.
+    let crosses = step.scroll.is_some() || step.swipe.is_some() || step.drag.is_some();
+    if crosses
+        && driver
             .tree()
             .is_ok_and(|t| t.walk().any(|n| n.kind == "Keyboard" && n.visible))
-        {
-            return Err(UiError::Refused(
-                "the keyboard is up, and a scroll would swipe across it and type into the field: close it first (tap the field's Done or Return key)".into(),
-            ));
-        }
-        return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
-            d.scroll(e, &scroll.direction)
-        });
+    {
+        return Err(UiError::Refused(
+            "the keyboard is up, and a swipe would cross it and type into the field: hide it first (a `key = \"dismiss\"` step, or tap the field's Done key)".into(),
+        ));
+    }
+    if let Some(scroll) = &step.scroll {
+        return self::scroll(driver, scroll, timeout);
+    }
+    if let Some(swipe) = &step.swipe {
+        return gesture(
+            driver,
+            &locate(&swipe.target)?,
+            timeout,
+            gate,
+            "swipe",
+            &mut |d, e| d.swipe(e, &swipe.direction),
+        );
+    }
+    if let Some(press) = &step.long_press {
+        return gesture(
+            driver,
+            &locate(&press.target)?,
+            timeout,
+            gate,
+            "long_press",
+            &mut |d, e| d.long_press(e, press.seconds),
+        );
+    }
+    if let Some(target) = &step.double_tap {
+        return gesture(
+            driver,
+            &locate(target)?,
+            timeout,
+            gate,
+            "double_tap",
+            &mut |d, e| d.double_tap(e),
+        );
+    }
+    if let Some(drag) = &step.drag {
+        let to = drag.to.as_ref().map(locate).transpose()?;
+        return gesture(
+            driver,
+            &locate(&drag.target)?,
+            timeout,
+            gate,
+            "drag",
+            &mut |d, e| match (&to, &drag.by) {
+                (Some(to), _) => {
+                    let to = wait_for(d, to, timeout)?;
+                    d.drag_to(e, &to, drag.hold.unwrap_or(1.0))
+                }
+                (None, Some(by)) => d.drag_by(e, by, drag.distance.unwrap_or(0.5)),
+                (None, None) => Err(UiError::Device("drag needs `to` or `by`".into())),
+            },
+        );
     }
     if let Some(expect) = &step.expect {
         return check(driver, expect, &locate(&expect.target)?, timeout);
@@ -566,6 +1114,248 @@ fn run_step(
     let tree = driver.tree()?;
     write!(out, "{}", indent(&tree.render()))?;
     Ok(())
+}
+
+/// The policy action for a step on the phone rather than an element.
+fn device_action(step: &Step) -> Option<Action> {
+    let device = |name: &'static str, what: String| Some(Action::Device { name, what });
+    if step.home.is_some() {
+        return device("home", String::new());
+    }
+    if let Some(b) = &step.button {
+        return device("button", format!("the {} button", b.replace('_', " ")));
+    }
+    if let Some(url) = &step.open_url {
+        // Only the scheme and host: a URL's path and query can hold data.
+        let host = url
+            .split_once("://")
+            .map(|(scheme, rest)| {
+                let host = rest.split(['/', '?', '#']).next().unwrap_or("");
+                format!("{scheme}://{host}")
+            })
+            .unwrap_or_else(|| url.split(':').next().unwrap_or("").to_owned() + ":");
+        return device("open_url", host);
+    }
+    if let Some(o) = &step.orientation {
+        return device("orientation", o.clone());
+    }
+    if let Some(r) = &step.reset_permission {
+        return device("reset_permission", format!("the {r} permission"));
+    }
+    if step.lock.is_some() {
+        return device("lock", "the phone".into());
+    }
+    if step.unlock.is_some() {
+        return device("unlock", "the phone".into());
+    }
+    if step.app_state.is_some() || step.settle.is_some() {
+        return Some(Action::Read);
+    }
+    None
+}
+
+/// An alert step. System alerts (permission prompts) belong to SpringBoard,
+/// so the app under test or SpringBoard may be in front, nothing else.
+fn alert(
+    driver: &mut dyn Driver,
+    alert: &Alert,
+    app: &str,
+    timeout: Duration,
+    gate: &mut Gate,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    let text = loop {
+        let front = driver.foreground()?;
+        let ours = matches!(front.as_deref(), Some(f) if f == app || f == policy::SPRINGBOARD);
+        if ours {
+            if let Some(text) = driver.alert_text()? {
+                break text;
+            }
+        }
+        if Instant::now() >= deadline {
+            return Err(if ours {
+                UiError::Device("no alert is open".into())
+            } else {
+                UiError::WrongApp {
+                    expected: app.to_owned(),
+                    found: front.unwrap_or_else(|| "no app".into()),
+                }
+            });
+        }
+        std::thread::sleep(crate::POLL);
+    };
+    if let Some(wanted) = &alert.text {
+        if !text.contains(wanted.as_str()) {
+            return Err(UiError::Mismatch {
+                locator: Locator::Kind {
+                    kind: "Alert".into(),
+                    label: None,
+                    index: None,
+                },
+                expected: format!("text containing {wanted:?}"),
+                found: format!("{text:?}"),
+            });
+        }
+    }
+    let button = |label: Option<&str>| policy::Target {
+        label: label.map(str::to_owned),
+        identifier: None,
+        kind: Some("Button".into()),
+    };
+    if alert.dismiss {
+        gate.check(&Action::Tap(button(Some("Cancel"))))
+            .map_err(UiError::Refused)?;
+        return driver.alert_dismiss();
+    }
+    if alert.accept || alert.button.is_some() {
+        let label = alert.button.as_deref();
+        if let Some(label) = label {
+            let buttons = driver.alert_buttons()?;
+            if !buttons.iter().any(|b| b == label) {
+                return Err(UiError::Device(format!(
+                    "the alert has no button {label:?}; it has {}",
+                    buttons
+                        .iter()
+                        .map(|b| format!("{b:?}"))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )));
+            }
+        }
+        // The default button says nothing about what it does: a commit
+        // in another app, like any unlabelled tap.
+        gate.check(&Action::Tap(button(label)))
+            .map_err(UiError::Refused)?;
+        return driver.alert_accept(label);
+    }
+    Ok(())
+}
+
+/// A navigation bar's back button: by its identifier where iOS gives one
+/// (`BackButton`), else the bar's first button at its leading edge.
+fn back_button(tree: &UiNode) -> Option<Locator> {
+    let bar = tree
+        .walk()
+        .find(|n| n.kind == "NavigationBar" && n.visible)?;
+    let buttons: Vec<&UiNode> = bar.walk().filter(|n| n.kind == "Button").collect();
+    if buttons
+        .iter()
+        .any(|b| b.identifier.as_deref() == Some("BackButton"))
+    {
+        return Some(Locator::Id("BackButton".into()));
+    }
+    let first = buttons
+        .into_iter()
+        .find(|b| match (b.frame.as_ref(), bar.frame.as_ref()) {
+            (Some(f), Some(bf)) => f.x < bf.x + bf.width / 3.0,
+            _ => true,
+        })?;
+    if let Some(id) = &first.identifier {
+        return Some(Locator::Id(id.clone()));
+    }
+    first.label.as_ref().map(|l| Locator::Kind {
+        kind: "Button".into(),
+        label: Some(l.clone()),
+        index: None,
+    })
+}
+
+/// Waits until two reads of the tree a moment apart agree.
+fn settle(driver: &mut dyn Driver, timeout: Duration) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    let mut last = driver.tree()?.render();
+    loop {
+        std::thread::sleep(crate::POLL);
+        let now = driver.tree()?.render();
+        if now == last {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(UiError::Device(
+                "the screen kept changing until the timeout (an animation, a clock or a spinner?)"
+                    .into(),
+            ));
+        }
+        last = now;
+    }
+}
+
+/// A gesture on an element, checked by the gate with the element's label
+/// and kind once it is found (another developer's app), like a tap.
+fn gesture(
+    driver: &mut dyn Driver,
+    locator: &Locator,
+    timeout: Duration,
+    gate: &mut Gate,
+    name: &'static str,
+    action: &mut dyn FnMut(&mut dyn Driver, &crate::ElementRef) -> Result<()>,
+) -> Result<()> {
+    let mut checked = !gate.wants_targets();
+    act(driver, locator, timeout, &mut |d, e| {
+        if !checked {
+            let target = target_of(d, e)?;
+            gate.check(&Action::Gesture {
+                gesture: name,
+                target,
+            })
+            .map_err(UiError::Refused)?;
+            checked = true;
+        }
+        action(d, e)
+    })
+}
+
+/// A scroll step. Up, down, left and right scroll the target itself.
+/// `visible` scrolls until the target is on screen; a row a lazy list
+/// hasn't drawn yet isn't in the tree, so the list is paged through until
+/// it appears.
+fn scroll(driver: &mut dyn Driver, scroll: &Scroll, timeout: Duration) -> Result<()> {
+    let locator = scroll.target.locator().map_err(UiError::Device)?;
+    if scroll.direction != "visible" {
+        return act(driver, &locator, timeout, &mut |d, e| {
+            d.scroll(e, &scroll.direction)
+        });
+    }
+    let to_visible =
+        |d: &mut dyn Driver| act(d, &locator, timeout, &mut |d, e| d.scroll(e, "visible"));
+    // Already drawn (or about to be): the old, simple path.
+    let quick = if scroll.within.is_some() {
+        Duration::ZERO
+    } else {
+        QUICK_LOOK.min(timeout)
+    };
+    match wait_for(driver, &locator, quick) {
+        Ok(_) => return to_visible(driver),
+        Err(UiError::NotFound(_)) => {}
+        Err(e) => return Err(e),
+    }
+    let list = match &scroll.within {
+        Some(t) => t.locator().map_err(UiError::Device)?,
+        None => match crate::explore::scroll_target(&driver.tree()?) {
+            Some(list) => list,
+            // Nothing to page through: wait for the target as before.
+            None => return to_visible(driver),
+        },
+    };
+    let toward = scroll.toward.as_deref().unwrap_or("down");
+    let pages = scroll.pages.unwrap_or(DEFAULT_PAGES);
+    let mut last = driver.tree()?.render();
+    for page in 1..=pages {
+        act(driver, &list, timeout, &mut |d, e| d.scroll(e, toward))?;
+        if !driver.find_all(&locator)?.is_empty() {
+            return to_visible(driver);
+        }
+        let now = driver.tree()?.render();
+        if now == last {
+            return Err(UiError::Device(format!(
+                "scrolled {list} {toward} {page} time(s) to its end and {locator} never appeared"
+            )));
+        }
+        last = now;
+    }
+    Err(UiError::Device(format!(
+        "scrolled {list} {toward} {pages} times and {locator} never appeared (raise `pages`, or scroll `toward` the other way)"
+    )))
 }
 
 /// Finds the element and acts on it. SwiftUI re-renders freely, so an
@@ -687,6 +1477,31 @@ fn check(
         return wait_gone(driver, locator, timeout);
     }
     let deadline = Instant::now() + timeout;
+    if let Some(wanted) = expect.count {
+        loop {
+            let found = match driver.find_all(locator) {
+                Err(UiError::Stale(_)) if Instant::now() < deadline => {
+                    std::thread::sleep(crate::POLL);
+                    continue;
+                }
+                other => other?.len(),
+            };
+            if found == wanted {
+                break;
+            }
+            if Instant::now() >= deadline {
+                return Err(UiError::Mismatch {
+                    locator: locator.clone(),
+                    expected: format!("{wanted} matches"),
+                    found: format!("{found}"),
+                });
+            }
+            std::thread::sleep(crate::POLL);
+        }
+        if wanted == 0 {
+            return Ok(());
+        }
+    }
     loop {
         let element = wait_for(
             driver,
@@ -737,6 +1552,20 @@ fn mismatch(
             }
         }
     }
+    for (attribute, wanted) in [
+        ("visible", expect.visible),
+        ("hittable", expect.hittable),
+        ("selected", expect.selected),
+    ] {
+        if let Some(wanted) = wanted {
+            let found = driver.attribute(element, attribute)?;
+            let is = matches!(found.as_deref(), Some("true") | Some("1"));
+            if is != wanted {
+                let say = |v: bool| format!("{}{attribute}", if v { "" } else { "not " });
+                mismatch = Some((say(wanted), say(is)));
+            }
+        }
+    }
     if let Some(wanted) = expect.enabled {
         let found = driver.attribute(element, "enabled")?;
         let is = matches!(found.as_deref(), Some("true") | Some("1"));
@@ -783,6 +1612,12 @@ fn record_failure(
     out: &mut dyn Write,
     report: &mut Report,
 ) {
+    // An open alert explains most "not found" failures: say what it says.
+    if let Ok(Some(text)) = driver.alert_text() {
+        let line = format!("an alert is open: {text:?}");
+        let _ = writeln!(out, "        {line}");
+        report.on_screen.push(line);
+    }
     // The app has gone and the home screen is in front: its tree and
     // screenshot hold the person's apps and notification counts, which are
     // theirs, not the test's. Say so instead of recording them.
@@ -843,7 +1678,6 @@ fn indent(text: &str) -> String {
 mod tests {
     use super::*;
     use crate::fake::FakeDriver;
-    use crate::UiNode;
 
     fn node(kind: &str, id: &str, label: &str) -> UiNode {
         UiNode {
@@ -880,6 +1714,367 @@ mod tests {
         let mut driver = FakeDriver::new(screen);
         driver.front = Some("a".into());
         driver
+    }
+
+    /// Runs `steps` (TOML `[[step]]` tables) against app `a` in front.
+    fn run_steps(steps: &str, driver: &mut FakeDriver) -> (Report, String) {
+        let script = Script::parse(&format!("name='g'\napp='a'\ntimeout=0\n{steps}")).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", driver, dir.path(), &mut out).unwrap();
+        (report, String::from_utf8(out).unwrap())
+    }
+
+    fn rows(ids: &[&str]) -> UiNode {
+        let mut list = node("CollectionView", "dashboard", "");
+        list.children = ids.iter().map(|id| node("Cell", id, id)).collect();
+        UiNode {
+            kind: "Application".into(),
+            children: vec![list],
+            ..UiNode::default()
+        }
+    }
+
+    #[test]
+    fn gestures_reach_the_driver() {
+        let mut driver = in_front(rows(&["transfers.row", "dashboard.crashTest"]));
+        let (report, out) = run_steps(
+            "[[step]]\nswipe={id='transfers.row', direction='left'}\n\
+             [[step]]\nlong_press={id='transfers.row'}\n\
+             [[step]]\nlong_press={id='transfers.row', seconds=2.5}\n\
+             [[step]]\ndouble_tap={label='transfers.row'}\n\
+             [[step]]\ndrag={id='transfers.row', to={id='dashboard.crashTest'}}\n\
+             [[step]]\ndrag={id='dashboard', by='down'}\n\
+             [[step]]\ndrag={id='dashboard', by='down', distance=0.8}\n\
+             [[step]]\nkey='return'\n[[step]]\nkey='delete'\n[[step]]\nkey='dismiss'\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(
+            driver.calls,
+            [
+                "swipe transfers.row left",
+                "long press transfers.row 1",
+                "long press transfers.row 2.5",
+                "double tap transfers.row",
+                "drag transfers.row to dashboard.crashTest after 1",
+                "drag dashboard down by 0.5",
+                "drag dashboard down by 0.8",
+                "key return",
+                "key delete",
+                "key dismiss",
+            ]
+        );
+        assert!(out.contains("swipe id `transfers.row` left"), "{out}");
+        assert!(out.contains("hide the keyboard"), "{out}");
+    }
+
+    #[test]
+    fn new_steps_are_checked_when_the_file_is_read() {
+        for (step, error) in [
+            (
+                "swipe={id='r', direction='sideways'}",
+                "swipe direction `sideways`",
+            ),
+            ("swipe={id='r'}", "missing field `direction`"),
+            ("long_press={id='r', seconds=60}", "between 0 and 10"),
+            ("drag={id='r'}", "drag needs `to`"),
+            ("drag={id='r', to={id='s'}, by='down'}", "not both"),
+            ("drag={id='r', to={id='s'}, distance=0.3}", "goes with `by`"),
+            ("drag={id='r', to={idd='s'}}", "unknown field"),
+            ("key='escape'", "key `escape`"),
+            (
+                "scroll={id='r', direction='down', in={id='l'}}",
+                "go with `direction",
+            ),
+            ("scroll={id='r', toward='sideways'}", "toward` direction"),
+        ] {
+            let err = Script::parse(&format!("name='x'\napp='a'\n[[step]]\n{step}\n")).unwrap_err();
+            assert!(err.contains(error), "{step}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_swipe_or_drag_with_the_keyboard_up_is_refused() {
+        let mut screen = rows(&["transfers.row"]);
+        screen.children.push(node("Keyboard", "", ""));
+        for step in [
+            "swipe={id='transfers.row', direction='left'}",
+            "drag={id='dashboard', by='down'}",
+        ] {
+            let mut driver = in_front(screen.clone());
+            let (report, _) = run_steps(&format!("[[step]]\n{step}\n"), &mut driver);
+            assert!(report.failed.unwrap().1.contains("key = \"dismiss\""));
+            // Only the failure's screenshot: nothing touched the screen.
+            assert_eq!(driver.calls, ["screenshot"]);
+        }
+    }
+
+    #[test]
+    fn a_scroll_pages_a_lazy_list_until_the_row_is_drawn() {
+        // Device Lab's dashboard (2026-11-11): Background Downloads is
+        // below the fold, so the list hasn't made its cell yet.
+        let mut driver = in_front(rows(&["dashboard.a", "dashboard.b"]));
+        driver.scroll_pages = vec![
+            rows(&["dashboard.c", "dashboard.d"]),
+            rows(&["dashboard.e", "dashboard.transfers"]),
+        ];
+        let (report, out) = run_steps("[[step]]\nscroll={id='dashboard.transfers'}\n", &mut driver);
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(
+            driver.calls,
+            [
+                "scroll dashboard down",
+                "scroll dashboard down",
+                "scroll dashboard.transfers visible"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_scroll_in_a_named_list_goes_the_way_it_is_told() {
+        let mut driver = in_front(rows(&["dashboard.e"]));
+        driver.scroll_pages = vec![rows(&["dashboard.top"])];
+        let (report, out) = run_steps(
+            "[[step]]\nscroll={id='dashboard.top', in={id='dashboard'}, toward='up'}\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(driver.calls[0], "scroll dashboard up");
+    }
+
+    #[test]
+    fn a_scroll_stops_at_the_end_of_the_list() {
+        let mut driver = in_front(rows(&["dashboard.a"]));
+        let (report, _) = run_steps("[[step]]\nscroll={id='nowhere', pages=4}\n", &mut driver);
+        let (_, error) = report.failed.unwrap();
+        assert!(error.contains("1 time(s) to its end"), "{error}");
+        // The list didn't change, so one try was enough to know.
+        assert_eq!(driver.calls, ["scroll dashboard down", "screenshot"]);
+    }
+
+    #[test]
+    fn gestures_in_another_app_ask_like_a_tap() {
+        // A swipe can run a row's Delete: it needs the person each time.
+        let (report, driver, journal) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nswipe={id='chat-input', direction='left'}\n",
+        );
+        assert!(report.failed.unwrap().1.contains("swipe"));
+        assert!(!driver.calls.iter().any(|c| c.starts_with("swipe")));
+        assert!(journal.contains(r#""action":"swipe""#), "{journal}");
+        // A long press on a labelled control is allowed at `operate`.
+        let (report, driver, _) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nlong_press={id='chat-input'}\n",
+        );
+        assert_eq!(report.failed, None);
+        assert!(driver.calls.iter().any(|c| c.starts_with("long press")));
+        // ...and refused at `observe`, like a tap.
+        let (report, _, _) = foreign_run(
+            policy::Level::Observe,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\ndouble_tap={id='Send'}\n",
+        );
+        assert!(report.failed.is_some());
+        // Return can send; hiding the keyboard only looks.
+        let (report, _, _) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nkey='return'\n",
+        );
+        assert!(report.failed.unwrap().1.contains("Return"));
+        let (report, _, _) = foreign_run(
+            policy::Level::Observe,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nkey='dismiss'\n",
+        );
+        assert_eq!(report.failed, None);
+    }
+
+    #[test]
+    fn device_steps_reach_the_driver() {
+        let mut driver = in_front(rows(&["photo"]));
+        let (report, out) = run_steps(
+            "[[step]]\npinch={id='photo', scale=2.0}\n\
+             [[step]]\nrotate={id='photo', degrees=90}\n\
+             [[step]]\ntwo_finger_tap={id='photo'}\n\
+             [[step]]\npick={id='photo', value='March'}\n\
+             [[step]]\nreset_permission='camera'\n\
+             [[step]]\norientation='landscape'\n\
+             [[step]]\nbutton='volume_up'\n\
+             [[step]]\nopen_url='https://example.com/a?b=c'\n\
+             [[step]]\nhome={}\n\
+             [[step]]\napp_state='background'\n\
+             [[step]]\nlock={}\n[[step]]\nunlock={}\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(
+            driver.calls,
+            [
+                "pinch photo 2",
+                "rotate photo 1.571",
+                "two finger tap photo",
+                "type photo \"March\"",
+                "reset permission 6",
+                "orientation landscape",
+                "button volumeup",
+                "open https://example.com/a?b=c",
+                "home",
+                "lock",
+                "unlock",
+            ]
+        );
+    }
+
+    #[test]
+    fn device_steps_are_checked_when_the_file_is_read() {
+        for (step, error) in [
+            ("button='home'", "Home is its own step"),
+            ("open_url='not a url'", "a URL with a scheme"),
+            ("alert={}", "one of `accept"),
+            ("alert={accept=true, dismiss=true}", "one of `accept"),
+            ("app_state='asleep'", "app_state `asleep`"),
+            (
+                "reset_permission='contacts2'",
+                "reset_permission `contacts2`",
+            ),
+            ("orientation='upside'", "portrait or landscape"),
+            ("pinch={id='p', scale=1.0}", "pinch `scale`"),
+            ("rotate={id='p', degrees=0}", "rotate `degrees`"),
+            ("expect={id='p', gone=true, count=2}", "stands alone"),
+        ] {
+            let err = Script::parse(&format!("name='x'\napp='a'\n[[step]]\n{step}\n")).unwrap_err();
+            assert!(err.contains(error), "{step}: {err}");
+        }
+    }
+
+    #[test]
+    fn alerts_are_checked_and_answered() {
+        let alert = || {
+            Some((
+                "Allow “Shelf” to use your camera?".to_string(),
+                vec!["Don’t Allow".to_string(), "Allow".to_string()],
+            ))
+        };
+        let mut driver = in_front(rows(&[]));
+        driver.alert = alert();
+        let (report, out) = run_steps(
+            "[[step]]\nalert={text='camera', button='Allow'}\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(driver.calls, ["alert accept Allow"]);
+        // A permission prompt belongs to SpringBoard: that may be in front.
+        let mut driver = in_front(rows(&[]));
+        driver.front = Some(policy::SPRINGBOARD.into());
+        driver.alert = alert();
+        let (report, _) = run_steps("[[step]]\nalert={dismiss=true}\n", &mut driver);
+        assert_eq!(report.failed, None);
+        assert_eq!(driver.calls, ["alert dismiss"]);
+        // A wrong text or button fails with what the alert says.
+        let mut driver = in_front(rows(&[]));
+        driver.alert = alert();
+        let (report, _) = run_steps(
+            "[[step]]\nalert={text='location', accept=true}\n",
+            &mut driver,
+        );
+        assert!(report.failed.unwrap().1.contains("camera"));
+        let mut driver = in_front(rows(&[]));
+        driver.alert = alert();
+        let (report, _) = run_steps("[[step]]\nalert={button='OK'}\n", &mut driver);
+        assert!(report.failed.unwrap().1.contains("\"Allow\""));
+        // No alert: says so.
+        let mut driver = in_front(rows(&[]));
+        let (report, _) = run_steps("[[step]]\nalert={accept=true}\n", &mut driver);
+        assert!(report.failed.unwrap().1.contains("no alert is open"));
+    }
+
+    #[test]
+    fn a_failure_says_when_an_alert_is_open() {
+        let mut driver = in_front(rows(&[]));
+        driver.alert = Some(("Delete everything?".into(), vec!["Cancel".into()]));
+        let (report, out) = run_steps("[[step]]\ntap={id='missing'}\n", &mut driver);
+        assert!(report.failed.is_some());
+        assert!(
+            out.contains("an alert is open: \"Delete everything?\""),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn back_taps_the_navigation_bars_leading_button() {
+        let mut bar = node("NavigationBar", "", "Downloads");
+        bar.children = vec![node("Button", "BackButton", "Dashboard")];
+        let screen = UiNode {
+            kind: "Application".into(),
+            children: vec![bar],
+            ..UiNode::default()
+        };
+        let mut driver = in_front(screen);
+        let (report, out) = run_steps("[[step]]\nback={}\n", &mut driver);
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(driver.calls, ["tap BackButton"]);
+        let mut driver = in_front(rows(&[]));
+        let (report, _) = run_steps("[[step]]\nback={}\n", &mut driver);
+        assert!(report.failed.unwrap().1.contains("no back button"));
+    }
+
+    #[test]
+    fn expect_counts_and_visibility() {
+        let mut driver = in_front(rows(&["row", "row", "other"]));
+        let (report, out) = run_steps(
+            "[[step]]\nexpect={id='row', count=2, visible=true, hittable=true}\n\
+             [[step]]\nexpect={id='none', count=0}\n[[step]]\nsettle={}\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        let (report, _) = run_steps("[[step]]\nexpect={id='row', count=3}\n", &mut driver);
+        assert!(report.failed.unwrap().1.contains("3 matches"));
+        let (report, _) = run_steps("[[step]]\nexpect={id='row', selected=true}\n", &mut driver);
+        assert!(report.failed.unwrap().1.contains("not selected"));
+    }
+
+    #[test]
+    fn device_steps_in_another_app_ask_or_refuse() {
+        // Opening a link can call or pay: a commit, asked each time.
+        let (report, driver, journal) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nopen_url='tel://123'\n",
+        );
+        assert!(report.failed.unwrap().1.contains("open url tel://123"));
+        assert!(!driver.calls.iter().any(|c| c.starts_with("open")));
+        assert!(journal.contains(r#""action":"open_url""#), "{journal}");
+        // Home only looks.
+        let (report, _, _) = foreign_run(
+            policy::Level::Observe,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nhome={}\n",
+        );
+        assert_eq!(report.failed, None);
+        // An alert's default button says nothing: a commit.
+        let mut driver = FakeDriver::new(chat());
+        driver.front = Some("com.anthropic.claude".into());
+        driver.alert = Some(("Send?".into(), vec!["Cancel".into(), "OK".into()]));
+        let script = Script::parse(
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nalert={accept=true}\n",
+        )
+        .unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut gate = Gate::foreign(
+            "com.anthropic.claude",
+            policy::Level::Operate,
+            Box::new(policy::NoApprover),
+            None,
+        );
+        let report = run_gated(
+            &script,
+            "com.anthropic.claude",
+            &mut driver,
+            dir.path(),
+            &mut Vec::new(),
+            &mut gate,
+        )
+        .unwrap();
+        assert!(report.failed.is_some());
+        assert!(!driver.calls.iter().any(|c| c.starts_with("alert accept")));
     }
 
     #[test]
