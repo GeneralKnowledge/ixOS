@@ -27,6 +27,7 @@ forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite", 
 forge-services = { path = "../../../crates/forge-services" }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
+serde_json = "1.0"
 thiserror = "2.0"
 
 [dev-dependencies]

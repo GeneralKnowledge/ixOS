@@ -264,6 +264,7 @@ dependencies = [
  "forge-runtime",
  "forge-services",
  "forge-storage",
+ "serde_json",
  "tempfile",
  "thiserror",
  "uniffi",

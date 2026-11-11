@@ -3,7 +3,7 @@
 
 use std::path::Path;
 
-use forge_storage::rusqlite::{params, OptionalExtension, Row};
+use forge_storage::rusqlite::{params, Connection, OpenFlags, OptionalExtension, Row};
 use forge_storage::{Database, Opened};
 
 use crate::model::{FieldKitError, Note, NoteKind, Position, TripSummary};
@@ -67,17 +67,17 @@ impl Store {
         Ok((Self { db }, opened))
     }
 
-    /// Every trip, newest first.
+    /// A second, read-only connection to the same file, for queries that
+    /// run off the command thread (WAL keeps them apart from the writer).
+    pub fn reader(&self) -> Result<Connection, FieldKitError> {
+        let path = self.db.path().expect("opened from a file");
+        let c = Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
+        c.busy_timeout(std::time::Duration::from_secs(5))?;
+        Ok(c)
+    }
+
     pub fn trips(&self) -> Result<Vec<TripSummary>, FieldKitError> {
-        let mut stmt = self.db.connection().prepare(
-            "SELECT t.id, t.title, t.started_ms, t.ended_ms, t.distance_m, t.climb_m,
-                    t.point_count, (SELECT COUNT(*) FROM notes n WHERE n.trip_id = t.id)
-             FROM trips t ORDER BY t.started_ms DESC, t.id DESC",
-        )?;
-        let trips = stmt
-            .query_map([], trip_summary)?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(trips)
+        trips(self.db.connection())
     }
 
     pub fn exists(&self, trip_id: i64) -> Result<bool, FieldKitError> {
@@ -213,17 +213,6 @@ impl Store {
         })
     }
 
-    pub fn track(&self, trip_id: i64) -> Result<Vec<TrackPoint>, FieldKitError> {
-        let mut stmt = self.db.connection().prepare(
-            "SELECT latitude, longitude, altitude_m, accuracy_m, timestamp_ms
-             FROM points WHERE trip_id = ?1 ORDER BY seq",
-        )?;
-        let points = stmt
-            .query_map([trip_id], track_point)?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(points)
-    }
-
     pub fn add_note(
         &mut self,
         trip_id: i64,
@@ -281,53 +270,78 @@ impl Store {
             .optional()?
             .is_some())
     }
+}
 
-    /// A trip's notes, oldest first. `path` turns a stored file name into
-    /// the path Swift opens.
-    pub fn notes(
-        &self,
-        trip_id: i64,
-        path: impl Fn(&str) -> String,
-    ) -> Result<Vec<Note>, FieldKitError> {
-        let mut stmt = self.db.connection().prepare(
-            "SELECT id, trip_id, created_ms, latitude, longitude, kind, text, file, duration_ms
-             FROM notes WHERE trip_id = ?1 ORDER BY created_ms, id",
-        )?;
-        let notes = stmt
-            .query_map([trip_id], |r| {
-                let latitude: Option<f64> = r.get(3)?;
-                let longitude: Option<f64> = r.get(4)?;
-                let kind: String = r.get(5)?;
-                let text: String = r.get(6)?;
-                let file: Option<String> = r.get(7)?;
-                let file = file.map(|f| path(&f)).unwrap_or_default();
-                let kind = match kind.as_str() {
-                    "photo" => NoteKind::Photo {
-                        path: file,
-                        caption: text,
-                    },
-                    "voice" => NoteKind::Voice {
-                        path: file,
-                        duration_ms: r.get::<_, Option<i64>>(8)?.unwrap_or(0),
-                    },
-                    _ => NoteKind::Text { body: text },
-                };
-                Ok(Note {
-                    id: r.get(0)?,
-                    trip_id: r.get(1)?,
-                    created_ms: r.get(2)?,
-                    at: latitude
-                        .zip(longitude)
-                        .map(|(latitude, longitude)| Position {
-                            latitude,
-                            longitude,
-                        }),
-                    kind,
-                })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
-        Ok(notes)
-    }
+/// Every trip, newest first.
+pub fn trips(c: &Connection) -> Result<Vec<TripSummary>, FieldKitError> {
+    let mut stmt = c.prepare(
+        "SELECT t.id, t.title, t.started_ms, t.ended_ms, t.distance_m, t.climb_m,
+                t.point_count, (SELECT COUNT(*) FROM notes n WHERE n.trip_id = t.id)
+         FROM trips t ORDER BY t.started_ms DESC, t.id DESC",
+    )?;
+    let trips = stmt
+        .query_map([], trip_summary)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(trips)
+}
+
+/// A trip's kept track, in order.
+pub fn track(c: &Connection, trip_id: i64) -> Result<Vec<TrackPoint>, FieldKitError> {
+    let mut stmt = c.prepare(
+        "SELECT latitude, longitude, altitude_m, accuracy_m, timestamp_ms
+         FROM points WHERE trip_id = ?1 ORDER BY seq",
+    )?;
+    let points = stmt
+        .query_map([trip_id], track_point)?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(points)
+}
+
+/// A trip's notes, oldest first. `path` turns a stored file name into
+/// the path Swift opens.
+pub fn notes(
+    c: &Connection,
+    trip_id: i64,
+    path: impl Fn(&str) -> String,
+) -> Result<Vec<Note>, FieldKitError> {
+    let mut stmt = c.prepare(
+        "SELECT id, trip_id, created_ms, latitude, longitude, kind, text, file, duration_ms
+         FROM notes WHERE trip_id = ?1 ORDER BY created_ms, id",
+    )?;
+    let notes = stmt
+        .query_map([trip_id], |r| {
+            let latitude: Option<f64> = r.get(3)?;
+            let longitude: Option<f64> = r.get(4)?;
+            let kind: String = r.get(5)?;
+            let text: String = r.get(6)?;
+            let file: Option<String> = r.get(7)?;
+            let file = file.map(|f| path(&f)).unwrap_or_default();
+            let kind = match kind.as_str() {
+                "photo" => NoteKind::Photo {
+                    path: file,
+                    caption: text,
+                },
+                "voice" => NoteKind::Voice {
+                    path: file,
+                    duration_ms: r.get::<_, Option<i64>>(8)?.unwrap_or(0),
+                },
+                _ => NoteKind::Text { body: text },
+            };
+            Ok(Note {
+                id: r.get(0)?,
+                trip_id: r.get(1)?,
+                created_ms: r.get(2)?,
+                at: latitude
+                    .zip(longitude)
+                    .map(|(latitude, longitude)| Position {
+                        latitude,
+                        longitude,
+                    }),
+                kind,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(notes)
 }
 
 fn trip_summary(r: &Row) -> forge_storage::rusqlite::Result<TripSummary> {

@@ -30,6 +30,8 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A2 | FieldKit | `sha256_file` is public in forge-storage but not exported, and `import_hashed` drops the file extension | Limit | Open |
 | A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Open |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
+| A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
+| A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Open |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -86,3 +88,33 @@ anyway, so it costs nothing yet.
 **Framework.** Accept for now. If a second app needs geo maths without
 native services, move `distance_m` and its friends into a small module or
 crate of their own.
+
+## A5. Reading data means a command, and a command announces a change
+
+**What happened.** A trip's notes and its track live in SQLite, which the
+command thread owns. The first version read them with `rt.command`, the only
+way onto that thread. But every successful command raises the revision and
+announces `Changed`, so a screen that reloads on `Changed` and then reads a
+trip would announce another change, and loop. Checklist and Commonplace
+don't hit this because everything they show fits in the published snapshot;
+a long GPS track doesn't belong there.
+
+**Workaround.** A second, read-only SQLite connection (WAL keeps it apart
+from the writer), used as on-screen work with `rt.run` off the command
+thread. A test checks that reading a trip leaves the revision alone.
+
+**Framework.** Either a read-only call on the command thread that doesn't
+raise the revision (`rt.read`), or a reader connection from
+`forge_storage::Database` itself, documented in app-model-review.md as the
+way to query data too large to publish.
+
+## A6. No date formatting
+
+**What happened.** GPX and GeoJSON need UTC times as ISO 8601. Forge gives
+`now_ms()` but nothing to format it, and the app crates avoid date crates.
+
+**Workaround.** A 15-line ISO 8601 writer in `export.rs`, with tests.
+
+**Framework.** Accept for now. If a second app needs dates in Rust, add a
+small `forge_runtime::time` with ISO 8601 in and out, or allow the `time`
+crate in app crates.

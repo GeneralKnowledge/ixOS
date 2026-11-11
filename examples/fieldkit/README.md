@@ -12,7 +12,7 @@ showcase.
 |---|---|---|
 | F1 | Rust core: trips, track filtering and totals, notes with photo and voice files, SQLite | This folder's `rust/`; tested on Linux |
 | F2 | The app: SwiftUI screens, the location native service, MapKit, camera, voice notes; hosted in Device Lab | Waits for the showcase's hostable-app fixes (#167) |
-| F3 | GPX and GeoJSON export, background recording | Not started |
+| F3 | GPX and GeoJSON export (Rust done early), charts, background recording | Export written and tested on Linux; the rest not started |
 
 ## The Rust core
 
@@ -28,6 +28,7 @@ showcase.
 - **Notes** are placed at the last kept fix while recording. Photos and
   voice memos are copied into a content-addressed store and deleted with
   the last note that uses them.
+- **Export** to GPX 1.1 and GeoJSON, with placed notes as waypoints.
 - Swift owns Core Location, the camera and the microphone, and passes the
   results in.
 
