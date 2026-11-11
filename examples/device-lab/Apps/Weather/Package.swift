@@ -26,7 +26,9 @@ let package = Package(
     targets: [
         .systemLibrary(name: "weather_coreFFI", path: "Generated/weather_coreFFI"),
         forgeFFI,
-        .target(name: "WeatherEmbed", dependencies: ["WeatherApp", "ForgeFFI"], path: "Sources/WeatherEmbed"),
+        // SwiftPM 6.2 gives the alias only to the targets this one names, so
+        // it names WeatherBridge too, though WeatherApp already depends on it.
+        .target(name: "WeatherEmbed", dependencies: ["WeatherApp", "WeatherBridge", "ForgeFFI"], path: "Sources/WeatherEmbed"),
         .target(name: "WeatherBridge", dependencies: ["ForgeFFI"], path: "Sources/WeatherBridge"),
         .target(name: "WeatherApp", dependencies: ["WeatherBridge"], path: "Sources/WeatherApp"),
     ]

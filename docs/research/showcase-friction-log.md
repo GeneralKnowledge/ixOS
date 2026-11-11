@@ -34,6 +34,7 @@ names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
 | F15 | Native services are per crate; Keychain, notifications, deep links and files are per process | Limit | Each app installs its own; its own Keychain service | Install services once for every crate |
 | F16 | Natural library names already taken (`chat_core`) | Annoyance | `chat_app`, `good_dog_app` | — |
 | F17 | Counter shares its crate with the frozen Android app | Left out | Not hosted | Retire Counter, as planned |
+| F18 | Module aliases reach only the targets a product's own target names | Broke two builds | An `<App>Embed` wrapper target per app that names them all | Unique module names (F4, F5), then no aliases |
 
 What went well is at the end.
 
@@ -243,7 +244,21 @@ load `libforge_ffi.so` by name and need a `cdylib`. Renaming it means
 changing the Android build, which is frozen (WIP). Counter is also due to be
 retired (app model review), so it stays out.
 
-## What went well## What went well
+## F18. Module aliases are hard to reach
+
+Every app calls its bindings module `ForgeFFI`, so Device Lab renames each
+one with SwiftPM `moduleAliases`. SwiftPM 6.2 applies an alias only to the
+targets a product *depends on*, not to the targets it contains, and in
+practice only to the targets the product's own target names: Weather's
+`WeatherBridge`, one level further down, kept importing Device Lab's
+`ForgeFFI` and failed with "missing required module 'forge_ffiFFI'". So
+each `Apps/<App>` package exports one wrapper target, `<App>Embed`, that
+re-exports the app and names every target of the app that imports
+`ForgeFFI`. It cost two laptop builds to find. The real fix is F4/F5: give
+each app's bindings and views a module name of its own, so no aliases are
+needed.
+
+## What went well
 
 - The Rust side composes once the names differ: four cores, two of them on
   forge-app, one with native services, linked into one library with no other
@@ -266,4 +281,6 @@ retired (app model review), so it stays out.
 | Swift build with xtool (`forge build ios`), first try | Laptop | One error: F11 |
 | Swift build with xtool, after the fix | Laptop, 159 s | Pass; 20 MB app bundle. Warnings only: the six Sendable warnings in `ForgeServices+Selected.swift`, which that file has on main too |
 | After the F1 framework fix: Device Lab, Weather, Checklist, Pocket Library each built with xtool | Laptop | All pass; each stages `libforge_ffi.a`; no new warnings |
+| Seven apps: first build | Laptop | SwiftPM refused the package: conflicting `ForgeFFI` and `AppHost` targets (F18) |
+| Seven apps: with wrapper targets | Laptop | Weather's `WeatherBridge` missed its alias (F18) |
 | Opening each app on the iPhone | Next sitting | Not run |
