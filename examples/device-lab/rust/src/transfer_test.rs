@@ -15,8 +15,15 @@ use crate::native::transfers::{
 use crate::native::NativeServices;
 
 /// Serves exactly the number of bytes asked for, so the size check has
-/// something to check.
-const TEST_URL: &str = "https://speed.cloudflare.com/__down?bytes=";
+/// something to check. Cloudflare refuses 100 MB and more (403) and stalls
+/// from about 75 MB (laptop probe, 2026-11-11), so it serves only up to
+/// [`SMALL_LIMIT_MB`].
+const SMALL_URL: &str = "https://speed.cloudflare.com/__down?bytes=";
+const SMALL_LIMIT_MB: u32 = 70;
+/// A fixed test file of exactly [`LARGE_BYTES`], for the large download
+/// (long enough to leave the app while it runs).
+const LARGE_URL: &str = "https://proof.ovh.net/files/100Mb.dat";
+const LARGE_BYTES: u64 = 100 * 1024 * 1024;
 /// The store key test downloads go to.
 const STORE: &str = "downloads";
 
@@ -46,6 +53,8 @@ pub struct TransferRow {
 }
 
 fn service() -> Result<TransferService, TransferTestError> {
+    // Without this, Device Lab's Rust log lines go nowhere on the phone.
+    forge_runtime::logging::init();
     let service = TransferService::installed().map_err(|err| TransferTestError::Unavailable {
         reason: err.to_string(),
     })?;
@@ -63,15 +72,32 @@ fn service() -> Result<TransferService, TransferTestError> {
     Ok(service)
 }
 
-/// Starts downloading `megabytes` MB (1 to 500) in the background.
+/// Where a test download of `megabytes` comes from: its URL, its exact
+/// size, and a file name without the timestamp. Up to 70 MB is generated
+/// to size; anything larger is the fixed 100 MiB file.
+pub(crate) fn test_source(megabytes: u32) -> (String, u64, String) {
+    if megabytes > SMALL_LIMIT_MB {
+        return (LARGE_URL.into(), LARGE_BYTES, "test-100mib".into());
+    }
+    let megabytes = megabytes.max(1);
+    let bytes = u64::from(megabytes) * 1_000_000;
+    (
+        format!("{SMALL_URL}{bytes}"),
+        bytes,
+        format!("test-{megabytes}mb"),
+    )
+}
+
+/// Starts a test download in the background: `megabytes` MB up to 70, or
+/// the 100 MiB file for anything larger.
 #[uniffi::export]
 pub fn transfer_test_start(megabytes: u32) -> Result<String, TransferTestError> {
-    let megabytes = megabytes.clamp(1, 500);
-    let bytes = u64::from(megabytes) * 1_000_000;
-    let name = format!("test-{megabytes}mb-{}.bin", forge_runtime::now_ms());
-    let request = TransferRequest::new(format!("{TEST_URL}{bytes}"), STORE, name)
+    let (url, bytes, stem) = test_source(megabytes);
+    let name = format!("{stem}-{}.bin", forge_runtime::now_ms());
+    let request = TransferRequest::new(url, STORE, name)
         .expected_bytes(bytes)
         .max_bytes(bytes);
+    forge_runtime::logging::info!(target: "transfer-test", "starting a {bytes}-byte test download");
     service()?
         .start(request)
         .map_err(|err| TransferTestError::Failed {

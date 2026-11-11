@@ -13,8 +13,8 @@ struct TransferTestView: View {
             Section {
                 Button("Download 20 MB") { model.start(megabytes: 20) }
                     .accessibilityIdentifier("transfers.start20")
-                Button("Download 200 MB") { model.start(megabytes: 200) }
-                    .accessibilityIdentifier("transfers.start200")
+                Button("Download 100 MiB") { model.start(megabytes: 100) }
+                    .accessibilityIdentifier("transfers.start100")
                 Toggle("End the app when I leave", isOn: $model.endWhenBackgrounded)
                     .accessibilityIdentifier("transfers.endWhenBackgrounded")
             } footer: {

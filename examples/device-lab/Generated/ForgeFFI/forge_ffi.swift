@@ -9577,7 +9577,8 @@ public func transferTestRows() -> [TransferRow]  {
 })
 }
 /**
- * Starts downloading `megabytes` MB (1 to 500) in the background.
+ * Starts a test download in the background: `megabytes` MB up to 70, or
+ * the 100 MiB file for anything larger.
  */
 public func transferTestStart(megabytes: UInt32)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
@@ -9651,7 +9652,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_transfer_test_rows() != 26480) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 1009) {
+    if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 22227) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_refresh_permissions() != 63463) {
