@@ -25,7 +25,12 @@ source "$ROOT/scripts/forge-crate.sh"
 # need the .dylib at run time.
 LIB_DIR="$NATIVE_OUT/macos-host/lib"
 mkdir -p "$LIB_DIR"
-cp "$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
+# A crate other apps link has no cdylib, so binding generation built only the
+# shared library (`cargo rustc --crate-type cdylib`); build the static one too.
+if [[ ! -f "$CARGO_TARGET/debug/lib${LIB_NAME}.a" ]]; then
+  cargo build "${CARGO_SELECT[@]}" --lib
+fi
+cp"$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
 
 # The Chat example's tests drive the real chat server (they skip the tests
 # that need it when CHAT_SERVER is unset).
