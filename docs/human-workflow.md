@@ -145,15 +145,15 @@ forge verify --accept RT-1 --note "Checked on my phone: 3 min read on a long not
 | 4 Rust rule, `cargo test`, `forge bindings generate` | Yes | | n/a |
 | 5 Swift model test, `requirements.toml` | Yes (the view edit is applied, not compiled) | | n/a |
 | 6 `forge test`, `forge check swift`, `forge ui focus` | Yes (`check swift` in the `swift:6.2` image) | Swift or Docker | n/a |
-| 7 `forge build ios` | No | xtool, the Darwin SDK | Not yet for this workflow |
-| 8 `forge run ios` | No | an iPhone, an Apple ID | Not yet for this workflow |
-| 9 `forge ui launch`, `screenshot`, `tree`, `audit` | No | an iPhone, `forge ui setup` | Not yet for this workflow |
-| 10 `device logs`, `device crashes`, `diagnose` | No | an iPhone | Not yet for this workflow |
-| 11 `forge ui run`, `forge ui explore` | No | an iPhone | Not yet for this workflow |
+| 7 `forge build ios` | No | xtool, the Darwin SDK | Yes, 2026-11-10 |
+| 8 `forge run ios` | No | an iPhone, an Apple ID | Yes, 2026-11-10 |
+| 9 `forge ui launch`, `screenshot`, `tree`, `audit` | No | an iPhone, `forge ui setup` | Yes, 2026-11-10 (`launch`, `screenshot`, `audit`); the row showed the reading time |
+| 10 `device logs`, `device crashes`, `diagnose` | No | an iPhone | Partly, 2026-11-10: `diagnose` passed; a 10 s log capture was empty, so logs are unproven |
+| 11 `forge ui run`, `forge ui explore` | No | an iPhone | `ui run` yes, 2026-11-10 (smoke test 9/9); `explore` not run |
 | 12 `forge verify`, `--run` | Yes (twin column) | | n/a |
 | 12 `forge verify --accept` | No: a person types it | a person | n/a |
 
-The commands in steps 7–11 have run on an iPhone in other work (the [capability ledger](capability-ledger.md) has each one), but not as this workflow on a fresh app. With xtool and a phone, `FORGE_HUMAN_DEVICE=1 scripts/check-human-workflow.sh` runs them too. Until a person reports that run, they are listed as manual.
+With xtool and a phone, `FORGE_HUMAN_DEVICE=1 scripts/check-human-workflow.sh` runs steps 7–11 too. It ran on an iPhone 15 Pro Max (iOS 26.3.1) on 2026-11-10, and a person checked the reading time on the phone. Without `FORGE_HUMAN_DEVICE=1`, the script lists those steps as manual.
 
 The script also checks that nothing agent-shaped took part: no `AGENTS.md`, `CLAUDE.md` or `.mcp.json` in the app, no `forge mcp` journal, and no MCP call in the command history.
 

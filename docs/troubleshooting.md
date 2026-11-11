@@ -13,6 +13,10 @@ swift sdk list   # should list darwin
 ./scripts/build-rust-ios.sh
 ```
 
+## `rustup could not choose a version of cargo to run` in an app folder
+
+rustup picks the toolchain from a `rust-toolchain.toml` in the current folder or above it, not from `--manifest-path`. Apps created before 2026-11-10 have the file only in `rust/`, so `cargo test --manifest-path rust/Cargo.toml` run from the app folder fails on a machine with no rustup default. Copy it up once: `cp rust/rust-toolchain.toml .`. Running cargo from inside `rust/` also works, and so does `forge test`. New apps have the file in both places.
+
 ## `swift: command not found`
 
 Install Swift for your distro — see [linux-setup.md](linux-setup.md).
