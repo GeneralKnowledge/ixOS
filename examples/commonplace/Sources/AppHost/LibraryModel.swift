@@ -192,11 +192,19 @@ public struct RefreshSummary: Equatable, Sendable {
     public let at: Date
     public let newArticles: UInt32
     public let failed: [String]
+    /// Every feed failed because the device is offline.
+    public let offline: Bool
 
     public init(report: RefreshReport, at: Date) {
         self.at = at
         newArticles = report.newArticles
         failed = report.failures.map(\.title)
+        offline =
+            !report.failures.isEmpty
+            && report.failures.allSatisfy {
+                if case .Offline = $0.error { return true }
+                return false
+            }
     }
 }
 

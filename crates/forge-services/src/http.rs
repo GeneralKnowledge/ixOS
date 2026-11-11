@@ -174,6 +174,12 @@ impl PreferInstalled {
     fn client(&self) -> Arc<dyn HttpClient> {
         (self.lookup)().unwrap_or_else(|| Arc::clone(&self.fallback))
     }
+
+    /// Whether requests go through the host now (rather than the
+    /// fallback), so an app can say in its log which transport ran.
+    pub fn uses_host(&self) -> bool {
+        (self.lookup)().is_some()
+    }
 }
 
 impl HttpClient for PreferInstalled {

@@ -181,28 +181,41 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
         state.done.signal()
     }
 
-    /// `URLError` codes, sorted the way `forge_net::NetError` sorts them.
+    /// How `forge_net::NetError` classes an error from URLSession:
+    /// "cancelled", "timeout", "offline", "certificate", "invalid" or
+    /// "transport". Public so app tests can check the mapping.
+    public static func kind(of error: Error) -> String {
+        let error = error as NSError
+        guard error.domain == NSURLErrorDomain else { return "transport" }
+        switch error.code {
+        case NSURLErrorCancelled:
+            return "cancelled"
+        case NSURLErrorTimedOut:
+            return "timeout"
+        case NSURLErrorNotConnectedToInternet, NSURLErrorCannotFindHost,
+            NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost,
+            NSURLErrorDNSLookupFailed, NSURLErrorInternationalRoamingOff,
+            NSURLErrorDataNotAllowed, NSURLErrorCallIsActive:
+            return "offline"
+        case NSURLErrorServerCertificateUntrusted, NSURLErrorServerCertificateHasBadDate,
+            NSURLErrorServerCertificateNotYetValid, NSURLErrorServerCertificateHasUnknownRoot:
+            return "certificate"
+        case NSURLErrorBadURL, NSURLErrorUnsupportedURL:
+            return "invalid"
+        default:
+            return "transport"
+        }
+    }
+
     static func transportError(_ error: Error) -> HttpTransportError {
         let reason = error.localizedDescription
-        guard let urlError = error as? URLError else {
-            return .Transport(reason: reason)
-        }
-        switch urlError.code {
-        case .cancelled:
-            return .Cancelled
-        case .timedOut:
-            return .Timeout
-        case .notConnectedToInternet, .cannotFindHost, .cannotConnectToHost,
-            .networkConnectionLost, .dnsLookupFailed, .internationalRoamingOff,
-            .dataNotAllowed, .callIsActive:
-            return .Offline(reason: reason)
-        case .serverCertificateUntrusted, .serverCertificateHasBadDate,
-            .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot:
-            return .Certificate(reason: reason)
-        case .badURL, .unsupportedURL:
-            return .InvalidRequest(reason: reason)
-        default:
-            return .Transport(reason: reason)
+        switch kind(of: error) {
+        case "cancelled": return .Cancelled
+        case "timeout": return .Timeout
+        case "offline": return .Offline(reason: reason)
+        case "certificate": return .Certificate(reason: reason)
+        case "invalid": return .InvalidRequest(reason: reason)
+        default: return .Transport(reason: reason)
         }
     }
 }

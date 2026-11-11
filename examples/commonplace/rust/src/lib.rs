@@ -72,6 +72,8 @@ pub struct AppCore {
     rt: Runtime<State>,
     snapshot: Arc<Published<Snapshot>>,
     http: Arc<dyn HttpClient>,
+    /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
+    transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
     #[cfg(feature = "devtools")]
     _devtools: Option<forge_devtools::DevTools>,
 }
@@ -84,8 +86,14 @@ impl AppCore {
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
         // URLSession once the host has installed its services (on iOS, just
         // after this core is made); ureq before that, and in Linux tests.
-        let http = native::http::HttpService::prefer_installed(Arc::new(UreqClient::new()), |c| c);
-        Self::open(storage_directory, Arc::new(http))
+        let http = Arc::new(native::http::HttpService::prefer_installed(
+            Arc::new(UreqClient::new()),
+            |c| c,
+        ));
+        let core = Self::open(storage_directory, http.clone())?;
+        // Only for the log line saying which transport fetched the feeds.
+        let _ = core.transport.set(http);
+        Ok(core)
     }
 
     /// Every subscription, by title.
@@ -270,12 +278,21 @@ impl AppCore {
                 Ok::<_, AppError>(added)
             })
             .await?;
+        // Error kinds only: feed titles and addresses are the user's.
+        let kinds: Vec<&str> = report.failures.iter().map(|f| f.error.kind()).collect();
+        let transport = match self.transport.get() {
+            Some(t) if t.uses_host() => "URLSession",
+            Some(_) => "ureq",
+            None => "test client",
+        };
         forge_runtime::logging::info!(
-            "refreshed {} feeds: {} new articles, {} unchanged, {} failed",
+            "refreshed {} feeds through {}: {} new articles, {} unchanged, {} failed {:?}",
             report.feeds,
+            transport,
             report.new_articles,
             report.unchanged,
-            report.failures.len()
+            report.failures.len(),
+            kinds
         );
         Ok(report)
     }
@@ -369,6 +386,7 @@ impl AppCore {
             rt,
             snapshot: published,
             http,
+            transport: std::sync::OnceLock::new(),
         }))
     }
 }

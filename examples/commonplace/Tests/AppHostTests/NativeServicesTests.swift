@@ -101,5 +101,17 @@ final class NativeServicesTests: XCTestCase {
         links.open(try XCTUnwrap(URL(string: "myapp://later")))
         XCTAssertEqual(received.count, 2)
     }
+
+    /// URLSession's errors are sorted the way `forge_net::NetError` sorts
+    /// ureq's, so "no network" reaches Rust as `Offline`.
+    func testHttpErrorsAreSortedLikeNetErrors() {
+        XCTAssertEqual(ForgeHTTPTransport.kind(of: URLError(.notConnectedToInternet)), "offline")
+        XCTAssertEqual(
+            ForgeHTTPTransport.kind(of: NSError(domain: NSURLErrorDomain, code: -1009)), "offline")
+        XCTAssertEqual(ForgeHTTPTransport.kind(of: URLError(.timedOut)), "timeout")
+        XCTAssertEqual(ForgeHTTPTransport.kind(of: URLError(.cancelled)), "cancelled")
+        XCTAssertEqual(ForgeHTTPTransport.kind(of: URLError(.serverCertificateUntrusted)), "certificate")
+        XCTAssertEqual(ForgeHTTPTransport.kind(of: URLError(.badServerResponse)), "transport")
+    }
 }
 #endif

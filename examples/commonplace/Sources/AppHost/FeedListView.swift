@@ -187,7 +187,9 @@ private struct RefreshStatus: View {
             if model.isRefreshing {
                 Text("Refreshing…")
             } else if let last = model.lastRefresh {
-                if !last.failed.isEmpty {
+                if last.offline {
+                    Text("Offline: feeds will refresh when you're connected")
+                } else if !last.failed.isEmpty {
                     Text("^[\(last.failed.count) feed](inflect: true) couldn't refresh")
                 } else if last.newArticles > 0 {
                     Text("^[\(Int(last.newArticles)) new article](inflect: true)")
