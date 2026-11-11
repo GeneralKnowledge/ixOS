@@ -34,6 +34,7 @@ public struct ContentView: View {
         // and Pocket Library each have a public one too, so the call there
         // is ambiguous.
         .preferredColorScheme(ForgeLaunchAppearance.scheme)
+        .onOpenURL { url in AppServices.open(url) }
         .task { await model.follow() }
         // Inactive (Control Center pulled down, the app switcher) keeps the
         // sensors running, so toggling Wi-Fi or Bluetooth shows up live.

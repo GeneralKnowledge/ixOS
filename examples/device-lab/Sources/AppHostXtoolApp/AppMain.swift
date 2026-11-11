@@ -20,7 +20,6 @@ struct ForgeAppXtool: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .receivesDeepLinks()
         }
     }
 }

@@ -268,7 +268,16 @@ bindings modules visible in Device Lab's AppHost, the call is ambiguous
 `forgeLaunchAppearance`. Worse, each module has its own
 `ForgeDeepLinks.shared`: a link fed to Device Lab's never reaches Chat.
 Device Lab now calls `onOpenURL` itself and sends `forgechat://` links to
-Chat's `ForgeDeepLinks`. Notification taps that carry a deep link go to
+Chat's `ForgeDeepLinks`. Its own `receivesDeepLinks()` then clashed in the
+App target with the public ones in Chat, Commonplace and Good Dog: a
+module's extension members are visible wherever the module is loaded, even
+through another module's imports. So the routing moved into ContentView, as
+the launch appearance did (F11). Other public helpers declared by more than
+one app wait to clash the same way: `forgeLaunchAppearance` (six apps),
+`inlineNavigationTitle` and `groupedList` (Device Lab, Pocket Library),
+`forgeLifecycle` and `errorAlert` (Chat, Good Dog). Swift 6's
+`MemberImportVisibility` feature would scope them to the files that import
+their module. Notification taps that carry a deep link go to
 whichever app installed its notification adapter last (F15). The fix is
 the same as F15's: native services' Swift in ForgeKit, once per process,
 with one router that every app's Rust registers with.
@@ -299,4 +308,5 @@ with one router that every app's Rust registers with.
 | Seven apps: first build | Laptop | SwiftPM refused the package: conflicting `ForgeFFI` and `AppHost` targets (F18) |
 | Seven apps: with wrapper targets | Laptop | Weather's `WeatherBridge` missed its alias (F18) |
 | Seven apps: aliases fixed | Laptop | Every app compiled; Device Lab's AppHost failed on an ambiguous `forgeOpenURLs()` (F19) |
+| Seven apps: deep links routed in AppHost | Laptop | The App target failed on an ambiguous `receivesDeepLinks()` (F19) |
 | Opening each app on the iPhone | Next sitting | Not run |
