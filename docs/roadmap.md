@@ -159,6 +159,16 @@ Forge UI Testing's routes (WebDriverAgent, Apple's accessibility service, `idevi
 
 ixOS carries several products in one repository. The idea is to separate them by purpose, each with one user and one measure of success: **Forge** (the framework: Rust core, ForgeKit, ForgeUI, ForgeAppKit, releases), **Forge CLI** (the development workflow), **Forge Device** (device access, UI testing, exploration), **Forge Agents** (MCP server and agent setup, optional) and **Forge Examples** (demo apps and benchmarks). The framework would depend on none of the others, and apps would use Forge without cloning this repository. Boundaries would come first (a scope page per project), and code would move only where a release cycle needs it. One question comes before any restructuring: is Forge Device a general testing product or a Forge subsystem? The proposal, with how today's code maps onto it, is in the [Forge product boundaries](https://claude.ai/artifact/YBwLCg9UewZtk5cfkYwNNY) document. Nothing is scheduled.
 
+### Future ideas with no AI needed — Future (P5)
+
+From the [app-generation ideas assessment](https://claude.ai/artifact/TahwUyxU2CLEGH5yakJfMc) (2026-11-11). Each is a deterministic `forge` command or template, works on Linux, needs no AI agent, and waits until P2 to P4 are met so it copies settled patterns. None touches the frozen tooling.
+
+1. **Feature scaffolding** (`forge add feature <Name> --field title:text ...`): writes a whole feature for a record with simple fields: Rust record, validation, persistence and commands, Rust tests, a view model, ForgeUI list, detail and create/edit screens, model tests for `forge check swift`, a `uitests/*.toml` scenario and requirement lines, then regenerates bindings. Its specification is [feature-recipe.md](feature-recipe.md), taken from Pocket Library and checked against a second app first. Rough effort 2 to 3 weeks.
+2. **Adding a capability** (`forge add service <name>`): one command that adds the `native_services!` entry (only when the Rust core reads the value), the `forge.toml` permission or entitlement, the Swift adapter wiring and a test stub, and reminds you to update the ledger. Bindings and Info.plist are already regenerated on every build, and `forge config check` already prints the exact `forge.toml` line for a missing permission. Rough effort 1 week.
+3. **Faster visual iteration on the iPhone**: measure how long a one-line SwiftUI change takes to reach the screen; move Pocket Library's test-data mode into the starter; a launch option that opens the app on a named screen with fixture data; a debug-build gallery of the app's own screens in light, dark and the largest text size; and an incremental build that skips the Rust step when only Swift changed. The iOS Simulator and hot reload need a Mac and are not part of this. Rough effort 1 week.
+
+The AI-driven ideas from the same assessment (screen generation from a description or image, app generation from a specification) are agent work on top of these, and wait for the freeze review.
+
 ## Not planned (for now)
 
 - **Windows development hosts.** Tooling targets Linux and macOS.
