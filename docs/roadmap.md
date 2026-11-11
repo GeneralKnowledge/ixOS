@@ -48,7 +48,7 @@ Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-a
 1. **Agent and device tooling is frozen** until P1 to P4 are done: `forge ui explore`, `forge ui focus`, run records (`forge verify --run`), `forge mcp` and the live dev connection (`forge device pair|connect|cmd`). Bug fixes only, no new commands or features. They keep working and keep their tests.
 2. **iOS networking moves to URLSession** ([native capability roadmap](native-capability-roadmap.md)). `forge-net`'s portable types stay; ureq stays for Linux tools, tests and Android.
 3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
-4. **Evidence bundles also write JUnit XML**, so any CI system or test viewer can read the results. No new report features.
+4. **Evidence bundles also write JUnit XML** (`junit.xml`, [evidence.md](evidence.md#the-evidence-bundle)), so any CI system or test viewer can read the results. No new report features.
 
 ## Near term
 

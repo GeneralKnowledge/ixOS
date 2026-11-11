@@ -64,6 +64,7 @@ Every run that executes tests writes a directory:
 <app>/.forge/runs/<id>-<command>/
   evidence.json        what was proved (below)
   swift-test.log       the raw output it was judged from
+  junit.xml            the same test results as JUnit XML, for CI systems and test viewers (`forge check swift`, `forge ui run`)
   <name>.png           device runs: each screenshot step's picture
   <name>.tree.json     device runs: the accessibility tree saved with it
   visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
@@ -76,6 +77,8 @@ Every run that executes tests writes a directory:
 ```
 
 `<id>` is the UTC start time (`2026-11-07T18-48-25`), the same stamp as `.forge/logs/`. `.forge/` is git-ignored; CI runs the twin of every app with a `requirements.toml` and keeps the bundles as the `twin-evidence` artifact on every run of the Rust workflow.
+
+`junit.xml` carries only pass and fail: one test case per XCTest case for `forge check swift`, and one per scenario for `forge ui run`, with the failed step's error as the failure message. Requirements, verdicts and file hashes have no place in JUnit, so `evidence.json` stays the record. `forge ui explore` writes none: a walk has no tests.
 
 The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the-result-contract)) stays the short answer and points at the bundle: `data.evidence` is the path of `evidence.json`, `data.requirements` lists each id with its verdict, and `data.results` counts the tests. An agent reads the result; a person, or `forge verify`, reads the bundle.
 

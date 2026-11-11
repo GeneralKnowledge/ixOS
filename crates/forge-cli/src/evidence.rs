@@ -228,9 +228,100 @@ pub fn write_bundle(run: &Run, id: &str) -> Result<PathBuf, String> {
     let (log_name, log_text) = run.raw_output;
     fs::write(dir.join(log_name), log_text).map_err(|e| format!("write log: {e}"))?;
     let mut doc = document(run, id);
+    let cases: Vec<JunitCase> = run
+        .tests
+        .iter()
+        .map(|t| {
+            let (class, name) = t.name.split_once('.').unwrap_or(("", t.name.as_str()));
+            JunitCase {
+                class: class.to_string(),
+                name: name.to_string(),
+                seconds: t.seconds,
+                failure: (!t.passed).then(|| "failed (see the raw output)".to_string()),
+            }
+        })
+        .collect();
+    write_junit(&dir, &format!("forge {}", run.command), &cases, &mut doc)?;
     hash_artifacts(&mut doc, &dir);
     write_json(&dir, &doc)?;
     Ok(dir)
+}
+
+/// One test case for [`junit_xml`].
+pub struct JunitCase {
+    pub class: String,
+    pub name: String,
+    pub seconds: f64,
+    /// `None` when it passed.
+    pub failure: Option<String>,
+}
+
+pub const JUNIT_FILE: &str = "junit.xml";
+
+/// The same results as JUnit XML, the format CI systems and test viewers
+/// read. `evidence.json` stays the record: JUnit has no place for
+/// requirements, verdicts or file hashes.
+pub fn junit_xml(suite: &str, cases: &[JunitCase]) -> String {
+    let failures = cases.iter().filter(|c| c.failure.is_some()).count();
+    let total: f64 = cases.iter().map(|c| c.seconds).sum();
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    out += &format!(
+        "<testsuites tests=\"{}\" failures=\"{failures}\" time=\"{total:.3}\">\n  <testsuite name=\"{}\" tests=\"{}\" failures=\"{failures}\" errors=\"0\" skipped=\"0\" time=\"{total:.3}\">\n",
+        cases.len(),
+        xml_escape(suite),
+        cases.len(),
+    );
+    for c in cases {
+        out += &format!(
+            "    <testcase classname=\"{}\" name=\"{}\" time=\"{:.3}\"",
+            xml_escape(&c.class),
+            xml_escape(&c.name),
+            c.seconds
+        );
+        match &c.failure {
+            None => out += "/>\n",
+            Some(message) => {
+                out += &format!(
+                    ">\n      <failure message=\"{}\"/>\n    </testcase>\n",
+                    xml_escape(message)
+                );
+            }
+        }
+    }
+    out += "  </testsuite>\n</testsuites>\n";
+    out
+}
+
+fn xml_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            // XML 1.0 can't carry most control characters at all.
+            c if (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r') => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Writes `junit.xml` into `dir` and lists it in the bundle's artifacts.
+fn write_junit(
+    dir: &Path,
+    suite: &str,
+    cases: &[JunitCase],
+    doc: &mut Value,
+) -> Result<(), String> {
+    fs::write(dir.join(JUNIT_FILE), junit_xml(suite, cases))
+        .map_err(|e| format!("write {JUNIT_FILE}: {e}"))?;
+    if let Some(list) = doc["artifacts"].as_array_mut() {
+        list.push(json!({"kind": "junit", "path": JUNIT_FILE}));
+    }
+    Ok(())
 }
 
 fn write_json(dir: &Path, doc: &Value) -> Result<(), String> {
@@ -401,6 +492,26 @@ pub fn write_device_bundle(
         "artifacts": run.artifacts.iter().map(|(k, p)| json!({"kind": k, "path": p})).collect::<Vec<_>>(),
     });
     fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let failure = (!ok).then(|| {
+        let mut parts = Vec::new();
+        if let Some(step) = &run.failed_step {
+            let n = step.get("step").or_else(|| step.get("n")).cloned();
+            let error = step["error"].as_str().unwrap_or("failed");
+            match n {
+                Some(n) => parts.push(format!("step {n}: {error}")),
+                None => parts.push(error.to_string()),
+            }
+        }
+        parts.extend(notes.iter().cloned());
+        parts.join("; ")
+    });
+    let case = JunitCase {
+        class: "forge ui run".into(),
+        name: run.scenario.to_string(),
+        seconds: run.duration_ms as f64 / 1000.0,
+        failure,
+    };
+    write_junit(dir, "forge ui run", &[case], &mut doc)?;
     hash_artifacts(&mut doc, dir);
     write_json(dir, &doc)?;
     Ok(dir.join("evidence.json"))
@@ -669,6 +780,14 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["requirements"][0]["twin"]["verdict"], "passed");
         assert_eq!(doc["requirements"][0]["device"]["verdict"], "unverified");
         assert!(doc["where"]["device"].is_null());
+        assert_eq!(doc["artifacts"][1]["path"], JUNIT_FILE);
+        assert!(doc["artifacts"][1]["sha256"].is_string());
+        let junit = fs::read_to_string(dir.join(JUNIT_FILE)).unwrap();
+        assert!(junit.contains(r#"failures="1""#), "{junit}");
+        assert!(
+            junit.contains(r#"classname="LibraryModelTests" name="testB""#),
+            "{junit}"
+        );
     }
 
     #[test]
@@ -711,6 +830,42 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["where"]["device"]["udid"], "0000");
         assert_eq!(doc["artifacts"][0]["sha256"], sha256_hex(b"png"));
         assert_eq!(doc["artifacts"][0]["bytes"], 3);
+        assert_eq!(doc["artifacts"][1]["kind"], "junit");
+        let junit = fs::read_to_string(dir.path().join(JUNIT_FILE)).unwrap();
+        assert!(junit.contains(r#"name="uitests/tip.toml""#), "{junit}");
+        assert!(
+            junit.contains(r#"<failure message="step 3: no element"/>"#),
+            "{junit}"
+        );
+    }
+
+    #[test]
+    fn junit_counts_failures_and_escapes_text() {
+        let cases = [
+            JunitCase {
+                class: "TipTests".into(),
+                name: "testAdds".into(),
+                seconds: 0.25,
+                failure: None,
+            },
+            JunitCase {
+                class: "TipTests".into(),
+                name: "testRounds".into(),
+                seconds: 0.5,
+                failure: Some("expected <1> & got \"2\"\u{1}".into()),
+            },
+        ];
+        let xml = junit_xml("forge check swift", &cases);
+        assert!(xml.starts_with("<?xml"));
+        assert!(xml.contains(r#"<testsuite name="forge check swift" tests="2" failures="1" errors="0" skipped="0" time="0.750">"#), "{xml}");
+        assert!(
+            xml.contains(r#"<testcase classname="TipTests" name="testAdds" time="0.250"/>"#),
+            "{xml}"
+        );
+        assert!(
+            xml.contains(r#"message="expected &lt;1&gt; &amp; got &quot;2&quot; ""#),
+            "{xml}"
+        );
     }
 
     #[test]
