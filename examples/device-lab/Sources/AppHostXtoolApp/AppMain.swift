@@ -4,6 +4,11 @@ import SwiftUI
 // The xtool entry point. AppHostLauncher is the same app for `swift run` and the Xcode project.
 @main
 struct ForgeAppXtool: App {
+    #if os(iOS)
+        // Passes background download events to Forge's transfers service.
+        @UIApplicationDelegateAdaptor(TransfersAppDelegate.self) private var appDelegate
+    #endif
+
     init() {
         // Keychain, directories, notifications, permissions and deep links
         // for the Rust core (docs/native-services.md).

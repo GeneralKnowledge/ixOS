@@ -1,6 +1,6 @@
 //! The optional services an app selects in `native_services!(...)`:
-//! `connectivity`, `device_status`, `motion`, `location`, `bluetooth` and
-//! `audio`.
+//! `connectivity`, `device_status`, `motion`, `location`, `bluetooth`,
+//! `audio` and `transfers` (which needs this crate's `transfers` feature).
 //!
 //! Each one emits a submodule of the app's `native` module with its records,
 //! one host trait the Swift adapter implements, a sink object the adapter
@@ -31,11 +31,14 @@ macro_rules! __native_service {
     (audio) => {
         $crate::__native_audio!();
     };
+    (transfers) => {
+        $crate::__native_transfers!();
+    };
     ($other:ident) => {
         compile_error!(concat!(
             "unknown native service `",
             stringify!($other),
-            "`: use connectivity, device_status, motion, location, bluetooth or audio"
+            "`: use connectivity, device_status, motion, location, bluetooth, audio or transfers"
         ));
     };
 }

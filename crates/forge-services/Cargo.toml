@@ -13,10 +13,22 @@ publish = false
 # plain-Rust logic behind them. An app using the macro needs `uniffi` and
 # `async-trait` as direct dependencies, because UniFFI's generated code
 # names both by absolute path.
+[features]
+default = []
+# Background downloads (`native_services!(transfers)`): the ledger,
+# verification and delivery into a FileStore live in `transfers`.
+transfers = ["dep:forge-storage", "forge-storage/hash", "dep:serde"]
+
 [dependencies]
+forge-storage = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 [dev-dependencies]
 uniffi = { workspace = true }
 async-trait = "0.1"
 forge-runtime = { workspace = true }
 tempfile = "3.14"
+
+[[test]]
+name = "transfers"
+required-features = ["transfers"]

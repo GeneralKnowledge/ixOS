@@ -18,9 +18,12 @@ crate-type = ["staticlib", "cdylib", "lib"]
 # Forge's runtime crates, from the Forge checkout this app was created with.
 forge-runtime = { path = "../../../crates/forge-runtime" }
 # Native services, with the optional connectivity, device status, motion,
-# location and Bluetooth services selected in src/lib.rs. See
-# docs/native-services.md.
-forge-services = { path = "../../../crates/forge-services" }
+# location, Bluetooth and background transfer services selected in
+# src/lib.rs. See docs/native-services.md.
+forge-services = { path = "../../../crates/forge-services", features = ["transfers"] }
+# The folder background downloads are delivered into.
+forge-storage = { path = "../../../crates/forge-storage" }
+thiserror = "2"
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.

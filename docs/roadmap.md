@@ -98,6 +98,8 @@ HTTPS works on Android too (work in progress): hosts call `ForgeAndroid.init(app
 
 Ordinary requests can be interrupted in flight: `HttpClient::send_cancellable` closes the connection, and the starter app crate wires it to Swift task cancellation and Kotlin coroutine cancellation ([app-crate.md](app-crate.md#lifecycle)). Apps also report the OS lifecycle to Rust (`set_phase`), which stops on-screen requests in the background and announces resume; device runs of it are not yet recorded. The Weather example still discards a late response instead of interrupting it. Still open: platform reachability.
 
+**Moving iOS to URLSession** ([native-capability-roadmap.md](native-capability-roadmap.md#where-current-code-departs-from-native-first), decided 2026-11-10). Background downloads come first and are built: the `transfers` service runs them in a background `URLSession` while Rust keeps the ledger, checks each file and recovers after a relaunch ([native-services.md](native-services.md#background-transfers-transfers)); their phone checks are owed. Next, a `URLSession` client behind `HttpClient` for ordinary requests, then streaming, then `URLSession` by default on iOS. ureq stays for Linux tests and Android.
+
 ### iOS Simulator support — Open
 
 Builds are **device-only** today. The Rust library ships as a single `aarch64-apple-ios` static library ([ADR 001](adr/001-ios-static-linking.md)), and the iOS Simulator only runs on macOS, so in the Linux-first workflow a physical device is the only way to run the app anyway. Simulator support mainly helps Mac users and macOS CI. It needs:

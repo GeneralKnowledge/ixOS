@@ -7,4 +7,5 @@ public let forgeSelectedServices: [(name: String, install: @Sendable () throws -
     ("DeviceStatus", ForgeServices.installDeviceStatus),
     ("Location", ForgeServices.installLocation),
     ("Motion", ForgeServices.installMotion),
+    ("Transfers", ForgeServices.installTransfers),
 ]

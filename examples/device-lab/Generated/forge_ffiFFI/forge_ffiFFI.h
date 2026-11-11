@@ -421,6 +421,34 @@ typedef void (*UniffiCallbackInterfaceMotionSensorsMethod2)(uint64_t, RustBuffer
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD0
+typedef void (*UniffiCallbackInterfaceTransferSessionMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD1
+typedef void (*UniffiCallbackInterfaceTransferSessionMethod1)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD2
+typedef void (*UniffiCallbackInterfaceTransferSessionMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_TRANSFER_SESSION_METHOD3
+typedef void (*UniffiCallbackInterfaceTransferSessionMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
@@ -509,6 +537,18 @@ typedef struct UniffiVTableCallbackInterfaceMotionSensors {
     UniffiCallbackInterfaceMotionSensorsMethod1 _Nonnull start;
     UniffiCallbackInterfaceMotionSensorsMethod2 _Nonnull stop;
 } UniffiVTableCallbackInterfaceMotionSensors;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_TRANSFER_SESSION
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_TRANSFER_SESSION
+typedef struct UniffiVTableCallbackInterfaceTransferSession {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceTransferSessionMethod0 _Nonnull directory;
+    UniffiCallbackInterfaceTransferSessionMethod1 _Nonnull attach;
+    UniffiCallbackInterfaceTransferSessionMethod2 _Nonnull start;
+    UniffiCallbackInterfaceTransferSessionMethod3 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceTransferSession;
 
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_DEVICELAB
@@ -877,6 +917,71 @@ void uniffi_forge_ffi_fn_free_motionsink(uint64_t handle, RustCallStatus *_Nonnu
 void uniffi_forge_ffi_fn_method_motionsink_send(uint64_t ptr, RustBuffer reading, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TRANSFERSESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TRANSFERSESSION
+uint64_t uniffi_forge_ffi_fn_clone_transfersession(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TRANSFERSESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TRANSFERSESSION
+void uniffi_forge_ffi_fn_free_transfersession(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_TRANSFERSESSION
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_TRANSFERSESSION
+void uniffi_forge_ffi_fn_init_callback_vtable_transfersession(const UniffiVTableCallbackInterfaceTransferSession* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_DIRECTORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_DIRECTORY
+RustBuffer uniffi_forge_ffi_fn_method_transfersession_directory(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_ATTACH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_ATTACH
+void uniffi_forge_ffi_fn_method_transfersession_attach(uint64_t ptr, uint64_t sink, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_START
+void uniffi_forge_ffi_fn_method_transfersession_start(uint64_t ptr, RustBuffer task, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSESSION_CANCEL
+void uniffi_forge_ffi_fn_method_transfersession_cancel(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TRANSFERSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_TRANSFERSINK
+uint64_t uniffi_forge_ffi_fn_clone_transfersink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TRANSFERSINK
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_TRANSFERSINK
+void uniffi_forge_ffi_fn_free_transfersink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_DOWNLOADED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_DOWNLOADED
+void uniffi_forge_ffi_fn_method_transfersink_downloaded(uint64_t ptr, RustBuffer id, uint16_t http_status, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_FAILED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_FAILED
+void uniffi_forge_ffi_fn_method_transfersink_failed(uint64_t ptr, RustBuffer id, int64_t code, RustBuffer reason, int8_t cancelled, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_PROGRESS
+void uniffi_forge_ffi_fn_method_transfersink_progress(uint64_t ptr, RustBuffer id, uint64_t received, RustBuffer expected, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_RECONCILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_RECONCILE
+void uniffi_forge_ffi_fn_method_transfersink_reconcile(uint64_t ptr, RustBuffer tasks, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_CRASH_TEST_RUST_PANIC
 void uniffi_forge_ffi_fn_func_crash_test_rust_panic(RustCallStatus *_Nonnull out_status
@@ -928,6 +1033,44 @@ void uniffi_forge_ffi_fn_func_install_native_location(uint64_t source, RustCallS
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_MOTION
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_MOTION
 void uniffi_forge_ffi_fn_func_install_native_motion(uint64_t sensors, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_TRANSFERS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_TRANSFERS
+void uniffi_forge_ffi_fn_func_install_native_transfers(uint64_t session, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CANCEL
+void uniffi_forge_ffi_fn_func_transfer_test_cancel(RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_CLEAR
+void uniffi_forge_ffi_fn_func_transfer_test_clear(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_END_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_END_APP
+void uniffi_forge_ffi_fn_func_transfer_test_end_app(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_RETRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_RETRY
+void uniffi_forge_ffi_fn_func_transfer_test_retry(RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_ROWS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_ROWS
+RustBuffer uniffi_forge_ffi_fn_func_transfer_test_rows(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_TRANSFER_TEST_START
+RustBuffer uniffi_forge_ffi_fn_func_transfer_test_start(uint32_t megabytes, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
@@ -1250,6 +1393,48 @@ uint16_t uniffi_forge_ffi_checksum_func_install_native_motion(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_TRANSFERS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_TRANSFERS
+uint16_t uniffi_forge_ffi_checksum_func_install_native_transfers(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CANCEL
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CLEAR
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_CLEAR
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_clear(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_END_APP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_END_APP
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_end_app(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_RETRY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_RETRY
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_retry(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_ROWS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_ROWS
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_rows(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_TRANSFER_TEST_START
+uint16_t uniffi_forge_ffi_checksum_func_transfer_test_start(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_REFRESH_PERMISSIONS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_REFRESH_PERMISSIONS
 uint16_t uniffi_forge_ffi_checksum_method_devicelab_refresh_permissions(void
@@ -1463,6 +1648,54 @@ uint16_t uniffi_forge_ffi_checksum_method_motionsensors_stop(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_MOTIONSINK_SEND
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_MOTIONSINK_SEND
 uint16_t uniffi_forge_ffi_checksum_method_motionsink_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_DIRECTORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_DIRECTORY
+uint16_t uniffi_forge_ffi_checksum_method_transfersession_directory(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_ATTACH
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_ATTACH
+uint16_t uniffi_forge_ffi_checksum_method_transfersession_attach(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_START
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_START
+uint16_t uniffi_forge_ffi_checksum_method_transfersession_start(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSESSION_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_transfersession_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_DOWNLOADED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_DOWNLOADED
+uint16_t uniffi_forge_ffi_checksum_method_transfersink_downloaded(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_FAILED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_FAILED
+uint16_t uniffi_forge_ffi_checksum_method_transfersink_failed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_PROGRESS
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_PROGRESS
+uint16_t uniffi_forge_ffi_checksum_method_transfersink_progress(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_RECONCILE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_RECONCILE
+uint16_t uniffi_forge_ffi_checksum_method_transfersink_reconcile(void
     
 );
 #endif

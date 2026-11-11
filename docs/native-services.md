@@ -152,6 +152,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 | `location` | `LocationService`: `watch(LocationOptions, ..)` for fixes and compass headings, `last_known()`, `is_precise()`; `LocationFix::distance_to` | `ForgeLocationSource` (`CLLocationManager`, when in use) | `NativePermission::Location` and `[ios.permissions] location_when_in_use` |
 | `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
 | `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudio.waveform` (and the `ForgeAudioSession` helper every app has) (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
+| `transfers` | `TransferService`: `start(TransferRequest)`, `cancel`, `retry`, `remove`, `list`, `get`, `deliver_to(key, FileStore)`, `watch(..)`. Needs forge-services' `transfers` feature | `ForgeTransfers` (background `URLSession`), plus an app delegate hook | None; see [below](#background-transfers-transfers) |
 
 **How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review. `forge config sync`, `forge config show` and every iOS build warn when the app selects `location`, `motion` or `bluetooth` but `forge.toml` lacks the matching `[ios.permissions]` text, because without it the service can only report `Unsupported` on the phone.
 
@@ -209,7 +210,66 @@ let seconds = try ForgeAudio.duration(of: url)
 
 `ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
 
-**Foreground only.** Nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
+### Background transfers (`transfers`)
+
+Downloads that keep going while the app is suspended, or after iOS has ended it, through a background `URLSession`. iOS may end the app while a transfer runs and relaunch it later, so the service is built around recovering from that. Rust keeps the transfer ledger and every rule; Swift only runs the session. Background transfers are separate from [`forge-net`](../crates/forge-net): use them for large files the person shouldn't have to wait on screen for (models, attachments, offline content), and `forge-net` for ordinary requests.
+
+Enable the feature and select the service:
+
+```toml
+# rust/Cargo.toml
+forge-services = { path = "...", features = ["transfers"] }
+forge-storage = { path = "..." }
+```
+
+```rust
+forge_services::native_services!(transfers);
+use crate::native::transfers::*;
+
+let transfers = TransferService::installed()?;
+// At every launch: where files for the "models" key go. Files that finished
+// while the app was closed are delivered now.
+transfers.deliver_to("models", FileStore::new(app_support.join("models")));
+
+let id = transfers.start(
+    TransferRequest::new(url, "models", "qwen-0.5b.gguf")
+        .expected_bytes(size)
+        .sha256(hash)
+        .unmetered_only(),
+)?; // keep `id` with your own record
+
+let _watch = transfers.watch(|update| { /* TransferUpdate::Changed(record) */ });
+```
+
+What the service guarantees:
+
+- **The record is saved before the transfer starts** (`Application Support/ForgeTransfers/transfers.json`), so a relaunched app knows what it asked for.
+- **The file leaves the system's temporary folder before the callback returns.** iOS deletes it afterwards, so `ForgeTransfers` moves it to the service's inbox first, then Rust checks the HTTP status, `max_bytes`, `expected_bytes` and `sha256`. A file that fails is deleted, never kept. A passing one goes into the registered `FileStore` under the requested name (`Delivered`), or waits verified in the inbox (`Downloaded`) until `deliver_to` registers its store.
+- **iOS is told the events are handled only after Rust has handled them.** Every delegate callback calls into Rust synchronously on one serial queue, so the system's completion handler is called after all of them.
+- **Recovery after a relaunch.** The session lists its tasks and Rust reconciles: a task the ledger doesn't know (an older install, a removed record) is cancelled, an active record whose task is gone becomes `Failed(Interrupted)`, and inbox files nobody waits for are deleted. A finished report that arrives after that still counts.
+- **Force quit.** Swiping the app away makes iOS cancel its transfers; they become `Failed(Interrupted)`, not `Cancelled` (which only the app's own `cancel` produces).
+- **Retrying is the app's rule.** `retry(id)` starts a failed, interrupted or cancelled transfer again under the same id (`attempts` counts them); space attempts with `forge_net::Backoff`. Background sessions already wait out lost connectivity themselves.
+
+The app delegate has to pass iOS's completion handler on, or the app is not woken for finished transfers. In the `App`:
+
+```swift
+@UIApplicationDelegateAdaptor(TransfersAppDelegate.self) private var appDelegate
+
+final class TransfersAppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     handleEventsForBackgroundURLSession identifier: String,
+                     completionHandler: @escaping () -> Void) {
+        ForgeTransfers.handleEvents(forBackgroundURLSession: identifier,
+                                    completionHandler: completionHandler)
+    }
+}
+```
+
+No background mode or entitlement is needed. Headers are saved in the ledger, so don't put a secret there that must not be on disk. Uploads are not supported yet.
+
+**Tests.** `TransferService::for_tests(dir)` returns the service and a `FakeSession`; `fake.finish(&service, id, status, body)` plays a finished download. `crates/forge-services/tests/transfers.rs` covers saving before start, verification, delivery, orphans, interrupted transfers and force quit. Device Lab's Background Downloads screen is for the checks that need a phone: a relaunch after the system ends the app (its "End the app when I leave" switch calls `exit(0)` in the background, as Apple suggests for testing), the completion callback while suspended, a transfer finished while the app was closed, and force quit.
+
+**Foreground only.** Apart from `transfers`, nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
 
 **What iOS does not give apps,** whatever the account: signal strength, carrier name (retired API), the ambient light sensor, MAC addresses. The Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; the device's own name needs an entitlement Apple grants on request (apps see "iPhone"). [examples/device-lab](../examples/device-lab) shows all of it in one app.
 

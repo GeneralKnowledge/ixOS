@@ -4,6 +4,7 @@ import SwiftUI
 /// Everything the phone tells an app about itself, live, in one list.
 struct DashboardView: View {
     let model: LabModel
+    @State private var transfers = TransferTestModel()
 
     private var s: LabSnapshot { model.snapshot }
 
@@ -26,6 +27,16 @@ struct DashboardView: View {
                 }
             } footer: {
                 Text("Wi-Fi name, device name, carrier, signal strength and more.")
+            }
+            Section {
+                NavigationLink {
+                    TransferTestView(model: transfers)
+                } label: {
+                    Label("Background Downloads", systemImage: "arrow.down.circle")
+                }
+                .accessibilityIdentifier("dashboard.transfers")
+            } footer: {
+                Text("Downloads that keep going after you leave the app.")
             }
             Section {
                 NavigationLink {

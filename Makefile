@@ -2,6 +2,7 @@
 
 test:
 	cargo test --workspace
+	cargo test -p forge-services --features transfers
 
 # The Chat example's server (http://127.0.0.1:8787; accounts and messages in
 # ~/.local/share/ixos-chat/server.json). Pass options with ARGS, e.g.
@@ -35,6 +36,7 @@ fmt:
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
+	cargo clippy -p forge-services --all-targets --features transfers -- -D warnings
 
 bindings:
 	./scripts/generate-bindings.sh examples/counter/Generated

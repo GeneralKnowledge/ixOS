@@ -341,3 +341,41 @@ fn the_crash_test_panics_on_no_readings() {
 fn the_crash_test_reading_is_the_last() {
     assert_eq!(crate::crash_test::latest_reading(&[1, 2, 3]), 3);
 }
+
+#[test]
+fn transfer_rows_show_progress_and_why_a_transfer_stopped() {
+    use crate::native::transfers::{HostEvent, TransferRequest, TransferService};
+    use crate::transfer_test::row;
+
+    let dir = tempfile::tempdir().unwrap();
+    let (service, fake) = TransferService::for_tests(dir.path());
+    let id = service
+        .start(
+            TransferRequest::new("https://example.com/a", "downloads", "a.bin").expected_bytes(10),
+        )
+        .unwrap();
+    service.handle(HostEvent::Progress {
+        id: id.clone(),
+        received: 4,
+        expected: None,
+    });
+    let running = row(&service.get(&id).unwrap());
+    assert_eq!(running.state, "Running");
+    assert_eq!(running.fraction, Some(0.4));
+    assert!(running.can_cancel);
+
+    // Swiped away in the app switcher: interrupted, and can be retried.
+    service.handle(HostEvent::Failed {
+        id: id.clone(),
+        code: -999,
+        reason: "cancelled".into(),
+        cancelled: true,
+    });
+    let interrupted = row(&service.get(&id).unwrap());
+    assert_eq!(interrupted.state, "Interrupted");
+    assert!(interrupted.can_retry && !interrupted.can_cancel);
+
+    service.retry(&id).unwrap();
+    fake.finish(&service, &id, 200, b"0123456789");
+    assert_eq!(row(&service.get(&id).unwrap()).state, "Downloaded");
+}

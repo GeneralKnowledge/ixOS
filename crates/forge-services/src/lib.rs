@@ -45,6 +45,9 @@ pub mod notify;
 mod optional;
 pub mod sensors;
 mod slot;
+#[cfg(feature = "transfers")]
+pub mod transfers;
+mod transfers_service;
 
 pub use feed::{Feed, Watch};
 pub use slot::Slot;
