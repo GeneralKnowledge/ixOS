@@ -37,8 +37,9 @@ use store::{FetchResult, Fetched, Flag, Snapshot, Store};
 uniffi::setup_scaffolding!("forge_ffi");
 
 // Native services the host implements (Keychain, app directories, local
-// notifications, permissions, deep links), as `crate::native`.
-forge_services::native_services!();
+// notifications, permissions, deep links), as `crate::native`, and `http`:
+// on iOS feeds are fetched with URLSession.
+forge_services::native_services!(http);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category")` writes into the
 // same log as Rust.
@@ -81,7 +82,10 @@ impl AppCore {
     /// holds it, so no second core can write there.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
-        Self::open(storage_directory, Arc::new(UreqClient::new()))
+        // URLSession once the host has installed its services (on iOS, just
+        // after this core is made); ureq before that, and in Linux tests.
+        let http = native::http::HttpService::prefer_installed(Arc::new(UreqClient::new()), |c| c);
+        Self::open(storage_directory, Arc::new(http))
     }
 
     /// Every subscription, by title.

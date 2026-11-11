@@ -295,6 +295,20 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
@@ -325,6 +339,16 @@ typedef struct UniffiVTableCallbackInterfaceSecureStore {
     UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
     UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
 } UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
 
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_APPCORE
@@ -527,6 +551,31 @@ void uniffi_forge_ffi_fn_method_securestore_set(uint64_t ptr, RustBuffer key, Ru
 void uniffi_forge_ffi_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_forge_ffi_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FREE_HTTPTRANSPORT
+void uniffi_forge_ffi_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_forge_ffi_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_forge_ffi_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_forge_ffi_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG
 void uniffi_forge_ffi_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -562,6 +611,11 @@ uint32_t uniffi_forge_ffi_fn_func_native_services_version(RustCallStatus *_Nonnu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_PARSE_DEEP_LINK
 RustBuffer uniffi_forge_ffi_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_forge_ffi_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_FORGE_FFI_RUSTBUFFER_ALLOC
@@ -866,6 +920,12 @@ uint16_t uniffi_forge_ffi_checksum_func_parse_deep_link(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_forge_ffi_checksum_func_install_native_http(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_ADD_FEED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_ADD_FEED
 uint16_t uniffi_forge_ffi_checksum_method_appcore_add_feed(void
@@ -1031,6 +1091,18 @@ uint16_t uniffi_forge_ffi_checksum_method_securestore_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_SECURESTORE_DELETE
 uint16_t uniffi_forge_ffi_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_forge_ffi_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_forge_ffi_checksum_method_httptransport_cancel(void
     
 );
 #endif

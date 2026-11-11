@@ -1,0 +1,9 @@
+order = 15
+capability = "Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode)"
+framework = "Yes: forge-services `http`"
+rust_api = "Yes: `HttpService::prefer_installed` (a `forge_net::HttpClient`; ureq fallback before install and off iOS)"
+ios_native = "Yes: `ForgeHTTPTransport` (`URLSession` data and upload tasks)"
+in_app = "Yes: Commonplace (feed fetches)"
+iphone = "No"
+documented = "Partial: native-services.md"
+limits = "Streams (Server-Sent Events) still go through ureq; the response body is buffered (up to the client's limit) before Rust gets it"

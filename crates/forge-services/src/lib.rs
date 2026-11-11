@@ -40,6 +40,9 @@
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
 mod feed;
+#[cfg(feature = "http")]
+pub mod http;
+mod http_service;
 pub mod link;
 pub mod notify;
 mod optional;

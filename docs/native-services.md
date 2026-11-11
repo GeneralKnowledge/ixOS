@@ -153,6 +153,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 | `bluetooth` | `BluetoothService`: `state()`, `watch(..)` (on, off, unauthorised, unsupported) | `ForgeBluetoothMonitor` (`CBCentralManager`) | `NativePermission::Bluetooth` and `[ios.permissions] bluetooth` |
 | `audio` | `AudioService`: `duration(path)` | `ForgeAudioFiles`; for the UI `ForgeAudioRecorder`, `ForgeAudioPlayer`, `ForgeAudio.waveform` (and the `ForgeAudioSession` helper every app has) (AVFoundation) | `NativePermission::Microphone` and `[ios.permissions] microphone` |
 | `transfers` | `TransferService`: `start(TransferRequest)`, `cancel`, `retry`, `remove`, `list`, `get`, `deliver_to(key, FileStore)`, `watch(..)`. Needs forge-services' `transfers` feature | `ForgeTransfers` (background `URLSession`), plus an app delegate hook | None; see [below](#background-transfers-transfers) |
+| `http` | `HttpService::prefer_installed(fallback, configure)`: a `forge_net::HttpClient` that sends through the host once installed. Needs forge-services' `http` feature | `ForgeHTTPTransport` (`URLSession`) | None; see [below](#http-through-urlsession-http) |
 
 **How selection works.** Each name adds a submodule to `crate::native` with its records, one host trait, a sink object and an `install_native_<name>` export. `generate-bindings.sh` copies the matching `crates/forge-services/swift/optional/ForgeServices+<Name>.swift` only when the bindings contain `installNative<Name>`, and writes `ForgeServices+Selected.swift` listing the installers, which `ForgeServices.install()` runs. An app that never names `location` has no Core Location code in its binary, which matters for App Store review. `forge config sync`, `forge config show` and every iOS build warn when the app selects `location`, `motion` or `bluetooth` but `forge.toml` lacks the matching `[ios.permissions]` text, because without it the service can only report `Unsupported` on the phone.
 
@@ -268,6 +269,28 @@ final class TransfersAppDelegate: NSObject, UIApplicationDelegate {
 No background mode or entitlement is needed. Headers are saved in the ledger, so don't put a secret there that must not be on disk. Uploads are not supported yet.
 
 **Tests.** `TransferService::for_tests(dir)` returns the service and a `FakeSession`; `fake.finish(&service, id, status, body)` plays a finished download. `crates/forge-services/tests/transfers.rs` covers saving before start, verification, delivery, orphans, interrupted transfers and force quit. Device Lab's Background Downloads screen is for the checks that need a phone: a relaunch after the system ends the app (its "End the app when I leave" switch calls `exit(0)` in the background, as Apple suggests for testing), the completion callback while suspended, a transfer finished while the app was closed, and force quit.
+
+### HTTP through URLSession (`http`)
+
+Ordinary requests (`send`, `send_cancellable`, `send_file`) through `URLSession` on iOS instead of Rust's own TLS connections, so they follow the system's proxy and VPN settings, use HTTP/2 and HTTP/3, respect Low Data Mode and use the system trust store. Code written against `forge_net::HttpClient` does not change:
+
+```toml
+forge-services = { path = "...", features = ["http"] }
+```
+
+```rust
+forge_services::native_services!(http);
+
+// URLSession once the host has installed its services, ureq before that
+// and in Linux tests. Looked up per request, because the core is usually
+// created before `ForgeServices.install()` runs.
+let http = native::http::HttpService::prefer_installed(
+    Arc::new(UreqClient::with_user_agent(USER_AGENT)),
+    |client| client.max_body_bytes(8 * 1024 * 1024),
+);
+```
+
+Cancelling a `CancelHandle` cancels the `URLSessionTask`. The response body is limited (8 MiB unless `configure` changes it): the adapter stops a response that announces or grows past the limit. Errors map to `NetError` the way ureq's do (`Offline`, `Certificate`, `Timeout`, `Cancelled`, `Transport`). Streams (`open_stream`, Server-Sent Events) still go through the fallback; they move in a later step. Commonplace fetches its feeds this way.
 
 **Foreground only.** Apart from `transfers`, nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
 
