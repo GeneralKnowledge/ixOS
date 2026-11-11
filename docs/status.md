@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 101 capabilities, 14 work on an iPhone, 12 partly work, 51 are built but haven't been run on an iPhone, and 24 aren't built yet.**
+**Of 101 capabilities, 15 work on an iPhone, 12 partly work, 50 are built but haven't been run on an iPhone, and 24 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -17,6 +17,7 @@ A person ran an app that uses it on a physical iPhone and recorded the result.
 | Foundation | App-owned Rust crate with UniFFI async exports | Pocket Library (a `forge init` app with its own crate) on iPhone16,2, iOS 26.3.1, 2026-11-07: UI test m0 passed 11/11, watched by Reuben. A fresh app from the current starter has not been recorded on a phone |
 | Data and files | JSON snapshot storage with migration hook | Chat, 2026-11-05 |
 | Networking | HTTPS requests with typed errors | 2026-11-05 and 2026-11-06 |
+| Networking | Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode) | Commonplace refresh through URLSession, and airplane mode reported as offline, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-11 |
 | Networking | Long-lived streams (SSE) with reconnect | Chat |
 | Extensions and restricted frameworks | Core ML | Qwen3.5 0.8B (copied in over USB) compiled on the phone and run, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-07 |
 | Forge Device | Phone details from Linux (`forge device list`, `info`) | iPhone16,2, iOS 26.3.1, 2026-11-07 |
@@ -55,7 +56,7 @@ The code exists and is tested on Linux, but nobody has recorded it working on a 
 - **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust; Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch
 - **Data and files:** Relational store with queries (SQLite); Full-text search; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress; Background transfers
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
-- **Networking:** Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode); Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel
+- **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel
 - **Native services and permissions:** Keychain secrets; Local notifications; Notification actions and grouping; Deep links (custom URL schemes); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Photos picker; Background refresh and processing tasks; Haptics
 - **Media, sensors and rendering:** Record and play audio files; Waveform summaries; Background audio; Continuous location and tracks; Background location; Heading, altitude, motion; Device status (battery, Low Power Mode, thermal state, storage, memory, model); Bluetooth on or off; Forms with Rust validation
 - **Extensions and restricted frameworks:** HealthKit
