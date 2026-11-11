@@ -367,6 +367,10 @@ copied into `Generated/` today.
 | Seven apps: aliases fixed | Laptop | Every app compiled; Device Lab's AppHost failed on an ambiguous `forgeOpenURLs()` (F19) |
 | Seven apps: deep links routed in AppHost | Laptop | The App target failed on an ambiguous `receivesDeepLinks()` (F19) |
 | Seven apps: after the F19 fixes | Laptop, 39 s (incremental) | Pass; 36 MB app bundle (20 MB with four). Warnings only: the same Sendable warnings, now also in Chat's and Commonplace's `ForgeServices+Selected.swift` |
+| Second round: `MemberImportVisibility` on Device Lab | Laptop, 34 s | Pass; with it, the original `forgeLaunchAppearance()` clash compiles |
+| Second round: own module names, apps' own packages | Laptop | Pass: Device Lab (48 s, 36 MB) and all six apps on their own |
+| Second round: `[host]` merge, template defaults | Laptop | Pass: Device Lab (Info.plist unchanged), Pocket Library, Good Dog, and fresh `forge init` and `forge init --minimal` apps (no warnings) |
+| Fresh apps on Linux (`check-fresh-app.sh`) | Cloud | Pass |
 | Opening each app on the iPhone | Next sitting | Not run |
 
 On the iPhone, check first what Linux can't show: several apps' Rust cores
