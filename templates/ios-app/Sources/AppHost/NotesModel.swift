@@ -27,9 +27,17 @@ public final class NotesModel {
     public private(set) var notes: [Note] = []
     /// The search field's text. `visibleNotes` filters by it.
     public var searchText = ""
-    /// A failed action, as a ForgeAppKit alert value. The list presents it
-    /// with `.forgeAlert`, which clears it when dismissed.
-    public var alert: ForgeAlert<Never>?
+    /// What the list's alerts can ask the model to do: delete after the
+    /// person confirms, or try a failed save or delete again.
+    public enum Action: Equatable, Sendable {
+        case delete(UInt64)
+        case update(UInt64, String)
+    }
+
+    /// The list's alert: a delete confirmation, or a failed action (with Try
+    /// Again when that might help). The list presents it with
+    /// `.forgeAlert`, which clears it when dismissed.
+    public var alert: ForgeAlert<Action>?
     /// Increases after each successful save; views use it as a haptic trigger.
     public private(set) var saveCount = 0
 
@@ -80,14 +88,44 @@ public final class NotesModel {
     @discardableResult
     public func update(_ note: Note, text: String) async -> Bool {
         guard text != note.text else { return true }
-        return await perform { core in
-            _ = try await core.updateNote(id: note.id, text: text)
+        return await update(id: note.id, text: text)
+    }
+
+    @discardableResult
+    private func update(id: UInt64, text: String) async -> Bool {
+        await perform(retry: .update(id, text)) { core in
+            _ = try await core.updateNote(id: id, text: text)
         }
     }
 
+    /// Asks before deleting (a swipe or a long press deletes at once
+    /// otherwise, with no undo). Confirming sends `.delete` to `handle`.
+    public func askToDelete(_ note: Note) {
+        alert = .confirm(
+            "Delete this note?",
+            message: "This can't be undone.",
+            confirm: "Delete Note",
+            action: .delete(note.id),
+            identifier: "notes.delete",
+            destructive: true
+        )
+    }
+
     public func delete(_ note: Note) async {
-        await perform { core in
-            try await core.deleteNote(id: note.id)
+        await delete(id: note.id)
+    }
+
+    private func delete(id: UInt64) async {
+        await perform(retry: .delete(id)) { core in
+            try await core.deleteNote(id: id)
+        }
+    }
+
+    /// Runs what an alert button asked for.
+    public func handle(_ action: Action) async {
+        switch action {
+        case .delete(let id): await delete(id: id)
+        case .update(let id, let text): await update(id: id, text: text)
         }
     }
 
@@ -129,51 +167,72 @@ public final class NotesModel {
 
     /// Runs one Rust command, then shows Rust's list straight away (the
     /// host's `changes` moves moments later, and `reload()` reads the same
-    /// list). A failure goes to `alert`, which the list presents.
+    /// list). A failure goes to `alert`, which the list presents, with Try
+    /// Again sending `retry` when the failure might pass.
     @discardableResult
-    private func perform(_ command: (AppCore) async throws -> Void) async -> Bool {
+    private func perform(retry: Action, _ command: (AppCore) async throws -> Void) async -> Bool {
         do {
             try await command(core)
             notes = core.notes()
             saveCount += 1
             return true
         } catch {
+            // `reason` fields are for the log, never the screen.
             log.warn("command failed: \(error)")
-            alert = .failure(error)
+            alert = .failure(error, retry: retry)
             return false
         }
     }
 
-    /// Text for the screen. Replace with your own copy; `reason` fields are
-    /// diagnostics from Rust.
+    /// Text for the screen. Replace with your own copy. Rust's `reason`
+    /// fields are diagnostics: they go to the log where the error is caught,
+    /// not on screen (except `InvalidInput`, which says what to fix).
     nonisolated public static func describe(_ error: Error) -> String {
-        guard let error = error as? AppError else { return error.localizedDescription }
+        guard let error = error as? AppError else { return ForgeFailure(error).message }
         switch error {
         case .InvalidInput(let reason): return "Check your input: \(reason)"
         case .NotFound: return "That note no longer exists."
-        case .Storage(let reason): return "Your notes couldn't be read or saved (\(reason))."
+        case .Storage: return "Your notes couldn't be read or saved. Try again, or close the app and open it again."
         case .InUse: return "Your notes are open in another copy of the app."
-        case .Offline: return "You appear to be offline."
-        case .Certificate(let reason): return "The server's certificate was rejected: \(reason)"
-        case .Timeout: return "The request timed out."
-        case .Network(let reason): return "Network error: \(reason)"
+        case .Offline: return "Try again when you're connected."
+        case .Certificate: return "The server's security certificate was rejected."
+        case .Timeout: return "The server took too long to answer. Try again in a moment."
+        case .Network: return "Couldn't reach the server. Check your connection, then try again."
         case .Cancelled: return "Cancelled."
         case .Interrupted: return "Stopped when the app went to the background. Try again."
         case .ShutDown: return "The app is closing."
         }
     }
+
+    /// A short title for each error, so an alert says what happened at a
+    /// glance ("You're Offline") rather than "Something Went Wrong".
+    nonisolated public static func title(_ error: AppError) -> String {
+        switch error {
+        case .InvalidInput: return "Check the Details"
+        case .NotFound: return "Note Not Found"
+        case .Storage: return "Couldn't Save"
+        case .InUse: return "Notes Already Open"
+        case .Offline: return "You're Offline"
+        case .Certificate: return "Secure Connection Failed"
+        case .Timeout: return "No Response"
+        case .Network: return "Can't Reach the Server"
+        case .Cancelled: return "Cancelled"
+        case .Interrupted: return "Stopped"
+        case .ShutDown: return "Closing"
+        }
+    }
 }
 
-/// Every alert and failed save shows `NotesModel.describe`'s words
-/// (ForgeAppKit). A cancelled request is not a failure: nothing is shown.
+/// Every alert and failed save shows `NotesModel`'s words (ForgeAppKit). A
+/// cancelled request is not a failure: nothing is shown.
 extension AppError: ForgeDescribedError {
     public var failure: ForgeFailure {
         let retryable: Bool
         switch self {
-        case .Offline, .Timeout, .Network, .Interrupted: retryable = true
+        case .Offline, .Timeout, .Network, .Interrupted, .Storage: retryable = true
         default: retryable = false
         }
-        return ForgeFailure(title: "Something Went Wrong", message: NotesModel.describe(self), isRetryable: retryable)
+        return ForgeFailure(title: NotesModel.title(self), message: NotesModel.describe(self), isRetryable: retryable)
     }
 
     public var isCancellation: Bool {

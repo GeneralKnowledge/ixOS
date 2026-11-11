@@ -53,13 +53,15 @@ public final class ItemsModel {
         }
     }
 
-    /// Text for the screen. `reason` fields are diagnostics from Rust.
+    /// Text for the screen. `reason` fields are diagnostics from Rust: only
+    /// `InvalidInput`'s, which says what to fix, is shown.
     public static func describe(_ error: Error) -> String {
         guard let error = error as? AppError else { return error.localizedDescription }
         switch error {
         case .InvalidInput(let reason): return "Check your input: \(reason)"
         case .NotFound: return "That item no longer exists."
-        case .Storage(let reason): return "Your list couldn't be read or saved (\(reason))."
+        // `reason` is a diagnostic for the log, never the screen.
+        case .Storage: return "Your list couldn't be read or saved. Try again, or close the app and open it again."
         case .InUse: return "Your list is open in another copy of the app."
         case .ShutDown: return "The app is closing."
         }

@@ -20,15 +20,16 @@ struct NoteListView: View {
                     }
                     .accessibilityIdentifier("notes.row")
                     .swipeActions {
+                        // Asks first: there is no undo.
                         Button("Delete", systemImage: "trash", role: .destructive) {
-                            Task { await model.delete(note) }
+                            model.askToDelete(note)
                         }
                         .accessibilityIdentifier("notes.delete")
                     }
                     .contextMenu {
                         ShareLink(item: note.text)
                         Button("Delete", systemImage: "trash", role: .destructive) {
-                            Task { await model.delete(note) }
+                            model.askToDelete(note)
                         }
                     }
                 }
@@ -55,7 +56,7 @@ struct NoteListView: View {
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView(model: model)
             }
-            .forgeAlert($model.alert)
+            .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
             .sensoryFeedback(.success, trigger: model.saveCount)
         }
     }

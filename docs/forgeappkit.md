@@ -65,6 +65,8 @@ public func handle(_ action: LibraryAction) async {
 ```
 
 - `.failure(error)` is the error alert: the failure's title and message, and OK with the identifier `alert.ok`. It is nil for a cancellation.
+- `.failure(error, retry: action)` adds Try Again (identifier `alert.retry`) when the failure is retryable, and sends `action` back to the model when tapped, so the person can retry where they are.
+- An error that isn't a `ForgeDescribedError` still gets usable words: URLSession's offline, timeout and unreachable-server errors become retryable failures with their own titles, and anything else gets a generic message instead of Swift's "The operation couldn't be completed".
 - `.confirm(...)` is the confirming button (`<identifier>.confirm`) and Cancel (`<identifier>.cancel`). A destructive confirmation is a dialog from the bottom with a red button, as iOS does it; otherwise it is an alert.
 - `ForgeAlert(title:message:buttons:style:)` builds anything else.
 - An alert that only informs is `ForgeAlert<Never>`, presented with `.forgeAlert($model.alert)`.

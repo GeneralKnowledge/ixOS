@@ -19,13 +19,35 @@ public struct ForgeFailure: Hashable, Sendable {
     }
 
     /// The failure for any error: the app's own words when the error is a
-    /// `ForgeDescribedError`, otherwise a generic title and the error's
-    /// description.
+    /// `ForgeDescribedError`; for a URLSession error, words for being
+    /// offline, a timeout or an unreachable server (all worth trying again);
+    /// for a `LocalizedError`, its description. Anything else gets a generic
+    /// title and message, never Swift's "The operation couldn't be
+    /// completed (… error 3)".
     public init(_ error: Error) {
         if let described = error as? ForgeDescribedError {
             self = described.failure
+        } else if let network = Self.network(error) {
+            self = network
+        } else if let localized = error as? LocalizedError, let description = localized.errorDescription {
+            self.init(title: "Something Went Wrong", message: description)
         } else {
-            self.init(title: "Something Went Wrong", message: error.localizedDescription)
+            self.init(title: "Something Went Wrong", message: "Try again. If it keeps happening, close the app and open it again.")
+        }
+    }
+
+    /// Words for the URLSession errors a person can do something about.
+    private static func network(_ error: Error) -> ForgeFailure? {
+        guard let error = error as? URLError else { return nil }
+        switch error.code {
+        case .notConnectedToInternet, .dataNotAllowed, .networkConnectionLost, .internationalRoamingOff:
+            return ForgeFailure(title: "You're Offline", message: "Try again when you're connected.", isRetryable: true)
+        case .timedOut:
+            return ForgeFailure(title: "No Response", message: "The server took too long to answer. Try again in a moment.", isRetryable: true)
+        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+            return ForgeFailure(title: "Can't Reach the Server", message: "Check your connection, then try again.", isRetryable: true)
+        default:
+            return nil
         }
     }
 

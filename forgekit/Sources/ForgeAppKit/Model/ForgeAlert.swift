@@ -54,6 +54,28 @@ public struct ForgeAlert<Action>: Identifiable {
         ForgeFailure.isCancellation(error) ? nil : .failure(ForgeFailure(error))
     }
 
+    /// The error alert with Try Again (identifier `alert.retry`) when trying
+    /// again might help, so the person can retry where they are. Tapping it
+    /// sends `retry` to the model, like any other alert action.
+    ///
+    ///     alert = .failure(failure, retry: .save(note.id, text))
+    public static func failure(_ failure: ForgeFailure, retry: Action) -> ForgeAlert {
+        guard failure.isRetryable else { return .failure(failure) }
+        return ForgeAlert(
+            title: failure.title,
+            message: failure.message,
+            buttons: [
+                ForgeAlertButton("Try Again", action: retry, identifier: "alert.retry"),
+                ForgeAlertButton("Cancel", role: .cancel, identifier: "alert.ok"),
+            ]
+        )
+    }
+
+    /// `failure(_:retry:)` for an error, or nil when it was a cancellation.
+    public static func failure(_ error: Error, retry: Action) -> ForgeAlert? {
+        ForgeFailure.isCancellation(error) ? nil : .failure(ForgeFailure(error), retry: retry)
+    }
+
     /// Asks before doing something: the confirming button (identifier
     /// `<identifier>.confirm`) and Cancel. Destructive confirmations are a
     /// dialog from the bottom with a red button, as iOS does them.

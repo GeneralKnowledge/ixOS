@@ -53,7 +53,15 @@ struct TodayView: View {
                 }
             }
             .overlay {
-                if model.today?.activities.isEmpty == true {
+                if model.today == nil, let problem = model.todayError {
+                    ForgeStateView.failed(
+                        "Can't Plan Today",
+                        message: problem,
+                        retry: ForgeStateAction("Try Again", identifier: "today.retry") {
+                            Task { await model.reload() }
+                        }
+                    )
+                } else if model.today?.activities.isEmpty == true {
                     ForgeStateView.empty(
                         "Nothing Planned",
                         systemImage: "pawprint",
@@ -65,7 +73,7 @@ struct TodayView: View {
             .navigationDestination(for: ExerciseRoute.self) { route in
                 ExerciseView(model: model, route: route)
             }
-            .errorAlert("Something Went Wrong", message: $model.actionError)
+            .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
         }
     }
 }
