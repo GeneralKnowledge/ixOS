@@ -10,8 +10,11 @@
 //!   is one SQLite transaction or statement; the runtime then raises the
 //!   revision and announces `Changed`.
 //! - **Queries** (`trips`, `recording`) read a [`Published`] snapshot and
-//!   never wait for a command. `trip` and `track` read the file on the
-//!   command thread, because a track can be long.
+//!   never wait for a command. `trip` and `track` read the file through a
+//!   second, read-only connection, as on-screen work off the command
+//!   thread: a track can be long, and a command would raise the revision.
+//! - **Export** (`export_trip`, GPX or GeoJSON) is finishing work: it keeps
+//!   going if the app leaves the screen, while iOS allows.
 //! - **Recording survives the process.** A trip has no end until
 //!   `stop_trip`, so if iOS ends the app mid-walk, the next launch finds it
 //!   still recording and the app can carry on or stop it.
@@ -19,17 +22,20 @@
 //!   results in: fixes as [`LocationSample`]s, photos and recordings as
 //!   files, which FieldKit copies into its own store.
 
+mod export;
 mod model;
 mod store;
 pub mod track;
 
-use std::path::Path;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
-use forge_app::{DataDirectory, Published, Runtime};
-use forge_runtime::now_ms;
+use forge_app::{Cancellation, DataDirectory, ErrorKind, Published, Runtime};
+use forge_runtime::{lock, now_ms};
+use forge_storage::rusqlite::Connection;
 use forge_storage::{FileStore, Opened};
 
+pub use export::ExportFormat;
 pub use model::{
     fieldkit_error_kind, FieldKitError, Note, NoteKind, Position, Recorded, TripDetail,
     TripSummary, MAX_NOTE_CHARS, MAX_TITLE_CHARS,
@@ -123,6 +129,10 @@ impl State {
 pub struct FieldKitCore {
     rt: Runtime<State>,
     trips: Arc<Published<Vec<TripSummary>>>,
+    /// Read-only connection for queries off the command thread.
+    reader: Arc<Mutex<Connection>>,
+    media_root: PathBuf,
+    caches: PathBuf,
 }
 
 #[uniffi::export]
@@ -130,8 +140,12 @@ impl FieldKitCore {
     /// Opens FieldKit's data in `data_directory` (created if missing),
     /// holding the directory so no second core can write to it. A damaged
     /// database is set aside (kept) and a fresh one started.
+    /// `caches_directory` is for files the app can lose (exports).
     #[uniffi::constructor]
-    pub fn new(data_directory: String) -> Result<Arc<Self>, FieldKitError> {
+    pub fn new(
+        data_directory: String,
+        caches_directory: String,
+    ) -> Result<Arc<Self>, FieldKitError> {
         let directory = DataDirectory::open(&data_directory)?;
         let (store, opened) = Store::open(directory.path())?;
         if let Opened::Recovered { reason, .. } = &opened {
@@ -145,6 +159,8 @@ impl FieldKitCore {
             last,
         });
         let trips = Arc::new(Published::new(store.trips()?));
+        let reader = Arc::new(Mutex::new(store.reader()?));
+        let media_root = media.root().to_path_buf();
         let state = State {
             store,
             media,
@@ -154,6 +170,9 @@ impl FieldKitCore {
         Ok(Arc::new(Self {
             rt: Runtime::with_directory("fieldkit", directory, state),
             trips,
+            reader,
+            media_root,
+            caches: PathBuf::from(caches_directory),
         }))
     }
 
@@ -278,30 +297,88 @@ impl FieldKitCore {
             .await
     }
 
-    /// A trip with its notes.
-    pub async fn trip(&self, trip_id: i64) -> Result<TripDetail, FieldKitError> {
+    /// A trip with its notes. On-screen work: stopped by `cancellation`,
+    /// the background and shutdown.
+    pub async fn trip(
+        &self,
+        trip_id: i64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<TripDetail, FieldKitError> {
+        let summary = self.summary(trip_id)?;
+        let reader = Arc::clone(&self.reader);
+        let media = self.media_root.clone();
+        let work = self.rt.foreground(cancellation.as_deref());
         self.rt
-            .command("trip", move |state| {
-                let summary = state
-                    .summary(trip_id)
-                    .ok_or(FieldKitError::NotFound { id: trip_id })?;
-                let media = &state.media;
-                let notes = state.store.notes(trip_id, |name| {
-                    media.root().join(name).to_string_lossy().into_owned()
+            .run("trip", work, move |_| {
+                let notes = store::notes(&lock(&reader), trip_id, |name| {
+                    media.join(name).to_string_lossy().into_owned()
                 })?;
                 Ok(TripDetail { summary, notes })
             })
             .await
     }
 
-    /// A trip's kept track, in order.
-    pub async fn track(&self, trip_id: i64) -> Result<Vec<TrackPoint>, FieldKitError> {
+    /// A trip's kept track, in order. On-screen work, like `trip`.
+    pub async fn track(
+        &self,
+        trip_id: i64,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<Vec<TrackPoint>, FieldKitError> {
+        self.summary(trip_id)?;
+        let reader = Arc::clone(&self.reader);
+        let work = self.rt.foreground(cancellation.as_deref());
         self.rt
-            .command("track", move |state| {
-                if !state.store.exists(trip_id)? {
-                    return Err(FieldKitError::NotFound { id: trip_id });
+            .run("track", work, move |_| {
+                store::track(&lock(&reader), trip_id)
+            })
+            .await
+    }
+
+    /// Writes a trip as GPX or GeoJSON for sharing; returns the file's
+    /// path. Finishing work: it keeps going when the app leaves the screen,
+    /// for as long as iOS gives the app; stopped by `cancellation` and
+    /// shutdown.
+    pub async fn export_trip(
+        &self,
+        trip_id: i64,
+        format: ExportFormat,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<String, FieldKitError> {
+        let trip = self.summary(trip_id)?;
+        let reader = Arc::clone(&self.reader);
+        let media = self.media_root.clone();
+        let path = self.caches.join(format!(
+            "{}.{}",
+            export_name(&trip.title),
+            format.extension()
+        ));
+        let work = self.rt.finishing(cancellation.as_deref());
+        self.rt
+            .run("export", work, move |cancel| {
+                let (points, notes) = {
+                    let c = lock(&reader);
+                    let points = store::track(&c, trip_id)?;
+                    let notes = store::notes(&c, trip_id, |name| {
+                        media.join(name).to_string_lossy().into_owned()
+                    })?;
+                    (points, notes)
+                };
+                if cancel.is_cancelled() {
+                    return Err(FieldKitError::Stopped {
+                        kind: ErrorKind::Cancelled,
+                    });
                 }
-                state.store.track(trip_id)
+                let text = match format {
+                    ExportFormat::Gpx => export::gpx(&trip, &points, &notes),
+                    ExportFormat::GeoJson => export::geojson(&trip, &points, &notes),
+                };
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir).map_err(|err| FieldKitError::Storage {
+                        reason: format!("create the export folder: {err}"),
+                    })?;
+                }
+                forge_storage::write_atomic(&path, text.as_bytes())?;
+                Ok(path.to_string_lossy().into_owned())
             })
             .await
     }
@@ -388,6 +465,37 @@ impl FieldKitCore {
                 state.publish()
             })
             .await
+    }
+}
+
+impl FieldKitCore {
+    fn summary(&self, trip_id: i64) -> Result<TripSummary, FieldKitError> {
+        self.trips
+            .get()
+            .iter()
+            .find(|t| t.id == trip_id)
+            .cloned()
+            .ok_or(FieldKitError::NotFound { id: trip_id })
+    }
+}
+
+/// A file name from a trip title: letters, digits, spaces and dashes only.
+fn export_name(title: &str) -> String {
+    let name: String = title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        "Trip".into()
+    } else {
+        name
     }
 }
 

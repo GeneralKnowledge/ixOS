@@ -2,14 +2,19 @@
 
 use std::sync::Arc;
 
-use fieldkit_core::{FieldKitCore, FieldKitError, LocationSample, NoteKind, Position, Recorded};
+use fieldkit_core::{
+    ExportFormat, FieldKitCore, FieldKitError, LocationSample, NoteKind, Position, Recorded,
+};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
 }
 
 fn open(dir: &tempfile::TempDir) -> Result<Arc<FieldKitCore>, FieldKitError> {
-    FieldKitCore::new(dir.path().join("data").to_string_lossy().into_owned())
+    FieldKitCore::new(
+        dir.path().join("data").to_string_lossy().into_owned(),
+        dir.path().join("caches").to_string_lossy().into_owned(),
+    )
 }
 
 /// A walk north from `start_s`: one fix every 5 s, about 11 m apart, climbing
@@ -77,7 +82,7 @@ fn a_recorded_trip_keeps_good_fixes_and_survives_a_restart() {
     assert!(finished.ended_ms.is_some());
     assert_eq!(finished.point_count, 15);
     assert!(core.recording().is_none());
-    assert_eq!(block_on(core.track(trip.id)).unwrap().len(), 15);
+    assert_eq!(block_on(core.track(trip.id, None)).unwrap().len(), 15);
     assert_eq!(
         block_on(core.record(walk(200, 1))),
         Err(FieldKitError::NotRecording)
@@ -113,7 +118,7 @@ fn notes_take_the_current_position_and_their_files_are_cleaned_up() {
     ))
     .unwrap();
 
-    let detail = block_on(core.trip(trip.id)).unwrap();
+    let detail = block_on(core.trip(trip.id, None)).unwrap();
     assert_eq!(detail.summary.note_count, 3);
     let notes = detail.notes;
     assert_eq!(notes[0].id, text);
@@ -170,7 +175,7 @@ fn deleting_a_trip_removes_its_track_notes_and_files() {
     std::fs::write(&memo, b"pretend audio").unwrap();
     block_on(core.add_voice_note(trip.id, memo.to_string_lossy().into_owned(), 4200, None))
         .unwrap();
-    let detail = block_on(core.trip(trip.id)).unwrap();
+    let detail = block_on(core.trip(trip.id, None)).unwrap();
     let NoteKind::Voice { path, duration_ms } = &detail.notes[0].kind else {
         panic!("not a voice note");
     };
@@ -191,7 +196,7 @@ fn deleting_a_trip_removes_its_track_notes_and_files() {
     assert!(core.recording().is_none());
     assert!(!stored.exists());
     assert_eq!(
-        block_on(core.track(trip.id)),
+        block_on(core.track(trip.id, None)),
         Err(FieldKitError::NotFound { id: trip.id })
     );
     assert_eq!(
@@ -223,4 +228,38 @@ fn trips_are_listed_newest_first_and_each_change_is_announced() {
     // A refused command changes nothing.
     let _ = block_on(core.start_trip("Third".into()));
     assert_eq!(core.revision(), 3);
+}
+
+#[test]
+fn reading_a_trip_changes_nothing_and_exports_write_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let trip = block_on(core.start_trip("Ridge / walk".into())).unwrap();
+    block_on(core.record(walk(0, 4))).unwrap();
+    block_on(core.add_text_note(trip.id, "Cairn".into(), None)).unwrap();
+    block_on(core.stop_trip()).unwrap();
+    let revision = core.revision();
+
+    // Queries don't go through the command thread, so they announce
+    // nothing (a screen that reloads on Changed must not loop).
+    assert_eq!(block_on(core.track(trip.id, None)).unwrap().len(), 4);
+    assert_eq!(block_on(core.trip(trip.id, None)).unwrap().notes.len(), 1);
+    assert_eq!(core.revision(), revision);
+    assert_eq!(
+        block_on(core.trip(999, None)),
+        Err(FieldKitError::NotFound { id: 999 })
+    );
+
+    let gpx = block_on(core.export_trip(trip.id, ExportFormat::Gpx, None)).unwrap();
+    assert!(gpx.ends_with("caches/Ridge walk.gpx"), "{gpx}");
+    let text = std::fs::read_to_string(&gpx).unwrap();
+    assert_eq!(text.matches("<trkpt ").count(), 4);
+    assert!(text.contains("<name>Cairn</name>"));
+
+    let json = block_on(core.export_trip(trip.id, ExportFormat::GeoJson, None)).unwrap();
+    assert!(json.ends_with(".geojson"));
+    assert!(std::fs::read_to_string(&json)
+        .unwrap()
+        .contains("\"LineString\""));
+    assert_eq!(core.revision(), revision);
 }
