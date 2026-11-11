@@ -309,4 +309,5 @@ with one router that every app's Rust registers with.
 | Seven apps: with wrapper targets | Laptop | Weather's `WeatherBridge` missed its alias (F18) |
 | Seven apps: aliases fixed | Laptop | Every app compiled; Device Lab's AppHost failed on an ambiguous `forgeOpenURLs()` (F19) |
 | Seven apps: deep links routed in AppHost | Laptop | The App target failed on an ambiguous `receivesDeepLinks()` (F19) |
+| Seven apps: after the F19 fixes | Laptop, 39 s (incremental) | Pass; 36 MB app bundle (20 MB with four). Warnings only: the same Sendable warnings, now also in Chat's and Commonplace's `ForgeServices+Selected.swift` |
 | Opening each app on the iPhone | Next sitting | Not run |
