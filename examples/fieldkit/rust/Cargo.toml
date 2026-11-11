@@ -1,0 +1,40 @@
+# FieldKit's own Rust library: trips, their GPS tracks and the notes taken
+# along them, kept in SQLite, and the UniFFI API (FieldKitCore) the SwiftUI
+# app calls. Built the way a hostable app is (docs/research/app-friction-log.md):
+# the library is named after the app and `setup_scaffolding!()` takes no
+# argument, so the showcase can link it next to other apps.
+[package]
+name = "fieldkit-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+name = "fieldkit_core"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# SQLite for trips, points and notes; content-addressed files for photos and
+# voice notes.
+forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite", "hash"] }
+# `sensors::distance_m`, the same great-circle distance Device Lab uses. The
+# location native service joins in F2, when the app shell arrives.
+forge-services = { path = "../../../crates/forge-services" }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1
