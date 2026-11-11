@@ -787,7 +787,10 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
             .keys()
             .any(|n| permission_key(n) == permission_key("location_always"))
     {
-        out.push("background_modes has \"location\"; background location also needs [ios.permissions] location_always".into());
+        out.push(format!(
+            "background_modes has \"location\"; background location also needs [ios.permissions] location_always. {}",
+            add_permission_line("location_always")
+        ));
     }
     if modes.iter().any(|m| m == "processing")
         && !ios.info.contains_key("BGTaskSchedulerPermittedIdentifiers")
@@ -796,7 +799,8 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
     }
     for (service, permission) in selected_services_missing_permissions(cfg, app_dir) {
         out.push(format!(
-            "the Rust crate selects the {service} service in native_services!(...), but forge.toml has no [ios.permissions] {permission}; iOS needs that text to ask, so the service will report Unsupported"
+            "the Rust crate selects the {service} service in native_services!(...), but forge.toml has no [ios.permissions] {permission}; iOS needs that text to ask, so the service will report Unsupported. {}",
+            add_permission_line(permission)
         ));
     }
     if let Some(icon) = &ios.icon {
@@ -814,6 +818,14 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
         }
     }
     out
+}
+
+/// The exact line to add to forge.toml for a missing permission, so the
+/// warning can be fixed by copying it.
+fn add_permission_line(permission: &str) -> String {
+    format!(
+        "Add this line under [ios.permissions] in forge.toml, with your own sentence: {permission} = \"<why the app needs it>\""
+    )
 }
 
 /// Optional native services whose Swift adapter asks for a permission, and
@@ -1531,7 +1543,10 @@ LSApplicationQueriesSchemes = ["maps"]
         );
         let w = warnings(&c, tmp.path()).join("\n");
         assert!(w.contains("Location service"), "{w}");
-        assert!(w.contains("location_when_in_use"), "{w}");
+        assert!(
+            w.contains("under [ios.permissions] in forge.toml, with your own sentence: location_when_in_use = \"<why the app needs it>\""),
+            "{w}"
+        );
         assert!(!w.contains("Motion"), "{w}");
         assert!(!w.contains("Connectivity"), "{w}");
     }
