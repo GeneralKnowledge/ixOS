@@ -4,5 +4,5 @@
 # When the checkout's forge-app version differs (unreleased framework
 # changes), `forge init` uses the checkout's crates and forgekit/ instead.
 [framework]
-version = "0.3.0"
-ixos_rev = "2f0722db72589ae6f0cd0d8898cc695e6895926c"
+version = "0.4.0"
+ixos_rev = "fa55395bcd368e4a9ed2898b65adb5a1c79d3771"
