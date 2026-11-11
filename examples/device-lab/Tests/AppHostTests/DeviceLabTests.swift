@@ -16,7 +16,7 @@ final class DeviceLabTests: XCTestCase {
     func testOnlyTheSelectedAdaptersAreInstalled() {
         XCTAssertEqual(
             forgeSelectedServices.map(\.name).sorted(),
-            ["Bluetooth", "Connectivity", "DeviceStatus", "Location", "Motion"])
+            ["Bluetooth", "Connectivity", "DeviceStatus", "Location", "Motion", "Transfers"])
     }
 
     func testConnectivityReportsAPath() {
