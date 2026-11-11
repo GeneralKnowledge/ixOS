@@ -62,7 +62,26 @@ NATIVE_OUT="$APP_DIR/build"
 SCAN_DIRS=("$CRATE_DIR" "$ROOT/crates/forge-runtime" "$ROOT/crates/forge-services" "$ROOT/crates/forge-net" "$ROOT/crates/forge-storage")
 # Plus every other crate the app's Cargo.toml names by path (Chat's
 # chat-core, say), so editing one of those also rebuilds the library.
+#
+# Two crates in one build can't share a library name: Cargo then fails with
+# "extern location ... does not exist". Every app's library used to be
+# forge_ffi, so say plainly which crate to rename (docs/app-crate.md).
+# (Plain arrays: macOS ships bash 3.2, which has no associative arrays.)
+FORGE_LIB_NAMES=("$LIB_NAME")
+FORGE_LIB_DIRS=("$CRATE_DIR")
 while IFS= read -r dep; do
   dep_dir="$(cd "$CRATE_DIR" && cd "$dep" 2>/dev/null && pwd)" || continue
   [[ " ${SCAN_DIRS[*]} " == *" $dep_dir "* ]] || SCAN_DIRS+=("$dep_dir")
+  dep_lib="$(sed -n '/^\[lib\]/,/^\[/ s/^name *= *"\([^"]*\)".*/\1/p' "$dep_dir/Cargo.toml" 2>/dev/null | head -n 1)"
+  [[ -n "$dep_lib" ]] || continue
+  for i in "${!FORGE_LIB_NAMES[@]}"; do
+    if [[ "${FORGE_LIB_NAMES[$i]}" == "$dep_lib" && "${FORGE_LIB_DIRS[$i]}" != "$dep_dir" ]]; then
+      echo "[forge] error: ${FORGE_LIB_DIRS[$i]#"$ROOT/"} and ${dep_dir#"$ROOT/"} both name their library \"$dep_lib\"." >&2
+      echo "[forge]        One build can link only one library of each name. Give the linked app's crate its own" >&2
+      echo "[forge]        ([lib] name = \"<app>_core\" and setup_scaffolding!() with no argument; docs/app-crate.md)." >&2
+      exit 1
+    fi
+  done
+  FORGE_LIB_NAMES+=("$dep_lib")
+  FORGE_LIB_DIRS+=("$dep_dir")
 done < <(sed -nE 's/.*[{ ,]path *= *"([^"]+)".*/\1/p' "$CRATE_DIR/Cargo.toml")
