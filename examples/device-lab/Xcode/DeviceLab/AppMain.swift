@@ -7,8 +7,8 @@ struct ForgeApplication: App {
         // Keychain, directories, notifications, permissions and deep links
         // for the Rust core (docs/native-services.md).
         AppServices.install()
-        // The lifecycle for the apps the Apps screen opens (Checklist's host).
-        EmbeddedApps.attach()
+        // Native services and lifecycle for the apps the Apps screen opens.
+        EmbeddedApps.install()
     }
 
     var body: some Scene {

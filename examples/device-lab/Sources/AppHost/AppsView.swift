@@ -1,7 +1,13 @@
+import ChatApp
+import ChatFFI
 import ChecklistApp
+import CommonplaceApp
+import CommonplaceFFI
 import ForgeFFI
 import ForgeKit
 import ForgeUIShowcase
+import GoodDogApp
+import GoodDogFFI
 import PocketLibraryApp
 import SwiftUI
 import WeatherApp
@@ -9,7 +15,7 @@ import WeatherApp
 /// The other example apps, run inside Device Lab: one app, one Rust library
 /// (Device Lab's, which links their Rust cores) and one ForgeKit, so the
 /// showcase checks that they all run on the same system. Each app's code is
-/// its own folder's (symlinked into Sources/), unchanged. What was hard
+/// its own folder's (Apps/<App>, symlinked), unchanged. What was hard
 /// about putting them together is in docs/research/showcase-friction-log.md.
 struct AppsView: View {
     @Binding var open: EmbeddedApp?
@@ -49,7 +55,7 @@ struct AppsView: View {
 
 /// The apps the showcase runs, in the order the list shows them.
 enum EmbeddedApp: String, CaseIterable, Identifiable {
-    case weather, checklist, library, forgeUI
+    case weather, checklist, library, goodDog, commonplace, chat, forgeUI
 
     /// The UserDefaults key of the app to open at launch.
     static let launchKey = "launchApp"
@@ -61,6 +67,9 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .weather: "Weather"
         case .checklist: "Checklist"
         case .library: "Pocket Library"
+        case .goodDog: "Good Dog"
+        case .commonplace: "Commonplace"
+        case .chat: "Chat"
         case .forgeUI: "ForgeUI Showcase"
         }
     }
@@ -70,6 +79,9 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .weather: "Forecasts over the network, cached for offline use."
         case .checklist: "A list kept on the phone, on the application runtime."
         case .library: "A reading tracker with search, EPUB import and read-aloud."
+        case .goodDog: "A daily plan of training and care for your dog."
+        case .commonplace: "A feed reader that keeps articles to read offline."
+        case .chat: "Messaging through the Forge chat server, with an on-device assistant."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }
@@ -79,6 +91,9 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .weather: "cloud.sun"
         case .checklist: "checklist"
         case .library: "books.vertical"
+        case .goodDog: "pawprint"
+        case .commonplace: "newspaper"
+        case .chat: "bubble.left.and.bubble.right"
         case .forgeUI: "paintpalette"
         }
     }
@@ -89,6 +104,9 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .weather: WeatherView()
         case .checklist: ChecklistRoot(host: EmbeddedApps.checklist)
         case .library: PocketLibraryApp.ContentView()
+        case .goodDog: GoodDogApp.ContentView()
+        case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
+        case .chat: ChatApp.ContentView()
         case .forgeUI: ShowcaseRoot()
         }
     }
@@ -116,17 +134,25 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Checklist runs on the application runtime: its host owns its Rust
-    /// core for the whole process, as in the standalone app, so closing the
-    /// sheet doesn't close the checklist.
+    /// Checklist and Commonplace run on the application runtime: each host
+    /// owns its Rust core for the whole process, as in the standalone app,
+    /// so closing the sheet doesn't close the core.
     static let checklist = Checklist.makeHost()
+    static let commonplace = CommonplaceApp.makeAppHost()
 
-    /// Call once, from the App's init. ForgeLifecycle reports the app's
-    /// lifecycle to one host only (attaching another replaces it); Checklist
-    /// is the only embedded app on ForgeKit's host so far.
-    public static func attach() {
+    /// Call once, from the App's init, after `AppServices.install()`.
+    public static func install() {
+        // Each app with native services has its own Rust side for them, so
+        // each installs its own adapters. Secrets are kept apart by Keychain
+        // service name; everything else (notifications, deep links) is the
+        // process's, and the last app to install wins.
+        let bundle = Bundle.main.bundleIdentifier ?? "org.forgemobile.devicelab"
+        GoodDogFFI.ForgeServices.install(keychainService: "\(bundle).gooddog")
+        CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
+        ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         #if canImport(UIKit)
             ForgeLifecycle.attach(checklist)
+            ForgeLifecycle.attach(commonplace)
         #endif
     }
 }

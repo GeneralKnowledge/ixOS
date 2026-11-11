@@ -34,7 +34,9 @@ mod store;
 pub use model::*;
 use store::{FetchResult, Fetched, Flag, Snapshot, Store};
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (commonplace_core), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();
 
 // Native services the host implements (Keychain, app directories, local
 // notifications, permissions, deep links), as `crate::native`, and `http`:

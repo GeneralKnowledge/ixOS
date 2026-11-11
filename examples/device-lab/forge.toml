@@ -23,11 +23,14 @@ orientations = ["portrait"]
 # Pocket Library, on the Apps screen, keeps reading aloud when the screen
 # locks, as it does on its own.
 background_modes = ["audio"]
+# Chat's sign-in links (forgechat://).
+url_schemes = ["forgechat"]
 
 # Throwaway data for UI automation. The apps on the Apps screen each have
-# their own argument (docs/research/showcase-friction-log.md): Checklist's
-# ForgeKit host takes -ForgeTemporaryData, Pocket Library -ForgeUITestData.
-# Weather keeps only a forecast cache; Device Lab keeps nothing.
+# their own argument (docs/research/showcase-friction-log.md): the ForgeKit
+# hosts (Checklist, Commonplace) take -ForgeTemporaryData, Pocket Library and
+# Good Dog -ForgeUITestData. Chat has none. Weather keeps only a forecast
+# cache; Device Lab keeps nothing.
 [ui_test]
 test_data_args = ["-ForgeTemporaryData", "-ForgeUITestData"]
 
@@ -37,6 +40,9 @@ test_data_args = ["-ForgeTemporaryData", "-ForgeUITestData"]
 location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone."
 motion = "Device Lab reads the barometer for air pressure and height changes."
 bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
+# For the apps on the Apps screen: Chat and Commonplace.
+local_network = "Chat connects to the demo chat server, and Commonplace reads feeds, on your local network."
+microphone = "Chat records a voice message while you tap the microphone button."
 
 [ios.signing]
 # Everything here works with a free Apple account: no paid-only entitlements.

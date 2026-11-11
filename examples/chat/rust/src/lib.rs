@@ -35,7 +35,9 @@ pub use assistant::AssistantCore;
 pub use credentials::{Credentials, KeychainCredentials, MemoryCredentials, StoredAccount};
 pub use types::*;
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (chat_app), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();
 
 // The lifecycle phase the host reports and the event stream object
 // (`ChatEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
