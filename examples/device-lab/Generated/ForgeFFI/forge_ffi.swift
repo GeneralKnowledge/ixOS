@@ -471,6 +471,22 @@ private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -3985,6 +4001,522 @@ public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
 
 
 
+
+
+/**
+ * Implemented by the host (iOS: a background `URLSession`).
+ */
+public protocol TransferSession: AnyObject, Sendable {
+    
+    /**
+     * The folder this service keeps its ledger and inbox in
+     * (iOS: `Application Support/ForgeTransfers`).
+     */
+    func directory()  -> String
+    
+    /**
+     * Creates the session (with the same identifier after a
+     * relaunch, so it picks up its tasks), sends every report to
+     * `sink` from now on, and calls `sink.reconcile` once with
+     * the tasks the session has.
+     */
+    func attach(sink: TransferSink) 
+    
+    func start(task: TransferTask) throws 
+    
+    func cancel(id: String) 
+    
+}
+/**
+ * Implemented by the host (iOS: a background `URLSession`).
+ */
+open class TransferSessionImpl: TransferSession, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_transfersession(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_transfersession(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The folder this service keeps its ledger and inbox in
+     * (iOS: `Application Support/ForgeTransfers`).
+     */
+open func directory() -> String  {
+    return try!  FfiConverterString.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersession_directory(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Creates the session (with the same identifier after a
+     * relaunch, so it picks up its tasks), sends every report to
+     * `sink` from now on, and calls `sink.reconcile` once with
+     * the tasks the session has.
+     */
+open func attach(sink: TransferSink)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersession_attach(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTransferSink_lower(sink),uniffiCallStatus
+    )
+}
+}
+    
+open func start(task: TransferTask)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersession_start(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeTransferTask_lower(task),uniffiCallStatus
+    )
+}
+}
+    
+open func cancel(id: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersession_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceTransferSession {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceTransferSession = UniffiVTableCallbackInterfaceTransferSession(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeTransferSession.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface TransferSession: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeTransferSession.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface TransferSession: handle missing in uniffiClone")
+            }
+        },
+        directory: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> String in
+                guard let uniffiObj = try? FfiConverterTypeTransferSession.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.directory(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterString.lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        attach: { (
+            uniffiHandle: UInt64,
+            sink: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeTransferSession.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.attach(
+                     sink: try FfiConverterTypeTransferSink_lift(sink)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        start: { (
+            uniffiHandle: UInt64,
+            task: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeTransferSession.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.start(
+                     task: try FfiConverterTypeTransferTask_lift(task)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeNativeServiceError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeTransferSession.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterString.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceTransferSession> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceTransferSession>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitTransferSession() {
+    uniffi_forge_ffi_fn_init_callback_vtable_transfersession(UniffiCallbackInterfaceTransferSession.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferSession: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<TransferSession>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = TransferSession
+
+    public static func lift(_ handle: UInt64) throws -> TransferSession {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return TransferSessionImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: TransferSession) -> UInt64 {
+         if let rustImpl = value as? TransferSessionImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferSession {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: TransferSession, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferSession_lift(_ handle: UInt64) throws -> TransferSession {
+    return try FfiConverterTypeTransferSession.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferSession_lower(_ value: TransferSession) -> UInt64 {
+    return FfiConverterTypeTransferSession.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the host reports its tasks. Each call returns once Rust
+ * has saved the change (and verified and delivered a finished
+ * file), so the host may tell the system it is done afterwards.
+ */
+public protocol TransferSinkProtocol: AnyObject, Sendable {
+    
+    /**
+     * The body is at `<directory>/inbox/<id>`. `http_status` is
+     * the response's status code.
+     */
+    func downloaded(id: String, httpStatus: UInt16) 
+    
+    /**
+     * The task ended without a body. `cancelled`: it was
+     * cancelled (by the app, or by the system on force quit).
+     */
+    func failed(id: String, code: Int64, reason: String, cancelled: Bool) 
+    
+    func progress(id: String, received: UInt64, expected: UInt64?) 
+    
+    /**
+     * The tasks the session has, once after it is (re)created.
+     */
+    func reconcile(tasks: [SessionTaskInfo]) 
+    
+}
+/**
+ * Where the host reports its tasks. Each call returns once Rust
+ * has saved the change (and verified and delivered a finished
+ * file), so the host may tell the system it is done afterwards.
+ */
+open class TransferSink: TransferSinkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_forge_ffi_fn_clone_transfersink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_forge_ffi_fn_free_transfersink(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The body is at `<directory>/inbox/<id>`. `http_status` is
+     * the response's status code.
+     */
+open func downloaded(id: String, httpStatus: UInt16)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersink_downloaded(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterUInt16.lower(httpStatus),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The task ended without a body. `cancelled`: it was
+     * cancelled (by the app, or by the system on force quit).
+     */
+open func failed(id: String, code: Int64, reason: String, cancelled: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersink_failed(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterInt64.lower(code),
+        FfiConverterString.lower(reason),
+        FfiConverterBool.lower(cancelled),uniffiCallStatus
+    )
+}
+}
+    
+open func progress(id: String, received: UInt64, expected: UInt64?)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersink_progress(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(id),
+        FfiConverterUInt64.lower(received),
+        FfiConverterOptionUInt64.lower(expected),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The tasks the session has, once after it is (re)created.
+     */
+open func reconcile(tasks: [SessionTaskInfo])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersink_reconcile(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeSessionTaskInfo.lower(tasks),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferSink: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = TransferSink
+
+    public static func lift(_ handle: UInt64) throws -> TransferSink {
+        return TransferSink(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: TransferSink) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferSink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: TransferSink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferSink_lift(_ handle: UInt64) throws -> TransferSink {
+    return try FfiConverterTypeTransferSink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferSink_lower(_ value: TransferSink) -> UInt64 {
+    return FfiConverterTypeTransferSink.lower(value)
+}
+
+
+
+
 /**
  * Where the app may keep files. Absolute paths, given by the host
  * at launch. On iOS the container path changes between installs,
@@ -6049,6 +6581,300 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 }
 
 
+/**
+ * A task the host's session still has after a launch.
+ */
+public struct SessionTaskInfo: Equatable, Hashable {
+    public var id: String
+    public var received: UInt64
+    public var expected: UInt64?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, received: UInt64, expected: UInt64?) {
+        self.id = id
+        self.received = received
+        self.expected = expected
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SessionTaskInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSessionTaskInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SessionTaskInfo {
+        return
+            try SessionTaskInfo(
+                id: FfiConverterString.read(from: &buf), 
+                received: FfiConverterUInt64.read(from: &buf), 
+                expected: FfiConverterOptionUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SessionTaskInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterUInt64.write(value.received, into: &buf)
+        FfiConverterOptionUInt64.write(value.expected, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionTaskInfo_lift(_ buf: RustBuffer) throws -> SessionTaskInfo {
+    return try FfiConverterTypeSessionTaskInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSessionTaskInfo_lower(_ value: SessionTaskInfo) -> RustBuffer {
+    return FfiConverterTypeSessionTaskInfo.lower(value)
+}
+
+
+public struct TransferHeader: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TransferHeader: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferHeader: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferHeader {
+        return
+            try TransferHeader(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TransferHeader, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferHeader_lift(_ buf: RustBuffer) throws -> TransferHeader {
+    return try FfiConverterTypeTransferHeader.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferHeader_lower(_ value: TransferHeader) -> RustBuffer {
+    return FfiConverterTypeTransferHeader.lower(value)
+}
+
+
+/**
+ * One transfer, as the screen shows it.
+ */
+public struct TransferRow: Equatable, Hashable {
+    public var id: String
+    public var name: String
+    /**
+     * Queued, Running, Downloaded, Delivered, Failed or Cancelled.
+     */
+    public var state: String
+    /**
+     * What went wrong, or where the file is.
+     */
+    public var detail: String?
+    /**
+     * 0 to 1 while running, when the size is known.
+     */
+    public var fraction: Double?
+    public var receivedBytes: UInt64
+    public var attempts: UInt32
+    public var canCancel: Bool
+    public var canRetry: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, name: String, 
+        /**
+         * Queued, Running, Downloaded, Delivered, Failed or Cancelled.
+         */state: String, 
+        /**
+         * What went wrong, or where the file is.
+         */detail: String?, 
+        /**
+         * 0 to 1 while running, when the size is known.
+         */fraction: Double?, receivedBytes: UInt64, attempts: UInt32, canCancel: Bool, canRetry: Bool) {
+        self.id = id
+        self.name = name
+        self.state = state
+        self.detail = detail
+        self.fraction = fraction
+        self.receivedBytes = receivedBytes
+        self.attempts = attempts
+        self.canCancel = canCancel
+        self.canRetry = canRetry
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TransferRow: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferRow: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferRow {
+        return
+            try TransferRow(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf), 
+                detail: FfiConverterOptionString.read(from: &buf), 
+                fraction: FfiConverterOptionDouble.read(from: &buf), 
+                receivedBytes: FfiConverterUInt64.read(from: &buf), 
+                attempts: FfiConverterUInt32.read(from: &buf), 
+                canCancel: FfiConverterBool.read(from: &buf), 
+                canRetry: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TransferRow, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.detail, into: &buf)
+        FfiConverterOptionDouble.write(value.fraction, into: &buf)
+        FfiConverterUInt64.write(value.receivedBytes, into: &buf)
+        FfiConverterUInt32.write(value.attempts, into: &buf)
+        FfiConverterBool.write(value.canCancel, into: &buf)
+        FfiConverterBool.write(value.canRetry, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferRow_lift(_ buf: RustBuffer) throws -> TransferRow {
+    return try FfiConverterTypeTransferRow.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferRow_lower(_ value: TransferRow) -> RustBuffer {
+    return FfiConverterTypeTransferRow.lower(value)
+}
+
+
+/**
+ * What the host is asked to download. The host names its task
+ * `id` (iOS: `taskDescription`) and, when the body has arrived,
+ * moves it to `<directory>/inbox/<id>` before its callback
+ * returns.
+ */
+public struct TransferTask: Equatable, Hashable {
+    public var id: String
+    public var url: String
+    public var headers: [TransferHeader]
+    public var expectedBytes: UInt64?
+    public var allowsCellular: Bool
+    public var discretionary: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, url: String, headers: [TransferHeader], expectedBytes: UInt64?, allowsCellular: Bool, discretionary: Bool) {
+        self.id = id
+        self.url = url
+        self.headers = headers
+        self.expectedBytes = expectedBytes
+        self.allowsCellular = allowsCellular
+        self.discretionary = discretionary
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension TransferTask: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferTask: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferTask {
+        return
+            try TransferTask(
+                id: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                headers: FfiConverterSequenceTypeTransferHeader.read(from: &buf), 
+                expectedBytes: FfiConverterOptionUInt64.read(from: &buf), 
+                allowsCellular: FfiConverterBool.read(from: &buf), 
+                discretionary: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: TransferTask, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterSequenceTypeTransferHeader.write(value.headers, into: &buf)
+        FfiConverterOptionUInt64.write(value.expectedBytes, into: &buf)
+        FfiConverterBool.write(value.allowsCellular, into: &buf)
+        FfiConverterBool.write(value.discretionary, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferTask_lift(_ buf: RustBuffer) throws -> TransferTask {
+    return try FfiConverterTypeTransferTask.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferTask_lower(_ value: TransferTask) -> RustBuffer {
+    return FfiConverterTypeTransferTask.lower(value)
+}
+
+
 public struct Vector3: Equatable, Hashable {
     public var x: Double
     public var y: Double
@@ -7790,6 +8616,91 @@ public func FfiConverterTypeThermalState_lower(_ value: ThermalState) -> RustBuf
 }
 
 
+
+public 
+enum TransferTestError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    case Unavailable(reason: String
+    )
+    case Failed(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension TransferTestError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeTransferTestError: FfiConverterRustBuffer {
+    typealias SwiftType = TransferTestError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TransferTestError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Failed(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: TransferTestError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Failed(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferTestError_lift(_ buf: RustBuffer) throws -> TransferTestError {
+    return try FfiConverterTypeTransferTestError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeTransferTestError_lower(_ value: TransferTestError) -> RustBuffer {
+    return FfiConverterTypeTransferTestError.lower(value)
+}
+
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
@@ -8277,6 +9188,81 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSessionTaskInfo: FfiConverterRustBuffer {
+    typealias SwiftType = [SessionTaskInfo]
+
+    public static func write(_ value: [SessionTaskInfo], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSessionTaskInfo.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SessionTaskInfo] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SessionTaskInfo]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSessionTaskInfo.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTransferHeader: FfiConverterRustBuffer {
+    typealias SwiftType = [TransferHeader]
+
+    public static func write(_ value: [TransferHeader], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTransferHeader.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TransferHeader] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TransferHeader]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTransferHeader.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeTransferRow: FfiConverterRustBuffer {
+    typealias SwiftType = [TransferRow]
+
+    public static func write(_ value: [TransferRow], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeTransferRow.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TransferRow] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [TransferRow]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeTransferRow.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNetworkInterface: FfiConverterRustBuffer {
     typealias SwiftType = [NetworkInterface]
 
@@ -8536,6 +9522,71 @@ public func installNativeMotion(sensors: MotionSensors)  {try! rustCall() {
     )
 }
 }
+/**
+ * Called by the host at launch (`ForgeServices.install()`).
+ */
+public func installNativeTransfers(session: TransferSession)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_install_native_transfers(
+        FfiConverterTypeTransferSession_lower(session),uniffiCallStatus
+    )
+}
+}
+public func transferTestCancel(id: String)throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_cancel(
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+/**
+ * Forgets every finished transfer and deletes the test files.
+ */
+public func transferTestClear()throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_clear(uniffiCallStatus
+    )
+}
+}
+/**
+ * Ends the app the way iOS does when it reclaims a suspended app, for
+ * acceptance test 1. Apple suggests `exit` for testing background sessions;
+ * swiping the app away is a different event (force quit, test 6).
+ */
+public func transferTestEndApp()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_end_app(uniffiCallStatus
+    )
+}
+}
+public func transferTestRetry(id: String)throws   {try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_retry(
+        FfiConverterString.lower(id),uniffiCallStatus
+    )
+}
+}
+/**
+ * Every transfer, newest first.
+ */
+public func transferTestRows() -> [TransferRow]  {
+    return try!  FfiConverterSequenceTypeTransferRow.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_rows(uniffiCallStatus
+    )
+})
+}
+/**
+ * Starts downloading `megabytes` MB (1 to 500) in the background.
+ */
+public func transferTestStart(megabytes: UInt32)throws  -> String  {
+    return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_func_transfer_test_start(
+        FfiConverterUInt32.lower(megabytes),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -8580,6 +9631,27 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_func_install_native_motion() != 32256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_install_native_transfers() != 47281) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_cancel() != 22994) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_clear() != 40819) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_end_app() != 42793) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_retry() != 5572) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_rows() != 26480) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 1009) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_refresh_permissions() != 63463) {
@@ -8690,6 +9762,30 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_motionsink_send() != 60908) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_transfersession_directory() != 38794) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersession_attach() != 5322) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersession_start() != 37648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersession_cancel() != 181) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersink_downloaded() != 46742) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersink_failed() != 436) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersink_progress() != 47741) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 46829) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_constructor_devicelab_new() != 17449) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8702,6 +9798,7 @@ private let initializationResult: InitializationResult = {
     uniffiCallbackInitMotionSensors()
     uniffiCallbackInitPermissionProvider()
     uniffiCallbackInitSecureStore()
+    uniffiCallbackInitTransferSession()
     return InitializationResult.ok
 }()
 

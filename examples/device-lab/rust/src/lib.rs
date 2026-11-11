@@ -15,6 +15,7 @@
 
 pub mod crash_test;
 pub mod stats;
+pub mod transfer_test;
 
 use std::sync::{Arc, Mutex};
 
@@ -26,7 +27,14 @@ uniffi::setup_scaffolding!("forge_ffi");
 // The framework services this app uses. Each optional one brings its own
 // Swift adapter into the app, and nothing else does: Core Location, Core
 // Motion and Core Bluetooth are linked because they are named here.
-forge_services::native_services!(connectivity, device_status, motion, location, bluetooth);
+forge_services::native_services!(
+    connectivity,
+    device_status,
+    motion,
+    location,
+    bluetooth,
+    transfers
+);
 
 use native::bluetooth::{BluetoothService, BluetoothState};
 use native::connectivity::{ConnectivityService, ConnectivityStatus, TransferPolicy};

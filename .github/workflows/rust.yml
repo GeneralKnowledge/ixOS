@@ -48,6 +48,11 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: test
         run: cargo test --workspace
+      # Optional features no workspace member turns on.
+      - name: forge-services transfers feature (clippy, tests)
+        run: |
+          cargo clippy -p forge-services --all-targets --features transfers -- -D warnings
+          cargo test -p forge-services --features transfers
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
       # Apps made with forge init (examples/pocket-library) have their own

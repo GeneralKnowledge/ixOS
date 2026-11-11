@@ -6,6 +6,9 @@ import UniformTypeIdentifiers
 // screen: one button per native service, with the results on screen.
 public struct ContentView: View {
     public init() {}
+    /// The starter's entry points pass the app's runtime host; this screen
+    /// talks to the services directly and doesn't need it.
+    public init<Host>(host: Host) {}
 
     @State private var report: [String] = []
     @State private var running = false
