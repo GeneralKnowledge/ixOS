@@ -117,15 +117,44 @@ fn write_and_replace(tmp: &Path, path: &Path, data: &[u8]) -> Result<(), Storage
 }
 
 /// Makes a completed rename durable by syncing the directory that holds it.
-#[cfg(unix)]
 fn sync_directory(dir: &Path) -> Result<(), StorageError> {
-    File::open(dir)
-        .and_then(|d| d.sync_all())
-        .map_err(|err| StorageError::write("sync directory", err))
+    sync_dir(dir).map_err(|err| StorageError::write("sync directory", err))
+}
+
+/// Syncs a directory, so the renames, creations and deletions in it reach
+/// the disk. Without this, a power cut can undo a rename whose file's bytes
+/// were synced.
+#[cfg(unix)]
+pub(crate) fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    File::open(dir).and_then(|d| d.sync_all())
 }
 
 #[cfg(not(unix))]
-fn sync_directory(_dir: &Path) -> Result<(), StorageError> {
+pub(crate) fn sync_dir(_dir: &Path) -> std::io::Result<()> {
     // Directories cannot be opened for syncing on Windows; NTFS journals renames.
+    Ok(())
+}
+
+/// `create_dir_all`, then syncs the parent of every directory it created,
+/// so a new folder survives a power cut along with the files put in it.
+pub(crate) fn create_dir_durably(dir: &Path) -> std::io::Result<()> {
+    if dir.is_dir() {
+        return Ok(());
+    }
+    let mut missing = Vec::new();
+    let mut current = dir;
+    while !current.is_dir() {
+        missing.push(current);
+        match current.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => current = parent,
+            _ => break,
+        }
+    }
+    fs::create_dir_all(dir)?;
+    for created in missing.iter().rev() {
+        if let Some(parent) = created.parent().filter(|p| !p.as_os_str().is_empty()) {
+            sync_dir(parent)?;
+        }
+    }
     Ok(())
 }

@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use forge_storage::files::{safe_name, FileStore};
+use forge_storage::files::{safe_name, FileStore, Staged};
 use forge_storage::{JsonFile, StorageError};
 
 use crate::domain::LibraryData;
@@ -84,29 +84,22 @@ impl Store {
 
     /// Moves an unreadable `library.json` aside as
     /// `library.unreadable-<ms>.json`, so the app can start empty without
-    /// destroying it. Returns the backup's path (or `None` if there was no
-    /// file).
+    /// destroying it, keeping the newest three. Returns the backup's path
+    /// (or `None` if there was no file).
     pub fn set_aside(&self, now_ms: i64) -> Result<Option<PathBuf>, LibraryError> {
-        let path = self.file.path();
-        if !path.exists() {
-            return Ok(None);
-        }
-        let backup = self.dir.join(format!("library.unreadable-{now_ms}.json"));
-        std::fs::rename(path, &backup).map_err(|e| LibraryError::Storage {
-            reason: format!("move {} aside: {e}", path.display()),
-        })?;
-        Ok(Some(backup))
+        Ok(forge_storage::set_aside(self.file.path(), now_ms)?)
     }
 
-    /// Saves cover bytes under a new name and returns the name.
-    pub fn save_cover(
+    /// Stages cover bytes under a new name for a book about to be saved:
+    /// commit it once the library is saved; dropping it deletes the file.
+    pub fn stage_cover(
         &self,
         stem: &str,
         extension: &str,
         bytes: &[u8],
-    ) -> Result<String, LibraryError> {
+    ) -> Result<Staged, LibraryError> {
         let name = format!("{}.{}", safe_name(stem), safe_name(extension));
-        Ok(self.covers.write(&name, bytes)?.name)
+        Ok(self.covers.stage_write(&name, bytes)?)
     }
 
     /// Best effort: a cover that cannot be deleted only wastes space.
@@ -115,10 +108,11 @@ impl Store {
         self.covers.remove(name);
     }
 
-    /// Copies an EPUB into `books/` under a new name and returns the name.
-    pub fn save_book_file(&self, stem: &str, bytes: &[u8]) -> Result<String, LibraryError> {
+    /// Stages an EPUB in `books/` under a new name, like
+    /// [`Self::stage_cover`].
+    pub fn stage_book_file(&self, stem: &str, bytes: &[u8]) -> Result<Staged, LibraryError> {
         let name = format!("{}.epub", safe_name(stem));
-        Ok(self.books.write(&name, bytes)?.name)
+        Ok(self.books.stage_write(&name, bytes)?)
     }
 
     /// The saved EPUB's path for this launch, if `name` is a valid name.
@@ -284,14 +278,27 @@ mod tests {
     fn covers_are_named_safely_and_orphans_cleaned() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::new(dir.path());
-        let name = store.save_cover("ol/../OL1W", "jpg", b"img").unwrap();
+        let name = store.stage_cover("ol/../OL1W", "jpg", b"img").unwrap();
+        let name = name.commit().name;
         assert_eq!(name, "ol----OL1W.jpg");
-        let orphan = store.save_cover("orphan", "png", b"x").unwrap();
+        let orphan = store
+            .stage_cover("orphan", "png", b"x")
+            .unwrap()
+            .commit()
+            .name;
         let mut data = sample();
         data.books[0].cover_file = Some(name.clone());
         assert_eq!(store.usage().0, 2);
-        let book = store.save_book_file("epub-1", b"zip").unwrap();
-        let stray = store.save_book_file("epub-2", b"zip").unwrap();
+        let book = store
+            .stage_book_file("epub-1", b"zip")
+            .unwrap()
+            .commit()
+            .name;
+        let stray = store
+            .stage_book_file("epub-2", b"zip")
+            .unwrap()
+            .commit()
+            .name;
         data.books[0].epub_file = Some(book.clone());
         assert_eq!(store.usage().1, 2);
         assert_eq!(store.remove_orphan_covers(&data), 2);
@@ -308,7 +315,7 @@ mod tests {
     fn a_crash_mid_write_is_cleaned_at_launch() {
         let dir = tempfile::tempdir().unwrap();
         let store = Store::new(dir.path());
-        store.save_cover("kept", "jpg", b"img").unwrap();
+        store.stage_cover("kept", "jpg", b"img").unwrap().commit();
         // A temporary from another process that died before renaming it.
         let partial = store.covers_dir().join(".partial-999999999-0");
         std::fs::write(&partial, b"half").unwrap();
@@ -316,5 +323,38 @@ mod tests {
         store.remove_orphan_covers(&LibraryData::default());
         assert!(!partial.exists());
         assert_eq!(store.usage().0, 0);
+    }
+
+    /// Every `fixtures/library-v<N>.json` (a library as version N of the
+    /// app saved it) loads with today's code and saves again, and there is
+    /// one for the current [`STORE_VERSION`]. Old fixtures are never edited.
+    #[test]
+    fn every_saved_version_still_opens() {
+        let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+        let mut versions = Vec::new();
+        for entry in std::fs::read_dir(&fixtures).unwrap().flatten() {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let Some(version) = name
+                .strip_prefix("library-v")
+                .and_then(|rest| rest.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            versions.push(version.parse::<u32>().unwrap());
+            let dir = tempfile::tempdir().unwrap();
+            std::fs::copy(entry.path(), dir.path().join("library.json")).unwrap();
+            let store = Store::new(dir.path());
+            let data = store
+                .load()
+                .unwrap_or_else(|e| panic!("{name} does not load: {e}"));
+            assert!(!data.books.is_empty(), "{name} lost its books");
+            assert!(!data.activity.is_empty(), "{name} lost its history");
+            store.save(&data).unwrap();
+            assert_eq!(Store::new(dir.path()).load().unwrap(), data, "{name}");
+        }
+        assert!(
+            versions.contains(&STORE_VERSION),
+            "add fixtures/library-v{STORE_VERSION}.json before releasing"
+        );
     }
 }

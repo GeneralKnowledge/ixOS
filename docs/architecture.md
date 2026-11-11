@@ -17,7 +17,7 @@ A third rule decides how the framework is used:
 
 A fourth rule decides which side of the boundary owns what:
 
-4. **Native first: use Rust to build an iOS app, not to own what Apple already provides.** Rust owns portable behaviour: domain rules, data, queues, retry decisions, state. Apple's frameworks own what they already do well, and ixOS wraps them rather than reimplementing them. Five consequences:
+4. **Native first: use Rust to build an iOS app, not to own what Apple already provides.** Rust owns portable behaviour: domain rules, data, queues, retry decisions, state. Apple's frameworks own what they already do well, and ixOS wraps them rather than reimplementing them. Six consequences:
 
 | Rule | What it means |
 |---|---|
@@ -25,6 +25,7 @@ A fourth rule decides which side of the boundary owns what:
 | Don't put OS-specific rules in portable Rust | Rust validates general invariants (a positive interval, a valid identifier, a coordinate in range). Platform limits, such as the shortest repeat iOS accepts, are checked by the native adapter, which returns a meaningful error. Where a limit affects portable logic, the service reports it as a capability instead of Rust hard-coding it |
 | Don't put domain logic in Swift | Swift presentation models manage screen state, turn Rust events into UI updates, coordinate sheets and alerts, and handle lifecycle callbacks. Decisions that are part of the app's domain stay in Rust. Don't move presentation into Rust just to have more Rust |
 | Don't duplicate native helpers in apps | A reusable operation (security-scoped copying, image downscaling) lives once in `forge-services`; apps keep their own policy (naming, staging, MIME handling) |
+| Don't route UI-only platform values through Rust | A native service gets a Rust interface only when the Rust core reads its value (connectivity for download rules, say). A value only the screen shows (a compass heading, a Bluetooth state) comes from Apple's framework in Swift directly ([reinvention audit](research/reinvention-audit.md)) |
 | Don't confuse a Rust abstraction with a native implementation | A portable interface (`SecureStore`, `HttpClient`) can have a platform implementation behind it: the Keychain adapter is the model |
 
 Good examples to copy: the Keychain (`SecureStore` in Rust, Security framework in Swift), location and motion (native sensors, Rust receives values), read-aloud (AVSpeechSynthesizer speaks the text Rust structured), sharing (`ForgeShareLink` on SwiftUI's `ShareLink`) and `ForgeImages` (ImageIO, not image decoding in Rust). Where current code departs from this rule, and the plan for each, is in [native-capability-roadmap.md](native-capability-roadmap.md#where-current-code-departs-from-native-first).

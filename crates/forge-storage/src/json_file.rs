@@ -10,7 +10,9 @@
 //! [`JsonFile::save`]; anything unreadable is [`StorageError::CorruptData`],
 //! and `save` does not replace it either unless the app asks
 //! ([`JsonFile::save_over_corrupt`]).
-//! Older versions are handed to the app's migration function.
+//! Older versions are handed to the app's migration function. The first save
+//! after a migration keeps the old file beside the new one first
+//! (`notes.v1.json`; see [`crate::copies`]).
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -35,6 +37,9 @@ pub struct JsonFile<T> {
     version: u32,
     migrate: Option<Migration>,
     known: Arc<Mutex<Known>>,
+    /// The schema version the last load migrated from, until the first
+    /// save has kept a copy of that file.
+    migrated_from: Arc<Mutex<Option<u32>>>,
     _type: std::marker::PhantomData<fn() -> T>,
 }
 
@@ -63,6 +68,7 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
             version,
             migrate: None,
             known: Arc::new(Mutex::new(Known::Unchecked)),
+            migrated_from: Arc::new(Mutex::new(None)),
             _type: std::marker::PhantomData,
         }
     }
@@ -80,7 +86,10 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
 
     /// The stored value, or `None` if the file does not exist yet.
     pub fn load(&self) -> Result<Option<T>, StorageError> {
-        let result = self.read();
+        let result = self.read().map(|(value, from)| {
+            *self.migrated_from.lock().unwrap_or_else(|p| p.into_inner()) = from;
+            value
+        });
         self.remember(match &result {
             Ok(_) => Known::Ours(self.stamp()),
             Err(StorageError::CorruptData { .. }) => Known::Corrupt,
@@ -104,10 +113,11 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
         *self.known.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn read(&self) -> Result<Option<T>, StorageError> {
+    /// The value, and the schema version it was migrated from, if any.
+    fn read(&self) -> Result<(Option<T>, Option<u32>), StorageError> {
         let text = match std::fs::read_to_string(&self.path) {
             Ok(text) => text,
-            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok((None, None)),
             Err(err) => {
                 return Err(StorageError::ReadFailed {
                     reason: format!("{}: {err}", self.path.display()),
@@ -132,6 +142,7 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
             .get_mut("data")
             .map(Value::take)
             .ok_or_else(|| corrupt("missing data".into()))?;
+        let migrated_from = (found < self.version).then_some(found);
         if found < self.version {
             let migrate = self
                 .migrate
@@ -139,7 +150,7 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
             data = migrate(found, data)?;
         }
         serde_json::from_value(data)
-            .map(Some)
+            .map(|value| (Some(value), migrated_from))
             .map_err(|e| corrupt(e.to_string()))
     }
 
@@ -192,9 +203,28 @@ impl<T: Serialize + DeserializeOwned> JsonFile<T> {
         .map_err(|err| StorageError::WriteFailed {
             reason: err.to_string(),
         })?;
+        let migrated_from = *self.migrated_from.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some(from) = migrated_from {
+            self.keep_version_copy(from)?;
+        }
         write_atomic(&self.path, &json)?;
+        *self.migrated_from.lock().unwrap_or_else(|p| p.into_inner()) = None;
         self.remember(Known::Ours(self.stamp()));
         Ok(())
+    }
+
+    /// Copies the file as it is (still in schema `from`) to
+    /// `<stem>.v<from>.<ext>`, unless an earlier attempt already did.
+    fn keep_version_copy(&self, from: u32) -> Result<(), StorageError> {
+        let copy = crate::copies::version_copy_path(&self.path, from);
+        if copy.exists() {
+            return Ok(());
+        }
+        match std::fs::read(&self.path) {
+            Ok(bytes) => write_atomic(&copy, &bytes),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(err) => Err(StorageError::read("copy the file before migrating", err)),
+        }
     }
 }
 
@@ -317,5 +347,32 @@ mod tests {
             JsonFile::<Notes>::new(&path, 2).load(),
             Err(StorageError::CorruptData { .. })
         ));
+    }
+
+    #[test]
+    fn the_first_save_after_a_migration_keeps_the_old_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.json");
+        let old = r#"{"schema_version":1,"data":["x"]}"#;
+        std::fs::write(&path, old).unwrap();
+        let notes = JsonFile::<Notes>::new(&path, 2)
+            .with_migration(|_, data| Ok(serde_json::json!({ "items": data })));
+        let copy = dir.path().join("notes.v1.json");
+        let mut value = notes.load().unwrap().unwrap();
+        // Loading alone writes nothing.
+        assert!(!copy.exists());
+        value.items.push("y".into());
+        notes.save(&value).unwrap();
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), old);
+        assert_eq!(notes.load().unwrap().unwrap().items, value.items);
+        // Later saves are in the current version and leave the copy alone.
+        value.items.push("z".into());
+        notes.save(&value).unwrap();
+        assert_eq!(std::fs::read_to_string(&copy).unwrap(), old);
+        // A file in the current version is never copied.
+        let current = JsonFile::<Notes>::new(dir.path().join("other.json"), 2);
+        current.save(&value).unwrap();
+        current.save(&value).unwrap();
+        assert!(!dir.path().join("other.v2.json").exists());
     }
 }

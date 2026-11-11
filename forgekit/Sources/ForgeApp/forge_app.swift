@@ -923,6 +923,71 @@ public func FfiConverterTypeFieldError_lower(_ value: FieldError) -> RustBuffer 
 
 
 /**
+ * What the runtime found when the core opened.
+ */
+public struct LaunchReport: Equatable, Hashable {
+    /**
+     * The previous run was ended while it still had work to finish in the
+     * background: a command that hadn't saved, or `finishing` work. Tell
+     * the person if that work mattered (an export, a send); whatever a
+     * command had not committed did not happen.
+     */
+    public var unfinishedBackgroundWork: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The previous run was ended while it still had work to finish in the
+         * background: a command that hadn't saved, or `finishing` work. Tell
+         * the person if that work mattered (an export, a send); whatever a
+         * command had not committed did not happen.
+         */unfinishedBackgroundWork: Bool) {
+        self.unfinishedBackgroundWork = unfinishedBackgroundWork
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LaunchReport: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLaunchReport: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LaunchReport {
+        return
+            try LaunchReport(
+                unfinishedBackgroundWork: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LaunchReport, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.unfinishedBackgroundWork, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLaunchReport_lift(_ buf: RustBuffer) throws -> LaunchReport {
+    return try FfiConverterTypeLaunchReport.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLaunchReport_lower(_ value: LaunchReport) -> RustBuffer {
+    return FfiConverterTypeLaunchReport.lower(value)
+}
+
+
+/**
  * The application lifecycle phase, as the host reports it.
  */
 
@@ -1191,6 +1256,13 @@ public enum RuntimeEvent: Equatable, Hashable {
      */
     case eventsDropped(count: UInt64
     )
+    /**
+     * Sent only while the app is in the background: commands or finishing
+     * work started (`pending: true`) or all finished (`false`). The host
+     * holds background time while work is pending.
+     */
+    case backgroundWork(pending: Bool
+    )
 
 
 
@@ -1221,6 +1293,9 @@ public struct FfiConverterTypeRuntimeEvent: FfiConverterRustBuffer {
         case 3: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
         )
         
+        case 4: return .backgroundWork(pending: try FfiConverterBool.read(from: &buf)
+        )
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -1243,6 +1318,11 @@ public struct FfiConverterTypeRuntimeEvent: FfiConverterRustBuffer {
         case let .eventsDropped(count):
             writeInt(&buf, Int32(3))
             FfiConverterUInt64.write(count, into: &buf)
+            
+        
+        case let .backgroundWork(pending):
+            writeInt(&buf, Int32(4))
+            FfiConverterBool.write(pending, into: &buf)
             
         }
     }

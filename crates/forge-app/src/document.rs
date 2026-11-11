@@ -197,25 +197,13 @@ where
 }
 
 /// Renames the file at `path` to `<stem>.unreadable-<now_ms>.<ext>` next to
-/// it, so an app can start again without destroying it. Returns the kept
+/// it, so an app can start again without destroying it, keeping only the
+/// newest three such copies ([`forge_storage::set_aside`]). Returns the kept
 /// copy's path, or `None` when there was no file.
 pub fn set_aside(path: &Path, now_ms: i64) -> Result<Option<PathBuf>, DocumentError> {
-    if !path.exists() {
-        return Ok(None);
-    }
-    let stem = path
-        .file_stem()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "document".into());
-    let name = match path.extension() {
-        Some(ext) => format!("{stem}.unreadable-{now_ms}.{}", ext.to_string_lossy()),
-        None => format!("{stem}.unreadable-{now_ms}"),
-    };
-    let kept = path.with_file_name(name);
-    std::fs::rename(path, &kept).map_err(|e| DocumentError::Io {
-        reason: format!("move {} aside: {e}", path.display()),
-    })?;
-    Ok(Some(kept))
+    forge_storage::set_aside(path, now_ms).map_err(|e| DocumentError::Io {
+        reason: e.to_string(),
+    })
 }
 
 #[cfg(test)]

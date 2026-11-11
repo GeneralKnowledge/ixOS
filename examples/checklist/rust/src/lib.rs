@@ -11,9 +11,11 @@
 //!   never wait for a command.
 //! - **Work**: `search` is on-screen work (stopped by the background, by
 //!   the host's cancellation, by shutdown); `export_text` writes a file to
-//!   share and may finish in the background.
+//!   share and is finishing work: if the app leaves the screen meanwhile,
+//!   the host asks iOS for time to finish it.
 //! - **The runtime contract** (`events`, `set_phase`, `phase`, `revision`,
-//!   `shutdown`) comes from `forge_app::export_runtime!`.
+//!   background work, the launch report, `shutdown`) comes from
+//!   `forge_app::export_runtime!`.
 
 mod checklist;
 
@@ -236,15 +238,16 @@ impl ChecklistCore {
     }
 
     /// Writes the checklist as plain text for sharing; returns the file's
-    /// path. May finish after the app leaves the screen; stopped by
-    /// `cancellation` and shutdown.
+    /// path. Finishing work: it keeps going when the app leaves the screen,
+    /// for as long as iOS gives the app (then `Stopped { Interrupted }`);
+    /// stopped by `cancellation` and shutdown.
     pub async fn export_text(
         &self,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<String, ChecklistError> {
         let items = self.items.get();
         let path = self.caches.join(EXPORT_FILE);
-        let work = self.rt.lifetime(cancellation.as_deref());
+        let work = self.rt.finishing(cancellation.as_deref());
         self.rt
             .run("export", work, move |cancel| {
                 if cancel.is_cancelled() {

@@ -24,6 +24,7 @@ Read these in order the first time.
 | [ios-ui.md](ios-ui.md) | The SwiftUI side: how a Forge app should look and how to show Rust state |
 | [forgeui.md](forgeui.md) | ForgeUI, the design system: theme tokens, button and field styles, rows, cards, badges, states; usable in any SwiftUI app |
 | [app-foundations.md](app-foundations.md) | Rust application foundations in `forge-app`: saved state as one versioned document with recovery rules, field-by-field validation |
+| [persistence.md](persistence.md) | What Forge promises about saved data at each crash point, and what an app does: stage a file before the record that names it, sweep at launch, keep a fixture per schema version |
 | [forgeappkit.md](forgeappkit.md) | ForgeAppKit, application patterns on ForgeUI: alerts, confirmations and destinations as model values, load and submission state, form errors |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [architecture-assessment.md](architecture-assessment.md) | The architecture's trade-offs: what is intentional, what is a current limitation, and what to improve next, in order |
@@ -79,6 +80,6 @@ These pages are for people working on Forge itself. They are plans, reviews and 
 
 - Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [bevy-game-trial.md](bevy-game-trial.md)
 - Milestone plans and reports: [forge-m6.md](forge-m6.md), [m65-run-report.md](m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
-- Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/](research/)
+- Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/reinvention-audit.md](research/reinvention-audit.md) (where ixOS reinvents existing tools), [research/](research/)
 - Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [integration/](integration/), [testing/](testing/), [toolchain-validation.md](toolchain-validation.md)
 - Decisions and history: [adr/](adr/), [ideal-design.md](ideal-design.md) (historical), [release-process.md](release-process.md) (releasing Forge itself, not your app)

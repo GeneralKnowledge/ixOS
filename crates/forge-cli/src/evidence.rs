@@ -76,6 +76,11 @@ pub struct TestResult {
     pub name: String,
     pub passed: bool,
     pub seconds: f64,
+    /// What XCTest said went wrong (`file:line: error: … : message` lines
+    /// printed while the case ran), one per line. Empty when it passed, or
+    /// when a failure printed none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub diagnostics: Vec<String>,
 }
 
 /// XCTest's result lines: `Test Case 'Class.method' passed (0.009 seconds).`
@@ -83,8 +88,14 @@ pub struct TestResult {
 /// macOS.
 pub fn parse_xctest(output: &str) -> Vec<TestResult> {
     let mut results = Vec::new();
+    // Diagnostics printed since the current case started: XCTest writes
+    // them between a case's `started` and `failed` lines.
+    let mut pending: Vec<String> = Vec::new();
     for line in output.lines() {
         let Some(rest) = line.trim().strip_prefix("Test Case '") else {
+            if line.contains(": error: ") {
+                pending.push(line.trim().to_string());
+            }
             continue;
         };
         let Some((raw, tail)) = rest.split_once("' ") else {
@@ -95,17 +106,20 @@ pub fn parse_xctest(output: &str) -> Vec<TestResult> {
         } else if tail.starts_with("failed") {
             false
         } else {
-            continue; // `started at …`
+            pending.clear(); // `started at …`
+            continue;
         };
         let seconds = tail
             .split_once('(')
             .and_then(|(_, s)| s.split_whitespace().next())
             .and_then(|s| s.parse().ok())
             .unwrap_or(0.0);
+        let diagnostics = std::mem::take(&mut pending);
         results.push(TestResult {
             name: normalise_test_name(raw),
             passed,
             seconds,
+            diagnostics: if passed { Vec::new() } else { diagnostics },
         });
     }
     results
@@ -228,9 +242,136 @@ pub fn write_bundle(run: &Run, id: &str) -> Result<PathBuf, String> {
     let (log_name, log_text) = run.raw_output;
     fs::write(dir.join(log_name), log_text).map_err(|e| format!("write log: {e}"))?;
     let mut doc = document(run, id);
+    let cases: Vec<JunitCase> = run
+        .tests
+        .iter()
+        .map(|t| {
+            let (class, name) = t.name.split_once('.').unwrap_or(("", t.name.as_str()));
+            JunitCase {
+                class: class.to_string(),
+                name: name.to_string(),
+                seconds: t.seconds,
+                failure: (!t.passed).then(|| JunitFailure {
+                    message: t
+                        .diagnostics
+                        .first()
+                        .map(|d| diagnostic_message(d))
+                        .unwrap_or_else(|| {
+                            format!("failed with no diagnostic; see {}", run.raw_output.0)
+                        }),
+                    details: t.diagnostics.join("\n"),
+                }),
+            }
+        })
+        .collect();
+    write_junit(&dir, &format!("forge {}", run.command), &cases, &mut doc)?;
     hash_artifacts(&mut doc, &dir);
     write_json(&dir, &doc)?;
     Ok(dir)
+}
+
+/// One test case for [`junit_xml`].
+pub struct JunitCase {
+    pub class: String,
+    pub name: String,
+    pub seconds: f64,
+    /// `None` when it passed.
+    pub failure: Option<JunitFailure>,
+}
+
+/// Why a [`JunitCase`] failed.
+pub struct JunitFailure {
+    /// One line, shown by test viewers next to the case.
+    pub message: String,
+    /// The full diagnostic (every XCTest error line), or empty.
+    pub details: String,
+}
+
+/// The message part of an XCTest diagnostic line:
+/// `/path/File.swift:12: error: Class.method : XCTAssertEqual failed: …`
+/// gives `XCTAssertEqual failed: …`. A line of another shape is kept whole.
+pub fn diagnostic_message(line: &str) -> String {
+    let after_error = line.split_once(": error: ").map_or(line, |(_, m)| m);
+    after_error
+        .split_once(" : ")
+        .map_or(after_error, |(_, m)| m)
+        .trim()
+        .to_string()
+}
+
+pub const JUNIT_FILE: &str = "junit.xml";
+
+/// The same results as JUnit XML, the format CI systems and test viewers
+/// read. `evidence.json` stays the record: JUnit has no place for
+/// requirements, verdicts or file hashes.
+pub fn junit_xml(suite: &str, cases: &[JunitCase]) -> String {
+    let failures = cases.iter().filter(|c| c.failure.is_some()).count();
+    let total: f64 = cases.iter().map(|c| c.seconds).sum();
+    let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+    out += &format!(
+        "<testsuites tests=\"{}\" failures=\"{failures}\" time=\"{total:.3}\">\n  <testsuite name=\"{}\" tests=\"{}\" failures=\"{failures}\" errors=\"0\" skipped=\"0\" time=\"{total:.3}\">\n",
+        cases.len(),
+        xml_escape(suite),
+        cases.len(),
+    );
+    for c in cases {
+        out += &format!(
+            "    <testcase classname=\"{}\" name=\"{}\" time=\"{:.3}\"",
+            xml_escape(&c.class),
+            xml_escape(&c.name),
+            c.seconds
+        );
+        match &c.failure {
+            None => out += "/>\n",
+            Some(f) if f.details.is_empty() => {
+                out += &format!(
+                    ">\n      <failure message=\"{}\"/>\n    </testcase>\n",
+                    xml_escape(&f.message)
+                );
+            }
+            Some(f) => {
+                out += &format!(
+                    ">\n      <failure message=\"{}\">{}</failure>\n    </testcase>\n",
+                    xml_escape(&f.message),
+                    xml_escape(&f.details)
+                );
+            }
+        }
+    }
+    out += "  </testsuite>\n</testsuites>\n";
+    out
+}
+
+fn xml_escape(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for ch in text.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&apos;"),
+            // XML 1.0 can't carry most control characters at all.
+            c if (c as u32) < 0x20 && !matches!(c, '\t' | '\n' | '\r') => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out
+}
+
+/// Writes `junit.xml` into `dir` and lists it in the bundle's artifacts.
+fn write_junit(
+    dir: &Path,
+    suite: &str,
+    cases: &[JunitCase],
+    doc: &mut Value,
+) -> Result<(), String> {
+    fs::write(dir.join(JUNIT_FILE), junit_xml(suite, cases))
+        .map_err(|e| format!("write {JUNIT_FILE}: {e}"))?;
+    if let Some(list) = doc["artifacts"].as_array_mut() {
+        list.push(json!({"kind": "junit", "path": JUNIT_FILE}));
+    }
+    Ok(())
 }
 
 fn write_json(dir: &Path, doc: &Value) -> Result<(), String> {
@@ -401,6 +542,37 @@ pub fn write_device_bundle(
         "artifacts": run.artifacts.iter().map(|(k, p)| json!({"kind": k, "path": p})).collect::<Vec<_>>(),
     });
     fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    let failure = (!ok).then(|| {
+        let mut parts = Vec::new();
+        if let Some(step) = &run.failed_step {
+            let n = step.get("step").or_else(|| step.get("n")).cloned();
+            let error = step["error"].as_str().unwrap_or("failed");
+            match n {
+                Some(n) => parts.push(format!("step {n}: {error}")),
+                None => parts.push(error.to_string()),
+            }
+        }
+        parts.extend(notes.iter().cloned());
+        let message = parts.join("; ");
+        let details = run
+            .failed_step
+            .as_ref()
+            .and_then(|step| step["on_screen"].as_array())
+            .filter(|screen| !screen.is_empty())
+            .map(|screen| {
+                let labels: Vec<&str> = screen.iter().filter_map(Value::as_str).collect();
+                format!("{message}\non screen: {}", labels.join(", "))
+            })
+            .unwrap_or_default();
+        JunitFailure { message, details }
+    });
+    let case = JunitCase {
+        class: "forge ui run".into(),
+        name: run.scenario.to_string(),
+        seconds: run.duration_ms as f64 / 1000.0,
+        failure,
+    };
+    write_junit(dir, "forge ui run", &[case], &mut doc)?;
     hash_artifacts(&mut doc, dir);
     write_json(dir, &doc)?;
     Ok(dir.join("evidence.json"))
@@ -669,6 +841,29 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["requirements"][0]["twin"]["verdict"], "passed");
         assert_eq!(doc["requirements"][0]["device"]["verdict"], "unverified");
         assert!(doc["where"]["device"].is_null());
+        assert_eq!(doc["artifacts"][1]["path"], JUNIT_FILE);
+        assert!(doc["artifacts"][1]["sha256"].is_string());
+        let junit = fs::read_to_string(dir.join(JUNIT_FILE)).unwrap();
+        assert!(junit.contains(r#"failures="1""#), "{junit}");
+        assert!(
+            junit.contains(r#"classname="LibraryModelTests" name="testB""#),
+            "{junit}"
+        );
+        let cases = parse_junit(&junit);
+        assert_eq!(cases.len(), 2);
+        assert_eq!(cases[0], ("testA".to_string(), None));
+        assert_eq!(
+            cases[1],
+            (
+                "testB".to_string(),
+                Some((
+                    "XCTAssertEqual failed".to_string(),
+                    "/x/Tests/AppHostTests/LibraryModelTests.swift:12: error: \
+                     LibraryModelTests.testB : XCTAssertEqual failed"
+                        .to_string()
+                ))
+            )
+        );
     }
 
     #[test]
@@ -711,6 +906,121 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
         assert_eq!(doc["where"]["device"]["udid"], "0000");
         assert_eq!(doc["artifacts"][0]["sha256"], sha256_hex(b"png"));
         assert_eq!(doc["artifacts"][0]["bytes"], 3);
+        assert_eq!(doc["artifacts"][1]["kind"], "junit");
+        let junit = fs::read_to_string(dir.path().join(JUNIT_FILE)).unwrap();
+        assert!(junit.contains(r#"name="uitests/tip.toml""#), "{junit}");
+        assert!(
+            junit.contains(r#"<failure message="step 3: no element"/>"#),
+            "{junit}"
+        );
+        parse_junit(&junit);
+    }
+
+    /// Reads JUnit XML with a real parser: every case's name and, when it
+    /// failed, its failure message and text. Panics on XML that isn't
+    /// well-formed.
+    fn parse_junit(xml: &str) -> Vec<(String, Option<(String, String)>)> {
+        let doc = roxmltree::Document::parse(xml).expect("well-formed XML");
+        doc.descendants()
+            .filter(|n| n.has_tag_name("testcase"))
+            .map(|case| {
+                let failure = case
+                    .children()
+                    .find(|n| n.has_tag_name("failure"))
+                    .map(|f| {
+                        let message = f.attribute("message").expect("failure message");
+                        (message.to_string(), f.text().unwrap_or("").to_string())
+                    });
+                (
+                    case.attribute("name").expect("case name").to_string(),
+                    failure,
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn junit_counts_failures_and_escapes_text() {
+        let tricky = "expected <1> & got \"2\" isn't \u{1}right";
+        let cases = [
+            JunitCase {
+                class: "TipTests".into(),
+                name: "testAdds".into(),
+                seconds: 0.25,
+                failure: None,
+            },
+            JunitCase {
+                class: "TipTests".into(),
+                name: "testRounds".into(),
+                seconds: 0.5,
+                failure: Some(JunitFailure {
+                    message: tricky.into(),
+                    details: format!("line one: {tricky}\nline two"),
+                }),
+            },
+            JunitCase {
+                class: "Tip<Tests>".into(),
+                name: "testNoDiagnostic".into(),
+                seconds: 0.0,
+                failure: Some(JunitFailure {
+                    message: "failed".into(),
+                    details: String::new(),
+                }),
+            },
+        ];
+        let xml = junit_xml("forge check swift", &cases);
+        assert!(
+            xml.contains(r#"<testsuite name="forge check swift" tests="3" failures="2" errors="0" skipped="0" time="0.750">"#),
+            "{xml}"
+        );
+        // The control character can't travel in XML 1.0; it becomes a space.
+        let readable = "expected <1> & got \"2\" isn't  right";
+        assert_eq!(
+            parse_junit(&xml),
+            vec![
+                ("testAdds".to_string(), None),
+                (
+                    "testRounds".to_string(),
+                    Some((
+                        readable.to_string(),
+                        format!("line one: {readable}\nline two")
+                    ))
+                ),
+                (
+                    "testNoDiagnostic".to_string(),
+                    Some(("failed".to_string(), String::new()))
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn xctest_diagnostics_belong_to_the_case_that_printed_them() {
+        let r = parse_xctest(LINUX);
+        assert!(r[0].diagnostics.is_empty());
+        assert_eq!(
+            r[1].diagnostics,
+            vec!["/x/Tests/AppHostTests/LibraryModelTests.swift:12: error: LibraryModelTests.testB : XCTAssertEqual failed"]
+        );
+        assert_eq!(
+            diagnostic_message(&r[1].diagnostics[0]),
+            "XCTAssertEqual failed"
+        );
+        let mac = "\
+Test Case '-[AppHostTests.T testA]' started.
+/x/T.swift:3: error: -[AppHostTests.T testA] : XCTAssertTrue failed - empty
+/x/T.swift:4: error: -[AppHostTests.T testA] : XCTAssertEqual failed: (\"1\") is not equal to (\"2\")
+Test Case '-[AppHostTests.T testA]' failed (0.002 seconds).
+Test Case '-[AppHostTests.T testB]' started.
+Test Case '-[AppHostTests.T testB]' passed (0.001 seconds).
+";
+        let r = parse_xctest(mac);
+        assert_eq!(r[0].diagnostics.len(), 2);
+        assert_eq!(
+            diagnostic_message(&r[0].diagnostics[0]),
+            "XCTAssertTrue failed - empty"
+        );
+        assert!(r[1].diagnostics.is_empty());
     }
 
     #[test]

@@ -9,8 +9,12 @@ import UIKit
 public enum ForgeLifecycle {
     private static var observers: [NSObjectProtocol] = []
 
+    /// Also gives the host UIKit's background time (`beginBackgroundTask`)
+    /// for commands and finishing work still running when the app leaves
+    /// the screen, unless it already has a `backgroundTime`.
     public static func attach<Core: ForgeCore>(_ host: ForgeHost<Core>) {
         detach()
+        if host.backgroundTime == nil { host.backgroundTime = ForgeUIKitBackgroundTime() }
         let center = NotificationCenter.default
         let pairs: [(Notification.Name, AppPhase)] = [
             (UIApplication.didBecomeActiveNotification, .active),
@@ -34,6 +38,29 @@ public enum ForgeLifecycle {
     public static func detach() {
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
+    }
+}
+
+/// Background time from UIKit: one `beginBackgroundTask` at a time, ended
+/// when the work is done or the time runs out.
+@MainActor
+public final class ForgeUIKitBackgroundTime: ForgeBackgroundTime {
+    private var task: UIBackgroundTaskIdentifier = .invalid
+
+    public init() {}
+
+    public func begin(onExpiry: @escaping @MainActor () -> Void) {
+        guard task == .invalid else { return }
+        // The expiration handler runs on the main thread.
+        task = UIApplication.shared.beginBackgroundTask(withName: "Forge: finishing work") {
+            MainActor.assumeIsolated { onExpiry() }
+        }
+    }
+
+    public func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
     }
 }
 #endif

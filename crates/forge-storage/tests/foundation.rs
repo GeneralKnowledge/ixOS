@@ -244,9 +244,10 @@ fn child_files_and_records_writer() {
     let mut n = current.items.iter().max().copied().unwrap_or(0);
     loop {
         n += 1;
-        // The order the docs prescribe: the file first, then the record
-        // that names it. Removing goes the other way round.
-        files.write(&item_name(n), &item_bytes(n)).unwrap();
+        // The order the docs prescribe, through the staging API: the file
+        // first, then the record that names it, then commit. Removing goes
+        // the other way round.
+        let staged = files.stage_write(&item_name(n), &item_bytes(n)).unwrap();
         current.items.push(n);
         let evicted = if current.items.len() > 20 {
             Some(current.items.remove(0))
@@ -254,6 +255,7 @@ fn child_files_and_records_writer() {
             None
         };
         records.save(&current).unwrap();
+        staged.commit();
         std::fs::write(dir.join("ready"), b"").unwrap();
         if let Some(old) = evicted {
             files.remove(&item_name(old));
@@ -261,7 +263,8 @@ fn child_files_and_records_writer() {
     }
 }
 
-/// FileStore invariant: with "file first, record second, sweep at launch",
+/// FileStore invariant: with "stage the file, save the record, commit,
+/// sweep at launch",
 /// a crash never leaves a record naming a missing or partial file, and the
 /// sweep removes exactly the files no record names.
 #[test]

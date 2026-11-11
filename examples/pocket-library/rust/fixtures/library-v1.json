@@ -1,0 +1,444 @@
+{
+  "schema_version": 1,
+  "data": {
+    "next_id": 7,
+    "books": [
+      {
+        "id": 1,
+        "title": "The Salt Road",
+        "author": "Mara Ellison",
+        "description": "Three generations of a family follow the old trade route across the desert.",
+        "status": "Finished",
+        "current_page": 312,
+        "total_pages": 312,
+        "rating": 5,
+        "notes": "",
+        "cover_file": "the-salt-road.png",
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1791767637672,
+        "started_at_ms": 1792635237672,
+        "finished_at_ms": 1793240037672,
+        "updated_at_ms": 1793240037672,
+        "epub_file": null,
+        "reading_position": null
+      },
+      {
+        "id": 2,
+        "title": "A Field Guide to Clouds",
+        "author": "Tomas Reyes",
+        "description": "How to read the sky, from cirrus to cumulonimbus.",
+        "status": "Finished",
+        "current_page": 224,
+        "total_pages": 224,
+        "rating": 4,
+        "notes": "",
+        "cover_file": "a-field-guide-to-clouds.png",
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1793150037672,
+        "started_at_ms": 1793412837672,
+        "finished_at_ms": 1793844837672,
+        "updated_at_ms": 1793844837672,
+        "epub_file": null,
+        "reading_position": null
+      },
+      {
+        "id": 3,
+        "title": "Night Trains",
+        "author": "Ines Kovač",
+        "description": "Stories set on sleeper trains across Europe.",
+        "status": "Reading",
+        "current_page": 187,
+        "total_pages": 388,
+        "rating": null,
+        "notes": "",
+        "cover_file": "night-trains.png",
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1793668437672,
+        "started_at_ms": 1793931237672,
+        "finished_at_ms": null,
+        "updated_at_ms": 1794363237672,
+        "epub_file": "night-trains.epub",
+        "reading_position": {
+          "chapter": 0,
+          "fraction": 0.0,
+          "page": 187
+        }
+      },
+      {
+        "id": 4,
+        "title": "The Quiet Workshop",
+        "author": "Daniel Okafor",
+        "description": "Notes on making things slowly and well.",
+        "status": "Reading",
+        "current_page": 64,
+        "total_pages": 256,
+        "rating": null,
+        "notes": "",
+        "cover_file": null,
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1793841237672,
+        "started_at_ms": 1794017637672,
+        "finished_at_ms": null,
+        "updated_at_ms": 1794190437672,
+        "epub_file": null,
+        "reading_position": null
+      },
+      {
+        "id": 5,
+        "title": "Harbour Lights",
+        "author": "Annika Berg",
+        "description": "",
+        "status": "WantToRead",
+        "current_page": 0,
+        "total_pages": 410,
+        "rating": null,
+        "notes": "",
+        "cover_file": "harbour-lights.png",
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1794100437672,
+        "started_at_ms": null,
+        "finished_at_ms": null,
+        "updated_at_ms": 1794100437672,
+        "epub_file": null,
+        "reading_position": null
+      },
+      {
+        "id": 6,
+        "title": "An Atlas of Small Islands",
+        "author": "Priya Natarajan",
+        "description": "Fifty islands most maps leave out.",
+        "status": "WantToRead",
+        "current_page": 0,
+        "total_pages": 198,
+        "rating": null,
+        "notes": "",
+        "cover_file": null,
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1794273237672,
+        "started_at_ms": null,
+        "finished_at_ms": null,
+        "updated_at_ms": 1794273237672,
+        "epub_file": null,
+        "reading_position": null
+      },
+      {
+        "id": 7,
+        "title": "Winter Orchard",
+        "author": "Mara Ellison",
+        "description": "",
+        "status": "Finished",
+        "current_page": 290,
+        "total_pages": 290,
+        "rating": 4,
+        "notes": "",
+        "cover_file": null,
+        "cover_url": null,
+        "source": "Manual",
+        "added_at_ms": 1790471637672,
+        "started_at_ms": 1790907237672,
+        "finished_at_ms": 1791166437672,
+        "updated_at_ms": 1791166437672,
+        "epub_file": null,
+        "reading_position": null
+      }
+    ],
+    "next_activity_id": 30,
+    "activity": [
+      {
+        "id": 1,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1791767637672,
+        "kind": "Added"
+      },
+      {
+        "id": 2,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1792635237672,
+        "kind": "Started"
+      },
+      {
+        "id": 3,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1792635237672,
+        "kind": {
+          "Progress": {
+            "from_page": 0,
+            "to_page": 60
+          }
+        }
+      },
+      {
+        "id": 4,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1792808037672,
+        "kind": {
+          "Progress": {
+            "from_page": 60,
+            "to_page": 140
+          }
+        }
+      },
+      {
+        "id": 5,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1793067237672,
+        "kind": {
+          "Progress": {
+            "from_page": 140,
+            "to_page": 230
+          }
+        }
+      },
+      {
+        "id": 6,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1793240037672,
+        "kind": {
+          "Progress": {
+            "from_page": 230,
+            "to_page": 312
+          }
+        }
+      },
+      {
+        "id": 7,
+        "book_id": 1,
+        "book_title": "The Salt Road",
+        "at_ms": 1793240037672,
+        "kind": "Finished"
+      },
+      {
+        "id": 8,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793150037672,
+        "kind": "Added"
+      },
+      {
+        "id": 9,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793412837672,
+        "kind": "Started"
+      },
+      {
+        "id": 10,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793412837672,
+        "kind": {
+          "Progress": {
+            "from_page": 0,
+            "to_page": 50
+          }
+        }
+      },
+      {
+        "id": 11,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793585637672,
+        "kind": {
+          "Progress": {
+            "from_page": 50,
+            "to_page": 120
+          }
+        }
+      },
+      {
+        "id": 12,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793844837672,
+        "kind": {
+          "Progress": {
+            "from_page": 120,
+            "to_page": 224
+          }
+        }
+      },
+      {
+        "id": 13,
+        "book_id": 2,
+        "book_title": "A Field Guide to Clouds",
+        "at_ms": 1793844837672,
+        "kind": "Finished"
+      },
+      {
+        "id": 14,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1793668437672,
+        "kind": "Added"
+      },
+      {
+        "id": 15,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1793931237672,
+        "kind": "Started"
+      },
+      {
+        "id": 16,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1793931237672,
+        "kind": {
+          "Progress": {
+            "from_page": 0,
+            "to_page": 40
+          }
+        }
+      },
+      {
+        "id": 17,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1794104037672,
+        "kind": {
+          "Progress": {
+            "from_page": 40,
+            "to_page": 96
+          }
+        }
+      },
+      {
+        "id": 18,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1794276837672,
+        "kind": {
+          "Progress": {
+            "from_page": 96,
+            "to_page": 151
+          }
+        }
+      },
+      {
+        "id": 19,
+        "book_id": 3,
+        "book_title": "Night Trains",
+        "at_ms": 1794363237672,
+        "kind": {
+          "Progress": {
+            "from_page": 151,
+            "to_page": 187
+          }
+        }
+      },
+      {
+        "id": 20,
+        "book_id": 4,
+        "book_title": "The Quiet Workshop",
+        "at_ms": 1793841237672,
+        "kind": "Added"
+      },
+      {
+        "id": 21,
+        "book_id": 4,
+        "book_title": "The Quiet Workshop",
+        "at_ms": 1794017637672,
+        "kind": "Started"
+      },
+      {
+        "id": 22,
+        "book_id": 4,
+        "book_title": "The Quiet Workshop",
+        "at_ms": 1794017637672,
+        "kind": {
+          "Progress": {
+            "from_page": 0,
+            "to_page": 22
+          }
+        }
+      },
+      {
+        "id": 23,
+        "book_id": 4,
+        "book_title": "The Quiet Workshop",
+        "at_ms": 1794190437672,
+        "kind": {
+          "Progress": {
+            "from_page": 22,
+            "to_page": 64
+          }
+        }
+      },
+      {
+        "id": 24,
+        "book_id": 5,
+        "book_title": "Harbour Lights",
+        "at_ms": 1794100437672,
+        "kind": "Added"
+      },
+      {
+        "id": 25,
+        "book_id": 6,
+        "book_title": "An Atlas of Small Islands",
+        "at_ms": 1794273237672,
+        "kind": "Added"
+      },
+      {
+        "id": 26,
+        "book_id": 7,
+        "book_title": "Winter Orchard",
+        "at_ms": 1790471637672,
+        "kind": "Added"
+      },
+      {
+        "id": 27,
+        "book_id": 7,
+        "book_title": "Winter Orchard",
+        "at_ms": 1790907237672,
+        "kind": "Started"
+      },
+      {
+        "id": 28,
+        "book_id": 7,
+        "book_title": "Winter Orchard",
+        "at_ms": 1790907237672,
+        "kind": {
+          "Progress": {
+            "from_page": 0,
+            "to_page": 150
+          }
+        }
+      },
+      {
+        "id": 29,
+        "book_id": 7,
+        "book_title": "Winter Orchard",
+        "at_ms": 1791166437672,
+        "kind": {
+          "Progress": {
+            "from_page": 150,
+            "to_page": 290
+          }
+        }
+      },
+      {
+        "id": 30,
+        "book_id": 7,
+        "book_title": "Winter Orchard",
+        "at_ms": 1791166437672,
+        "kind": "Finished"
+      }
+    ],
+    "settings": {
+      "default_sort": "RecentlyAdded",
+      "catalogue_enabled": true
+    }
+  }
+}

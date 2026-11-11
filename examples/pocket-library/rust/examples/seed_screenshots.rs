@@ -107,6 +107,8 @@ fn main() {
         .nth(1)
         .expect("usage: seed_screenshots <dir>");
     let store = Store::new(&dir);
+    // The seed replaces the whole library, files included.
+    store.clear_files();
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
@@ -117,8 +119,10 @@ fn main() {
     for seed in BOOKS {
         let cover_file = seed.cover.map(|(background, band)| {
             store
-                .save_cover(&slug(seed.title), "png", &cover_png(background, band))
+                .stage_cover(&slug(seed.title), "png", &cover_png(background, band))
                 .unwrap()
+                .commit()
+                .name
         });
         let input = validate(BookInput {
             title: seed.title.into(),
@@ -152,8 +156,10 @@ fn main() {
         if seed.title == "Night Trains" {
             book.epub_file = Some(
                 store
-                    .save_book_file("night-trains", &night_trains_epub())
-                    .unwrap(),
+                    .stage_book_file("night-trains", &night_trains_epub())
+                    .unwrap()
+                    .commit()
+                    .name,
             );
             book.reading_position = Some(SavedPosition {
                 chapter: 0,
