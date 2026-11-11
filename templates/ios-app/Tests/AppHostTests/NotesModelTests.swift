@@ -116,6 +116,28 @@ final class NotesModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSwipeDeleteAsksFirst() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        try await model.add(text: "Keep me")
+        let note = try XCTUnwrap(model.notes.first)
+
+        model.askToDelete(note)
+        XCTAssertEqual(model.notes.count, 1, "asking deletes nothing")
+        let confirm = try XCTUnwrap(model.alert?.action(for: "Delete Note"))
+        await model.handle(confirm)
+        XCTAssertEqual(model.notes, [])
+        host.close()
+    }
+
+    func testErrorAlertsSayWhatHappened() {
+        XCTAssertEqual(AppError.Offline(reason: "no route").failure.title, "You're Offline")
+        XCTAssertTrue(AppError.Offline(reason: "no route").failure.isRetryable)
+        XCTAssertFalse(
+            AppError.Storage(reason: "disk I/O").failure.message.contains("disk I/O"),
+            "diagnostics stay in the log")
+    }
+
+    @MainActor
     func testRustErrorsArriveTyped() async throws {
         let (host, model) = try await open(try makeDirectory())
         do {

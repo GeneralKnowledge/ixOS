@@ -16,6 +16,8 @@ struct CatalogueSearchView: View {
     @State private var submitted: SearchRequest?
     /// The search's state as one value (ForgeAppKit).
     @State private var state: ForgeLoad<[CatalogueBook]> = .idle
+    /// Counts searches, so a stopped one only tidies up after itself.
+    @State private var searches = 0
     @State private var importingKey: String?
     @State private var importNotes: ImportNotes?
     @State private var error: ForgeAlert<Never>?
@@ -45,6 +47,7 @@ struct CatalogueSearchView: View {
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
+                            .accessibilityIdentifier("catalogue.cancel")
                     }
                 }
         }
@@ -110,7 +113,10 @@ struct CatalogueSearchView: View {
                 }
             }
             .listStyle(.plain)
-            .refreshable { await search() }
+            // Keeps the results on screen while it searches again: swapping
+            // them for a spinner would remove the list that owns this
+            // refresh, cancel it, and leave "Searching…" for good.
+            .refreshable { await search(showingProgress: false) }
         }
     }
 
@@ -125,12 +131,21 @@ struct CatalogueSearchView: View {
         submitted = SearchRequest(text: current.text, attempt: current.attempt + 1)
     }
 
-    private func search() async {
+    private func search(showingProgress: Bool = true) async {
         guard let submitted else { return }
-        state = .loading
+        let before = state
+        searches += 1
+        let this = searches
+        if showingProgress { state = .loading }
         // A newer search replaced this one, or the sheet closed: the model
-        // has already stopped the Rust request, and nothing is shown.
+        // has already stopped the Rust request. Put back what was showing,
+        // so a stopped search never leaves the spinner behind.
         let outcome = await ForgeLoad.capture { try await model.searchCatalogue(submitted.text) }
+        if case .idle = outcome {
+            // Unless a newer search has taken over the screen.
+            if this == searches, state.isLoading { state = before.isLoading ? .idle : before }
+            return
+        }
         guard !Task.isCancelled else { return }
         state = outcome
     }

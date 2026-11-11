@@ -103,7 +103,7 @@ struct MyDogView: View {
             } message: {
                 Text("This deletes your dog's details, plans, sessions and progress. It can't be undone.")
             }
-            .errorAlert("Something Went Wrong", message: $model.actionError)
+            .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
         }
     }
 }

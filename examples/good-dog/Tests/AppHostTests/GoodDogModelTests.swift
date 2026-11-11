@@ -30,6 +30,20 @@ final class GoodDogModelTests: XCTestCase {
     )
 
     @MainActor
+    func testTryAgainWorksWhileTheCoreIsOpen() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        // A failure after opening leaves the core open, where open() does
+        // nothing: Try Again must still read everything again.
+        await model.retry()
+        XCTAssertEqual(model.phase, .ready)
+        XCTAssertNotNil(model.today)
+        XCTAssertNil(model.todayError)
+        XCTAssertEqual(GoodDogModel.title(AppError.NoAlternative), "Nothing Else Suits Today")
+        model.close()
+    }
+
+    @MainActor
     func testOnboardingLeadsToATodayPlanThatSurvivesARelaunch() async throws {
         let dir = try makeDirectory()
         let model = await openModel(dir)

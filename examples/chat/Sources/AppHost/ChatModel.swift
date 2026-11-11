@@ -47,6 +47,9 @@ public final class ChatModel {
     public private(set) var listError: String?
     /// Why the last send or retry failed, per room.
     public private(set) var sendError: [String: String] = [:]
+    /// Why opening a room (going live or catching up) failed, per room. Kept
+    /// apart from `sendError`: nothing the person wrote failed.
+    public private(set) var roomError: [String: String] = [:]
     /// Set when the server stopped accepting this device's account.
     public private(set) var accountProblem: String?
     /// A failed action, for an alert. The view clears it when dismissed.
@@ -268,11 +271,21 @@ public final class ChatModel {
         case .connected, .reconnecting: break
         case .closed, .connecting, nil: connection[conversationId] = .connecting
         }
+        roomError[conversationId] = nil
         do {
             try core.subscribe(conversationId: conversationId)
+        } catch {
+            // No stream started, so no event will ever move the room on from
+            // "Connecting…": say it isn't connected, and why.
+            connection[conversationId] = .closed
+            roomError[conversationId] = Self.describe(error)
+            return
+        }
+        do {
             messages[conversationId] = try await core.syncMessages(conversationId: conversationId)
         } catch {
-            sendError[conversationId] = Self.describe(error)
+            // Live, but the catch-up failed: stored messages stay on screen.
+            roomError[conversationId] = Self.describe(error)
         }
     }
 

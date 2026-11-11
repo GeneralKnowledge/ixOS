@@ -125,6 +125,7 @@ struct EditDogView: View {
     @State private var goal: TrainingGoal
     @State private var experience: OwnerExperience
     @State private var error: String?
+    @State private var saving = false
     @FocusState private var nameFocused: Bool
 
     init(model: GoodDogModel, dog: DogProfile) {
@@ -160,18 +161,26 @@ struct EditDogView: View {
                         .accessibilityIdentifier("dogForm.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task {
-                            do {
-                                try await model.saveDog(edited)
-                                dismiss()
-                            } catch {
-                                self.error = GoodDogModel.describe(error)
+                    if saving {
+                        ProgressView()
+                            .accessibilityLabel("Saving")
+                    } else {
+                        Button("Save") {
+                            // One save at a time: the button is a spinner until it ends.
+                            saving = true
+                            Task {
+                                defer { saving = false }
+                                do {
+                                    try await model.saveDog(edited)
+                                    dismiss()
+                                } catch {
+                                    self.error = GoodDogModel.describe(error)
+                                }
                             }
                         }
+                        .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                        .accessibilityIdentifier("dogForm.save")
                     }
-                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
-                    .accessibilityIdentifier("dogForm.save")
                 }
             }
             .interactiveDismissDisabled(edited != dog)

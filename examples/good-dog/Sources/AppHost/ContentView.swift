@@ -23,7 +23,7 @@ public struct ContentView: View {
                     "Can't Open Good Dog",
                     message: message,
                     retry: ForgeStateAction("Try Again", identifier: "content.retry") {
-                        Task { await model.open() }
+                        Task { await model.retry() }
                     }
                 )
             }

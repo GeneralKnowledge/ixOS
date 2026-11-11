@@ -31,6 +31,11 @@ public final class GoodDogModel {
     public var searchText = ""
     /// A failed action, for an alert. The view clears it when dismissed.
     public var actionError: String?
+    /// The alert's title for `actionError`: what kind of problem it was.
+    public private(set) var actionErrorTitle = "Something Went Wrong"
+    /// Why today's plan couldn't be built. The Today tab shows it with Try
+    /// Again; the other tabs keep working.
+    public private(set) var todayError: String?
     /// Increases after each recorded session; views use it as a haptic trigger.
     public private(set) var sessionCount = 0
 
@@ -99,6 +104,17 @@ public final class GoodDogModel {
 
     // MARK: Lifecycle
 
+    /// Try Again on the failure screen: opens the core if it isn't open,
+    /// otherwise reads everything again (a failure after opening, such as
+    /// today's plan, leaves the core open, where `open()` does nothing).
+    public func retry() async {
+        if core == nil {
+            await open()
+        } else {
+            await reload()
+        }
+    }
+
     /// Opens the Rust core and starts listening for its events. Calling it
     /// again while open does nothing.
     public func open() async {
@@ -150,16 +166,20 @@ public final class GoodDogModel {
         progress = core.progress(now: clock())
         guard dog != nil else {
             today = nil
+            todayError = nil
             phase = .needsDog
             return
         }
         do {
             today = try await core.today(now: clock())
-            phase = .ready
+            todayError = nil
         } catch {
+            // Only Today depends on the plan: Learn and My Dog stay usable.
             log.warn("today failed: \(error)")
-            phase = .failed(Self.describe(error))
+            today = nil
+            todayError = Self.describe(error)
         }
+        phase = .ready
     }
 
     // MARK: Commands
@@ -245,6 +265,7 @@ public final class GoodDogModel {
             try await command(core, clock())
         } catch {
             log.warn("command failed: \(error)")
+            actionErrorTitle = Self.title(error)
             actionError = Self.describe(error)
         }
     }
@@ -264,8 +285,22 @@ public final class GoodDogModel {
         }
     }
 
+    /// A short alert title for each error, so the alert says what kind of
+    /// problem it was rather than "Something Went Wrong" every time.
+    public static func title(_ error: Error) -> String {
+        guard let error = error as? AppError else { return "Something Went Wrong" }
+        switch error {
+        case .InvalidInput: return "Check the Details"
+        case .NotFound: return "Not Found"
+        case .NoDog: return "No Dog Yet"
+        case .NoAlternative: return "Nothing Else Suits Today"
+        case .Storage: return "Couldn't Save"
+        case .ShutDown: return "Good Dog Is Closing"
+        }
+    }
+
     public static func describe(_ error: Error) -> String {
-        guard let error = error as? AppError else { return error.localizedDescription }
+        guard let error = error as? AppError else { return "Try again. If it keeps happening, close the app and open it again." }
         switch error {
         case .InvalidInput(let reason): return "Please check: \(reason)."
         case .NotFound: return "That's no longer available."

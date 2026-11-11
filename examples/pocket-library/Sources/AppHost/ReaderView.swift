@@ -371,11 +371,14 @@ struct ReaderView: View {
             ?? fraction(in: chapter)
         let position = ReadingPosition(chapter: chapter.index, fraction: fraction)
         guard position != lastSaved else { return }
+        let previous = lastSaved
         lastSaved = position
         Task {
             do {
                 try await model.saveReadingPosition(bookID, chapter: position.chapter, fraction: position.fraction)
             } catch {
+                // Not saved: the next move, or leaving, tries again.
+                if lastSaved == position { lastSaved = previous }
                 self.error = .failure(error)
             }
         }

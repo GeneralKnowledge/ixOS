@@ -29,6 +29,7 @@ public struct ContentView: View {
                 } actions: {
                     Button("Try Again") { Task { await model.open() } }
                         .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier("content.retry")
                 }
             }
         }

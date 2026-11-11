@@ -52,7 +52,11 @@ struct ChatView: View {
     var body: some View {
         let content = transcript
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConnectionBanner(state: model.connection[conversationId] ?? .closed)
+                ConnectionBanner(
+                    state: model.connection[conversationId] ?? .connecting,
+                    problem: model.roomError[conversationId],
+                    reconnect: { Task { await model.enter(conversationId) } }
+                )
             }
             .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         return lifecycle(attachmentPickers(navigation(content)))
@@ -531,24 +535,37 @@ enum Transcript {
 
 private struct ConnectionBanner: View {
     let state: ConnectionState
+    /// Why opening the room failed, if it did.
+    let problem: String?
+    let reconnect: () -> Void
 
     var body: some View {
         switch state {
         case .connected:
-            EmptyView()
+            if let problem {
+                banner(Text(verbatim: problem), systemImage: "exclamationmark.triangle")
+            }
         case .connecting:
-            banner("Connecting…", systemImage: "antenna.radiowaves.left.and.right")
+            banner(Text("Connecting…"), systemImage: "antenna.radiowaves.left.and.right")
         case .reconnecting:
             banner(
-                "Reconnecting… Messages you send now wait and go out when the connection is back.",
+                Text("Reconnecting… Messages you send now wait and go out when the connection is back."),
                 systemImage: "wifi.exclamationmark")
         case .closed:
-            banner("Not connected", systemImage: "wifi.slash")
+            VStack(spacing: 4) {
+                banner(problem.map { Text(verbatim: $0) } ?? Text("Not connected"), systemImage: "wifi.slash")
+                Button("Reconnect", action: reconnect)
+                    .font(.footnote)
+                    .accessibilityIdentifier("chat.reconnect")
+            }
+            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+            .background(.bar)
         }
     }
 
-    private func banner(_ text: LocalizedStringKey, systemImage: String) -> some View {
-        Label(text, systemImage: systemImage)
+    private func banner(_ text: Text, systemImage: String) -> some View {
+        Label { text } icon: { Image(systemName: systemImage) }
             .font(.footnote)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity)
