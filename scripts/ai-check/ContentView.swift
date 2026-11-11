@@ -1,5 +1,6 @@
 @preconcurrency import CoreMLLLM
 @preconcurrency import AICheckFFI
+import ForgeKit
 import Foundation
 import SwiftUI
 import Tokenizers
@@ -273,6 +274,9 @@ func generateWithQwen(
 
 public struct ContentView: View {
     public init() {}
+    /// The starter's entry points pass their ForgeKit host; the check
+    /// screen doesn't use the app's Rust core, so it ignores it.
+    public init(host _: ForgeHost<AppCore>) {}
 
     @State private var log: [String] = []
     @State private var host = ModelHost()
