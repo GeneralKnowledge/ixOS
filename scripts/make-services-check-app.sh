@@ -20,7 +20,11 @@ export FORGE_WORKSPACE="$ROOT"
   --bundle-id "${FORGE_CHECK_BUNDLE_ID:-org.example.servicescheck}" --path "$APP"
 
 cat "$ROOT/crates/forge-services/device-check/services_check.rs" >>"$APP/rust/src/lib.rs"
-cp "$ROOT/crates/forge-services/device-check/ContentView.swift" "$APP/Sources/AppHost/ContentView.swift"
+# The screen imports the bindings by the app's own module name (forge.toml
+# [swift] bindings_module, ServicesCheckFFI for a fresh app).
+MODULE="$(sed -n 's/^bindings_module *= *"\(.*\)"/\1/p' "$APP/forge.toml")"
+sed "s/^@preconcurrency import ForgeFFI$/@preconcurrency import ${MODULE:-ForgeFFI}/" \
+  "$ROOT/crates/forge-services/device-check/ContentView.swift" >"$APP/Sources/AppHost/ContentView.swift"
 
 # Register the forgecheck:// scheme (forge.toml [ios] url_schemes).
 if grep -q 'url_schemes' "$APP/forge.toml"; then
