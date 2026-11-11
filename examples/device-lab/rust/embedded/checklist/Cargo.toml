@@ -1,0 +1,29 @@
+# Checklist's Rust crate, compiled a second time as a library of the Device Lab
+# showcase. The source is examples/checklist/rust/src, unchanged; only the library
+# name differs. Forge apps all call their library forge_ffi, so two app
+# crates can't be linked into one app under their own manifests
+# (docs/research/showcase-friction-log.md, F1). Keep [dependencies] in step
+# with examples/checklist/rust/Cargo.toml: a missing one fails the build.
+[package]
+name = "checklist-embedded"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+[lib]
+# The UniFFI namespace follows the library name (setup_scaffolding!() with no
+# argument), so these bindings become their own Swift file in ForgeFFI.
+name = "checklist_core"
+path = "../../../../checklist/rust/src/lib.rs"
+
+[dependencies]
+forge-app = { path = "../../../../../crates/forge-app" }
+forge-runtime = { path = "../../../../../crates/forge-runtime" }
+forge-storage = { path = "../../../../../crates/forge-storage" }
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"

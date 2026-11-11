@@ -20,11 +20,21 @@ ios_simulator = false
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.
 [ios]
 orientations = ["portrait"]
+# Pocket Library, on the Apps screen, keeps reading aloud when the screen
+# locks, as it does on its own.
+background_modes = ["audio"]
+
+# Throwaway data for UI automation. The apps on the Apps screen each have
+# their own argument (docs/research/showcase-friction-log.md): Checklist's
+# ForgeKit host takes -ForgeTemporaryData, Pocket Library -ForgeUITestData.
+# Weather keeps only a forecast cache; Device Lab keeps nothing.
+[ui_test]
+test_data_args = ["-ForgeTemporaryData", "-ForgeUITestData"]
 
 # The text iOS shows when the app asks. Each one is asked only when the user
 # taps the matching "Allow" button on the dashboard.
 [ios.permissions]
-location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open. Nothing leaves your phone."
+location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone."
 motion = "Device Lab reads the barometer for air pressure and height changes."
 bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
 

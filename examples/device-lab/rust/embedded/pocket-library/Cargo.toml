@@ -1,0 +1,34 @@
+# Pocket Library's Rust crate, compiled a second time as a library of the Device Lab
+# showcase. The source is examples/pocket-library/rust/src, unchanged; only the library
+# name differs. Forge apps all call their library forge_ffi, so two app
+# crates can't be linked into one app under their own manifests
+# (docs/research/showcase-friction-log.md, F1). Keep [dependencies] in step
+# with examples/pocket-library/rust/Cargo.toml: a missing one fails the build.
+[package]
+name = "pocket-library-embedded"
+version = "0.1.0"
+edition = "2021"
+publish = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+
+[lib]
+# The UniFFI namespace follows the library name (setup_scaffolding!() with no
+# argument), so these bindings become their own Swift file in ForgeFFI.
+name = "pocket_library_core"
+path = "../../../../pocket-library/rust/src/lib.rs"
+
+[dependencies]
+forge-app = { path = "../../../../../crates/forge-app" }
+forge-runtime = { path = "../../../../../crates/forge-runtime" }
+forge-storage = { path = "../../../../../crates/forge-storage" }
+forge-net = { path = "../../../../../crates/forge-net", features = ["ureq"] }
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+zip = { version = "9.4", default-features = false, features = ["deflate-flate2"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+quick-xml = "0.42"

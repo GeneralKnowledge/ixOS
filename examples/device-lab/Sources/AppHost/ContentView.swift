@@ -7,18 +7,37 @@ import SwiftUI
 public struct ContentView: View {
     @State private var model = LabModel()
     @Environment(\.scenePhase) private var scenePhase
+    /// The app the Apps screen has open, if any (AppsView).
+    @State private var openApp: EmbeddedApp?
+    /// The app to open at launch, chosen on the Apps screen. A launch
+    /// argument (`-launchApp weather`) sets it too.
+    @AppStorage(EmbeddedApp.launchKey) private var launchApp = ""
+    @State private var launched = false
 
     public init() {}
 
     public var body: some View {
         NavigationStack {
-            DashboardView(model: model)
+            DashboardView(model: model, openApp: $openApp)
+        }
+        .sheet(item: $openApp) { app in
+            app.content
+                .presentationDragIndicator(.visible)
+        }
+        .onAppear {
+            guard !launched else { return }
+            launched = true
+            openApp = EmbeddedApp(rawValue: launchApp)
         }
         .task { await model.follow() }
         // Inactive (Control Center pulled down, the app switcher) keeps the
         // sensors running, so toggling Wi-Fi or Bluetooth shows up live.
+        // Another app open on top (the Apps screen) stops them too.
         .onChange(of: scenePhase, initial: true) { _, phase in
-            model.setActive(phase != .background)
+            model.setActive(phase != .background && openApp == nil)
+        }
+        .onChange(of: openApp) { _, app in
+            model.setActive(scenePhase != .background && app == nil)
         }
     }
 }

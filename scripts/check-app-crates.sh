@@ -57,6 +57,21 @@ for app in "${APPS[@]}"; do
         exit 1
       fi
     done
+    # Other app crates linked into this one (Device Lab's showcase): the
+    # re-export list and each crate's Swift and C modules.
+    linked_list="ForgeFFI/ForgeFFI+Linked.swift"
+    if [[ -f "$out/$linked_list" || -f "$app/Generated/$linked_list" ]]; then
+      if ! diff -u "$app/Generated/$linked_list" "$out/$linked_list"; then
+        echo "error: $app/Generated/$linked_list is stale; run: forge bindings generate --project $app" >&2
+        exit 1
+      fi
+      while read -r _ _ ns; do
+        if ! diff -ru "$app/Generated/$ns" "$out/$ns" || ! diff -ru "$app/Generated/${ns}FFI" "$out/${ns}FFI"; then
+          echo "error: $app/Generated/$ns is stale; run: forge bindings generate --project $app" >&2
+          exit 1
+        fi
+      done < <(grep '^@_exported import ' "$out/$linked_list")
+    fi
   fi
 done
 

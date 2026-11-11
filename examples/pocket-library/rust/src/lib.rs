@@ -37,7 +37,10 @@ pub use model::*;
 use reader::EpubText;
 use store::Store;
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name, forge_ffi here.
+// The Device Lab showcase links this crate as a library with another name
+// (examples/device-lab/rust/embedded/), and the name keeps the two apart.
+uniffi::setup_scaffolding!();
 
 // A per-request `Cancellation` and the event stream object
 // (`LibraryEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.

@@ -12,9 +12,13 @@
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Device Lab shows whether Bluetooth is on. It does not connect to anything.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>Device Lab shows your position, altitude, speed and true-north heading while it is open. Nothing leaves your phone.</string>
+	<string>Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Device Lab reads the barometer for air pressure and height changes.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

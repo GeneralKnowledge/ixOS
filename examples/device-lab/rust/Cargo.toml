@@ -28,6 +28,12 @@ thiserror = "2"
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.
 async-trait = "0.1"
+# The other apps of the showcase: their Rust cores, linked into this library
+# so one app runs all of them (embedded/, docs/research/showcase-friction-log.md).
+# Device Lab's own code doesn't call them; it only links them.
+weather-embedded = { path = "embedded/weather" }
+checklist-embedded = { path = "embedded/checklist" }
+pocket-library-embedded = { path = "embedded/pocket-library" }
 
 [dev-dependencies]
 tempfile = "3.14"
