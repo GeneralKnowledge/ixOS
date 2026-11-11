@@ -21,7 +21,6 @@ struct ForgeAppXtool: App {
         WindowGroup {
             ContentView()
                 .receivesDeepLinks()
-                .forgeLaunchAppearance()
         }
     }
 }

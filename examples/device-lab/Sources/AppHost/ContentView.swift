@@ -29,6 +29,11 @@ public struct ContentView: View {
             launched = true
             openApp = EmbeddedApp(rawValue: launchApp)
         }
+        // `-ForgeAppearance dark|light` (LaunchAppearance.swift), applied
+        // here rather than with forgeLaunchAppearance() in the App: Weather
+        // and Pocket Library each have a public one too, so the call there
+        // is ambiguous.
+        .preferredColorScheme(ForgeLaunchAppearance.scheme)
         .task { await model.follow() }
         // Inactive (Control Center pulled down, the app switcher) keeps the
         // sensors running, so toggling Wi-Fi or Bluetooth shows up live.
