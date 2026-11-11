@@ -1,6 +1,6 @@
 # Building native iOS interfaces
 
-An ixOS app has two halves. Rust owns the app: its models, rules, persistence, networking and events. Swift owns the iPhone experience: SwiftUI views, navigation, presentation state, native controls, accessibility and platform integrations. The two meet in the UniFFI bindings (`import ForgeFFI`), which give Swift ordinary `async` methods, records and thrown errors.
+An ixOS app has two halves. Rust owns the app: its models, rules, persistence, networking and events. Swift owns the iPhone experience: SwiftUI views, navigation, presentation state, native controls, accessibility and platform integrations. The two meet in the UniFFI bindings (`import <App>FFI`, or `ForgeFFI` in older apps), which give Swift ordinary `async` methods, records and thrown errors.
 
 This guide covers the Swift half. It sets out the conventions that make an ixOS app feel like an iPhone app rather than a demo, and the patterns for showing Rust-backed state in SwiftUI. The starter that `forge init` generates follows all of them, so the quickest way to learn them is to read `Sources/AppHost/` in a new app next to this page. For the Rust half, see [app-crate.md](app-crate.md).
 

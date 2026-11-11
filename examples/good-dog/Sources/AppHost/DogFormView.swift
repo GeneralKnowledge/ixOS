@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import SwiftUI
 
 /// The dog's details, for onboarding and for editing on My Dog. The form

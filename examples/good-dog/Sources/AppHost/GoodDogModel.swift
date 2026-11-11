@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import Foundation
 import Observation
 
@@ -73,7 +73,10 @@ public final class GoodDogModel {
     /// `forge ui run` and `forge ui explore` pass it). Such a launch also
     /// runs on a fixed clock, so dates and times on screen don't change
     /// between runs and screenshots stay comparable.
+    /// ForgeKit's `-ForgeTemporaryData` does the same, so one argument
+    /// starts every app on test data (Device Lab's Apps screen).
     static let usesTestData = ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+        || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
 
     /// With `-ForgeUITestData`, `-ForgeUITestSampleDog` starts on a dog
     /// that is already set up, so `forge ui explore` can reach Today and My

@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import SwiftUI
 
 /// First launch: create an account on the chat server. Rust keeps the

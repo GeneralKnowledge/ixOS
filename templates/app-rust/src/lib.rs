@@ -1,6 +1,6 @@
 //! The app's Rust core. Everything the SwiftUI app can call is in this
 //! file's `#[uniffi::export]` blocks; `forge build` turns them into Swift
-//! (`import ForgeFFI`).
+//! (`import FORGE_MODULE_NAMEFFI`).
 //!
 //! The starter is a small notes app on the ixOS application runtime
 //! (`forge_app`), showing every pattern a real app needs, so you can replace
@@ -33,7 +33,8 @@ use forge_runtime::now_ms;
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: it follows the library name (Cargo.toml).
+uniffi::setup_scaffolding!();
 
 // Native services the host implements (Keychain, app directories, local
 // notifications, permissions, deep links), as `crate::native`. The iOS host

@@ -56,7 +56,9 @@ jobs:
         run: |
           case "$RUNNER_OS" in macOS) dir=macos-host ;; *) dir=linux-host ;; esac
           mkdir -p "examples/checklist/build/$dir/lib"
-          cp examples/checklist/rust/target/debug/libforge_ffi.a "examples/checklist/build/$dir/lib/"
+          # Checklist names its library checklist_core (another app can link
+          # it); Package.swift links it under Forge's fixed name.
+          cp examples/checklist/rust/target/debug/libchecklist_core.a "examples/checklist/build/$dir/lib/libforge_ffi.a"
 
       - name: Swift build and cross-language tests
         working-directory: examples/checklist
@@ -74,7 +76,7 @@ jobs:
           rustup target add aarch64-apple-ios
           cargo build --manifest-path rust/Cargo.toml --target aarch64-apple-ios --release
           mkdir -p build/ios-device/lib
-          cp rust/target/aarch64-apple-ios/release/libforge_ffi.a build/ios-device/lib/
+          cp rust/target/aarch64-apple-ios/release/libchecklist_core.a build/ios-device/lib/libforge_ffi.a
           xcodebuild build -scheme ChecklistXtool -destination 'generic/platform=iOS' \
             -skipPackagePluginValidation CODE_SIGNING_ALLOWED=NO | tail -40
 

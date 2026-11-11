@@ -4,6 +4,7 @@ import SwiftUI
 /// Everything the phone tells an app about itself, live, in one list.
 struct DashboardView: View {
     let model: LabModel
+    @Binding var openApp: EmbeddedApp?
     @State private var transfers = TransferTestModel()
 
     private var s: LabSnapshot { model.snapshot }
@@ -52,6 +53,15 @@ struct DashboardView: View {
         .groupedList()
         .navigationTitle("Device Lab")
         .toolbar {
+            // The other example apps, run inside Device Lab (AppsView).
+            ToolbarItem(placement: .navigation) {
+                NavigationLink {
+                    AppsView(open: $openApp)
+                } label: {
+                    Label("Apps", systemImage: "square.grid.2x2")
+                }
+                .accessibilityIdentifier("dashboard.apps")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button("Reset", systemImage: "arrow.counterclockwise") { model.reset() }
                     .help("Reset peaks, ranges and distance")

@@ -14,7 +14,45 @@ pub struct ForgeConfig {
     /// How UI tests and `forge ui explore` run the app (docs/forge-explore.md).
     #[serde(default)]
     pub ui_test: Option<UiTestSection>,
+    /// The app's Swift module names (docs/app-crate.md).
+    #[serde(default)]
+    pub swift: Option<SwiftSection>,
+    /// Other apps this one runs inside it (Device Lab's Apps screen).
+    #[serde(default)]
+    pub host: Option<HostSection>,
 }
+
+/// `[host]`: the other apps an app runs inside it. Their iOS settings
+/// (permission texts, background modes, URL schemes) and test-data
+/// arguments are merged into this app's when forge.toml is loaded, so each
+/// app declares what it needs once, in its own forge.toml.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HostSection {
+    /// The hosted apps' folders, relative to this app (`"../chat"`).
+    #[serde(default)]
+    pub apps: Vec<String>,
+}
+
+/// `[swift]`: the names of the app's Swift modules. Each defaults to Forge's
+/// fixed name (`ForgeFFI`, `AppHost`). An app that another app hosts (Device
+/// Lab's Apps screen) names its own, because one Swift build can hold only
+/// one module of each name.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct SwiftSection {
+    /// The module of the app's UniFFI bindings (`Generated/ForgeFFI`).
+    #[serde(default)]
+    pub bindings_module: Option<String>,
+    /// The module of the app's views and models (`Sources/AppHost`).
+    #[serde(default)]
+    pub app_module: Option<String>,
+}
+
+/// The Swift module of the UniFFI bindings when forge.toml names none.
+pub const DEFAULT_BINDINGS_MODULE: &str = "ForgeFFI";
+/// The Swift module of the app's views and models when forge.toml names none.
+pub const DEFAULT_APP_MODULE: &str = "AppHost";
 
 /// `[ui_test]`: what UI automation needs to know about the app.
 #[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
@@ -105,6 +143,59 @@ impl ForgeConfig {
         app_dir.join(self.rust.path.as_deref().unwrap_or("rust"))
     }
 
+    /// Merges the iOS settings of the apps `[host] apps` names into this
+    /// one's. Lists are joined without repeats. A permission text this app
+    /// sets wins; otherwise the first hosted app's text is used. Signing and
+    /// entitlements are the host's alone.
+    pub fn merge_hosted(&mut self, project_dir: &std::path::Path) -> Result<(), String> {
+        let Some(host) = self.host.clone() else {
+            return Ok(());
+        };
+        fn add(into: &mut Vec<String>, from: Vec<String>) {
+            for v in from {
+                if !into.contains(&v) {
+                    into.push(v);
+                }
+            }
+        }
+        for rel in &host.apps {
+            let toml = project_dir.join(rel).join("forge.toml");
+            let text = std::fs::read_to_string(&toml)
+                .map_err(|e| format!("[host] apps: cannot read {}: {e}", toml.display()))?;
+            let other = ForgeConfig::parse(&text)
+                .map_err(|e| format!("[host] apps: {}: {e}", toml.display()))?;
+            if let Some(theirs) = other.ios {
+                let ours = self.ios.get_or_insert_with(Default::default);
+                for (name, text) in theirs.permissions {
+                    ours.permissions.entry(name).or_insert(text);
+                }
+                add(&mut ours.background_modes, theirs.background_modes);
+                add(&mut ours.url_schemes, theirs.url_schemes);
+            }
+            if let Some(theirs) = other.ui_test {
+                let ours = self.ui_test.get_or_insert_with(Default::default);
+                add(&mut ours.test_data_args, theirs.test_data_args);
+            }
+        }
+        self.validate()
+    }
+
+    /// The Swift module of the app's UniFFI bindings (`[swift] bindings_module`).
+    pub fn bindings_module(&self) -> &str {
+        self.swift
+            .as_ref()
+            .and_then(|s| s.bindings_module.as_deref())
+            .unwrap_or(DEFAULT_BINDINGS_MODULE)
+    }
+
+    /// The Swift module of the app's views and models (`[swift] app_module`).
+    pub fn app_module(&self) -> &str {
+        self.swift
+            .as_ref()
+            .and_then(|s| s.app_module.as_deref())
+            .unwrap_or(DEFAULT_APP_MODULE)
+    }
+
     pub fn ios_enabled(&self) -> bool {
         self.build.ios_device || self.build.ios_simulator
     }
@@ -123,6 +214,19 @@ impl ForgeConfig {
     pub fn validate(&self) -> Result<(), String> {
         if self.app.name.trim().is_empty() {
             return Err("app.name must not be empty".into());
+        }
+        for (key, name) in [
+            ("bindings_module", self.bindings_module()),
+            ("app_module", self.app_module()),
+        ] {
+            if !is_swift_module_name(name) {
+                return Err(format!(
+                    "[swift] {key} = \"{name}\" is not a Swift module name (letters, digits and _, not starting with a digit)"
+                ));
+            }
+        }
+        if self.bindings_module() == self.app_module() {
+            return Err("[swift] bindings_module and app_module must differ".into());
         }
         if !is_valid_bundle_id(&self.app.bundle_id) {
             return Err(format!(
@@ -303,6 +407,16 @@ pub fn is_valid_kotlin_package(id: &str) -> bool {
             .all(|part| !RESERVED_PACKAGE_WORDS.contains(&part))
 }
 
+/// A name SwiftPM and Swift accept for a module.
+pub fn is_swift_module_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+        && name
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_alphabetic() || c == '_')
+}
+
 pub fn is_valid_project_name(name: &str) -> bool {
     !name.is_empty()
         && name
@@ -332,6 +446,32 @@ ios_simulator = false
         )
         .unwrap();
         assert_eq!(cfg.app.name, "Counter");
+        assert_eq!(cfg.bindings_module(), "ForgeFFI");
+        assert_eq!(cfg.app_module(), "AppHost");
+    }
+
+    #[test]
+    fn swift_module_names() {
+        let base = "[app]\nname = \"Chat\"\nbundle_id = \"org.example.chat\"\nminimum_ios = \"17.0\"\n[rust]\npath = \"rust\"\n[build]\nios_device = true\n";
+        let cfg = ForgeConfig::parse(&format!(
+            "{base}[swift]\nbindings_module = \"ChatFFI\"\napp_module = \"ChatApp\"\n"
+        ))
+        .unwrap();
+        assert_eq!(
+            (cfg.bindings_module(), cfg.app_module()),
+            ("ChatFFI", "ChatApp")
+        );
+        for bad in [
+            "bindings_module = \"Chat-FFI\"",
+            "app_module = \"1Chat\"",
+            "app_module = \"ForgeFFI\"",
+            "module = \"Chat\"",
+        ] {
+            assert!(
+                ForgeConfig::parse(&format!("{base}[swift]\n{bad}\n")).is_err(),
+                "{bad}"
+            );
+        }
     }
 
     #[test]

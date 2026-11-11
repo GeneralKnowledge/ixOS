@@ -1,5 +1,5 @@
 @preconcurrency import AVFoundation
-@preconcurrency import ForgeFFI
+@preconcurrency import PocketLibraryFFI
 import ForgeAppKit
 import ForgeUI
 import SwiftUI

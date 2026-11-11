@@ -13,13 +13,13 @@ struct ForgeAppXtool: App {
         // Keychain, directories, notifications, permissions and deep links
         // for the Rust core (docs/native-services.md).
         AppServices.install()
+        // Native services and lifecycle for the apps the Apps screen opens.
+        EmbeddedApps.install()
     }
 
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .receivesDeepLinks()
-                .forgeLaunchAppearance()
         }
     }
 }

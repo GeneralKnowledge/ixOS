@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import SwiftUI
 
 /// The Chats tab: its own navigation stack, so a new conversation can open

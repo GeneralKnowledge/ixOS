@@ -21,12 +21,24 @@ ios_simulator = false
 [ios]
 orientations = ["portrait"]
 
+# The apps on the Apps screen. Forge merges their iOS settings into this
+# app's when it reads this file: Pocket Library's audio background mode,
+# Chat's forgechat:// scheme, their permission texts (a text below wins) and
+# their test-data arguments. Every app now honours both -ForgeTemporaryData
+# and -ForgeUITestData, so either one starts them all on throwaway data.
+# See docs/app-config.md.
+[host]
+apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../chat"]
+
 # The text iOS shows when the app asks. Each one is asked only when the user
 # taps the matching "Allow" button on the dashboard.
 [ios.permissions]
-location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open. Nothing leaves your phone."
+location_when_in_use = "Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone."
 motion = "Device Lab reads the barometer for air pressure and height changes."
 bluetooth = "Device Lab shows whether Bluetooth is on. It does not connect to anything."
+# Two hosted apps use the local network; one text for both. Chat's
+# microphone text comes from its own forge.toml.
+local_network = "Chat connects to the demo chat server, and Commonplace reads feeds, on your local network."
 
 [ios.signing]
 # Everything here works with a free Apple account: no paid-only entitlements.

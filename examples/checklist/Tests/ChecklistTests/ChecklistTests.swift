@@ -2,7 +2,7 @@
 // host, the app's model) driving the real Rust core and runtime. These run
 // on Linux and macOS with `swift test`; nothing is mocked.
 import ChecklistApp
-import ForgeFFI
+import ChecklistFFI
 import ForgeKit
 import Foundation
 import XCTest

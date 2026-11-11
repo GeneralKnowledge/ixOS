@@ -1,4 +1,4 @@
-import AppHost
+import PocketLibraryApp
 import SwiftUI
 
 // The xtool entry point. AppHostLauncher is the same app for `swift run` and the Xcode project.

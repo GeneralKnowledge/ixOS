@@ -8,11 +8,13 @@ edition = "2021"
 publish = false
 
 [lib]
-# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
-# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
-# the build scripts and host projects never need renaming.
-name = "forge_ffi"
-crate-type = ["staticlib", "cdylib", "lib"]
+# Named after the app, so another app can link this crate (Device Lab hosts
+# the example apps that way). Forge stages it as libforge_ffi.a whatever its
+# name; the Swift bindings are the module forge.toml's [swift]
+# bindings_module names. No cdylib: Cargo would link one for iOS when another
+# crate depends on this one; `forge bindings generate` builds its own.
+name = "FORGE_LIB_NAME"
+crate-type = ["staticlib", "lib"]
 
 [dependencies]
 # The Forge framework. `forge init` pins every Forge crate to one framework

@@ -1,4 +1,4 @@
-module forge_ffiFFI {
+module chat_appFFI {
     header "forge_ffiFFI.h"
     export *
     use "Darwin"

@@ -1,5 +1,5 @@
-import AppHost
-@preconcurrency import ForgeFFI
+import CommonplaceApp
+@preconcurrency import CommonplaceFFI
 import ForgeAppKit
 @preconcurrency import ForgeKit
 import Foundation

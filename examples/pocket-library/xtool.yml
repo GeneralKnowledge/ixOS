@@ -3,5 +3,5 @@
 version: 1
 bundleID: org.forgemobile.pocketlibrary
 # The library product holding the app's @main; xtool names the built app after it.
-product: AppHostXtool
+product: PocketLibraryXtool
 infoPath: Info.plist

@@ -13,6 +13,10 @@ const PLACEHOLDER_APP_NAME: &str = "FORGE_APP_NAME";
 const PLACEHOLDER_BUNDLE: &str = "FORGE_BUNDLE_ID";
 const PLACEHOLDER_SUPPORT_DIR: &str = "FORGE_APP_SUPPORT_DIR";
 const PLACEHOLDER_JAVA_PACKAGE: &str = "FORGE_JAVA_PACKAGE";
+/// The app's name as a Swift module prefix (`MyApp` in `MyAppFFI`, `MyAppApp`).
+const PLACEHOLDER_MODULE: &str = "FORGE_MODULE_NAME";
+/// The Rust library's name (`my_app_core`).
+const PLACEHOLDER_LIB: &str = "FORGE_LIB_NAME";
 /// The starter Rust crate every new iOS app gets as `rust/`: a core on the
 /// forge-app runtime, which ForgeKit hosts.
 const RUST_TEMPLATE: &str = "templates/app-rust";
@@ -177,7 +181,9 @@ pub(crate) fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
     let forge_toml = project_dir.join("forge.toml");
     let content = fs::read_to_string(&forge_toml)
         .map_err(|e| format!("cannot read {}: {e}", forge_toml.display()))?;
-    ForgeConfig::parse(&content)
+    let mut cfg = ForgeConfig::parse(&content)?;
+    cfg.merge_hosted(project_dir)?;
+    Ok(cfg)
 }
 
 #[cfg(test)]
@@ -775,6 +781,8 @@ fn walk_substitute(
         } else if is_text_template(&path) {
             let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
             let updated = content
+                .replace(PLACEHOLDER_MODULE, &module_name(package_name))
+                .replace(PLACEHOLDER_LIB, &library_name(package_name))
                 .replace(PLACEHOLDER_PACKAGE, package_name)
                 .replace(PLACEHOLDER_APP_NAME, package_name)
                 .replace(PLACEHOLDER_BUNDLE, bundle_id)
@@ -784,6 +792,40 @@ fn walk_substitute(
         }
     }
     Ok(())
+}
+
+/// `name` as a Swift module name: every character that isn't a letter,
+/// digit or underscore becomes `_` (`my-app` → `my_app`).
+fn module_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '_' })
+        .collect()
+}
+
+/// The app's Rust library name: `name` in snake case plus `_core`
+/// (`MyApp` → `my_app_core`). Named after the app, so another app can link
+/// it (docs/app-crate.md).
+fn library_name(name: &str) -> String {
+    let mut out = String::new();
+    let mut prev_lower = false;
+    for c in name.chars() {
+        if c.is_ascii_uppercase() {
+            if prev_lower {
+                out.push('_');
+            }
+            out.push(c.to_ascii_lowercase());
+            prev_lower = false;
+        } else if c.is_ascii_alphanumeric() {
+            out.push(c);
+            prev_lower = true;
+        } else {
+            if !out.ends_with('_') {
+                out.push('_');
+            }
+            prev_lower = false;
+        }
+    }
+    format!("{}_core", out.trim_matches('_'))
 }
 
 fn is_text_template(path: &Path) -> bool {
@@ -2576,6 +2618,16 @@ ios_device = true
     }
 
     #[test]
+    fn an_apps_module_and_library_names() {
+        assert_eq!(module_name("MyApp"), "MyApp");
+        assert_eq!(module_name("my-app"), "my_app");
+        assert_eq!(library_name("MyApp"), "my_app_core");
+        assert_eq!(library_name("FreshIos"), "fresh_ios_core");
+        assert_eq!(library_name("my-app"), "my_app_core");
+        assert_eq!(library_name("notes2"), "notes2_core");
+    }
+
+    #[test]
     fn init_inside_workspace_keeps_relative_paths() {
         let root = workspace_root();
         let mock = MockRunner::default();
@@ -2597,6 +2649,7 @@ ios_device = true
         let pbx = read(default_dest.join("Xcode/RelDefaultApp.xcodeproj/project.pbxproj"));
         let template_pbx =
             read(root.join("templates/ios-app/Xcode/FORGE_PACKAGE_NAME.xcodeproj/project.pbxproj"))
+                .replace("FORGE_MODULE_NAME", "RelDefaultApp")
                 .replace("FORGE_PACKAGE_NAME", "RelDefaultApp")
                 .replace("FORGE_APP_NAME", "RelDefaultApp")
                 .replace("FORGE_BUNDLE_ID", "org.example.rel");

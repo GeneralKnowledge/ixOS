@@ -17,3 +17,8 @@ xtool_product = "WeatherXtool"
 
 [ios.permissions]
 location_when_in_use = "Weather uses your location to show the forecast where you are."
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "WeatherFFI"
+app_module = "WeatherApp"

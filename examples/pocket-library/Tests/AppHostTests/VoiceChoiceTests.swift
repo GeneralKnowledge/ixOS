@@ -1,4 +1,4 @@
-@testable import AppHost
+@testable import PocketLibraryApp
 import Foundation
 import XCTest
 

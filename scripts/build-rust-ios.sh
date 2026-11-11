@@ -91,6 +91,7 @@ cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET"
 
 OUT_DIR="$NATIVE_OUT/ios-device/lib"
 mkdir -p "$OUT_DIR"
-cp "$CARGO_TARGET/${TARGET}/${PROFILE_DIR}/libforge_ffi.a" "$OUT_DIR/"
+# Staged under Forge's fixed name whatever the crate calls its library.
+cp "$CARGO_TARGET/${TARGET}/${PROFILE_DIR}/lib${LIB_NAME}.a" "$OUT_DIR/libforge_ffi.a"
 SDKROOT="$REQUESTED_SDKROOT" "$ROOT/scripts/write-native-build-meta.sh" "$OUT_DIR/libforge_ffi.a" ios
 echo "[forge] Staged $OUT_DIR/libforge_ffi.a"

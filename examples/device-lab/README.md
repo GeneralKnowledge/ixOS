@@ -22,6 +22,55 @@ It exists to prove Forge's optional native services ([docs/native-services.md](.
 
 Nothing asks for a permission until you tap its button. Everything stops when the app goes to the background, and nothing leaves the phone. All of it works with a free Apple account: the app has no entitlements.
 
+## The other apps (Apps screen)
+
+The **Apps** button on the dashboard opens the other example apps, each the
+full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat and
+the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
+in one of them (the `-launchApp weather` launch argument does the same).
+Swipe down to get back to Device Lab. One app on the phone holds all of them.
+(Counter isn't hosted: its Rust crate is shared with the frozen Android app.)
+
+Each app stays in its own folder and is updated there; Device Lab uses it as
+it is:
+
+- **Rust:** `rust/Cargo.toml` depends on each app's own crate, which names its
+  library after the app (`weather_core`, `chat_app`, ...), and `rust/src/lib.rs`
+  links it with `use <library> as _;`.
+- **Swift:** `Package.swift` depends on each app's own package
+  (`.package(path: "../chat")`) and its app product (`ChatApp`). Each app names
+  its Swift modules after itself in its `forge.toml` (`[swift] bindings_module
+  = "ChatFFI"`, `app_module = "ChatApp"`), so no two modules share a name. An
+  app's package links its Rust library only from its app, launcher and test
+  targets, so here only Device Lab's library is linked, which holds them all.
+- `Sources/AppHost/AppsView.swift` lists the apps, opens them, and installs
+  their native services and lifecycle (`EmbeddedApps.install()`).
+
+To add an app with a Rust crate:
+
+1. Make the app hostable, in its own folder (it still builds on its own):
+   - `rust/Cargo.toml`: name the library after the app (`[lib] name =
+     "<library>"`, `crate-type = ["staticlib", "lib"]`), and call
+     `uniffi::setup_scaffolding!()` with no argument in `lib.rs`.
+   - `forge.toml`: add `[swift]` with `bindings_module = "<App>FFI"` and
+     `app_module = "<App>App"`.
+   - `Package.swift`: use those names for the bindings and app targets, call
+     the C module `<library>FFI`, give every target in a product the app's
+     name (not `AppHost...`), link the Rust library (`rustLibrary`) from the
+     app, launcher and test targets only, and put the bindings target in the
+     app's library product. Change `import ForgeFFI` and `import AppHost` in
+     the app's Swift to the new names.
+   - `forge bindings generate --project examples/<app>`.
+2. Add the crate to this app's `rust/Cargo.toml` and a `use <library> as _;`
+   line to `rust/src/lib.rs`.
+3. Add `.package(path: "../<app>")` to `Package.swift` and the app's product
+   to `AppHost`.
+4. Add a case to `EmbeddedApp` in `Sources/AppHost/AppsView.swift` (and, if the
+   app has native services or a ForgeKit host, to `EmbeddedApps.install()`),
+   plus any permission text or background mode it needs to `forge.toml`.
+
+An app without Rust (like the ForgeUI Showcase) needs only steps 3 and 4.
+
 ## How it is built
 
 ```

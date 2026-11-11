@@ -1,4 +1,4 @@
-import AppHost
+import ChatApp
 import SwiftUI
 
 @main

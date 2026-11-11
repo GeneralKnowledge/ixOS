@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import SwiftUI
 
 /// The native services (Keychain, app directories, local notifications,

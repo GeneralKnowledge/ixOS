@@ -46,3 +46,8 @@ orientations = ["portrait"]
 # never touch the owner's real dog. docs/forge-explore.md
 [ui_test]
 test_data_args = ["-ForgeUITestData"]
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "GoodDogFFI"
+app_module = "GoodDogApp"

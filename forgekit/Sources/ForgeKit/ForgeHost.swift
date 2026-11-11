@@ -58,6 +58,16 @@ public struct ForgeEnvironment: Sendable, Equatable {
     /// running, so use it right after the launch that made the data.
     public static let keepTestDataArgument = "-ForgeKeepTestData"
 
+    /// The older name of `temporaryDataArgument` (Pocket Library and Good
+    /// Dog started with it), honoured the same way, so one argument starts
+    /// every app on throwaway data, whichever its UI tests pass.
+    public static let uiTestDataArgument = "-ForgeUITestData"
+
+    /// Whether `arguments` ask for throwaway data.
+    public static func usesTemporaryData(_ arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.contains(temporaryDataArgument) || arguments.contains(uiTestDataArgument)
+    }
+
     /// Application Support/<app>/data and Caches/<app>, or a throwaway
     /// environment when the app was launched with `temporaryDataArgument`.
     public static func standard(app: String) throws -> ForgeEnvironment {
@@ -72,7 +82,7 @@ public struct ForgeEnvironment: Sendable, Equatable {
         testRoot: URL = FileManager.default.temporaryDirectory
     ) throws -> ForgeEnvironment {
         let fm = FileManager.default
-        if arguments.contains(temporaryDataArgument) {
+        if usesTemporaryData(arguments) {
             // One folder per app, emptied at launch unless kept, so a
             // relaunch with `keepTestDataArgument` finds it again.
             let base = testRoot.appendingPathComponent("forgekit-test-\(app)", isDirectory: true)

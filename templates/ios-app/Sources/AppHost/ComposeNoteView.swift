@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import ForgeAppKit
 import SwiftUI
 

@@ -1,4 +1,4 @@
-module forge_ffiFFI {
+module good_dog_appFFI {
     header "forge_ffiFFI.h"
     export *
     use "Darwin"

@@ -37,7 +37,9 @@ pub use model::*;
 use reader::EpubText;
 use store::Store;
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();
 
 // A per-request `Cancellation` and the event stream object
 // (`LibraryEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.

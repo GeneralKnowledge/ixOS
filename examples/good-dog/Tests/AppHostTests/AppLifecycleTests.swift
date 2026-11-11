@@ -1,5 +1,5 @@
-import AppHost
-@preconcurrency import ForgeFFI
+import GoodDogApp
+@preconcurrency import GoodDogFFI
 import SwiftUI
 import XCTest
 

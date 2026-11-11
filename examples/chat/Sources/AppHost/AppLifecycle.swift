@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import SwiftUI
 #if canImport(UIKit)
 import UIKit

@@ -1,5 +1,5 @@
 @preconcurrency import ForgeApp
-@preconcurrency import ForgeFFI
+@preconcurrency import PocketLibraryFFI
 import ForgeAppKit
 import Foundation
 

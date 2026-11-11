@@ -7,8 +7,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(forge_ffiFFI)
-import forge_ffiFFI
+#if canImport(chat_appFFI)
+import chat_appFFI
 #endif
 
 fileprivate extension RustBuffer {
@@ -25,13 +25,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_forge_ffi_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_chat_app_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_forge_ffi_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_chat_app_rustbuffer_free(self, $0) }
     }
 }
 
@@ -327,7 +327,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureChatAppInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -748,7 +748,7 @@ open class AssistantCore: AssistantCoreProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_assistantcore(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_assistantcore(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -758,7 +758,7 @@ open class AssistantCore: AssistantCoreProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_assistantcore(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_assistantcore(handle, $0) }
     }
 
     
@@ -771,7 +771,7 @@ open class AssistantCore: AssistantCoreProtocol, @unchecked Sendable {
 open func characters() -> [AssistantCharacter]  {
     return try!  FfiConverterSequenceTypeAssistantCharacter.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_characters(
+    uniffi_chat_app_fn_method_assistantcore_characters(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -783,7 +783,7 @@ open func characters() -> [AssistantCharacter]  {
 open func conversations()throws  -> [AssistantConversation]  {
     return try  FfiConverterSequenceTypeAssistantConversation.lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_conversations(
+    uniffi_chat_app_fn_method_assistantcore_conversations(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -796,7 +796,7 @@ open func conversations()throws  -> [AssistantConversation]  {
 open func currentGeneration() -> AssistantGeneration?  {
     return try!  FfiConverterOptionTypeAssistantGeneration.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_current_generation(
+    uniffi_chat_app_fn_method_assistantcore_current_generation(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -808,7 +808,7 @@ open func currentGeneration() -> AssistantGeneration?  {
      */
 open func deleteConversation(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeAssistantError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_delete_conversation(
+    uniffi_chat_app_fn_method_assistantcore_delete_conversation(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -822,7 +822,7 @@ open func deleteConversation(conversationId: String)throws   {try rustCallWithEr
 open func engineInfo() -> EngineInfo?  {
     return try!  FfiConverterOptionTypeEngineInfo.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_engine_info(
+    uniffi_chat_app_fn_method_assistantcore_engine_info(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -836,7 +836,7 @@ open func engineInfo() -> EngineInfo?  {
 open func messages(conversationId: String)throws  -> [AssistantMessage]  {
     return try  FfiConverterSequenceTypeAssistantMessage.lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_messages(
+    uniffi_chat_app_fn_method_assistantcore_messages(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -853,7 +853,7 @@ open func messages(conversationId: String)throws  -> [AssistantMessage]  {
 open func send(conversationId: String, text: String)throws  -> AssistantGeneration  {
     return try  FfiConverterTypeAssistantGeneration_lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_send(
+    uniffi_chat_app_fn_method_assistantcore_send(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),
         FfiConverterString.lower(text),uniffiCallStatus
@@ -867,7 +867,7 @@ open func send(conversationId: String, text: String)throws  -> AssistantGenerati
      */
 open func setEngine(engine: LocalModelEngine)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_set_engine(
+    uniffi_chat_app_fn_method_assistantcore_set_engine(
             self.uniffiCloneHandle(),
         FfiConverterTypeLocalModelEngine_lower(engine),uniffiCallStatus
     )
@@ -880,7 +880,7 @@ open func setEngine(engine: LocalModelEngine)  {try! rustCall() {
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_shutdown(
+    uniffi_chat_app_fn_method_assistantcore_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -893,7 +893,7 @@ open func shutdown()  {try! rustCall() {
 open func startConversation(characterId: String)throws  -> AssistantConversation  {
     return try  FfiConverterTypeAssistantConversation_lift(try rustCallWithError(FfiConverterTypeAssistantError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantcore_start_conversation(
+    uniffi_chat_app_fn_method_assistantcore_start_conversation(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(characterId),uniffiCallStatus
     )
@@ -1034,7 +1034,7 @@ open class AssistantGeneration: AssistantGenerationProtocol, @unchecked Sendable
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_assistantgeneration(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_assistantgeneration(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1044,7 +1044,7 @@ open class AssistantGeneration: AssistantGenerationProtocol, @unchecked Sendable
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_assistantgeneration(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_assistantgeneration(handle, $0) }
     }
 
     
@@ -1057,7 +1057,7 @@ open class AssistantGeneration: AssistantGenerationProtocol, @unchecked Sendable
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantgeneration_cancel(
+    uniffi_chat_app_fn_method_assistantgeneration_cancel(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1070,7 +1070,7 @@ open func cancel()  {try! rustCall() {
 open func catchUp() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantgeneration_catch_up(
+    uniffi_chat_app_fn_method_assistantgeneration_catch_up(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1082,7 +1082,7 @@ open func catchUp() -> String  {
 open func conversationId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantgeneration_conversation_id(
+    uniffi_chat_app_fn_method_assistantgeneration_conversation_id(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1094,7 +1094,7 @@ open func conversationId() -> String  {
 open func isFinished() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantgeneration_is_finished(
+    uniffi_chat_app_fn_method_assistantgeneration_is_finished(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1106,7 +1106,7 @@ open func isFinished() -> Bool  {
 open func messageId() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_assistantgeneration_message_id(
+    uniffi_chat_app_fn_method_assistantgeneration_message_id(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1120,13 +1120,13 @@ open func next()async  -> AssistantUpdate?  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_assistantgeneration_next(
+                uniffi_chat_app_fn_method_assistantgeneration_next(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeAssistantUpdate.lift,
             errorHandler: nil
             
@@ -1234,7 +1234,7 @@ open class AudioFilesImpl: AudioFiles, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_audiofiles(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_audiofiles(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1244,7 +1244,7 @@ open class AudioFilesImpl: AudioFiles, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_audiofiles(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_audiofiles(handle, $0) }
     }
 
     
@@ -1256,7 +1256,7 @@ open class AudioFilesImpl: AudioFiles, @unchecked Sendable {
 open func duration(path: String)throws  -> Double  {
     return try  FfiConverterDouble.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_audiofiles_duration(
+    uniffi_chat_app_fn_method_audiofiles_duration(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(path),uniffiCallStatus
     )
@@ -1332,7 +1332,7 @@ fileprivate struct UniffiCallbackInterfaceAudioFiles {
 }
 
 private func uniffiCallbackInitAudioFiles() {
-    uniffi_forge_ffi_fn_init_callback_vtable_audiofiles(UniffiCallbackInterfaceAudioFiles.vtablePtr)
+    uniffi_chat_app_fn_init_callback_vtable_audiofiles(UniffiCallbackInterfaceAudioFiles.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -1660,7 +1660,7 @@ open class ChatCore: ChatCoreProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_chatcore(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_chatcore(self.handle, $0) }
     }
     /**
      * Opens the app with its account in the iOS Keychain. Needs
@@ -1672,7 +1672,7 @@ public convenience init(storageDirectory: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_chatcore_new(
+    uniffi_chat_app_fn_constructor_chatcore_new(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 }
@@ -1685,7 +1685,7 @@ public convenience init(storageDirectory: String)throws  {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_chatcore(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_chatcore(handle, $0) }
     }
 
     
@@ -1697,7 +1697,7 @@ public convenience init(storageDirectory: String)throws  {
 public static func withMemoryCredentials(storageDirectory: String)throws  -> ChatCore  {
     return try  FfiConverterTypeChatCore_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_chatcore_with_memory_credentials(
+    uniffi_chat_app_fn_constructor_chatcore_with_memory_credentials(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 })
@@ -1712,7 +1712,7 @@ public static func withMemoryCredentials(storageDirectory: String)throws  -> Cha
 open func account() -> ChatAccount?  {
     return try!  FfiConverterOptionTypeChatAccount.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_account(
+    uniffi_chat_app_fn_method_chatcore_account(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1725,7 +1725,7 @@ open func account() -> ChatAccount?  {
 open func assistant() -> AssistantCore  {
     return try!  FfiConverterTypeAssistantCore_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_assistant(
+    uniffi_chat_app_fn_method_chatcore_assistant(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1739,7 +1739,7 @@ open func assistant() -> AssistantCore  {
 open func attachmentFile(attachmentId: String) -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_attachment_file(
+    uniffi_chat_app_fn_method_chatcore_attachment_file(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(attachmentId),uniffiCallStatus
     )
@@ -1752,7 +1752,7 @@ open func attachmentFile(attachmentId: String) -> String?  {
 open func cachedConversations() -> [ChatConversation]  {
     return try!  FfiConverterSequenceTypeChatConversation.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_cached_conversations(
+    uniffi_chat_app_fn_method_chatcore_cached_conversations(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1764,7 +1764,7 @@ open func cachedConversations() -> [ChatConversation]  {
 open func cachedMessages(conversationId: String) -> [ChatMessage]  {
     return try!  FfiConverterSequenceTypeChatMessage.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_cached_messages(
+    uniffi_chat_app_fn_method_chatcore_cached_messages(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -1781,13 +1781,13 @@ open func checkAccount()async throws  -> ChatAccount  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_check_account(
+                uniffi_chat_app_fn_method_chatcore_check_account(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatAccount_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1801,13 +1801,13 @@ open func createConversation(title: String)async throws  -> ChatConversation  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_create_conversation(
+                uniffi_chat_app_fn_method_chatcore_create_conversation(
                         self.uniffiCloneHandle(),FfiConverterString.lower(title)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatConversation_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1822,13 +1822,13 @@ open func deleteMessage(messageId: String)async throws  -> ChatMessage?  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_delete_message(
+                uniffi_chat_app_fn_method_chatcore_delete_message(
                         self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeChatMessage.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1840,7 +1840,7 @@ open func deleteMessage(messageId: String)async throws  -> ChatMessage?  {
 open func draft(conversationId: String) -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_draft(
+    uniffi_chat_app_fn_method_chatcore_draft(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -1855,13 +1855,13 @@ open func editMessage(messageId: String, body: String)async throws  -> ChatMessa
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_edit_message(
+                uniffi_chat_app_fn_method_chatcore_edit_message(
                         self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(body)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1874,7 +1874,7 @@ open func editMessage(messageId: String, body: String)async throws  -> ChatMessa
 open func events()throws  -> ChatEvents  {
     return try  FfiConverterTypeChatEvents_lift(try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_events(
+    uniffi_chat_app_fn_method_chatcore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1888,13 +1888,13 @@ open func fetchAttachment(attachmentId: String)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_fetch_attachment(
+                uniffi_chat_app_fn_method_chatcore_fetch_attachment(
                         self.uniffiCloneHandle(),FfiConverterString.lower(attachmentId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1908,13 +1908,13 @@ open func listConversations()async throws  -> [ChatConversation]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_list_conversations(
+                uniffi_chat_app_fn_method_chatcore_list_conversations(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeChatConversation.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1927,7 +1927,7 @@ open func listConversations()async throws  -> [ChatConversation]  {
 open func liveStreams() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_live_streams(
+    uniffi_chat_app_fn_method_chatcore_live_streams(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1942,13 +1942,13 @@ open func markRead(conversationId: String)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_mark_read(
+                uniffi_chat_app_fn_method_chatcore_mark_read(
                         self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_chat_app_rust_future_poll_void,
+            completeFunc: ffi_chat_app_rust_future_complete_void,
+            freeFunc: ffi_chat_app_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -1960,7 +1960,7 @@ open func markRead(conversationId: String)async throws   {
 open func outboxCount() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_outbox_count(
+    uniffi_chat_app_fn_method_chatcore_outbox_count(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1972,7 +1972,7 @@ open func outboxCount() -> UInt32  {
 open func phase() -> AppPhase  {
     return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_phase(
+    uniffi_chat_app_fn_method_chatcore_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1985,13 +1985,13 @@ open func retryMessage(messageId: String)async throws  -> ChatMessage  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_retry_message(
+                uniffi_chat_app_fn_method_chatcore_retry_message(
                         self.uniffiCloneHandle(),FfiConverterString.lower(messageId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2006,13 +2006,13 @@ open func search(query: String, conversationId: String?)async throws  -> [ChatMe
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_search(
+                uniffi_chat_app_fn_method_chatcore_search(
                         self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionString.lower(conversationId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeChatMessage.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2028,13 +2028,13 @@ open func sendFiles(conversationId: String, body: String, replyTo: String?, file
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_send_files(
+                uniffi_chat_app_fn_method_chatcore_send_files(
                         self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo),FfiConverterSequenceTypeChatOutgoingFile.lower(files)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2052,13 +2052,13 @@ open func sendMessage(conversationId: String, body: String)async throws  -> Chat
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_send_message(
+                uniffi_chat_app_fn_method_chatcore_send_message(
                         self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2072,13 +2072,13 @@ open func sendReply(conversationId: String, body: String, replyTo: String?)async
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_send_reply(
+                uniffi_chat_app_fn_method_chatcore_send_reply(
                         self.uniffiCloneHandle(),FfiConverterString.lower(conversationId),FfiConverterString.lower(body),FfiConverterOptionString.lower(replyTo)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2090,7 +2090,7 @@ open func sendReply(conversationId: String, body: String, replyTo: String?)async
      */
 open func setDraft(conversationId: String, text: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_set_draft(
+    uniffi_chat_app_fn_method_chatcore_set_draft(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),
         FfiConverterString.lower(text),uniffiCallStatus
@@ -2104,7 +2104,7 @@ open func setDraft(conversationId: String, text: String)throws   {try rustCallWi
      */
 open func setMarkedUnread(conversationId: String, marked: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_set_marked_unread(
+    uniffi_chat_app_fn_method_chatcore_set_marked_unread(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),
         FfiConverterBool.lower(marked),uniffiCallStatus
@@ -2117,7 +2117,7 @@ open func setMarkedUnread(conversationId: String, marked: Bool)throws   {try rus
      */
 open func setMuted(conversationId: String, muted: Bool)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_set_muted(
+    uniffi_chat_app_fn_method_chatcore_set_muted(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),
         FfiConverterBool.lower(muted),uniffiCallStatus
@@ -2133,7 +2133,7 @@ open func setMuted(conversationId: String, muted: Bool)throws   {try rustCallWit
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_set_phase(
+    uniffi_chat_app_fn_method_chatcore_set_phase(
             self.uniffiCloneHandle(),
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
@@ -2147,13 +2147,13 @@ open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_set_reaction(
+                uniffi_chat_app_fn_method_chatcore_set_reaction(
                         self.uniffiCloneHandle(),FfiConverterString.lower(messageId),FfiConverterString.lower(emoji),FfiConverterBool.lower(on)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatMessage_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2165,7 +2165,7 @@ open func setReaction(messageId: String, emoji: String, on: Bool)async throws  -
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_shutdown(
+    uniffi_chat_app_fn_method_chatcore_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -2178,7 +2178,7 @@ open func shutdown()  {try! rustCall() {
      */
 open func signOut()throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_sign_out(
+    uniffi_chat_app_fn_method_chatcore_sign_out(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -2194,13 +2194,13 @@ open func signUp(serverUrl: String, displayName: String)async throws  -> ChatAcc
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_sign_up(
+                uniffi_chat_app_fn_method_chatcore_sign_up(
                         self.uniffiCloneHandle(),FfiConverterString.lower(serverUrl),FfiConverterString.lower(displayName)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeChatAccount_lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2212,7 +2212,7 @@ open func signUp(serverUrl: String, displayName: String)async throws  -> ChatAcc
 open func storeProblem() -> String?  {
     return try!  FfiConverterOptionString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_store_problem(
+    uniffi_chat_app_fn_method_chatcore_store_problem(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -2224,7 +2224,7 @@ open func storeProblem() -> String?  {
      */
 open func subscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_subscribe(
+    uniffi_chat_app_fn_method_chatcore_subscribe(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -2239,13 +2239,13 @@ open func syncMessages(conversationId: String)async throws  -> [ChatMessage]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatcore_sync_messages(
+                uniffi_chat_app_fn_method_chatcore_sync_messages(
                         self.uniffiCloneHandle(),FfiConverterString.lower(conversationId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeChatMessage.lift,
             errorHandler: FfiConverterTypeChatError_lift
         )
@@ -2256,7 +2256,7 @@ open func syncMessages(conversationId: String)async throws  -> [ChatMessage]  {
      */
 open func unsubscribe(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_unsubscribe(
+    uniffi_chat_app_fn_method_chatcore_unsubscribe(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -2265,7 +2265,7 @@ open func unsubscribe(conversationId: String)throws   {try rustCallWithError(Ffi
     
 open func unwatch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_unwatch(
+    uniffi_chat_app_fn_method_chatcore_unwatch(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -2278,7 +2278,7 @@ open func unwatch(conversationId: String)throws   {try rustCallWithError(FfiConv
      */
 open func watch(conversationId: String)throws   {try rustCallWithError(FfiConverterTypeChatError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatcore_watch(
+    uniffi_chat_app_fn_method_chatcore_watch(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(conversationId),uniffiCallStatus
     )
@@ -2391,7 +2391,7 @@ open class ChatEvents: ChatEventsProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_chatevents(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_chatevents(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2401,7 +2401,7 @@ open class ChatEvents: ChatEventsProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_chatevents(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_chatevents(handle, $0) }
     }
 
     
@@ -2412,7 +2412,7 @@ open class ChatEvents: ChatEventsProtocol, @unchecked Sendable {
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_chatevents_cancel(
+    uniffi_chat_app_fn_method_chatevents_cancel(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -2425,13 +2425,13 @@ open func next()async  -> ChatEvent?  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_chatevents_next(
+                uniffi_chat_app_fn_method_chatevents_next(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeChatEvent.lift,
             errorHandler: nil
             
@@ -2550,7 +2550,7 @@ open class LocalModelEngineImpl: LocalModelEngine, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_localmodelengine(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_localmodelengine(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2560,7 +2560,7 @@ open class LocalModelEngineImpl: LocalModelEngine, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_localmodelengine(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_localmodelengine(handle, $0) }
     }
 
     
@@ -2573,7 +2573,7 @@ open class LocalModelEngineImpl: LocalModelEngine, @unchecked Sendable {
 open func describe() -> EngineInfo  {
     return try!  FfiConverterTypeEngineInfo_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_localmodelengine_describe(
+    uniffi_chat_app_fn_method_localmodelengine_describe(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -2589,13 +2589,13 @@ open func generate(request: GenerateRequest, sink: TokenSink)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_localmodelengine_generate(
+                uniffi_chat_app_fn_method_localmodelengine_generate(
                         self.uniffiCloneHandle(),FfiConverterTypeGenerateRequest_lower(request),FfiConverterTypeTokenSink_lower(sink)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_chat_app_rust_future_poll_void,
+            completeFunc: ffi_chat_app_rust_future_complete_void,
+            freeFunc: ffi_chat_app_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeAiError_lift
         )
@@ -2710,7 +2710,7 @@ fileprivate struct UniffiCallbackInterfaceLocalModelEngine {
 }
 
 private func uniffiCallbackInitLocalModelEngine() {
-    uniffi_forge_ffi_fn_init_callback_vtable_localmodelengine(UniffiCallbackInterfaceLocalModelEngine.vtablePtr)
+    uniffi_chat_app_fn_init_callback_vtable_localmodelengine(UniffiCallbackInterfaceLocalModelEngine.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -2837,7 +2837,7 @@ open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_localnotifier(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_localnotifier(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2847,7 +2847,7 @@ open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_localnotifier(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_localnotifier(handle, $0) }
     }
 
     
@@ -2861,13 +2861,13 @@ open func schedule(notification: LocalNotification)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_localnotifier_schedule(
+                uniffi_chat_app_fn_method_localnotifier_schedule(
                         self.uniffiCloneHandle(),FfiConverterTypeLocalNotification_lower(notification)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_chat_app_rust_future_poll_void,
+            completeFunc: ffi_chat_app_rust_future_complete_void,
+            freeFunc: ffi_chat_app_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeNativeServiceError_lift
         )
@@ -2879,7 +2879,7 @@ open func schedule(notification: LocalNotification)async throws   {
      */
 open func cancel(id: String)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_localnotifier_cancel(
+    uniffi_chat_app_fn_method_localnotifier_cancel(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
     )
@@ -2894,13 +2894,13 @@ open func pending()async  -> [String]  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_localnotifier_pending(
+                uniffi_chat_app_fn_method_localnotifier_pending(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceString.lift,
             errorHandler: nil
             
@@ -3056,7 +3056,7 @@ fileprivate struct UniffiCallbackInterfaceLocalNotifier {
 }
 
 private func uniffiCallbackInitLocalNotifier() {
-    uniffi_forge_ffi_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
+    uniffi_chat_app_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -3176,7 +3176,7 @@ open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_permissionprovider(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_permissionprovider(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -3186,7 +3186,7 @@ open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_permissionprovider(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_permissionprovider(handle, $0) }
     }
 
     
@@ -3196,13 +3196,13 @@ open func status(permission: NativePermission)async  -> PermissionStatus  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_permissionprovider_status(
+                uniffi_chat_app_fn_method_permissionprovider_status(
                         self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePermissionStatus_lift,
             errorHandler: nil
             
@@ -3218,13 +3218,13 @@ open func request(permission: NativePermission)async  -> PermissionStatus  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_permissionprovider_request(
+                uniffi_chat_app_fn_method_permissionprovider_request(
                         self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_chat_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_chat_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_chat_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePermissionStatus_lift,
             errorHandler: nil
             
@@ -3359,7 +3359,7 @@ fileprivate struct UniffiCallbackInterfacePermissionProvider {
 }
 
 private func uniffiCallbackInitPermissionProvider() {
-    uniffi_forge_ffi_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
+    uniffi_chat_app_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -3489,7 +3489,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_securestore(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_securestore(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -3499,7 +3499,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_securestore(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_securestore(handle, $0) }
     }
 
     
@@ -3511,7 +3511,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
 open func get(key: String)throws  -> Data?  {
     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_get(
+    uniffi_chat_app_fn_method_securestore_get(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),uniffiCallStatus
     )
@@ -3523,7 +3523,7 @@ open func get(key: String)throws  -> Data?  {
      */
 open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_set(
+    uniffi_chat_app_fn_method_securestore_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
         FfiConverterData.lower(value),uniffiCallStatus
@@ -3536,7 +3536,7 @@ open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConver
      */
 open func delete(key: String)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_delete(
+    uniffi_chat_app_fn_method_securestore_delete(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),uniffiCallStatus
     )
@@ -3664,7 +3664,7 @@ fileprivate struct UniffiCallbackInterfaceSecureStore {
 }
 
 private func uniffiCallbackInitSecureStore() {
-    uniffi_forge_ffi_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
+    uniffi_chat_app_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -3788,7 +3788,7 @@ open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_tokensink(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_tokensink(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -3798,7 +3798,7 @@ open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_tokensink(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_tokensink(handle, $0) }
     }
 
     
@@ -3811,7 +3811,7 @@ open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
 open func isStopped() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_tokensink_is_stopped(
+    uniffi_chat_app_fn_method_tokensink_is_stopped(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -3825,7 +3825,7 @@ open func isStopped() -> Bool  {
 open func push(text: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_tokensink_push(
+    uniffi_chat_app_fn_method_tokensink_push(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(text),uniffiCallStatus
     )
@@ -7965,7 +7965,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureChatAppInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -8085,7 +8085,7 @@ private func uniffiForeignFutureDroppedCallback(handle: UInt64) {
 }
 
 // For testing
-public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
+public func uniffiForeignFutureHandleCountChatApp() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
@@ -8094,7 +8094,7 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
  */
 public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_forge_log(
+    uniffi_chat_app_fn_func_forge_log(
         FfiConverterTypeForgeLogLevel_lower(level),
         FfiConverterString.lower(category),
         FfiConverterString.lower(message),uniffiCallStatus
@@ -8108,7 +8108,7 @@ public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {
 public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_forge_log_enabled(
+    uniffi_chat_app_fn_func_forge_log_enabled(
         FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
     )
 })
@@ -8120,7 +8120,7 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
  */
 public func installNativeServices(directories: AppDirectories, secureStore: SecureStore, notifier: LocalNotifier, permissions: PermissionProvider)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_install_native_services(
+    uniffi_chat_app_fn_func_install_native_services(
         FfiConverterTypeAppDirectories_lower(directories),
         FfiConverterTypeSecureStore_lower(secureStore),
         FfiConverterTypeLocalNotifier_lower(notifier),
@@ -8135,7 +8135,7 @@ public func installNativeServices(directories: AppDirectories, secureStore: Secu
 public func nativeServicesInstalled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_native_services_installed(uniffiCallStatus
+    uniffi_chat_app_fn_func_native_services_installed(uniffiCallStatus
     )
 })
 }
@@ -8146,7 +8146,7 @@ public func nativeServicesInstalled() -> Bool  {
 public func nativeServicesVersion() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_native_services_version(uniffiCallStatus
+    uniffi_chat_app_fn_func_native_services_version(uniffiCallStatus
     )
 })
 }
@@ -8156,14 +8156,14 @@ public func nativeServicesVersion() -> UInt32  {
 public func parseDeepLink(url: String)throws  -> DeepLink  {
     return try  FfiConverterTypeDeepLink_lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_parse_deep_link(
+    uniffi_chat_app_fn_func_parse_deep_link(
         FfiConverterString.lower(url),uniffiCallStatus
     )
 })
 }
 public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_install_native_audio(
+    uniffi_chat_app_fn_func_install_native_audio(
         FfiConverterTypeAudioFiles_lower(files),uniffiCallStatus
     )
 }
@@ -8176,7 +8176,7 @@ public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
 public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) -> ChatDelivery  {
     return try!  FfiConverterTypeChatDelivery_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_chat_delivery(
+    uniffi_chat_app_fn_func_chat_delivery(
         FfiConverterTypeChatMessage_lower(message),
         FfiConverterOptionTypeChatConversation.lower(conversation),uniffiCallStatus
     )
@@ -8189,7 +8189,7 @@ public func chatDelivery(message: ChatMessage, conversation: ChatConversation?) 
 public func storageEngine() -> String  {
     return try!  FfiConverterString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_storage_engine(uniffiCallStatus
+    uniffi_chat_app_fn_func_storage_engine(uniffiCallStatus
     )
 })
 }
@@ -8205,242 +8205,242 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_chat_app_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_forge_log() != 59998) {
+    if (uniffi_chat_app_checksum_func_forge_log() != 51202) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_forge_log_enabled() != 61613) {
+    if (uniffi_chat_app_checksum_func_forge_log_enabled() != 31764) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
+    if (uniffi_chat_app_checksum_func_install_native_services() != 35364) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_native_services_installed() != 37330) {
+    if (uniffi_chat_app_checksum_func_native_services_installed() != 11268) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_native_services_version() != 54155) {
+    if (uniffi_chat_app_checksum_func_native_services_version() != 25761) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_parse_deep_link() != 63697) {
+    if (uniffi_chat_app_checksum_func_parse_deep_link() != 4280) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_install_native_audio() != 57444) {
+    if (uniffi_chat_app_checksum_func_install_native_audio() != 19805) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_chat_delivery() != 17799) {
+    if (uniffi_chat_app_checksum_func_chat_delivery() != 12086) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_storage_engine() != 18473) {
+    if (uniffi_chat_app_checksum_func_storage_engine() != 15189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_account() != 32039) {
+    if (uniffi_chat_app_checksum_method_chatcore_account() != 27146) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_assistant() != 33007) {
+    if (uniffi_chat_app_checksum_method_chatcore_assistant() != 10095) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_attachment_file() != 40106) {
+    if (uniffi_chat_app_checksum_method_chatcore_attachment_file() != 56137) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_cached_conversations() != 29095) {
+    if (uniffi_chat_app_checksum_method_chatcore_cached_conversations() != 49227) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_cached_messages() != 61853) {
+    if (uniffi_chat_app_checksum_method_chatcore_cached_messages() != 57694) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_check_account() != 8189) {
+    if (uniffi_chat_app_checksum_method_chatcore_check_account() != 25829) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_create_conversation() != 30017) {
+    if (uniffi_chat_app_checksum_method_chatcore_create_conversation() != 56950) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_delete_message() != 29995) {
+    if (uniffi_chat_app_checksum_method_chatcore_delete_message() != 45178) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_draft() != 49082) {
+    if (uniffi_chat_app_checksum_method_chatcore_draft() != 54345) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_edit_message() != 14248) {
+    if (uniffi_chat_app_checksum_method_chatcore_edit_message() != 40954) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_events() != 19610) {
+    if (uniffi_chat_app_checksum_method_chatcore_events() != 21955) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_fetch_attachment() != 52675) {
+    if (uniffi_chat_app_checksum_method_chatcore_fetch_attachment() != 13668) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_list_conversations() != 48436) {
+    if (uniffi_chat_app_checksum_method_chatcore_list_conversations() != 1795) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_live_streams() != 15081) {
+    if (uniffi_chat_app_checksum_method_chatcore_live_streams() != 29871) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_mark_read() != 49646) {
+    if (uniffi_chat_app_checksum_method_chatcore_mark_read() != 8390) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_outbox_count() != 49599) {
+    if (uniffi_chat_app_checksum_method_chatcore_outbox_count() != 46708) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_phase() != 51598) {
+    if (uniffi_chat_app_checksum_method_chatcore_phase() != 46465) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_retry_message() != 49202) {
+    if (uniffi_chat_app_checksum_method_chatcore_retry_message() != 37179) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_search() != 1934) {
+    if (uniffi_chat_app_checksum_method_chatcore_search() != 22099) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_send_files() != 20430) {
+    if (uniffi_chat_app_checksum_method_chatcore_send_files() != 53553) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_send_message() != 46048) {
+    if (uniffi_chat_app_checksum_method_chatcore_send_message() != 55419) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_send_reply() != 32953) {
+    if (uniffi_chat_app_checksum_method_chatcore_send_reply() != 42370) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_draft() != 19886) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_draft() != 19456) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_marked_unread() != 12117) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_marked_unread() != 36382) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_muted() != 25654) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_muted() != 65486) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_phase() != 4202) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_phase() != 2135) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_set_reaction() != 64034) {
+    if (uniffi_chat_app_checksum_method_chatcore_set_reaction() != 6861) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_shutdown() != 5826) {
+    if (uniffi_chat_app_checksum_method_chatcore_shutdown() != 45854) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_sign_out() != 8338) {
+    if (uniffi_chat_app_checksum_method_chatcore_sign_out() != 3411) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_sign_up() != 27633) {
+    if (uniffi_chat_app_checksum_method_chatcore_sign_up() != 40116) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_store_problem() != 7545) {
+    if (uniffi_chat_app_checksum_method_chatcore_store_problem() != 4487) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_subscribe() != 40765) {
+    if (uniffi_chat_app_checksum_method_chatcore_subscribe() != 43809) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_sync_messages() != 40170) {
+    if (uniffi_chat_app_checksum_method_chatcore_sync_messages() != 56082) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_unsubscribe() != 29197) {
+    if (uniffi_chat_app_checksum_method_chatcore_unsubscribe() != 22433) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_unwatch() != 44751) {
+    if (uniffi_chat_app_checksum_method_chatcore_unwatch() != 37360) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatcore_watch() != 16512) {
+    if (uniffi_chat_app_checksum_method_chatcore_watch() != 48209) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatevents_cancel() != 56928) {
+    if (uniffi_chat_app_checksum_method_chatevents_cancel() != 6604) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_chatevents_next() != 46701) {
+    if (uniffi_chat_app_checksum_method_chatevents_next() != 7758) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_characters() != 46820) {
+    if (uniffi_chat_app_checksum_method_assistantcore_characters() != 35478) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_conversations() != 39693) {
+    if (uniffi_chat_app_checksum_method_assistantcore_conversations() != 30195) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_current_generation() != 56188) {
+    if (uniffi_chat_app_checksum_method_assistantcore_current_generation() != 48991) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_delete_conversation() != 14253) {
+    if (uniffi_chat_app_checksum_method_assistantcore_delete_conversation() != 37698) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_engine_info() != 35715) {
+    if (uniffi_chat_app_checksum_method_assistantcore_engine_info() != 43597) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_messages() != 19659) {
+    if (uniffi_chat_app_checksum_method_assistantcore_messages() != 5026) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_send() != 35029) {
+    if (uniffi_chat_app_checksum_method_assistantcore_send() != 20907) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_set_engine() != 27969) {
+    if (uniffi_chat_app_checksum_method_assistantcore_set_engine() != 63300) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_shutdown() != 42048) {
+    if (uniffi_chat_app_checksum_method_assistantcore_shutdown() != 56181) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantcore_start_conversation() != 48044) {
+    if (uniffi_chat_app_checksum_method_assistantcore_start_conversation() != 13272) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localmodelengine_describe() != 27152) {
+    if (uniffi_chat_app_checksum_method_localmodelengine_describe() != 34666) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localmodelengine_generate() != 40257) {
+    if (uniffi_chat_app_checksum_method_localmodelengine_generate() != 41940) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_tokensink_is_stopped() != 62793) {
+    if (uniffi_chat_app_checksum_method_tokensink_is_stopped() != 1405) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_tokensink_push() != 24229) {
+    if (uniffi_chat_app_checksum_method_tokensink_push() != 61463) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_cancel() != 11230) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_cancel() != 3186) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_catch_up() != 26035) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_catch_up() != 56774) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_conversation_id() != 2758) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_conversation_id() != 42626) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_is_finished() != 30725) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_is_finished() != 63734) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_message_id() != 64453) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_message_id() != 39020) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_assistantgeneration_next() != 43174) {
+    if (uniffi_chat_app_checksum_method_assistantgeneration_next() != 18257) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_schedule() != 55943) {
+    if (uniffi_chat_app_checksum_method_localnotifier_schedule() != 62374) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_cancel() != 53584) {
+    if (uniffi_chat_app_checksum_method_localnotifier_cancel() != 30501) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_pending() != 43030) {
+    if (uniffi_chat_app_checksum_method_localnotifier_pending() != 38189) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_permissionprovider_status() != 55555) {
+    if (uniffi_chat_app_checksum_method_permissionprovider_status() != 22495) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_permissionprovider_request() != 61587) {
+    if (uniffi_chat_app_checksum_method_permissionprovider_request() != 43621) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_get() != 59813) {
+    if (uniffi_chat_app_checksum_method_securestore_get() != 1914) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_set() != 38015) {
+    if (uniffi_chat_app_checksum_method_securestore_set() != 14978) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_delete() != 58219) {
+    if (uniffi_chat_app_checksum_method_securestore_delete() != 9262) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_audiofiles_duration() != 58202) {
+    if (uniffi_chat_app_checksum_method_audiofiles_duration() != 5070) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_chatcore_new() != 36317) {
+    if (uniffi_chat_app_checksum_constructor_chatcore_new() != 29475) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_chatcore_with_memory_credentials() != 7838) {
+    if (uniffi_chat_app_checksum_constructor_chatcore_with_memory_credentials() != 35535) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -8454,7 +8454,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureForgeFfiInitialized() {
+public func uniffiEnsureChatAppInitialized() {
     switch initializationResult {
     case .ok:
         break

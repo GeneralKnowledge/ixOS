@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import CommonplaceFFI
 import Foundation
 
 // Presentation-only additions to the Rust records: identity for SwiftUI

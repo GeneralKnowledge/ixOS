@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import SwiftUI
 
 /// Screen 2: one note, edited in place. Changes are saved when you tap Done,

@@ -24,6 +24,16 @@ use forge_services::Watch;
 
 uniffi::setup_scaffolding!("forge_ffi");
 
+// The showcase's other apps (Cargo.toml). Naming them links their Rust cores,
+// and so their UniFFI exports, into this library; `forge bindings generate`
+// gives each its own Swift module, which ForgeFFI re-exports.
+use chat_app as _;
+use checklist_core as _;
+use commonplace_core as _;
+use good_dog_app as _;
+use pocket_library_core as _;
+use weather_core as _;
+
 // The framework services this app uses. Each optional one brings its own
 // Swift adapter into the app, and nothing else does: Core Location, Core
 // Motion and Core Bluetooth are linked because they are named here.

@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import PocketLibraryFFI
 import ForgeAppKit
 import Foundation
 import Observation
@@ -308,8 +308,10 @@ public final class LibraryModel {
     public static let testDataArgument = "-ForgeUITestData"
 
     /// Whether this launch uses throwaway test data; it is emptied once per
-    /// launch.
+    /// launch. ForgeKit's `-ForgeTemporaryData` does the same, so one
+    /// argument starts every app on test data (Device Lab's Apps screen).
     static let usesTestData = ProcessInfo.processInfo.arguments.contains(testDataArgument)
+        || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
     private static var testDataCleared = false
 
     private static func defaultDirectory() throws -> String {

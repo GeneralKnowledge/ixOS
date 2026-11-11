@@ -148,6 +148,23 @@ How UI automation runs the app. Nothing here is written into the app; the app it
 | `test_data_args = ["-ForgeUITestData"]` | Launch arguments that start the app on fresh, throwaway data instead of the person's own. `forge ui explore` refuses to change data without them ([forge-explore.md](forge-explore.md#test-data)). Pocket Library honours `-ForgeUITestData` by using an emptied `PocketLibrary-UITest` folder |
 | `real_data_safe = ["library.settings"]` | Identifiers `forge ui explore --real-data` may tap besides navigation (rows, tabs, back, cancel), because you know they change nothing. Never overrides the never-lists ([forge-explore.md](forge-explore.md#test-data)) |
 
+### `[swift]`
+
+| Key | Default | What it names |
+|---|---|---|
+| `bindings_module` | `ForgeFFI` | The Swift module of the app's UniFFI bindings (`Generated/ForgeFFI`). Its C module is `<library>FFI`. |
+| `app_module` | `AppHost` | The module of the app's views and models (`Sources/AppHost`), for `forge check swift`. |
+
+An app another app hosts names both after itself (`ChatFFI`, `ChatApp`) and uses the same names in its `Package.swift` and imports ([app-crate.md](app-crate.md)). Run `forge bindings generate` after changing them.
+
+### `[host]`
+
+For an app that runs other apps inside it (Device Lab's Apps screen):
+
+| Key | Use |
+|---|---|
+| `apps = ["../chat", "../weather"]` | The hosted apps' folders. When Forge reads this forge.toml it merges in each one's `[ios]` permission texts, background modes and URL schemes, and its `[ui_test] test_data_args`, so each app declares what it needs once, in its own forge.toml. A permission text the host sets wins (write one when two hosted apps ask for the same permission for different reasons). Signing and entitlements stay the host's. |
+
 ## Debug and release builds
 
 | Command | Swift configuration | Rust library |

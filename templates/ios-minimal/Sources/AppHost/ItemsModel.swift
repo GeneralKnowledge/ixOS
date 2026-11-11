@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import Foundation
 import Observation
 
@@ -6,7 +6,7 @@ import Observation
 /// its own: every change goes to the Rust `AppCore` (your code in
 /// `rust/src/lib.rs`), and the list shown is the list Rust returns.
 ///
-/// ForgeKit's `ForgeHost` opens the core once per process (AppHost.swift)
+/// ForgeKit's `ForgeHost` opens the core once per process (FORGE_MODULE_NAMEApp.swift)
 /// and gives it to this model. When Rust commits a change, the host's
 /// `changes` moves and the view calls `reload()`.
 ///

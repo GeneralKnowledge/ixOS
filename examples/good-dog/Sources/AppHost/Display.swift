@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import Foundation
 
 // Identifiable conformances and the owner-facing names of Rust's enums.

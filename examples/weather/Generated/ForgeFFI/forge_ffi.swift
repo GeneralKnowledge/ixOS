@@ -7,8 +7,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(forge_ffiFFI)
-import forge_ffiFFI
+#if canImport(weather_coreFFI)
+import weather_coreFFI
 #endif
 
 fileprivate extension RustBuffer {
@@ -25,13 +25,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_forge_ffi_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_weather_core_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_forge_ffi_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_weather_core_rustbuffer_free(self, $0) }
     }
 }
 
@@ -327,7 +327,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureWeatherCoreInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -759,7 +759,7 @@ open class ForgeWeatherApp: ForgeWeatherAppProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_forgeweatherapp(self.handle, $0) }
+        return try! rustCall { uniffi_weather_core_fn_clone_forgeweatherapp(self.handle, $0) }
     }
     /**
      * Opens the app with Open-Meteo defaults. `storage_directory` holds the
@@ -769,7 +769,7 @@ public convenience init(storageDirectory: String) {
     let handle =
         try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_forgeweatherapp_new(
+    uniffi_weather_core_fn_constructor_forgeweatherapp_new(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 }
@@ -782,7 +782,7 @@ public convenience init(storageDirectory: String) {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_forgeweatherapp(handle, $0) }
+        try! rustCall { uniffi_weather_core_fn_free_forgeweatherapp(handle, $0) }
     }
 
     
@@ -793,7 +793,7 @@ public convenience init(storageDirectory: String) {
 public static func withConfig(storageDirectory: String, config: WeatherConfig)throws  -> ForgeWeatherApp  {
     return try  FfiConverterTypeForgeWeatherApp_lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_forgeweatherapp_with_config(
+    uniffi_weather_core_fn_constructor_forgeweatherapp_with_config(
         FfiConverterString.lower(storageDirectory),
         FfiConverterTypeWeatherConfig_lower(config),uniffiCallStatus
     )
@@ -808,7 +808,7 @@ public static func withConfig(storageDirectory: String, config: WeatherConfig)th
 open func activeRefresh() -> WeatherOperation?  {
     return try!  FfiConverterOptionTypeWeatherOperation.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_active_refresh(
+    uniffi_weather_core_fn_method_forgeweatherapp_active_refresh(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -821,7 +821,7 @@ open func activeRefresh() -> WeatherOperation?  {
 open func cachedReport() -> WeatherReport?  {
     return try!  FfiConverterOptionTypeWeatherReport.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_cached_report(
+    uniffi_weather_core_fn_method_forgeweatherapp_cached_report(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -834,7 +834,7 @@ open func cachedReport() -> WeatherReport?  {
 open func cachedReportFor(place: Place) -> WeatherReport?  {
     return try!  FfiConverterOptionTypeWeatherReport.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_cached_report_for(
+    uniffi_weather_core_fn_method_forgeweatherapp_cached_report_for(
             self.uniffiCloneHandle(),
         FfiConverterTypePlace_lower(place),uniffiCallStatus
     )
@@ -847,7 +847,7 @@ open func cachedReportFor(place: Place) -> WeatherReport?  {
 open func cachedReports() -> [WeatherReport]  {
     return try!  FfiConverterSequenceTypeWeatherReport.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_cached_reports(
+    uniffi_weather_core_fn_method_forgeweatherapp_cached_reports(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -856,7 +856,7 @@ open func cachedReports() -> [WeatherReport]  {
 open func isShutDown() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_is_shut_down(
+    uniffi_weather_core_fn_method_forgeweatherapp_is_shut_down(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -869,7 +869,7 @@ open func isShutDown() -> Bool  {
 open func refresh(place: Place)throws  -> WeatherOperation  {
     return try  FfiConverterTypeWeatherOperation_lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_refresh(
+    uniffi_weather_core_fn_method_forgeweatherapp_refresh(
             self.uniffiCloneHandle(),
         FfiConverterTypePlace_lower(place),uniffiCallStatus
     )
@@ -884,13 +884,13 @@ open func searchPlaces(query: String)async throws  -> [Place]  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_forgeweatherapp_search_places(
+                uniffi_weather_core_fn_method_forgeweatherapp_search_places(
                         self.uniffiCloneHandle(),FfiConverterString.lower(query)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypePlace.lift,
             errorHandler: FfiConverterTypeWeatherError_lift
         )
@@ -903,7 +903,7 @@ open func searchPlaces(query: String)async throws  -> [Place]  {
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_shutdown(
+    uniffi_weather_core_fn_method_forgeweatherapp_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -916,7 +916,7 @@ open func shutdown()  {try! rustCall() {
 open func moveSavedPlace(from: UInt32, to: UInt32)throws  -> [Place]  {
     return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_move_saved_place(
+    uniffi_weather_core_fn_method_forgeweatherapp_move_saved_place(
             self.uniffiCloneHandle(),
         FfiConverterUInt32.lower(from),
         FfiConverterUInt32.lower(to),uniffiCallStatus
@@ -931,7 +931,7 @@ open func moveSavedPlace(from: UInt32, to: UInt32)throws  -> [Place]  {
 open func removeSavedPlace(place: Place)throws  -> [Place]  {
     return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_remove_saved_place(
+    uniffi_weather_core_fn_method_forgeweatherapp_remove_saved_place(
             self.uniffiCloneHandle(),
         FfiConverterTypePlace_lower(place),uniffiCallStatus
     )
@@ -945,7 +945,7 @@ open func removeSavedPlace(place: Place)throws  -> [Place]  {
 open func savePlace(place: Place)throws  -> [Place]  {
     return try  FfiConverterSequenceTypePlace.lift(try rustCallWithError(FfiConverterTypeWeatherError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_save_place(
+    uniffi_weather_core_fn_method_forgeweatherapp_save_place(
             self.uniffiCloneHandle(),
         FfiConverterTypePlace_lower(place),uniffiCallStatus
     )
@@ -958,7 +958,7 @@ open func savePlace(place: Place)throws  -> [Place]  {
 open func savedPlaces() -> [Place]  {
     return try!  FfiConverterSequenceTypePlace.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_forgeweatherapp_saved_places(
+    uniffi_weather_core_fn_method_forgeweatherapp_saved_places(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1083,7 +1083,7 @@ open class WeatherOperation: WeatherOperationProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_weatheroperation(self.handle, $0) }
+        return try! rustCall { uniffi_weather_core_fn_clone_weatheroperation(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1093,7 +1093,7 @@ open class WeatherOperation: WeatherOperationProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_weatheroperation(handle, $0) }
+        try! rustCall { uniffi_weather_core_fn_free_weatheroperation(handle, $0) }
     }
 
     
@@ -1105,7 +1105,7 @@ open class WeatherOperation: WeatherOperationProtocol, @unchecked Sendable {
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_weatheroperation_cancel(
+    uniffi_weather_core_fn_method_weatheroperation_cancel(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1114,7 +1114,7 @@ open func cancel()  {try! rustCall() {
 open func id() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_weatheroperation_id(
+    uniffi_weather_core_fn_method_weatheroperation_id(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1123,7 +1123,7 @@ open func id() -> UInt64  {
 open func isCancelRequested() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_weatheroperation_is_cancel_requested(
+    uniffi_weather_core_fn_method_weatheroperation_is_cancel_requested(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1132,7 +1132,7 @@ open func isCancelRequested() -> Bool  {
 open func phase() -> RefreshPhase  {
     return try!  FfiConverterTypeRefreshPhase_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_weatheroperation_phase(
+    uniffi_weather_core_fn_method_weatheroperation_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1144,7 +1144,7 @@ open func phase() -> RefreshPhase  {
 open func place() -> Place  {
     return try!  FfiConverterTypePlace_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_weatheroperation_place(
+    uniffi_weather_core_fn_method_weatheroperation_place(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1158,13 +1158,13 @@ open func result()async throws  -> WeatherReport  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_weatheroperation_result(
+                uniffi_weather_core_fn_method_weatheroperation_result(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_weather_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_weather_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_weather_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeWeatherReport_lift,
             errorHandler: FfiConverterTypeWeatherError_lift
         )
@@ -3513,7 +3513,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureWeatherCoreInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -3554,7 +3554,7 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
 public func weatherOverview(report: WeatherReport, nowUnix: Int64, windUnit: WindUnit) -> WeatherOverview  {
     return try!  FfiConverterTypeWeatherOverview_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_weather_overview(
+    uniffi_weather_core_fn_func_weather_overview(
         FfiConverterTypeWeatherReport_lower(report),
         FfiConverterInt64.lower(nowUnix),
         FfiConverterTypeWindUnit_lower(windUnit),uniffiCallStatus
@@ -3573,71 +3573,71 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_weather_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_weather_overview() != 44844) {
+    if (uniffi_weather_core_checksum_func_weather_overview() != 64414) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_active_refresh() != 33919) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_active_refresh() != 46564) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_report() != 3505) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_cached_report() != 51928) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_report_for() != 56956) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_cached_report_for() != 23917) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_cached_reports() != 29172) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_cached_reports() != 17392) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_is_shut_down() != 10746) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_is_shut_down() != 45590) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_refresh() != 48947) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_refresh() != 3413) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_search_places() != 24899) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_search_places() != 4668) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_shutdown() != 57161) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_shutdown() != 36742) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_move_saved_place() != 15394) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_move_saved_place() != 52410) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_remove_saved_place() != 63079) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_remove_saved_place() != 58495) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_save_place() != 54089) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_save_place() != 23199) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_forgeweatherapp_saved_places() != 63972) {
+    if (uniffi_weather_core_checksum_method_forgeweatherapp_saved_places() != 675) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_cancel() != 45041) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_cancel() != 21963) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_id() != 5464) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_id() != 42058) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_is_cancel_requested() != 39718) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_is_cancel_requested() != 38344) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_phase() != 24258) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_phase() != 45469) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_place() != 63878) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_place() != 48882) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_weatheroperation_result() != 48980) {
+    if (uniffi_weather_core_checksum_method_weatheroperation_result() != 31989) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_forgeweatherapp_new() != 13605) {
+    if (uniffi_weather_core_checksum_constructor_forgeweatherapp_new() != 8788) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_forgeweatherapp_with_config() != 29762) {
+    if (uniffi_weather_core_checksum_constructor_forgeweatherapp_with_config() != 6083) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -3646,7 +3646,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureForgeFfiInitialized() {
+public func uniffiEnsureWeatherCoreInitialized() {
     switch initializationResult {
     case .ok:
         break

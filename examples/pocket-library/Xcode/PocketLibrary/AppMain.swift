@@ -1,4 +1,4 @@
-import AppHost
+import PocketLibraryApp
 import SwiftUI
 
 @main

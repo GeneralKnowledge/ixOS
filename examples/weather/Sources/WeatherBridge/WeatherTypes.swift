@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import ForgeFFI
+@preconcurrency import WeatherFFI
 
 // The Weather payload is used as UniFFI generates it: records become Swift
 // structs, Rust enums with data become Swift enums with associated values, and
@@ -7,23 +7,23 @@ import Foundation
 // example, so the bridge re-exports those types instead of wrapping them.
 // (The generated records and enums are `Sendable`, `Equatable` and `Hashable`.)
 
-public typealias Coordinate = ForgeFFI.Coordinate
-public typealias Place = ForgeFFI.Place
-public typealias PlaceSource = ForgeFFI.PlaceSource
-public typealias WeatherReport = ForgeFFI.WeatherReport
-public typealias CurrentConditions = ForgeFFI.CurrentConditions
-public typealias HourlyPoint = ForgeFFI.HourlyPoint
-public typealias DailyForecast = ForgeFFI.DailyForecast
-public typealias Wind = ForgeFFI.Wind
-public typealias WeatherCondition = ForgeFFI.WeatherCondition
-public typealias Intensity = ForgeFFI.Intensity
-public typealias Freshness = ForgeFFI.Freshness
-public typealias FetchProblem = ForgeFFI.FetchProblem
-public typealias WeatherConfig = ForgeFFI.WeatherConfig
-public typealias WeatherOverview = ForgeFFI.WeatherOverview
-public typealias TimelineEntry = ForgeFFI.TimelineEntry
-public typealias SkyScene = ForgeFFI.SkyScene
-public typealias WindUnit = ForgeFFI.WindUnit
+public typealias Coordinate = WeatherFFI.Coordinate
+public typealias Place = WeatherFFI.Place
+public typealias PlaceSource = WeatherFFI.PlaceSource
+public typealias WeatherReport = WeatherFFI.WeatherReport
+public typealias CurrentConditions = WeatherFFI.CurrentConditions
+public typealias HourlyPoint = WeatherFFI.HourlyPoint
+public typealias DailyForecast = WeatherFFI.DailyForecast
+public typealias Wind = WeatherFFI.Wind
+public typealias WeatherCondition = WeatherFFI.WeatherCondition
+public typealias Intensity = WeatherFFI.Intensity
+public typealias Freshness = WeatherFFI.Freshness
+public typealias FetchProblem = WeatherFFI.FetchProblem
+public typealias WeatherConfig = WeatherFFI.WeatherConfig
+public typealias WeatherOverview = WeatherFFI.WeatherOverview
+public typealias TimelineEntry = WeatherFFI.TimelineEntry
+public typealias SkyScene = WeatherFFI.SkyScene
+public typealias WindUnit = WeatherFFI.WindUnit
 
 extension Place {
     /// A place for a device location fix. Rust only needs the coordinate;

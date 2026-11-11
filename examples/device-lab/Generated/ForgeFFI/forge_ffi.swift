@@ -3,6 +3,7 @@
 
 // swiftlint:disable all
 import Foundation
+@preconcurrency import ForgeApp
 
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
