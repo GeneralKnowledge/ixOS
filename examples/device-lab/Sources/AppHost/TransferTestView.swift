@@ -74,8 +74,8 @@ private struct TransferRowView: View {
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("transfers.row")
-            // Visible buttons rather than swipe actions, so the step can be
-            // done (and scripted) without discovering a gesture.
+            // Visible as well as on a swipe, so the step can be done (and
+            // scripted) without knowing the gesture.
             if row.canCancel || row.canRetry {
                 HStack(spacing: 20) {
                     if row.canCancel {
@@ -89,6 +89,16 @@ private struct TransferRowView: View {
                 }
                 .buttonStyle(.borderless)
                 .font(.subheadline)
+            }
+        }
+        .swipeActions {
+            if row.canCancel {
+                Button("Cancel", role: .destructive) { model.cancel(row) }
+                    .accessibilityIdentifier("transfers.swipeCancel")
+            }
+            if row.canRetry {
+                Button("Retry") { model.retry(row) }
+                    .accessibilityIdentifier("transfers.swipeRetry")
             }
         }
     }
