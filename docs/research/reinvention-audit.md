@@ -2,7 +2,7 @@
 
 The question: has ixOS rebuilt things that already exist? Each major component was compared with the closest existing tools, and given a verdict: justified, partly (adopt or wrap something for part of it), or not justified. The decisions that came out of it are in the [roadmap](../roadmap.md#tooling-freeze-and-reuse-rules), [architecture.md](../architecture.md#framework-principles) (native first) and the root `AGENTS.md` (rule 11). Reuben agreed with the assessment on 2026-11-11.
 
-Line counts are non-test Rust or Swift at `main` c113907 (code before the first `#[cfg(test)]` in each file). They are a proxy for what each part costs to own, not a measure of its value.
+**Snapshot.** Every number here was measured at `main` c113907 on 2026-11-11 and is not kept up to date. Re-measure before relying on one. Line counts are non-test Rust or Swift at that commit (code before the first `#[cfg(test)]` in each file). They are a proxy for what each part costs to own, not a measure of its value.
 
 ## Summary
 
@@ -52,7 +52,7 @@ Mostly no. The framework crates (`forge-app`, `forge-runtime`, `forge-storage`, 
 
 ## Decisions
 
-1. Freeze the agent and device tooling (rows 1 and 5) at bug fixes until P1 to P4 are done.
+1. Freeze the agent and device tooling (rows 1 and 5) at bug fixes until the roadmap's P1 to P4 exit criteria are met, with a review on 2026-12-15.
 2. Move iOS networking to URLSession, as the native capability roadmap says.
 3. A new native service gets a Rust interface only when the Rust core reads its value.
 4. Write JUnit XML beside the evidence bundle; no new report features.

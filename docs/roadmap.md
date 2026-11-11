@@ -50,6 +50,17 @@ Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-a
 3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
 4. **Evidence bundles also write JUnit XML** (`junit.xml`, [evidence.md](evidence.md#the-evidence-bundle)), so any CI system or test viewer can read the results. No new report features.
 
+The freeze ends when all four of these exit criteria are met, each checked on a physical iPhone and reported by a person:
+
+| | Done when | Status (2026-11-11) |
+|---|---|---|
+| P1 ForgeUI 0.1 | The showcase's settings, list and create/edit form screens use no custom styling and run on an iPhone in light, dark and the largest text size | **Met** 2026-11-10 |
+| P2 ForgeAppKit 0.1 | Pocket Library uses its alerts, destinations, load and submission state and form errors, and its UI tests that cover them pass on an iPhone | Not met: built and tested on Linux only |
+| P3 Rust foundations | Persistence guarantees ([#159](https://github.com/GeneralKnowledge/ixOS/pull/159)) are merged, Pocket Library runs on the `forge-app` `Runtime`, and its saved-version fixtures open in CI | Not met: #159 open, Pocket Library uses only validation |
+| P4 Reference app | Every requirement in Pocket Library's `requirements.toml` passes on an iPhone in one `forge ui run` sitting, with no app-local copies of framework code | Not met |
+
+Whatever happens, the freeze is reviewed on 2026-12-15, so it can't drift into an indefinite one. At the review, it either ends, or gets a new date and the reason it still holds.
+
 ## Near term
 
 ### Autonomous dev loop (Forge M6) — Frozen

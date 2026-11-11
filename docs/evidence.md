@@ -78,7 +78,7 @@ Every run that executes tests writes a directory:
 
 `<id>` is the UTC start time (`2026-11-07T18-48-25`), the same stamp as `.forge/logs/`. `.forge/` is git-ignored; CI runs the twin of every app with a `requirements.toml` and keeps the bundles as the `twin-evidence` artifact on every run of the Rust workflow.
 
-`junit.xml` carries only pass and fail: one test case per XCTest case for `forge check swift`, and one per scenario for `forge ui run`, with the failed step's error as the failure message. Requirements, verdicts and file hashes have no place in JUnit, so `evidence.json` stays the record. `forge ui explore` writes none: a walk has no tests.
+`junit.xml` has one test case per XCTest case for `forge check swift`, and one per scenario for `forge ui run`. A failed XCTest case carries its diagnostic: the failure's `message` is the assertion (`XCTAssertEqual failed: …`), and its text is every error line the case printed, with file and line. A failed scenario carries the failed step's number and error, any screenshot that differs from its baseline, and what was on screen. The raw log stays in the bundle for everything else. Requirements, verdicts and file hashes have no place in JUnit, so `evidence.json` stays the record. `forge ui explore` writes none: a walk has no tests.
 
 The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the-result-contract)) stays the short answer and points at the bundle: `data.evidence` is the path of `evidence.json`, `data.requirements` lists each id with its verdict, and `data.results` counts the tests. An agent reads the result; a person, or `forge verify`, reads the bundle.
 
@@ -122,7 +122,7 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 | `build.tree` | A git tree hash of the app folder's files as they were on disk, committed or not (git-ignored files such as `.forge/` left out). `forge verify` compares it with the folder now: same files, same hash. Evidence for other files is stale |
 | `build.forge`, `build.swift` | The forge version, and the Swift that ran the twin tests (`docker <image>` with `FORGE_SWIFT_DOCKER`) |
 | `build.installed_as` | Device runs: the bundle id the app is installed as (xtool renames it `XTL-<team>.<id>`) |
-| `tests.cases` | Every XCTest case the run reported, by `Class.method` |
+| `tests.cases` | Every XCTest case the run reported, by `Class.method`. A failed case has `diagnostics`: the `file:line: error: …` lines XCTest printed while it ran |
 | `requirements[].notes` | Why a verdict isn't `passed`, in words |
 | `artifacts` | Files in the bundle, with a `kind` (`log`; for device runs `screenshot`, `ui_tree` and `visual_diff`, later `device_log`, `crash`, `audit`), its `sha256` and its size in `bytes` |
 | `visual` | Device runs: each screenshot compared with its approved baseline: `match`, `new`, `changed` or `recorded`, the changed areas and elements ([visual-regression.md](visual-regression.md)) |
