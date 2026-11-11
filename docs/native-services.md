@@ -86,6 +86,35 @@ Things to know:
 - **Notifications and permissions are `async`.** The Swift side awaits `UNUserNotificationCenter`. Scheduling fails with `PermissionDenied` if the user has said no, or has not been asked yet, so request the permission first, from something the user did. A notification with the `id` of a pending one replaces it.
 - **Store paths relative to `AppDirectories`.** iOS changes the container path between installs, so a stored absolute path breaks after an update.
 
+### Notification actions
+
+Buttons on a notification (Reply, Mark as Read, Done, Delete), handled in Rust, mostly without opening the app. Set the categories when the core opens, name one on each notification, and set one handler for the responses:
+
+```rust
+use crate::native::{on_notification_response, NotificationAction, NotificationCategory};
+
+services.set_notification_categories(vec![NotificationCategory {
+    id: "message".into(),
+    actions: vec![
+        NotificationAction::reply("reply"),                  // a text field with Send
+        NotificationAction::button("read", "Mark as Read"),  // handled in the background
+        NotificationAction::destructive("delete", "Delete"), // red, needs the phone unlocked
+        NotificationAction::opens_app("view", "View"),       // opens the app, and the deep link
+    ],
+}])?;
+reminder.category = Some("message".into());
+
+on_notification_response(move |response| match response.action_id.as_str() {
+    "reply" => { /* response.text, response.thread_id, response.notification_id */ }
+    "read" => { /* ... */ }
+    native::NOTIFICATION_OPENED => {}    // a tap on the notification itself
+    native::NOTIFICATION_DISMISSED => {} // swiped away (categories only)
+    _ => {}
+});
+```
+
+Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each); Chat's message notifications are the first user (Reply and Mark as Read).
+
 ### Tests
 
 `NativeServices::for_tests(dir)` returns in-memory services and the fakes behind them: `MemorySecureStore`, `RecordingNotifier` (`.scheduled()`, `.deny()`) and `FixedPermissions` (`.set(..)`). They run with `cargo test` on Linux and need no device:

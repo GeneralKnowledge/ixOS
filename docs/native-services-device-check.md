@@ -37,6 +37,7 @@ About five seconds after the run, a **Forge services check** banner appears. It 
 
 - Section 2 should show `PASS forgecheck://check/notification?from=tap → route ["check", "notification"]`.
 - Open Safari, type `forgecheck://check/url` and allow the switch to the app. A second `PASS` line appears.
+- Run the checks again and, when the banner appears, long-press it (or pull it down on the lock screen). **Reply**, **Done** and **Open** appear. Tap **Reply**, type a word and send; then run again and choose **Done**. Back in the app, tap **Show notification responses**: `PASS notification response: reply` and `... done` appear (and `forge.opened` for the earlier tap).
 
 ## 4. Share and import
 

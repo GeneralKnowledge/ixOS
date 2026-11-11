@@ -84,7 +84,10 @@ impl ChatCore {
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, ChatError> {
         let credentials = KeychainCredentials::installed()?;
-        Self::open(PathBuf::from(storage_directory), Arc::new(credentials)).map(Arc::new)
+        let core =
+            Self::open(PathBuf::from(storage_directory), Arc::new(credentials)).map(Arc::new)?;
+        core.handle_notification_actions();
+        Ok(core)
     }
 
     /// Like `new`, but the account is only kept in memory, so it is gone at
@@ -581,7 +584,76 @@ impl ChatCore {
     }
 }
 
+/// The notification category of a new message (`LocalChatNotifier`), with
+/// Reply and Mark as Read on it.
+pub const MESSAGE_NOTIFICATION: &str = "chat.message";
+
+/// [`MESSAGE_NOTIFICATION`], for the Swift notifier.
+#[uniffi::export]
+pub fn message_notification_category() -> String {
+    MESSAGE_NOTIFICATION.into()
+}
+
 impl ChatCore {
+    /// Reply and Mark as Read on message notifications, handled without
+    /// opening the app. A reply goes through the outbox like any message, so
+    /// it is sent later if the phone is offline.
+    fn handle_notification_actions(self: &Arc<Self>) {
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        let actions = native::NotificationCategory {
+            id: MESSAGE_NOTIFICATION.into(),
+            actions: vec![
+                native::NotificationAction::reply("reply"),
+                native::NotificationAction::button("read", "Mark as Read"),
+            ],
+        };
+        if let Err(e) = services.set_notification_categories(vec![actions]) {
+            forge_runtime::logging::warn!("notification actions not set: {e}");
+        }
+        let core = Arc::downgrade(self);
+        native::on_notification_response(move |response| {
+            let Some(core) = core.upgrade() else { return };
+            core.notification_response(response);
+        });
+    }
+
+    fn notification_response(&self, response: native::NotificationResponse) {
+        // The room is the notification's thread (LocalChatNotifier).
+        let Some(room) = response.thread_id else {
+            return;
+        };
+        let Ok(client) = self.client() else { return };
+        let work = match response.action_id.as_str() {
+            "reply" => {
+                let Some(text) = response.text.filter(|t| !t.trim().is_empty()) else {
+                    return;
+                };
+                let reply_to = Some(response.notification_id);
+                std::thread::Builder::new()
+                    .name("chat-notification-reply".into())
+                    .spawn(move || {
+                        // Never log the reply itself.
+                        if let Err(e) = client.send_reply(&room, &text, reply_to.as_deref()) {
+                            forge_runtime::logging::warn!("reply from a notification failed: {e}");
+                        }
+                    })
+            }
+            "read" => std::thread::Builder::new()
+                .name("chat-notification-read".into())
+                .spawn(move || {
+                    if let Err(e) = client.mark_read(&room) {
+                        forge_runtime::logging::warn!("mark read from a notification failed: {e}");
+                    }
+                }),
+            _ => return,
+        };
+        if let Err(e) = work {
+            forge_runtime::logging::warn!("notification action not started: {e}");
+        }
+    }
+
     /// Opens with any credential store (tests pass fakes).
     pub fn open(
         storage_directory: PathBuf,

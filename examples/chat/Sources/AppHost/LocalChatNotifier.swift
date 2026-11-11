@@ -57,7 +57,9 @@ public final class LocalChatNotifier: ChatNotifier {
     public func post(_ message: ChatMessage, roomTitle: String) {
         let notification = LocalNotification(
             id: message.id, title: roomTitle, body: message.body, subtitle: message.author,
-            threadId: message.conversationId, deepLink: ChatLinks.message(message), trigger: .now)
+            threadId: message.conversationId, deepLink: ChatLinks.message(message), trigger: .now,
+            // Reply and Mark as Read (handled in Rust, rust/src/lib.rs).
+            category: messageNotificationCategory())
         let notifier = self.notifier
         Task {
             // Refused when notifications are off; nothing to tell the user then.

@@ -4,6 +4,15 @@
 // Rust on a device, so the Keychain, notification and permission calls go
 // through the real Rust -> Swift path. Not part of the starter.
 
+/// Notification responses seen so far, shown by `services_check_responses`.
+static RESPONSES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// One line per notification response Rust received (a tap, an action).
+#[uniffi::export]
+pub fn services_check_responses() -> Vec<String> {
+    RESPONSES.lock().map(|r| r.clone()).unwrap_or_default()
+}
+
 /// Runs the Rust-side checks and returns one line per check, starting with
 /// PASS, FAIL or INFO.
 #[uniffi::export]
@@ -81,6 +90,34 @@ pub async fn services_self_check() -> Vec<String> {
         repeats: false,
     };
     reminder.deep_link = Some("forgecheck://check/notification?from=tap".into());
+    // Action buttons (long-press the banner): Reply, Done, Open.
+    check(
+        "notification actions",
+        services
+            .set_notification_categories(vec![native::NotificationCategory {
+                id: "check".into(),
+                actions: vec![
+                    native::NotificationAction::reply("reply"),
+                    native::NotificationAction::button("done", "Done"),
+                    native::NotificationAction::opens_app("open", "Open"),
+                ],
+            }])
+            .map(|_| "long-press the banner for Reply, Done and Open".into())
+            .map_err(|e| e.to_string()),
+    );
+    reminder.category = Some("check".into());
+    native::on_notification_response(|response| {
+        // What the person typed stays out of the log; only its length.
+        forge_runtime::logging::info!(
+            target: "services-check",
+            "notification response: {} (text: {} chars)",
+            response.action_id,
+            response.text.as_deref().map_or(0, str::len)
+        );
+        if let Ok(mut log) = RESPONSES.lock() {
+            log.push(format!("PASS notification response: {}", response.action_id));
+        }
+    });
     check(
         "schedule notification",
         services

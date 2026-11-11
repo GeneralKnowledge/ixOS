@@ -61,6 +61,121 @@ pub fn validate(
     Ok(())
 }
 
+/// Most actions iOS shows on one notification.
+pub const MAX_ACTIONS: usize = 10;
+
+/// Checks a set of notification categories: ids present and unique, each
+/// category with at least one action and at most [`MAX_ACTIONS`], action
+/// titles present and action ids unique within a category. Takes
+/// `(category id, [(action id, title)])`.
+pub fn validate_categories(categories: &[(&str, Vec<(&str, &str)>)]) -> Result<(), String> {
+    let mut seen = std::collections::HashSet::new();
+    for (id, actions) in categories {
+        if id.trim().is_empty() {
+            return Err("a notification category needs an id".into());
+        }
+        if !seen.insert(*id) {
+            return Err(format!("notification category \"{id}\" is listed twice"));
+        }
+        if actions.is_empty() || actions.len() > MAX_ACTIONS {
+            return Err(format!(
+                "notification category \"{id}\" needs 1 to {MAX_ACTIONS} actions"
+            ));
+        }
+        let mut action_ids = std::collections::HashSet::new();
+        for (action, title) in actions {
+            if action.trim().is_empty() || title.trim().is_empty() {
+                return Err(format!(
+                    "every action in notification category \"{id}\" needs an id and a title"
+                ));
+            }
+            if !action_ids.insert(*action) {
+                return Err(format!(
+                    "action \"{action}\" is listed twice in notification category \"{id}\""
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Where notification responses wait for the app's handler: a response
+/// that arrives before the core registered one (a cold launch from an
+/// action) is kept, up to [`Inbox::MAX_PENDING`], and delivered to the
+/// first handler.
+pub struct Inbox<T> {
+    state: std::sync::Mutex<InboxState<T>>,
+}
+
+type Handler<T> = std::sync::Arc<dyn Fn(T) + Send + Sync>;
+
+struct InboxState<T> {
+    handler: Option<Handler<T>>,
+    pending: Vec<T>,
+}
+
+impl<T> Default for Inbox<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> Inbox<T> {
+    /// Kept while no handler is registered; the oldest are dropped first.
+    pub const MAX_PENDING: usize = 16;
+
+    pub const fn new() -> Self {
+        Self {
+            state: std::sync::Mutex::new(InboxState {
+                handler: None,
+                pending: Vec::new(),
+            }),
+        }
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, InboxState<T>> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Hands `item` to the handler, or keeps it until there is one.
+    pub fn deliver(&self, item: T) {
+        let handler = {
+            let mut state = self.lock();
+            match &state.handler {
+                Some(handler) => handler.clone(),
+                None => {
+                    state.pending.push(item);
+                    let extra = state.pending.len().saturating_sub(Self::MAX_PENDING);
+                    state.pending.drain(..extra);
+                    return;
+                }
+            }
+        };
+        handler(item);
+    }
+
+    /// Sets the handler (replacing any earlier one) and gives it whatever
+    /// arrived before.
+    pub fn set_handler(&self, handler: impl Fn(T) + Send + Sync + 'static) {
+        let handler: Handler<T> = std::sync::Arc::new(handler);
+        let pending = {
+            let mut state = self.lock();
+            state.handler = Some(handler.clone());
+            std::mem::take(&mut state.pending)
+        };
+        for item in pending {
+            handler(item);
+        }
+    }
+
+    /// Removes the handler (for tests).
+    pub fn clear(&self) {
+        let mut state = self.lock();
+        state.handler = None;
+        state.pending.clear();
+    }
+}
+
 /// The current Unix time in milliseconds.
 pub fn now_ms() -> i64 {
     SystemTime::now()
@@ -72,6 +187,35 @@ pub fn now_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn categories_need_ids_titles_and_unique_actions() {
+        assert!(validate_categories(&[(
+            "message",
+            vec![("reply", "Reply"), ("read", "Mark as Read")]
+        )])
+        .is_ok());
+        assert!(validate_categories(&[("", vec![("a", "A")])]).is_err());
+        assert!(validate_categories(&[("c", vec![])]).is_err());
+        assert!(validate_categories(&[("c", vec![("a", " ")])]).is_err());
+        assert!(validate_categories(&[("c", vec![("a", "A"), ("a", "B")])]).is_err());
+        assert!(validate_categories(&[("c", vec![("a", "A")]), ("c", vec![("b", "B")])]).is_err());
+    }
+
+    #[test]
+    fn the_inbox_keeps_items_until_there_is_a_handler() {
+        let inbox = Inbox::new();
+        for i in 0..20 {
+            inbox.deliver(i);
+        }
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        inbox.set_handler(move |i| sink.lock().unwrap().push(i));
+        // The oldest four were dropped.
+        assert_eq!(*seen.lock().unwrap(), (4..20).collect::<Vec<_>>());
+        inbox.deliver(99);
+        assert_eq!(seen.lock().unwrap().last(), Some(&99));
+    }
 
     fn check(trigger: Trigger) -> Result<(), String> {
         validate("id", "Title", "", None, trigger, 1_000)

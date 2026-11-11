@@ -15,6 +15,7 @@ public struct ContentView: View {
     @State private var shareItem: ShareItem?
     @State private var importing = false
     @State private var links: [String] = []
+    @State private var responses: [String] = []
     @State private var permission = "unknown"
     #if os(iOS)
         @State private var webPage: ForgeWebPage?
@@ -49,6 +50,8 @@ public struct ContentView: View {
                 Section("2. Deep links (tap the notification, or open forgecheck://check/url)") {
                     if links.isEmpty { Text("None yet").foregroundStyle(.secondary) }
                     ForEach(links, id: \.self) { Text($0).font(.footnote.monospaced()) }
+                    ForEach(responses, id: \.self) { Text($0).font(.footnote.monospaced()) }
+                    Button("Show notification responses") { responses = servicesCheckResponses() }
                 }
                 Section("3. Share and import") {
                     if let shareItem {

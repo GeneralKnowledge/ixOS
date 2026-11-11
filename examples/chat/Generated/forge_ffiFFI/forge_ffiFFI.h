@@ -275,6 +275,13 @@ typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiFore
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
 typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -333,6 +340,7 @@ typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
     UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
     UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
     UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
 } UniffiVTableCallbackInterfaceLocalNotifier;
 
 #endif
@@ -761,6 +769,11 @@ void uniffi_forge_ffi_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id
 uint64_t uniffi_forge_ffi_fn_method_localnotifier_pending(uint64_t ptr
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_forge_ffi_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_PERMISSIONPROVIDER
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_CLONE_PERMISSIONPROVIDER
 uint64_t uniffi_forge_ffi_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -844,6 +857,17 @@ void uniffi_forge_ffi_fn_func_forge_log(RustBuffer level, RustBuffer category, R
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_FORGE_LOG_ENABLED
 int8_t uniffi_forge_ffi_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+RustBuffer uniffi_forge_ffi_fn_func_message_notification_category(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_forge_ffi_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_FUNC_INSTALL_NATIVE_SERVICES
@@ -1153,6 +1177,18 @@ uint16_t uniffi_forge_ffi_checksum_func_forge_log(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 uint16_t uniffi_forge_ffi_checksum_func_forge_log_enabled(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
+uint16_t uniffi_forge_ffi_checksum_func_message_notification_category(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_forge_ffi_checksum_func_deliver_notification_response(void
     
 );
 #endif
@@ -1561,6 +1597,12 @@ uint16_t uniffi_forge_ffi_checksum_method_localnotifier_cancel(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
 uint16_t uniffi_forge_ffi_checksum_method_localnotifier_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_forge_ffi_checksum_method_localnotifier_set_categories(void
     
 );
 #endif
