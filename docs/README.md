@@ -41,6 +41,7 @@ Read these in order the first time.
 |---|---|
 | [ios-signing.md](ios-signing.md) | Apple sign-in, free and paid teams, the 7-day limit and the 3-app limit |
 | [builds.md](builds.md) | What each kind of build produces, and what isn't supported yet |
+| [ios-build-check.md](ios-build-check.md) | Checking that every app's Swift still builds for an iPhone, on Linux with xtool (`scripts/check-ios-xtool.sh`), instead of macOS CI |
 | [first-app-store-release.md](first-app-store-release.md) | The plan for publishing to the App Store (not supported yet) |
 | [ios-xcode.md](ios-xcode.md) | Building with Xcode on a Mac, if you have one (optional) |
 | [compatibility.md](compatibility.md) | The tool versions Forge is built and tested with |

@@ -1,15 +1,14 @@
 name: macOS
 
-# The checks Linux cannot do: Swift host tests (XCTest against each app's
-# Rust core) and unsigned iOS device builds with Xcode, in one job. The
-# supported stack is Linux + xtool + an iPhone, so this does not gate pull
-# requests: it runs weekly, and by hand on any branch (Actions tab -> macOS ->
-# Run workflow) when you want a Mac's opinion on a Swift change. Leave "apps"
-# empty to check every app, or name some: counter weather chat
+# A fallback, run by hand only. The routine check that our Swift compiles for
+# an iPhone is scripts/check-ios-xtool.sh on a Linux machine with xtool and its
+# Darwin SDK (docs/ios-build-check.md): minutes, not a ~35 minute macOS queue.
+# Use this workflow only when no such machine is available, or to test the
+# Xcode projects and the Swift host tests (XCTest on macOS against each app's
+# Rust core), which xtool doesn't use. Actions tab -> macOS -> Run workflow;
+# leave "apps" empty to check every app, or name some: counter weather chat
 # pocket-library good-dog device-lab template services-check.
 on:
-  schedule:
-    - cron: "0 6 * * 1"
   workflow_dispatch:
     inputs:
       apps:

@@ -46,18 +46,18 @@ CI runs both, plus unsigned `xcodebuild` device builds; see [CI](#ci) for when.
 
 ## CI
 
-CI is kept lean on purpose: a pull request should be green in minutes, and is gated by Linux checks only. The supported stack is Linux, xtool and an iPhone, so the macOS job is a weekly backstop and an on-demand check, not a gate. Docs-only changes (`*.md`, `docs/`) run nothing.
+CI is kept lean on purpose: a pull request should be green in minutes, and is gated by Linux checks only. The supported stack is Linux, xtool and an iPhone, so the check that Swift compiles for an iPhone runs on a Linux machine with xtool, not in CI: `./scripts/check-ios-xtool.sh affected "$(git merge-base origin/main HEAD)"` ([docs/ios-build-check.md](docs/ios-build-check.md)). The macOS workflow is a manual fallback only. Docs-only changes (`*.md`, `docs/`) run nothing.
 
 | Workflow | Job | Pull requests | Pushes to main |
 | --- | --- | --- | --- |
 | Rust (Linux) | Rust: fmt, clippy, tests, app-owned crates, binding drift, Xcode project layout | Every code change | Every code change |
 | Rust (Linux) | Fresh app outside the checkout | Every code change | Every code change |
 | Rust (Linux) | MSRV (1.89) and cargo-deny | Every code change | Every code change |
-| macOS | iOS (Swift tests, Xcode build): one job, `scripts/ci-macos.sh` | On demand | Weekly, every app |
+| macOS | iOS (Swift host tests, Xcode build): one job, `scripts/ci-macos.sh`. Fallback for when no xtool machine is available | By hand only | By hand only |
 | Android (Linux) | android-apk | Only when Android code changes | When shared Rust or Android code changes |
 | Screenshots (macOS) | Simulator screenshots | On demand | On demand |
 
-Anything path-filtered can be run by hand on any branch: Actions tab, pick the workflow, **Run workflow**. Use it for Android (frozen, work in progress), for the Swift host tests and Xcode device builds on a branch (macOS; optionally name the apps), and for simulator screenshots of a UI change (Screenshots, pick `starter`, `pocket-library` or `weather`; the images are uploaded and also printed as small JPEGs in the log). `./scripts/ci-macos.sh --list affected "$(git merge-base origin/main HEAD)"` shows which apps a branch's macOS run would check.
+Anything path-filtered can be run by hand on any branch: Actions tab, pick the workflow, **Run workflow**. Use it for Android (frozen, work in progress), for the Swift host tests and Xcode device builds on a branch when no xtool machine is available (macOS; optionally name the apps), and for simulator screenshots of a UI change (Screenshots, pick `starter`, `pocket-library` or `weather`; the images are uploaded and also printed as small JPEGs in the log). `./scripts/ci-macos.sh --list affected "$(git merge-base origin/main HEAD)"` shows which apps a branch's macOS run would check.
 
 ## Pull requests
 
