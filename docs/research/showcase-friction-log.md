@@ -8,16 +8,16 @@ what that shows about the framework. This log is that answer. Each entry says
 what happened, how the showcase got round it, and what the framework should do
 instead.
 
-The apps' own code is unchanged. Each app's Swift is linked into Device Lab
-from its own folder through symlinks, and each app's Rust is compiled from
-its own folder. The one change to the other apps is a single line in each of
-their `lib.rs` files (F2).
+The apps still build and run on their own, and their Swift is unchanged.
+Device Lab depends on each app's own Rust crate and links its Swift from its
+own folder through symlinks. The changes to the other apps are their library
+names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
 
 ## Summary
 
 | # | Friction | Severity | Workaround in the showcase | Framework fix |
 |---|---|---|---|---|
-| F1 | Every app crate's library is called `forge_ffi`, so two app crates can't be linked into one library | Blocker | `rust/embedded/`: a second manifest for each app's source, with its own library name | Let the library name be the app's own; tools read it from Cargo |
+| F1 | Every app crate's library is called `forge_ffi`, so two app crates can't be linked into one library | Blocker | **Fixed in this PR**: the tools read the name from Cargo; a linkable app names its library after itself | Make it the template's default |
 | F2 | The UniFFI namespace is hard-coded as `"forge_ffi"` in every app | Blocker | `setup_scaffolding!()` with no argument (the namespace follows the library name) | Same, in the template |
 | F3 | Bindings generation knew only one app module (plus ForgeKit's) | Blocker | `generate-bindings.sh` now makes a Swift module per linked crate and re-exports it from ForgeFFI | Keep it, and generate the Package.swift entries too |
 | F4 | An app's Swift can't be used by another package | Blocker | Symlinks under `Sources/` | Split each app's Swift into a package product that doesn't contain the bindings |
@@ -28,7 +28,7 @@ their `lib.rs` files (F2).
 | F9 | Info.plist settings belong to the app, not the feature | Limit | Merged by hand in `forge.toml` | Let a linked app declare its permissions and modes |
 | F10 | Two location stacks | Duplication | None; both work | Move Weather onto the location native service (an open follow-up since #59) |
 | F11 | Duplicated public helpers (`forgeLaunchAppearance`, `ContentView`) | Broke the first build | Device Lab applies the appearance in its ContentView | Ship `forgeLaunchAppearance` once, in ForgeUI |
-| F12 | Dependencies listed twice | Drift risk | Comments; a missing one fails the build | Goes away with F1 |
+| F12 | Dependencies listed twice | Drift risk | Gone with the F1 fix | — |
 | F13 | The Swift can't be compiled in a cloud session | Process | The laptop build and macOS CI check it | Known (AGENTS.md); no change |
 | F14 | The new `import ForgeApp` in Device Lab's bindings | Side effect | Device Lab's ForgeFFI now depends on ForgeApp | None needed |
 
@@ -48,18 +48,29 @@ Renaming the libraries got past Cargo. The linker then failed on a duplicate
 symbol, `UNIFFI_META_NAMESPACE_FORGE_FFI` (F2). Once both were fixed, all four
 cores linked into one library.
 
-**Workaround.** `examples/device-lab/rust/embedded/<app>/Cargo.toml` compiles
-each app's `rust/src/lib.rs` again as a library with its own name
-(`weather_core`, `checklist_core`, `pocket_library_core`). The standalone apps
-keep their manifests and their `forge_ffi` name, so they build exactly as
-before (their committed bindings are unchanged).
+**First workaround.** A second manifest per app (`rust/embedded/<app>/`)
+compiled each app's `rust/src/lib.rs` again under another library name. It
+worked, but every new app would have needed one, with its dependencies
+copied (F12).
 
-**Framework fix.** The fixed name made sense when an app was one crate. It
-means an app crate can never be reused. The template should name the library
-after the app, and the scripts and `forge` should read the name from `cargo
-metadata` instead of assuming `libforge_ffi`. That touches about 20 places in
-`scripts/` and `crates/forge-cli` (`swift_check.rs` most of all), so it's a
-change of its own, not part of this one.
+**Framework fix, done.** A crate's library may now carry its own name.
+`scripts/forge-crate.sh` reads it from `Cargo.toml` (`LIB_NAME`), and
+`forge check swift` reads it from `cargo metadata`. Whatever the name, the
+library is staged as `libforge_ffi.a`, and `generate-bindings.sh` asks UniFFI
+for that crate's Swift as the `ForgeFFI` module over `forge_ffiFFI` (a
+per-crate config override; Kotlin likewise). So each standalone app's Swift
+package, Xcode project and committed bindings stay as they were: only
+internal symbol names and checksums differ. Weather, Checklist and Pocket
+Library now name their libraries `weather_core`, `checklist_core` and
+`pocket_library_core`, and Device Lab depends on their crates directly.
+
+Linkable crates also drop `cdylib` from `crate-type`: as a dependency Cargo
+would link it for iOS, which needs Apple's linker (the same trap forge-app
+fell into in #143). `generate-bindings.sh` builds the host shared library
+it needs with `cargo rustc --crate-type cdylib`.
+
+Still to do: make an own name the template's default, so every new app can
+be linked without a rename. Android apps keep `forge_ffi`.
 
 ## F2. The namespace is hard-coded
 
@@ -174,9 +185,8 @@ Library; the Apps screen writes `PocketLibraryApp.ContentView()`.
 
 ## F12. Dependencies listed twice
 
-Each `embedded/<app>/Cargo.toml` repeats that app's dependencies. A missing
-one fails the build at once; a different version is resolved by Cargo. It
-goes away with the F1 fix.
+The first workaround for F1 repeated each app's dependencies in a second
+manifest. Gone with the framework fix.
 
 ## F13. No Swift compiler in the cloud session
 
@@ -210,7 +220,7 @@ ForgeApp product. That's correct, and costs nothing.
 
 | Check | Where | Result |
 |---|---|---|
-| Rust: fmt, clippy, tests of Device Lab (with the embedded crates), Weather, Checklist, Pocket Library | Cloud, `check-app-crates.sh` | Pass |
+| Rust: fmt, clippy, tests of Device Lab (linking the other three), Weather, Checklist, Pocket Library | Cloud, `check-app-crates.sh` | Pass |
 | Bindings drift, including the linked crates | Cloud, `check-app-crates.sh` | Pass |
 | Swift build with xtool (`forge build ios`), first try | Laptop | One error: F11 |
 | Swift build with xtool, after the fix | Laptop, 159 s | Pass; 20 MB app bundle. Warnings only: the six Sendable warnings in `ForgeServices+Selected.swift`, which that file has on main too |

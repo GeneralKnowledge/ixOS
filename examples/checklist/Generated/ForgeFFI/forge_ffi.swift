@@ -26,13 +26,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_forge_ffi_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_checklist_core_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_forge_ffi_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_checklist_core_rustbuffer_free(self, $0) }
     }
 }
 
@@ -328,7 +328,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureChecklistCoreInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -703,7 +703,7 @@ open class ChecklistCore: ChecklistCoreProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_checklistcore(self.handle, $0) }
+        return try! rustCall { uniffi_checklist_core_fn_clone_checklistcore(self.handle, $0) }
     }
     /**
      * Opens the checklist saved in `data_directory` (created if missing),
@@ -714,7 +714,7 @@ public convenience init(dataDirectory: String, cachesDirectory: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeChecklistError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_checklistcore_new(
+    uniffi_checklist_core_fn_constructor_checklistcore_new(
         FfiConverterString.lower(dataDirectory),
         FfiConverterString.lower(cachesDirectory),uniffiCallStatus
     )
@@ -728,7 +728,7 @@ public convenience init(dataDirectory: String, cachesDirectory: String)throws  {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_checklistcore(handle, $0) }
+        try! rustCall { uniffi_checklist_core_fn_free_checklistcore(handle, $0) }
     }
 
     
@@ -741,13 +741,13 @@ open func add(title: String)async throws  -> UInt64  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_add(
+                uniffi_checklist_core_fn_method_checklistcore_add(
                         self.uniffiCloneHandle(),FfiConverterString.lower(title)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_u64,
-            completeFunc: ffi_forge_ffi_rust_future_complete_u64,
-            freeFunc: ffi_forge_ffi_rust_future_free_u64,
+            pollFunc: ffi_checklist_core_rust_future_poll_u64,
+            completeFunc: ffi_checklist_core_rust_future_complete_u64,
+            freeFunc: ffi_checklist_core_rust_future_free_u64,
             liftFunc: FfiConverterUInt64.lift,
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -758,7 +758,7 @@ open func add(title: String)async throws  -> UInt64  {
      */
 open func backgroundTimeExpired()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_background_time_expired(
+    uniffi_checklist_core_fn_method_checklistcore_background_time_expired(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -771,7 +771,7 @@ open func backgroundTimeExpired()  {try! rustCall() {
 open func backgroundWorkPending() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_background_work_pending(
+    uniffi_checklist_core_fn_method_checklistcore_background_work_pending(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -784,13 +784,13 @@ open func clearDone()async throws  -> UInt32  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_clear_done(
+                uniffi_checklist_core_fn_method_checklistcore_clear_done(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_u32,
-            completeFunc: ffi_forge_ffi_rust_future_complete_u32,
-            freeFunc: ffi_forge_ffi_rust_future_free_u32,
+            pollFunc: ffi_checklist_core_rust_future_poll_u32,
+            completeFunc: ffi_checklist_core_rust_future_complete_u32,
+            freeFunc: ffi_checklist_core_rust_future_free_u32,
             liftFunc: FfiConverterUInt32.lift,
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -803,7 +803,7 @@ open func clearDone()async throws  -> UInt32  {
 open func events() -> RuntimeEvents?  {
     return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_events(
+    uniffi_checklist_core_fn_method_checklistcore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -819,13 +819,13 @@ open func exportText(cancellation: Cancellation?)async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_export_text(
+                uniffi_checklist_core_fn_method_checklistcore_export_text(
                         self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_checklist_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_checklist_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_checklist_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -837,7 +837,7 @@ open func exportText(cancellation: Cancellation?)async throws  -> String  {
 open func items() -> [Item]  {
     return try!  FfiConverterSequenceTypeItem.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_items(
+    uniffi_checklist_core_fn_method_checklistcore_items(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -849,7 +849,7 @@ open func items() -> [Item]  {
 open func launchReport() -> LaunchReport  {
     return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_launch_report(
+    uniffi_checklist_core_fn_method_checklistcore_launch_report(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -861,7 +861,7 @@ open func launchReport() -> LaunchReport  {
 open func phase() -> AppPhase  {
     return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_phase(
+    uniffi_checklist_core_fn_method_checklistcore_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -871,13 +871,13 @@ open func remove(id: UInt64)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_remove(
+                uniffi_checklist_core_fn_method_checklistcore_remove(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_checklist_core_rust_future_poll_void,
+            completeFunc: ffi_checklist_core_rust_future_complete_void,
+            freeFunc: ffi_checklist_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -887,13 +887,13 @@ open func rename(id: UInt64, title: String)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_rename(
+                uniffi_checklist_core_fn_method_checklistcore_rename(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterString.lower(title)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_checklist_core_rust_future_poll_void,
+            completeFunc: ffi_checklist_core_rust_future_complete_void,
+            freeFunc: ffi_checklist_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -905,7 +905,7 @@ open func rename(id: UInt64, title: String)async throws   {
 open func revision() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_revision(
+    uniffi_checklist_core_fn_method_checklistcore_revision(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -920,13 +920,13 @@ open func search(query: String, cancellation: Cancellation?)async throws  -> [It
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_search(
+                uniffi_checklist_core_fn_method_checklistcore_search(
                         self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_checklist_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_checklist_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_checklist_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeItem.lift,
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -937,7 +937,7 @@ open func search(query: String, cancellation: Cancellation?)async throws  -> [It
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_set_phase(
+    uniffi_checklist_core_fn_method_checklistcore_set_phase(
             self.uniffiCloneHandle(),
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
@@ -950,7 +950,7 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_shutdown(
+    uniffi_checklist_core_fn_method_checklistcore_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -962,7 +962,7 @@ open func shutdown()  {try! rustCall() {
 open func summary() -> Summary  {
     return try!  FfiConverterTypeSummary_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_checklistcore_summary(
+    uniffi_checklist_core_fn_method_checklistcore_summary(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -975,13 +975,13 @@ open func toggle(id: UInt64)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_checklistcore_toggle(
+                uniffi_checklist_core_fn_method_checklistcore_toggle(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_checklist_core_rust_future_poll_void,
+            completeFunc: ffi_checklist_core_rust_future_complete_void,
+            freeFunc: ffi_checklist_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeChecklistError_lift
         )
@@ -1375,7 +1375,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureChecklistCoreInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -1414,7 +1414,7 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
 public func checklistErrorKind(error: ChecklistError) -> ErrorKind  {
     return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_checklist_error_kind(
+    uniffi_checklist_core_fn_func_checklist_error_kind(
         FfiConverterTypeChecklistError_lower(error),uniffiCallStatus
     )
 })
@@ -1431,65 +1431,65 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_checklist_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_checklist_error_kind() != 36322) {
+    if (uniffi_checklist_core_checksum_func_checklist_error_kind() != 55125) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_add() != 18034) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_add() != 43170) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_background_time_expired() != 33780) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_background_time_expired() != 36054) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_background_work_pending() != 4878) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_background_work_pending() != 10213) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_clear_done() != 25810) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_clear_done() != 59214) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_events() != 8809) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_events() != 59558) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_export_text() != 5899) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_export_text() != 43962) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_items() != 62205) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_items() != 6887) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_launch_report() != 39951) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_launch_report() != 53135) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_phase() != 38337) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_phase() != 40859) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_remove() != 14696) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_remove() != 30667) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_rename() != 49699) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_rename() != 26948) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_revision() != 22773) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_revision() != 44536) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_search() != 13122) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_search() != 13141) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_set_phase() != 57737) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_set_phase() != 40650) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_shutdown() != 51730) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_shutdown() != 20851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_summary() != 44106) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_summary() != 40193) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_toggle() != 174) {
+    if (uniffi_checklist_core_checksum_method_checklistcore_toggle() != 9763) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_checklistcore_new() != 62754) {
+    if (uniffi_checklist_core_checksum_constructor_checklistcore_new() != 14136) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -1499,7 +1499,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureForgeFfiInitialized() {
+public func uniffiEnsureChecklistCoreInitialized() {
     switch initializationResult {
     case .ok:
         break

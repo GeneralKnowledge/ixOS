@@ -6,11 +6,13 @@ edition = "2021"
 publish = false
 
 [lib]
-# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
-# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
-# the build scripts and host projects never need renaming.
-name = "forge_ffi"
-crate-type = ["staticlib", "cdylib", "lib"]
+# The app's own library name, so another app can link this crate (the Device
+# Lab showcase does). Forge still stages it as libforge_ffi.a and generates
+# its Swift as the ForgeFFI module, so the Swift package is unchanged. No
+# cdylib: as another app's dependency Cargo would link it for iOS, which needs
+# Apple's linker; `forge bindings generate` builds the host one it needs.
+name = "weather_core"
+crate-type = ["staticlib", "lib"]
 
 [dependencies]
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }

@@ -455,7 +455,26 @@ fn docker_running(runner: &dyn CommandRunner) -> Result<(), String> {
     Err(format!("{problem}\n  Fix: {fix}"))
 }
 
-/// The host build of the app's Rust library: `<target>/debug/libforge_ffi.a`.
+/// The name of the app crate's library (`[lib] name`): `forge_ffi` in most
+/// apps, the app's own (`weather_core`, ...) in one another app links. The
+/// staged copy is always `libforge_ffi.a`.
+fn library_name(metadata: &serde_json::Value) -> String {
+    metadata["packages"]
+        .as_array()
+        .and_then(|packages| packages.first())
+        .and_then(|package| package["targets"].as_array())
+        .and_then(|targets| {
+            targets.iter().find(|t| {
+                t["kind"]
+                    .as_array()
+                    .is_some_and(|kinds| kinds.iter().any(|k| k == "staticlib" || k == "lib"))
+            })
+        })
+        .and_then(|t| t["name"].as_str())
+        .map_or_else(|| "forge_ffi".to_string(), |name| name.replace('-', "_"))
+}
+
+/// The host build of the app's Rust library: `<target>/debug/lib<name>.a`.
 fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, String> {
     let manifest = app.join("rust/Cargo.toml");
     // Run from the crate's folder: rustup picks the toolchain from the
@@ -481,11 +500,16 @@ fn host_library(runner: &dyn CommandRunner, app: &Path) -> Result<PathBuf, Strin
             .arg(&manifest)
             .cwd(&crate_dir),
     )?;
-    let target = serde_json::from_slice::<serde_json::Value>(&meta.stdout)
-        .ok()
+    let meta = serde_json::from_slice::<serde_json::Value>(&meta.stdout).ok();
+    let target = meta
+        .as_ref()
         .and_then(|v| v["target_directory"].as_str().map(PathBuf::from))
         .unwrap_or_else(|| app.join("rust/target"));
-    let lib = target.join("debug").join("libforge_ffi.a");
+    let lib = target.join("debug").join(format!(
+        "lib{}.a",
+        meta.as_ref()
+            .map_or_else(|| "forge_ffi".to_string(), library_name)
+    ));
     if !lib.is_file() {
         return Err(format!(
             "{} was not built; the app's crate needs crate-type \"staticlib\"",
@@ -827,6 +851,22 @@ mod tests {
             "{ui_only}"
         );
         assert!(!ui_only.contains("ForgeApp\""), "{ui_only}");
+    }
+
+    #[test]
+    fn library_name_comes_from_the_crate() {
+        let meta = |kind: &str, name: &str| {
+            serde_json::json!({ "packages": [{ "targets": [
+                { "kind": ["bin"], "name": "tool" },
+                { "kind": [kind, "rlib"], "name": name },
+            ] }] })
+        };
+        assert_eq!(
+            library_name(&meta("staticlib", "weather_core")),
+            "weather_core"
+        );
+        assert_eq!(library_name(&meta("lib", "forge-ffi")), "forge_ffi");
+        assert_eq!(library_name(&serde_json::json!({})), "forge_ffi");
     }
 
     #[test]

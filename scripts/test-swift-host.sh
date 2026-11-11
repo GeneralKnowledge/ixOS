@@ -25,7 +25,7 @@ source "$ROOT/scripts/forge-crate.sh"
 # need the .dylib at run time.
 LIB_DIR="$NATIVE_OUT/macos-host/lib"
 mkdir -p "$LIB_DIR"
-cp "$CARGO_TARGET/debug/libforge_ffi.a" "$LIB_DIR/"
+cp "$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
 
 # The Chat example's tests drive the real chat server (they skip the tests
 # that need it when CHAT_SERVER is unset).

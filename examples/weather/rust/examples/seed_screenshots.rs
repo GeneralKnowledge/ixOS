@@ -11,7 +11,7 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use forge_ffi::{
+use weather_core::{
     Coordinate, CurrentConditions, DailyForecast, Freshness, HourlyPoint, Intensity, Place,
     PlaceSource, WeatherCondition, WeatherReport, Wind,
 };
@@ -180,7 +180,8 @@ fn main() {
     std::fs::write(dir.join("forge-weather-cache-v1.json"), cache.to_string()).unwrap();
     std::fs::write(dir.join("forge-weather-places-v1.json"), saved.to_string()).unwrap();
     for r in &reports {
-        let o = forge_ffi::weather_overview(r.clone(), now, forge_ffi::WindUnit::MilesPerHour);
+        let o =
+            weather_core::weather_overview(r.clone(), now, weather_core::WindUnit::MilesPerHour);
         println!(
             "[seed] {}: {:?} day={} {} | {} hours, {} days",
             r.place.name,

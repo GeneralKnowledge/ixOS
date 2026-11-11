@@ -33,10 +33,9 @@ back to Device Lab. One app on the phone holds all five.
 Each app stays in its own folder and is updated there; Device Lab plugs it in
 without copying it:
 
-- **Rust:** `rust/embedded/<app>/Cargo.toml` compiles the app's own
-  `rust/src/lib.rs` as a library with its own name (every app's library is
-  otherwise called `forge_ffi`), and `rust/src/lib.rs` links it with
-  `use <app>_core as _;`.
+- **Rust:** `rust/Cargo.toml` depends on each app's own crate, which names its
+  library after the app (`weather_core`, ...; every other app keeps
+  `forge_ffi`), and `rust/src/lib.rs` links it with `use <app>_core as _;`.
 - **Swift:** `Sources/<Target>` is a symlink to the app's Swift folder, listed
   as a target in `Package.swift`. `forge bindings generate --project
   examples/device-lab` writes each linked crate's bindings as a module of its
@@ -45,11 +44,12 @@ without copying it:
 
 To add an app with a Rust crate:
 
-1. Copy one of `rust/embedded/*/Cargo.toml` to `rust/embedded/<app>/`, point
-   `[lib] path` at the app's `lib.rs`, name the library `<app>_core`, and
-   copy the app's `[dependencies]`. Add it to `rust/Cargo.toml` and a `use
-   <app>_core as _;` line to `rust/src/lib.rs`. The app's `lib.rs` must call
-   `uniffi::setup_scaffolding!()` with no argument.
+1. In the app's `rust/Cargo.toml`, name the library after the app
+   (`[lib] name = "<app>_core"`, `crate-type = ["staticlib", "lib"]`), make
+   its `lib.rs` call `uniffi::setup_scaffolding!()` with no argument, and run
+   `forge bindings generate --project examples/<app>` (the app still builds
+   on its own; its Swift doesn't change). Then add the crate to this app's
+   `rust/Cargo.toml` and a `use <app>_core as _;` line to `rust/src/lib.rs`.
 2. `ln -s ../../<app>/Sources/<Target> Sources/<Target>`, then add to
    `Package.swift` the target, plus a system library and a target for
    `Generated/<app>_core`, as for Weather.

@@ -24,9 +24,9 @@ use forge_services::Watch;
 
 uniffi::setup_scaffolding!("forge_ffi");
 
-// The showcase's other apps (Cargo.toml, embedded/). Naming them links their
-// Rust cores, and so their UniFFI exports, into this library; their Swift is
-// in the same ForgeFFI module as Device Lab's.
+// The showcase's other apps (Cargo.toml). Naming them links their Rust cores,
+// and so their UniFFI exports, into this library; `forge bindings generate`
+// gives each its own Swift module, which ForgeFFI re-exports.
 use checklist_core as _;
 use pocket_library_core as _;
 use weather_core as _;

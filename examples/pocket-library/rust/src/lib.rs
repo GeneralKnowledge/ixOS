@@ -37,9 +37,8 @@ pub use model::*;
 use reader::EpubText;
 use store::Store;
 
-// No namespace argument: UniFFI takes the library's name, forge_ffi here.
-// The Device Lab showcase links this crate as a library with another name
-// (examples/device-lab/rust/embedded/), and the name keeps the two apart.
+// No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
+// crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
 
 // A per-request `Cancellation` and the event stream object

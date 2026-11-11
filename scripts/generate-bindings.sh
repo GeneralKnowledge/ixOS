@@ -20,13 +20,37 @@ esac
 mkdir -p "$OUT"
 
 echo "[forge] Building ${CRATE_DIR#"$ROOT/"} (host) for binding generation..."
-cargo build "${CARGO_SELECT[@]}"
+if grep -q '^crate-type *=.*"cdylib"' "$CRATE_DIR/Cargo.toml"; then
+  cargo build "${CARGO_SELECT[@]}"
+else
+  # An app crate other apps link (Weather, ...) has no cdylib: as a
+  # dependency, Cargo would link it for iOS, which needs Apple's linker.
+  # UniFFI reads the bindings from a host shared library, so build one here.
+  cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type cdylib
+fi
 
 case "$(uname -s)" in
   Darwin) LIB_EXT="dylib" ;;
   *) LIB_EXT="so" ;;
 esac
-LIB="$CARGO_TARGET/debug/libforge_ffi.${LIB_EXT}"
+LIB="$CARGO_TARGET/debug/lib${LIB_NAME}.${LIB_EXT}"
+# Whatever the crate calls its library, its bindings are Forge's fixed
+# modules: Swift ForgeFFI over the C module forge_ffiFFI, Kotlin
+# uniffi.forge_ffi loading libforge_ffi. Only another app that links this
+# crate sees its own name.
+CONFIG="$(mktemp)"
+if [[ "$LIB_NAME" != forge_ffi ]]; then
+  {
+    echo "[crates.${LIB_NAME}.bindings.swift]"
+    echo 'module_name = "ForgeFFI"'
+    echo 'ffi_module_name = "forge_ffiFFI"'
+    echo 'ffi_module_filename = "forge_ffiFFI"'
+    echo ""
+    echo "[crates.${LIB_NAME}.bindings.kotlin]"
+    echo 'package_name = "uniffi.forge_ffi"'
+    echo 'cdylib_name = "forge_ffi"'
+  } >"$CONFIG"
+fi
 if [[ ! -f "$LIB" ]]; then
   echo "error: expected host library at $LIB" >&2
   exit 1
@@ -36,8 +60,10 @@ echo "[forge] Generating ${LANGUAGE} bindings into $OUT..."
 if [[ "$LANGUAGE" == "kotlin" ]]; then
   cargo run -p uniffi-bindgen -- generate \
     --library "$LIB" \
+    --config "$CONFIG" \
     --language kotlin \
     --out-dir "$OUT"
+  rm -f "$CONFIG"
   # Hand-written Android glue that travels with the bindings (ForgeAndroid.init:
   # the app Context for the HTTPS certificate verifier). Source of truth:
   # crates/forge-runtime/kotlin/.
@@ -48,11 +74,16 @@ else
   #   Generated/ForgeFFI/forge_ffi.swift                  (Swift target "ForgeFFI")
   #   Generated/forge_ffiFFI/{forge_ffiFFI.h,module.modulemap}  (system library "forge_ffiFFI")
   STAGE="$(mktemp -d)"
-  trap 'rm -rf "$STAGE"' EXIT
+  trap 'rm -rf "$STAGE" "$CONFIG"' EXIT
   cargo run -p uniffi-bindgen -- generate \
     --library "$LIB" \
+    --config "$CONFIG" \
     --language swift \
     --out-dir "$STAGE"
+  # With the module_name override UniFFI names the file after the module.
+  if [[ -f "$STAGE/ForgeFFI.swift" ]]; then
+    mv "$STAGE/ForgeFFI.swift" "$STAGE/forge_ffi.swift"
+  fi
   mkdir -p "$OUT/ForgeFFI" "$OUT/forge_ffiFFI"
   if [[ -f "$STAGE/forge_app.swift" ]]; then
     # The crate uses the application runtime (forge-app). Its contract

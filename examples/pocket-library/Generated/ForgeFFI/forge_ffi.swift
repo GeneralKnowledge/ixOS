@@ -26,13 +26,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_forge_ffi_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_pocket_library_core_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_forge_ffi_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_pocket_library_core_rustbuffer_free(self, $0) }
     }
 }
 
@@ -328,7 +328,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsurePocketLibraryCoreInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -690,13 +690,13 @@ open class Cancellation: CancellationProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_cancellation(self.handle, $0) }
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_cancellation(self.handle, $0) }
     }
 public convenience init() {
     let handle =
         try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_cancellation_new(uniffiCallStatus
+    uniffi_pocket_library_core_fn_constructor_cancellation_new(uniffiCallStatus
     )
 }
     self.init(unsafeFromHandle: handle)
@@ -708,7 +708,7 @@ public convenience init() {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_cancellation(handle, $0) }
+        try! rustCall { uniffi_pocket_library_core_fn_free_cancellation(handle, $0) }
     }
 
     
@@ -720,7 +720,7 @@ public convenience init() {
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_cancellation_cancel(
+    uniffi_pocket_library_core_fn_method_cancellation_cancel(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -950,7 +950,7 @@ open class Library: LibraryProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_library(self.handle, $0) }
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_library(self.handle, $0) }
     }
     /**
      * Opens the library in `storage_directory` (created if missing). Fails
@@ -961,7 +961,7 @@ public convenience init(storageDirectory: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_library_new(
+    uniffi_pocket_library_core_fn_constructor_library_new(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 }
@@ -974,7 +974,7 @@ public convenience init(storageDirectory: String)throws  {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_library(handle, $0) }
+        try! rustCall { uniffi_pocket_library_core_fn_free_library(handle, $0) }
     }
 
     
@@ -986,7 +986,7 @@ public convenience init(storageDirectory: String)throws  {
 public static func openFresh(storageDirectory: String)throws  -> Library  {
     return try  FfiConverterTypeLibrary_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_library_open_fresh(
+    uniffi_pocket_library_core_fn_constructor_library_open_fresh(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 })
@@ -1001,13 +1001,13 @@ open func addBook(input: BookInput)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_add_book(
+                uniffi_pocket_library_core_fn_method_library_add_book(
                         self.uniffiCloneHandle(),FfiConverterTypeBookInput_lower(input)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1016,7 +1016,7 @@ open func addBook(input: BookInput)async throws  -> Book  {
 open func book(id: UInt64)throws  -> Book  {
     return try  FfiConverterTypeBook_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_book(
+    uniffi_pocket_library_core_fn_method_library_book(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
     )
@@ -1029,7 +1029,7 @@ open func book(id: UInt64)throws  -> Book  {
 open func books(query: LibraryQuery) -> [Book]  {
     return try!  FfiConverterSequenceTypeBook.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_books(
+    uniffi_pocket_library_core_fn_method_library_books(
             self.uniffiCloneHandle(),
         FfiConverterTypeLibraryQuery_lower(query),uniffiCallStatus
     )
@@ -1043,13 +1043,13 @@ open func deleteBook(id: UInt64)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_delete_book(
+                uniffi_pocket_library_core_fn_method_library_delete_book(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_void,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_void,
+            freeFunc: ffi_pocket_library_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1062,13 +1062,13 @@ open func eraseLibrary()async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_erase_library(
+                uniffi_pocket_library_core_fn_method_library_erase_library(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_void,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_void,
+            freeFunc: ffi_pocket_library_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1080,7 +1080,7 @@ open func eraseLibrary()async throws   {
 open func events()throws  -> LibraryEvents  {
     return try  FfiConverterTypeLibraryEvents_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_events(
+    uniffi_pocket_library_core_fn_method_library_events(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1094,13 +1094,13 @@ open func exportLibrary()async throws  -> String  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_export_library(
+                uniffi_pocket_library_core_fn_method_library_export_library(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1112,7 +1112,7 @@ open func exportLibrary()async throws  -> String  {
 open func history(bookId: UInt64?, limit: UInt32) -> [ActivityEntry]  {
     return try!  FfiConverterSequenceTypeActivityEntry.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_history(
+    uniffi_pocket_library_core_fn_method_library_history(
             self.uniffiCloneHandle(),
         FfiConverterOptionUInt64.lower(bookId),
         FfiConverterUInt32.lower(limit),uniffiCallStatus
@@ -1136,13 +1136,13 @@ open func importEpub(path: String)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_import_epub(
+                uniffi_pocket_library_core_fn_method_library_import_epub(
                         self.uniffiCloneHandle(),FfiConverterString.lower(path)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1158,13 +1158,13 @@ open func importFromCatalogue(key: String, cancellation: Cancellation?)async thr
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_import_from_catalogue(
+                uniffi_pocket_library_core_fn_method_library_import_from_catalogue(
                         self.uniffiCloneHandle(),FfiConverterString.lower(key),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeImportedBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1179,13 +1179,13 @@ open func openReader(id: UInt64)async throws  -> ReaderContents  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_open_reader(
+                uniffi_pocket_library_core_fn_method_library_open_reader(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeReaderContents_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1198,13 +1198,13 @@ open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_reader_chapter(
+                uniffi_pocket_library_core_fn_method_library_reader_chapter(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(index)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeReaderChapter_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1216,7 +1216,7 @@ open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter
 open func revision() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_revision(
+    uniffi_pocket_library_core_fn_method_library_revision(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1232,13 +1232,13 @@ open func saveReadingPosition(id: UInt64, position: ReadingPosition)async throws
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_save_reading_position(
+                uniffi_pocket_library_core_fn_method_library_save_reading_position(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeReadingPosition_lower(position)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1253,13 +1253,13 @@ open func searchCatalogue(query: String, cancellation: Cancellation?)async throw
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_search_catalogue(
+                uniffi_pocket_library_core_fn_method_library_search_catalogue(
                         self.uniffiCloneHandle(),FfiConverterString.lower(query),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceTypeCatalogueBook.lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1273,13 +1273,13 @@ open func setStatus(id: UInt64, status: ReadingStatus)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_set_status(
+                uniffi_pocket_library_core_fn_method_library_set_status(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeReadingStatus_lower(status)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1288,7 +1288,7 @@ open func setStatus(id: UInt64, status: ReadingStatus)async throws  -> Book  {
 open func settings() -> LibrarySettings  {
     return try!  FfiConverterTypeLibrarySettings_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_settings(
+    uniffi_pocket_library_core_fn_method_library_settings(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1301,7 +1301,7 @@ open func settings() -> LibrarySettings  {
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_shutdown(
+    uniffi_pocket_library_core_fn_method_library_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1314,7 +1314,7 @@ open func shutdown()  {try! rustCall() {
 open func stats(yearStartMs: Int64) -> LibraryStats  {
     return try!  FfiConverterTypeLibraryStats_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_stats(
+    uniffi_pocket_library_core_fn_method_library_stats(
             self.uniffiCloneHandle(),
         FfiConverterInt64.lower(yearStartMs),uniffiCallStatus
     )
@@ -1324,7 +1324,7 @@ open func stats(yearStartMs: Int64) -> LibraryStats  {
 open func storageInfo() -> StorageInfo  {
     return try!  FfiConverterTypeStorageInfo_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_library_storage_info(
+    uniffi_pocket_library_core_fn_method_library_storage_info(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1338,13 +1338,13 @@ open func updateBook(id: UInt64, input: BookInput)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_update_book(
+                uniffi_pocket_library_core_fn_method_library_update_book(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeBookInput_lower(input)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1357,13 +1357,13 @@ open func updateProgress(id: UInt64, page: UInt32)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_update_progress(
+                uniffi_pocket_library_core_fn_method_library_update_progress(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(page)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1373,13 +1373,13 @@ open func updateSettings(settings: LibrarySettings)async throws  -> LibrarySetti
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_library_update_settings(
+                uniffi_pocket_library_core_fn_method_library_update_settings(
                         self.uniffiCloneHandle(),FfiConverterTypeLibrarySettings_lower(settings)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeLibrarySettings_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
@@ -1491,7 +1491,7 @@ open class LibraryEvents: LibraryEventsProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_libraryevents(self.handle, $0) }
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_libraryevents(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1501,7 +1501,7 @@ open class LibraryEvents: LibraryEventsProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_libraryevents(handle, $0) }
+        try! rustCall { uniffi_pocket_library_core_fn_free_libraryevents(handle, $0) }
     }
 
     
@@ -1512,7 +1512,7 @@ open class LibraryEvents: LibraryEventsProtocol, @unchecked Sendable {
      */
 open func cancel()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_libraryevents_cancel(
+    uniffi_pocket_library_core_fn_method_libraryevents_cancel(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1525,13 +1525,13 @@ open func next()async  -> LibraryEvent?  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_libraryevents_next(
+                uniffi_pocket_library_core_fn_method_libraryevents_next(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterOptionTypeLibraryEvent.lift,
             errorHandler: nil
             
@@ -4127,7 +4127,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsurePocketLibraryCoreInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -4167,7 +4167,7 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
 public func defaultQuery(settings: LibrarySettings) -> LibraryQuery  {
     return try!  FfiConverterTypeLibraryQuery_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_default_query(
+    uniffi_pocket_library_core_fn_func_default_query(
         FfiConverterTypeLibrarySettings_lower(settings),uniffiCallStatus
     )
 })
@@ -4179,7 +4179,7 @@ public func defaultQuery(settings: LibrarySettings) -> LibraryQuery  {
 public func epubWordsPerPage() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_epub_words_per_page(uniffiCallStatus
+    uniffi_pocket_library_core_fn_func_epub_words_per_page(uniffiCallStatus
     )
 })
 }
@@ -4195,101 +4195,101 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_pocket_library_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_default_query() != 37628) {
+    if (uniffi_pocket_library_core_checksum_func_default_query() != 6397) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_epub_words_per_page() != 4754) {
+    if (uniffi_pocket_library_core_checksum_func_epub_words_per_page() != 51851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_cancellation_cancel() != 6133) {
+    if (uniffi_pocket_library_core_checksum_method_cancellation_cancel() != 16228) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_add_book() != 49896) {
+    if (uniffi_pocket_library_core_checksum_method_library_add_book() != 15939) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_book() != 26937) {
+    if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_books() != 12940) {
+    if (uniffi_pocket_library_core_checksum_method_library_books() != 23157) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_delete_book() != 4514) {
+    if (uniffi_pocket_library_core_checksum_method_library_delete_book() != 5841) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_erase_library() != 2928) {
+    if (uniffi_pocket_library_core_checksum_method_library_erase_library() != 647) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_events() != 4119) {
+    if (uniffi_pocket_library_core_checksum_method_library_events() != 10274) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_export_library() != 59643) {
+    if (uniffi_pocket_library_core_checksum_method_library_export_library() != 1560) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_history() != 26648) {
+    if (uniffi_pocket_library_core_checksum_method_library_history() != 38899) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_import_epub() != 51301) {
+    if (uniffi_pocket_library_core_checksum_method_library_import_epub() != 45226) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_import_from_catalogue() != 52856) {
+    if (uniffi_pocket_library_core_checksum_method_library_import_from_catalogue() != 5971) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_open_reader() != 58001) {
+    if (uniffi_pocket_library_core_checksum_method_library_open_reader() != 37535) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_reader_chapter() != 2267) {
+    if (uniffi_pocket_library_core_checksum_method_library_reader_chapter() != 45028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_revision() != 17488) {
+    if (uniffi_pocket_library_core_checksum_method_library_revision() != 32146) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_save_reading_position() != 43436) {
+    if (uniffi_pocket_library_core_checksum_method_library_save_reading_position() != 38892) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_search_catalogue() != 56333) {
+    if (uniffi_pocket_library_core_checksum_method_library_search_catalogue() != 62950) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_set_status() != 39346) {
+    if (uniffi_pocket_library_core_checksum_method_library_set_status() != 16166) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_settings() != 54012) {
+    if (uniffi_pocket_library_core_checksum_method_library_settings() != 62238) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_shutdown() != 4853) {
+    if (uniffi_pocket_library_core_checksum_method_library_shutdown() != 9634) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_stats() != 19039) {
+    if (uniffi_pocket_library_core_checksum_method_library_stats() != 28212) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_storage_info() != 59054) {
+    if (uniffi_pocket_library_core_checksum_method_library_storage_info() != 16703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_update_book() != 5735) {
+    if (uniffi_pocket_library_core_checksum_method_library_update_book() != 64436) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_update_progress() != 42313) {
+    if (uniffi_pocket_library_core_checksum_method_library_update_progress() != 54202) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_library_update_settings() != 47551) {
+    if (uniffi_pocket_library_core_checksum_method_library_update_settings() != 27241) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_libraryevents_cancel() != 6579) {
+    if (uniffi_pocket_library_core_checksum_method_libraryevents_cancel() != 35180) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_libraryevents_next() != 13595) {
+    if (uniffi_pocket_library_core_checksum_method_libraryevents_next() != 50671) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_cancellation_new() != 30354) {
+    if (uniffi_pocket_library_core_checksum_constructor_cancellation_new() != 56017) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_library_new() != 36986) {
+    if (uniffi_pocket_library_core_checksum_constructor_library_new() != 60930) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_library_open_fresh() != 23364) {
+    if (uniffi_pocket_library_core_checksum_constructor_library_open_fresh() != 18839) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -4299,7 +4299,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureForgeFfiInitialized() {
+public func uniffiEnsurePocketLibraryCoreInitialized() {
     switch initializationResult {
     case .ok:
         break
