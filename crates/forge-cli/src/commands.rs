@@ -407,6 +407,16 @@ fn populate_app(
             fs::copy(&src, rust.join(file)).map_err(|e| e.to_string())?;
         }
     }
+    // rustup looks for the toolchain file from the current directory up,
+    // not from --manifest-path, so `cargo test --manifest-path
+    // rust/Cargo.toml` run in the app folder needs one there too. Without
+    // it, a machine with no rustup default can't run cargo in the app
+    // (seen on Reuben's laptop, 2026-11-10: only the pinned toolchain
+    // installed, no default).
+    let toolchain = root.join("rust-toolchain.toml");
+    if toolchain.is_file() {
+        fs::copy(&toolchain, dir.join("rust-toolchain.toml")).map_err(|e| e.to_string())?;
+    }
     substitute_placeholders(dir, name, bundle_id)?;
     rewrite_workspace_paths(dir, platform, workspace, release)?;
     if platform == "ios" {
@@ -2300,6 +2310,10 @@ ios_device = true
         assert!(!pkg.contains("FORGE_PACKAGE_NAME"));
         let readme = fs::read_to_string(dest.join("README.md")).unwrap();
         assert!(readme.starts_with("# InitTestApp\n"), "{readme}");
+        // The pinned toolchain in the app folder too, so cargo works there
+        // on a machine with no rustup default.
+        assert!(dest.join("rust-toolchain.toml").is_file());
+        assert!(dest.join("rust/rust-toolchain.toml").is_file());
         // No agent configuration unless asked for (forge init --agent,
         // forge agent setup): a new app is complete without it.
         for file in crate::inspect::AGENT_FILES {

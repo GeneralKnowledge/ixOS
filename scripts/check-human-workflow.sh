@@ -50,6 +50,9 @@ step "2. Create an app with the default generator"
 for f in AGENTS.md CLAUDE.md .mcp.json; do
   [[ ! -e "$APP/$f" ]] || fail "the default app has $f: agent files must be opt-in (forge agent setup)"
 done
+# rustup reads the pin from the current folder up, so cargo works in the
+# app folder even with no rustup default (Reuben's laptop, 2026-11-10).
+[[ -f "$APP/rust-toolchain.toml" ]] || fail "the app has no rust-toolchain.toml at its top: cargo needs a rustup default there"
 cd "$APP"
 git init -q && git add -A && git -c user.name=person -c user.email=person@example.com commit -qm "New app"
 

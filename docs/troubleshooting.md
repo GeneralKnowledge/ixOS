@@ -13,6 +13,10 @@ swift sdk list   # should list darwin
 ./scripts/build-rust-ios.sh
 ```
 
+## `rustup could not choose a version of cargo to run` in an app folder
+
+rustup picks the toolchain from a `rust-toolchain.toml` in the current folder or above it, not from `--manifest-path`. Apps created before 2026-11-10 have the file only in `rust/`, so `cargo test --manifest-path rust/Cargo.toml` run from the app folder fails on a machine with no rustup default. Copy it up once: `cp rust/rust-toolchain.toml .`. Running cargo from inside `rust/` also works, and so does `forge test`. New apps have the file in both places.
+
 ## `swift: command not found`
 
 Install Swift for your distro — see [linux-setup.md](linux-setup.md).
@@ -41,6 +45,16 @@ Results with Swift 6.2.3 and xtool 1.24.0 on Linux:
 | App from `forge init` (own Rust crate, since 2026-11-06): Pocket Library | Not tested | Not tested | Links | Not tested |
 
 On 2026-11-06, Chat built this way (Xcode 26, debug) was installed on an iPhone with `forge run ios` and opened there. A message posted to another room from the laptop showed a notification banner. Counter and Weather were installed and opened the same way. Pocket Library, which began as a `forge init` app with its own Rust crate, was built this way on 2026-11-07 and runs on the iPhone. A freshly generated app from today's template has not yet been recorded installing on a phone; CI builds it with Xcode on macOS.
+
+## `... .pcm is not a valid precompiled module file` or `could not build Objective-C module 'AVFoundation'`
+
+An earlier build was killed part way through (a dropped Remote Control or SSH session, Ctrl-C) and left truncated files in clang's module cache. The code is fine. In the app folder, delete the cache and build again:
+
+```bash
+rm -rf .build/arm64-apple-ios/*/ModuleCache
+```
+
+Forge recognises this failure and prints the same fix.
 
 ## `forge run ios` says usbmuxd is not running, or xtool seems to hang
 

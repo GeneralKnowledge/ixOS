@@ -285,9 +285,18 @@ fn phone(backend: &dyn DeviceBackend, udid: Option<&str>) -> Check {
     let device = match forge_device::pick_device(backend, udid) {
         Ok(d) => d,
         Err(e) => {
+            // On Linux usbmuxd runs only while a phone is plugged in, so
+            // "can't reach usbmuxd" nearly always just means "unplugged":
+            // don't send someone to install a package they already have.
+            let e = e.to_string();
+            let detail = if e.contains("usbmuxd") {
+                "Nothing is answering on USB. On Linux that usually just means no iPhone is plugged in; if one is plugged in and unlocked, `forge doctor` checks the USB setup".to_string()
+            } else {
+                e
+            };
             return Check::new("iphone", Mark::Fail, "No iPhone found")
-                .detail(e.to_string())
-                .next("Connect the iPhone with a cable, unlock it and tap Trust if it asks, then run `forge diagnose` again")
+                .detail(detail)
+                .next("Connect the iPhone with a cable, unlock it and tap Trust if it asks, then run `forge diagnose` again");
         }
     };
     crate::report::set_device(&device.udid, None);

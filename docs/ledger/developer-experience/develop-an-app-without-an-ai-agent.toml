@@ -1,6 +1,6 @@
 order = 70
 step = "Develop an app without an AI agent: create, inspect, change Rust and SwiftUI, test, build, install, launch, diagnose, review evidence with the CLI alone"
 docs = "human-workflow.md"
-last_run = "Linux steps 1–6 and 12 automated (scripts/check-human-workflow.sh, CI), 2026-11-09; the iPhone steps 7–11 not run for this workflow"
-time_taken = "About 2 minutes on Linux, plus the Swift image's first pull"
-findings = "Before 2026-11-09, launching the app had no CLI command, inspection existed only in MCP, a person's builds were missing from run records, and every new app carried agent files"
+last_run = "Linux steps 1–6 and 12 automated (scripts/check-human-workflow.sh, CI), 2026-11-09. Whole workflow with FORGE_HUMAN_DEVICE=1 on an iPhone 15 Pro Max, iOS 26.3.1, 2026-11-10: build, install, ui setup, launch, screenshot, audit, smoke test 9/9 and diagnose passed; Reuben checked on the phone that the row shows the reading time"
+time_taken = "About 2 minutes on Linux, plus the Swift image's first pull; the iOS build took 52 s (Rust) and 88 s (Swift) on the laptop"
+findings = "Before 2026-11-09, launching the app had no CLI command, inspection existed only in MCP, a person's builds were missing from run records, and every new app carried agent files. 2026-11-10 on the laptop: step 4 failed where rustup has no default, because the app root had no rust-toolchain.toml (fixed in #156). ui audit gave 2 warnings on the starter: the system search field has no identifier, and the New Note toolbar button is 90x33 pt. The 10 s device log was empty, so the logs step is unproven, and forge ui explore was not run"

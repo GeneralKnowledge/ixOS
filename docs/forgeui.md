@@ -4,7 +4,7 @@ ForgeUI gives a SwiftUI app a consistent, accessible look without inventing one:
 
 It is not a replacement for SwiftUI. You still write `List`, `Form`, `NavigationStack`, `Toggle`, `.sheet` and `.searchable`; ForgeUI styles them and fills the gaps. Wherever ForgeUI has nothing to offer, plain SwiftUI is the answer, and the two mix freely on the same screen.
 
-ForgeUI 0.1 is new (2026-11). Its SwiftUI side is compiled in CI; it has not yet been run on an iPhone (see the [capability ledger](capability-ledger.md)). Why it is shaped this way, and what it borrowed from other design systems, is in the [proposal](research/forgeui-proposal.md).
+ForgeUI 0.1 is new (2026-11). Its SwiftUI side is compiled in CI and built with xtool on Linux, and the showcase has been run on an iPhone in light and dark (2026-11-10; see the [capability ledger](capability-ledger.md)). Why it is shaped this way, and what it borrowed from other design systems, is in the [proposal](research/forgeui-proposal.md).
 
 ## Use it in any SwiftUI app
 

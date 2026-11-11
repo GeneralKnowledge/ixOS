@@ -17,7 +17,7 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 | Priority | Work | Status |
 |---|---|---|
 | P0 | Existing runtime and native integration stability | Maintain |
-| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **In progress: 0.1 built, not yet on an iPhone** |
+| P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **0.1 done: run on an iPhone 2026-11-10** |
 | P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built, tested on Linux, not yet on an iPhone** |
 | P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **In progress: document and validation in `forge-app`** |
 | P4 | A complete reference app (personal library) built only on the above | Required proof |
@@ -126,6 +126,12 @@ The staged plan for the first real iOS release (Pocket Library; what Linux can d
 ### Any app on the iPhone (growing UI testing) — Investigating
 
 Forge UI Testing's routes (WebDriverAgent, Apple's accessibility service, `idevice` device services) used on apps Forge didn't build: observe, operate, and, the bigger goal, explore and verify with evidence. Not a separate stack: the same `Driver`, `UiNode` and `Locator`, with a person-written per-app policy for anything outside the project. Plan, safety model and an evaluation of iCTRL: [research/general-device-control.md](research/general-device-control.md). After the current milestone; four no-install spikes go first.
+
+## Future
+
+### Split Forge into focused projects — Future
+
+ixOS carries several products in one repository. The idea is to separate them by purpose, each with one user and one measure of success: **Forge** (the framework: Rust core, ForgeKit, ForgeUI, ForgeAppKit, releases), **Forge CLI** (the development workflow), **Forge Device** (device access, UI testing, exploration), **Forge Agents** (MCP server and agent setup, optional) and **Forge Examples** (demo apps and benchmarks). The framework would depend on none of the others, and apps would use Forge without cloning this repository. Boundaries would come first (a scope page per project), and code would move only where a release cycle needs it. One question comes before any restructuring: is Forge Device a general testing product or a Forge subsystem? The proposal, with how today's code maps onto it, is in the [Forge product boundaries](https://claude.ai/artifact/YBwLCg9UewZtk5cfkYwNNY) document. Nothing is scheduled.
 
 ## Not planned (for now)
 

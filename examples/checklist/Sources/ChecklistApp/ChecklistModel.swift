@@ -118,6 +118,7 @@ public final class ChecklistModel {
     /// Runs a command. The host's `changes` moves once it commits, and the
     /// view calls `reload()`; reloading here as well shows the result
     /// without waiting for the event.
+    @discardableResult
     private func perform(_ command: () async throws -> Void) async -> Bool {
         do {
             try await command()

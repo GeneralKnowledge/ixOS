@@ -20,3 +20,7 @@ test_data_args = ["-ForgeTemporaryData"]
 
 [ios]
 xtool_product = "ChecklistXtool"
+
+[ios.signing]
+# Built and installed with a free Apple account; no paid-only entitlements.
+team_type = "free"
