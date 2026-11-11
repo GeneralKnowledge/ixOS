@@ -362,6 +362,132 @@ enum UiCommands {
         #[arg(long = "launch-arg", value_name = "ARG", allow_hyphen_values = true)]
         launch_arg: Vec<String>,
     },
+    /// Tap one control on the app's screen, found by identifier, label,
+    /// kind or the text beside it (never by coordinates)
+    Tap {
+        #[command(flatten)]
+        target: UiTarget,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Type text into a field
+    Type {
+        #[command(flatten)]
+        target: UiTarget,
+        /// The text to type (a newline presses Return)
+        text: String,
+        /// Empty the field first
+        #[arg(long)]
+        clear: bool,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Empty a text field
+    Clear {
+        #[command(flatten)]
+        target: UiTarget,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Scroll until the element is on screen (paging through a list for a
+    /// row it hasn't drawn yet), or scroll a list itself up, down, left or
+    /// right
+    Scroll {
+        #[command(flatten)]
+        target: UiTarget,
+        /// `visible` (default): until the element is on screen; up, down,
+        /// left or right: scroll the element (a list or scroll view) itself
+        #[arg(default_value = "visible", value_parser = ["visible", "up", "down", "left", "right"])]
+        direction: String,
+        /// With `visible`: the list to page through (its identifier;
+        /// default: the first list on screen)
+        #[arg(long, value_name = "ID")]
+        in_id: Option<String>,
+        /// With `visible`: which way to page (default down)
+        #[arg(long, value_parser = ["up", "down", "left", "right"])]
+        toward: Option<String>,
+        /// With `visible`: at most this many pages (default 10)
+        #[arg(long)]
+        pages: Option<usize>,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Swipe across an element: a list row's swipe actions, a page, a sheet
+    Swipe {
+        #[command(flatten)]
+        target: UiTarget,
+        #[arg(value_parser = ["up", "down", "left", "right"])]
+        direction: String,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Touch and hold an element: context menus, text selection
+    LongPress {
+        #[command(flatten)]
+        target: UiTarget,
+        /// How long to hold
+        #[arg(long, default_value_t = 1.0)]
+        seconds: f64,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Tap an element twice, quickly
+    DoubleTap {
+        #[command(flatten)]
+        target: UiTarget,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Drag an element onto another (--to-id, --to-label), or drag it by
+    /// part of its own size (--by down: pull a list to refresh)
+    Drag {
+        #[command(flatten)]
+        target: UiTarget,
+        /// Drop it on the element with this identifier
+        #[arg(long, value_name = "ID", conflicts_with_all = ["to_label", "by"])]
+        to_id: Option<String>,
+        /// Drop it on the element with this label
+        #[arg(long, value_name = "LABEL", conflicts_with = "by")]
+        to_label: Option<String>,
+        /// Drag this way from the element's centre, with no hold first
+        #[arg(long, value_parser = ["up", "down", "left", "right"])]
+        by: Option<String>,
+        /// With --by: how far, as a fraction of the element's size (default 0.5)
+        #[arg(long, requires = "by")]
+        distance: Option<f64>,
+        /// With --to-*: seconds to hold before dragging (default 1)
+        #[arg(long, conflicts_with = "by")]
+        hold: Option<f64>,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Press a keyboard key (return, delete) or hide the keyboard (dismiss)
+    Key {
+        #[arg(value_parser = ["return", "delete", "dismiss"])]
+        key: String,
+        #[command(flatten)]
+        on: UiOn,
+    },
+    /// Check an element: it is on screen, has a value or label, is enabled
+    /// or disabled, or is gone. Waits up to --timeout seconds for it
+    Expect {
+        #[command(flatten)]
+        target: UiTarget,
+        /// Its value (a field's text) is this
+        #[arg(long)]
+        value: Option<String>,
+        /// Its label is this
+        #[arg(long)]
+        has_label: Option<String>,
+        /// It is enabled (true) or disabled (false)
+        #[arg(long)]
+        enabled: Option<bool>,
+        /// Nothing matches it any more
+        #[arg(long)]
+        gone: bool,
+        #[command(flatten)]
+        on: UiOn,
+    },
     /// Save a screenshot of the phone's screen here
     Screenshot {
         #[arg(long)]
@@ -669,6 +795,76 @@ enum DeviceCommands {
         #[arg(long)]
         no_follow: bool,
     },
+}
+
+/// Which element a one-step `forge ui` command acts on: exactly one of
+/// these, as in a test file's step.
+#[derive(clap::Args)]
+struct UiTarget {
+    /// Accessibility identifier, e.g. library.add (preferred)
+    #[arg(long)]
+    id: Option<String>,
+    /// Exact VoiceOver label (with --kind: of that kind)
+    #[arg(long)]
+    label: Option<String>,
+    /// Part of the VoiceOver label
+    #[arg(long, value_name = "TEXT")]
+    label_contains: Option<String>,
+    /// Element type (Button, TextField, CollectionView…), with --label or
+    /// --index, for a control with no identifier
+    #[arg(long)]
+    kind: Option<String>,
+    /// With --kind: the nth of that kind on screen, from 0
+    #[arg(long, requires = "kind")]
+    index: Option<usize>,
+    /// The control nearest this text (a field's placeholder or caption)
+    #[arg(long, value_name = "TEXT")]
+    near: Option<String>,
+}
+
+impl UiTarget {
+    fn table(self) -> toml::Table {
+        let mut t = toml::Table::new();
+        let text = [
+            ("id", self.id),
+            ("label", self.label),
+            ("label_contains", self.label_contains),
+            ("kind", self.kind),
+            ("near", self.near),
+        ];
+        for (key, value) in text {
+            if let Some(v) = value {
+                t.insert(key.into(), v.into());
+            }
+        }
+        if let Some(i) = self.index {
+            t.insert("index".into(), toml::Value::Integer(i as i64));
+        }
+        t
+    }
+}
+
+/// Where a one-step `forge ui` command runs.
+#[derive(clap::Args)]
+struct UiOn {
+    /// Which phone, when several are connected
+    #[arg(long)]
+    udid: Option<String>,
+    #[arg(
+        long,
+        help = "App directory (default: the current directory if it has forge.toml)"
+    )]
+    project: Option<PathBuf>,
+    /// The app by bundle id instead of --project
+    #[arg(long, value_name = "BUNDLE_ID", conflicts_with = "project")]
+    app: Option<String>,
+    /// Allow --app to name an app Forge didn't build, as far as
+    /// ~/.config/forge/device-control.toml allows
+    #[arg(long)]
+    any_app: bool,
+    /// Seconds to wait for the element
+    #[arg(long, default_value_t = 10.0)]
+    timeout: f64,
 }
 
 #[derive(clap::Args)]
@@ -1006,6 +1202,16 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Status { .. } => "ui status",
             UiCommands::Serve { .. } => "ui serve",
             UiCommands::Accept { .. } => "ui accept",
+            UiCommands::Tap { .. } => "ui tap",
+            UiCommands::Type { .. } => "ui type",
+            UiCommands::Clear { .. } => "ui clear",
+            UiCommands::Scroll { .. } => "ui scroll",
+            UiCommands::Swipe { .. } => "ui swipe",
+            UiCommands::LongPress { .. } => "ui long-press",
+            UiCommands::DoubleTap { .. } => "ui double-tap",
+            UiCommands::Drag { .. } => "ui drag",
+            UiCommands::Key { .. } => "ui key",
+            UiCommands::Expect { .. } => "ui expect",
         },
     };
     sub.into()
@@ -1351,6 +1557,83 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     };
                     ui::run(runner, udid.as_deref(), &file, dir.as_deref(), any_app, visual, !no_watch, &mut out)
                 }
+                UiCommands::Tap { target, on } => one_step(runner, on, "tap", "tap", target.table().into(), &mut out),
+                UiCommands::Type { target, text, clear, on } => {
+                    let mut t = target.table();
+                    t.insert("text".into(), text.into());
+                    if clear {
+                        t.insert("clear".into(), true.into());
+                    }
+                    one_step(runner, on, "type", "type", t.into(), &mut out)
+                }
+                UiCommands::Clear { target, on } => one_step(runner, on, "clear", "clear", target.table().into(), &mut out),
+                UiCommands::Scroll { target, direction, in_id, toward, pages, on } => {
+                    let mut t = target.table();
+                    t.insert("direction".into(), direction.into());
+                    if let Some(id) = in_id {
+                        let mut within = toml::Table::new();
+                        within.insert("id".into(), id.into());
+                        t.insert("in".into(), within.into());
+                    }
+                    if let Some(toward) = toward {
+                        t.insert("toward".into(), toward.into());
+                    }
+                    if let Some(pages) = pages {
+                        t.insert("pages".into(), toml::Value::Integer(pages as i64));
+                    }
+                    one_step(runner, on, "scroll", "scroll", t.into(), &mut out)
+                }
+                UiCommands::Swipe { target, direction, on } => {
+                    let mut t = target.table();
+                    t.insert("direction".into(), direction.into());
+                    one_step(runner, on, "swipe", "swipe", t.into(), &mut out)
+                }
+                UiCommands::LongPress { target, seconds, on } => {
+                    let mut t = target.table();
+                    t.insert("seconds".into(), seconds.into());
+                    one_step(runner, on, "long-press", "long_press", t.into(), &mut out)
+                }
+                UiCommands::DoubleTap { target, on } => one_step(runner, on, "double-tap", "double_tap", target.table().into(), &mut out),
+                UiCommands::Drag { target, to_id, to_label, by, distance, hold, on } => {
+                    let mut t = target.table();
+                    let mut to = toml::Table::new();
+                    if let Some(id) = to_id {
+                        to.insert("id".into(), id.into());
+                    }
+                    if let Some(label) = to_label {
+                        to.insert("label".into(), label.into());
+                    }
+                    if !to.is_empty() {
+                        t.insert("to".into(), to.into());
+                    }
+                    if let Some(by) = by {
+                        t.insert("by".into(), by.into());
+                    }
+                    if let Some(d) = distance {
+                        t.insert("distance".into(), d.into());
+                    }
+                    if let Some(h) = hold {
+                        t.insert("hold".into(), h.into());
+                    }
+                    one_step(runner, on, "drag", "drag", t.into(), &mut out)
+                }
+                UiCommands::Key { key, on } => one_step(runner, on, "key", "key", key.into(), &mut out),
+                UiCommands::Expect { target, value, has_label, enabled, gone, on } => {
+                    let mut t = target.table();
+                    if let Some(v) = value {
+                        t.insert("value".into(), v.into());
+                    }
+                    if let Some(v) = has_label {
+                        t.insert("has_label".into(), v.into());
+                    }
+                    if let Some(v) = enabled {
+                        t.insert("enabled".into(), v.into());
+                    }
+                    if gone {
+                        t.insert("gone".into(), true.into());
+                    }
+                    one_step(runner, on, "expect", "expect", t.into(), &mut out)
+                }
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)
                 }
@@ -1484,6 +1767,41 @@ fn serve_mcp(
 /// `--project` when given; otherwise the current directory when it is an app
 /// (has forge.toml), so `forge build android` works from inside an app;
 /// otherwise the bundled example.
+/// A one-step `forge ui` command (`forge ui tap` and the like): the step
+/// runs as a one-step test file, exactly as `forge_ui_act` runs it, so the
+/// same waiting, policy checks and failure details apply.
+fn one_step(
+    runner: &dyn crate::runner::CommandRunner,
+    on: UiOn,
+    verb: &str,
+    key: &str,
+    value: toml::Value,
+    out: &mut dyn std::io::Write,
+) -> Result<(), String> {
+    let project = match &on.app {
+        Some(_) => None,
+        None => {
+            let p = project_or_default(on.project, "");
+            if p.as_os_str().is_empty() {
+                return Err("no app here: run inside an app directory (with forge.toml), or pass --project or --app".into());
+            }
+            Some(p)
+        }
+    };
+    ui::one_step(
+        runner,
+        on.udid.as_deref(),
+        project.as_deref(),
+        on.app.as_deref(),
+        on.any_app,
+        on.timeout,
+        verb,
+        key,
+        value,
+        out,
+    )
+}
+
 fn project_or_default(project: Option<PathBuf>, example: &str) -> PathBuf {
     project
         .or_else(app_in_cwd)

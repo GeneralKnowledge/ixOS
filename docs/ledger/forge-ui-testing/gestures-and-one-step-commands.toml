@@ -1,0 +1,9 @@
+order = 28
+capability = "Swipe, long press, double tap, drag and keyboard keys on an element, scroll a lazy list until a row appears, and one-step `forge ui tap`, `type`, `scroll`, `swipe`, `long-press`, `double-tap`, `drag`, `key` and `expect` commands"
+framework = "Yes: forge-uitest `Driver::{swipe, long_press, double_tap, drag_to, drag_by, press_key}` over WebDriverAgent's element gesture routes; test-file steps; `forge ui` one-step commands; `forge_ui_act` actions"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: Linux tests on the fake driver only; the targets are Device Lab's dashboard and transfer row and Pocket Library's swipe actions and context menu"
+iphone = "No: not yet run on a phone"
+documented = "Yes: forge-ui-testing.md (Tests as files, CLI), human-workflow.md (step 9)"
+limits = "Element-relative only, never screen coordinates; a scroll, swipe or drag is refused while the keyboard is up; every swipe and drag in another app asks the person (a full swipe can delete); no system alerts, Home, hardware buttons or open URL yet (interaction completeness I2)"

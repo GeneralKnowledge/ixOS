@@ -611,6 +611,68 @@ pub fn launch(
     run(runner, udid, &file, Some(&dir), false, None, false, out)
 }
 
+/// The test file a one-step command runs: `key = value` as its only step.
+pub fn one_step_script(
+    bundle_id: &str,
+    verb: &str,
+    timeout: f64,
+    key: &str,
+    value: toml::Value,
+) -> String {
+    let mut doc = toml::Table::new();
+    doc.insert("name".into(), format!("forge ui {verb}").into());
+    doc.insert("app".into(), bundle_id.into());
+    doc.insert("timeout".into(), timeout.into());
+    let mut step = toml::Table::new();
+    step.insert(key.into(), value);
+    doc.insert("step".into(), toml::Value::Array(vec![step.into()]));
+    toml::to_string(&doc).unwrap_or_default()
+}
+
+/// `forge ui tap|type|clear|scroll|swipe|long-press|double-tap|drag|key|expect`:
+/// one step on the app at `project` (or `app`, by bundle id), run as a
+/// one-step test in `<app>/.forge/ui/<UTC>-<verb>/` (a temporary folder
+/// for `--app`). Not evidence: no requirement names it.
+#[allow(clippy::too_many_arguments)]
+pub fn one_step(
+    runner: &dyn CommandRunner,
+    udid: Option<&str>,
+    project: Option<&Path>,
+    app: Option<&str>,
+    any_app: bool,
+    timeout: f64,
+    verb: &str,
+    key: &str,
+    value: toml::Value,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let name = format!("{}-{verb}", report::timestamp());
+    let (bundle_id, dir) = match (app, project) {
+        (Some(app), _) => (
+            app.to_owned(),
+            std::env::temp_dir().join("forge-ui").join(name),
+        ),
+        (None, Some(project)) => {
+            let forge_toml = project.join("forge.toml");
+            let text = std::fs::read_to_string(&forge_toml)
+                .map_err(|e| format!("{}: {e} (pass --project <app>)", forge_toml.display()))?;
+            let cfg = crate::config::ForgeConfig::parse(&text)?;
+            (
+                cfg.app.bundle_id,
+                project.join(".forge").join("ui").join(name),
+            )
+        }
+        (None, None) => return Err("pass --project or --app".into()),
+    };
+    let text = one_step_script(&bundle_id, verb, timeout, key, value);
+    // Checked before the phone is touched: a wrong target fails here.
+    Script::parse(&text).map_err(|e| e.replace("step 1: ", ""))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    let file = dir.join("steps.toml");
+    std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
+    run(runner, udid, &file, Some(&dir), any_app, None, false, out)
+}
+
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
 /// `visual` `Some(Check)`) if a screenshot differs from its baseline.
 #[allow(clippy::too_many_arguments)]

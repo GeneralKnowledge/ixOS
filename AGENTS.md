@@ -35,7 +35,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 8. **Physical device steps:** say which step needs the iPhone and what it proves. Don't claim device results you didn't see.
 9. **A capability lives in the CLI, not only in MCP.** Build it as a `forge` command (with `--json`) or in a library the CLI uses; `forge mcp` runs that command and adds only schemas, argument checks and session state. A default app needs no agent files, and safety rules (exploration, installing, `forge verify --accept`) are the same whoever calls. `scripts/check-human-workflow.sh` must keep passing.
 10. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
-11. **Agent and device tooling is frozen** (`forge ui explore`, `forge ui focus`, run records, `forge mcp`, the live dev connection): bug fixes only, no new commands, until the roadmap's P1 to P4 exit criteria are met or the freeze is reviewed on 2026-12-15 ([roadmap](docs/roadmap.md#tooling-freeze-and-reuse-rules)). Before building something, check for an existing tool or Apple framework that does it.
+11. **Agent and device tooling is frozen** (`forge ui explore`, `forge ui focus`, run records, `forge mcp`, the live dev connection): bug fixes only, no new commands, until the roadmap's P1 to P4 exit criteria are met or the freeze is reviewed on 2026-12-15 ([roadmap](docs/roadmap.md#tooling-freeze-and-reuse-rules)). The one exception is interaction completeness: basic gestures, keys and device navigation in `forge-uitest`, `forge ui` and `forge_ui_act`'s action list. Before building something, check for an existing tool or Apple framework that does it.
 
 ## Checking your work
 

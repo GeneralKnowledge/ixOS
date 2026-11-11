@@ -239,16 +239,26 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_ui_act",
         title: "One UI action",
-        description: "One action on the app on screen, by accessibility identifier or label (never coordinates; for a control with neither, by kind with label or index, or near the text beside it): tap, type text, clear a field, scroll (to an element below the fold, or a list up/down), or expect a state (value, enabled, gone). Fails with the screen's tree when the element isn't there.",
+        description: "One action on the app on screen, by accessibility identifier or label (never coordinates; for a control with neither, by kind with label or index, or near the text beside it): tap, type text, clear a field, scroll (to an element below the fold, paging a lazy list until its row appears, or a list up/down), swipe an element (a row's swipe actions), long_press (context menu), double_tap, drag (onto another element, or by a direction: a list dragged down refreshes), key (return, delete, or dismiss to hide the keyboard; no element), or expect a state (value, enabled, gone). Same as `forge ui <action>` in the terminal. Fails with the screen's tree when the element isn't there.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
         schema: || {
             let mut props = target_props();
             let obj = props.as_object_mut().expect("object");
-            obj.insert("action".into(), json!({"type": "string", "enum": ["tap", "type", "clear", "scroll", "expect"]}));
+            obj.insert("action".into(), json!({"type": "string", "enum": ["tap", "type", "clear", "scroll", "swipe", "long_press", "double_tap", "drag", "key", "expect"]}));
             obj.insert("text".into(), json!({"type": "string", "description": "For type"}));
-            obj.insert("direction".into(), json!({"type": "string", "enum": ["visible", "up", "down", "left", "right"], "description": "For scroll: visible (default) scrolls until the element is on screen; up/down/left/right scroll the element (a list or scroll view) itself"}));
+            obj.insert("direction".into(), json!({"type": "string", "enum": ["visible", "up", "down", "left", "right"], "description": "For scroll: visible (default) scrolls until the element is on screen; up/down/left/right scroll the element (a list or scroll view) itself. For swipe (required): up, down, left or right"}));
+            obj.insert("in_id".into(), json!({"type": "string", "description": "For scroll to visible: the list to page through for a row not drawn yet (default: the first list on screen)"}));
+            obj.insert("toward".into(), json!({"type": "string", "enum": ["up", "down", "left", "right"], "description": "For scroll to visible: which way to page (default down)"}));
+            obj.insert("pages".into(), json!({"type": "integer", "minimum": 1, "maximum": 50, "description": "For scroll to visible: at most this many pages (default 10)"}));
+            obj.insert("seconds".into(), json!({"type": "number", "minimum": 0, "maximum": 10, "description": "For long_press: how long to hold (default 1)"}));
+            obj.insert("to_id".into(), json!({"type": "string", "description": "For drag: drop on the element with this identifier"}));
+            obj.insert("to_label".into(), json!({"type": "string", "description": "For drag: drop on the element with this label"}));
+            obj.insert("by".into(), json!({"type": "string", "enum": ["up", "down", "left", "right"], "description": "For drag: drag this way from the element's centre, no hold"}));
+            obj.insert("distance".into(), json!({"type": "number", "minimum": 0, "maximum": 2, "description": "For drag with by: how far, as a fraction of the element's size (default 0.5)"}));
+            obj.insert("hold".into(), json!({"type": "number", "minimum": 0, "maximum": 10, "description": "For drag onto an element: seconds to hold first (default 1)"}));
+            obj.insert("key".into(), json!({"type": "string", "enum": ["return", "delete", "dismiss"], "description": "For key: the key to press, or dismiss to hide the keyboard"}));
             obj.insert("value".into(), json!({"type": "string", "description": "For expect: the element's value"}));
             obj.insert("enabled".into(), json!({"type": "boolean", "description": "For expect"}));
             obj.insert("gone".into(), json!({"type": "boolean", "description": "For expect: the element is not on screen"}));
@@ -1242,6 +1252,16 @@ fn keep_out(result: &mut Value, shown: &str, out: &Path) {
 
 /// The step table for forge_ui_act.
 fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
+    // A key needs no element.
+    if args.str("action") == Some("key") {
+        let key = args
+            .str("key")
+            .ok_or("key needs `key`: return, delete or dismiss")?;
+        if !["return", "delete", "dismiss"].contains(&key) {
+            return Err(format!("key `{key}`: use return, delete or dismiss"));
+        }
+        return Ok(("key", json!(key)));
+    }
     let mut target = Map::new();
     for key in ["id", "label", "label_contains", "kind", "near"] {
         if let Some(v) = args.str(key) {
@@ -1262,9 +1282,19 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
         target.insert("index".into(), json!(index));
     }
     let action = args.str("action").unwrap_or("");
+    const WAYS: [&str; 4] = ["up", "down", "left", "right"];
+    let way = |name: &str, value: &str| {
+        if WAYS.contains(&value) {
+            Ok(())
+        } else {
+            Err(format!("{name} `{value}`: use up, down, left or right"))
+        }
+    };
+    let number = |name: &str| args.0.get(name).and_then(Value::as_f64);
     let key = match action {
         "tap" => "tap",
         "clear" => "clear",
+        "double_tap" => "double_tap",
         "scroll" => {
             if let Some(direction) = args.str("direction") {
                 if !["visible", "up", "down", "left", "right"].contains(&direction) {
@@ -1274,7 +1304,53 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
                 }
                 target.insert("direction".into(), json!(direction));
             }
+            if let Some(id) = args.str("in_id") {
+                target.insert("in".into(), json!({ "id": id }));
+            }
+            if let Some(toward) = args.str("toward") {
+                way("toward", toward)?;
+                target.insert("toward".into(), json!(toward));
+            }
+            if let Some(pages) = args.0.get("pages") {
+                let pages = pages.as_u64().ok_or("pages is a whole number")?;
+                target.insert("pages".into(), json!(pages));
+            }
             "scroll"
+        }
+        "swipe" => {
+            let direction = args
+                .str("direction")
+                .ok_or("swipe needs `direction`: up, down, left or right")?;
+            way("direction", direction)?;
+            target.insert("direction".into(), json!(direction));
+            "swipe"
+        }
+        "long_press" => {
+            if let Some(seconds) = number("seconds") {
+                target.insert("seconds".into(), json!(seconds));
+            }
+            "long_press"
+        }
+        "drag" => {
+            match (args.str("to_id"), args.str("to_label"), args.str("by")) {
+                (Some(id), None, None) => {
+                    target.insert("to".into(), json!({ "id": id }));
+                }
+                (None, Some(label), None) => {
+                    target.insert("to".into(), json!({ "label": label }));
+                }
+                (None, None, Some(by)) => {
+                    way("by", by)?;
+                    target.insert("by".into(), json!(by));
+                }
+                _ => return Err("drag needs one of to_id, to_label (drop on an element) or by (a direction)".into()),
+            }
+            for name in ["distance", "hold"] {
+                if let Some(v) = number(name) {
+                    target.insert(name.into(), json!(v));
+                }
+            }
+            "drag"
         }
         "type" => {
             let text = args
@@ -1305,7 +1381,7 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
         }
         other => {
             return Err(format!(
-                "action `{other}`: use tap, type, clear, scroll or expect"
+                "action `{other}`: use tap, type, clear, scroll, swipe, long_press, double_tap, drag, key or expect"
             ))
         }
     };
@@ -1481,6 +1557,43 @@ mod tests {
         assert!(ui_step(&Args(&a)).is_err());
         let a = args(json!({"action": "type", "id": "a"}));
         assert!(ui_step(&Args(&a)).is_err());
+    }
+
+    #[test]
+    fn gesture_steps_are_built_from_arguments() {
+        let step = |v: Value| ui_step(&Args(&args(v)));
+        assert_eq!(
+            step(json!({"action": "swipe", "id": "row", "direction": "left"})).unwrap(),
+            ("swipe", json!({"id": "row", "direction": "left"}))
+        );
+        assert!(step(json!({"action": "swipe", "id": "row", "direction": "visible"})).is_err());
+        assert_eq!(
+            step(json!({"action": "long_press", "id": "row", "seconds": 2.0})).unwrap(),
+            ("long_press", json!({"id": "row", "seconds": 2.0}))
+        );
+        assert_eq!(
+            step(json!({"action": "double_tap", "label": "Photo"})).unwrap(),
+            ("double_tap", json!({"label": "Photo"}))
+        );
+        assert_eq!(
+            step(json!({"action": "drag", "id": "a", "to_id": "b", "hold": 0.5})).unwrap(),
+            ("drag", json!({"id": "a", "to": {"id": "b"}, "hold": 0.5}))
+        );
+        assert_eq!(
+            step(json!({"action": "drag", "kind": "CollectionView", "by": "down"})).unwrap(),
+            ("drag", json!({"kind": "CollectionView", "by": "down"}))
+        );
+        assert!(step(json!({"action": "drag", "id": "a"})).is_err());
+        assert!(step(json!({"action": "drag", "id": "a", "to_id": "b", "by": "down"})).is_err());
+        assert_eq!(
+            step(json!({"action": "key", "key": "dismiss"})).unwrap(),
+            ("key", json!("dismiss"))
+        );
+        assert!(step(json!({"action": "key", "key": "escape"})).is_err());
+        assert_eq!(
+            step(json!({"action": "scroll", "id": "dashboard.transfers", "in_id": "dashboard", "pages": 5})).unwrap(),
+            ("scroll", json!({"id": "dashboard.transfers", "in": {"id": "dashboard"}, "pages": 5}))
+        );
     }
 
     #[test]

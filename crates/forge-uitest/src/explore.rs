@@ -849,7 +849,7 @@ const SCROLLABLE: &[&str] = &["Table", "CollectionView", "ScrollView"];
 /// The list or scroll view to scroll for controls below the fold: the
 /// first visible one, by identifier when it has one, else by kind and its
 /// place among elements of that kind (never by coordinates).
-fn scroll_target(tree: &UiNode) -> Option<Locator> {
+pub(crate) fn scroll_target(tree: &UiNode) -> Option<Locator> {
     // WDA doesn't always call a list visible (NetNewsWire's on Cati,
     // 2026-11-10), so a list with a size on screen will do when none is.
     scroll_target_where(tree, |n| n.visible).or_else(|| {

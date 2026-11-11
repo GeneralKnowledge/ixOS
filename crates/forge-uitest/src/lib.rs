@@ -354,6 +354,39 @@ pub trait Driver {
     fn dismiss_keyboard(&mut self) -> Result<()> {
         Ok(())
     }
+    /// A finger swipe across the element, `up`, `down`, `left` or `right`:
+    /// a list row's swipe actions, a page in a carousel, a sheet pulled down.
+    fn swipe(&mut self, _element: &ElementRef, _direction: &str) -> Result<()> {
+        Err(cannot("swipe"))
+    }
+    /// Touch the element and hold for `seconds`: context menus, text
+    /// selection.
+    fn long_press(&mut self, _element: &ElementRef, _seconds: f64) -> Result<()> {
+        Err(cannot("long press"))
+    }
+    /// Two quick taps on the element's centre.
+    fn double_tap(&mut self, _element: &ElementRef) -> Result<()> {
+        Err(cannot("double tap"))
+    }
+    /// Press the element for `hold` seconds, then drag it onto `to` and
+    /// let go: reordering, drag and drop.
+    fn drag_to(&mut self, _element: &ElementRef, _to: &ElementRef, _hold: f64) -> Result<()> {
+        Err(cannot("drag"))
+    }
+    /// Drag from the element's centre `fraction` of its own size towards
+    /// `direction` (`up`, `down`, `left`, `right`), with no hold first: a
+    /// list pulled down to refresh is `down` by 0.5 or so.
+    fn drag_by(&mut self, _element: &ElementRef, _direction: &str, _fraction: f64) -> Result<()> {
+        Err(cannot("drag"))
+    }
+    /// Press a key on the on-screen keyboard: [`Key::Return`] or
+    /// [`Key::Delete`]. [`Key::Dismiss`] hides the keyboard.
+    fn press_key(&mut self, key: Key) -> Result<()> {
+        match key {
+            Key::Dismiss => self.dismiss_keyboard(),
+            _ => Err(cannot("press keys")),
+        }
+    }
     /// Whether a search should also say what it found (type, label and
     /// identifier), so that [`Driver::attribute`] answers those without
     /// asking the phone again. Each such read costs WebDriverAgent a fresh
@@ -363,6 +396,46 @@ pub trait Driver {
     fn describe_matches(&mut self, _on: bool) -> Result<()> {
         Ok(())
     }
+}
+
+/// A keyboard key a test can press.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Key {
+    /// Return (or Go, Search, Send: whatever the field calls it).
+    Return,
+    /// Backspace: deletes the character before the cursor.
+    Delete,
+    /// Not a key: hides the keyboard.
+    Dismiss,
+}
+
+impl Key {
+    /// The names test files use.
+    pub const NAMES: &'static [&'static str] = &["return", "delete", "dismiss"];
+
+    pub fn parse(name: &str) -> Option<Key> {
+        match name {
+            "return" => Some(Key::Return),
+            "delete" => Some(Key::Delete),
+            "dismiss" => Some(Key::Dismiss),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Key::Return => "return",
+            Key::Delete => "delete",
+            Key::Dismiss => "dismiss",
+        }
+    }
+}
+
+/// The four directions a swipe, a drag or a scroll can go.
+pub const DIRECTIONS: &[&str] = &["up", "down", "left", "right"];
+
+fn cannot(what: &str) -> UiError {
+    UiError::Device(format!("this driver can't {what}"))
 }
 
 /// Waits up to `timeout` for `bundle_id` to be the app in front, and fails
@@ -540,6 +613,9 @@ pub mod fake {
         /// Replaces `screen` after the next typing (a Send button that
         /// only shows once there is text).
         pub after_type: Option<UiNode>,
+        /// Each scroll up, down, left or right shows the next of these, as
+        /// a lazy list draws rows that were below the fold.
+        pub scroll_pages: Vec<UiNode>,
     }
 
     impl FakeDriver {
@@ -547,6 +623,31 @@ pub mod fake {
             Self {
                 screen,
                 ..Self::default()
+            }
+        }
+
+        /// An element's id as it is; otherwise its label in quotes, or its
+        /// kind.
+        fn name(&mut self, element: &ElementRef) -> Result<String> {
+            let node = self.node(element)?;
+            Ok(node
+                .identifier
+                .clone()
+                .or_else(|| node.label.as_ref().map(|l| format!("{l:?}")))
+                .unwrap_or_else(|| node.kind.clone()))
+        }
+
+        /// A gesture on an element changes the screen as a tap would.
+        fn after_gesture(&mut self, name: &str) {
+            if let Some(pos) = self.on_tap.iter().position(|(on, _)| on == name) {
+                self.screen = self.on_tap.remove(pos).1;
+            }
+        }
+
+        /// Scrolls reveal more: the next screen in `scroll_pages`.
+        fn next_page(&mut self) {
+            if !self.scroll_pages.is_empty() {
+                self.screen = self.scroll_pages.remove(0);
             }
         }
 
@@ -587,6 +688,9 @@ pub mod fake {
                 "scroll {} {direction}",
                 id.as_deref().unwrap_or("?")
             ));
+            if direction != "visible" {
+                self.next_page();
+            }
             Ok(())
         }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
@@ -667,6 +771,46 @@ pub mod fake {
             if on {
                 self.calls.push("describe matches".into());
             }
+            Ok(())
+        }
+
+        fn swipe(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("swipe {name} {direction}"));
+            self.after_gesture(&name);
+            Ok(())
+        }
+        fn long_press(&mut self, element: &ElementRef, seconds: f64) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("long press {name} {seconds}"));
+            self.after_gesture(&name);
+            Ok(())
+        }
+        fn double_tap(&mut self, element: &ElementRef) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("double tap {name}"));
+            self.after_gesture(&name);
+            Ok(())
+        }
+        fn drag_to(&mut self, element: &ElementRef, to: &ElementRef, hold: f64) -> Result<()> {
+            let (from, to) = (self.name(element)?, self.name(to)?);
+            self.calls.push(format!("drag {from} to {to} after {hold}"));
+            self.after_gesture(&from);
+            Ok(())
+        }
+        fn drag_by(&mut self, element: &ElementRef, direction: &str, fraction: f64) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls
+                .push(format!("drag {name} {direction} by {fraction}"));
+            self.after_gesture(&name);
+            Ok(())
+        }
+        fn press_key(&mut self, key: Key) -> Result<()> {
+            self.calls.push(format!("key {}", key.name()));
+            Ok(())
+        }
+        fn dismiss_keyboard(&mut self) -> Result<()> {
+            self.calls.push("key dismiss".into());
             Ok(())
         }
 

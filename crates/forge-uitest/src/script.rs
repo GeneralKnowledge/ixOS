@@ -94,6 +94,12 @@ pub struct Step {
     pub type_text: Option<TypeText>,
     pub clear: Option<Target>,
     pub scroll: Option<Scroll>,
+    pub swipe: Option<Swipe>,
+    pub long_press: Option<LongPress>,
+    pub double_tap: Option<Target>,
+    pub drag: Option<Drag>,
+    /// `return`, `delete`, or `dismiss` to hide the keyboard.
+    pub key: Option<String>,
     pub expect: Option<Expect>,
     pub screenshot: Option<String>,
     pub tree: Option<bool>,
@@ -141,13 +147,59 @@ pub struct TypeText {
 
 /// `scroll = { id = "list", direction = "down" }` scrolls a scroll view;
 /// `direction = "visible"` (the default) scrolls until the target itself is
-/// on screen.
+/// on screen. A row a lazy list hasn't drawn yet isn't in the tree to scroll
+/// to: then the list (`in`, or the first list on screen) is scrolled a page
+/// at a time `toward` the row (default `down`) until it appears, at most
+/// `pages` times (default 10).
 #[derive(Debug, Deserialize)]
 pub struct Scroll {
     #[serde(flatten)]
     pub target: Target,
     #[serde(default = "default_direction")]
     pub direction: String,
+    /// The list or scroll view to page through for a row not drawn yet.
+    #[serde(rename = "in")]
+    pub within: Option<Target>,
+    pub toward: Option<String>,
+    pub pages: Option<usize>,
+}
+
+/// `swipe = { id = "transfers.row", direction = "left" }`: a finger swipe
+/// across the element, which shows a row's swipe actions.
+#[derive(Debug, Deserialize)]
+pub struct Swipe {
+    #[serde(flatten)]
+    pub target: Target,
+    pub direction: String,
+}
+
+/// `long_press = { id = "library.book.1" }`: touch and hold (default 1 s),
+/// which opens a context menu.
+#[derive(Debug, Deserialize)]
+pub struct LongPress {
+    #[serde(flatten)]
+    pub target: Target,
+    #[serde(default = "default_hold")]
+    pub seconds: f64,
+}
+
+fn default_hold() -> f64 {
+    1.0
+}
+
+/// `drag = { id = "a", to = { id = "b" } }` presses the element (`hold`
+/// seconds, default 1, long enough to pick it up), drags it onto `to` and
+/// lets go. `drag = { kind = "CollectionView", by = "down" }` drags from the
+/// element's centre `distance` of its size (default 0.5) with no hold: a
+/// list pulled down to refresh.
+#[derive(Debug, Deserialize)]
+pub struct Drag {
+    #[serde(flatten)]
+    pub target: Target,
+    pub to: Option<Target>,
+    pub by: Option<String>,
+    pub distance: Option<f64>,
+    pub hold: Option<f64>,
 }
 
 fn default_direction() -> String {
@@ -155,6 +207,12 @@ fn default_direction() -> String {
 }
 
 const DIRECTIONS: &[&str] = &["visible", "up", "down", "left", "right"];
+
+/// Pages a scroll looks through for a row a lazy list hasn't drawn yet.
+const DEFAULT_PAGES: usize = 10;
+
+/// How long a scroll looks for its target before it starts paging.
+const QUICK_LOOK: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Deserialize)]
 pub struct Expect {
@@ -241,6 +299,11 @@ impl Step {
             self.type_text.is_some(),
             self.clear.is_some(),
             self.scroll.is_some(),
+            self.swipe.is_some(),
+            self.long_press.is_some(),
+            self.double_tap.is_some(),
+            self.drag.is_some(),
+            self.key.is_some(),
             self.expect.is_some(),
             self.screenshot.is_some(),
             self.tree.is_some(),
@@ -254,8 +317,66 @@ impl Step {
         if self.actions() != 1 {
             return Err("each step needs exactly one action".into());
         }
-        for target in [&self.tap, &self.clear].into_iter().flatten() {
+        for target in [&self.tap, &self.clear, &self.double_tap]
+            .into_iter()
+            .flatten()
+        {
             target.locator()?;
+        }
+        let direction = |d: &str, what: &str| {
+            if crate::DIRECTIONS.contains(&d) {
+                Ok(())
+            } else {
+                Err(format!(
+                    "{what} direction `{d}`: use one of {}",
+                    crate::DIRECTIONS.join(", ")
+                ))
+            }
+        };
+        if let Some(s) = &self.swipe {
+            s.target.locator()?;
+            direction(&s.direction, "swipe")?;
+        }
+        if let Some(l) = &self.long_press {
+            l.target.locator()?;
+            if !(0.0..=10.0).contains(&l.seconds) {
+                return Err("long_press `seconds`: between 0 and 10".into());
+            }
+        }
+        if let Some(d) = &self.drag {
+            d.target.locator()?;
+            match (&d.to, &d.by) {
+                (Some(to), None) => {
+                    to.locator().map_err(|e| format!("drag `to`: {e}"))?;
+                    if d.distance.is_some() {
+                        return Err("drag `distance` goes with `by`".into());
+                    }
+                }
+                (None, Some(by)) => {
+                    direction(by, "drag")?;
+                    if d.distance.is_some_and(|f| !(0.0..=2.0).contains(&f)) {
+                        return Err(
+                            "drag `distance`: a fraction of the element's size, 0 to 2".into()
+                        );
+                    }
+                }
+                _ => {
+                    return Err(
+                        "drag needs `to` (an element) or `by` (a direction), not both".into(),
+                    )
+                }
+            }
+            if d.hold.is_some_and(|h| !(0.0..=10.0).contains(&h)) {
+                return Err("drag `hold`: between 0 and 10 seconds".into());
+            }
+        }
+        if let Some(k) = &self.key {
+            if crate::Key::parse(k).is_none() {
+                return Err(format!(
+                    "key `{k}`: use one of {}",
+                    crate::Key::NAMES.join(", ")
+                ));
+            }
         }
         if let Some(t) = &self.type_text {
             t.target.locator()?;
@@ -271,6 +392,17 @@ impl Step {
                     s.direction,
                     DIRECTIONS.join(", ")
                 ));
+            }
+            if let Some(within) = &s.within {
+                within.locator().map_err(|e| format!("scroll `in`: {e}"))?;
+            }
+            if let Some(toward) = &s.toward {
+                direction(toward, "scroll `toward`")?;
+            }
+            if (s.within.is_some() || s.toward.is_some() || s.pages.is_some())
+                && s.direction != "visible"
+            {
+                return Err("scroll `in`, `toward` and `pages` go with `direction = \"visible\"` (the default)".into());
             }
         }
         Ok(())
@@ -309,6 +441,29 @@ impl Step {
                 format!("scroll until {} is on screen", loc(&s.target))
             } else {
                 format!("scroll {} {}", loc(&s.target), s.direction)
+            };
+        }
+        if let Some(s) = &self.swipe {
+            return format!("swipe {} {}", loc(&s.target), s.direction);
+        }
+        if let Some(l) = &self.long_press {
+            return format!("long press {} for {} s", loc(&l.target), l.seconds);
+        }
+        if let Some(t) = &self.double_tap {
+            return format!("double tap {}", loc(t));
+        }
+        if let Some(d) = &self.drag {
+            return match (&d.to, &d.by) {
+                (Some(to), _) => format!("drag {} onto {}", loc(&d.target), loc(to)),
+                (_, Some(by)) => format!("drag {} {by}", loc(&d.target)),
+                _ => format!("drag {}", loc(&d.target)),
+            };
+        }
+        if let Some(k) = &self.key {
+            return if k == "dismiss" {
+                "hide the keyboard".into()
+            } else {
+                format!("press {k}")
             };
         }
         if let Some(e) = &self.expect {
@@ -449,6 +604,11 @@ fn run_step(
         Action::Background
     } else if step.scroll.is_some() {
         Action::Scroll
+    } else if let Some(name) = step.key.as_deref().and_then(crate::Key::parse) {
+        Action::Key {
+            name: name.name(),
+            presses_return: name == crate::Key::Return,
+        }
     } else {
         // Reading; or a tap, typing or clear, checked with its element below.
         Action::Read
@@ -521,21 +681,72 @@ fn run_step(
             d.clear(e)
         });
     }
-    if let Some(scroll) = &step.scroll {
-        // A swipe that crosses the keyboard types into the field: on Cati
-        // a CollectionView scroll turned "Moss" into "MossSsss". Refuse
-        // rather than change the person's text.
-        if driver
+    if let Some(name) = step.key.as_deref().and_then(crate::Key::parse) {
+        return driver.press_key(name);
+    }
+    // A swipe that crosses the keyboard types into the field: on Cati a
+    // CollectionView scroll turned "Moss" into "MossSsss". Refuse rather
+    // than change the person's text.
+    let crosses = step.scroll.is_some() || step.swipe.is_some() || step.drag.is_some();
+    if crosses
+        && driver
             .tree()
             .is_ok_and(|t| t.walk().any(|n| n.kind == "Keyboard" && n.visible))
-        {
-            return Err(UiError::Refused(
-                "the keyboard is up, and a scroll would swipe across it and type into the field: close it first (tap the field's Done or Return key)".into(),
-            ));
-        }
-        return act(driver, &locate(&scroll.target)?, timeout, &mut |d, e| {
-            d.scroll(e, &scroll.direction)
-        });
+    {
+        return Err(UiError::Refused(
+            "the keyboard is up, and a swipe would cross it and type into the field: hide it first (a `key = \"dismiss\"` step, or tap the field's Done key)".into(),
+        ));
+    }
+    if let Some(scroll) = &step.scroll {
+        return self::scroll(driver, scroll, timeout);
+    }
+    if let Some(swipe) = &step.swipe {
+        return gesture(
+            driver,
+            &locate(&swipe.target)?,
+            timeout,
+            gate,
+            "swipe",
+            &mut |d, e| d.swipe(e, &swipe.direction),
+        );
+    }
+    if let Some(press) = &step.long_press {
+        return gesture(
+            driver,
+            &locate(&press.target)?,
+            timeout,
+            gate,
+            "long_press",
+            &mut |d, e| d.long_press(e, press.seconds),
+        );
+    }
+    if let Some(target) = &step.double_tap {
+        return gesture(
+            driver,
+            &locate(target)?,
+            timeout,
+            gate,
+            "double_tap",
+            &mut |d, e| d.double_tap(e),
+        );
+    }
+    if let Some(drag) = &step.drag {
+        let to = drag.to.as_ref().map(locate).transpose()?;
+        return gesture(
+            driver,
+            &locate(&drag.target)?,
+            timeout,
+            gate,
+            "drag",
+            &mut |d, e| match (&to, &drag.by) {
+                (Some(to), _) => {
+                    let to = wait_for(d, to, timeout)?;
+                    d.drag_to(e, &to, drag.hold.unwrap_or(1.0))
+                }
+                (None, Some(by)) => d.drag_by(e, by, drag.distance.unwrap_or(0.5)),
+                (None, None) => Err(UiError::Device("drag needs `to` or `by`".into())),
+            },
+        );
     }
     if let Some(expect) = &step.expect {
         return check(driver, expect, &locate(&expect.target)?, timeout);
@@ -566,6 +777,84 @@ fn run_step(
     let tree = driver.tree()?;
     write!(out, "{}", indent(&tree.render()))?;
     Ok(())
+}
+
+/// A gesture on an element, checked by the gate with the element's label
+/// and kind once it is found (another developer's app), like a tap.
+fn gesture(
+    driver: &mut dyn Driver,
+    locator: &Locator,
+    timeout: Duration,
+    gate: &mut Gate,
+    name: &'static str,
+    action: &mut dyn FnMut(&mut dyn Driver, &crate::ElementRef) -> Result<()>,
+) -> Result<()> {
+    let mut checked = !gate.wants_targets();
+    act(driver, locator, timeout, &mut |d, e| {
+        if !checked {
+            let target = target_of(d, e)?;
+            gate.check(&Action::Gesture {
+                gesture: name,
+                target,
+            })
+            .map_err(UiError::Refused)?;
+            checked = true;
+        }
+        action(d, e)
+    })
+}
+
+/// A scroll step. Up, down, left and right scroll the target itself.
+/// `visible` scrolls until the target is on screen; a row a lazy list
+/// hasn't drawn yet isn't in the tree, so the list is paged through until
+/// it appears.
+fn scroll(driver: &mut dyn Driver, scroll: &Scroll, timeout: Duration) -> Result<()> {
+    let locator = scroll.target.locator().map_err(UiError::Device)?;
+    if scroll.direction != "visible" {
+        return act(driver, &locator, timeout, &mut |d, e| {
+            d.scroll(e, &scroll.direction)
+        });
+    }
+    let to_visible =
+        |d: &mut dyn Driver| act(d, &locator, timeout, &mut |d, e| d.scroll(e, "visible"));
+    // Already drawn (or about to be): the old, simple path.
+    let quick = if scroll.within.is_some() {
+        Duration::ZERO
+    } else {
+        QUICK_LOOK.min(timeout)
+    };
+    match wait_for(driver, &locator, quick) {
+        Ok(_) => return to_visible(driver),
+        Err(UiError::NotFound(_)) => {}
+        Err(e) => return Err(e),
+    }
+    let list = match &scroll.within {
+        Some(t) => t.locator().map_err(UiError::Device)?,
+        None => match crate::explore::scroll_target(&driver.tree()?) {
+            Some(list) => list,
+            // Nothing to page through: wait for the target as before.
+            None => return to_visible(driver),
+        },
+    };
+    let toward = scroll.toward.as_deref().unwrap_or("down");
+    let pages = scroll.pages.unwrap_or(DEFAULT_PAGES);
+    let mut last = driver.tree()?.render();
+    for page in 1..=pages {
+        act(driver, &list, timeout, &mut |d, e| d.scroll(e, toward))?;
+        if !driver.find_all(&locator)?.is_empty() {
+            return to_visible(driver);
+        }
+        let now = driver.tree()?.render();
+        if now == last {
+            return Err(UiError::Device(format!(
+                "scrolled {list} {toward} {page} time(s) to its end and {locator} never appeared"
+            )));
+        }
+        last = now;
+    }
+    Err(UiError::Device(format!(
+        "scrolled {list} {toward} {pages} times and {locator} never appeared (raise `pages`, or scroll `toward` the other way)"
+    )))
 }
 
 /// Finds the element and acts on it. SwiftUI re-renders freely, so an
@@ -880,6 +1169,179 @@ mod tests {
         let mut driver = FakeDriver::new(screen);
         driver.front = Some("a".into());
         driver
+    }
+
+    /// Runs `steps` (TOML `[[step]]` tables) against app `a` in front.
+    fn run_steps(steps: &str, driver: &mut FakeDriver) -> (Report, String) {
+        let script = Script::parse(&format!("name='g'\napp='a'\ntimeout=0\n{steps}")).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let report = run(&script, "a", driver, dir.path(), &mut out).unwrap();
+        (report, String::from_utf8(out).unwrap())
+    }
+
+    fn rows(ids: &[&str]) -> UiNode {
+        let mut list = node("CollectionView", "dashboard", "");
+        list.children = ids.iter().map(|id| node("Cell", id, id)).collect();
+        UiNode {
+            kind: "Application".into(),
+            children: vec![list],
+            ..UiNode::default()
+        }
+    }
+
+    #[test]
+    fn gestures_reach_the_driver() {
+        let mut driver = in_front(rows(&["transfers.row", "dashboard.crashTest"]));
+        let (report, out) = run_steps(
+            "[[step]]\nswipe={id='transfers.row', direction='left'}\n\
+             [[step]]\nlong_press={id='transfers.row'}\n\
+             [[step]]\nlong_press={id='transfers.row', seconds=2.5}\n\
+             [[step]]\ndouble_tap={label='transfers.row'}\n\
+             [[step]]\ndrag={id='transfers.row', to={id='dashboard.crashTest'}}\n\
+             [[step]]\ndrag={id='dashboard', by='down'}\n\
+             [[step]]\ndrag={id='dashboard', by='down', distance=0.8}\n\
+             [[step]]\nkey='return'\n[[step]]\nkey='delete'\n[[step]]\nkey='dismiss'\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(
+            driver.calls,
+            [
+                "swipe transfers.row left",
+                "long press transfers.row 1",
+                "long press transfers.row 2.5",
+                "double tap transfers.row",
+                "drag transfers.row to dashboard.crashTest after 1",
+                "drag dashboard down by 0.5",
+                "drag dashboard down by 0.8",
+                "key return",
+                "key delete",
+                "key dismiss",
+            ]
+        );
+        assert!(out.contains("swipe id `transfers.row` left"), "{out}");
+        assert!(out.contains("hide the keyboard"), "{out}");
+    }
+
+    #[test]
+    fn new_steps_are_checked_when_the_file_is_read() {
+        for (step, error) in [
+            (
+                "swipe={id='r', direction='sideways'}",
+                "swipe direction `sideways`",
+            ),
+            ("swipe={id='r'}", "missing field `direction`"),
+            ("long_press={id='r', seconds=60}", "between 0 and 10"),
+            ("drag={id='r'}", "drag needs `to`"),
+            ("drag={id='r', to={id='s'}, by='down'}", "not both"),
+            ("drag={id='r', to={id='s'}, distance=0.3}", "goes with `by`"),
+            ("drag={id='r', to={idd='s'}}", "unknown field"),
+            ("key='escape'", "key `escape`"),
+            (
+                "scroll={id='r', direction='down', in={id='l'}}",
+                "go with `direction",
+            ),
+            ("scroll={id='r', toward='sideways'}", "toward` direction"),
+        ] {
+            let err = Script::parse(&format!("name='x'\napp='a'\n[[step]]\n{step}\n")).unwrap_err();
+            assert!(err.contains(error), "{step}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_swipe_or_drag_with_the_keyboard_up_is_refused() {
+        let mut screen = rows(&["transfers.row"]);
+        screen.children.push(node("Keyboard", "", ""));
+        for step in [
+            "swipe={id='transfers.row', direction='left'}",
+            "drag={id='dashboard', by='down'}",
+        ] {
+            let mut driver = in_front(screen.clone());
+            let (report, _) = run_steps(&format!("[[step]]\n{step}\n"), &mut driver);
+            assert!(report.failed.unwrap().1.contains("key = \"dismiss\""));
+            // Only the failure's screenshot: nothing touched the screen.
+            assert_eq!(driver.calls, ["screenshot"]);
+        }
+    }
+
+    #[test]
+    fn a_scroll_pages_a_lazy_list_until_the_row_is_drawn() {
+        // Device Lab's dashboard (2026-11-11): Background Downloads is
+        // below the fold, so the list hasn't made its cell yet.
+        let mut driver = in_front(rows(&["dashboard.a", "dashboard.b"]));
+        driver.scroll_pages = vec![
+            rows(&["dashboard.c", "dashboard.d"]),
+            rows(&["dashboard.e", "dashboard.transfers"]),
+        ];
+        let (report, out) = run_steps("[[step]]\nscroll={id='dashboard.transfers'}\n", &mut driver);
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(
+            driver.calls,
+            [
+                "scroll dashboard down",
+                "scroll dashboard down",
+                "scroll dashboard.transfers visible"
+            ]
+        );
+    }
+
+    #[test]
+    fn a_scroll_in_a_named_list_goes_the_way_it_is_told() {
+        let mut driver = in_front(rows(&["dashboard.e"]));
+        driver.scroll_pages = vec![rows(&["dashboard.top"])];
+        let (report, out) = run_steps(
+            "[[step]]\nscroll={id='dashboard.top', in={id='dashboard'}, toward='up'}\n",
+            &mut driver,
+        );
+        assert_eq!(report.failed, None, "{out}");
+        assert_eq!(driver.calls[0], "scroll dashboard up");
+    }
+
+    #[test]
+    fn a_scroll_stops_at_the_end_of_the_list() {
+        let mut driver = in_front(rows(&["dashboard.a"]));
+        let (report, _) = run_steps("[[step]]\nscroll={id='nowhere', pages=4}\n", &mut driver);
+        let (_, error) = report.failed.unwrap();
+        assert!(error.contains("1 time(s) to its end"), "{error}");
+        // The list didn't change, so one try was enough to know.
+        assert_eq!(driver.calls, ["scroll dashboard down", "screenshot"]);
+    }
+
+    #[test]
+    fn gestures_in_another_app_ask_like_a_tap() {
+        // A swipe can run a row's Delete: it needs the person each time.
+        let (report, driver, journal) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nswipe={id='chat-input', direction='left'}\n",
+        );
+        assert!(report.failed.unwrap().1.contains("swipe"));
+        assert!(!driver.calls.iter().any(|c| c.starts_with("swipe")));
+        assert!(journal.contains(r#""action":"swipe""#), "{journal}");
+        // A long press on a labelled control is allowed at `operate`.
+        let (report, driver, _) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nlong_press={id='chat-input'}\n",
+        );
+        assert_eq!(report.failed, None);
+        assert!(driver.calls.iter().any(|c| c.starts_with("long press")));
+        // ...and refused at `observe`, like a tap.
+        let (report, _, _) = foreign_run(
+            policy::Level::Observe,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\ndouble_tap={id='Send'}\n",
+        );
+        assert!(report.failed.is_some());
+        // Return can send; hiding the keyboard only looks.
+        let (report, _, _) = foreign_run(
+            policy::Level::Operate,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nkey='return'\n",
+        );
+        assert!(report.failed.unwrap().1.contains("Return"));
+        let (report, _, _) = foreign_run(
+            policy::Level::Observe,
+            "name='s'\napp='com.anthropic.claude'\ntimeout=0\n[[step]]\nkey='dismiss'\n",
+        );
+        assert_eq!(report.failed, None);
     }
 
     #[test]
