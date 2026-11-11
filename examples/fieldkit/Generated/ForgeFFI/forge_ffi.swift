@@ -1381,6 +1381,12 @@ public protocol LocalNotifier: AnyObject, Sendable {
      */
     func pending() async  -> [String]
     
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    func setCategories(categories: [NotificationCategory]) 
+    
 }
 /**
  * Local notifications (no push server involved).
@@ -1490,6 +1496,19 @@ open func pending()async  -> [String]  {
             errorHandler: nil
             
         )
+}
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fieldkit_core_fn_method_localnotifier_set_categories(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
+    )
+}
 }
     
 
@@ -1623,6 +1642,30 @@ fileprivate struct UniffiCallbackInterfaceLocalNotifier {
                 handleSuccess: uniffiHandleSuccess,
                 handleError: uniffiHandleError,
                 droppedCallback: uniffiOutDroppedCallback
+            )
+        },
+        setCategories: { (
+            uniffiHandle: UInt64,
+            categories: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeLocalNotifier.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.setCategories(
+                     categories: try FfiConverterSequenceTypeNotificationCategory.lift(categories)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
             )
         }
     )
@@ -3109,6 +3152,11 @@ public struct LocalNotification: Equatable, Hashable {
      */
     public var deepLink: String?
     public var trigger: NotificationTrigger
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    public var category: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3119,7 +3167,11 @@ public struct LocalNotification: Equatable, Hashable {
         /**
          * Opened when the user taps the notification, through the
          * same path as any other deep link.
-         */deepLink: String?, trigger: NotificationTrigger) {
+         */deepLink: String?, trigger: NotificationTrigger, 
+        /**
+         * The category whose action buttons the notification shows
+         * (`set_notification_categories`). None: no buttons.
+         */category: String? = nil) {
         self.id = id
         self.title = title
         self.body = body
@@ -3127,6 +3179,7 @@ public struct LocalNotification: Equatable, Hashable {
         self.threadId = threadId
         self.deepLink = deepLink
         self.trigger = trigger
+        self.category = category
     }
 
     
@@ -3151,7 +3204,8 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
                 subtitle: FfiConverterOptionString.read(from: &buf), 
                 threadId: FfiConverterOptionString.read(from: &buf), 
                 deepLink: FfiConverterOptionString.read(from: &buf), 
-                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf)
+                trigger: FfiConverterTypeNotificationTrigger.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf)
         )
     }
 
@@ -3163,6 +3217,7 @@ public struct FfiConverterTypeLocalNotification: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.threadId, into: &buf)
         FfiConverterOptionString.write(value.deepLink, into: &buf)
         FfiConverterTypeNotificationTrigger.write(value.trigger, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
     }
 }
 
@@ -3547,6 +3602,230 @@ public func FfiConverterTypeNote_lift(_ buf: RustBuffer) throws -> Note {
 #endif
 public func FfiConverterTypeNote_lower(_ value: Note) -> RustBuffer {
     return FfiConverterTypeNote.lower(value)
+}
+
+
+/**
+ * One action button on a notification.
+ */
+public struct NotificationAction: Equatable, Hashable {
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    public var id: String
+    public var title: String
+    public var kind: NotificationActionKind
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    public var requiresUnlock: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Comes back in `NotificationResponse::action_id`.
+         */id: String, title: String, kind: NotificationActionKind, 
+        /**
+         * iOS asks the person to unlock the phone first.
+         */requiresUnlock: Bool) {
+        self.id = id
+        self.title = title
+        self.kind = kind
+        self.requiresUnlock = requiresUnlock
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationAction: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationAction: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationAction {
+        return
+            try NotificationAction(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeNotificationActionKind.read(from: &buf), 
+                requiresUnlock: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationAction, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeNotificationActionKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.requiresUnlock, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lift(_ buf: RustBuffer) throws -> NotificationAction {
+    return try FfiConverterTypeNotificationAction.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationAction_lower(_ value: NotificationAction) -> RustBuffer {
+    return FfiConverterTypeNotificationAction.lower(value)
+}
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+public struct NotificationCategory: Equatable, Hashable {
+    public var id: String
+    public var actions: [NotificationAction]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, actions: [NotificationAction]) {
+        self.id = id
+        self.actions = actions
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationCategory: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationCategory: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationCategory {
+        return
+            try NotificationCategory(
+                id: FfiConverterString.read(from: &buf), 
+                actions: FfiConverterSequenceTypeNotificationAction.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationCategory, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterSequenceTypeNotificationAction.write(value.actions, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lift(_ buf: RustBuffer) throws -> NotificationCategory {
+    return try FfiConverterTypeNotificationCategory.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationCategory_lower(_ value: NotificationCategory) -> RustBuffer {
+    return FfiConverterTypeNotificationCategory.lower(value)
+}
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+public struct NotificationResponse: Equatable, Hashable {
+    public var notificationId: String
+    public var actionId: String
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    public var text: String?
+    public var category: String?
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    public var threadId: String?
+    public var deepLink: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(notificationId: String, actionId: String, 
+        /**
+         * What they typed, for a `TextInput` action.
+         */text: String?, category: String?, 
+        /**
+         * The notification's `thread_id` (its group: a chat room, a
+         * list).
+         */threadId: String?, deepLink: String?) {
+        self.notificationId = notificationId
+        self.actionId = actionId
+        self.text = text
+        self.category = category
+        self.threadId = threadId
+        self.deepLink = deepLink
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NotificationResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationResponse {
+        return
+            try NotificationResponse(
+                notificationId: FfiConverterString.read(from: &buf), 
+                actionId: FfiConverterString.read(from: &buf), 
+                text: FfiConverterOptionString.read(from: &buf), 
+                category: FfiConverterOptionString.read(from: &buf), 
+                threadId: FfiConverterOptionString.read(from: &buf), 
+                deepLink: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NotificationResponse, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.notificationId, into: &buf)
+        FfiConverterString.write(value.actionId, into: &buf)
+        FfiConverterOptionString.write(value.text, into: &buf)
+        FfiConverterOptionString.write(value.category, into: &buf)
+        FfiConverterOptionString.write(value.threadId, into: &buf)
+        FfiConverterOptionString.write(value.deepLink, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lift(_ buf: RustBuffer) throws -> NotificationResponse {
+    return try FfiConverterTypeNotificationResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResponse) -> RustBuffer {
+    return FfiConverterTypeNotificationResponse.lower(value)
 }
 
 
@@ -4835,6 +5114,99 @@ public func FfiConverterTypeNoteKind_lower(_ value: NoteKind) -> RustBuffer {
 
 
 /**
+ * What an action button does.
+ */
+
+public enum NotificationActionKind: Equatable, Hashable {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    case button(destructive: Bool
+    )
+    /**
+     * A button that opens the app (View, Open).
+     */
+    case opensApp
+    /**
+     * A text field, for a quick reply.
+     */
+    case textInput(sendTitle: String, placeholder: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension NotificationActionKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNotificationActionKind: FfiConverterRustBuffer {
+    typealias SwiftType = NotificationActionKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NotificationActionKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .button(destructive: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 2: return .opensApp
+        
+        case 3: return .textInput(sendTitle: try FfiConverterString.read(from: &buf), placeholder: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NotificationActionKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .button(destructive):
+            writeInt(&buf, Int32(1))
+            FfiConverterBool.write(destructive, into: &buf)
+            
+        
+        case .opensApp:
+            writeInt(&buf, Int32(2))
+        
+        
+        case let .textInput(sendTitle,placeholder):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(sendTitle, into: &buf)
+            FfiConverterString.write(placeholder, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lift(_ buf: RustBuffer) throws -> NotificationActionKind {
+    return try FfiConverterTypeNotificationActionKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNotificationActionKind_lower(_ value: NotificationActionKind) -> RustBuffer {
+    return FfiConverterTypeNotificationActionKind.lower(value)
+}
+
+
+
+/**
  * When a local notification fires.
  */
 
@@ -5447,6 +5819,56 @@ fileprivate struct FfiConverterSequenceTypeNote: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationAction]
+
+    public static func write(_ value: [NotificationAction], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationAction.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationAction] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationAction]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationAction.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer {
+    typealias SwiftType = [NotificationCategory]
+
+    public static func write(_ value: [NotificationCategory], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNotificationCategory.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NotificationCategory] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NotificationCategory]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNotificationCategory.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -5693,6 +6115,18 @@ public func fieldkitErrorKind(error: FieldKitError) -> ErrorKind  {
 })
 }
 /**
+ * Called by the host when the person responds to a
+ * notification. Kept until the app sets a handler with
+ * [`on_notification_response`].
+ */
+public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_fieldkit_core_fn_func_deliver_notification_response(
+        FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
+    )
+}
+}
+/**
  * Called once by the host at launch (on iOS by
  * `ForgeServices.install()`). Installing again replaces the
  * previous services.
@@ -5770,6 +6204,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_func_fieldkit_error_kind() != 28586) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fieldkit_core_checksum_func_deliver_notification_response() != 1113) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_func_install_native_services() != 30723) {
@@ -5875,6 +6312,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_method_localnotifier_pending() != 3450) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_fieldkit_core_checksum_method_localnotifier_set_categories() != 33588) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_fieldkit_core_checksum_method_permissionprovider_status() != 6681) {
