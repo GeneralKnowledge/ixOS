@@ -55,32 +55,40 @@ private struct TransferRowView: View {
     let model: TransferTestModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(row.name).font(.subheadline.monospaced()).lineLimit(1)
-                Spacer()
-                Text(row.state).font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(row.name).font(.subheadline.monospaced()).lineLimit(1)
+                    Spacer()
+                    Text(row.state).font(.subheadline.weight(.semibold))
+                }
+                if let fraction = row.fraction, row.state == "Running" {
+                    ProgressView(value: fraction)
+                }
+                if let detail = row.detail {
+                    Text(detail).font(.footnote).foregroundStyle(.secondary)
+                }
+                if row.attempts > 1 {
+                    Text("Attempt \(row.attempts)").font(.footnote).foregroundStyle(.secondary)
+                }
             }
-            if let fraction = row.fraction, row.state == "Running" {
-                ProgressView(value: fraction)
-            }
-            if let detail = row.detail {
-                Text(detail).font(.footnote).foregroundStyle(.secondary)
-            }
-            if row.attempts > 1 {
-                Text("Attempt \(row.attempts)").font(.footnote).foregroundStyle(.secondary)
-            }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("transfers.row")
-        .swipeActions {
-            if row.canCancel {
-                Button("Cancel", role: .destructive) { model.cancel(row) }
-                    .accessibilityIdentifier("transfers.cancel")
-            }
-            if row.canRetry {
-                Button("Retry") { model.retry(row) }
-                    .accessibilityIdentifier("transfers.retry")
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("transfers.row")
+            // Visible buttons rather than swipe actions, so the step can be
+            // done (and scripted) without discovering a gesture.
+            if row.canCancel || row.canRetry {
+                HStack(spacing: 20) {
+                    if row.canCancel {
+                        Button("Cancel", role: .destructive) { model.cancel(row) }
+                            .accessibilityIdentifier("transfers.cancel")
+                    }
+                    if row.canRetry {
+                        Button("Retry") { model.retry(row) }
+                            .accessibilityIdentifier("transfers.retry")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(.subheadline)
             }
         }
     }

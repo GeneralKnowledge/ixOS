@@ -864,6 +864,14 @@ impl Transfers {
         let Some(entry) = inner.records.iter_mut().find(|r| r.id == id) else {
             return Vec::new();
         };
+        if !matches!(state, TransferState::Running { .. }) {
+            // Ids and outcomes only, never URLs or file names.
+            let outcome = match &state {
+                TransferState::Failed(failure) => format!("failed: {failure}"),
+                other => format!("{other:?}"),
+            };
+            forge_runtime::logging::info!(target: "transfers", "{id}: {outcome}");
+        }
         entry.state = state;
         entry.updated_at_ms = now_ms();
         let record = entry.clone();

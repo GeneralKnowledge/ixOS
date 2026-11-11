@@ -967,6 +967,11 @@ void uniffi_forge_ffi_fn_free_transfersink(uint64_t handle, RustCallStatus *_Non
 void uniffi_forge_ffi_fn_method_transfersink_downloaded(uint64_t ptr, RustBuffer id, uint16_t http_status, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_EVENTS_HANDLED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_EVENTS_HANDLED
+void uniffi_forge_ffi_fn_method_transfersink_events_handled(uint64_t ptr, RustBuffer session, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_FAILED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_TRANSFERSINK_FAILED
 void uniffi_forge_ffi_fn_method_transfersink_failed(uint64_t ptr, RustBuffer id, int64_t code, RustBuffer reason, int8_t cancelled, RustCallStatus *_Nonnull out_status
@@ -1678,6 +1683,12 @@ uint16_t uniffi_forge_ffi_checksum_method_transfersession_cancel(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_DOWNLOADED
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_DOWNLOADED
 uint16_t uniffi_forge_ffi_checksum_method_transfersink_downloaded(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_EVENTS_HANDLED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_TRANSFERSINK_EVENTS_HANDLED
+uint16_t uniffi_forge_ffi_checksum_method_transfersink_events_handled(void
     
 );
 #endif

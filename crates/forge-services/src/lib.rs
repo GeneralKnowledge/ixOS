@@ -702,3 +702,8 @@ macro_rules! native_services {
         }
     };
 }
+
+/// For code the service macros emit into the app.
+#[cfg(feature = "transfers")]
+#[doc(hidden)]
+pub use forge_runtime as __forge_runtime;

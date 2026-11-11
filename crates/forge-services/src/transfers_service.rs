@@ -44,6 +44,9 @@ macro_rules! __native_transfers {
                 pub id: String,
                 pub received: u64,
                 pub expected: Option<u64>,
+                /// The host's own state for the task ("running",
+                /// "suspended", ...), for the log only.
+                pub state: String,
             }
 
             /// Where the host reports its tasks. Each call returns once Rust
@@ -84,8 +87,25 @@ macro_rules! __native_transfers {
                     });
                 }
 
-                /// The tasks the session has, once after it is (re)created.
+                /// The session delivered every event of a background wake and
+                /// the host is about to call the system's completion handler.
+                pub fn events_handled(&self, session: String) {
+                    $crate::__forge_runtime::logging::info!(
+                        target: "transfers",
+                        "background events handled for {session}; completing the wake"
+                    );
+                }
+
+                /// The tasks the session has, after it is (re)created, and once more
+                /// shortly after.
                 pub fn reconcile(&self, tasks: Vec<SessionTaskInfo>) {
+                    let states: Vec<&str> = tasks.iter().map(|t| t.state.as_str()).collect();
+                    $crate::__forge_runtime::logging::info!(
+                        target: "transfers",
+                        "the session has {} tasks {:?}",
+                        tasks.len(),
+                        states
+                    );
                     if let Some(core) = self.core.upgrade() {
                         let tasks: Vec<$crate::transfers::SessionTask> = tasks
                             .into_iter()
