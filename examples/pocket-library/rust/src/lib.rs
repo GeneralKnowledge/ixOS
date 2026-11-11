@@ -32,6 +32,7 @@ use forge_runtime::{background, background_cancellable, lock, now_ms, CancelHand
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
 use domain::{fold, validate, LibraryData};
 pub use error::LibraryError;
+use forge_storage::Staged;
 pub use model::*;
 use reader::EpubText;
 use store::Store;
@@ -303,9 +304,9 @@ impl Library {
             let cover_file = match &hit.large_cover_url {
                 None => None,
                 Some(url) => match catalogue.cover(url, cancel).and_then(|(bytes, ext)| {
-                    store.save_cover(&format!("ol-{}", hit.key), ext, &bytes)
+                    store.stage_cover(&format!("ol-{}", hit.key), ext, &bytes)
                 }) {
-                    Ok(name) => Some(name),
+                    Ok(staged) => Some(staged),
                     Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
                     Err(err) => {
                         warnings.push(format!(
@@ -384,25 +385,18 @@ impl Library {
             match existing {
                 Some((id, true)) => Err(LibraryError::AlreadyInLibrary { id }),
                 Some((id, false)) => {
-                    let epub_file = store.save_book_file(&stem, &bytes)?;
+                    let epub_file = store.stage_book_file(&stem, &bytes)?;
                     attach_and_save(&state, &store, &events, id, epub_file)
                 }
                 None => {
+                    // Staged files are deleted again if anything below fails.
                     let cover_file = match &meta.cover {
                         Some(cover) => {
-                            Some(store.save_cover(&stem, cover.extension, &cover.bytes)?)
+                            Some(store.stage_cover(&stem, cover.extension, &cover.bytes)?)
                         }
                         None => None,
                     };
-                    let epub_file = match store.save_book_file(&stem, &bytes) {
-                        Ok(name) => name,
-                        Err(err) => {
-                            if let Some(cover) = &cover_file {
-                                store.delete_cover(cover);
-                            }
-                            return Err(err);
-                        }
-                    };
+                    let epub_file = store.stage_book_file(&stem, &bytes)?;
                     let input = validate(BookInput {
                         title: meta.title,
                         author: meta.author,
@@ -724,69 +718,50 @@ fn apply(state: &mut State, next: LibraryData, events: &EventHub<LibraryEvent>) 
     });
 }
 
-/// Adds an imported book, deleting its saved cover again if the library
-/// cannot be saved, so a failure leaves nothing behind.
+/// Adds an imported book with its staged cover and EPUB. The files are
+/// committed once the library naming them is saved; on any failure they are
+/// dropped, which deletes them, so a failure leaves nothing behind.
 fn add_and_save(
     state: &Mutex<State>,
     store: &Store,
     events: &EventHub<LibraryEvent>,
     input: domain::ValidInput,
     source: BookSource,
-    cover_file: Option<String>,
-    epub_file: Option<String>,
+    cover_file: Option<Staged>,
+    epub_file: Option<Staged>,
 ) -> Result<Book, LibraryError> {
     let mut state = lock(state);
-    let result = (|| {
-        if let Some(existing) = state.data.book_with_source(&source) {
-            return Err(LibraryError::AlreadyInLibrary { id: existing.id });
-        }
-        let mut next = state.data.clone();
-        let id = next.add(input, source, cover_file.clone(), now_ms())?;
-        next.attach_epub(id, epub_file.clone())?;
-        store.save(&next)?;
-        Ok((id, next))
-    })();
-    match result {
-        Ok((id, next)) => {
-            apply(&mut state, next, events);
-            Ok(state.data.book(id)?.to_book(store.covers_dir()))
-        }
-        Err(err) => {
-            if let Some(cover) = &cover_file {
-                store.delete_cover(cover);
-            }
-            if let Some(epub) = &epub_file {
-                store.delete_book_file(epub);
-            }
-            Err(err)
-        }
+    if let Some(existing) = state.data.book_with_source(&source) {
+        return Err(LibraryError::AlreadyInLibrary { id: existing.id });
     }
+    let mut next = state.data.clone();
+    let name = |file: &Option<Staged>| file.as_ref().map(|f| f.name().to_string());
+    let id = next.add(input, source, name(&cover_file), now_ms())?;
+    next.attach_epub(id, name(&epub_file))?;
+    store.save(&next)?;
+    for file in [cover_file, epub_file].into_iter().flatten() {
+        file.commit();
+    }
+    apply(&mut state, next, events);
+    Ok(state.data.book(id)?.to_book(store.covers_dir()))
 }
 
-/// Gives an existing book a saved EPUB, deleting the file again if the
-/// library cannot be saved.
+/// Gives an existing book a staged EPUB, committed once the library is
+/// saved (and deleted if it cannot be).
 fn attach_and_save(
     state: &Mutex<State>,
     store: &Store,
     events: &EventHub<LibraryEvent>,
     id: u64,
-    epub_file: String,
+    epub_file: Staged,
 ) -> Result<Book, LibraryError> {
     let mut state = lock(state);
     let mut next = state.data.clone();
-    let result = next
-        .attach_epub(id, Some(epub_file.clone()))
-        .and_then(|()| store.save(&next));
-    match result {
-        Ok(()) => {
-            apply(&mut state, next, events);
-            Ok(state.data.book(id)?.to_book(store.covers_dir()))
-        }
-        Err(err) => {
-            store.delete_book_file(&epub_file);
-            Err(err)
-        }
-    }
+    next.attach_epub(id, Some(epub_file.name().to_string()))?;
+    store.save(&next)?;
+    epub_file.commit();
+    apply(&mut state, next, events);
+    Ok(state.data.book(id)?.to_book(store.covers_dir()))
 }
 
 /// The library's default query for a fresh screen: everything, in the

@@ -185,6 +185,7 @@ impl Database {
         if found == supported {
             return Ok(());
         }
+        self.keep_version_copy(found)?;
         let transaction = self
             .connection
             .transaction()
@@ -200,6 +201,34 @@ impl Database {
         transaction
             .commit()
             .map_err(|e| StorageError::write("commit a migration", e))
+    }
+
+    /// Before migrating a database that has data (schema 1 or later), copies
+    /// it whole to `<stem>.v<found>.<ext>` beside it, unless an earlier
+    /// attempt already did. `VACUUM INTO` makes a consistent copy, WAL
+    /// included, without the side files.
+    fn keep_version_copy(&self, found: u32) -> Result<(), StorageError> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        if found == 0 {
+            return Ok(());
+        }
+        let copy = crate::copies::version_copy_path(path, found);
+        if copy.exists() {
+            return Ok(());
+        }
+        let partial = PathBuf::from(format!("{}.partial", copy.display()));
+        let _ = std::fs::remove_file(&partial);
+        self.connection
+            .execute("VACUUM INTO ?1", [partial.to_string_lossy()])
+            .map_err(|e| StorageError::write("copy the database before migrating", e))?;
+        std::fs::rename(&partial, &copy)
+            .map_err(|e| StorageError::write("copy the database before migrating", e))?;
+        if let Some(dir) = copy.parent() {
+            let _ = crate::atomic::sync_dir(dir);
+        }
+        Ok(())
     }
 
     /// Whether the file at `path` is damaged. Only SQLite's own verdict
@@ -223,7 +252,8 @@ impl Database {
         }
     }
 
-    /// Renames a damaged file (and its WAL files) to `<name>.corrupt-<time>`.
+    /// Renames a damaged file (and its WAL files) to `<name>.corrupt-<time>`,
+    /// keeping only the newest [`crate::copies::KEPT_COPIES`] such copies.
     fn move_aside(path: &Path) -> Result<PathBuf, StorageError> {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -237,6 +267,15 @@ impl Database {
             if side.exists() {
                 let _ = std::fs::rename(&side, format!("{}{suffix}", moved_to.display()));
             }
+        }
+        if let (Some(dir), Some(name)) = (path.parent(), path.file_name()) {
+            let dir = if dir.as_os_str().is_empty() {
+                Path::new(".")
+            } else {
+                dir
+            };
+            let prefix = format!("{}.corrupt-", name.to_string_lossy());
+            crate::copies::prune(dir, &prefix, "", &["-wal", "-shm"]);
         }
         Ok(moved_to)
     }
@@ -313,6 +352,44 @@ mod tests {
             .unwrap();
         assert_eq!((body.as_str(), pinned), ("first", 0));
         db.integrity_check().unwrap();
+        drop(db);
+
+        // The file as it was before the migration is kept beside it, once.
+        let copy = dir.path().join("app.v1.db");
+        let (old, opened) = Database::open(&copy, &SCHEMA[..1]).unwrap();
+        assert_eq!(opened, Opened::Existing);
+        let body: String = old
+            .connection()
+            .query_row("SELECT body FROM notes", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(body, "first");
+        assert!(!dir.path().join("app.v2.db").exists());
+        // A new database has nothing to keep.
+        drop(Database::open(dir.path().join("new.db"), SCHEMA).unwrap());
+        assert!(!dir.path().join("new.v0.db").exists());
+    }
+
+    #[test]
+    fn only_the_newest_damaged_copies_are_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("app.db");
+        for _ in 0..5 {
+            std::fs::write(&path, b"not a database").unwrap();
+            let (_, opened) = Database::open(&path, SCHEMA).unwrap();
+            assert!(matches!(opened, Opened::Recovered { .. }));
+            // Copies are named by the millisecond.
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        let copies = std::fs::read_dir(dir.path())
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with("app.db.corrupt-")
+            })
+            .count();
+        assert_eq!(copies, crate::copies::KEPT_COPIES);
     }
 
     #[test]

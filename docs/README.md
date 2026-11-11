@@ -24,6 +24,7 @@ Read these in order the first time.
 | [ios-ui.md](ios-ui.md) | The SwiftUI side: how a Forge app should look and how to show Rust state |
 | [forgeui.md](forgeui.md) | ForgeUI, the design system: theme tokens, button and field styles, rows, cards, badges, states; usable in any SwiftUI app |
 | [app-foundations.md](app-foundations.md) | Rust application foundations in `forge-app`: saved state as one versioned document with recovery rules, field-by-field validation |
+| [persistence.md](persistence.md) | What Forge promises about saved data at each crash point, and what an app does: stage a file before the record that names it, sweep at launch, keep a fixture per schema version |
 | [forgeappkit.md](forgeappkit.md) | ForgeAppKit, application patterns on ForgeUI: alerts, confirmations and destinations as model values, load and submission state, form errors |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [architecture-assessment.md](architecture-assessment.md) | The architecture's trade-offs: what is intentional, what is a current limitation, and what to improve next, in order |

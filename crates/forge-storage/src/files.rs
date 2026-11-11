@@ -7,21 +7,49 @@
 //! between installs and restores, so an absolute path saved today points
 //! nowhere tomorrow.
 //!
-//! Every write lands in a hidden temporary file first and is renamed into
-//! place, so a crash leaves either the old file, the new one, or a temporary
-//! that [`FileStore::sweep`] removes later. Names starting with `.` are
-//! reserved for those temporaries.
+//! Every write lands in a hidden temporary file first, is synced, and is
+//! renamed into place, and then the folder is synced, so a crash or a power
+//! cut leaves either the old file, the new one, or a temporary that
+//! [`FileStore::sweep`] removes later. Names starting with `.` are reserved
+//! for those temporaries.
+//!
+//! # A file and the record that names it
+//!
+//! When a saved record (a book in `library.json`, a row in a database) names
+//! a file, keep the file first and save the record second, so a committed
+//! record never names a missing file. [`FileStore::stage_write`] and
+//! [`FileStore::stage_import`] make that the API:
+//!
+//! ```no_run
+//! # use forge_storage::{FileStore, JsonFile};
+//! # fn run(covers: &FileStore, library: &JsonFile<Vec<String>>, bytes: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+//! let cover = covers.stage_write("book-17.jpg", bytes)?; // 1. the file, durably
+//! library.save(&vec![cover.name().to_string()])?;         // 2. the record (on failure, `cover` is dropped and deleted)
+//! cover.commit();                                         // 3. the file belongs to the record now
+//! # Ok(()) }
+//! ```
+//!
+//! A staged file is never written over an existing one, so a record already
+//! saved never has its file changed underneath it, and [`FileStore::sweep`]
+//! leaves it alone until it is committed or dropped. A crash between 1 and 2
+//! leaves a file no record names, which the launch sweep removes. Removing
+//! goes the other way: save the record without the name, then
+//! [`FileStore::remove`] the file. See `docs/persistence.md`.
 //!
 //! With the `hash` feature the store can also name files by the SHA-256 of
 //! their bytes ([`FileStore::import_hashed`]) and keep a download only when its
 //! bytes match the hash it was promised ([`FileStore::accept_verified`]).
 
+use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use thiserror::Error;
+
+use crate::atomic::{create_dir_durably, sync_dir};
 
 /// Why a [`FileStore`] operation failed.
 #[derive(Debug, Clone, Error, PartialEq, Eq)]
@@ -39,6 +67,10 @@ pub enum FileStoreError {
     /// downloaded file has been deleted.
     #[error("the file's contents do not match: expected {expected}, got {actual}")]
     Mismatch { expected: String, actual: String },
+    /// A file of that name is already in the store, or being staged: a
+    /// staged file never replaces one a record may name.
+    #[error("\"{name}\" is already in this store")]
+    Exists { name: String },
     /// The file system refused: `context` says what was being done.
     #[error("{context}: {reason}")]
     Io { context: String, reason: String },
@@ -76,11 +108,60 @@ pub struct Usage {
 static TEMPORARY: AtomicU64 = AtomicU64::new(0);
 
 /// A folder of files the app manages. See the [module documentation](self).
+///
+/// Clones share the set of files being staged, so stage and sweep through
+/// one store (or its clones), not two stores made for the same folder.
 #[derive(Debug, Clone)]
 pub struct FileStore {
     root: PathBuf,
     max_bytes: Option<u64>,
     allow_empty: bool,
+    staging: Arc<Mutex<HashSet<String>>>,
+}
+
+/// A file kept in a [`FileStore`] that no saved record names yet. Save the
+/// record that names it, then [`commit`](Self::commit). Dropping it
+/// uncommitted (the record could not be saved) deletes the file.
+#[derive(Debug)]
+#[must_use = "commit it once the record that names it is saved; dropping it deletes the file"]
+pub struct Staged {
+    store: FileStore,
+    file: StoredFile,
+    committed: bool,
+}
+
+impl Staged {
+    /// The name to save in the record.
+    pub fn name(&self) -> &str {
+        &self.file.name
+    }
+
+    /// Where the file is now.
+    pub fn path(&self) -> &Path {
+        &self.file.path
+    }
+
+    /// Its size in bytes.
+    pub fn size(&self) -> u64 {
+        self.file.size
+    }
+
+    /// Hands the file over to the record that names it: from now on it is
+    /// an ordinary file in the store, kept or swept by the record.
+    pub fn commit(mut self) -> StoredFile {
+        self.committed = true;
+        self.store.unstage(&self.file.name);
+        self.file.clone()
+    }
+}
+
+impl Drop for Staged {
+    fn drop(&mut self) {
+        if !self.committed {
+            let _ = fs::remove_file(&self.file.path);
+            self.store.unstage(&self.file.name);
+        }
+    }
 }
 
 impl FileStore {
@@ -90,6 +171,7 @@ impl FileStore {
             root: root.into(),
             max_bytes: None,
             allow_empty: false,
+            staging: Arc::default(),
         }
     }
 
@@ -160,6 +242,59 @@ impl FileStore {
             path: destination,
             size,
         })
+    }
+
+    /// Keeps `bytes` as `name` for a record that is about to be saved. See
+    /// [`Staged`] and the [module documentation](self). Fails with
+    /// [`FileStoreError::Exists`] rather than replace a file.
+    pub fn stage_write(&self, name: &str, bytes: &[u8]) -> Result<Staged, FileStoreError> {
+        self.stage(name, || self.write(name, bytes))
+    }
+
+    /// Copies `source` in as `name` for a record that is about to be saved,
+    /// like [`Self::stage_write`].
+    pub fn stage_import(&self, source: &Path, name: &str) -> Result<Staged, FileStoreError> {
+        self.stage(name, || self.import(source, name))
+    }
+
+    fn stage(
+        &self,
+        name: &str,
+        keep: impl FnOnce() -> Result<StoredFile, FileStoreError>,
+    ) -> Result<Staged, FileStoreError> {
+        let path = self.path(name)?;
+        {
+            let mut staging = self.staging.lock().unwrap_or_else(|p| p.into_inner());
+            if staging.contains(name) || path.exists() {
+                return Err(FileStoreError::Exists { name: name.into() });
+            }
+            staging.insert(name.to_string());
+        }
+        match keep() {
+            Ok(file) => Ok(Staged {
+                store: self.clone(),
+                file,
+                committed: false,
+            }),
+            Err(err) => {
+                self.unstage(name);
+                Err(err)
+            }
+        }
+    }
+
+    fn unstage(&self, name: &str) {
+        self.staging
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .remove(name);
+    }
+
+    fn is_staged(&self, name: &str) -> bool {
+        self.staging
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .contains(name)
     }
 
     /// A fresh hidden path in the store for a download or other partial
@@ -253,12 +388,15 @@ impl FileStore {
     /// the records that name the files, to clean up after a crash between
     /// writing a file and saving the record that refers to it.
     ///
-    /// Temporaries from this process are left alone, since a write may be in
-    /// progress on another thread.
+    /// Files being staged through this store (see [`Staged`]) and
+    /// temporaries from this process are left alone, since a write may be
+    /// in progress on another thread. A file written with plain
+    /// [`Self::write`] whose record is not saved yet is not protected, so
+    /// sweep only at launch, before any work starts, or stage the file.
     pub fn sweep(&self, keep: impl Fn(&str) -> bool) -> u64 {
         let mut doomed = Vec::new();
         walk(&self.root, "", &mut |name, _| {
-            if !keep(name) {
+            if !keep(name) && !self.is_staged(name) {
                 doomed.push(self.root.join(name));
             }
         });
@@ -270,7 +408,7 @@ impl FileStore {
     }
 
     fn ensure_root(&self) -> Result<(), FileStoreError> {
-        fs::create_dir_all(&self.root)
+        create_dir_durably(&self.root)
             .map_err(|err| FileStoreError::io(format!("create {}", self.root.display()), err))
     }
 
@@ -325,15 +463,26 @@ impl FileStore {
         }
     }
 
+    /// Renames a synced temporary to `destination` and syncs the folder,
+    /// so the rename survives a power cut (foundation review S4).
     fn place(&self, from: &Path, destination: &Path) -> Result<(), FileStoreError> {
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|err| FileStoreError::io(format!("create {}", parent.display()), err))?;
-        }
+        let Some(parent) = destination.parent() else {
+            return Ok(());
+        };
+        create_dir_durably(parent)
+            .map_err(|err| FileStoreError::io(format!("create {}", parent.display()), err))?;
         if from != destination {
             fs::rename(from, destination).map_err(|err| {
                 FileStoreError::io(format!("keep {}", destination.display()), err)
             })?;
+            // A temporary in another folder (the root) leaves an entry there too.
+            for dir in [Some(parent), from.parent().filter(|dir| *dir != parent)]
+                .into_iter()
+                .flatten()
+            {
+                sync_dir(dir)
+                    .map_err(|err| FileStoreError::io(format!("sync {}", dir.display()), err))?;
+            }
         }
         Ok(())
     }
@@ -703,6 +852,75 @@ mod tests {
         assert_eq!(removed, 4);
         assert_eq!(store.names(), ["covers/kept.jpg"]);
         assert!(ours.exists());
+    }
+
+    #[test]
+    fn a_staged_file_is_kept_only_once_committed() {
+        let (dir, store) = store();
+        // Committed: an ordinary file from then on.
+        let staged = store.stage_write("covers/a.jpg", b"img").unwrap();
+        assert_eq!(staged.name(), "covers/a.jpg");
+        assert_eq!(staged.size(), 3);
+        let kept = staged.commit();
+        assert_eq!(fs::read(&kept.path).unwrap(), b"img");
+        assert_eq!(store.sweep(|_| false), 1);
+
+        // Dropped (the record could not be saved): deleted.
+        let staged = store.stage_write("covers/b.jpg", b"img").unwrap();
+        let path = staged.path().to_path_buf();
+        assert!(path.exists());
+        drop(staged);
+        assert!(!path.exists());
+        assert_eq!(store.names(), Vec::<String>::new());
+
+        // Imports too.
+        let original = dir.path().join("book.epub");
+        fs::write(&original, b"epub").unwrap();
+        store.stage_import(&original, "b.epub").unwrap().commit();
+        assert_eq!(store.names(), ["b.epub"]);
+    }
+
+    #[test]
+    fn staging_never_replaces_a_file() {
+        let (_dir, store) = store();
+        store.write("a", b"named by a record").unwrap();
+        assert_eq!(
+            store.stage_write("a", b"new").map(|s| s.commit()),
+            Err(FileStoreError::Exists { name: "a".into() })
+        );
+        assert_eq!(
+            fs::read(store.get("a").unwrap()).unwrap(),
+            b"named by a record"
+        );
+
+        // Nor one being staged, through this store or a clone.
+        let first = store.stage_write("b", b"1").unwrap();
+        let clone = store.clone();
+        assert!(matches!(
+            clone.stage_write("b", b"2"),
+            Err(FileStoreError::Exists { .. })
+        ));
+        drop(first);
+        clone.stage_write("b", b"2").unwrap().commit();
+        assert_eq!(fs::read(store.get("b").unwrap()).unwrap(), b"2");
+
+        // A failed stage releases the name.
+        let limited = FileStore::new(store.root()).with_max_bytes(1);
+        assert!(limited.stage_write("c", b"too big").is_err());
+        limited.stage_write("c", b"1").unwrap().commit();
+    }
+
+    #[test]
+    fn sweep_leaves_staged_files_alone() {
+        let (_dir, store) = store();
+        let staged = store.stage_write("covers/new.jpg", b"img").unwrap();
+        store.write("covers/orphan.jpg", b"x").unwrap();
+        // A sweep on another thread while the record is being saved.
+        assert_eq!(store.clone().sweep(|_| false), 1);
+        assert!(staged.path().exists());
+        let kept = staged.commit();
+        assert_eq!(store.sweep(|name| name == kept.name), 0);
+        assert_eq!(store.names(), ["covers/new.jpg"]);
     }
 
     #[cfg(feature = "hash")]
