@@ -116,3 +116,36 @@ fn error_kinds() {
         ErrorKind::Interrupted
     );
 }
+
+/// Every `fixtures/checklist-v<N>.json` (a file as version N of the app
+/// saved it) opens with today's code and saves again, and there is one for
+/// the current version. Old fixtures are never edited.
+#[test]
+fn every_saved_version_still_opens() {
+    let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("fixtures");
+    let mut versions = Vec::new();
+    for entry in std::fs::read_dir(&fixtures).unwrap().flatten() {
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Some(version) = name
+            .strip_prefix("checklist-v")
+            .and_then(|rest| rest.strip_suffix(".json"))
+        else {
+            continue;
+        };
+        versions.push(version.parse::<u32>().unwrap());
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("data")).unwrap();
+        std::fs::copy(entry.path(), dir.path().join("data/checklist.json")).unwrap();
+        let core = open(&dir).unwrap_or_else(|e| panic!("{name} does not open: {e:?}"));
+        assert!(!core.items().is_empty(), "{name} lost its items");
+        let before = core.items();
+        block_on(core.add("After the upgrade".into())).unwrap();
+        drop(core);
+        let reopened = open(&dir).unwrap();
+        assert_eq!(reopened.items()[..before.len()], before[..], "{name}");
+    }
+    assert!(
+        versions.contains(&1),
+        "add fixtures/checklist-v<N>.json for the current save version"
+    );
+}

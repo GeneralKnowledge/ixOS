@@ -103,11 +103,11 @@ Changes, in order:
 | Newer data refused, never overwritten | Done | `DocumentError::Newer`, `Database` refuses a newer schema |
 | Unreadable data set aside, only after the person agrees | Done for documents | `forge_app::document::set_aside`, `Document::start_fresh`; Pocket Library's `open_fresh` |
 | One writer per data directory | Done | `DataDirectory` lock (`crates/forge-app/src/runtime.rs`), tested in Rust and Swift |
-| Automatic migration conventions | Partial | Hooks exist; no convention for a copy before migrating, or for SQL plus Rust data steps (S7) |
-| Tests with real historical data | **Missing** | No app keeps fixtures of released files |
+| Automatic migration conventions | Partial | Hooks exist; the old file is kept before the first write in a new schema ([persistence.md](persistence.md)); no SQL plus Rust data steps yet (S7) |
+| Tests with real historical data | Done (convention) | `fixtures/` per app crate with `every_saved_version_still_opens`: Pocket Library, Checklist |
 | Backup and file-protection policy | **Missing** | No per-store classes; `ForgeEnvironment` has no policy; one app-wide `data_protection` in `forge.toml` (S5) |
-| Recovery from corruption | Partial | Documents and SQLite have it; no shared recovery screen, and moved-aside copies are never capped (E2) |
-| Record plus external file, committed together | **Partial** (convention) | `FileStore` + `sweep`; see the EPUB example |
+| Recovery from corruption | Partial | Documents and SQLite have it, and moved-aside copies are capped at three; no shared recovery screen |
+| Record plus external file, committed together | Done | `FileStore::stage_write` / `Staged::commit`, directory sync; Pocket Library's imports use it |
 | Upgrade testing between released versions | **Missing** | Nothing has been released yet; the device check is planned per release |
 
 **Worked example: Pocket Library imports an EPUB** (`import_epub`, `examples/pocket-library/rust/src/lib.rs`).
@@ -130,6 +130,8 @@ What is missing is the guarantee around it:
 - **No test of the crash points.** `forge-storage`'s foundation tests cover the protocol in general; Pocket Library has a unit test of the sweep but none that kills the process between the steps. Add one per app that uses files, using the foundation tests' re-exec helper.
 
 Changes, in order: directory sync in `FileStore` (small, now); the staged-file API, with Pocket Library and Chat moved onto it; storage classes in `ForgeEnvironment` (`data`, `caches`, a re-downloadable media class excluded from backup, file protection per class) applied by ForgeKit at open; a `fixtures/` directory per app crate with a test that every released schema still opens; a copy of the file before any migration. All of it is app model phase 4, now with Pocket Library as its first user.
+
+**Status (2026-11-11).** Done: directory sync, the staged-file API with Pocket Library on it, a copy before migrating, capped recovery copies, and fixtures for Pocket Library and Checklist ([persistence.md](persistence.md)). Chat's attachments are content-named, so they are immutable and need no staging. Its records and files are already consistent under the hashed store. The crash points are now the API's, so the foundation kill test covers them with staging, and a per-app kill test would only repeat it; each app's own part is the sweep predicate, which its unit tests cover. Still open: storage classes (S5, next), and a Rust data-migration hook for SQLite.
 
 ### 3. Lifecycle and durable work
 
