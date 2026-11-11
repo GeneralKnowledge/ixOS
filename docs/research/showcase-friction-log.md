@@ -224,4 +224,5 @@ ForgeApp product. That's correct, and costs nothing.
 | Bindings drift, including the linked crates | Cloud, `check-app-crates.sh` | Pass |
 | Swift build with xtool (`forge build ios`), first try | Laptop | One error: F11 |
 | Swift build with xtool, after the fix | Laptop, 159 s | Pass; 20 MB app bundle. Warnings only: the six Sendable warnings in `ForgeServices+Selected.swift`, which that file has on main too |
+| After the F1 framework fix: Device Lab, Weather, Checklist, Pocket Library each built with xtool | Laptop | All pass; each stages `libforge_ffi.a`; no new warnings |
 | Opening each app on the iPhone | Next sitting | Not run |
