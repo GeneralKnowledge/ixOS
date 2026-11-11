@@ -39,6 +39,8 @@
 //! crate keeps one namespace. The logic that does not cross the boundary
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
+#[doc(hidden)]
+pub mod background;
 mod feed;
 #[cfg(feature = "http")]
 pub mod http;

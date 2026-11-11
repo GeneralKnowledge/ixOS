@@ -129,7 +129,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Camera capture | No | No | No | No | No | No | |
 | Barcode and QR scanning | No | No | No | No | No | No | VisionKit scanner |
 | Face ID app lock | No | No | No | No | No | Partial: config only | |
-| Background refresh and processing tasks | Partial: config key | No | No | No | No | Partial | iOS decides when they run |
+| Background refresh and processing tasks | Yes: forge-services optional service `background`; `[ios] background_tasks` in forge.toml | Yes: `BackgroundService` (`register_refresh`, `register_processing`, `register_handler`, `schedule`, `cancel`), async handlers, `BackgroundTaskRun` cancellation | Yes: `ForgeBackgroundScheduler` (`BGTaskScheduler`), registered at launch; `ForgeLifecycle` opens the core when iOS launches the app in the background | Partial: Commonplace hourly feed refresh | No | Partial: native-services.md, app-config.md | iOS decides when they run, and never after a force-quit or with Background App Refresh off. Forcing a run needs Xcode's debugger. Compiled on macOS CI only so far |
 | Recurring schedules | No | No | n/a | No | No | No | |
 | Haptics | n/a | n/a | Yes: SwiftUI | Yes: Good Dog (session saved, stopwatch, result picked) | No | No | |
 

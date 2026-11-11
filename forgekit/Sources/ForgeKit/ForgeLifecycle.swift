@@ -31,7 +31,18 @@ public enum ForgeLifecycle {
             })
         }
         // The state at attach time: SwiftUI apps start inactive, then active.
-        if UIApplication.shared.applicationState == .active { host.report(.active) }
+        switch UIApplication.shared.applicationState {
+        case .active:
+            host.report(.active)
+        case .background:
+            // iOS launched the app without a screen (a background task, a
+            // finished background download, a location event). No view will
+            // start the core, and that work needs it, so open it now.
+            host.report(.background)
+            Task { await host.start() }
+        default:
+            break
+        }
     }
 
     /// Stops reporting. `attach` and termination call it.

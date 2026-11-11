@@ -14,7 +14,9 @@
 //! - **network work** (fetching feeds) runs off the command thread as
 //!   on-screen work: the app going to the background, the host's
 //!   [`Cancellation`] or shutdown stop it. Only its result is applied by a
-//!   command.
+//!   command. The same refresh also runs in the background when iOS grants
+//!   a window (`native::background`), as work that lives until iOS ends the
+//!   window.
 //!
 //! The reader's text comes through [`ArticleText`], the boundary the native
 //! reader from docs/native-capability-roadmap.md will replace.
@@ -23,7 +25,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use forge_app::{Cancellation, DataDirectory, Published, Runtime};
+use forge_app::{Cancellation, DataDirectory, Published, Runtime, Work};
 use forge_net::{CancelHandle, HttpClient, Request, UreqClient};
 use forge_runtime::now_ms;
 
@@ -37,9 +39,16 @@ use store::{FetchResult, Fetched, Flag, Snapshot, Store};
 uniffi::setup_scaffolding!("forge_ffi");
 
 // Native services the host implements (Keychain, app directories, local
-// notifications, permissions, deep links), as `crate::native`, and `http`:
-// on iOS feeds are fetched with URLSession.
-forge_services::native_services!(http);
+// notifications, permissions, deep links), as `crate::native`, `http` (on
+// iOS feeds are fetched with URLSession) and `background` (refreshing while
+// the app is closed).
+forge_services::native_services!(http, background);
+
+/// The background refresh task: forge.toml `[ios] background_tasks`.
+const BACKGROUND_REFRESH: &str = "org.forgemobile.agentlab.commonplace.refresh";
+/// How often to ask iOS for a background refresh. iOS decides when (and
+/// whether) it runs, from how the app is used.
+const BACKGROUND_REFRESH_EVERY: Duration = Duration::from_secs(60 * 60);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category")` writes into the
 // same log as Rust.
@@ -93,6 +102,7 @@ impl AppCore {
         let core = Self::open(storage_directory, http.clone())?;
         // Only for the log line saying which transport fetched the feeds.
         let _ = core.transport.set(http);
+        core.register_background_refresh();
         Ok(core)
     }
 
@@ -221,9 +231,16 @@ impl AppCore {
         &self,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<RefreshReport, AppError> {
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.refresh_in(work).await
+    }
+}
+
+impl AppCore {
+    /// Fetches every feed as `work` and applies the result.
+    async fn refresh_in(&self, work: Work) -> Result<RefreshReport, AppError> {
         let sources = self.snapshot.get().sources.clone();
         let http = Arc::clone(&self.http);
-        let work = self.rt.foreground(cancellation.as_deref());
         let fetched = self
             .rt
             .run("refresh", work, move |cancel| {
@@ -297,6 +314,41 @@ impl AppCore {
         Ok(report)
     }
 
+    /// Asks iOS to refresh the feeds in the background about hourly, while
+    /// the app is closed. Does nothing where the host has no background
+    /// tasks (Linux tests, an app without the service installed).
+    fn register_background_refresh(self: &Arc<Self>) {
+        let Ok(background) = native::background::BackgroundService::installed() else {
+            return;
+        };
+        let core = Arc::downgrade(self);
+        let registered = background.register_refresh(
+            BACKGROUND_REFRESH,
+            BACKGROUND_REFRESH_EVERY.as_secs_f64(),
+            move |run| {
+                let core = core.clone();
+                async move {
+                    let Some(core) = core.upgrade() else {
+                        return false;
+                    };
+                    // iOS ending the window stops the fetches.
+                    let cancellation = Cancellation::new();
+                    let stop = cancellation.clone();
+                    run.on_cancel(move || stop.cancel());
+                    // Not on-screen work: it lives until iOS ends the window.
+                    let work = core.rt.lifetime(Some(&*cancellation));
+                    core.refresh_in(work).await.is_ok()
+                }
+            },
+        );
+        if let Err(e) = registered {
+            forge_runtime::logging::warn!("background refresh not registered: {e}");
+        }
+    }
+}
+
+#[uniffi::export]
+impl AppCore {
     /// Opens an article for reading: marks it read and returns its text.
     pub async fn open_article(&self, article_id: i64) -> Result<ArticleText, AppError> {
         self.rt

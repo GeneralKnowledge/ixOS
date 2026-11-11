@@ -58,6 +58,11 @@ pub struct IosSection {
     /// UIBackgroundModes values, e.g. "remote-notification", "fetch".
     #[serde(default)]
     pub background_modes: Vec<String>,
+    /// Background task identifiers (`native_services!(background)`): written
+    /// to BGTaskSchedulerPermittedIdentifiers, and add the "fetch" and
+    /// "processing" background modes.
+    #[serde(default)]
+    pub background_tasks: Vec<String>,
     /// Permission prompt texts: friendly name (or raw NS…UsageDescription key) → text.
     #[serde(default)]
     pub permissions: BTreeMap<String, String>,
@@ -401,11 +406,20 @@ pub fn info_plist(cfg: &ForgeConfig) -> Result<BTreeMap<String, Plist>, String> 
             Plist::Array(vec![Plist::Dict(url_type)]),
         );
     }
-    if !ios.background_modes.is_empty() {
+    let mut modes = ios.background_modes.clone();
+    if !ios.background_tasks.is_empty() {
+        for mode in ["fetch", "processing"] {
+            if !modes.iter().any(|m| m == mode) {
+                modes.push(mode.into());
+            }
+        }
         map.insert(
-            "UIBackgroundModes".into(),
-            Plist::strings(ios.background_modes.iter().cloned()),
+            "BGTaskSchedulerPermittedIdentifiers".into(),
+            Plist::strings(ios.background_tasks.iter().cloned()),
         );
+    }
+    if !modes.is_empty() {
+        map.insert("UIBackgroundModes".into(), Plist::strings(modes));
     }
     for (name, text) in &ios.permissions {
         if let Some(key) = permission_key(name) {
@@ -632,6 +646,18 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
             ));
         }
     }
+    for task in &ios.background_tasks {
+        if task.is_empty() || task.contains(char::is_whitespace) {
+            return Err(format!(
+                "[ios] background_tasks: \"{task}\" is not a task identifier; use reverse-DNS such as \"org.example.app.refresh\""
+            ));
+        }
+    }
+    if !ios.background_tasks.is_empty()
+        && ios.info.contains_key("BGTaskSchedulerPermittedIdentifiers")
+    {
+        return Err("set background task identifiers in [ios] background_tasks or in [ios.info] BGTaskSchedulerPermittedIdentifiers, not both".into());
+    }
     for mode in &ios.background_modes {
         if !BACKGROUND_MODES.contains(&mode.as_str()) {
             return Err(format!(
@@ -793,9 +819,10 @@ pub fn warnings(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
         ));
     }
     if modes.iter().any(|m| m == "processing")
+        && ios.background_tasks.is_empty()
         && !ios.info.contains_key("BGTaskSchedulerPermittedIdentifiers")
     {
-        out.push("background_modes has \"processing\"; list your task identifiers in [ios.info] BGTaskSchedulerPermittedIdentifiers".into());
+        out.push("background_modes has \"processing\"; list your task identifiers in [ios] background_tasks".into());
     }
     for (service, permission) in selected_services_missing_permissions(cfg, app_dir) {
         out.push(format!(
@@ -1523,7 +1550,26 @@ LSApplicationQueriesSchemes = ["maps"]
         let w = warnings(&c, tmp.path()).join("\n");
         assert!(w.contains("associated domains"), "{w}");
         assert!(w.contains("push_notifications"), "{w}");
-        assert!(w.contains("BGTaskSchedulerPermittedIdentifiers"), "{w}");
+        assert!(w.contains("background_tasks"), "{w}");
+    }
+
+    #[test]
+    fn background_tasks_are_permitted_and_add_their_modes() {
+        let c = cfg("[ios]\nbackground_modes = [\"audio\", \"fetch\"]\nbackground_tasks = [\"org.example.demo.refresh\"]\n").unwrap();
+        validate(&c).unwrap();
+        let info = info_plist(&c).unwrap();
+        assert_eq!(
+            info["BGTaskSchedulerPermittedIdentifiers"],
+            Plist::strings(["org.example.demo.refresh"])
+        );
+        assert_eq!(
+            info["UIBackgroundModes"],
+            Plist::strings(["audio", "fetch", "processing"])
+        );
+        let bad = cfg("[ios]\nbackground_tasks = [\"not an id\"]\n").unwrap_err();
+        assert!(bad.contains("background_tasks"), "{bad}");
+        let both = cfg("[ios]\nbackground_tasks = [\"a.b\"]\n[ios.info]\nBGTaskSchedulerPermittedIdentifiers = [\"a.b\"]\n").unwrap_err();
+        assert!(both.contains("not both"), "{both}");
     }
 
     #[test]

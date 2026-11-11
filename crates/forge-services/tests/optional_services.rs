@@ -10,7 +10,8 @@ forge_services::native_services!(
     motion,
     location,
     bluetooth,
-    audio
+    audio,
+    background
 );
 
 use native::*;
@@ -323,4 +324,117 @@ fn audio_measures_files_through_the_host() {
     ));
     install_native_audio(fake);
     assert!(AudioService::installed().is_ok());
+}
+
+/// Waits (up to two seconds) for a background run to report its result.
+fn finished(results: &Arc<Mutex<Vec<bool>>>) -> Vec<bool> {
+    for _ in 0..200 {
+        if !results.lock().unwrap().is_empty() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    results.lock().unwrap().clone()
+}
+
+#[test]
+fn background_refresh_recurs_and_runs_its_handler() {
+    use background::testing::FakeScheduler;
+    use background::*;
+
+    let (service, fake) = BackgroundService::for_tests(&["app.refresh", "app.upkeep"]);
+    let ran = Arc::new(Mutex::new(Vec::new()));
+    let seen = ran.clone();
+    service
+        .register_refresh("app.refresh", 900.0, move |run| {
+            let seen = seen.clone();
+            async move {
+                seen.lock().unwrap().push(run.identifier().to_string());
+                true
+            }
+        })
+        .unwrap();
+    // Registering asks iOS for the first window.
+    assert_eq!(
+        *fake.submitted.lock().unwrap(),
+        vec![BackgroundTaskRequest {
+            identifier: "app.refresh".into(),
+            kind: BackgroundTaskKind::Refresh,
+            earliest_begin_seconds: 900.0,
+        }]
+    );
+
+    let (run, results) = FakeScheduler::start(&service, "app.refresh");
+    assert_eq!(finished(&results), vec![true]);
+    assert_eq!(*ran.lock().unwrap(), vec!["app.refresh".to_string()]);
+    assert!(run.is_finished());
+    // Each run asks for the next one.
+    assert_eq!(fake.submitted.lock().unwrap().len(), 2);
+    // Only the first finish counts.
+    run.finish(false);
+    assert_eq!(*results.lock().unwrap(), vec![true]);
+}
+
+#[test]
+fn background_tasks_must_be_listed_and_expiry_cancels() {
+    use background::testing::FakeScheduler;
+    use background::*;
+
+    let (service, fake) = BackgroundService::for_tests(&["app.upkeep"]);
+    let unlisted = service.register_refresh("app.other", 60.0, |_run| async { true });
+    assert!(matches!(
+        unlisted,
+        Err(NativeServiceError::InvalidInput { .. })
+    ));
+    assert!(service
+        .register_refresh("app.upkeep", -1.0, |_run| async { true })
+        .is_err());
+
+    // A handler that works until iOS says time is up, then reports success;
+    // a cancelled run still counts as a failure.
+    service
+        .register_processing("app.upkeep", 3600.0, true, false, |run| async move {
+            let _ = run.cancelled().recv();
+            true
+        })
+        .unwrap();
+    assert_eq!(
+        fake.submitted.lock().unwrap()[0].kind,
+        BackgroundTaskKind::Processing {
+            requires_external_power: true,
+            requires_network: false
+        }
+    );
+    let (run, results) = FakeScheduler::start(&service, "app.upkeep");
+    assert!(!run.is_cancelled());
+    run.expire();
+    assert!(run.is_cancelled());
+    assert_eq!(finished(&results), vec![false]);
+
+    service.cancel("app.upkeep");
+    assert_eq!(
+        *fake.cancelled.lock().unwrap(),
+        vec!["app.upkeep".to_string()]
+    );
+}
+
+#[test]
+fn a_background_run_waits_for_its_handler() {
+    use background::testing::FakeScheduler;
+    use background::*;
+
+    // iOS launched the app for a task before the core registered it.
+    let (service, _fake) = BackgroundService::for_tests(&["app.refresh"]);
+    let (_run, results) = FakeScheduler::start(&service, "app.refresh");
+    assert_eq!(service.waiting(), 1);
+    service
+        .register_handler("app.refresh", |_run| async { true })
+        .unwrap();
+    assert_eq!(finished(&results), vec![true]);
+    assert_eq!(service.waiting(), 0);
+
+    // One whose window ends first fails without running.
+    let (run, results) = FakeScheduler::start(&service.clone(), "app.missing");
+    run.expire();
+    assert_eq!(*results.lock().unwrap(), vec![false]);
 }

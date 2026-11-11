@@ -168,6 +168,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 
 | Service | Rust (`crate::native::<name>`) | iOS adapter | Permission and `forge.toml` |
 |---------|------------------------------|-------------|-----------------------------|
+| `background` | `BackgroundService`: `register_refresh`, `register_processing`, `register_handler`, `schedule`, `cancel`; see [Background tasks](#background-tasks-background) | `ForgeBackgroundScheduler` (`BGTaskScheduler`) | None; `forge.toml` `[ios] background_tasks` |
 | `connectivity` | `ConnectivityService`: `current()`, `watch(..)`; `ConnectivityStatus` (online, interfaces, metered, Low Data Mode, offline reason), `allows(TransferPolicy::Unmetered)` | `ForgeConnectivityMonitor` (`NWPathMonitor`) | None |
 | `device_status` | `DeviceStatusService`: `info()` (model, iOS version, cores, RAM, screen), `status()` (battery, Low Power Mode, thermal state, storage, memory left), `watch(..)`; `DeviceStatus::defer_heavy_work(memory)` | `ForgeDeviceStatus` (`UIDevice`, `ProcessInfo`, file system, `os_proc_available_memory`) | None |
 | `motion` | `MotionService`: `availability()`, `watch(sensor, interval_ms, ..)` for the accelerometer, gyroscope, magnetometer, fused device motion (attitude, gravity, user acceleration, heading) and the barometer | `ForgeMotionSensors` (Core Motion) | The barometer needs `NativePermission::Motion` and `[ios.permissions] motion`; the other sensors need nothing |
@@ -232,6 +233,45 @@ let seconds = try ForgeAudio.duration(of: url)
 ```
 
 `ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
+
+### Background tasks (`background`)
+
+Work iOS runs while the app is in the background or closed, when it chooses (`BGTaskScheduler`). It works on a free team. Commonplace's hourly feed refresh is its first user.
+
+1. List each task in `forge.toml`: `[ios] background_tasks = ["org.example.app.refresh"]`. Forge writes `BGTaskSchedulerPermittedIdentifiers` and adds the `fetch` and `processing` background modes.
+2. Select the service: `forge_services::native_services!(background)`. `ForgeServices.install()` registers every listed task at launch, which iOS requires before launch ends.
+3. Register a handler from Rust when the core opens. The two jobs apps repeat are built in, and each asks for its own next window:
+
+```rust
+use native::background::BackgroundService;
+
+if let Ok(background) = BackgroundService::installed() {
+    let core = Arc::downgrade(&core);
+    // Fetch new content about hourly, so it is there when the app opens.
+    background.register_refresh("org.example.app.refresh", 3600.0, move |run| {
+        let core = core.clone();
+        async move {
+            let Some(core) = core.upgrade() else { return false };
+            let cancellation = Cancellation::new();
+            let stop = cancellation.clone();
+            run.on_cancel(move || stop.cancel());           // iOS ending the window stops the work
+            let work = core.rt.lifetime(Some(&*cancellation)); // not on-screen work
+            core.refresh_in(work).await.is_ok()
+        }
+    })?;
+}
+```
+
+| Job | Use |
+|-----|-----|
+| Fetch new content regularly (feeds, mail, weather) | `register_refresh(id, every_seconds, handler)`: a short window (about 30 seconds) |
+| Upkeep: compact a database, rebuild an index, a backup, uploads | `register_processing(id, every_seconds, requires_external_power, requires_network, handler)`: minutes, usually overnight on power |
+| Finish one job later | `register_handler(id, handler)`, then `schedule(BackgroundTaskRequest { .. })` when there is something to do |
+| Stop a recurring task | `cancel(id)` |
+
+A handler is async and returns whether it succeeded; each run gets its own thread. `run.on_cancel`, `run.is_cancelled()` and `run.cancelled()` tell it when iOS ends the window; a cancelled run reports failure. When iOS launches the app in the background for a task, `ForgeLifecycle` opens the core (no view will), and the run waits for its handler; it fails if the window ends first.
+
+iOS decides whether and when a task runs, from how the person uses the app, battery and Low Power Mode. Nothing runs after the person force-quits the app, or while Background App Refresh is off for it (`submit` then fails with `PermissionDenied`). To try a task on a phone without waiting, pause the app in a debugger and run `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"org.example.app.refresh"]`; that needs Xcode, so on Linux leave the app in the background and check the next day with `forge device logs`.
 
 ### Background transfers (`transfers`)
 
