@@ -352,6 +352,16 @@ uint64_t uniffi_forge_ffi_fn_method_appcore_add_feed(uint64_t ptr, RustBuffer ur
 RustBuffer uniffi_forge_ffi_fn_method_appcore_article(uint64_t ptr, int64_t id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+void uniffi_forge_ffi_fn_method_appcore_background_time_expired(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+int8_t uniffi_forge_ffi_fn_method_appcore_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_COUNTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_COUNTS
 RustBuffer uniffi_forge_ffi_fn_method_appcore_counts(uint64_t ptr, RustBuffer timeline, RustCallStatus *_Nonnull out_status
@@ -365,6 +375,11 @@ RustBuffer uniffi_forge_ffi_fn_method_appcore_events(uint64_t ptr, RustCallStatu
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_FEEDS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_FEEDS
 RustBuffer uniffi_forge_ffi_fn_method_appcore_feeds(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_LAUNCH_REPORT
+RustBuffer uniffi_forge_ffi_fn_method_appcore_launch_report(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_APPCORE_MARK_ALL_READ
@@ -863,6 +878,18 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_article(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_BACKGROUND_TIME_EXPIRED
+uint16_t uniffi_forge_ffi_checksum_method_appcore_background_time_expired(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_BACKGROUND_WORK_PENDING
+uint16_t uniffi_forge_ffi_checksum_method_appcore_background_work_pending(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_COUNTS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_COUNTS
 uint16_t uniffi_forge_ffi_checksum_method_appcore_counts(void
@@ -878,6 +905,12 @@ uint16_t uniffi_forge_ffi_checksum_method_appcore_events(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_FEEDS
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_FEEDS
 uint16_t uniffi_forge_ffi_checksum_method_appcore_feeds(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_APPCORE_LAUNCH_REPORT
+uint16_t uniffi_forge_ffi_checksum_method_appcore_launch_report(void
     
 );
 #endif

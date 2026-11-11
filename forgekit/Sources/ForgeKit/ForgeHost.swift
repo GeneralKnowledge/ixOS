@@ -6,7 +6,7 @@ import Observation
 
 /// The version of the forge-app contract this ForgeKit was built against.
 /// `ForgeHost.start()` refuses a Rust library that implements another one.
-public let forgeKitContractVersion: UInt32 = 1
+public let forgeKitContractVersion: UInt32 = 2
 
 /// What ForgeKit needs from an app's Rust core. An app's generated core
 /// object already has these methods (the runtime contract it delegates to
@@ -17,7 +17,21 @@ public protocol ForgeCore: AnyObject {
     func setPhase(phase: AppPhase)
     func events() -> RuntimeEvents?
     func revision() -> UInt64
+    func backgroundWorkPending() -> Bool
+    func backgroundTimeExpired()
+    func launchReport() -> LaunchReport
     func shutdown()
+}
+
+/// Asks the system for time to finish work after the app leaves the
+/// screen. `ForgeLifecycle.attach` installs the UIKit one
+/// (`beginBackgroundTask`); tests install a fake. The time is best effort:
+/// when it runs out, `begin`'s `onExpiry` must be called (the host then
+/// stops finishing work in Rust and calls `end`).
+@MainActor
+public protocol ForgeBackgroundTime: AnyObject {
+    func begin(onExpiry: @escaping @MainActor () -> Void)
+    func end()
 }
 
 /// Directories the runtime gives the core. The app decides what goes in
@@ -112,6 +126,16 @@ public final class ForgeHost<Core: ForgeCore> {
     public private(set) var revision: UInt64 = 0
     /// The application lifecycle phase last reported.
     public private(set) var phase: AppPhase = .launching
+    /// What the runtime found when the core opened. When
+    /// `unfinishedBackgroundWork` is true, the previous run was ended while
+    /// work was still finishing in the background: tell the person if that
+    /// work mattered to them.
+    public private(set) var launch: LaunchReport?
+
+    /// How the host asks for time to finish work in the background. Set by
+    /// `ForgeLifecycle.attach`; nil means the host never asks.
+    @ObservationIgnored public var backgroundTime: (any ForgeBackgroundTime)?
+    @ObservationIgnored private var holdingBackgroundTime = false
 
     @ObservationIgnored private let environment: @Sendable () throws -> ForgeEnvironment
     @ObservationIgnored private let opener: @Sendable (ForgeEnvironment) throws -> Core
@@ -158,6 +182,7 @@ public final class ForgeHost<Core: ForgeCore> {
             let stream = core.events()
             self.core = core
             self.stream = stream
+            launch = core.launchReport()
             if let stream { listen(to: stream) }
             if phase != .launching { core.setPhase(phase: phase) }
             status = .ready
@@ -173,14 +198,43 @@ public final class ForgeHost<Core: ForgeCore> {
         self.phase = phase
         if phase == .terminated {
             close()
-        } else {
-            core?.setPhase(phase: phase)
+            return
         }
+        core?.setPhase(phase: phase)
+        switch phase {
+        case .background:
+            // Commands still saving, or finishing work: ask for time now,
+            // while the system is still running the app.
+            if core?.backgroundWorkPending() == true { holdBackgroundTime() }
+        case .active, .inactive:
+            releaseBackgroundTime()
+        default:
+            break
+        }
+    }
+
+    private func holdBackgroundTime() {
+        guard !holdingBackgroundTime, let backgroundTime else { return }
+        holdingBackgroundTime = true
+        backgroundTime.begin { [weak self] in
+            guard let self else { return }
+            // Time is up: finishing work in Rust stops (Interrupted), and the
+            // system gets its time back.
+            self.core?.backgroundTimeExpired()
+            self.releaseBackgroundTime()
+        }
+    }
+
+    private func releaseBackgroundTime() {
+        guard holdingBackgroundTime else { return }
+        holdingBackgroundTime = false
+        backgroundTime?.end()
     }
 
     /// Ends the event loop and shuts the core down. Committed work is
     /// already on disk.
     public func close() {
+        releaseBackgroundTime()
         stream?.cancel()
         listener?.cancel()
         core?.shutdown()
@@ -209,6 +263,12 @@ public final class ForgeHost<Core: ForgeCore> {
                     self.reconcile()
                 case .phaseChanged(_, let resumed):
                     if resumed { self.reconcile() }
+                case .backgroundWork(let pending):
+                    if pending && self.phase == .background {
+                        self.holdBackgroundTime()
+                    } else if !pending {
+                        self.releaseBackgroundTime()
+                    }
                 }
             }
         }

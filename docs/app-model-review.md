@@ -388,7 +388,8 @@ Decision 4 below is settled: Forge is distributed by git, and ForgeKit is its ow
 - **Suspension** freezes the process, command thread included. A command in the middle of running finishes when the app resumes.
 - **Termination** of a suspended app comes without notice (`willTerminate` is not guaranteed). A command that had not finished did not happen: its caller never got `Ok`. Because an app's save must be atomic (`forge_storage::JsonFile` and `write_atomic` are, and so are SQLite transactions), the file holds the previous state, never part of the new one.
 - So an app can lose the command in flight, but never data it was told was saved, and never gets a torn file.
-- **Not yet covered:** asking iOS for time to finish (`beginBackgroundTask`, the "finishing" scope) is phase 2, and work that must outlive the process (the "durable" scope) is phase 4. Until then, a command started just before the app goes to the background is lost if iOS kills the app while it is suspended.
+- **Time to finish.** When the app enters the background with commands still running or `finishing` work in flight, ForgeKit asks iOS for time (`beginBackgroundTask`) until that work is done, and finishing work is stopped (`Interrupted`) when the time runs out. A command accepted just before the app leaves the screen therefore usually saves. If iOS ends the app first anyway, the next launch's report says so (`LaunchReport { unfinished_background_work }`).
+- **Not yet covered:** work that must outlive the process (the "durable" scope) waits for a second user of Chat's outbox ([architecture-assessment.md](architecture-assessment.md#3-lifecycle-and-durable-work)).
 - **`shutdown()`** refuses new commands and stops running work. It lets commands already accepted finish on the command thread, and does not wait for them.
 
 **Decisions for Reuben.**

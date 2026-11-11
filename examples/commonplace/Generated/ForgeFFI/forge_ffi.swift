@@ -643,6 +643,17 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func article(id: Int64)  -> ArticleSummary?
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
+    
+    /**
      * How many articles a timeline holds and how many of them are unread.
      */
     func counts(timeline: Timeline)  -> TimelineCounts
@@ -657,6 +668,11 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * Every subscription, by title.
      */
     func feeds()  -> [Feed]
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
     
     /**
      * Marks every article of one feed (or of every feed, with nil) read.
@@ -824,6 +840,30 @@ open func article(id: Int64) -> ArticleSummary?  {
 }
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * How many articles a timeline holds and how many of them are unread.
      */
 open func counts(timeline: Timeline) -> TimelineCounts  {
@@ -856,6 +896,18 @@ open func feeds() -> [Feed]  {
     return try!  FfiConverterSequenceTypeFeed.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_appcore_feeds(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_appcore_launch_report(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -4350,6 +4402,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_appcore_article() != 9955) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_appcore_background_time_expired() != 30300) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_background_work_pending() != 48583) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_appcore_counts() != 18702) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4357,6 +4415,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_feeds() != 11378) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_appcore_launch_report() != 14665) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_appcore_mark_all_read() != 23351) {

@@ -44,14 +44,12 @@ These are not choices. They are where the code has not caught up with the design
 |---|---|---|
 | Five apps are not on the runtime | `examples/{chat,good-dog,weather,counter,device-lab}` | The app model review chose one architecture (phase 5 migrates the apps) |
 | The README and `architecture.md` describe Counter as the reference | See [Counter-era descriptions](#counter-era-descriptions-to-reconcile) | Superseded by #141 |
-| No finishing scope (`beginBackgroundTask`) | `forge-app` has `foreground` and `lifetime` only (`crates/forge-app/src/runtime.rs`); ForgeKit reports phases but never asks for time (`forgekit/Sources/ForgeKit/ForgeLifecycle.swift`) | App model phase 2 lists it; foundation review R4 |
 | No durable work outside Chat | `examples/chat-core/src/client.rs` (outbox) | Deferred to a second user on purpose (N1), but the contract is undefined, so nothing else can be durable yet |
 | A record and its files are committed by convention | `crates/forge-storage/src/files.rs` (`place` renames without syncing the directory; `sweep` is app-called) | Foundation review S4 |
 | No backup or protection classes per store | `ForgeEnvironment` has data and caches directories with no policy; `forge.toml` sets one app-wide `data_protection` | Foundation review S5; `ForgeHost.swift` says "phase 4 adds the policies" |
 | No historical data fixtures | No app crate tests open an old file | Foundation review S7 |
 | Framework Swift still copied into `Generated/` | `scripts/generate-bindings.sh` copies `ForgeServices*.swift`, `ForgeLog.swift`, `ForgeImages.swift` | App model phase 2 moves them into ForgeKit |
 | Each app writes its own error text table | `templates/ios-app/Sources/AppHost/NotesModel.swift` (`describe`, plus a separate `isRetryable` switch) although `ForgeErrors.describe(kind)` exists | F4 is solved in Rust (`ErrorKind`) but not used fully in Swift |
-| Releases lag the checkout | `forge-release.toml` says 0.3.0; `forge-app` is 0.4.0, so `forge init` outside the checkout points at the checkout by absolute path | Phase 3 (independent apps) is built, but only works while a release is current |
 | Retry is only `Backoff` | `crates/forge-net/src/backoff.rs`; no classification of `NetError`, no `Retry-After`, no attempt limit | Foundation review N2 |
 
 ## Recommendations, checked against the code
@@ -62,7 +60,7 @@ Summary first; each row has a section below.
 |---|---|---|---|
 | 1 | Canonical architecture is the only iOS starter | **Partial** | Starters done; five apps and the main docs are not |
 | 2 | Persistence as an application guarantee | **Partial** | Record-plus-file commits, storage classes, fixtures, upgrade tests |
-| 3 | Complete lifecycle and durable work | **Partial** | Finishing scope missing; durable work only in Chat |
+| 3 | Complete lifecycle and durable work | **Partial** | Finishing scope and launch report done (2026-11-11); durable work only in Chat |
 | 4 | Swift developer experience | **Partial** | Error text, service adapters, entry points, multiple scenes |
 | 5 | State-change contract with areas | **Missing** (low cost) | `Changed { revision }` has no areas |
 | 6 | Reusable networking policies | **Partial** | Retry classification, offline recovery, URLSession, queues |
@@ -83,12 +81,12 @@ Not done:
 
 - **Apps.** Pocket Library uses `forge_app::Validator` and `FieldError` but keeps its own `Mutex<State>`, `background()` calls, `ensure_running`, `parts()` and its own `Changed { revision }` event (`examples/pocket-library/rust/src/lib.rs`). Chat, Good Dog, Weather, Counter and Device Lab use none of `forge-app`.
 - **Docs.** The README and `architecture.md` present Counter's `CounterBridge` as the pattern ([list below](#counter-era-descriptions-to-reconcile)).
-- **Release currency.** `forge-release.toml` is at 0.3.0 while `forge-app` is 0.4.0, so a new app made outside the checkout uses absolute paths until 0.4.0 is released and its tag pushed.
+- **Release currency.** New apps outside the checkout are independent only while the latest framework release matches the checkout's `forge-app` version. (0.4.0 was released after this review, in #158.)
 
 Changes, in order:
 
 1. Rewrite `architecture.md` around `forge-app` + ForgeKit, with Checklist as the reference; move Counter's command-thread and persistence sections to a short history note or into `examples/counter/README.md`. Update the README's opening and command examples to Checklist. (Docs only; the next PR after this one.)
-2. Release ForgeKit 0.4.0 and update `forge-release.toml`, so new apps are independent again.
+2. Release each framework version promptly after it merges, so new apps stay independent (0.4.0: done in #158).
 3. Move Pocket Library onto `Runtime` before its App Store submission (app model phase 5; it fixes the data layout before users have data). Then Good Dog, then Chat (whose outbox becomes the durable contract, section 3).
 4. Decide Counter's fate: keep it as the Android twin's crate, but stop calling it the reference app anywhere.
 
@@ -140,7 +138,7 @@ Changes, in order: directory sync in `FileStore` (small, now); the staged-file A
 | Kind | Expected | Status | Where |
 |---|---|---|---|
 | Committed | Saved before success is reported | **Done**, tested | `Runtime::command` publishes `Changed` only after the closure returns `Ok` (`crates/forge-app/src/runtime.rs`); `forge-app/tests/runtime.rs`, Checklist's restart test |
-| Finishing | Best-effort time to finish when backgrounded | **Missing** | No `beginBackgroundTask` in ForgeKit; no `finishing` scope in `forge-app` (R4) |
+| Finishing | Best-effort time to finish when backgrounded | **Done** (2026-11-11), phone check owed | `Runtime::finishing`, `background_time_expired`; ForgeKit holds `beginBackgroundTask` while commands or finishing work are pending (`ForgeHost`, `ForgeUIKitBackgroundTime`) |
 | Foreground | Stops when the app leaves the foreground | **Done**, tested | `Runtime::foreground`; `Interrupted` kind; `PhaseChanged { resumed }`; Checklist Swift test `testTheBackgroundInterruptsOnScreenWorkOnly` |
 | Durable | Survives termination, resumes after relaunch | **Partial**: Chat only; **deferred** as a framework contract | Chat's outbox (`examples/chat-core/src/client.rs`) |
 
@@ -154,8 +152,8 @@ What Chat's outbox does not have, and the contract should add: a link to the run
 
 Changes, in order:
 
-1. **Finishing scope now.** `Runtime::finishing(host)` in `forge-app`, cancelled on expiry; ForgeKit wraps it in `UIApplication.beginBackgroundTask` from `ForgeLifecycle` on `didEnterBackground`, ending the task when finishing work drains. Linux test: expiry cancels it. One short phone check: lock the phone during a finishing job and read the log.
-2. **Relaunch report.** `Opened { fresh, restored, migrated, recovered }` from the runtime at open, so apps can tell the person once that something was interrupted. Cheap and independent of durable work.
+1. **Finishing scope.** Done (2026-11-11). `Runtime::finishing(host)` in `forge-app`, cancelled on expiry; ForgeKit wraps it in `UIApplication.beginBackgroundTask` from `ForgeLifecycle` on `didEnterBackground`, ending the task when finishing work drains. Linux test: expiry cancels it. One short phone check: lock the phone during a finishing job and read the log.
+2. **Relaunch report.** Done (2026-11-11) for the runtime's part: `LaunchReport { unfinished_background_work }`. Migration and recovery outcomes join it with the persistence work.
 3. **Durable contract when the second user arrives** (FieldKit's upload queue, Relay, or Pocket Library's background downloads), with Chat migrated onto it in the same PR. Until then, keep it deferred and say so in `app-model-review.md`, as it already does.
 4. `BGTaskScheduler` and background `URLSession` stay in the [native capability roadmap](native-capability-roadmap.md) (Tier 1, items 5 and 6). They add opportunistic progress to durable work; they do not replace it.
 
@@ -170,7 +168,7 @@ Changes, in order:
 | Cancellation that works with Swift concurrency | Partial | `withRustCancellation` forwards Task cancellation, but each call site has to use it (F2) |
 | Consistent error presentation | Partial | `ErrorKind`, `ForgeKindedError`, `ForgeErrors.describe(kind)` and ForgeAppKit's `ForgeFailure` exist; the template still writes a full `describe` table and its own retryable switch |
 | Native navigation and presentation | Done, deliberately small | ForgeAppKit destinations and alerts as model values; SwiftUI's own navigation |
-| Native lifecycle integration | Partial | `ForgeLifecycle` reports application phases; no background task, no protected-data or memory-pressure phases (E1) |
+| Native lifecycle integration | Partial | `ForgeLifecycle` reports application phases and holds background time for pending work; no protected-data or memory-pressure phases (E1) |
 | Multiple windows | **Deferred** | One core per process is right; a second scene must share the host, not open its own. Untested |
 | App extensions | **Deferred** | A `shared/` store design is in the app model review; waits for the first extension |
 | Framework Swift is a dependency, not copied files | Partial | ForgeKit, ForgeUI, ForgeAppKit are packages; service adapters, `ForgeLog` and `ForgeImages` are still copied into `Generated/` |
@@ -265,9 +263,9 @@ Reuben's order, with the concrete first step for each. Each is small enough to r
 
 | Step | Theme | First PR | Size |
 |---|---|---|---|
-| 1 | Canonical architecture | Reconcile `architecture.md`, `ffi-policy.md` and the README with the runtime (docs only); release ForgeKit 0.4.0 and update `forge-release.toml` | 1 docs PR, 1 release |
+| 1 | Canonical architecture | Reconcile `architecture.md`, `ffi-policy.md` and the README with the runtime (docs only) | 1 docs PR |
 | 2 | Persistence | `FileStore` directory sync; staged-file API used by Pocket Library's EPUB import and Chat's attachments; fixtures directory and test convention; storage classes in `ForgeEnvironment` | 2 to 3 PRs |
-| 3 | Lifecycle and durable work | Finishing scope with `beginBackgroundTask`; relaunch report; Pocket Library onto `Runtime`. Durable contract waits for its second user | 2 PRs, one short phone check |
+| 3 | Lifecycle and durable work | Finishing scope with `beginBackgroundTask` and relaunch report (done 2026-11-11); Pocket Library onto `Runtime`. Durable contract waits for its second user | 2 PRs, one short phone check |
 | 4 | Swift developer experience | Default error text by kind; ForgeKit tests; service adapters into ForgeKit; one entry point | 2 PRs, macOS CI |
 | 5 | Networking | `is_retryable` and `RetryPolicy`; connectivity into the runtime; then the URLSession transport per the roadmap | 1 PR, then the roadmap item |
 | 6 | Verification | `forge_app::testing` harness; common subset run by Checklist, Pocket Library and Chat | 1 to 2 PRs |

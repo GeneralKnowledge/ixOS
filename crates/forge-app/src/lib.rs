@@ -39,8 +39,8 @@ mod runtime;
 pub mod validation;
 
 pub use contract::{
-    forge_app_contract_version, AppPhase, Cancellation, ErrorKind, RuntimeEvent, RuntimeEvents,
-    Stopped, CONTRACT_VERSION,
+    forge_app_contract_version, AppPhase, Cancellation, ErrorKind, LaunchReport, RuntimeEvent,
+    RuntimeEvents, Stopped, CONTRACT_VERSION,
 };
 pub use document::{Document, DocumentError};
 pub use published::Published;
@@ -54,8 +54,9 @@ pub use forge_runtime as __runtime;
 uniffi::setup_scaffolding!("forge_app");
 
 /// Exports the runtime half of an app's interface on the app's core object:
-/// `events()`, `set_phase(phase)`, `phase()`, `revision()` and
-/// `shutdown()`. `$field` names the core's [`Runtime`].
+/// `events()`, `set_phase(phase)`, `phase()`, `revision()`,
+/// `background_work_pending()`, `background_time_expired()`,
+/// `launch_report()` and `shutdown()`. `$field` names the core's [`Runtime`].
 #[macro_export]
 macro_rules! export_runtime {
     ($core:ty, $field:ident) => {
@@ -80,6 +81,22 @@ macro_rules! export_runtime {
             /// The last committed revision.
             pub fn revision(&self) -> u64 {
                 self.$field.revision()
+            }
+
+            /// Whether commands or finishing work are still running; the
+            /// host holds background time while they are.
+            pub fn background_work_pending(&self) -> bool {
+                self.$field.background_work_pending()
+            }
+
+            /// The host's background time ran out: finishing work stops.
+            pub fn background_time_expired(&self) {
+                self.$field.background_time_expired()
+            }
+
+            /// What the runtime found at open (unfinished background work).
+            pub fn launch_report(&self) -> $crate::LaunchReport {
+                self.$field.launch_report()
             }
 
             /// Refuses new commands, stops work in flight and ends event

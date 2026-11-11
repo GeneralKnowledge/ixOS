@@ -151,4 +151,41 @@ final class ChecklistTests: XCTestCase {
         XCTAssertEqual(next.revision, next.core?.revision())
         next.close()
     }
+
+    func testFinishingWorkHoldsBackgroundTimeUntilItIsDone() async throws {
+        let host = Checklist.makeTemporaryHost()
+        let time = FakeBackgroundTime()
+        host.backgroundTime = time
+        await host.start()
+        XCTAssertEqual(host.launch, LaunchReport(unfinishedBackgroundWork: false))
+        let core = try XCTUnwrap(host.core)
+        let model = ChecklistModel(core: core)
+        await model.add("Buy oat milk")
+        host.report(.active)
+        host.report(.background)
+        XCTAssertEqual(time.log, [], "nothing was running, so no time was asked for")
+
+        // An export started in the background is finishing work: the host
+        // holds background time while it runs, and gives it back after.
+        let url = await model.exportText()
+        XCTAssertNotNil(url)
+        await eventually("background time held, then given back") { time.log == ["begin", "end"] }
+
+        host.report(.active)
+        host.close()
+    }
+}
+
+/// Records what the host asks of the system's background time.
+@MainActor
+private final class FakeBackgroundTime: ForgeBackgroundTime {
+    var log: [String] = []
+
+    func begin(onExpiry: @escaping @MainActor () -> Void) {
+        log.append("begin")
+    }
+
+    func end() {
+        log.append("end")
+    }
 }
