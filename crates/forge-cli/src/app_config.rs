@@ -859,6 +859,7 @@ fn add_permission_line(permission: &str) -> String {
 /// the `[ios.permissions]` name that permission needs. The names are the
 /// `ForgeServices+<Name>.swift` adapters in crates/forge-services/swift/optional/.
 pub const SERVICE_PERMISSIONS: &[(&str, &str)] = &[
+    ("Biometrics", "face_id"),
     ("Bluetooth", "bluetooth"),
     ("Location", "location_when_in_use"),
     ("Motion", "motion"),

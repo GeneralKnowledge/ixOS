@@ -197,6 +197,7 @@ forge_services::native_services!(connectivity, device_status, motion, location, 
 
 | Service | Rust (`crate::native::<name>`) | iOS adapter | Permission and `forge.toml` |
 |---------|------------------------------|-------------|-----------------------------|
+| `biometrics` | `BiometricsService`: `availability()`, `confirm(reason)`; see [Face ID and the app lock](#face-id-and-the-app-lock-biometrics) | `ForgeBiometrics` (`LAContext`), `.forgeAppLock` | `[ios.permissions] face_id` |
 | `background` | `BackgroundService`: `register_refresh`, `register_processing`, `register_handler`, `schedule`, `cancel`; see [Background tasks](#background-tasks-background) | `ForgeBackgroundScheduler` (`BGTaskScheduler`) | None; `forge.toml` `[ios] background_tasks` |
 | `connectivity` | `ConnectivityService`: `current()`, `watch(..)`; `ConnectivityStatus` (online, interfaces, metered, Low Data Mode, offline reason), `allows(TransferPolicy::Unmetered)` | `ForgeConnectivityMonitor` (`NWPathMonitor`) | None |
 | `device_status` | `DeviceStatusService`: `info()` (model, iOS version, cores, RAM, screen), `status()` (battery, Low Power Mode, thermal state, storage, memory left), `watch(..)`; `DeviceStatus::defer_heavy_work(memory)` | `ForgeDeviceStatus` (`UIDevice`, `ProcessInfo`, file system, `os_proc_available_memory`) | None |
@@ -262,6 +263,18 @@ let seconds = try ForgeAudio.duration(of: url)
 ```
 
 `ForgeAudioSession` sets the iOS audio session for what is happening: `.record` (play-and-record through the speaker) or `.playback` (spoken audio, which plays with the ring switch on silent), and deactivates it afterwards so other apps' audio resumes. Real-time processing (effects, a render callback in Rust) is not part of this service; see spike S4 in the capability plan.
+
+### Face ID and the app lock (`biometrics`)
+
+Face ID, Touch ID or the device passcode, through LocalAuthentication. Declare `face_id` under `[ios.permissions]` too: iOS ends an app that asks for Face ID without it. Chat's "Require Face ID" setting is its first user.
+
+| Job | Use |
+|-----|-----|
+| Lock the app | `.forgeAppLock(isEnabled: model.appLock, graceSeconds: 60, reason: "Unlock Chat")` on the root view. It asks at launch and after `graceSeconds` in the background, shows a lock screen with an Unlock button (`appLock.unlock`) between attempts, and covers the content whenever the app is not active, so the app switcher's snapshot shows nothing private. Turning the setting on doesn't lock the open app; turning it off unlocks it |
+| A "Require Face ID" setting | `BiometricsService::installed()?.availability()`: `can_lock()` (biometrics or at least a passcode) and `name()` ("Face ID", "Touch ID", "Passcode") for the toggle's label. Refuse to turn the lock on when `can_lock()` is false. Keep the setting in Rust |
+| Confirm before something sensitive (show a secret, delete everything) | `BiometricsService::installed()?.confirm("show your recovery key").await`: `Authenticated`, `Cancelled`, `LockedOut`, `Unavailable` or `Failed`. From SwiftUI, `await ForgeBiometrics.shared.authenticate(reason:)` |
+
+Face ID falls back to the passcode, so a person whose face isn't recognised can still get in. Every request uses a new `LAContext`, so one success is never reused for the next.
 
 ### Background tasks (`background`)
 

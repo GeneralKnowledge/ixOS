@@ -23,3 +23,5 @@ url_schemes = ["forgechat"]
 local_network = "Chat connects to the demo chat server on your local network."
 # Voice messages (M4). Declaring it also brings Forge's Swift audio module.
 microphone = "Chat records a voice message while you tap the microphone button."
+# The optional app lock in Settings (native_services!(biometrics)).
+face_id = "Chat uses Face ID to unlock when you turn on the app lock in Settings."

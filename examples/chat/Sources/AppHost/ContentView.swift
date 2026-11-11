@@ -20,7 +20,13 @@ public struct ContentView: View {
             case .signedOut:
                 SignUpView(model: model)
             case .ready:
-                MainTabs(model: model)
+                #if os(iOS)
+                    // Face ID at launch and after a minute away, when on in Settings.
+                    MainTabs(model: model)
+                        .forgeAppLock(isEnabled: model.appLock, reason: "Unlock Chat")
+                #else
+                    MainTabs(model: model)
+                #endif
             case .failed(let message):
                 ContentUnavailableView {
                     Label("Can't Open Chat", systemImage: "exclamationmark.bubble")

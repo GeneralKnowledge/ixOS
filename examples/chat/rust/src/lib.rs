@@ -47,7 +47,7 @@ forge_runtime::app_shell! {
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
 // `ForgeServices.install()`; see docs/native-services.md.
-forge_services::native_services!(audio);
+forge_services::native_services!(audio, biometrics);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).
@@ -249,6 +249,35 @@ impl ChatCore {
         self.client()?
             .set_marked_unread(&conversation_id, marked)
             .map_err(Into::into)
+    }
+
+    /// Whether Chat asks for Face ID, Touch ID or the passcode when it
+    /// opens and after a minute in the background. This device only.
+    pub fn app_lock(&self) -> bool {
+        self.storage_directory.join(APP_LOCK_FILE).exists()
+    }
+
+    /// Turns the app lock on or off. Turning it on is refused when this
+    /// iPhone has neither biometrics nor a passcode, since the lock could
+    /// never open.
+    pub fn set_app_lock(&self, enabled: bool) -> Result<(), ChatError> {
+        let path = self.storage_directory.join(APP_LOCK_FILE);
+        if !enabled {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(ChatError::Storage {
+                    reason: format!("turn off the lock: {e}"),
+                }),
+                _ => Ok(()),
+            };
+        }
+        if app_lock_method().is_none() {
+            return Err(ChatError::InvalidInput {
+                reason: "set a passcode on this iPhone first".into(),
+            });
+        }
+        std::fs::write(&path, b"").map_err(|e| ChatError::Storage {
+            reason: format!("turn on the lock: {e}"),
+        })
     }
 
     /// Mutes the room (no notifications) or unmutes it. This device only.
@@ -587,6 +616,20 @@ impl ChatCore {
 /// The notification category of a new message (`LocalChatNotifier`), with
 /// Reply and Mark as Read on it.
 pub const MESSAGE_NOTIFICATION: &str = "chat.message";
+
+/// The file whose presence turns the app lock on.
+const APP_LOCK_FILE: &str = "app-lock";
+
+/// How the app lock would unlock on this iPhone ("Face ID", "Touch ID",
+/// "Passcode"), or nil when it can't lock at all.
+#[uniffi::export]
+pub fn app_lock_method() -> Option<String> {
+    let biometrics = native::biometrics::BiometricsService::installed().ok()?;
+    let availability = biometrics.availability();
+    availability
+        .can_lock()
+        .then(|| availability.name().to_string())
+}
 
 /// [`MESSAGE_NOTIFICATION`], for the Swift notifier.
 #[uniffi::export]

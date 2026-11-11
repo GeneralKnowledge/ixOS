@@ -11,7 +11,8 @@ forge_services::native_services!(
     location,
     bluetooth,
     audio,
-    background
+    background,
+    biometrics
 );
 
 use native::*;
@@ -437,4 +438,52 @@ fn a_background_run_waits_for_its_handler() {
     let (run, results) = FakeScheduler::start(&service.clone(), "app.missing");
     run.expire();
     assert_eq!(*results.lock().unwrap(), vec![false]);
+}
+
+#[test]
+fn biometrics_confirm_and_name_what_the_device_has() {
+    use biometrics::*;
+
+    let face = BiometricAvailability {
+        kind: BiometryKind::FaceId,
+        biometrics_usable: true,
+        passcode_set: true,
+    };
+    assert_eq!(face.name(), "Face ID");
+    let (service, fake) = BiometricsService::for_tests(face);
+    assert!(forge_runtime::block_on(service.confirm(" ")).is_err());
+    assert_eq!(
+        forge_runtime::block_on(service.confirm("show your recovery key")).unwrap(),
+        AuthenticationResult::Authenticated
+    );
+    *fake.result.lock().unwrap() = AuthenticationResult::Cancelled;
+    assert_eq!(
+        forge_runtime::block_on(service.confirm("delete everything")).unwrap(),
+        AuthenticationResult::Cancelled
+    );
+    assert_eq!(
+        *fake.reasons.lock().unwrap(),
+        vec!["show your recovery key", "delete everything"]
+    );
+
+    // Face ID not enrolled: the passcode still locks, and the setting says so.
+    let passcode = BiometricAvailability {
+        kind: BiometryKind::FaceId,
+        biometrics_usable: false,
+        passcode_set: true,
+    };
+    assert!(passcode.can_lock());
+    assert_eq!(passcode.name(), "Passcode");
+    // Nothing at all: no prompt is shown.
+    let none = BiometricAvailability {
+        kind: BiometryKind::None,
+        biometrics_usable: false,
+        passcode_set: false,
+    };
+    let (service, fake) = BiometricsService::for_tests(none);
+    assert_eq!(
+        forge_runtime::block_on(service.confirm("unlock")).unwrap(),
+        AuthenticationResult::Unavailable
+    );
+    assert!(fake.reasons.lock().unwrap().is_empty());
 }

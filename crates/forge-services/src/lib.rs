@@ -41,6 +41,7 @@
 
 #[doc(hidden)]
 pub mod background;
+mod biometrics;
 mod feed;
 #[cfg(feature = "http")]
 pub mod http;

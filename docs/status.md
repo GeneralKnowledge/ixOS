@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 102 capabilities, 15 work on an iPhone, 13 partly work, 50 are built but haven't been run on an iPhone, and 24 aren't built yet.**
+**Of 102 capabilities, 15 work on an iPhone, 13 partly work, 51 are built but haven't been run on an iPhone, and 23 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -58,7 +58,7 @@ The code exists and is tested on Linux, but nobody has recorded it working on a 
 - **Data and files:** Relational store with queries (SQLite); Full-text search; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel
-- **Native services and permissions:** Keychain secrets; Local notifications; Notification actions and grouping; Deep links (custom URL schemes); Web pages inside the app (WebKit web view, Safari view, HTML the app has, bundled help pages); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Photos picker; Background refresh and processing tasks; Haptics
+- **Native services and permissions:** Keychain secrets; Local notifications; Notification actions and grouping; Deep links (custom URL schemes); Web pages inside the app (WebKit web view, Safari view, HTML the app has, bundled help pages); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Photos picker; Face ID app lock; Background refresh and processing tasks; Haptics
 - **Media, sensors and rendering:** Record and play audio files; Waveform summaries; Background audio; Continuous location and tracks; Background location; Heading, altitude, motion; Device status (battery, Low Power Mode, thermal state, storage, memory, model); Bluetooth on or off; Forms with Rust validation
 - **Extensions and restricted frameworks:** HealthKit
 - **Forge Device:** Installed apps, profile expiry and free-team slots (`forge device apps`, in `forge_device_status`); The app's log and crash reports collected during a UI run or walk, and correlated with the failing step (`forge ui run`, `forge ui explore`, `forge_diagnose`); Live connection to a development build: pairing over USB, encrypted session (`forge device pair`, `unpair`); App log and lifecycle stream that survives the background (`forge device connect`); Status, state probes and app commands (`forge device status`, `snapshot`, `cmd`); Which Apple team xtool signs with, free or paid (`forge doctor`, `forge run ios`)
@@ -71,7 +71,7 @@ Planned only. An app can still use the Apple framework directly from Swift.
 - **Data and files:** Backup and restore archive; CSV import and export; Report export (zip, GPX, GeoJSON, PDF, PNG)
 - **Offline delivery:** Interrupted upload recovery; Edit and delete conflict handling; Incoming alerts while suspended or terminated
 - **Networking:** Bonjour advertise and browse; Peer-to-peer transfer with resume; Multicast discovery
-- **Native services and permissions:** Camera capture; Barcode and QR scanning; Face ID app lock; Recurring schedules
+- **Native services and permissions:** Camera capture; Barcode and QR scanning; Recurring schedules
 - **Media, sensors and rendering:** Real-time audio processing in Rust; Maps (MapKit); Charts (Swift Charts); Custom drawing and gestures; Apple Pencil (PencilKit); Metal rendering
 - **Extensions and restricted frameworks:** Widgets; Share extension; Live Activities; ARKit; NFC
 
