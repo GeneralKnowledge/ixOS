@@ -25,40 +25,49 @@ Nothing asks for a permission until you tap its button. Everything stops when th
 ## The other apps (Apps screen)
 
 The **Apps** button on the dashboard opens the other example apps, each the
-full app: Weather, Checklist, Pocket Library and the ForgeUI Showcase.
-**Open at Launch** on that screen makes Device Lab start in one of them
-(the `-launchApp weather` launch argument does the same). Swipe down to get
-back to Device Lab. One app on the phone holds all five.
+full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat and
+the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
+in one of them (the `-launchApp weather` launch argument does the same).
+Swipe down to get back to Device Lab. One app on the phone holds all of them.
+(Counter isn't hosted: its Rust crate is shared with the frozen Android app.)
 
 Each app stays in its own folder and is updated there; Device Lab plugs it in
 without copying it:
 
 - **Rust:** `rust/Cargo.toml` depends on each app's own crate, which names its
-  library after the app (`weather_core`, ...; every other app keeps
-  `forge_ffi`), and `rust/src/lib.rs` links it with `use <app>_core as _;`.
-- **Swift:** `Sources/<Target>` is a symlink to the app's Swift folder, listed
-  as a target in `Package.swift`. `forge bindings generate --project
-  examples/device-lab` writes each linked crate's bindings as a module of its
-  own (`Generated/<app>_core/`) that `ForgeFFI` re-exports, so the app's
-  views keep their `import ForgeFFI`.
+  library after the app (`weather_core`, `chat_app`, ...), and `rust/src/lib.rs`
+  links it with `use <library> as _;`.
+- **Bindings:** `forge bindings generate --project examples/device-lab` writes
+  each linked crate's complete ForgeFFI module (bindings, native services
+  adapters, ForgeLog) to `Generated/Linked/<library>/`.
+- **Swift:** `Apps/<App>/` is a small package: the app's own Swift folders
+  (symlinks in `Sources/`) over its bindings (`Generated`, a symlink). Device
+  Lab depends on it with `moduleAliases`, so the app keeps its `import
+  ForgeFFI` and `AppHost` and Device Lab sees `ChatFFI`, `ChatApp`.
+- `Sources/AppHost/AppsView.swift` lists the apps, opens them, and installs
+  their native services and lifecycle (`EmbeddedApps.install()`).
 
 To add an app with a Rust crate:
 
 1. In the app's `rust/Cargo.toml`, name the library after the app
-   (`[lib] name = "<app>_core"`, `crate-type = ["staticlib", "lib"]`), make
+   (`[lib] name = "<library>"`, `crate-type = ["staticlib", "lib"]`), make
    its `lib.rs` call `uniffi::setup_scaffolding!()` with no argument, and run
    `forge bindings generate --project examples/<app>` (the app still builds
    on its own; its Swift doesn't change). Then add the crate to this app's
-   `rust/Cargo.toml` and a `use <app>_core as _;` line to `rust/src/lib.rs`.
-2. `ln -s ../../<app>/Sources/<Target> Sources/<Target>`, then add to
-   `Package.swift` the target, plus a system library and a target for
-   `Generated/<app>_core`, as for Weather.
-3. Add a case to `EmbeddedApp` in `Sources/AppHost/AppsView.swift`, and any
-   permission text or background mode it needs to `forge.toml`.
-4. `forge bindings generate --project examples/device-lab`.
+   `rust/Cargo.toml` and a `use <library> as _;` line to `rust/src/lib.rs`.
+2. Copy `Apps/Chat/` to `Apps/<App>/`: point the `Generated` symlink at
+   `../../Generated/Linked/<library>`, the `Sources/` symlinks at the app's
+   folders, and set the names in its `Package.swift` to the app's.
+3. In `Package.swift`, add `.package(path: "Apps/<App>")` and the product to
+   `AppHost`, with `moduleAliases` for `ForgeFFI` (and `AppHost` if the app
+   uses that name).
+4. Add a case to `EmbeddedApp` in `Sources/AppHost/AppsView.swift` (and, if the
+   app has native services or a ForgeKit host, to `EmbeddedApps.install()`),
+   plus any permission text or background mode it needs to `forge.toml`.
+5. `forge bindings generate --project examples/device-lab`.
 
 An app without Rust (like the ForgeUI Showcase) needs only a package
-dependency in `Package.swift` and step 3.
+dependency in `Package.swift` and step 4.
 
 ## How it is built
 

@@ -74,22 +74,24 @@ let package = Package(
                 .product(name: "ForgeUIShowcase", package: "forgeui-showcase"),
                 // Every app calls its bindings ForgeFFI and most call their
                 // views AppHost, as Device Lab does; the aliases tell them apart.
-                .product(name: "WeatherApp", package: "Weather", moduleAliases: ["ForgeFFI": "WeatherFFI"]),
-                .product(name: "ChecklistApp", package: "Checklist", moduleAliases: ["ForgeFFI": "ChecklistFFI"]),
+                // Each app package exports one wrapper target, <App>Embed, so
+                // that its modules are dependencies the aliases reach.
+                .product(name: "WeatherEmbed", package: "Weather", moduleAliases: ["ForgeFFI": "WeatherFFI"]),
+                .product(name: "ChecklistEmbed", package: "Checklist", moduleAliases: ["ForgeFFI": "ChecklistFFI"]),
                 .product(
-                    name: "PocketLibraryApp", package: "PocketLibrary",
+                    name: "PocketLibraryEmbed", package: "PocketLibrary",
                     moduleAliases: ["ForgeFFI": "PocketLibraryFFI", "AppHost": "PocketLibraryApp"]
                 ),
                 .product(
-                    name: "GoodDogApp", package: "GoodDog",
+                    name: "GoodDogEmbed", package: "GoodDog",
                     moduleAliases: ["ForgeFFI": "GoodDogFFI", "AppHost": "GoodDogApp"]
                 ),
                 .product(
-                    name: "CommonplaceApp", package: "Commonplace",
+                    name: "CommonplaceEmbed", package: "Commonplace",
                     moduleAliases: ["ForgeFFI": "CommonplaceFFI", "AppHost": "CommonplaceApp"]
                 ),
                 .product(
-                    name: "ChatApp", package: "Chat",
+                    name: "ChatEmbed", package: "Chat",
                     moduleAliases: ["ForgeFFI": "ChatFFI", "AppHost": "ChatApp"]
                 ),
             ],

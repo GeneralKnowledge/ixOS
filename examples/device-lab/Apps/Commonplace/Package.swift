@@ -18,7 +18,7 @@ let package = Package(
     name: "Commonplace",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "CommonplaceApp", targets: ["AppHost", "ForgeFFI"]),
+        .library(name: "CommonplaceEmbed", targets: ["CommonplaceEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "commonplace_coreFFI", path: "Generated/commonplace_coreFFI"),
         forgeFFI,
+        .target(name: "CommonplaceEmbed", dependencies: ["AppHost", "ForgeFFI"], path: "Sources/CommonplaceEmbed"),
         .target(
             name: "AppHost",
             dependencies: [

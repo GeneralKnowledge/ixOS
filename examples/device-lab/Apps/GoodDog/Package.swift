@@ -18,7 +18,7 @@ let package = Package(
     name: "GoodDog",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "GoodDogApp", targets: ["AppHost", "ForgeFFI"]),
+        .library(name: "GoodDogEmbed", targets: ["GoodDogEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "good_dog_appFFI", path: "Generated/good_dog_appFFI"),
         forgeFFI,
+        .target(name: "GoodDogEmbed", dependencies: ["AppHost", "ForgeFFI"], path: "Sources/GoodDogEmbed"),
         .target(
             name: "AppHost",
             dependencies: ["ForgeFFI", .product(name: "ForgeUI", package: "forgekit")],

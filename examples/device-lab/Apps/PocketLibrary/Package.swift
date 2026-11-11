@@ -18,7 +18,7 @@ let package = Package(
     name: "PocketLibrary",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "PocketLibraryApp", targets: ["AppHost", "ForgeFFI"]),
+        .library(name: "PocketLibraryEmbed", targets: ["PocketLibraryEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "pocket_library_coreFFI", path: "Generated/pocket_library_coreFFI"),
         forgeFFI,
+        .target(name: "PocketLibraryEmbed", dependencies: ["AppHost", "ForgeFFI"], path: "Sources/PocketLibraryEmbed"),
         .target(
             name: "AppHost",
             dependencies: ["ForgeFFI", .product(name: "ForgeAppKit", package: "forgekit")],

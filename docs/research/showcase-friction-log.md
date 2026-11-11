@@ -1,8 +1,8 @@
-# Showcase friction log: five apps in one
+# Showcase friction log: eight apps in one
 
 Started 2026-11-11. Device Lab became the showcase: an **Apps** button on its
-dashboard opens Weather, Checklist, Pocket Library and the ForgeUI Showcase as
-full apps, and **Open at Launch** on that screen makes Device Lab start in one
+dashboard opens Weather, Checklist, Pocket Library, Good Dog, Commonplace,
+Chat and the ForgeUI Showcase as full apps, and **Open at Launch** on that screen makes Device Lab start in one
 of them. The point was to see how hard it is to put apps together on ixOS, and
 what that shows about the framework. This log is that answer. Each entry says
 what happened, how the showcase got round it, and what the framework should do
@@ -19,10 +19,10 @@ names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
 |---|---|---|---|---|
 | F1 | Every app crate's library is called `forge_ffi`, so two app crates can't be linked into one library | Blocker | **Fixed in this PR**: the tools read the name from Cargo; a linkable app names its library after itself | Make it the template's default |
 | F2 | The UniFFI namespace is hard-coded as `"forge_ffi"` in every app | Blocker | `setup_scaffolding!()` with no argument (the namespace follows the library name) | Same, in the template |
-| F3 | Bindings generation knew only one app module (plus ForgeKit's) | Blocker | `generate-bindings.sh` now makes a Swift module per linked crate and re-exports it from ForgeFFI | Keep it, and generate the Package.swift entries too |
-| F4 | An app's Swift can't be used by another package | Blocker | Symlinks under `Sources/` | Split each app's Swift into a package product that doesn't contain the bindings |
-| F5 | Two apps call their main target `AppHost` | Annoyance | Pocket Library's becomes `PocketLibraryApp` | Name targets after the app in the template |
-| F6 | `ForgeLifecycle` can report to one host only | Limit | Only Checklist uses a ForgeKit host, so it's attached | Let ForgeLifecycle take several hosts |
+| F3 | Bindings generation knew only one app module (plus ForgeKit's) | Blocker | **Fixed**: each linked crate gets a complete ForgeFFI of its own (`Generated/Linked/<crate>/`) | `forge` could also write the small packages (F4) |
+| F4 | An app's Swift can't be used by another package | Blocker | One small package per hosted app (`Apps/<App>/`, symlinks), imported with `moduleAliases` | Ship each app's Swift as a package |
+| F5 | Five apps call their main target `AppHost` | Annoyance | Module aliases | Name targets after the app in the template |
+| F6 | `ForgeLifecycle` could report to one host only | Limit | **Fixed in ForgeKit**: one attachment per host | — |
 | F7 | Five state models in four apps | Inconsistency | None needed; they coexist | Move Weather, Device Lab and Pocket Library onto ForgeHost |
 | F8 | Three test-data conventions | Inconsistency | `test_data_args` lists two arguments | One argument, honoured by ForgeKit for every app |
 | F9 | Info.plist settings belong to the app, not the feature | Limit | Merged by hand in `forge.toml` | Let a linked app declare its permissions and modes |
@@ -31,6 +31,9 @@ names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
 | F12 | Dependencies listed twice | Drift risk | Gone with the F1 fix | — |
 | F13 | The Swift can't be compiled in a cloud session | Process | The laptop build and macOS CI check it | Known (AGENTS.md); no change |
 | F14 | The new `import ForgeApp` in Device Lab's bindings | Side effect | Device Lab's ForgeFFI now depends on ForgeApp | None needed |
+| F15 | Native services are per crate; Keychain, notifications, deep links and files are per process | Limit | Each app installs its own; its own Keychain service | Install services once for every crate |
+| F16 | Natural library names already taken (`chat_core`) | Annoyance | `chat_app`, `good_dog_app` | — |
+| F17 | Counter shares its crate with the frozen Android app | Left out | Not hosted | Retire Counter, as planned |
 
 What went well is at the end.
 
@@ -83,54 +86,61 @@ use the no-argument form too.
 ## F3. Bindings generation assumed one module
 
 `generate-bindings.sh` kept `forge_ffi.swift` and threw away everything else
-(it expected only `forge_app.swift`, which ForgeKit ships). Now each other
-crate in the library gets:
+(it expected only `forge_app.swift`, which ForgeKit ships).
 
-- `Generated/<crate>/<crate>.swift`, a Swift module of its own, as forge_app
-  is in ForgeKit;
-- `Generated/<crate>FFI/`, its C module;
-- a line in `Generated/ForgeFFI/ForgeFFI+Linked.swift`
-  (`@_exported import weather_core`), so code that says `import ForgeFFI`
-  sees every app's types and the apps' views needed no change.
+**First fix (four apps).** Each linked crate became a Swift module of its
+own, re-exported by Device Lab's ForgeFFI (`@_exported import weather_core`),
+so the apps' `import ForgeFFI` found their types. That held for Weather,
+Checklist and Pocket Library. It would not hold for Chat, Good Dog and
+Commonplace. Every crate that uses `forge_runtime::app_shell!`,
+`native_services!` or `log_export!` exports the same Swift names
+(`Cancellation`, `NativePermission`, `PermissionStatus`, `forgeLog`), and its
+native services need their own Swift adapters, which declare the same public
+types again (`ForgeServices`, `ForgePermissions`, `ForgeShareLink`, ...).
+Re-exported into one namespace, all of those become ambiguous.
 
-`check-app-crates.sh` checks these files for drift as well.
-
-Separate modules, rather than one big ForgeFFI, because each generated file
-brings its own C types (`RustBuffer` and friends) and the one name clash found
-is a real one: Pocket Library's `Cancellation` (from
-`forge_runtime::app_shell!`) and ForgeKit's `Cancellation` (forge_app).
-
-What's still manual: Package.swift needs a system library and a target for
-each linked crate. `forge` could write those.
+**Second fix (seven apps).** Each linked crate now gets a complete ForgeFFI
+module of its own, as if it were its own app, in
+`Generated/Linked/<crate>/`: its bindings, its C module, the Swift helpers,
+its native services adapters and ForgeLog. The function that writes the main
+app's ForgeFFI writes these too. `check-app-crates.sh` checks them for
+drift. See F4 for how the host app uses them.
 
 ## F4. An app's Swift can't be reused
 
 Each app's package has its own `ForgeFFI` target, which links its own Rust
-library. Depending on `../weather` from Device Lab would bring a second
-`ForgeFFI` and a second Rust library, and SwiftPM rejects the duplicate target
-names anyway. So the showcase lists the other apps' folders as its own
-targets, through symlinks in `examples/device-lab/Sources/`.
+library. Depending on `../weather` from Device Lab would bring a second Rust
+library, and a second `ForgeFFI` and `AppHost`, names SwiftPM won't allow
+twice.
 
-The ForgeUI Showcase shows how it should work: it has no Rust, so it is an
-ordinary package with a library product, and Device Lab depends on it with one
-line. An app's views and models should be a product like that, depending on a
-bindings module the host app provides, not containing one.
+**Fix.** Each hosted app is a small package of its own,
+`examples/device-lab/Apps/<App>/Package.swift`, about 40 lines. Its
+`Sources/` are symlinks to the app's own Swift folders, and `Generated` is a
+symlink to `Generated/Linked/<crate>`. It links nothing: the Rust is in
+Device Lab's library. Device Lab depends on each package with SwiftPM
+`moduleAliases` (`["ForgeFFI": "ChatFFI", "AppHost": "ChatApp"]`), so every
+app compiles exactly as it does on its own, under its own names, and Device
+Lab sees `ChatApp.ContentView` and `ChatFFI.ForgeServices`.
 
-## F5. Two targets called `AppHost`
+The ForgeUI Showcase shows the ideal: with no Rust, it is an ordinary
+package, and Device Lab depends on it with one line. If each app shipped its
+Swift as a package like the ones under `Apps/`, the host would need no
+symlinks.
 
-Device Lab and Pocket Library both call their main target `AppHost` (and
-their product `AppHostXtool`, and their tests `AppHostTests`). The showcase
-compiles Pocket Library's folder as `PocketLibraryApp`. Nothing in Pocket
-Library refers to its own module name, so this worked, but the template should
-name targets after the app (Weather and Checklist already do).
+## F5. Every app calls its main target `AppHost`
+
+Device Lab, Pocket Library, Good Dog, Commonplace and Chat all call their
+main target `AppHost` (and their product `AppHostXtool`). The module aliases
+(F4) make this harmless, but the template should name targets after the app
+(Weather and Checklist already do).
 
 ## F6. One lifecycle host per process
 
-`ForgeLifecycle.attach` replaces the previous attachment. Checklist is the
-only embedded app on ForgeKit's host, so it gets the lifecycle and nothing is
-lost today. When Pocket Library or Weather moves to `ForgeHost` (lifecycle
-step 2 of the architecture assessment), a showcase needs several hosts
-attached at once.
+`ForgeLifecycle.attach` replaced the previous attachment, so only one
+ForgeKit host could get the lifecycle. With Checklist and Commonplace both on
+ForgeKit that lost Checklist's. **Fixed in ForgeKit:** `attach` keeps one
+attachment per host (`detach(host)` and `detach()` remove them). For a
+single-host app nothing changes. It ships with the next ForgeKit release.
 
 ## F7. Five state models in four apps
 
@@ -202,7 +212,38 @@ Linking Checklist and Pocket Library brings forge_app into the library, so
 `forge_ffi.swift` and Device Lab's ForgeFFI target now depends on ForgeKit's
 ForgeApp product. That's correct, and costs nothing.
 
-## What went well
+## F15. Native services are per crate
+
+`forge_services::native_services!` keeps its installed services in the
+crate that calls it. Good Dog, Commonplace and Chat each have their own Rust
+side for them, so each needs its Swift adapters installed: Device Lab calls
+`GoodDogFFI.ForgeServices.install(...)` and so on at launch
+(`EmbeddedApps.install()`).
+
+What is per process, not per app, collides. **Secrets**: the Keychain
+service name defaults to the bundle id, so the showcase gives each app its
+own (`<bundle>.chat`). **Notifications**: one
+`UNUserNotificationCenter` delegate, so the last app to install wins.
+**Deep links**: Chat's `forgechat://` links reach only the module whose
+`forgeOpenURLs()` is on the root view, which is Device Lab's. **Files**: the
+files service hands every app the same app directories. A framework that
+expects to share a process would install services once, for every crate.
+
+## F16. Library names already taken
+
+Chat's and Good Dog's natural names, `chat_core` and `good_dog_core`, belong
+to their shared crates (`examples/chat-core`, `examples/good-dog-core`). Their
+app libraries are `chat_app` and `good_dog_app`. Library names live in one
+namespace across the whole build.
+
+## F17. Counter is left out
+
+Counter's Rust crate is shared with the Android Counter app, whose scripts
+load `libforge_ffi.so` by name and need a `cdylib`. Renaming it means
+changing the Android build, which is frozen (WIP). Counter is also due to be
+retired (app model review), so it stays out.
+
+## What went well## What went well
 
 - The Rust side composes once the names differ: four cores, two of them on
   forge-app, one with native services, linked into one library with no other

@@ -18,7 +18,7 @@ let package = Package(
     name: "Weather",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "WeatherApp", targets: ["WeatherApp", "ForgeFFI"]),
+        .library(name: "WeatherEmbed", targets: ["WeatherEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "weather_coreFFI", path: "Generated/weather_coreFFI"),
         forgeFFI,
+        .target(name: "WeatherEmbed", dependencies: ["WeatherApp", "ForgeFFI"], path: "Sources/WeatherEmbed"),
         .target(name: "WeatherBridge", dependencies: ["ForgeFFI"], path: "Sources/WeatherBridge"),
         .target(name: "WeatherApp", dependencies: ["WeatherBridge"], path: "Sources/WeatherApp"),
     ]

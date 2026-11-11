@@ -18,7 +18,7 @@ let package = Package(
     name: "Checklist",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "ChecklistApp", targets: ["ChecklistApp", "ForgeFFI"]),
+        .library(name: "ChecklistEmbed", targets: ["ChecklistEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "checklist_coreFFI", path: "Generated/checklist_coreFFI"),
         forgeFFI,
+        .target(name: "ChecklistEmbed", dependencies: ["ChecklistApp", "ForgeFFI"], path: "Sources/ChecklistEmbed"),
         .target(
             name: "ChecklistApp",
             dependencies: ["ForgeFFI", .product(name: "ForgeKit", package: "forgekit")],

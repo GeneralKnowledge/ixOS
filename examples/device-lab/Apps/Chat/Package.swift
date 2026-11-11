@@ -18,7 +18,7 @@ let package = Package(
     name: "Chat",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [
-        .library(name: "ChatApp", targets: ["AppHost", "ForgeFFI"]),
+        .library(name: "ChatEmbed", targets: ["ChatEmbed"]),
     ],
     dependencies: [
         .package(path: "../../../../forgekit"),
@@ -26,6 +26,7 @@ let package = Package(
     targets: [
         .systemLibrary(name: "chat_appFFI", path: "Generated/chat_appFFI"),
         forgeFFI,
+        .target(name: "ChatEmbed", dependencies: ["AppHost", "ForgeFFI"], path: "Sources/ChatEmbed"),
         .target(name: "AppHost", dependencies: ["ForgeFFI"], path: "Sources/AppHost"),
     ]
 )
