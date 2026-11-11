@@ -193,3 +193,18 @@ template and the other examples have it.
 **Framework.** `forge init` should write a path relative to `${SRCROOT}` when
 the app is inside the checkout, and keep the absolute path only for an app
 outside it.
+
+## A12. The Xcode project no longer links the Rust library
+
+**What happened.** Since #167 the Rust library is linked by the package's
+app-making targets (launcher, xtool app, tests), not by the `<App>App`
+library, so that a host app can link the module without a second copy of the
+Rust. The Xcode project's app target depends on `<App>App`, so its iOS build
+stopped linking `libforge_ffi.a` and failed with every UniFFI symbol
+undefined. This hit the template and every example with an Xcode project
+except Counter and Device Lab.
+
+**Fix (in #171).** The Xcode app target links the library itself:
+`LIBRARY_SEARCH_PATHS` gets the app's `build/ios-device/lib` and
+`OTHER_LDFLAGS` gets `-lforge_ffi -framework Security`, in the template and
+the six affected examples.
