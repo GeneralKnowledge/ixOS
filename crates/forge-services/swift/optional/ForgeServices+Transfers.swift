@@ -110,27 +110,68 @@ public final class ForgeTransfers: NSObject, TransferSession, URLSessionDownload
         lock.lock()
         self.sink = sink
         lock.unlock()
+        survey(sink: sink) { [weak self] live in
+            // After a force quit iOS can keep listing a cancelled task for a
+            // while and report its end only later. Look again once, so a dead
+            // task doesn't stay Running until the next launch.
+            guard live > 0 else { return }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 15) {
+                self?.survey(sink: sink) { _ in }
+            }
+        }
+    }
+
+    /// Tells Rust which tasks the sessions still have. A task that already
+    /// ended with an error (its delegate callback not yet delivered) is
+    /// reported as failed rather than live.
+    private func survey(sink: TransferSink, done: @escaping @Sendable (Int) -> Void) {
         let sessions = [session(discretionary: false), session(discretionary: true)]
         let group = DispatchGroup()
         let found = Locked<[SessionTaskInfo]>([])
+        let ended = Locked<[(String, NSError)]>([])
         for session in sessions {
             group.enter()
             session.getAllTasks { tasks in
-                let infos = tasks.compactMap { task -> SessionTaskInfo? in
-                    guard let id = task.taskDescription, task.state != .canceling else { return nil }
+                for task in tasks {
+                    guard let id = task.taskDescription else { continue }
+                    if let error = task.error as NSError? {
+                        ended.update { $0.append((id, error)) }
+                        continue
+                    }
+                    guard task.state != .canceling, task.state != .completed else { continue }
                     let expected = task.countOfBytesExpectedToReceive
-                    return SessionTaskInfo(
+                    let info = SessionTaskInfo(
                         id: id,
                         received: UInt64(max(0, task.countOfBytesReceived)),
-                        expected: expected > 0 ? UInt64(expected) : nil)
+                        expected: expected > 0 ? UInt64(expected) : nil,
+                        state: Self.describe(task.state))
+                    found.update { $0.append(info) }
                 }
-                found.update { $0.append(contentsOf: infos) }
                 group.leave()
             }
         }
         // On the delegate queue, in order with the session's callbacks.
         group.notify(queue: .global()) { [queue] in
-            queue.addOperation { sink.reconcile(tasks: found.value) }
+            queue.addOperation {
+                for (id, error) in ended.value {
+                    sink.failed(
+                        id: id, code: Int64(error.code), reason: error.localizedDescription,
+                        cancelled: error.domain == NSURLErrorDomain
+                            && error.code == NSURLErrorCancelled)
+                }
+                sink.reconcile(tasks: found.value)
+                done(found.value.count)
+            }
+        }
+    }
+
+    private static func describe(_ state: URLSessionTask.State) -> String {
+        switch state {
+        case .running: return "running"
+        case .suspended: return "suspended"
+        case .canceling: return "canceling"
+        case .completed: return "completed"
+        @unknown default: return "unknown"
         }
     }
 
@@ -258,7 +299,8 @@ public final class ForgeTransfers: NSObject, TransferSession, URLSessionDownload
         let handler = completionHandlers.removeValue(forKey: identifier)
         lock.unlock()
         if let handler {
-            NSLog("[forge] transfers: events handled, calling the system's completion handler")
+            // Logged by Rust, so it reaches the device log.
+            currentSink?.eventsHandled(session: identifier)
             DispatchQueue.main.async(execute: handler)
         }
     }

@@ -130,6 +130,14 @@ public final class LibraryModel {
         }
     }
 
+    /// Refreshes again if the last refresh found the device offline. The
+    /// view calls it when the network comes back and when the app returns
+    /// to the foreground, which is what the offline footer promises.
+    public func refreshIfOffline() async {
+        guard lastRefresh?.offline == true else { return }
+        await refresh()
+    }
+
     public func cancelRefresh() {
         refreshing?.cancel()
     }
@@ -192,11 +200,19 @@ public struct RefreshSummary: Equatable, Sendable {
     public let at: Date
     public let newArticles: UInt32
     public let failed: [String]
+    /// Every feed failed because the device is offline.
+    public let offline: Bool
 
     public init(report: RefreshReport, at: Date) {
         self.at = at
         newArticles = report.newArticles
         failed = report.failures.map(\.title)
+        offline =
+            !report.failures.isEmpty
+            && report.failures.allSatisfy {
+                if case .Offline = $0.error { return true }
+                return false
+            }
     }
 }
 

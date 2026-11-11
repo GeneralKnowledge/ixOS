@@ -40,6 +40,9 @@
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
 mod feed;
+#[cfg(feature = "http")]
+pub mod http;
+mod http_service;
 pub mod link;
 pub mod notify;
 mod optional;
@@ -699,3 +702,8 @@ macro_rules! native_services {
         }
     };
 }
+
+/// For code the service macros emit into the app.
+#[cfg(feature = "transfers")]
+#[doc(hidden)]
+pub use forge_runtime as __forge_runtime;

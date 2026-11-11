@@ -379,3 +379,18 @@ fn transfer_rows_show_progress_and_why_a_transfer_stopped() {
     fake.finish(&service, &id, 200, b"0123456789");
     assert_eq!(row(&service.get(&id).unwrap()).state, "Downloaded");
 }
+
+#[test]
+fn test_downloads_use_a_source_that_serves_their_exact_size() {
+    use crate::transfer_test::test_source;
+    let (url, bytes, _) = test_source(20);
+    assert!(url.starts_with("https://speed.cloudflare.com/"));
+    assert!(url.ends_with("bytes=20000000"));
+    assert_eq!(bytes, 20_000_000);
+    // Cloudflare refuses 100 MB and more, so large downloads use a fixed file.
+    let (url, bytes, name) = test_source(200);
+    assert_eq!(url, "https://proof.ovh.net/files/100Mb.dat");
+    assert_eq!(bytes, 104_857_600);
+    assert_eq!(name, "test-100mib");
+    assert_eq!(test_source(0).1, 1_000_000);
+}

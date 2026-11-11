@@ -4345,6 +4345,12 @@ public protocol TransferSinkProtocol: AnyObject, Sendable {
     func downloaded(id: String, httpStatus: UInt16) 
     
     /**
+     * The session delivered every event of a background wake and
+     * the host is about to call the system's completion handler.
+     */
+    func eventsHandled(session: String) 
+    
+    /**
      * The task ended without a body. `cancelled`: it was
      * cancelled (by the app, or by the system on force quit).
      */
@@ -4353,7 +4359,8 @@ public protocol TransferSinkProtocol: AnyObject, Sendable {
     func progress(id: String, received: UInt64, expected: UInt64?) 
     
     /**
-     * The tasks the session has, once after it is (re)created.
+     * The tasks the session has, after it is (re)created, and once more
+     * shortly after.
      */
     func reconcile(tasks: [SessionTaskInfo]) 
     
@@ -4431,6 +4438,19 @@ open func downloaded(id: String, httpStatus: UInt16)  {try! rustCall() {
 }
     
     /**
+     * The session delivered every event of a background wake and
+     * the host is about to call the system's completion handler.
+     */
+open func eventsHandled(session: String)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_transfersink_events_handled(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(session),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * The task ended without a body. `cancelled`: it was
      * cancelled (by the app, or by the system on force quit).
      */
@@ -4458,7 +4478,8 @@ open func progress(id: String, received: UInt64, expected: UInt64?)  {try! rustC
 }
     
     /**
-     * The tasks the session has, once after it is (re)created.
+     * The tasks the session has, after it is (re)created, and once more
+     * shortly after.
      */
 open func reconcile(tasks: [SessionTaskInfo])  {try! rustCall() {
         uniffiCallStatus in
@@ -6588,13 +6609,23 @@ public struct SessionTaskInfo: Equatable, Hashable {
     public var id: String
     public var received: UInt64
     public var expected: UInt64?
+    /**
+     * The host's own state for the task ("running",
+     * "suspended", ...), for the log only.
+     */
+    public var state: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: String, received: UInt64, expected: UInt64?) {
+    public init(id: String, received: UInt64, expected: UInt64?, 
+        /**
+         * The host's own state for the task ("running",
+         * "suspended", ...), for the log only.
+         */state: String) {
         self.id = id
         self.received = received
         self.expected = expected
+        self.state = state
     }
 
     
@@ -6615,7 +6646,8 @@ public struct FfiConverterTypeSessionTaskInfo: FfiConverterRustBuffer {
             try SessionTaskInfo(
                 id: FfiConverterString.read(from: &buf), 
                 received: FfiConverterUInt64.read(from: &buf), 
-                expected: FfiConverterOptionUInt64.read(from: &buf)
+                expected: FfiConverterOptionUInt64.read(from: &buf), 
+                state: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -6623,6 +6655,7 @@ public struct FfiConverterTypeSessionTaskInfo: FfiConverterRustBuffer {
         FfiConverterString.write(value.id, into: &buf)
         FfiConverterUInt64.write(value.received, into: &buf)
         FfiConverterOptionUInt64.write(value.expected, into: &buf)
+        FfiConverterString.write(value.state, into: &buf)
     }
 }
 
@@ -9577,7 +9610,8 @@ public func transferTestRows() -> [TransferRow]  {
 })
 }
 /**
- * Starts downloading `megabytes` MB (1 to 500) in the background.
+ * Starts a test download in the background: `megabytes` MB up to 70, or
+ * the 100 MiB file for anything larger.
  */
 public func transferTestStart(megabytes: UInt32)throws  -> String  {
     return try  FfiConverterString.lift(try rustCallWithError(FfiConverterTypeTransferTestError_lift) {
@@ -9651,7 +9685,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_func_transfer_test_rows() != 26480) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 1009) {
+    if (uniffi_forge_ffi_checksum_func_transfer_test_start() != 22227) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_refresh_permissions() != 63463) {
@@ -9777,13 +9811,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_transfersink_downloaded() != 46742) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_transfersink_events_handled() != 62344) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_transfersink_failed() != 436) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_transfersink_progress() != 47741) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 46829) {
+    if (uniffi_forge_ffi_checksum_method_transfersink_reconcile() != 23410) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_constructor_devicelab_new() != 17449) {

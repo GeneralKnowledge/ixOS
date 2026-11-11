@@ -17,11 +17,16 @@ publish = false
 default = []
 # Background downloads (`native_services!(transfers)`): the ledger,
 # verification and delivery into a FileStore live in `transfers`.
-transfers = ["dep:forge-storage", "forge-storage/hash", "dep:serde"]
+transfers = ["dep:forge-storage", "forge-storage/hash", "dep:serde", "dep:forge-runtime"]
+# Ordinary HTTP requests through the host's stack (`native_services!(http)`):
+# a `forge_net::HttpClient` over URLSession on iOS. Logic in `http`.
+http = ["dep:forge-net"]
 
 [dependencies]
 forge-storage = { workspace = true, optional = true }
+forge-net = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+forge-runtime = { workspace = true, optional = true }
 
 [dev-dependencies]
 uniffi = { workspace = true }
@@ -32,3 +37,7 @@ tempfile = "3.14"
 [[test]]
 name = "transfers"
 required-features = ["transfers"]
+
+[[test]]
+name = "http"
+required-features = ["http"]

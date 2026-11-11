@@ -37,8 +37,9 @@ use store::{FetchResult, Fetched, Flag, Snapshot, Store};
 uniffi::setup_scaffolding!("forge_ffi");
 
 // Native services the host implements (Keychain, app directories, local
-// notifications, permissions, deep links), as `crate::native`.
-forge_services::native_services!();
+// notifications, permissions, deep links), as `crate::native`, and `http`:
+// on iOS feeds are fetched with URLSession.
+forge_services::native_services!(http);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category")` writes into the
 // same log as Rust.
@@ -71,6 +72,8 @@ pub struct AppCore {
     rt: Runtime<State>,
     snapshot: Arc<Published<Snapshot>>,
     http: Arc<dyn HttpClient>,
+    /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
+    transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
     #[cfg(feature = "devtools")]
     _devtools: Option<forge_devtools::DevTools>,
 }
@@ -81,7 +84,16 @@ impl AppCore {
     /// holds it, so no second core can write there.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
-        Self::open(storage_directory, Arc::new(UreqClient::new()))
+        // URLSession once the host has installed its services (on iOS, just
+        // after this core is made); ureq before that, and in Linux tests.
+        let http = Arc::new(native::http::HttpService::prefer_installed(
+            Arc::new(UreqClient::new()),
+            |c| c,
+        ));
+        let core = Self::open(storage_directory, http.clone())?;
+        // Only for the log line saying which transport fetched the feeds.
+        let _ = core.transport.set(http);
+        Ok(core)
     }
 
     /// Every subscription, by title.
@@ -266,12 +278,21 @@ impl AppCore {
                 Ok::<_, AppError>(added)
             })
             .await?;
+        // Error kinds only: feed titles and addresses are the user's.
+        let kinds: Vec<&str> = report.failures.iter().map(|f| f.error.kind()).collect();
+        let transport = match self.transport.get() {
+            Some(t) if t.uses_host() => "URLSession",
+            Some(_) => "ureq",
+            None => "test client",
+        };
         forge_runtime::logging::info!(
-            "refreshed {} feeds: {} new articles, {} unchanged, {} failed",
+            "refreshed {} feeds through {}: {} new articles, {} unchanged, {} failed {:?}",
             report.feeds,
+            transport,
             report.new_articles,
             report.unchanged,
-            report.failures.len()
+            report.failures.len(),
+            kinds
         );
         Ok(report)
     }
@@ -365,6 +386,7 @@ impl AppCore {
             rt,
             snapshot: published,
             http,
+            transport: std::sync::OnceLock::new(),
         }))
     }
 }

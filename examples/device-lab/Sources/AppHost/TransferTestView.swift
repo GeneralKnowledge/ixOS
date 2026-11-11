@@ -13,8 +13,8 @@ struct TransferTestView: View {
             Section {
                 Button("Download 20 MB") { model.start(megabytes: 20) }
                     .accessibilityIdentifier("transfers.start20")
-                Button("Download 200 MB") { model.start(megabytes: 200) }
-                    .accessibilityIdentifier("transfers.start200")
+                Button("Download 100 MiB") { model.start(megabytes: 100) }
+                    .accessibilityIdentifier("transfers.start100")
                 Toggle("End the app when I leave", isOn: $model.endWhenBackgrounded)
                     .accessibilityIdentifier("transfers.endWhenBackgrounded")
             } footer: {
@@ -55,32 +55,50 @@ private struct TransferRowView: View {
     let model: TransferTestModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
-                Text(row.name).font(.subheadline.monospaced()).lineLimit(1)
-                Spacer()
-                Text(row.state).font(.subheadline.weight(.semibold))
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(row.name).font(.subheadline.monospaced()).lineLimit(1)
+                    Spacer()
+                    Text(row.state).font(.subheadline.weight(.semibold))
+                }
+                if let fraction = row.fraction, row.state == "Running" {
+                    ProgressView(value: fraction)
+                }
+                if let detail = row.detail {
+                    Text(detail).font(.footnote).foregroundStyle(.secondary)
+                }
+                if row.attempts > 1 {
+                    Text("Attempt \(row.attempts)").font(.footnote).foregroundStyle(.secondary)
+                }
             }
-            if let fraction = row.fraction, row.state == "Running" {
-                ProgressView(value: fraction)
-            }
-            if let detail = row.detail {
-                Text(detail).font(.footnote).foregroundStyle(.secondary)
-            }
-            if row.attempts > 1 {
-                Text("Attempt \(row.attempts)").font(.footnote).foregroundStyle(.secondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("transfers.row")
+            // Visible as well as on a swipe, so the step can be done (and
+            // scripted) without knowing the gesture.
+            if row.canCancel || row.canRetry {
+                HStack(spacing: 20) {
+                    if row.canCancel {
+                        Button("Cancel", role: .destructive) { model.cancel(row) }
+                            .accessibilityIdentifier("transfers.cancel")
+                    }
+                    if row.canRetry {
+                        Button("Retry") { model.retry(row) }
+                            .accessibilityIdentifier("transfers.retry")
+                    }
+                }
+                .buttonStyle(.borderless)
+                .font(.subheadline)
             }
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("transfers.row")
         .swipeActions {
             if row.canCancel {
                 Button("Cancel", role: .destructive) { model.cancel(row) }
-                    .accessibilityIdentifier("transfers.cancel")
+                    .accessibilityIdentifier("transfers.swipeCancel")
             }
             if row.canRetry {
                 Button("Retry") { model.retry(row) }
-                    .accessibilityIdentifier("transfers.retry")
+                    .accessibilityIdentifier("transfers.swipeRetry")
             }
         }
     }

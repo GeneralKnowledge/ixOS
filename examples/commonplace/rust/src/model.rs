@@ -171,6 +171,29 @@ impl From<NetError> for AppError {
     }
 }
 
+impl AppError {
+    /// The variant's name, for logs (never the reason, which may hold an
+    /// address the user typed).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Self::InvalidInput { .. } => "invalid-input",
+            Self::NotFound => "not-found",
+            Self::AlreadySubscribed { .. } => "already-subscribed",
+            Self::NotAFeed { .. } => "not-a-feed",
+            Self::Http { .. } => "http",
+            Self::Storage { .. } => "storage",
+            Self::InUse => "in-use",
+            Self::Offline { .. } => "offline",
+            Self::Certificate { .. } => "certificate",
+            Self::Timeout => "timeout",
+            Self::Network { .. } => "network",
+            Self::Cancelled => "cancelled",
+            Self::Interrupted => "interrupted",
+            Self::ShutDown => "shut-down",
+        }
+    }
+}
+
 /// The framework kind of an error, so ForgeKit can present any of them.
 #[uniffi::export]
 pub fn app_error_kind(error: AppError) -> ErrorKind {

@@ -27,9 +27,10 @@ forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite"] }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 # Native services (Keychain, directories, notifications, permissions, deep
-# links): `forge_services::native_services!()` in src/lib.rs. To drop them,
+# links) and `http` (feeds are fetched with URLSession on iOS):
+# `forge_services::native_services!(http)` in src/lib.rs. To drop them,
 # remove that line, this dependency and async-trait. See docs/native-services.md.
-forge-services = { path = "../../../crates/forge-services" }
+forge-services = { path = "../../../crates/forge-services", features = ["http"] }
 # The live connection to `forge device` (pair, connect, status, snapshot, cmd).
 # Only in development builds: `forge run ios --devtools` turns the feature on,
 # so release builds contain none of it. See docs/forge-device.md.

@@ -394,6 +394,7 @@ impl DeviceLab {
     /// Uses the services the host installed at launch.
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
+        forge_runtime::logging::init();
         Arc::new(Self::with_services(LabServices::installed()))
     }
 
