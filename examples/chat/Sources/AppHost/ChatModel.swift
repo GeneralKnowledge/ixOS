@@ -247,7 +247,7 @@ public final class ChatModel {
     /// The app lock setting (Rust keeps it); `appLockMethod` says how it
     /// would unlock here, nil when this iPhone can't lock at all.
     public private(set) var appLock = false
-    public var appLockMethod: String? { ForgeFFI.appLockMethod() }
+    public var appLockMethod: String? { ChatFFI.appLockMethod() }
 
     public func setAppLock(_ enabled: Bool) {
         perform { try $0.setAppLock(enabled: enabled) }
