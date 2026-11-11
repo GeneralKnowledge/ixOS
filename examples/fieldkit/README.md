@@ -11,8 +11,20 @@ showcase.
 | Milestone | What | State |
 |---|---|---|
 | F1 | Rust core: trips, track filtering and totals, notes with photo and voice files, SQLite | This folder's `rust/`; tested on Linux |
-| F2 | The app: SwiftUI screens, the location native service, MapKit, camera, voice notes; hosted in Device Lab | Waits for the showcase's hostable-app fixes (#167) |
+| F2a | The app: trips list, Record, live map and totals, text notes, trip screen with Share as GPX or GeoJSON; the core follows the location service | Written; Swift checked by the laptop build and macOS CI only |
+| F2b | Photo and voice notes, with Chat's photo picker moved into the framework; hosted in Device Lab | Next |
 | F3 | GPX and GeoJSON export (Rust done early), charts, background recording | Export written and tested on Linux; the rest not started |
+
+## The app
+
+- **Trips**: every trip, newest first, with the one being recorded on top.
+- **Record**: name the trip and start. FieldKit asks for location the first
+  time. The recording screen shows the track on Apple Maps, the distance,
+  time and climb, and has Add Note and Stop.
+- **A trip**: its map with notes as pins, its totals and notes, and Share as
+  GPX or GeoJSON, Rename and Delete.
+
+Recording happens while FieldKit is on screen; background recording is F3.
 
 ## The Rust core
 
@@ -29,8 +41,10 @@ showcase.
   voice memos are copied into a content-addressed store and deleted with
   the last note that uses them.
 - **Export** to GPX 1.1 and GeoJSON, with placed notes as waypoints.
-- Swift owns Core Location, the camera and the microphone, and passes the
-  results in.
+- **Follows location itself** while a trip records, through the location
+  native service (`native_services!(location)`), and says why when it
+  can't (permission denied, no service).
+- Swift owns the camera and the microphone and passes their files in.
 
 ```bash
 cargo test --manifest-path examples/fieldkit/rust/Cargo.toml

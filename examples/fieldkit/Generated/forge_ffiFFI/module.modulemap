@@ -1,0 +1,7 @@
+module fieldkit_coreFFI {
+    header "forge_ffiFFI.h"
+    export *
+    use "Darwin"
+    use "_Builtin_stdbool"
+    use "_Builtin_stdint"
+}
