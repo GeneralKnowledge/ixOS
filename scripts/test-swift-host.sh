@@ -30,7 +30,7 @@ mkdir -p "$LIB_DIR"
 if [[ ! -f "$CARGO_TARGET/debug/lib${LIB_NAME}.a" ]]; then
   cargo build "${CARGO_SELECT[@]}" --lib
 fi
-cp"$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
+cp "$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
 
 # The Chat example's tests drive the real chat server (they skip the tests
 # that need it when CHAT_SERVER is unset).
