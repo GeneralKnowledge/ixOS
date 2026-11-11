@@ -311,3 +311,9 @@ with one router that every app's Rust registers with.
 | Seven apps: deep links routed in AppHost | Laptop | The App target failed on an ambiguous `receivesDeepLinks()` (F19) |
 | Seven apps: after the F19 fixes | Laptop, 39 s (incremental) | Pass; 36 MB app bundle (20 MB with four). Warnings only: the same Sendable warnings, now also in Chat's and Commonplace's `ForgeServices+Selected.swift` |
 | Opening each app on the iPhone | Next sitting | Not run |
+
+On the iPhone, check first what Linux can't show: several apps' Rust cores
+and logging starting in one process; the shared Keychain (each app's own
+service name); notification taps (the last app to install its adapter gets
+them, F15); and each app's data still there after switching apps and
+relaunching.
