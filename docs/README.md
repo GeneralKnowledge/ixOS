@@ -26,6 +26,7 @@ Read these in order the first time.
 | [app-foundations.md](app-foundations.md) | Rust application foundations in `forge-app`: saved state as one versioned document with recovery rules, field-by-field validation |
 | [forgeappkit.md](forgeappkit.md) | ForgeAppKit, application patterns on ForgeUI: alerts, confirmations and destinations as model values, load and submission state, form errors |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
+| [architecture-assessment.md](architecture-assessment.md) | The architecture's trade-offs: what is intentional, what is a current limitation, and what to improve next, in order |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
 | [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, reader, documents, media, background tasks, identity, maps, charts), in what order, and how each is proven |

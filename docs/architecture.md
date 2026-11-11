@@ -2,6 +2,8 @@
 
 Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
 
+> **Partly out of date.** The canonical application model is now `forge-app` plus ForgeKit, with Checklist as the reference app ([app-model-review.md](app-model-review.md)). The sections below on Counter, its bridge and its persistence describe the earlier design. [architecture-assessment.md](architecture-assessment.md) lists what to update here, and assesses the design's trade-offs and where it should improve.
+
 ## Framework principles
 
 ixOS is a framework of reusable capabilities, not only a way to build Rust-backed SwiftUI apps. Two rules decide what goes into it, a third how it is used, and a fourth which side owns what.
