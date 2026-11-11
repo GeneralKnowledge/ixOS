@@ -24,8 +24,9 @@ orientations = ["portrait"]
 # The apps on the Apps screen. Forge merges their iOS settings into this
 # app's when it reads this file: Pocket Library's audio background mode,
 # Chat's forgechat:// scheme, their permission texts (a text below wins) and
-# their test-data arguments (-ForgeTemporaryData for the ForgeKit hosts,
-# -ForgeUITestData for Pocket Library and Good Dog). See docs/app-config.md.
+# their test-data arguments. Every app now honours both -ForgeTemporaryData
+# and -ForgeUITestData, so either one starts them all on throwaway data.
+# See docs/app-config.md.
 [host]
 apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../chat"]
 
