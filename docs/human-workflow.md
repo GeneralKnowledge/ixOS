@@ -107,8 +107,10 @@ forge ui tree                        # the accessibility tree
 forge ui audit                       # unlabelled controls, small tap targets, clipped text
 forge ui tap --id notes.add          # one action at a time, no test file:
 forge ui type --id compose.text "Hi" #   tap, type, clear, scroll, swipe, long-press,
-forge ui key dismiss                 #   double-tap, drag, key, expect
+forge ui key dismiss                 #   double-tap, drag, pinch, pick, key, expect...
 forge ui expect --id compose.save --enabled true
+forge ui alert accept --text Camera  # a permission prompt; also press home, open-url, back
+forge ui tap --at 200,640            # a point, for a control with no identifier (terminal only)
 ```
 
 ### 10. Read logs and diagnose
@@ -167,7 +169,7 @@ The script also checks that nothing agent-shaped took part: no `AGENTS.md`, `CLA
 |---|---|
 | The `forge` CLI, `--json` results (`forge.result/1`) | `forge mcp`: MCP tools that run those commands and return their results |
 | `forge inspect`, `forge ui launch`, `forge diagnose`, `forge verify` | `forge_inspect_app`, `forge_launch_app`, `forge_diagnose` (adds the session's last failure), `forge_verify` |
-| `forge ui tap`, `type`, `scroll`, `swipe`, `long-press`, `double-tap`, `drag`, `key`, `expect` | `forge_ui_act` (one tool, the same actions) |
+| `forge ui tap`, `type`, `scroll`, `swipe`, `long-press`, `double-tap`, `drag`, `pinch`, `rotate`, `pick`, `key`, `press`, `open-url`, `alert`, `back`, `app-state`, `reset-permission`, `orientation`, `settle`, `expect` | `forge_ui_act` (one tool, the same actions; coordinates, `lock` and `unlock` stay in the terminal) |
 | The app's `README.md` and Forge's `docs/` | `forge agent setup`: `AGENTS.md` (the app's easy-to-miss rules and the commands), `CLAUDE.md`, `.mcp.json` (`--apple-docs` adds a hosted documentation server) |
 | `forge init` | `forge init --agent` (both at once); `forge_create_app` passes it |
 

@@ -379,6 +379,83 @@ pub trait Driver {
     fn drag_by(&mut self, _element: &ElementRef, _direction: &str, _fraction: f64) -> Result<()> {
         Err(cannot("drag"))
     }
+    /// Two fingers pinching on the element: `scale` above 1 zooms in, below
+    /// 1 zooms out.
+    fn pinch(&mut self, _element: &ElementRef, _scale: f64) -> Result<()> {
+        Err(cannot("pinch"))
+    }
+    /// Two fingers turning on the element, by `radians` (clockwise when
+    /// positive).
+    fn rotate(&mut self, _element: &ElementRef, _radians: f64) -> Result<()> {
+        Err(cannot("rotate"))
+    }
+    /// One tap with two fingers on the element.
+    fn two_finger_tap(&mut self, _element: &ElementRef) -> Result<()> {
+        Err(cannot("tap with two fingers"))
+    }
+    /// A touch at a point on the screen, in points from the top-left.
+    /// Only for a person at the terminal (`forge ui tap --at`): test files
+    /// and agents find elements, never coordinates (AGENTS.md rule 4).
+    fn touch_at(&mut self, _touch: &PointTouch) -> Result<()> {
+        Err(cannot("touch a point on the screen"))
+    }
+    /// The Home button: the app goes to the background.
+    fn home(&mut self) -> Result<()> {
+        Err(cannot("press Home"))
+    }
+    /// A hardware button other than Home: `volumeup`, `volumedown`,
+    /// `action` or `camera` (where the phone has one).
+    fn press_button(&mut self, _name: &str) -> Result<()> {
+        Err(cannot("press buttons"))
+    }
+    /// Open a URL as the system would: a web page in Safari, a deep link or
+    /// universal link in its app.
+    fn open_url(&mut self, _url: &str) -> Result<()> {
+        Err(cannot("open URLs"))
+    }
+    /// How an installed app is running.
+    fn app_state(&mut self, _bundle_id: &str) -> Result<AppState> {
+        Err(cannot("read an app's state"))
+    }
+    /// Forget the app under test's answer to a permission prompt, so the
+    /// next request asks again. iOS stops the app when it does this.
+    fn reset_permission(&mut self, _resource: Permission) -> Result<()> {
+        Err(cannot("reset permissions"))
+    }
+    /// The open alert's title and message, or `None` when there is none.
+    fn alert_text(&mut self) -> Result<Option<String>> {
+        Ok(None)
+    }
+    /// The open alert's button labels.
+    fn alert_buttons(&mut self) -> Result<Vec<String>> {
+        Err(cannot("read alerts"))
+    }
+    /// Answer the open alert: its default (accepting) button, or the one
+    /// labelled `button`.
+    fn alert_accept(&mut self, _button: Option<&str>) -> Result<()> {
+        Err(cannot("answer alerts"))
+    }
+    /// Dismiss the open alert (its Cancel or Don't Allow).
+    fn alert_dismiss(&mut self) -> Result<()> {
+        Err(cannot("answer alerts"))
+    }
+    /// Lock the phone's screen.
+    fn lock(&mut self) -> Result<()> {
+        Err(cannot("lock the phone"))
+    }
+    /// Unlock it again: works only on a phone without a passcode.
+    fn unlock(&mut self) -> Result<()> {
+        Err(cannot("unlock the phone"))
+    }
+    /// The screen's size in points, its scale, and which way up it is.
+    fn screen(&mut self) -> Result<Screen> {
+        Err(cannot("read the screen's size"))
+    }
+    /// Turn the interface: `portrait` or `landscape` (on a phone that
+    /// allows it; the rotation lock must be off).
+    fn set_orientation(&mut self, _orientation: &str) -> Result<()> {
+        Err(cannot("rotate the screen"))
+    }
     /// Press a key on the on-screen keyboard: [`Key::Return`] or
     /// [`Key::Delete`]. [`Key::Dismiss`] hides the keyboard.
     fn press_key(&mut self, key: Key) -> Result<()> {
@@ -429,6 +506,147 @@ impl Key {
             Key::Dismiss => "dismiss",
         }
     }
+}
+
+/// A touch at screen coordinates, in points.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PointTouch {
+    Tap {
+        x: f64,
+        y: f64,
+    },
+    DoubleTap {
+        x: f64,
+        y: f64,
+    },
+    LongPress {
+        x: f64,
+        y: f64,
+        seconds: f64,
+    },
+    /// Press at `from`, hold, drag to `to`: a swipe with no hold.
+    Drag {
+        from: (f64, f64),
+        to: (f64, f64),
+        hold: f64,
+    },
+}
+
+impl PointTouch {
+    /// What it is, for messages and the any-app journal.
+    pub fn name(&self) -> &'static str {
+        match self {
+            PointTouch::Tap { .. } => "tap",
+            PointTouch::DoubleTap { .. } => "double_tap",
+            PointTouch::LongPress { .. } => "long_press",
+            PointTouch::Drag { .. } => "swipe",
+        }
+    }
+}
+
+/// How an app is running, as XCTest reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppState {
+    NotRunning,
+    Background,
+    Foreground,
+    Unknown,
+}
+
+impl AppState {
+    /// XCUIApplicationState's raw value.
+    pub fn from_raw(raw: i64) -> AppState {
+        match raw {
+            1 => AppState::NotRunning,
+            2 | 3 => AppState::Background,
+            4 => AppState::Foreground,
+            _ => AppState::Unknown,
+        }
+    }
+
+    pub const NAMES: &'static [&'static str] = &["not_running", "background", "foreground"];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            AppState::NotRunning => "not_running",
+            AppState::Background => "background",
+            AppState::Foreground => "foreground",
+            AppState::Unknown => "unknown",
+        }
+    }
+}
+
+/// A protected resource whose permission answer can be reset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Permission {
+    Contacts,
+    Calendar,
+    Reminders,
+    Photos,
+    Microphone,
+    Camera,
+    MediaLibrary,
+    Home,
+    Bluetooth,
+    Location,
+}
+
+impl Permission {
+    pub const ALL: &'static [(&'static str, Permission)] = &[
+        ("contacts", Permission::Contacts),
+        ("calendar", Permission::Calendar),
+        ("reminders", Permission::Reminders),
+        ("photos", Permission::Photos),
+        ("microphone", Permission::Microphone),
+        ("camera", Permission::Camera),
+        ("media_library", Permission::MediaLibrary),
+        ("home", Permission::Home),
+        ("bluetooth", Permission::Bluetooth),
+        ("location", Permission::Location),
+    ];
+
+    pub fn parse(name: &str) -> Option<Permission> {
+        Self::ALL.iter().find(|(n, _)| *n == name).map(|(_, p)| *p)
+    }
+
+    pub fn names() -> Vec<&'static str> {
+        Self::ALL.iter().map(|(n, _)| *n).collect()
+    }
+
+    /// XCUIProtectedResource's raw value.
+    pub fn raw(self) -> i64 {
+        match self {
+            Permission::Contacts => 1,
+            Permission::Calendar => 2,
+            Permission::Reminders => 3,
+            Permission::Photos => 4,
+            Permission::Microphone => 5,
+            Permission::Camera => 6,
+            Permission::MediaLibrary => 7,
+            Permission::Home => 8,
+            Permission::Bluetooth => 0x4000_0000,
+            Permission::Location => 0x4000_0002,
+        }
+    }
+}
+
+/// The hardware buttons a test can press, as test files name them, and
+/// WebDriverAgent's names for them. Home has its own step.
+pub const BUTTONS: &[(&str, &str)] = &[
+    ("volume_up", "volumeup"),
+    ("volume_down", "volumedown"),
+    ("action", "action"),
+    ("camera", "camera"),
+];
+
+/// The screen: size in points, scale, and which way up.
+#[derive(Debug, Clone, Default, PartialEq, serde::Serialize)]
+pub struct Screen {
+    pub width: f64,
+    pub height: f64,
+    pub scale: f64,
+    pub orientation: String,
 }
 
 /// The four directions a swipe, a drag or a scroll can go.
@@ -616,6 +834,8 @@ pub mod fake {
         /// Each scroll up, down, left or right shows the next of these, as
         /// a lazy list draws rows that were below the fold.
         pub scroll_pages: Vec<UiNode>,
+        /// An open alert: its text and button labels.
+        pub alert: Option<(String, Vec<String>)>,
     }
 
     impl FakeDriver {
@@ -757,6 +977,13 @@ pub mod fake {
                 "enabled" => Some(node.enabled.to_string()),
                 "type" => Some(format!("XCUIElementType{}", node.kind)),
                 "hittable" => Some((node.visible && node.enabled).to_string()),
+                "visible" => Some(node.visible.to_string()),
+                "selected" => Some(
+                    node.value
+                        .as_deref()
+                        .is_some_and(|v| v == "selected")
+                        .to_string(),
+                ),
                 _ => None,
             })
         }
@@ -807,6 +1034,106 @@ pub mod fake {
         }
         fn press_key(&mut self, key: Key) -> Result<()> {
             self.calls.push(format!("key {}", key.name()));
+            Ok(())
+        }
+        fn pinch(&mut self, element: &ElementRef, scale: f64) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("pinch {name} {scale}"));
+            Ok(())
+        }
+        fn rotate(&mut self, element: &ElementRef, radians: f64) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("rotate {name} {radians:.3}"));
+            Ok(())
+        }
+        fn two_finger_tap(&mut self, element: &ElementRef) -> Result<()> {
+            let name = self.name(element)?;
+            self.calls.push(format!("two finger tap {name}"));
+            Ok(())
+        }
+        fn touch_at(&mut self, touch: &PointTouch) -> Result<()> {
+            self.calls.push(format!("{touch:?}"));
+            Ok(())
+        }
+        fn home(&mut self) -> Result<()> {
+            self.calls.push("home".into());
+            self.front = Some(SPRINGBOARD.to_owned());
+            Ok(())
+        }
+        fn press_button(&mut self, name: &str) -> Result<()> {
+            self.calls.push(format!("button {name}"));
+            Ok(())
+        }
+        fn open_url(&mut self, url: &str) -> Result<()> {
+            self.calls.push(format!("open {url}"));
+            Ok(())
+        }
+        fn app_state(&mut self, bundle_id: &str) -> Result<AppState> {
+            Ok(match self.front.as_deref() {
+                Some(f) if f == bundle_id => AppState::Foreground,
+                _ if self
+                    .calls
+                    .iter()
+                    .any(|c| c == &format!("terminate {bundle_id}")) =>
+                {
+                    AppState::NotRunning
+                }
+                _ => AppState::Background,
+            })
+        }
+        fn reset_permission(&mut self, resource: Permission) -> Result<()> {
+            self.calls
+                .push(format!("reset permission {}", resource.raw()));
+            Ok(())
+        }
+        fn alert_text(&mut self) -> Result<Option<String>> {
+            Ok(self.alert.as_ref().map(|(text, _)| text.clone()))
+        }
+        fn alert_buttons(&mut self) -> Result<Vec<String>> {
+            Ok(self
+                .alert
+                .as_ref()
+                .map(|(_, b)| b.clone())
+                .unwrap_or_default())
+        }
+        fn alert_accept(&mut self, button: Option<&str>) -> Result<()> {
+            let Some((_, buttons)) = self.alert.take() else {
+                return Err(UiError::Wda("no such alert".into()));
+            };
+            if let Some(b) = button {
+                if !buttons.iter().any(|x| x == b) {
+                    return Err(UiError::Wda(format!("no alert button {b:?}")));
+                }
+            }
+            self.calls
+                .push(format!("alert accept {}", button.unwrap_or("default")));
+            Ok(())
+        }
+        fn alert_dismiss(&mut self) -> Result<()> {
+            if self.alert.take().is_none() {
+                return Err(UiError::Wda("no such alert".into()));
+            }
+            self.calls.push("alert dismiss".into());
+            Ok(())
+        }
+        fn lock(&mut self) -> Result<()> {
+            self.calls.push("lock".into());
+            Ok(())
+        }
+        fn unlock(&mut self) -> Result<()> {
+            self.calls.push("unlock".into());
+            Ok(())
+        }
+        fn screen(&mut self) -> Result<Screen> {
+            Ok(Screen {
+                width: 430.0,
+                height: 932.0,
+                scale: 3.0,
+                orientation: "portrait".into(),
+            })
+        }
+        fn set_orientation(&mut self, orientation: &str) -> Result<()> {
+            self.calls.push(format!("orientation {orientation}"));
             Ok(())
         }
         fn dismiss_keyboard(&mut self) -> Result<()> {

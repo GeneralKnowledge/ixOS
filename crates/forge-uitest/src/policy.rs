@@ -380,6 +380,14 @@ pub enum Action {
         gesture: &'static str,
         target: Target,
     },
+    /// Something done to the phone rather than to an element: `home`,
+    /// `button`, `open_url`, `orientation`, `reset_permission`, `lock`,
+    /// `unlock`. `what` says what, for the question and the journal (a
+    /// button's name, a URL's scheme and host).
+    Device {
+        name: &'static str,
+        what: String,
+    },
     /// A keyboard key: Return, Delete, or hiding the keyboard.
     Key {
         name: &'static str,
@@ -402,6 +410,7 @@ impl Action {
             Action::Clear(_) => "clear",
             Action::Gesture { gesture, .. } => gesture,
             Action::Key { .. } => "key",
+            Action::Device { name, .. } => name,
             Action::Terminate => "terminate",
         }
     }
@@ -426,6 +435,10 @@ impl Action {
             | Action::Scroll
             | Action::Key {
                 name: "dismiss", ..
+            }
+            | Action::Device {
+                name: "home" | "orientation",
+                ..
             } => Level::Observe,
             _ => Level::Operate,
         }
@@ -687,6 +700,12 @@ impl Gate {
                 presses_return: true,
                 ..
             } => Some("press Return, which can send what was typed".to_string()),
+            // A link can start a call, a payment or a purchase; the Action
+            // and Camera buttons do whatever the person set them to.
+            Action::Device {
+                name: name @ ("open_url" | "button" | "reset_permission" | "lock" | "unlock"),
+                what,
+            } => Some(format!("{} {what}", name.replace('_', " "))),
             _ => None,
         };
         let Some(commit) = commit else {

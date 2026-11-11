@@ -239,14 +239,14 @@ pub const SPECS: &[Spec] = &[
     Spec {
         name: "forge_ui_act",
         title: "One UI action",
-        description: "One action on the app on screen, by accessibility identifier or label (never coordinates; for a control with neither, by kind with label or index, or near the text beside it): tap, type text, clear a field, scroll (to an element below the fold, paging a lazy list until its row appears, or a list up/down), swipe an element (a row's swipe actions), long_press (context menu), double_tap, drag (onto another element, or by a direction: a list dragged down refreshes), key (return, delete, or dismiss to hide the keyboard; no element), or expect a state (value, enabled, gone). Same as `forge ui <action>` in the terminal. Fails with the screen's tree when the element isn't there.",
+        description: "One action on the app on screen, by accessibility identifier or label (never coordinates; for a control with neither, by kind with label or index, or near the text beside it): tap, type text, clear a field, scroll (to an element below the fold, paging a lazy list until its row appears, or a list up/down), swipe an element (a row's swipe actions), long_press (context menu), double_tap, drag (onto another element, or by a direction: a list dragged down refreshes), key (return, delete, or dismiss to hide the keyboard; no element), pinch (scale), rotate (degrees), two_finger_tap, pick (turn a picker wheel to a value), home, button (volume or action), open_url, alert (tap its default button, cancel it, or tap a named button on a system alert or permission prompt; or check its text), back (the navigation bar's back button), app_state (wait for foreground, background or not_running), reset_permission (so the next request asks again), orientation, settle (wait until the screen stops changing), or expect a state (value, enabled, visible, hittable, selected, count, gone). Lock, unlock and coordinates are for a person in the terminal only. Same as `forge ui <action>` in the terminal. Fails with the screen's tree when the element isn't there.",
         tier: Tier::Project,
         device: true,
         needs_ui: true,
         schema: || {
             let mut props = target_props();
             let obj = props.as_object_mut().expect("object");
-            obj.insert("action".into(), json!({"type": "string", "enum": ["tap", "type", "clear", "scroll", "swipe", "long_press", "double_tap", "drag", "key", "expect"]}));
+            obj.insert("action".into(), json!({"type": "string", "enum": ACTIONS}));
             obj.insert("text".into(), json!({"type": "string", "description": "For type"}));
             obj.insert("direction".into(), json!({"type": "string", "enum": ["visible", "up", "down", "left", "right"], "description": "For scroll: visible (default) scrolls until the element is on screen; up/down/left/right scroll the element (a list or scroll view) itself. For swipe (required): up, down, left or right"}));
             obj.insert("in_id".into(), json!({"type": "string", "description": "For scroll to visible: the list to page through for a row not drawn yet (default: the first list on screen)"}));
@@ -259,8 +259,21 @@ pub const SPECS: &[Spec] = &[
             obj.insert("distance".into(), json!({"type": "number", "minimum": 0, "maximum": 2, "description": "For drag with by: how far, as a fraction of the element's size (default 0.5)"}));
             obj.insert("hold".into(), json!({"type": "number", "minimum": 0, "maximum": 10, "description": "For drag onto an element: seconds to hold first (default 1)"}));
             obj.insert("key".into(), json!({"type": "string", "enum": ["return", "delete", "dismiss"], "description": "For key: the key to press, or dismiss to hide the keyboard"}));
-            obj.insert("value".into(), json!({"type": "string", "description": "For expect: the element's value"}));
+            obj.insert("scale".into(), json!({"type": "number", "exclusiveMinimum": 0, "maximum": 10, "description": "For pinch (required): above 1 zooms in, below 1 out"}));
+            obj.insert("degrees".into(), json!({"type": "number", "minimum": -360, "maximum": 360, "description": "For rotate (required): clockwise when positive"}));
+            obj.insert("button".into(), json!({"type": "string", "description": "For button (required): volume_up, volume_down, action or camera. For alert: the label of the button to tap"}));
+            obj.insert("url".into(), json!({"type": "string", "description": "For open_url (required): a web page, deep link or universal link"}));
+            obj.insert("answer".into(), json!({"type": "string", "enum": ["default", "cancel", "check"], "description": "For alert: default taps its default button, cancel its Cancel or Don't Allow, check (the default) only waits for it and checks alert_text"}));
+            obj.insert("alert_text".into(), json!({"type": "string", "description": "For alert: part of the alert's title or message it must show"}));
+            obj.insert("state".into(), json!({"type": "string", "enum": ["foreground", "background", "not_running"], "description": "For app_state (required): wait until the app is in this state"}));
+            obj.insert("permission".into(), json!({"type": "string", "enum": PERMISSIONS, "description": "For reset_permission (required): forget the app's answer so the next request asks again"}));
+            obj.insert("orientation".into(), json!({"type": "string", "enum": ["portrait", "landscape"], "description": "For orientation (required)"}));
+            obj.insert("value".into(), json!({"type": "string", "description": "For expect: the element's value. For pick (required): the wheel entry to turn to"}));
             obj.insert("enabled".into(), json!({"type": "boolean", "description": "For expect"}));
+            obj.insert("visible".into(), json!({"type": "boolean", "description": "For expect: on screen"}));
+            obj.insert("hittable".into(), json!({"type": "boolean", "description": "For expect: a tap would reach it"}));
+            obj.insert("selected".into(), json!({"type": "boolean", "description": "For expect: a selected tab, segment or row"}));
+            obj.insert("count".into(), json!({"type": "integer", "minimum": 0, "description": "For expect: exactly this many elements match"}));
             obj.insert("gone".into(), json!({"type": "boolean", "description": "For expect: the element is not on screen"}));
             obj.insert("screenshot".into(), json!({"type": "boolean", "description": "Also return a screenshot after the action"}));
             schema(props, &["action"])
@@ -1251,16 +1264,134 @@ fn keep_out(result: &mut Value, shown: &str, out: &Path) {
 }
 
 /// The step table for forge_ui_act.
+/// reset_permission's names (forge-uitest's `Permission`, which checks
+/// them again when the step file is read).
+const PERMISSIONS: [&str; 10] = [
+    "contacts",
+    "calendar",
+    "reminders",
+    "photos",
+    "microphone",
+    "camera",
+    "media_library",
+    "home",
+    "bluetooth",
+    "location",
+];
+
+/// forge_ui_act's actions. Lock, unlock and coordinates are terminal-only.
+const ACTIONS: [&str; 23] = [
+    "tap",
+    "type",
+    "clear",
+    "scroll",
+    "swipe",
+    "long_press",
+    "double_tap",
+    "drag",
+    "pinch",
+    "rotate",
+    "two_finger_tap",
+    "pick",
+    "key",
+    "home",
+    "button",
+    "open_url",
+    "alert",
+    "back",
+    "app_state",
+    "reset_permission",
+    "orientation",
+    "settle",
+    "expect",
+];
+
 fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
-    // A key needs no element.
-    if args.str("action") == Some("key") {
-        let key = args
-            .str("key")
-            .ok_or("key needs `key`: return, delete or dismiss")?;
-        if !["return", "delete", "dismiss"].contains(&key) {
-            return Err(format!("key `{key}`: use return, delete or dismiss"));
+    // Steps that need no element. Lock, unlock and coordinates are left
+    // to a person in the terminal.
+    let one_of = |name: &str, value: &str, allowed: &[&str]| {
+        if allowed.contains(&value) {
+            Ok(())
+        } else {
+            Err(format!("{name} `{value}`: use {}", allowed.join(", ")))
         }
-        return Ok(("key", json!(key)));
+    };
+    match args.str("action") {
+        Some("key") => {
+            let key = args
+                .str("key")
+                .ok_or("key needs `key`: return, delete or dismiss")?;
+            one_of("key", key, &["return", "delete", "dismiss"])?;
+            return Ok(("key", json!(key)));
+        }
+        Some("home") => return Ok(("home", json!({}))),
+        Some("back") => return Ok(("back", json!({}))),
+        Some("settle") => return Ok(("settle", json!({}))),
+        Some("button") => {
+            let button = args
+                .str("button")
+                .ok_or("button needs `button`: volume_up, volume_down, action or camera")?;
+            one_of(
+                "button",
+                button,
+                &["volume_up", "volume_down", "action", "camera"],
+            )?;
+            return Ok(("button", json!(button)));
+        }
+        Some("open_url") => {
+            let url = args.str("url").ok_or("open_url needs `url`")?;
+            return Ok(("open_url", json!(url)));
+        }
+        Some("app_state") => {
+            let state = args
+                .str("state")
+                .ok_or("app_state needs `state`: foreground, background or not_running")?;
+            one_of("state", state, &["foreground", "background", "not_running"])?;
+            return Ok(("app_state", json!(state)));
+        }
+        Some("reset_permission") => {
+            let permission = args
+                .str("permission")
+                .ok_or("reset_permission needs `permission` (camera, photos, location…)")?;
+            one_of("permission", permission, &PERMISSIONS)?;
+            return Ok(("reset_permission", json!(permission)));
+        }
+        Some("orientation") => {
+            let orientation = args
+                .str("orientation")
+                .ok_or("orientation needs `orientation`: portrait or landscape")?;
+            one_of("orientation", orientation, &["portrait", "landscape"])?;
+            return Ok(("orientation", json!(orientation)));
+        }
+        Some("alert") => {
+            let mut alert = Map::new();
+            let answer = args.str("answer").unwrap_or("check");
+            match answer {
+                // Not named accept: no tool takes an argument called that
+                // (forge verify --accept is a person's call).
+                "default" => {
+                    alert.insert("accept".into(), json!(true));
+                }
+                "cancel" => {
+                    alert.insert("dismiss".into(), json!(true));
+                }
+                "check" => {}
+                other => {
+                    return Err(format!("answer `{other}`: use default, cancel or check"));
+                }
+            }
+            if let Some(button) = args.str("button") {
+                if answer != "check" {
+                    return Err("give button, or answer default or cancel, not both".into());
+                }
+                alert.insert("button".into(), json!(button));
+            }
+            if let Some(text) = args.str("alert_text") {
+                alert.insert("text".into(), json!(text));
+            }
+            return Ok(("alert", Value::Object(alert)));
+        }
+        _ => {}
     }
     let mut target = Map::new();
     for key in ["id", "label", "label_contains", "kind", "near"] {
@@ -1331,6 +1462,30 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
             }
             "long_press"
         }
+        "two_finger_tap" => "two_finger_tap",
+        "pinch" => {
+            let scale =
+                number("scale").ok_or("pinch needs `scale`: above 1 zooms in, below 1 out")?;
+            if scale <= 0.0 {
+                return Err("scale is above 0".into());
+            }
+            target.insert("scale".into(), json!(scale));
+            "pinch"
+        }
+        "rotate" => {
+            let degrees = number("degrees").ok_or("rotate needs `degrees` (clockwise)")?;
+            target.insert("degrees".into(), json!(degrees));
+            "rotate"
+        }
+        "pick" => {
+            let value = args
+                .0
+                .get("value")
+                .and_then(Value::as_str)
+                .ok_or("pick needs `value`: the wheel's entry to turn to")?;
+            target.insert("value".into(), json!(value));
+            "pick"
+        }
         "drag" => {
             match (args.str("to_id"), args.str("to_label"), args.str("by")) {
                 (Some(id), None, None) => {
@@ -1343,7 +1498,10 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
                     way("by", by)?;
                     target.insert("by".into(), json!(by));
                 }
-                _ => return Err("drag needs one of to_id, to_label (drop on an element) or by (a direction)".into()),
+                _ => return Err(
+                    "drag needs one of to_id, to_label (drop on an element) or by (a direction)"
+                        .into(),
+                ),
             }
             for name in ["distance", "hold"] {
                 if let Some(v) = number(name) {
@@ -1367,7 +1525,12 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
                 target.insert("value".into(), json!(v));
                 any = true;
             }
-            for flag in ["enabled", "gone"] {
+            if let Some(count) = args.0.get("count") {
+                let count = count.as_u64().ok_or("count is a whole number")?;
+                target.insert("count".into(), json!(count));
+                any = true;
+            }
+            for flag in ["enabled", "visible", "hittable", "selected", "gone"] {
                 if let Some(v) = args.0.get(flag).and_then(Value::as_bool) {
                     target.insert(flag.into(), json!(v));
                     any = true;
@@ -1381,7 +1544,8 @@ fn ui_step(args: &Args) -> Result<(&'static str, Value), String> {
         }
         other => {
             return Err(format!(
-                "action `{other}`: use tap, type, clear, scroll, swipe, long_press, double_tap, drag, key or expect"
+                "action `{other}`: use one of {}",
+                ACTIONS.join(", ")
             ))
         }
     };
@@ -1594,6 +1758,59 @@ mod tests {
             step(json!({"action": "scroll", "id": "dashboard.transfers", "in_id": "dashboard", "pages": 5})).unwrap(),
             ("scroll", json!({"id": "dashboard.transfers", "in": {"id": "dashboard"}, "pages": 5}))
         );
+    }
+
+    #[test]
+    fn device_steps_are_built_from_arguments() {
+        let step = |v: Value| ui_step(&Args(&args(v)));
+        assert_eq!(
+            step(json!({"action": "home"})).unwrap(),
+            ("home", json!({}))
+        );
+        assert_eq!(
+            step(json!({"action": "back"})).unwrap(),
+            ("back", json!({}))
+        );
+        assert_eq!(
+            step(json!({"action": "button", "button": "volume_up"})).unwrap(),
+            ("button", json!("volume_up"))
+        );
+        assert!(step(json!({"action": "button", "button": "power"})).is_err());
+        assert_eq!(
+            step(json!({"action": "open_url", "url": "https://example.com"})).unwrap(),
+            ("open_url", json!("https://example.com"))
+        );
+        assert_eq!(
+            step(json!({"action": "alert", "answer": "default", "alert_text": "Camera"})).unwrap(),
+            ("alert", json!({"accept": true, "text": "Camera"}))
+        );
+        assert_eq!(
+            step(json!({"action": "alert", "button": "Allow"})).unwrap(),
+            ("alert", json!({"button": "Allow"}))
+        );
+        assert!(step(json!({"action": "alert", "answer": "cancel", "button": "Allow"})).is_err());
+        assert!(step(json!({"action": "reset_permission", "permission": "camera"})).is_ok());
+        assert!(step(json!({"action": "reset_permission", "permission": "fax"})).is_err());
+        assert!(step(json!({"action": "app_state", "state": "asleep"})).is_err());
+        assert!(step(json!({"action": "orientation", "orientation": "landscape"})).is_ok());
+        assert_eq!(
+            step(json!({"action": "pinch", "id": "map", "scale": 2.0})).unwrap(),
+            ("pinch", json!({"id": "map", "scale": 2.0}))
+        );
+        assert!(step(json!({"action": "pinch", "id": "map"})).is_err());
+        assert_eq!(
+            step(json!({"action": "pick", "id": "month", "value": "March"})).unwrap(),
+            ("pick", json!({"id": "month", "value": "March"}))
+        );
+        assert_eq!(
+            step(json!({"action": "expect", "id": "tab", "selected": true, "count": 1})).unwrap(),
+            ("expect", json!({"id": "tab", "selected": true, "count": 1}))
+        );
+        // A person's verbs only.
+        for action in ["lock", "unlock"] {
+            assert!(step(json!({"action": action})).is_err(), "{action}");
+            assert!(!ACTIONS.contains(&action));
+        }
     }
 
     #[test]

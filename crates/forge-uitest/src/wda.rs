@@ -6,7 +6,11 @@
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
 //! `POST .../wda/deactivateApp`, `POST .../wda/keyboard/dismiss`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
 //! Gestures: `POST .../wda/element/:e/{swipe,touchAndHold,doubleTap,dragfromtoforduration}`,
-//! `GET .../element/:e/rect`, `POST .../wda/keys`.
+//! `GET .../element/:e/rect`, `POST .../wda/keys`, `.../wda/element/:e/{pinch,rotate,twoFingerTap}`.
+//! Device: `POST .../wda/homescreen`, `.../wda/pressButton`, `.../url`, `.../wda/apps/state`,
+//! `.../wda/resetAppAuth`, `.../wda/lock`, `.../wda/unlock`, `GET|POST .../orientation`,
+//! `GET .../window/size`, `GET .../wda/screen`. Alerts: `GET .../alert/text`,
+//! `GET .../wda/alert/buttons`, `POST .../alert/{accept,dismiss}`.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -15,7 +19,10 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 
 use crate::http::HttpTransport;
-use crate::{Driver, ElementRef, Key, Locator, Result, UiError, UiNode};
+use crate::{
+    AppState, Driver, ElementRef, Key, Locator, Permission, PointTouch, Result, Screen, UiError,
+    UiNode,
+};
 
 /// An element's frame, as WDA's `rect` answers it.
 struct Frame {
@@ -390,6 +397,158 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
         };
         self.changed();
         self.post("/wda/keys", json!({ "value": [text] }))?;
+        Ok(())
+    }
+
+    fn pinch(&mut self, element: &ElementRef, scale: f64) -> Result<()> {
+        self.changed();
+        // XCTest wants the velocity's sign to match the direction: negative
+        // to zoom out.
+        let velocity = if scale < 1.0 { -1.0 } else { 1.0 };
+        self.post(
+            &format!("/wda/element/{}/pinch", element.0),
+            json!({ "scale": scale, "velocity": velocity }),
+        )?;
+        Ok(())
+    }
+
+    fn rotate(&mut self, element: &ElementRef, radians: f64) -> Result<()> {
+        self.changed();
+        let velocity = if radians < 0.0 { -1.0 } else { 1.0 };
+        self.post(
+            &format!("/wda/element/{}/rotate", element.0),
+            json!({ "rotation": radians, "velocity": velocity }),
+        )?;
+        Ok(())
+    }
+
+    fn two_finger_tap(&mut self, element: &ElementRef) -> Result<()> {
+        self.changed();
+        self.post(
+            &format!("/wda/element/{}/twoFingerTap", element.0),
+            json!({}),
+        )?;
+        Ok(())
+    }
+
+    fn touch_at(&mut self, touch: &PointTouch) -> Result<()> {
+        self.changed();
+        let (path, body) = match *touch {
+            PointTouch::Tap { x, y } => ("/wda/tap", json!({ "x": x, "y": y })),
+            PointTouch::DoubleTap { x, y } => ("/wda/doubleTap", json!({ "x": x, "y": y })),
+            PointTouch::LongPress { x, y, seconds } => (
+                "/wda/touchAndHold",
+                json!({ "x": x, "y": y, "duration": seconds }),
+            ),
+            PointTouch::Drag { from, to, hold } => (
+                "/wda/dragfromtoforduration",
+                json!({ "fromX": from.0, "fromY": from.1, "toX": to.0, "toY": to.1, "duration": hold }),
+            ),
+        };
+        self.post(path, body)?;
+        Ok(())
+    }
+
+    fn home(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/homescreen", json!({}))?;
+        Ok(())
+    }
+
+    fn press_button(&mut self, name: &str) -> Result<()> {
+        self.changed();
+        self.post("/wda/pressButton", json!({ "name": name }))?;
+        Ok(())
+    }
+
+    fn open_url(&mut self, url: &str) -> Result<()> {
+        self.changed();
+        self.post("/url", json!({ "url": url }))?;
+        Ok(())
+    }
+
+    fn app_state(&mut self, bundle_id: &str) -> Result<AppState> {
+        let raw = self.post("/wda/apps/state", json!({ "bundleId": bundle_id }))?;
+        Ok(AppState::from_raw(raw.as_i64().unwrap_or(0)))
+    }
+
+    fn reset_permission(&mut self, resource: Permission) -> Result<()> {
+        self.changed();
+        self.post("/wda/resetAppAuth", json!({ "resource": resource.raw() }))?;
+        Ok(())
+    }
+
+    fn alert_text(&mut self) -> Result<Option<String>> {
+        match self.get("/alert/text") {
+            Ok(text) => Ok(text.as_str().map(str::to_owned)),
+            Err(UiError::Wda(e)) if e.contains("no such alert") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn alert_buttons(&mut self) -> Result<Vec<String>> {
+        let buttons = self.get("/wda/alert/buttons")?;
+        Ok(buttons
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|b| b.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    fn alert_accept(&mut self, button: Option<&str>) -> Result<()> {
+        self.changed();
+        let body = match button {
+            Some(name) => json!({ "name": name }),
+            None => json!({}),
+        };
+        self.post("/alert/accept", body)?;
+        Ok(())
+    }
+
+    fn alert_dismiss(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/alert/dismiss", json!({}))?;
+        Ok(())
+    }
+
+    fn lock(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/lock", json!({}))?;
+        Ok(())
+    }
+
+    fn unlock(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/unlock", json!({}))?;
+        Ok(())
+    }
+
+    fn screen(&mut self) -> Result<Screen> {
+        let size = self.get("/window/size")?;
+        let screen = self.get("/wda/screen")?;
+        let orientation = self.get("/orientation")?;
+        let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+        Ok(Screen {
+            width: number(&size, "width"),
+            height: number(&size, "height"),
+            scale: number(&screen, "scale"),
+            orientation: orientation
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .replace("uiinterfaceorientation", ""),
+        })
+    }
+
+    fn set_orientation(&mut self, orientation: &str) -> Result<()> {
+        self.changed();
+        self.post(
+            "/orientation",
+            json!({ "orientation": orientation.to_ascii_uppercase() }),
+        )?;
         Ok(())
     }
 

@@ -160,11 +160,12 @@ else
 fi
 
 step "9b. One-step UI commands exist for a person (no test file, no MCP)"
-for verb in tap type clear scroll swipe long-press double-tap drag key expect; do
+for verb in tap type clear scroll swipe long-press double-tap drag pinch rotate two-finger-tap pick key press open-url alert back app-state reset-permission orientation lock unlock settle expect; do
   "$FORGE" ui "$verb" --help >/dev/null || fail "forge ui $verb is missing"
 done
 # A wrong target is refused before any phone is needed.
 if "$FORGE" ui drag --id notes.add >/dev/null 2>&1; then fail "forge ui drag without --to-id or --by was accepted"; fi
+if "$FORGE" ui tap --at 200 >/dev/null 2>&1; then fail "forge ui tap --at took a point without a Y"; fi
 
 step "12. Review the evidence"
 if [[ $SWIFT_RAN -eq 1 ]]; then

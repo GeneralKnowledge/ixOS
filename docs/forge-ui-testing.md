@@ -110,7 +110,7 @@ iPhone
 A host-only crate next to `forge-device`. It depends on `idevice` at the same exact pin and adds the features `xctest`, `wda`, `mobile_image_mounter`, `tss` and `core_device_proxy`. It reuses `forge-device` for picking the phone, and it doesn't change `forge-device` itself.
 
 - `Locator` is the only way a test names an element: `Id("library.add")` first, then `Label("Add Book")` or `LabelContains(...)`. Coordinates are not a locator, and there is no coordinate tap. Matching by element type comes later if tests need it.
-- `Driver` trait (built): `launch`, `activate`, `terminate`, `background(secs)`, `find_all`, `tap`, `type_text`, `clear`, `scroll`, `swipe`, `long_press`, `double_tap`, `drag_to`, `drag_by`, `press_key`, `dismiss_keyboard`, `attribute`, `tree`, `screenshot`. Planned: `accept_alert`, `dismiss_alert` (interaction completeness I2). `WdaDriver` implements it. A `FakeDriver` lets the runner, assertions and reports be tested in CI without a phone, the same way `forge-device` tests its CLI against a fake backend.
+- `Driver` trait (built): `launch`, `activate`, `terminate`, `background(secs)`, `find_all`, `tap`, `type_text`, `clear`, `scroll`, `swipe`, `long_press`, `double_tap`, `drag_to`, `drag_by`, `press_key`, `dismiss_keyboard`, `pinch`, `rotate`, `two_finger_tap`, `touch_at` (coordinates, for the terminal only), `home`, `press_button`, `open_url`, `app_state`, `reset_permission`, `alert_text`, `alert_buttons`, `alert_accept`, `alert_dismiss`, `lock`, `unlock`, `screen`, `set_orientation`, `attribute`, `tree`, `screenshot`. `WdaDriver` implements it. A `FakeDriver` lets the runner, assertions and reports be tested in CI without a phone, the same way `forge-device` tests its CLI against a fake backend.
 - Waiting is built in: finding polls until a timeout (default 10 s), so tests never sleep. An element that goes stale between the find and the tap (SwiftUI re-rendered) is found again once; a second stale is a failure. An element going away is often the expected result, not an error: if WDA answers a tap with "stale element reference" and the element is then gone (Done closed the keyboard, Save dismissed the sheet), the tap step passes and the next step's expectation checks the outcome. `expect = { ..., gone = true }` counts a search that WDA answers "stale" twice in a row as gone, and a duplicate or an expectation whose element goes stale mid-read is read again rather than failed.
 - `tree` returns a typed `UiNode { kind, identifier, label, value, enabled, visible, frame, children }` parsed from WDA's `/source`. Tests use it for assertions, and the accessibility audit and exploratory testing use it as their model of the screen.
 
@@ -157,8 +157,22 @@ Steps that work today, one action per step (unknown keys are rejected):
 | `long_press` | a target, and `seconds` to hold (default 1): context menus |
 | `double_tap` | a target |
 | `drag` | a target plus `to` (another target): press for `hold` seconds (default 1), drag onto it and let go, for reordering and drop targets. Or `by` (a direction) with `distance` (a fraction of the element's size, default 0.5) and no hold: `{ kind = "CollectionView", by = "down" }` pulls a list to refresh |
+| `pinch` | a target plus `scale`: above 1 zooms in, below 1 out (maps, photos) |
+| `rotate` | a target plus `degrees`, clockwise when positive |
+| `two_finger_tap` | a target (zoom out on a map) |
+| `pick` | a target (a picker wheel) plus `value`: turns the wheel to that entry |
 | `key` | `"return"`, `"delete"`, or `"dismiss"` to hide the keyboard. No target: it goes to the field with focus |
-| `expect` | a target plus at most these checks: `value` (equals), `has_label` (equals), `enabled` (true or false), `gone = true`. A target alone checks that it exists |
+| `home` | `{}`: press Home; the app goes to the background |
+| `button` | `"volume_up"`, `"volume_down"`, `"action"` or `"camera"` (on phones that have them) |
+| `open_url` | a URL: a web page, a deep link or a universal link, opened as the system would |
+| `alert` | a system alert or permission prompt, in the app or over it: `{ accept = true }` taps its default button, `{ dismiss = true }` its Cancel or Don't Allow, `{ button = "Allow While Using App" }` the one with that label. `text` (part of the title or message) is checked first; `{ text = "Camera" }` alone only waits for it and checks. A failing step says when an alert is open |
+| `back` | `{}`: taps the navigation bar's back button (its `BackButton` identifier, else the first button at the bar's leading edge) |
+| `app_state` | `"foreground"`, `"background"` or `"not_running"`: waits until the app is in that state |
+| `reset_permission` | `"camera"`, `"photos"`, `"location"`, `"microphone"`, `"contacts"`, `"calendar"`, `"reminders"`, `"media_library"`, `"home"` or `"bluetooth"`: forgets the app's answer so the next request asks again. iOS stops the app |
+| `orientation` | `"portrait"` or `"landscape"` |
+| `lock`, `unlock` | `{}`: lock the screen, or unlock a phone without a passcode |
+| `settle` | `{}`: waits until the accessibility tree stops changing (an animation finishing), up to the timeout |
+| `expect` | a target plus at most these checks: `value` (equals), `has_label` (equals), `enabled`, `visible` (on screen), `hittable` (a tap would reach it), `selected` (a tab, segment or row; true or false), `count` (exactly this many elements match the target; 0 means none), `gone = true`. A target alone checks that it exists |
 | `screenshot` | a name |
 | `tree` | `true`: save the accessibility tree |
 
@@ -188,7 +202,9 @@ For measuring only, `FORGE_UI_WDA_SETTINGS` adds WDA settings to the ones Forge 
 
 A scroll, swipe or drag is refused while the keyboard is up, since crossing it types into the field (seen on Cati): hide it first with `key = "dismiss"`. Swipes and drags act relative to the element, never at screen coordinates.
 
-Planned, not built (a test using them fails to parse): `alert` (accept or dismiss), `home`, `open_url` (interaction completeness I2), `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
+**Coordinates are for a person in the terminal only.** `forge ui tap --at 200,640` (also `double-tap` and `long-press`), and `forge ui swipe --from X,Y --to X,Y [--hold S]`, reach a control with no identifier or label, for example in a game or a web view. A test file has no coordinate form and `forge_ui_act` refuses them, because a point means something else on another phone, at another text size, or after a layout change. In another app every point touch is a commit, since nothing says what is under it. `forge ui tree` prints the screen size in points to work them out.
+
+Planned, not built (a test using them fails to parse): `probe` (a devtools state assertion), `command` (a devtools setup command) and `wait_log` (a log line from `forge device logs`). Rust tests can call the same API directly for anything the file format can't express.
 
 ### CLI
 
@@ -196,17 +212,32 @@ M0 has these (built):
 
 ```
 forge ui setup [--ddi DIR] [--runner APP]   mount the DDI if needed, install the runner with xtool, check it starts
-forge ui tree  [--app BUNDLE] [--any-app]   the accessibility tree of the screen, plus unlabelled controls
+forge ui tree  [--app BUNDLE] [--any-app] [--find TEXT] [--visible] [--limit N]
+                                            the accessibility tree of the screen, plus unlabelled controls and the
+                                            screen's size; --find lists only elements whose id, label or value contains TEXT
 forge ui screenshot [out.png] [--any-app]   save a screenshot on Linux
 forge ui run FILE [--out DIR] [--any-app]   run a test file; screenshots and failure details go to DIR
-forge ui tap|clear|double-tap  TARGET       one step, no test file (TARGET: --id, --label, --label-contains, --kind [--index], --near)
+forge ui tap|clear|double-tap|two-finger-tap TARGET
+                                            one step, no test file (TARGET: --id, --label, --label-contains, --kind [--index], --near)
+forge ui tap|double-tap --at X,Y            a point instead (a person only; see above)
 forge ui type TARGET TEXT [--clear]
 forge ui scroll TARGET [visible|up|down|left|right] [--in-id ID] [--toward DIR] [--pages N]
 forge ui swipe TARGET up|down|left|right
-forge ui long-press TARGET [--seconds S]
+forge ui swipe --from X,Y --to X,Y [--hold S]
+forge ui long-press TARGET|--at X,Y [--seconds S]
+forge ui pinch TARGET --scale F
+forge ui rotate TARGET --degrees D
+forge ui pick TARGET VALUE
 forge ui drag TARGET (--to-id ID | --to-label L | --by DIR [--distance F]) [--hold S]
 forge ui key return|delete|dismiss
-forge ui expect TARGET [--value V] [--has-label L] [--enabled true|false] [--gone]
+forge ui press home|volume-up|volume-down|action|camera
+forge ui open-url URL
+forge ui alert [accept|dismiss] [--button LABEL] [--text TEXT]
+forge ui back | settle | lock | unlock
+forge ui app-state foreground|background|not_running
+forge ui reset-permission camera|photos|location|…
+forge ui orientation portrait|landscape
+forge ui expect TARGET [--value V] [--has-label L] [--enabled B] [--visible B] [--hittable B] [--selected B] [--count N] [--gone]
 forge ui start [--idle-minutes N]           keep one runner running for the commands above (see "One runner for many commands")
 forge ui status | stop                      show or end that session
 ```
@@ -329,11 +360,11 @@ default = "ask"                     # apps not listed (also the default with no 
 |---|---|
 | `deny` | Nothing |
 | `observe` | Launch, bring to the front, background, tree, screenshot, scroll, expectations |
-| `operate` | Also tap, type, clear, long press, double tap, swipe, drag, keys, stop. **Commits ask every time** |
+| `operate` | Also tap, type, clear, long press, double tap, swipe, drag, pinch, rotate, pick, keys, buttons, open a URL, answer an alert, reset a permission, lock, stop. **Commits ask every time** |
 | `full` | Everything except the hard refusals. Counts as your own app |
 | `ask` | Forge asks at the terminal which level to use for this run (deny, observe or operate). With no terminal (an agent, a script), refused |
 
-**The commit gate.** At `operate`, before a tap Forge reads the target's label, identifier and kind. If a word in them is a commit (send, post, reply, share, publish, submit, pay, buy, purchase, order, checkout, subscribe, transfer, donate, delete, remove, erase, block, report, call, invite, follow, like, allow…, with plain endings such as *sends*, *deleting*), Forge asks "Allow it? [y/N]" on the terminal. Typing text with a newline counts too, and so does the Return key, because Return sends in many apps. Every swipe and drag counts as a commit, because a full swipe runs a row's first action (often Delete) and a drag moves things; a long press or double tap is judged like a tap. Hiding the keyboard is allowed at `observe`. Tapping a text field only focuses it and is never a commit. A tap on any other control with neither a label nor an identifier (one found by `kind`, `index` or `near`) counts as a commit too, because nothing says what it does: it could be Send. With nobody at a terminal, a commit is refused, and the step fails with the reason. The list will miss some words, which is why money and messaging apps should stay at `observe`.
+**The commit gate.** At `operate`, before a tap Forge reads the target's label, identifier and kind. If a word in them is a commit (send, post, reply, share, publish, submit, pay, buy, purchase, order, checkout, subscribe, transfer, donate, delete, remove, erase, block, report, call, invite, follow, like, allow…, with plain endings such as *sends*, *deleting*), Forge asks "Allow it? [y/N]" on the terminal. Typing text with a newline counts too, and so does the Return key, because Return sends in many apps. Every swipe and drag counts as a commit, because a full swipe runs a row's first action (often Delete) and a drag moves things; a long press or double tap is judged like a tap. Pressing a hardware button, opening a URL, resetting a permission, locking and unlocking are commits too. Answering an alert is judged by the button's label (Allow is a commit; Cancel is not). Hiding the keyboard, pressing Home and turning the phone are allowed at `observe`. Tapping a text field only focuses it and is never a commit. A tap on any other control with neither a label nor an identifier (one found by `kind`, `index` or `near`) counts as a commit too, because nothing says what it does: it could be Send. With nobody at a terminal, a commit is refused, and the step fails with the reason. The list will miss some words, which is why money and messaging apps should stay at `observe`.
 
 **Never, at any level:** Settings, Wallet and the Apple Pay sheet, Passwords, the App Store and its purchase sheet, Find My, Phone, FaceTime, and the Face ID and passcode prompt; typing into secure fields (passwords, passcodes, codes) of another app.
 

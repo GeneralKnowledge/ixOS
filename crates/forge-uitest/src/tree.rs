@@ -204,6 +204,24 @@ impl UiNode {
     /// What a test could target on this screen: visible elements that have
     /// an identifier or can be acted on, one line each, at most `limit`.
     /// Shown when a step can't find its element.
+    /// Elements whose identifier, label or value contains `find` (any
+    /// case), only visible ones when `visible`, at most `limit`, in tree
+    /// order: `forge ui tree --find`.
+    pub fn matching(&self, find: Option<&str>, visible: bool, limit: usize) -> Vec<&UiNode> {
+        let find = find.map(str::to_lowercase);
+        self.walk()
+            .filter(|n| !visible || n.visible)
+            .filter(|n| match &find {
+                None => n.identifier.is_some() || n.label.is_some() || n.is_interactive(),
+                Some(f) => [&n.identifier, &n.label, &n.value]
+                    .into_iter()
+                    .flatten()
+                    .any(|t| t.to_lowercase().contains(f.as_str())),
+            })
+            .take(limit)
+            .collect()
+    }
+
     pub fn on_screen(&self, limit: usize) -> Vec<String> {
         self.walk()
             .filter(|n| n.visible && (n.identifier.is_some() || n.is_interactive()))

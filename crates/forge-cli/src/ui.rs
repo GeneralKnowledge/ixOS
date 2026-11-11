@@ -331,17 +331,60 @@ fn own_apps(dirs: &[&Path]) -> Vec<String> {
 }
 
 /// `forge ui tree`: the accessibility tree of the screen, plus an audit.
+/// What `forge ui tree --find/--visible/--limit` keeps.
+#[derive(Default)]
+pub struct TreeFilter {
+    pub find: Option<String>,
+    pub visible: bool,
+    pub limit: Option<usize>,
+}
+
+impl TreeFilter {
+    fn is_set(&self) -> bool {
+        self.find.is_some() || self.visible || self.limit.is_some()
+    }
+}
+
 pub fn tree(
     udid: Option<&str>,
     app: Option<&str>,
     any_app: bool,
+    filter: &TreeFilter,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    let (front, tree) = screen_tree(udid, app, any_app, out)?;
+    let (front, tree, screen) = screen_tree(udid, app, any_app, out)?;
+    if let Some(s) = &screen {
+        writeln!(
+            out,
+            "Screen: {} x {} pt, scale {}, {}",
+            s.width, s.height, s.scale, s.orientation
+        )
+        .map_err(err)?;
+    }
+    if filter.is_set() {
+        let found = tree.matching(
+            filter.find.as_deref(),
+            filter.visible,
+            filter.limit.unwrap_or(usize::MAX),
+        );
+        for node in &found {
+            writeln!(out, "{}", node.summary()).map_err(err)?;
+        }
+        if found.is_empty() {
+            writeln!(out, "nothing matches").map_err(err)?;
+        }
+        report::set_data(serde_json::json!({
+            "app": front,
+            "screen": screen,
+            "matches": found,
+        }));
+        return Ok(());
+    }
     write!(out, "{}", tree.render()).map_err(err)?;
     let findings = tree.audit();
     report::set_data(serde_json::json!({
         "app": front,
+        "screen": screen,
         "tree": tree,
         "text": tree.render(),
         "findings": findings,
@@ -363,7 +406,7 @@ pub fn audit(
     any_app: bool,
     out: &mut dyn Write,
 ) -> Result<(), String> {
-    let (front, tree) = screen_tree(udid, app, any_app, out)?;
+    let (front, tree, _) = screen_tree(udid, app, any_app, out)?;
     let result = audit_result(front.as_deref(), &tree);
     report::set_data(result.clone());
     write!(out, "{}", audit_text(&result)).map_err(err)?;
@@ -432,7 +475,14 @@ fn screen_tree(
     app: Option<&str>,
     any_app: bool,
     out: &mut dyn Write,
-) -> Result<(Option<String>, forge_uitest::UiNode), String> {
+) -> Result<
+    (
+        Option<String>,
+        forge_uitest::UiNode,
+        Option<forge_uitest::Screen>,
+    ),
+    String,
+> {
     let policy = Policy::load()?;
     let own = own_apps(&[Path::new(".")]);
     let scope = Scope {
@@ -454,6 +504,8 @@ fn screen_tree(
         scope.may_read(front.as_deref(), &mut TerminalApprover)?;
     }
     let tree = driver.tree().map_err(err)?;
+    // Best effort: an older runner may not answer every route.
+    let screen = driver.screen().ok();
     writeln!(
         out,
         "In front: {}",
@@ -462,7 +514,7 @@ fn screen_tree(
             .unwrap_or("unknown (WebDriverAgent did not say)")
     )
     .map_err(err)?;
-    Ok((front, tree))
+    Ok((front, tree, screen))
 }
 
 /// `forge ui screenshot`
@@ -671,6 +723,90 @@ pub fn one_step(
     let file = dir.join("steps.toml");
     std::fs::write(&file, text).map_err(|e| format!("{}: {e}", file.display()))?;
     run(runner, udid, &file, Some(&dir), any_app, None, false, out)
+}
+
+/// `forge ui tap --at X,Y` and the other coordinate gestures: a touch at a
+/// point on the screen, for a person driving an app whose controls have
+/// no identifier or label. Never in a test file or `forge mcp` (AGENTS.md
+/// rule 4): only from this command, with the app under test in front. In
+/// an app Forge didn't build every such touch is a commit, asked each time,
+/// since nothing says what is at that point.
+#[allow(clippy::too_many_arguments)]
+pub fn touch_at(
+    udid: Option<&str>,
+    project: Option<&Path>,
+    app: Option<&str>,
+    any_app: bool,
+    touch: &forge_uitest::PointTouch,
+    out: &mut dyn Write,
+) -> Result<(), String> {
+    let bundle_id = match (app, project) {
+        (Some(app), _) => app.to_owned(),
+        (None, Some(project)) => {
+            let forge_toml = project.join("forge.toml");
+            let text = std::fs::read_to_string(&forge_toml)
+                .map_err(|e| format!("{}: {e} (pass --project <app>)", forge_toml.display()))?;
+            crate::config::ForgeConfig::parse(&text)?.app.bundle_id
+        }
+        (None, None) => return Err("pass --project or --app".into()),
+    };
+    if let Some(why) = policy::never(&bundle_id) {
+        return Err(why);
+    }
+    let policy = Policy::load()?;
+    let mut dirs = vec![Path::new(".")];
+    if let Some(p) = project {
+        dirs.push(p);
+    }
+    let own = own_apps(&dirs);
+    let scope = Scope {
+        any_app,
+        own: &own,
+        policy: &policy,
+    };
+    let (phone, mut apps, held, mut driver) = connect(udid, out)?;
+    let app = resolve(&phone, &mut apps, &held, &bundle_id)?;
+    let mut gate = match scope.access(&app, &mut TerminalApprover)? {
+        Access::Own => Gate::own(&app),
+        Access::Foreign(level) => Gate::foreign(&app, level, Box::new(TerminalApprover), None),
+    };
+    // Only ever the app under test: a point on another app's screen could
+    // be anything.
+    ensure_front(&mut driver, &app, Duration::from_secs(10)).map_err(err)?;
+    gate.check(&policy::Action::Gesture {
+        gesture: touch.name(),
+        target: policy::Target::default(),
+    })?;
+    driver.touch_at(touch).map_err(err)?;
+    writeln!(
+        out,
+        "{} at {}",
+        touch.name().replace('_', " "),
+        describe_point(touch)
+    )
+    .map_err(err)?;
+    report::set_data(serde_json::json!({ "app": app, "touch": format!("{touch:?}") }));
+    Ok(())
+}
+
+fn describe_point(touch: &forge_uitest::PointTouch) -> String {
+    use forge_uitest::PointTouch::*;
+    match touch {
+        Tap { x, y } | DoubleTap { x, y } | LongPress { x, y, .. } => format!("{x},{y}"),
+        Drag { from, to, .. } => format!("{},{} to {},{}", from.0, from.1, to.0, to.1),
+    }
+}
+
+/// `X,Y` in points.
+pub fn parse_point(text: &str) -> Result<(f64, f64), String> {
+    let bad = || format!("`{text}`: a point as X,Y in points from the top-left, such as 200,640");
+    let (x, y) = text.split_once(',').ok_or_else(bad)?;
+    let x: f64 = x.trim().parse().map_err(|_| bad())?;
+    let y: f64 = y.trim().parse().map_err(|_| bad())?;
+    if x < 0.0 || y < 0.0 || !x.is_finite() || !y.is_finite() {
+        return Err(bad());
+    }
+    Ok((x, y))
 }
 
 /// `forge ui run`: a test file's steps; fails if any step fails, or (with
@@ -1770,6 +1906,31 @@ pub fn explore_app(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn points_are_x_comma_y() {
+        assert_eq!(parse_point("200,640"), Ok((200.0, 640.0)));
+        assert_eq!(parse_point(" 20.5 , 7 "), Ok((20.5, 7.0)));
+        for bad in ["200", "a,b", "-1,5", "1,inf", ""] {
+            assert!(parse_point(bad).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn a_one_step_command_is_a_test_file_forge_reads() {
+        let text = one_step_script(
+            "org.example.tipster",
+            "swipe",
+            10.0,
+            "swipe",
+            toml::toml! { id = "row"
+            direction = "left" }
+            .into(),
+        );
+        let script = forge_uitest::script::Script::parse(&text).unwrap();
+        assert_eq!(script.app, "org.example.tipster");
+        assert_eq!(script.steps.len(), 1);
+    }
 
     fn options() -> ExploreOptions {
         ExploreOptions {
