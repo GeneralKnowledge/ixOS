@@ -1,0 +1,9 @@
+order = 75
+capability = "Localize an app (String Catalogs built from Linux)"
+framework = "Yes: `forge config sync` and `forge build ios` compile `[ios] string_catalogs` into `.strings` and `.stringsdict` per language and list them as xtool resources"
+rust_api = "n/a: Swift's `Text(\"…\")` and `String(localized:)` read the tables"
+ios_native = "Yes: Apple's own String Catalog format (`.xcstrings`), the same file Xcode edits; plain strings, plurals and substitutions"
+in_app = "Partial: the services check app (English and Spanish)"
+iphone = "No"
+documented = "Yes: localization.md, app-config.md"
+limits = "No key extraction on Linux: add keys to the catalog by hand (Xcode adds them on a Mac). No device variations. Text from Rust (error messages) and ForgeAppKit's own buttons stay English. Not yet run on an iPhone"

@@ -1,0 +1,31 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "%lld books" : {
+      "localizations" : {
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld book" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld books" } }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld libro" } },
+              "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld libros" } }
+            }
+          }
+        }
+      }
+    },
+    "This text follows the iPhone's language" : {
+      "localizations" : {
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Este texto sigue el idioma del iPhone" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

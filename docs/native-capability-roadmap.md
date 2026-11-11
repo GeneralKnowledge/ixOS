@@ -197,7 +197,7 @@ Items 1, 2, 3 and 6 need the device; 4 and 5 also have unit tests against a fake
 |---|---|---|---|
 | 22 | **Maps** with annotations, **geocoding** and place search | Recipe for `Map`; geocoding added to the `location` service | MapKit has no offline tiles |
 | 23 | **Charts**: line, bar, area, pie and point marks styled from ForgeUI tokens | Recipe plus a small style helper | Swift Charts; no charting engine |
-| 24 | **Localization** | Spike first | String Catalogs (`.xcstrings`) are compiled by Xcode; check what xtool on Linux can do |
+| 24 | **Localization**. Built 2026-11-11: Forge compiles String Catalogs on Linux ([localization.md](localization.md)) | `forge.toml` `[ios] languages`, `string_catalogs` | String Catalogs (`.xcstrings`) are compiled by Xcode; Forge writes the same `.strings` and `.stringsdict` files and xtool copies them in |
 | 25 | **Analytics interface** and **feature configuration** | Rust traits with no vendor | Only once an app ships to people other than its developer |
 | 26 | **Speech recognition** | Optional service | Speech; useful but app-dependent (Chat voice messages are the likely first user) |
 | 27 | **HealthKit** | Optional service | For a subset of apps; free-team signing unproven (S5) |

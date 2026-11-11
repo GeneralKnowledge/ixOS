@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 102 capabilities, 15 work on an iPhone, 13 partly work, 53 are built but haven't been run on an iPhone, and 21 aren't built yet.**
+**Of 103 capabilities, 15 work on an iPhone, 13 partly work, 54 are built but haven't been run on an iPhone, and 21 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -54,7 +54,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 
 The code exists and is tested on Linux, but nobody has recorded it working on a phone. Expect it to work, and expect surprises.
 
-- **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust; Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch
+- **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust; Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch; Localize an app (String Catalogs built from Linux)
 - **Data and files:** Relational store with queries (SQLite); Full-text search; Backup and restore archive; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress; CSV import and export
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Device identity and encrypted channel

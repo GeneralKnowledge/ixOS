@@ -17,10 +17,21 @@ public struct ContentView: View {
     @State private var links: [String] = []
     @State private var responses: [String] = []
     @State private var permission = "unknown"
+    @State private var books = 1
     #if os(iOS)
         @State private var webPage: ForgeWebPage?
         @State private var safariURL: URL?
     #endif
+
+    /// Proves the compiled String Catalog is in the bundle: the languages
+    /// iOS sees, and the Spanish text read straight from es.lproj.
+    private var languageReport: String {
+        let spanish = Bundle.main.path(forResource: "es", ofType: "lproj").flatMap(Bundle.init(path:))
+        let text = spanish?.localizedString(forKey: "This text follows the iPhone's language", value: "MISSING", table: nil)
+        return "Languages: \(Bundle.main.localizations.sorted().joined(separator: ", ")); "
+            + "using \(Bundle.main.preferredLocalizations.first ?? "?"); "
+            + "es.lproj: \(text ?? "not in the bundle")"
+    }
 
     public var body: some View {
         NavigationStack {
@@ -74,6 +85,12 @@ public struct ContentView: View {
                         Button("Safari in the app") { safariURL = URL(string: "https://www.swift.org") }
                     }
                 #endif
+                Section("5. Languages (Settings > ServicesCheck > Language)") {
+                    Text("This text follows the iPhone's language")
+                    Stepper("\(books) books", value: $books, in: 0...5)
+                        .accessibilityIdentifier("check.books")
+                    Text(languageReport).font(.footnote).foregroundStyle(.secondary)
+                }
             }
             .navigationTitle("Services check")
             #if os(iOS)

@@ -32,6 +32,13 @@ if grep -q 'url_schemes' "$APP/forge.toml"; then
   fi
 fi
 
+# English and Spanish from a String Catalog (forge.toml [ios] languages and
+# string_catalogs; docs/localization.md).
+mkdir -p "$APP/Resources"
+cp "$ROOT/crates/forge-services/device-check/Localizable.xcstrings" "$APP/Resources/"
+awk '{ print } /^\[ios\]$/ { print "languages = [\"en\", \"es\"]\nstring_catalogs = [\"Resources/Localizable.xcstrings\"]" }' "$APP/forge.toml" >"$APP/forge.toml.new"
+mv "$APP/forge.toml.new" "$APP/forge.toml"
+
 # Rewrite Info.plist and xtool.yml from forge.toml (forge run does this too).
 "$ROOT/target/debug/forge" config sync --project "$APP"
 

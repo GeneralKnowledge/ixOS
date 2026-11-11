@@ -33,6 +33,7 @@ Read these in order the first time.
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
 | [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, reader, documents, media, background tasks, identity, maps, charts), in what order, and how each is proven |
 | [app-config.md](app-config.md) | `forge.toml`: name, version, icon, permission prompts, entitlements |
+| [localization.md](localization.md) | Translating an app: String Catalogs, plurals, permission texts, built from Linux |
 | [project-generation.md](project-generation.md) | What `forge init` creates, with and without `--minimal` |
 
 ## Signing, devices and builds

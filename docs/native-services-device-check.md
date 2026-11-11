@@ -62,8 +62,15 @@ Section 4 of the app, about two minutes:
 - **Safari in the app** opens swift.org in Safari's own view, inside the app; **Done** returns.
 - Turn on Airplane Mode and tap **Web page in the app**: an error view appears with **Try Again**. Turn Airplane Mode off and tap it: the page loads.
 
+## 7. Languages
+
+Section 5 of the app, about a minute:
+
+- In English, the section shows "This text follows the iPhone's language", and the stepper reads "1 book", then "2 books". The grey line lists `en, es` and ends with `es.lproj: Este texto sigue el idioma del iPhone`, which proves the compiled Spanish table is in the app.
+- In Settings > ServicesCheck > Language, choose Español and go back to the app: the text is in Spanish and the stepper reads "1 libro", "2 libros". Set the language back afterwards.
+
 ## Report back
 
-Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 6.
+Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 7.
 
 To remove the app, delete it from the home screen, then run `rm -rf ~/forge-services-check`.
