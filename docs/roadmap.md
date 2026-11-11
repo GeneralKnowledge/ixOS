@@ -41,9 +41,21 @@ Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progre
 
 Rust interfaces stay platform-neutral, so Android implementations can be added when the work resumes. Contributions that keep Android building are welcome; larger Android work should wait until this section changes.
 
+### Tooling freeze and reuse rules
+
+Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-audit.md). The framework mostly builds on existing tools; the custom code is in the tooling, so:
+
+1. **Agent and device tooling is frozen** until P1 to P4 are done: `forge ui explore`, `forge ui focus`, run records (`forge verify --run`), `forge mcp` and the live dev connection (`forge device pair|connect|cmd`). Bug fixes only, no new commands or features. They keep working and keep their tests.
+2. **iOS networking moves to URLSession** ([native capability roadmap](native-capability-roadmap.md)). `forge-net`'s portable types stay; ureq stays for Linux tools, tests and Android.
+3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
+4. **Evidence bundles also write JUnit XML**, so any CI system or test viewer can read the results. No new report features.
+
 ## Near term
 
-### Autonomous dev loop (Forge M6) — Planned
+### Autonomous dev loop (Forge M6) — Frozen
+
+Frozen on 2026-11-11 ([above](#tooling-freeze-and-reuse-rules)): bug fixes only until P1 to P4 are done.
+
 
 An agent takes a real task on an existing app, changes it, checks it on the iPhone, finds and fixes a real problem, and leaves one record of what ran and what didn't. Most of the pieces exist; M6 wires them together, aims exploration at what changed, correlates failures with logs and crashes, and demonstrates the loop on Good Dog. Plan: [forge-m6.md](forge-m6.md).
 
@@ -123,7 +135,10 @@ Not in this release. Today the CLI produces development builds (an xtool debug b
 
 The staged plan for the first real iOS release (Pocket Library; what Linux can do and what needs a Mac; `forge release check`) is [first-app-store-release.md](first-app-store-release.md).
 
-### Any app on the iPhone (growing UI testing) — Investigating
+### Any app on the iPhone (growing UI testing) — Frozen
+
+Frozen on 2026-11-11 ([above](#tooling-freeze-and-reuse-rules)); the spikes below wait.
+
 
 Forge UI Testing's routes (WebDriverAgent, Apple's accessibility service, `idevice` device services) used on apps Forge didn't build: observe, operate, and, the bigger goal, explore and verify with evidence. Not a separate stack: the same `Driver`, `UiNode` and `Locator`, with a person-written per-app policy for anything outside the project. Plan, safety model and an evaluation of iCTRL: [research/general-device-control.md](research/general-device-control.md). After the current milestone; four no-install spikes go first.
 

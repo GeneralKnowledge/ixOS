@@ -79,6 +79,6 @@ These pages are for people working on Forge itself. They are plans, reviews and 
 
 - Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [bevy-game-trial.md](bevy-game-trial.md)
 - Milestone plans and reports: [forge-m6.md](forge-m6.md), [m65-run-report.md](m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
-- Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/](research/)
+- Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/reinvention-audit.md](research/reinvention-audit.md) (where ixOS reinvents existing tools), [research/](research/)
 - Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [integration/](integration/), [testing/](testing/), [toolchain-validation.md](toolchain-validation.md)
 - Decisions and history: [adr/](adr/), [ideal-design.md](ideal-design.md) (historical), [release-process.md](release-process.md) (releasing Forge itself, not your app)
