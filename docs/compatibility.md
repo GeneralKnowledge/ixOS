@@ -28,11 +28,11 @@ Last updated: 2026-11-09. Update this page in the same PR as any version bump.
 | Swift (Linux) | 6.2.3 (ubuntu24.04 tarball) | Manual device run | `swift-tools-version: 6.0` in `Package.swift`; xtool upstream recommends a newer Swift |
 | xtool | 1.24.0-ixos.1 AppImage (fork build: upstream 1.24.0 plus fixes), pinned with SHA-256 in [`toolchain/xtool.env`](../toolchain/xtool.env), installed by `scripts/install-xtool.sh`; `forge doctor` warns on another version | Pinned, manual device run | Chat installed and run on an iPhone from Ubuntu 24.04 on 2026-11-05 with `xtool dev run -c release` and the Xcode 16.0 SDK. With the Xcode 26 SDK all examples link, and on 2026-11-06 debug builds of Chat, Counter and Weather installed and ran on an iPhone with `forge run ios`; see [troubleshooting.md](troubleshooting.md) |
 | Xcode.xip (for `xtool setup`) | 26 | Manual device run | Provides the iOS 26.0 SDK. Xcode 16.0 (iOS 18.0 SDK) does not link debug builds with Swift 6.2; see [troubleshooting.md](troubleshooting.md) |
-| Xcode (macOS) | `macos-15` runner default (16.x) | CI | The CI log prints the exact version (`xcodebuild -version` step); docs require 16.0+ |
+| Xcode (macOS) | `macos-15` runner default (16.x) | Manual CI fallback | The CI log prints the exact version (`xcodebuild -version` step); docs require 16.0+ |
 | iOS deployment target | 17.0 | Pinned | `minimum_ios` in `forge.toml`, Xcode project |
-| macOS host for CI | macOS 15 | CI | `.github/workflows/macos.yml` |
+| macOS host for CI | macOS 15 | Manual CI fallback | `.github/workflows/macos.yml`, run by hand only |
 
-Linux iOS builds have the least coverage: CI cannot run xtool (no Darwin SDK in hosted runners), so Linux iOS results come from manual runs recorded in [toolchain-validation.md](toolchain-validation.md).
+CI cannot run xtool (no Darwin SDK in hosted runners), so the iOS device build of every app is checked on a Linux machine with xtool by `scripts/check-ios-xtool.sh` ([ios-build-check.md](ios-build-check.md)), and other Linux iOS results come from manual runs recorded in [toolchain-validation.md](toolchain-validation.md).
 
 ## Android
 

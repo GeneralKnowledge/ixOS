@@ -2,7 +2,6 @@
 
 [![Rust](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/rust.yml)
 [![Android](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/android.yml)
-[![macOS](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml/badge.svg?branch=main)](https://github.com/GeneralKnowledge/ixOS/actions/workflows/macos.yml)
 
 Linux-first, Rust-first framework for building native mobile apps with **Rust** (domain logic), **UniFFI** (FFI), and thin platform hosts: **SwiftUI + xtool** (iOS) and **Jetpack Compose + Gradle** (Android).
 
@@ -123,7 +122,7 @@ Where each of these stands on a real iPhone is kept current in [docs/status.md](
 | | State |
 |---|---|
 | `--json` on every command (`forge.result/1`: stage, compiler diagnostics with file and line, hints, log file) | Built |
-| `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK (xtool) or macOS CI |
+| `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK: `scripts/check-ios-xtool.sh` with xtool |
 | `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose, and UI tools through `forge ui`), docs and the ledger as resources, installing only when the person allows it | Built; an agent has used it to build, install and test an app on a real iPhone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
 | Which Apple team signs, free or paid, in `forge doctor` and `forge run ios` | Built; not yet run with a paid team ([docs/ios-signing.md](docs/ios-signing.md#which-team-is-xtool-using)) |
 | UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built. On an iPhone: setup, launch, finding by identifier, tapping, typing, the tree and screenshots work (a UI test passed 11 of 11 steps). Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |

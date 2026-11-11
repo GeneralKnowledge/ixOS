@@ -50,7 +50,7 @@ make validate        # the above plus binding drift and template sync
 
 After changing an app crate's exported API: `forge bindings generate --project examples/<app>`, then `./scripts/check-app-crates.sh` and `./scripts/check-bindings.sh`.
 
-Swift: SwiftUI compiles only with the Darwin SDK (xtool on a Linux laptop that has it, `forge build ios --project <app>`) or on macOS CI (`.github/workflows/macos.yml`, about 35 minutes including the queue). In a session without the SDK, say that Swift changes were checked by CI only.
+Swift: SwiftUI compiles only with the Darwin SDK. The check is `scripts/check-ios-xtool.sh` on a Linux machine with xtool (the maintainer's laptop, which agents reach through Remote Control): `affected <base>` builds the apps a change touches for an iPhone, unsigned, with no phone needed, and `--ref <branch>` builds a pushed branch without touching the laptop's checkout ([ios-build-check.md](docs/ios-build-check.md)). The macOS workflow (`.github/workflows/macos.yml`, about 35 minutes) is a manual fallback: don't start it unless the laptop can't be reached or the person asks. In a session that ran neither, say that Swift changes were not compiled.
 
 ## Device tools
 
