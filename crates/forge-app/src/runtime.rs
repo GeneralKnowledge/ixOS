@@ -5,14 +5,22 @@ use std::future::Future;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 
-use forge_runtime::{background_cancellable, CancelHandle, EventHub, Lifecycle, Phase};
+use forge_runtime::{
+    background_cancellable, net::AbortRegistration, CancelHandle, EventHub, Lifecycle, Phase,
+};
 
-use crate::contract::{AppPhase, Cancellation, ErrorKind, RuntimeEvent, RuntimeEvents, Stopped};
+use crate::contract::{
+    AppPhase, Cancellation, ErrorKind, LaunchReport, RuntimeEvent, RuntimeEvents, Stopped,
+};
 use crate::executor::{reply, Executor};
 
 const LOCK_FILE: &str = ".forge-app.lock";
+/// Present while the app is in the background with work to finish. Found at
+/// open, it means the last run was ended (by iOS or a crash) before that
+/// work was done.
+const UNFINISHED_FILE: &str = ".forge-app.unfinished";
 
 /// An app's private data directory, held for the life of the core. Only one
 /// core (in this process or another) can hold it, so two instances never
@@ -92,6 +100,8 @@ pub struct Runtime<S> {
     lifecycle: Lifecycle,
     events: EventHub<RuntimeEvent>,
     shut_down: AtomicBool,
+    finishing: Arc<Finishing>,
+    launch: LaunchReport,
     directory: Option<DataDirectory>,
 }
 
@@ -100,7 +110,140 @@ pub struct Work {
     cancel: CancelHandle,
     links: Vec<Box<dyn std::any::Any + Send>>,
     lifetime: CancelHandle,
-    foreground: Option<CancelHandle>,
+    /// The scope whose cancellation means "interrupted": the foreground
+    /// scope, or the finishing scope when background time ran out.
+    interrupts: Option<CancelHandle>,
+    _pending: Option<Pending>,
+}
+
+/// The work iOS is asked to wait for while the app is in the background:
+/// accepted commands that haven't finished, and `finishing` work. It also
+/// owns the finishing scope, which the host cancels when that time runs out.
+struct Finishing {
+    state: Mutex<FinishingState>,
+    lifetime: CancelHandle,
+    lifecycle: Lifecycle,
+    events: EventHub<RuntimeEvent>,
+    marker: Option<PathBuf>,
+}
+
+struct FinishingState {
+    pending: usize,
+    scope: CancelHandle,
+    _link: AbortRegistration,
+}
+
+impl Finishing {
+    fn new(
+        lifecycle: &Lifecycle,
+        events: &EventHub<RuntimeEvent>,
+        marker: Option<PathBuf>,
+    ) -> Self {
+        let lifetime = lifecycle.lifetime();
+        let (scope, link) = lifetime.child();
+        Self {
+            state: Mutex::new(FinishingState {
+                pending: 0,
+                scope,
+                _link: link,
+            }),
+            lifetime,
+            lifecycle: lifecycle.clone(),
+            events: events.clone(),
+            marker,
+        }
+    }
+
+    fn lock(&self) -> MutexGuard<'_, FinishingState> {
+        self.state.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn in_background(&self) -> bool {
+        self.lifecycle.phase() == Phase::Background
+    }
+
+    /// Counts one piece of pending work until the returned guard drops.
+    fn begin(self: &Arc<Self>) -> Pending {
+        let mut state = self.lock();
+        state.pending += 1;
+        if state.pending == 1 && self.in_background() {
+            self.announce(true);
+        }
+        Pending(Arc::clone(self))
+    }
+
+    fn end(&self) {
+        let mut state = self.lock();
+        state.pending -= 1;
+        if state.pending == 0 && self.in_background() {
+            self.announce(false);
+        }
+    }
+
+    fn pending(&self) -> bool {
+        self.lock().pending > 0
+    }
+
+    /// The app entered the background (`true`) or came back (`false`).
+    fn phase_changed(&self, background: bool) {
+        let state = self.lock();
+        if background && state.pending > 0 {
+            self.mark(true);
+        } else if !background {
+            self.mark(false);
+        }
+    }
+
+    /// Called with the state locked, so announcements keep their order.
+    fn announce(&self, pending: bool) {
+        self.mark(pending);
+        self.events
+            .publish(RuntimeEvent::BackgroundWork { pending });
+    }
+
+    /// Creates or removes the marker. A create without a sync: it only has
+    /// to survive the process being killed, not a power cut, and it runs on
+    /// the host's lifecycle callback.
+    fn mark(&self, pending: bool) {
+        let Some(path) = &self.marker else { return };
+        let result = if pending {
+            std::fs::File::create(path).map(drop)
+        } else {
+            match std::fs::remove_file(path) {
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+                other => other,
+            }
+        };
+        if let Err(err) = result {
+            forge_runtime::logging::warn!("unfinished-work marker: {err}");
+        }
+    }
+
+    fn scope(&self) -> CancelHandle {
+        self.lock().scope.clone()
+    }
+
+    /// Background time ran out: stop finishing work, and start a new scope
+    /// for work started afterwards.
+    fn expire(&self) {
+        let stopped = {
+            let mut state = self.lock();
+            let (scope, link) = self.lifetime.child();
+            let old = std::mem::replace(&mut state.scope, scope);
+            state._link = link;
+            old
+        };
+        stopped.cancel();
+    }
+}
+
+/// One piece of pending work, counted until dropped.
+struct Pending(Arc<Finishing>);
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        self.0.end();
+    }
 }
 
 impl Work {
@@ -113,7 +256,7 @@ impl Work {
     pub fn stop_kind(&self) -> ErrorKind {
         if self.lifetime.is_cancelled() {
             ErrorKind::ShutDown
-        } else if self.foreground.as_ref().is_some_and(|f| f.is_cancelled()) {
+        } else if self.interrupts.as_ref().is_some_and(|f| f.is_cancelled()) {
             ErrorKind::Interrupted
         } else {
             ErrorKind::Cancelled
@@ -134,14 +277,35 @@ impl<S: Send + 'static> Runtime<S> {
     }
 
     fn build(name: &str, state: S, directory: Option<DataDirectory>) -> Self {
+        let lifecycle = Lifecycle::new();
+        let events = EventHub::new();
+        let marker = directory.as_ref().map(|d| d.path().join(UNFINISHED_FILE));
+        let launch = LaunchReport {
+            unfinished_background_work: marker.as_ref().is_some_and(|m| m.exists()),
+        };
+        let finishing = Arc::new(Finishing::new(&lifecycle, &events, marker));
+        // The report keeps what the marker said; the marker itself starts
+        // over with this run.
+        finishing.mark(false);
         Self {
             executor: Executor::start(name, state),
             revision: Arc::new(AtomicU64::new(0)),
-            lifecycle: Lifecycle::new(),
-            events: EventHub::new(),
+            lifecycle,
+            events,
             shut_down: AtomicBool::new(false),
+            finishing,
+            launch,
             directory,
         }
+    }
+
+    /// How the previous run ended, as far as the runtime can tell. Read it
+    /// once at launch: `unfinished_background_work` means the app was ended
+    /// while it still had work to finish in the background (iOS ran out of
+    /// patience, or it crashed), so tell the person if that work mattered.
+    /// Needs a data directory; without one the report is always clean.
+    pub fn launch_report(&self) -> LaunchReport {
+        self.launch.clone()
     }
 
     /// The data directory, if the runtime holds one.
@@ -188,6 +352,9 @@ impl<S: Send + 'static> Runtime<S> {
             let (tx, rx) = reply::<Result<T, E>>();
             let revision = Arc::clone(&self.revision);
             let events = self.events.clone();
+            // Counted as pending until it has run, so a command accepted
+            // just before the app leaves the screen gets time to save.
+            let pending = self.finishing.begin();
             let job = Box::new(move |state: &mut S| {
                 let result = catch_unwind(AssertUnwindSafe(|| command(state)));
                 if matches!(result, Ok(Ok(_))) {
@@ -197,6 +364,8 @@ impl<S: Send + 'static> Runtime<S> {
                 if result.is_err() {
                     forge_runtime::logging::error!("command {name} panicked");
                 }
+                // No longer pending by the time the caller hears back.
+                drop(pending);
                 tx.send(result);
             });
             self.executor.submit(job).then_some(rx)
@@ -213,21 +382,36 @@ impl<S: Send + 'static> Runtime<S> {
     /// when the app goes to the background, by `host`, or by shutdown.
     pub fn foreground(&self, host: Option<&Cancellation>) -> Work {
         let foreground = self.lifecycle.foreground();
-        self.work(&foreground, Some(foreground.clone()), host)
+        self.work(&foreground, Some(foreground.clone()), host, None)
+    }
+
+    /// Work that should finish even if the app leaves the screen (saving
+    /// an export, sending what was just written). While it runs in the
+    /// background the host asks iOS for time (ForgeKit uses
+    /// `beginBackgroundTask`); that time is best effort, and when it runs
+    /// out the work is stopped with `Stopped { Interrupted }`. Also stopped
+    /// by `host` and by shutdown. It must be safe to abandon at any point:
+    /// whatever has to survive goes through a command.
+    pub fn finishing(&self, host: Option<&Cancellation>) -> Work {
+        let scope = self.finishing.scope();
+        let pending = self.finishing.begin();
+        self.work(&scope, Some(scope.clone()), host, Some(pending))
     }
 
     /// Work that may continue in the background until iOS suspends the
-    /// process (it then freezes): stopped by `host` or by shutdown.
+    /// process (it then freezes): stopped by `host` or by shutdown. Asks
+    /// for no background time; use [`Self::finishing`] for work that should.
     pub fn lifetime(&self, host: Option<&Cancellation>) -> Work {
         let lifetime = self.lifecycle.lifetime();
-        self.work(&lifetime, None, host)
+        self.work(&lifetime, None, host, None)
     }
 
     fn work(
         &self,
         parent: &CancelHandle,
-        foreground: Option<CancelHandle>,
+        interrupts: Option<CancelHandle>,
         host: Option<&Cancellation>,
+        pending: Option<Pending>,
     ) -> Work {
         let (cancel, link) = parent.child();
         let mut links: Vec<Box<dyn std::any::Any + Send>> = vec![Box::new(link)];
@@ -239,8 +423,25 @@ impl<S: Send + 'static> Runtime<S> {
             cancel,
             links,
             lifetime: self.lifecycle.lifetime(),
-            foreground,
+            interrupts,
+            _pending: pending,
         }
+    }
+
+    /// Whether accepted commands or finishing work are still running. The
+    /// host asks when the app enters the background, and holds background
+    /// time while it is true; afterwards `BackgroundWork` events say when
+    /// it changes.
+    pub fn background_work_pending(&self) -> bool {
+        self.finishing.pending()
+    }
+
+    /// The host's background time ran out: finishing work is stopped
+    /// (`Stopped { Interrupted }`). Commands can't be stopped; one still
+    /// running finishes when the app next runs, or never happened if iOS
+    /// ends the app first.
+    pub fn background_time_expired(&self) {
+        self.finishing.expire();
     }
 
     /// Runs `work` on its own thread (not the command thread, so commands
@@ -267,6 +468,7 @@ impl<S: Send + 'static> Runtime<S> {
             let stopped = cancel.is_cancelled();
             let kind = work.stop_kind();
             drop(work.links);
+            drop(work._pending);
             match result {
                 Err(_) if stopped => Err(E::from(Stopped { kind })),
                 other => other,
@@ -312,6 +514,11 @@ impl<S: Send + 'static> Runtime<S> {
             return self.shutdown();
         }
         if let Some(change) = self.lifecycle.enter(phase.into()) {
+            if phase == AppPhase::Background {
+                self.finishing.phase_changed(true);
+            } else if change.from == Phase::Background {
+                self.finishing.phase_changed(false);
+            }
             self.events.publish(RuntimeEvent::PhaseChanged {
                 phase,
                 resumed: change.resumed,

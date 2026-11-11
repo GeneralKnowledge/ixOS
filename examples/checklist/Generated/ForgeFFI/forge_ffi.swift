@@ -580,6 +580,17 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     func add(title: String) async throws  -> UInt64
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
+    
+    /**
      * Removes every done item; returns how many went.
      */
     func clearDone() async throws  -> UInt32
@@ -592,8 +603,9 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     
     /**
      * Writes the checklist as plain text for sharing; returns the file's
-     * path. May finish after the app leaves the screen; stopped by
-     * `cancellation` and shutdown.
+     * path. Finishing work: it keeps going when the app leaves the screen,
+     * for as long as iOS gives the app (then `Stopped { Interrupted }`);
+     * stopped by `cancellation` and shutdown.
      */
     func exportText(cancellation: Cancellation?) async throws  -> String
     
@@ -601,6 +613,11 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
      * Every item, oldest first. Never waits for a command.
      */
     func items()  -> [Item]
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
     
     /**
      * The phase last reported.
@@ -737,6 +754,30 @@ open func add(title: String)async throws  -> UInt64  {
 }
     
     /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_checklistcore_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_checklistcore_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Removes every done item; returns how many went.
      */
 open func clearDone()async throws  -> UInt32  {
@@ -770,8 +811,9 @@ open func events() -> RuntimeEvents?  {
     
     /**
      * Writes the checklist as plain text for sharing; returns the file's
-     * path. May finish after the app leaves the screen; stopped by
-     * `cancellation` and shutdown.
+     * path. Finishing work: it keeps going when the app leaves the screen,
+     * for as long as iOS gives the app (then `Stopped { Interrupted }`);
+     * stopped by `cancellation` and shutdown.
      */
 open func exportText(cancellation: Cancellation?)async throws  -> String  {
     return
@@ -796,6 +838,18 @@ open func items() -> [Item]  {
     return try!  FfiConverterSequenceTypeItem.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_forge_ffi_fn_method_checklistcore_items(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_checklistcore_launch_report(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1387,16 +1441,25 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_checklistcore_add() != 18034) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_checklistcore_background_time_expired() != 33780) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_checklistcore_background_work_pending() != 4878) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_checklistcore_clear_done() != 25810) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_checklistcore_events() != 8809) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_checklistcore_export_text() != 28962) {
+    if (uniffi_forge_ffi_checksum_method_checklistcore_export_text() != 5899) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_checklistcore_items() != 62205) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_checklistcore_launch_report() != 39951) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_checklistcore_phase() != 38337) {

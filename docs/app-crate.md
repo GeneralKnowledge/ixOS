@@ -85,7 +85,19 @@ On the way back from `Background`, Rust sends `PhaseChanged { resumed: true }` o
 - **iOS:** the `App` calls `ForgeLifecycle.attach(host)` (ForgeKit). It reports the application's active, inactive and background notifications, and `willTerminate`.
 - **Android:** `MainActivity` calls `reportLifecycle { model.setPhase(it) }` (in `AppLifecycle.kt`). It ignores the `onStop` of a rotation, so a request survives turning the phone.
 
-In Rust, `forge_runtime::Lifecycle` keeps the phase and two cancellation scopes, and `forge_app::Runtime` exposes them as work scopes. `lifetime` is cancelled on `Terminated`. `foreground` is cancelled on `Background` and renewed on resume. Run work that only makes sense on screen with `rt.foreground(…)`, as `check_url` does (Android's crate: `lifecycle.foreground().child()`). Run work that should finish anyway under the lifetime, or keep it short: iOS suspends a backgrounded app within seconds. `lifecycle.subscribe()` lets code on other threads follow changes.
+In Rust, `forge_runtime::Lifecycle` keeps the phase and the cancellation scopes, and `forge_app::Runtime` exposes them as work scopes:
+
+| Scope | Use it for | Stopped by |
+|---|---|---|
+| `rt.foreground(…)` | Work that only makes sense on screen: a search, a refresh, `check_url` | The background (`Interrupted`), the host's `Cancellation`, shutdown |
+| `rt.finishing(…)` | Work that should finish even if the person leaves the app: writing an export, sending what they just wrote (Checklist's `export_text`) | iOS's background time running out (`Interrupted`), the host's `Cancellation`, shutdown |
+| `rt.lifetime(…)` | Work that may simply pause while iOS suspends the app | The host's `Cancellation`, shutdown |
+
+**Background time.** When the app leaves the screen with commands still running or finishing work in flight, ForgeKit asks iOS for time to finish (`beginBackgroundTask`, installed by `ForgeLifecycle.attach`), and gives it back as soon as that work is done; Rust tells it with `BackgroundWork { pending }` events. The time is best effort: iOS decides how long (usually about 30 seconds) and may give none. When it runs out, finishing work is stopped with `Interrupted`. Commands can't be stopped once accepted: one still running when the app is suspended finishes when the app next runs, or never happened if iOS ends the app first. So finishing work must be safe to abandon at any point, and whatever must survive goes through a command.
+
+**The launch report.** `host.launch` (Rust: `rt.launch_report()`) says whether the previous run was ended while it still had work pending in the background (`unfinishedBackgroundWork`). Show the person a short note if that work mattered to them (an export, a send). It needs the runtime to hold the data directory (`Runtime::with_directory`).
+
+Android's crate uses `lifecycle.foreground().child()` directly. `lifecycle.subscribe()` lets code on other threads follow changes.
 
 Do not rely on `Terminated` to save anything. iOS sends `willTerminate` only when it ends an app that is still running, not one it has suspended, and either OS may kill a background process without notice. The starter saves before each command returns, so it loses nothing either way.
 

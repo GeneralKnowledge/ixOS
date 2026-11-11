@@ -1,0 +1,9 @@
+order = 65
+capability = "Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch"
+framework = "Yes: `forge_app::Runtime::finishing`, `background_work_pending`, `background_time_expired`, `launch_report`; ForgeKit `ForgeHost` with `ForgeUIKitBackgroundTime`"
+rust_api = "Yes"
+ios_native = "Yes: `UIApplication.beginBackgroundTask` through `ForgeLifecycle.attach`"
+in_app = "Partial: Checklist's export"
+iphone = "No"
+documented = "Yes: app-crate.md"
+limits = "Best effort: iOS decides how long (usually about 30 seconds). Nothing survives the app being ended: durable work is not built yet"

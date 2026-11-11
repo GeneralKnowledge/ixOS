@@ -7,7 +7,7 @@ use forge_runtime::{CancelHandle, Delivery, Phase, Subscription};
 
 /// The version of this contract. ForgeKit refuses a Rust library built
 /// against a different one, so a mismatched framework fails at launch.
-pub const CONTRACT_VERSION: u32 = 1;
+pub const CONTRACT_VERSION: u32 = 2;
 
 /// The contract version the linked Rust library implements.
 #[uniffi::export]
@@ -106,6 +106,20 @@ pub enum RuntimeEvent {
     PhaseChanged { phase: AppPhase, resumed: bool },
     /// This stream fell behind and missed `count` events. Re-read everything.
     EventsDropped { count: u64 },
+    /// Sent only while the app is in the background: commands or finishing
+    /// work started (`pending: true`) or all finished (`false`). The host
+    /// holds background time while work is pending.
+    BackgroundWork { pending: bool },
+}
+
+/// What the runtime found when the core opened.
+#[derive(uniffi::Record, Clone, Debug, Default, PartialEq, Eq)]
+pub struct LaunchReport {
+    /// The previous run was ended while it still had work to finish in the
+    /// background: a command that hadn't saved, or `finishing` work. Tell
+    /// the person if that work mattered (an export, a send); whatever a
+    /// command had not committed did not happen.
+    pub unfinished_background_work: bool,
 }
 
 /// One consumer's event stream, pulled by the host.
