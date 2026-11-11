@@ -130,6 +130,14 @@ public final class LibraryModel {
         }
     }
 
+    /// Refreshes again if the last refresh found the device offline. The
+    /// view calls it when the network comes back and when the app returns
+    /// to the foreground, which is what the offline footer promises.
+    public func refreshIfOffline() async {
+        guard lastRefresh?.offline == true else { return }
+        await refresh()
+    }
+
     public func cancelRefresh() {
         refreshing?.cancel()
     }

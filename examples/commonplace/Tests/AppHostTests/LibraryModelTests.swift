@@ -41,6 +41,9 @@ final class LibraryModelTests: XCTestCase {
         await model.refresh()
         XCTAssertNil(model.lastRefresh)
         XCTAssertNil(model.alert)
+        // Only a refresh that found the device offline is repeated.
+        await model.refreshIfOffline()
+        XCTAssertNil(model.lastRefresh)
         host.close()
     }
 

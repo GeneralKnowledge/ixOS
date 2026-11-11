@@ -3,6 +3,10 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
+#if canImport(Network)
+    import Network
+#endif
+
 /// Screen 1: the smart timelines (unread, bookmarks, everything) and every
 /// subscription with its unread count. Pull to refresh or the refresh
 /// button fetches every feed; + adds one.
@@ -13,6 +17,7 @@ struct FeedListView: View {
     @State private var renaming: Feed?
     @State private var newTitle = ""
     @State private var unsubscribing: Feed?
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -53,6 +58,10 @@ struct FeedListView: View {
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
+            .task { await refreshWhenConnected() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { Task { await model.refreshIfOffline() } }
+            }
             .navigationTitle("Commonplace")
             .navigationDestination(for: Route.self) { route in
                 switch route {
@@ -126,6 +135,22 @@ struct FeedListView: View {
             }
         }
         .accessibilityIdentifier("feeds.\(timeline.identifier)")
+    }
+
+    /// Keeps the offline footer's promise: refreshes once the network is
+    /// back after a refresh that found the device offline.
+    private func refreshWhenConnected() async {
+        #if canImport(Network)
+            let paths = AsyncStream<Bool> { continuation in
+                let monitor = NWPathMonitor()
+                monitor.pathUpdateHandler = { continuation.yield($0.status == .satisfied) }
+                continuation.onTermination = { _ in monitor.cancel() }
+                monitor.start(queue: DispatchQueue(label: "commonplace.network"))
+            }
+            for await connected in paths where connected {
+                await model.refreshIfOffline()
+            }
+        #endif
     }
 
     @ViewBuilder private var refreshButton: some View {
