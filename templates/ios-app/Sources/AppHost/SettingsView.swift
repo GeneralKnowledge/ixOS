@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import SwiftUI
 
 /// The Settings sheet: what is stored, and a network check that runs an

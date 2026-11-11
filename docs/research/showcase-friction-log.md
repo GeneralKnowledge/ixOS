@@ -8,34 +8,35 @@ what that shows about the framework. This log is that answer. Each entry says
 what happened, how the showcase got round it, and what the framework should do
 instead.
 
-The apps still build and run on their own, and their Swift is unchanged.
-Device Lab depends on each app's own Rust crate and links its Swift from its
-own folder through symlinks. The changes to the other apps are their library
-names (F1, fixed in the framework) and one line in each `lib.rs` (F2).
+The apps still build and run on their own. Device Lab depends on each app's
+own Rust crate and its own Swift package. After a second round of fixes (see
+"Second round" below), adding an app takes a package line, a crate line, a
+`use` line and a row in the Apps list, with no copies, symlinks or aliases.
 
 ## Summary
 
-| # | Friction | Severity | Workaround in the showcase | Framework fix |
-|---|---|---|---|---|
-| F1 | Every app crate's library is called `forge_ffi`, so two app crates can't be linked into one library | Blocker | **Fixed in this PR**: the tools read the name from Cargo; a linkable app names its library after itself | Make it the template's default |
-| F2 | The UniFFI namespace is hard-coded as `"forge_ffi"` in every app | Blocker | `setup_scaffolding!()` with no argument (the namespace follows the library name) | Same, in the template |
-| F3 | Bindings generation knew only one app module (plus ForgeKit's) | Blocker | **Fixed**: each linked crate gets a complete ForgeFFI of its own (`Generated/Linked/<crate>/`) | `forge` could also write the small packages (F4) |
-| F4 | An app's Swift can't be used by another package | Blocker | One small package per hosted app (`Apps/<App>/`, symlinks), imported with `moduleAliases` | Ship each app's Swift as a package |
-| F5 | Five apps call their main target `AppHost` | Annoyance | Module aliases | Name targets after the app in the template |
-| F6 | `ForgeLifecycle` could report to one host only | Limit | **Fixed in ForgeKit**: one attachment per host | — |
-| F7 | Five state models in four apps | Inconsistency | None needed; they coexist | Move Weather, Device Lab and Pocket Library onto ForgeHost |
-| F8 | Three test-data conventions | Inconsistency | `test_data_args` lists two arguments | One argument, honoured by ForgeKit for every app |
-| F9 | Info.plist settings belong to the app, not the feature | Limit | Merged by hand in `forge.toml` | Let a linked app declare its permissions and modes |
-| F10 | Two location stacks | Duplication | None; both work | Move Weather onto the location native service (an open follow-up since #59) |
-| F11 | Duplicated public helpers (`forgeLaunchAppearance`, `ContentView`) | Broke the first build | Device Lab applies the appearance in its ContentView | Ship `forgeLaunchAppearance` once, in ForgeUI |
-| F12 | Dependencies listed twice | Drift risk | Gone with the F1 fix | — |
-| F13 | The Swift can't be compiled in a cloud session | Process | The laptop build and macOS CI check it | Known (AGENTS.md); no change |
-| F14 | The new `import ForgeApp` in Device Lab's bindings | Side effect | Device Lab's ForgeFFI now depends on ForgeApp | None needed |
-| F15 | Native services are per crate; Keychain, notifications, deep links and files are per process | Limit | Each app installs its own; its own Keychain service | Install services once for every crate |
-| F16 | Natural library names already taken (`chat_core`) | Annoyance | `chat_app`, `good_dog_app` | — |
-| F17 | Counter shares its crate with the frozen Android app | Left out | Not hosted | Retire Counter, as planned |
-| F18 | Module aliases reach only the targets a product's own target names | Broke two builds | An `<App>Embed` wrapper target per app that names them all | Unique module names (F4, F5), then no aliases |
-| F19 | Every app's bindings declare the same public View helpers (`forgeOpenURLs()`), and each has its own `ForgeDeepLinks` | Broke the third build | Device Lab calls `onOpenURL` itself and routes `forgechat` links to Chat's | Helpers in ForgeKit once; one deep link router per process |
+| # | Friction | Severity | Status |
+|---|---|---|---|
+| F1 | Every app crate's library is called `forge_ffi`, so two app crates can't be linked into one library | Blocker | **Fixed**: the tools read the name from Cargo; hosted apps and new apps (`forge init`) name it after the app |
+| F2 | The UniFFI namespace is hard-coded as `"forge_ffi"` in every app | Blocker | **Fixed**: `setup_scaffolding!()` with no argument, in hosted apps and the template |
+| F3 | Bindings generation knew only one app module | Blocker | **Fixed**: each app's bindings come from its own `Generated/`; the host generates only its own |
+| F4 | An app's Swift can't be used by another package | Blocker | **Fixed**: Device Lab depends on each app's own package |
+| F5 | Five apps call their main target `AppHost` | Blocker once hosted | **Fixed**: forge.toml `[swift]` names the modules (`ChatFFI`, `ChatApp`); `forge init` names them after the app |
+| F6 | `ForgeLifecycle` could report to one host only | Limit | **Fixed in ForgeKit**: one attachment per host |
+| F7 | Five state models in four apps | Inconsistency | Open: move Weather, Device Lab and Pocket Library onto ForgeHost (roadmap) |
+| F8 | Three test-data conventions | Inconsistency | **Fixed**: every app honours both `-ForgeTemporaryData` and `-ForgeUITestData` |
+| F9 | Info.plist settings belong to the app, not the feature | Limit | **Fixed**: forge.toml `[host] apps` merges each hosted app's permissions, modes, schemes and test arguments |
+| F10 | Two location stacks | Duplication | Open: move Weather onto the location native service (since #59) |
+| F11 | Duplicated public helpers (`forgeLaunchAppearance`, `ContentView`) | Broke the first build | **Fixed** by `MemberImportVisibility` (Device Lab and the template); F15's plan removes the copies |
+| F12 | Dependencies listed twice | Drift risk | Gone with F1 |
+| F13 | The Swift can't be compiled in a cloud session | Process | Known; the laptop build checks it |
+| F14 | The new `import ForgeApp` in Device Lab's bindings | Side effect | Gone: Device Lab no longer generates the other apps' bindings |
+| F15 | Native services are per crate; Keychain, notifications, deep links and files are per process | Limit | Open: planned below ("Native services once per process") |
+| F16 | Natural library names already taken (`chat_core`) | Annoyance | `chat_app`, `good_dog_app` |
+| F17 | Counter shares its crate with the frozen Android app | Left out | Retire Counter, as planned |
+| F18 | Module aliases reach only the targets a product's own target names | Broke two builds | **Gone**: no aliases since F5's fix |
+| F19 | Every app's bindings declare the same public View helpers, and each has its own `ForgeDeepLinks` | Broke the third build | Helpers: **fixed** by `MemberImportVisibility`. Deep links: routed by Device Lab until F15's plan |
+| F20 | Two crates with the same library name fail with Cargo's "extern location does not exist" | Confusing | **Fixed**: the build names both crates and says what to change |
 
 What went well is at the end.
 
@@ -281,6 +282,62 @@ their module. Notification taps that carry a deep link go to
 whichever app installed its notification adapter last (F15). The fix is
 the same as F15's: native services' Swift in ForgeKit, once per process,
 with one router that every app's Rust registers with.
+
+## Second round: the fixes (2026-11-11)
+
+Reuben asked to fix what the log found. What changed:
+
+- **Module names** (F3, F4, F5, F18). forge.toml has a `[swift]` section:
+  `bindings_module` and `app_module`, default `ForgeFFI` and `AppHost`.
+  `forge bindings generate` writes the bindings under that name over the C
+  module `<library>FFI`, keeping the file paths, and `forge check swift`
+  uses the same names. The six hosted apps use `<App>FFI` and `<App>App`,
+  every target in a product carries the app's name (SwiftPM rejects two
+  packages with the same target name in a product, even one the host never
+  uses), and the Rust library is linked from the app, launcher and test
+  targets only, so a host links just its own. Device Lab depends on the
+  apps' own packages: `Apps/`, the aliases and `Generated/Linked` are gone.
+  Pocket Library's executable is now `PocketLibraryXtool`.
+- **Swift setting** (F11, F19). `MemberImportVisibility` on Device Lab's
+  targets and the template's: a file sees the members of only the modules
+  it imports, so the same helper in two apps no longer clashes.
+- **Template** (F1, F2, F5). `forge init MyApp` names the library
+  `my_app_core`, calls `setup_scaffolding!()` with no argument, and names
+  the Swift modules `MyAppFFI` and `MyAppApp`, so any new app can be hosted
+  as it is.
+- **Settings** (F8, F9). `[host] apps` in the host's forge.toml; both test
+  data arguments honoured everywhere.
+- **Library name check** (F20). `forge-crate.sh` compares the library
+  names of the app's crate and its path dependencies before Cargo runs.
+
+## Native services once per process (plan for F15, F19)
+
+Today `generate-bindings.sh` copies Forge's Swift adapters (Keychain,
+notifications, deep links, files, sharing, the optional services) into each
+app's bindings module, because they implement protocols UniFFI generates in
+that crate (`native_services!()` expands in the app's crate). In one process
+that gives several copies: each app installs its own, the last one to
+install gets notification taps, and each has its own `ForgeDeepLinks`.
+
+The runtime already shows the way: `forge_app`'s contract types are a UniFFI
+crate of their own whose Swift ships once, in ForgeKit's `ForgeApp` module.
+Native services can do the same:
+
+1. **forge-services exports its own interface.** The callback protocols and
+   installers move from the macro into `forge-services` (namespace
+   `forge_services`); the macro keeps only selecting optional services.
+2. **ForgeKit ships the Swift once.** A `ForgeServices` module (its bindings
+   and the core adapters) plus one small target per optional service
+   (`ForgeServicesLocation`, ...), so an app still links only the frameworks
+   it selects. `generate-bindings.sh` stops copying adapters.
+3. **One install per process.** `ForgeServices.install()` once, from the
+   app (or the host). One `ForgeDeepLinks`, one notification delegate: each
+   app's views filter the links and notifications they handle.
+4. **Apps move over** one at a time; the standalone apps behave the same.
+
+That is two or three PRs and a ForgeKit release (which needs the laptop to
+push), so it should follow this one. It also removes most of what is
+copied into `Generated/` today.
 
 ## What went well
 

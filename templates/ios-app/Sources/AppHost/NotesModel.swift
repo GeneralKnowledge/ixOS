@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 @preconcurrency import ForgeKit
 import ForgeAppKit
 import Foundation
@@ -13,7 +13,7 @@ private let log = ForgeLog("Notes")
 /// (your code in `rust/src/lib.rs`), and the notes shown come from Rust.
 ///
 /// ForgeKit's `ForgeHost` owns the core for the life of the process (see
-/// AppHost.swift); this model is given it once the core is open. When Rust
+/// FORGE_MODULE_NAMEApp.swift); this model is given it once the core is open. When Rust
 /// commits a change, the host's `changes` moves and the view calls
 /// `reload()`.
 ///

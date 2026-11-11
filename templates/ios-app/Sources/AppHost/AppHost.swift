@@ -1,9 +1,9 @@
 // The app's host: ForgeKit opens the Rust core once per process, reports
 // the application lifecycle to it, and tells the screens when Rust has
-// committed a change. Entry points import AppHost only; ForgeKit comes with
+// committed a change. Entry points import FORGE_MODULE_NAMEApp only; ForgeKit comes with
 // it.
 @_exported import ForgeKit
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import Foundation
 
 extension AppCore: ForgeCore {}

@@ -1,5 +1,5 @@
 @preconcurrency import CoreMLLLM
-@preconcurrency import ForgeFFI
+@preconcurrency import AICheckFFI
 import Foundation
 import SwiftUI
 import Tokenizers

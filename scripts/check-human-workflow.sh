@@ -103,7 +103,7 @@ open(p, "w").write(s)
 PY
 grep -q 'min read' Sources/AppHost/NoteListView.swift || fail "the view edit did not apply"
 cat >Tests/AppHostTests/ReadingTimeTests.swift <<'SWIFT'
-@preconcurrency import ForgeFFI
+@preconcurrency import ShelfFFI
 import XCTest
 
 final class ReadingTimeTests: XCTestCase {

@@ -36,7 +36,7 @@ sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/IPHONEOS_DEPLOYMENT_TARGET = 18
 # Sendable, and strict concurrency would only get in the way of the spike.
 perl -0pi -e '
   s{\n    targets: \[}{\n    dependencies: [\n        .package(url: "https://github.com/john-rocky/CoreML-LLM", exact: "'"$COREML_LLM_VERSION"'"),\n        .package(url: "https://github.com/huggingface/swift-transformers", "1.0.0"..<"2.0.0"),\n    ],\n    targets: [};
-  s{dependencies: \["ForgeFFI"\],\n            path: "Sources/AppHost"}{dependencies: [\n                "ForgeFFI",\n                .product(name: "CoreMLLLM", package: "CoreML-LLM"),\n                .product(name: "Tokenizers", package: "swift-transformers"),\n            ],\n            path: "Sources/AppHost",\n            swiftSettings: [.swiftLanguageMode(.v5)]};
+  s{dependencies: \["AICheckFFI"\],\n            path: "Sources/AppHost"}{dependencies: [\n                "AICheckFFI",\n                .product(name: "CoreMLLLM", package: "CoreML-LLM"),\n                .product(name: "Tokenizers", package: "swift-transformers"),\n            ],\n            path: "Sources/AppHost",\n            swiftSettings: [.swiftLanguageMode(.v5)]};
 ' "$APP/Package.swift"
 grep -q 'CoreML-LLM' "$APP/Package.swift" || { echo "error: could not add CoreML-LLM to Package.swift" >&2; exit 1; }
 grep -q 'swiftLanguageMode(.v5)\]' "$APP/Package.swift" || { echo "error: could not patch the AppHost target" >&2; exit 1; }

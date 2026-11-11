@@ -58,7 +58,7 @@ The [framework extraction audit](framework-extraction-audit.md) applies these ru
 | Portable Rust framework | Logic shared by every app, with no UniFFI and no platform code of its own | `forge-runtime`, `forge-storage`, `forge-net` |
 | Independent infrastructure | Developer tooling that runs beside the app, never inside its FFI | `forge-cli`, `xtool`, Forge Device (planned) |
 
-Each app owns one Rust crate (`[rust] path` in `forge.toml`, usually `rust/`), built as `libforge_ffi` with the Swift module `ForgeFFI` and the Kotlin package `uniffi.forge_ffi`. The crate holds the app's domain logic and its UniFFI API; the framework crates supply the plumbing. There is no shared FFI crate: two hosts share a crate only by pointing at the same path (`examples/counter-android` uses `../counter/rust`). See [app-crate.md](app-crate.md) and the rules in [ffi-policy.md](ffi-policy.md#rust-first-rules).
+Each app owns one Rust crate (`[rust] path` in `forge.toml`, usually `rust/`), staged as `libforge_ffi` (its own library name is the app's, such as `notes_core`), with the Swift module `forge.toml` names (`[swift] bindings_module`: `NotesFFI` for apps from `forge init`, `ForgeFFI` in older ones) and the Kotlin package `uniffi.forge_ffi`. The crate holds the app's domain logic and its UniFFI API; the framework crates supply the plumbing. There is no shared FFI crate: two hosts share a crate only by pointing at the same path (`examples/counter-android` uses `../counter/rust`). See [app-crate.md](app-crate.md) and the rules in [ffi-policy.md](ffi-policy.md#rust-first-rules).
 
 What every app crate gets from `forge-runtime`:
 
