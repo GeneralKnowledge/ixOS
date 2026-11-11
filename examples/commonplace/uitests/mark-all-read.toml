@@ -1,0 +1,50 @@
+# The benchmark's F4 (docs/benchmarks/netnewswire/spec.md): subscribe to
+# the fixture feed (4 articles, all unread), mark them all read from its
+# timeline, and see the unread count go. Needs the fixture server on the
+# laptop (docs/benchmarks/netnewswire/fixtures/serve.py); replace the
+# address with the laptop's. Starts on an empty, throwaway library.
+
+name = "Mark all as read"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "feeds.add" }
+
+[[step]]
+type = { id = "addFeed.url", text = "http://192.168.1.169:8765/rss.xml" }
+
+[[step]]
+tap = { id = "addFeed.save" }
+
+# The new feed's timeline opens, everything unread.
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+tap = { id = "timeline.markAllRead" }
+
+# Nothing is left to mark.
+[[step]]
+expect = { id = "timeline.markAllRead", enabled = false }
+
+[[step]]
+screenshot = "1-all-read"
+
+[[step]]
+tap = { id = "BackButton" }
+
+# The feed no longer shows an unread count.
+[[step]]
+expect = { label_contains = "4 unread", gone = true }
+
+[[step]]
+expect = { label_contains = "unread", gone = true }
+
+[[step]]
+screenshot = "2-feeds"

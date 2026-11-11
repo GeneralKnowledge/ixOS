@@ -221,6 +221,7 @@ The services need no `Info.plist` keys of their own. Notifications, Keychain, fi
 - **Universal links** (`https://example.com/...`) need the `associated_domains` entitlement in `forge.toml` and an `apple-app-site-association` file on your domain. A free Apple ID cannot sign that entitlement.
 - **Permissions that need a usage description** (camera, photos, location) go in `forge.toml` `[ios.permissions]` when you add their adapter. Asking for one without its description crashes the app.
 - **The microphone** (`microphone` in `[ios.permissions]`) is needed by the optional `audio` service.
+- **Networking from Rust and the local network.** `forge-net` (ureq) opens plain sockets, not `URLSession`, so App Transport Security doesn't apply: plain `http://` works without ATS exceptions. iOS's local network privacy permission does apply. The first connection to an address on the LAN (a device, or a development server on your laptop such as `http://192.168.1.20:8765`) shows the system prompt, and until the person allows it the connection fails as if nothing answered. Set `local_network` in `[ios.permissions]` (it writes `NSLocalNetworkUsageDescription`), and if a LAN connection fails, check Settings > Privacy & Security > Local Network before debugging ATS. Commonplace does this for its benchmark's fixture server.
 
 ## Adding a capability
 

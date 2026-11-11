@@ -27,6 +27,7 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 
 use crate::focus::{Focus, Route, Strength};
+use crate::policy::{self, Gate};
 use crate::{wait_for, Driver, Locator, Result, UiError, UiNode};
 
 /// What an exploration may do and how long it may take.
@@ -78,6 +79,9 @@ pub struct Config {
     /// whether they reproduce (errors first, then warnings on the focus).
     /// These replays are not counted in `max_actions`.
     pub verify: usize,
+    /// When a screen has nothing left to try, scroll its list down at most
+    /// this many times to reach controls below the fold (0: never scroll).
+    pub scrolls_per_screen: usize,
 }
 
 impl Default for Config {
@@ -100,6 +104,7 @@ impl Default for Config {
             screenshots: true,
             focus: Focus::default(),
             verify: 0,
+            scrolls_per_screen: 3,
         }
     }
 }
@@ -122,6 +127,103 @@ pub enum Action {
     Launch,
     Tap(Locator),
     Type(Locator, String),
+    /// Scroll a list or scroll view (`down`, `up`…) to reach controls below
+    /// the fold.
+    Scroll(Locator, String),
+}
+
+/// What a walk in another developer's app records in place of the text it
+/// typed: only the number of characters (the any-app policy's promise).
+const NOT_RECORDED: &str = "(not recorded: ";
+
+/// What stands in for typed text that the app echoed back.
+const ECHOED: &str = "(typed text)";
+
+/// What stands in for the text of a list row in another developer's app:
+/// rows hold the person's content (article titles, messages, names).
+const ROW_TEXT: &str = "(row text)";
+
+/// Text kept out of the records, and what is written in its place.
+type Hidden = Vec<(String, &'static str)>;
+
+/// Takes hidden text out of a string: typed text the app may have echoed,
+/// and the person's content in list rows. The longest first, so a row
+/// that contains another hidden text is replaced whole. Single characters
+/// are left: they would blank out ordinary words.
+fn scrub(hidden: &[(String, &'static str)], text: &str) -> String {
+    let mut text = text.to_owned();
+    let mut order: Vec<&(String, &'static str)> = hidden.iter().collect();
+    order.sort_by_key(|(secret, _)| std::cmp::Reverse(secret.len()));
+    for (secret, shown) in order {
+        if secret.chars().count() > 1 && text.contains(secret.as_str()) {
+            text = text.replace(secret.as_str(), shown);
+        }
+    }
+    text
+}
+
+fn scrub_value(typed: &[(String, &'static str)], value: &mut serde_json::Value) {
+    if typed.is_empty() {
+        return;
+    }
+    match value {
+        serde_json::Value::String(s) => *s = scrub(typed, s),
+        serde_json::Value::Array(items) => items.iter_mut().for_each(|v| scrub_value(typed, v)),
+        serde_json::Value::Object(map) => map.values_mut().for_each(|v| scrub_value(typed, v)),
+        _ => {}
+    }
+}
+
+/// The terminal in another developer's app: lines go out with the typed
+/// text taken out, as in the files.
+struct ScrubbedOut<'a> {
+    inner: &'a mut dyn Write,
+    typed: std::rc::Rc<std::cell::RefCell<Hidden>>,
+    line: Vec<u8>,
+}
+
+impl ScrubbedOut<'_> {
+    fn emit(&mut self) -> std::io::Result<()> {
+        let line = String::from_utf8_lossy(&self.line).into_owned();
+        self.line.clear();
+        self.inner
+            .write_all(scrub(&self.typed.borrow(), &line).as_bytes())
+    }
+}
+
+impl Write for ScrubbedOut<'_> {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        for &b in buf {
+            self.line.push(b);
+            if b == b'\n' {
+                self.emit()?;
+            }
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        if !self.line.is_empty() {
+            self.emit()?;
+        }
+        self.inner.flush()
+    }
+}
+
+impl Drop for ScrubbedOut<'_> {
+    fn drop(&mut self) {
+        let _ = self.flush();
+    }
+}
+
+fn not_recorded(text: &str) -> String {
+    format!("{NOT_RECORDED}{} characters)", text.chars().count())
+}
+
+/// The number of characters, if `text` stands in for text not recorded.
+fn recorded_length(text: &str) -> Option<&str> {
+    text.strip_prefix(NOT_RECORDED)?
+        .strip_suffix(" characters)")
 }
 
 impl Action {
@@ -129,7 +231,11 @@ impl Action {
         match self {
             Action::Launch => "launch".into(),
             Action::Tap(locator) => format!("tap {locator}"),
-            Action::Type(locator, text) => format!("type {text:?} into {locator}"),
+            Action::Type(locator, text) => match recorded_length(text) {
+                Some(n) => format!("type {n} characters into {locator} (the text is not recorded)"),
+                None => format!("type {text:?} into {locator}"),
+            },
+            Action::Scroll(locator, direction) => format!("scroll {locator} {direction}"),
         }
     }
 
@@ -148,8 +254,18 @@ impl Action {
             ),
             Action::Tap(locator) => format!("tap = {{ {} }}", target(locator)),
             Action::Type(locator, text) => {
-                format!("type = {{ {}, text = {} }}", target(locator), quote(text))
+                let step = format!("type = {{ {}, text = {} }}", target(locator), quote(text));
+                if recorded_length(text).is_some() {
+                    format!("{step}  # another developer's app: the text typed is not recorded; put your own")
+                } else {
+                    step
+                }
             }
+            Action::Scroll(locator, direction) => format!(
+                "scroll = {{ {}, direction = {} }}",
+                target(locator),
+                quote(direction)
+            ),
         }
     }
 }
@@ -727,6 +843,79 @@ fn consider(
     });
 }
 
+/// Element kinds that scroll.
+const SCROLLABLE: &[&str] = &["Table", "CollectionView", "ScrollView"];
+
+/// The list or scroll view to scroll for controls below the fold: the
+/// first visible one, by identifier when it has one, else by kind and its
+/// place among elements of that kind (never by coordinates).
+fn scroll_target(tree: &UiNode) -> Option<Locator> {
+    // WDA doesn't always call a list visible (NetNewsWire's on Cati,
+    // 2026-11-10), so a list with a size on screen will do when none is.
+    scroll_target_where(tree, |n| n.visible).or_else(|| {
+        scroll_target_where(tree, |n| {
+            n.frame
+                .is_some_and(|f| f.width > 0.0 && f.height > 0.0 && f.y >= 0.0)
+        })
+    })
+}
+
+fn scroll_target_where(tree: &UiNode, usable: impl Fn(&UiNode) -> bool) -> Option<Locator> {
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    for node in tree.walk() {
+        if !SCROLLABLE.contains(&node.kind.as_str()) {
+            continue;
+        }
+        let index = seen.entry(node.kind.as_str()).or_default();
+        let this = *index;
+        *index += 1;
+        if !usable(node) {
+            continue;
+        }
+        return Some(match &node.identifier {
+            Some(id) => Locator::Id(id.clone()),
+            None => Locator::Kind {
+                kind: node.kind.clone(),
+                label: None,
+                index: Some(this),
+            },
+        });
+    }
+    None
+}
+
+/// What the any-app policy needs to know about the element `locator`
+/// names on `tree`: its label, identifier and kind.
+fn target_of(tree: &UiNode, locator: &Locator) -> policy::Target {
+    let found = match locator {
+        Locator::Id(id) => tree
+            .walk()
+            .find(|n| n.visible && n.identifier.as_deref() == Some(id)),
+        Locator::Label(label) => tree
+            .walk()
+            .find(|n| n.visible && n.label.as_deref() == Some(label)),
+        _ => None,
+    };
+    match found {
+        Some(n) => policy::Target {
+            label: n.label.clone(),
+            identifier: n.identifier.clone(),
+            kind: Some(n.kind.clone()),
+        },
+        None => match locator {
+            Locator::Id(id) => policy::Target {
+                identifier: Some(id.clone()),
+                ..Default::default()
+            },
+            Locator::Label(label) => policy::Target {
+                label: Some(label.clone()),
+                ..Default::default()
+            },
+            _ => policy::Target::default(),
+        },
+    }
+}
+
 /// Words in a field's identifier or label that ask for a number.
 const NUMBER_WORDS: &[&str] = &[
     "number", "count", "amount", "price", "cost", "total", "quantity", "qty", "age", "year",
@@ -889,11 +1078,77 @@ pub struct Report {
     /// the routes followed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub focus: Option<serde_json::Value>,
+    /// In another developer's app: the text the walk typed, so that
+    /// `scrub_json` can take it out of anything the app echoed it into
+    /// (a title, an alert, a label). Never serialised.
+    #[serde(skip)]
+    pub typed: Hidden,
 }
 
 impl Report {
+    /// Replaces the text the walk typed wherever it appears in `value`:
+    /// what is written down for another developer's app says
+    /// `(typed text)` instead. Does nothing for the developer's own app.
+    pub fn scrub_json(&self, value: &mut serde_json::Value) {
+        scrub_value(&self.typed, value);
+    }
+
     pub fn errors(&self) -> usize {
         self.issues.iter().filter(|i| i.severity == "error").count()
+    }
+
+    /// The walk as a transition graph (`graph.json`): its screens, and for
+    /// each action tried from a screen, where it led each time. An action
+    /// is `repeatable` when it was done more than once from the same screen
+    /// and always led to the same place. Built from the journal, so it
+    /// holds only what was seen, not what the app could do.
+    pub fn graph(&self) -> serde_json::Value {
+        let mut edges: BTreeMap<(String, String), Vec<(usize, String)>> = BTreeMap::new();
+        for s in &self.journal {
+            if s.action == "launch" || s.from.is_empty() {
+                continue;
+            }
+            edges
+                .entry((s.from.clone(), s.action.clone()))
+                .or_default()
+                .push((s.step, s.outcome.clone()));
+        }
+        let edges: Vec<serde_json::Value> = edges
+            .into_iter()
+            .map(|((from, action), seen)| {
+                let to: BTreeSet<&str> = seen.iter().map(|(_, o)| o.as_str()).collect();
+                serde_json::json!({
+                    "from": from,
+                    "action": action,
+                    "to": to,
+                    "times": seen.len(),
+                    "repeatable": seen.len() > 1 && to.len() == 1,
+                    "steps": seen.iter().map(|(n, _)| n).collect::<Vec<_>>(),
+                })
+            })
+            .collect();
+        let screens: Vec<serde_json::Value> = self
+            .screens
+            .iter()
+            .map(|s| {
+                serde_json::json!({
+                    "id": s.id,
+                    "title": s.title,
+                    "screenshot": s.screenshot,
+                    "identifiers": s.identifiers,
+                    "path": s.path,
+                })
+            })
+            .collect();
+        serde_json::json!({
+            "format": "forge.explore-graph/1",
+            "app": self.app,
+            "seed": self.seed,
+            "launch_args": self.launch_args,
+            "root": self.screens.first().map(|s| s.id.clone()),
+            "screens": screens,
+            "edges": edges,
+        })
     }
 }
 
@@ -912,6 +1167,14 @@ struct Screen {
     identifiers: BTreeSet<String>,
     /// The shortest known way here without no-op taps.
     route: Vec<Action>,
+    /// Scrolls done here to reach controls below the fold. Counted on
+    /// the screen's `scroll_home`, not here.
+    scrolls: usize,
+    /// The screen whose scroll budget this one shares. Scrolling a list
+    /// changes which rows are visible, and so the fingerprint: the rows
+    /// further down are a new screen record but the same logical screen,
+    /// so they spend the budget of the screen the scrolling started on.
+    scroll_home: usize,
 }
 
 /// Where an action left the app.
@@ -924,6 +1187,10 @@ enum Landed {
 struct Explorer<'a> {
     config: &'a Config,
     driver: &'a mut dyn Driver,
+    /// The any-app policy's gate: allows everything in the developer's own
+    /// app; in another developer's app it checks each action against the
+    /// person's level and the commit gate, and journals it.
+    gate: &'a mut Gate,
     out_dir: Option<&'a Path>,
     out: &'a mut dyn Write,
     rng: Rng,
@@ -959,6 +1226,16 @@ struct Explorer<'a> {
     /// The last action's outcome, and whether it left the tree as it was.
     last_outcome: String,
     last_unchanged: bool,
+    /// While a scroll runs: the screen whose scroll budget it spends, so a
+    /// screen the scroll reveals shares it.
+    scroll_home: Option<usize>,
+    /// Another developer's app: typed text is never written down.
+    redact: bool,
+    /// The text behind each action whose text is not recorded.
+    typed: HashMap<(Locator, String), String>,
+    /// The same texts, to take out of whatever the app echoed them into;
+    /// shared with the terminal's `ScrubbedOut`.
+    echo: std::rc::Rc<std::cell::RefCell<Hidden>>,
 }
 
 /// Explores `config.app`. Progress goes to `out`; screenshots, trees,
@@ -969,15 +1246,43 @@ pub fn run(
     out_dir: Option<&Path>,
     out: &mut dyn Write,
 ) -> Result<Report> {
+    run_gated(config, driver, out_dir, out, &mut Gate::own(&config.app))
+}
+
+/// [`run`] in an app the any-app policy decides about: every launch, tap,
+/// typing and scroll is put to `gate` first. A refused tap or typing is
+/// skipped (and listed with the policy's reason); a refused launch ends
+/// the walk.
+pub fn run_gated(
+    config: &Config,
+    driver: &mut dyn Driver,
+    out_dir: Option<&Path>,
+    out: &mut dyn Write,
+    gate: &mut Gate,
+) -> Result<Report> {
     let started = Instant::now();
     let deadline = started + config.budget;
     if let Some(dir) = out_dir {
         std::fs::create_dir_all(dir.join("screens"))?;
         std::fs::create_dir_all(dir.join("repro"))?;
     }
+    let redact = gate.is_foreign();
+    let echo = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let mut scrubbed;
+    let out: &mut dyn Write = if redact {
+        scrubbed = ScrubbedOut {
+            inner: out,
+            typed: echo.clone(),
+            line: Vec::new(),
+        };
+        &mut scrubbed
+    } else {
+        out
+    };
     let mut explorer = Explorer {
         config,
         driver,
+        gate,
         out_dir,
         out,
         rng: Rng(config.seed),
@@ -1001,6 +1306,10 @@ pub fn run(
         quiet: false,
         last_outcome: String::new(),
         last_unchanged: false,
+        scroll_home: None,
+        redact,
+        typed: HashMap::new(),
+        echo,
     };
     writeln!(
         explorer.out,
@@ -1077,6 +1386,22 @@ impl Explorer<'_> {
         if let Some(candidate) = self.next_untried(here, Strength::None) {
             self.try_candidate(here, candidate)?;
             return Ok(true);
+        }
+        // Nothing left in view: scroll the list for controls below the fold.
+        let home = self.screens[here].scroll_home;
+        if self.screens[home].scrolls < self.config.scrolls_per_screen {
+            if let Some(list) = scroll_target(&self.tree) {
+                self.screens[home].scrolls += 1;
+                self.scroll_home = Some(home);
+                let done = self.perform(Action::Scroll(list, "down".into()), true);
+                self.scroll_home = None;
+                done?;
+                // The end of the list: nothing moved, so stop scrolling here.
+                if self.last_unchanged {
+                    self.screens[home].scrolls = self.config.scrolls_per_screen;
+                }
+                return Ok(true);
+            }
         }
         // Nothing left here. Is anything left anywhere?
         let Some(target) = self.frontier(Strength::None) else {
@@ -1268,19 +1593,42 @@ impl Explorer<'_> {
         let from = self.current.clone();
         let before = self.tree.clone();
         let started = Instant::now();
+        if let Err(why) = self.gate.check(&self.policy_action(&action)) {
+            if matches!(action, Action::Launch) {
+                return Err(UiError::Refused(why));
+            }
+            // Refused by the person's policy: not done, and listed as
+            // skipped on the screen, so the gap in coverage is visible.
+            self.actions -= 1;
+            if let Some(&i) = self.index.get(&from) {
+                self.screens[i].skipped.insert(Skipped {
+                    element: action.describe(),
+                    reason: format!("the any-app policy: {why}"),
+                });
+            }
+            writeln!(self.out, "          refused {}: {why}", action.describe())?;
+            self.last_outcome = "refused".into();
+            self.last_unchanged = true;
+            return Ok(());
+        }
         let result = match &action {
             Action::Launch => self
                 .driver
                 .launch(&self.config.app, &self.config.launch_args),
             Action::Tap(locator) => self.on_element(locator, &mut |d, e| d.tap(e)),
-            Action::Type(locator, text) => self
-                .on_element(locator, &mut |d, e| d.type_text(e, text))
-                // Put the keyboard away so the walk carries on in the app.
-                // Not every keyboard can be dismissed this way; what stays
-                // up is cut from the tree by `app_part`.
-                .map(|()| {
-                    let _ = self.driver.dismiss_keyboard();
-                }),
+            Action::Scroll(locator, direction) => {
+                self.on_element(locator, &mut |d, e| d.scroll(e, direction))
+            }
+            Action::Type(locator, text) => {
+                let text = self.real_text(locator, text).to_owned();
+                self.on_element(locator, &mut |d, e| d.type_text(e, &text))
+                    // Put the keyboard away so the walk carries on in the app.
+                    // Not every keyboard can be dismissed this way; what stays
+                    // up is cut from the tree by `app_part`.
+                    .map(|()| {
+                        let _ = self.driver.dismiss_keyboard();
+                    })
+            }
         };
         let mut outcome = match result {
             Ok(()) => None,
@@ -1422,6 +1770,70 @@ impl Explorer<'_> {
         recovered
     }
 
+    /// The action as the any-app policy sees it: what a tap or typing will
+    /// touch, read from the screen in front.
+    fn policy_action(&self, action: &Action) -> policy::Action {
+        match action {
+            Action::Launch => policy::Action::Launch,
+            Action::Scroll(..) => policy::Action::Scroll,
+            Action::Tap(locator) => policy::Action::Tap(self.target(locator)),
+            Action::Type(locator, text) => {
+                let text = self.real_text(locator, text);
+                policy::Action::Type {
+                    target: self.target(locator),
+                    chars: text.chars().count(),
+                    presses_return: text.contains('\n'),
+                }
+            }
+        }
+    }
+
+    /// Keeps `text` out of everything written for another developer's app.
+    fn hide(&self, text: &str, shown: &'static str) {
+        let mut hidden = self.echo.borrow_mut();
+        if !text.is_empty() && !hidden.iter().any(|(t, _)| t == text) {
+            hidden.push((text.to_owned(), shown));
+        }
+    }
+
+    /// In another developer's app, list rows show the person's content: the
+    /// labels and values of cells and of the text inside them are written
+    /// down as `(row text)`.
+    fn hide_rows(&self) {
+        if !self.redact {
+            return;
+        }
+        for cell in self.tree.walk().filter(|n| n.kind == "Cell") {
+            for node in cell.walk() {
+                for text in [&node.label, &node.value].into_iter().flatten() {
+                    self.hide(text, ROW_TEXT);
+                }
+            }
+        }
+    }
+
+    /// The policy's view of a control. In another developer's app its label
+    /// and identifier lose any typed text the app echoed into them, since
+    /// the policy's journal writes them down.
+    fn target(&self, locator: &Locator) -> policy::Target {
+        let mut target = target_of(&self.tree, locator);
+        if self.redact {
+            let typed = self.echo.borrow();
+            target.label = target.label.map(|l| scrub(&typed, &l));
+            target.identifier = target.identifier.map(|i| scrub(&typed, &i));
+        }
+        target
+    }
+
+    /// The text an action types: itself, or the text kept out of the
+    /// records in another developer's app.
+    fn real_text<'t>(&'t self, locator: &Locator, text: &'t str) -> &'t str {
+        self.typed
+            .get(&(locator.clone(), text.to_owned()))
+            .map(String::as_str)
+            .unwrap_or(text)
+    }
+
     /// Finds the element and acts on it, finding it again once if the
     /// screen re-rendered in between.
     fn on_element(
@@ -1467,6 +1879,7 @@ impl Explorer<'_> {
             }
         }
         self.tree = tree;
+        self.hide_rows();
         self.current = id.clone();
         if !self.index.contains_key(&id) {
             self.discover(&id, step)?;
@@ -1485,7 +1898,23 @@ impl Explorer<'_> {
     }
 
     fn discover(&mut self, id: &str, step: usize) -> Result<()> {
+        self.hide_rows();
         let (mut found, skipped) = candidates(&self.tree, self.config);
+        if self.redact {
+            // In another developer's app the walk keeps what it typed out of
+            // everything it writes: the reports, graph, repro files and the
+            // terminal show only the length. The text itself stays in memory
+            // so routes can be replayed.
+            for candidate in &mut found {
+                if let Action::Type(locator, text) = &mut candidate.action {
+                    let shown = not_recorded(text);
+                    self.hide(text, ECHOED);
+                    self.typed
+                        .insert((locator.clone(), shown.clone()), std::mem::take(text));
+                    *text = shown;
+                }
+            }
+        }
         // Seeded order, exits last.
         let mut exits: Vec<Candidate> = Vec::new();
         found.retain(|c| {
@@ -1524,12 +1953,15 @@ impl Explorer<'_> {
                 .unwrap_or_default(),
             found.len()
         )?;
-        self.index.insert(id.to_owned(), self.screens.len());
+        let index = self.screens.len();
+        self.index.insert(id.to_owned(), index);
         self.screens.push(Screen {
+            scroll_home: self.scroll_home.unwrap_or(index),
             id: id.to_owned(),
             title: title(&self.tree),
             path: self.trail.clone(),
             route: self.route_trail.clone(),
+            scrolls: 0,
             untried: found,
             tried_keys: HashSet::new(),
             tried: 0,
@@ -1678,7 +2110,10 @@ impl Explorer<'_> {
                 let name = format!("repro/issue-{}-{}.toml", issue.number, issue.issue);
                 std::fs::write(
                     dir.join(&name),
-                    repro_file(self.config, issue, &issue.actions),
+                    scrub(
+                        &self.echo.borrow(),
+                        &repro_file(self.config, issue, &issue.actions),
+                    ),
                 )?;
                 issue.repro_file = Some(name);
             }
@@ -1707,7 +2142,7 @@ impl Explorer<'_> {
                     .any(|id| self.config.focus.strength(id) >= Strength::Entry),
             })
             .collect();
-        let focus = (!self.config.focus.is_empty()).then(|| self.focus_report());
+        let focus = (!self.config.focus.is_empty()).then(|| self.focus_report(stopped));
         let report = Report {
             app: self.config.app.clone(),
             seed: self.config.seed,
@@ -1719,11 +2154,20 @@ impl Explorer<'_> {
             issues: self.issues,
             journal: self.journal,
             focus,
+            typed: self.echo.borrow().clone(),
         };
         if let Some(dir) = self.out_dir {
+            let mut json = serde_json::to_value(&report).map_err(std::io::Error::other)?;
+            report.scrub_json(&mut json);
             std::fs::write(
                 dir.join("explore.json"),
-                serde_json::to_vec_pretty(&report).map_err(std::io::Error::other)?,
+                serde_json::to_vec_pretty(&json).map_err(std::io::Error::other)?,
+            )?;
+            let mut graph = report.graph();
+            report.scrub_json(&mut graph);
+            std::fs::write(
+                dir.join("graph.json"),
+                serde_json::to_vec_pretty(&graph).map_err(std::io::Error::other)?,
             )?;
         }
         let count = |s: &str| report.issues.iter().filter(|i| i.severity == s).count();
@@ -1793,7 +2237,7 @@ impl Explorer<'_> {
         }
     }
 
-    fn focus_report(&self) -> serde_json::Value {
+    fn focus_report(&self, stopped: &str) -> serde_json::Value {
         let focus = &self.config.focus;
         let targets = focus.direct_targets();
         let reached = |t: &String| match t.strip_suffix('*') {
@@ -1814,12 +2258,57 @@ impl Explorer<'_> {
             "first_direct_action": first_direct,
             "not_reached": not_reached,
             "not_reached_note": (!not_reached.is_empty()).then_some(
-                "Never on screen during the walk: behind data the test-data mode doesn't create, below the fold (scrolling isn't built), behind a skipped control, or out of budget. Not checked, so not passed."
+                "Never on screen during the walk, so not checked and not passed. not_reached_reasons lists what in this walk could explain it; a target can also be behind data the test-data mode doesn't create."
             ),
+            "not_reached_reasons": if not_reached.is_empty() {
+                Vec::new()
+            } else {
+                self.not_reached_reasons(stopped)
+            },
             "routes": self.routes_done,
             "routes_not_followed": self.routes.len(),
             "basis_note": crate::focus::BASIS_NOTE,
         })
+    }
+
+    /// What in this walk could have kept a target off screen: the scroll
+    /// budget, skipped controls, the action or time budget.
+    fn not_reached_reasons(&self, stopped: &str) -> Vec<String> {
+        let mut reasons = Vec::new();
+        let limit = self.config.scrolls_per_screen;
+        if limit == 0 {
+            reasons.push(
+                "scrolling was off (scrolls_per_screen = 0), so nothing below the fold was seen"
+                    .to_owned(),
+            );
+        } else {
+            let used_up: Vec<&str> = self
+                .screens
+                .iter()
+                .filter(|s| s.scroll_home == self.index[&s.id] && s.scrolls >= limit)
+                .map(|s| s.id.as_str())
+                .collect();
+            if !used_up.is_empty() {
+                reasons.push(format!(
+                    "not reached after scrolling: {} screen(s) used all {limit} scrolls or reached the end of the list ({})",
+                    used_up.len(),
+                    used_up.join(", ")
+                ));
+            }
+        }
+        let skipped: usize = self.screens.iter().map(|s| s.skipped.len()).sum();
+        if skipped > 0 {
+            reasons.push(format!(
+                "blocked by a skipped control: {skipped} control(s) were not touched (each screen's skipped list says why)"
+            ));
+        }
+        if stopped != "explored" {
+            reasons.push(format!(
+                "out of budget: the walk stopped at its {}",
+                stopped.replace('_', " ")
+            ));
+        }
+        reasons
     }
 
     /// Replays issues once more to see whether they come back: errors
@@ -2017,6 +2506,11 @@ mod tests {
         /// Whether `dismiss_keyboard` works (WDA can't always).
         keyboard_dismissable: bool,
         dismissals: usize,
+        /// Each scroll brings new rows into view, as a long feed does.
+        endless: usize,
+        /// Typing shows the text back in an alert and its button, as an
+        /// app that echoes a search term does.
+        echo: bool,
     }
 
     fn at(mut n: UiNode, y: f64) -> UiNode {
@@ -2140,6 +2634,8 @@ mod tests {
                 keyboard_up: false,
                 keyboard_dismissable: true,
                 dismissals: 0,
+                endless: 0,
+                echo: false,
             }
         }
 
@@ -2167,7 +2663,37 @@ mod tests {
         fn background(&mut self, _: f64) -> Result<()> {
             Ok(())
         }
-        fn scroll(&mut self, _: &ElementRef, _: &str) -> Result<()> {
+        fn scroll(&mut self, _: &ElementRef, direction: &str) -> Result<()> {
+            self.log.push(format!("scroll {direction}"));
+            if self.endless > 0 {
+                // The rows in view scroll off and a new one comes in.
+                self.endless += 1;
+                let row = format!("feeds.row.{}", self.endless);
+                for list in self
+                    .screen()
+                    .children
+                    .iter_mut()
+                    .filter(|n| n.kind == "Table")
+                {
+                    for row in &mut list.children {
+                        row.visible = false;
+                    }
+                    list.children
+                        .push(node("StaticText", Some(&row), Some("An article")));
+                }
+                return Ok(());
+            }
+            // Everything in the screen's lists comes into view.
+            for list in self
+                .screen()
+                .children
+                .iter_mut()
+                .filter(|n| n.kind == "Table")
+            {
+                for row in &mut list.children {
+                    row.visible = true;
+                }
+            }
             Ok(())
         }
         fn find_all(&mut self, locator: &Locator) -> Result<Vec<ElementRef>> {
@@ -2204,9 +2730,19 @@ mod tests {
         fn type_text(&mut self, element: &ElementRef, text: &str) -> Result<()> {
             let index: usize = element.0.parse().unwrap();
             self.log.push(format!("type {text}"));
-            let node = self.screen().nth_mut(index).expect("node");
-            node.value = Some(text.into());
+            let field = self.screen().nth_mut(index).expect("node");
+            field.value = Some(text.into());
             self.keyboard_up = true;
+            if self.echo {
+                let alert = UiNode {
+                    children: vec![
+                        node("StaticText", None, Some(&format!("Couldn't save “{text}”"))),
+                        node("Button", None, Some(&format!("Retry “{text}”"))),
+                    ],
+                    ..node("Alert", None, Some("Not Saved"))
+                };
+                self.screen().children.push(alert);
+            }
             Ok(())
         }
         fn dismiss_keyboard(&mut self) -> Result<()> {
@@ -2422,6 +2958,313 @@ mod tests {
             .iter()
             .find(|i| i.issue == kind)
             .unwrap_or_else(|| panic!("no {kind} in {:#?}", report.issues))
+    }
+
+    /// A feed list whose last control is below the fold until scrolled.
+    fn long_list() -> ModelApp {
+        let mut model = ModelApp::pocket_library();
+        let mut hidden = node("Button", Some("feeds.manage"), Some("Manage Feeds"));
+        hidden.visible = false;
+        let list = UiNode {
+            children: vec![
+                node("Cell", Some("feeds.row.1"), Some("Daring Feed")),
+                hidden,
+            ],
+            ..node("Table", None, None)
+        };
+        model
+            .screens
+            .insert("library", app(vec![nav("Feeds", vec![]), list]));
+        model.screens.insert(
+            "manage",
+            app(vec![nav(
+                "Manage",
+                vec![node("Button", None, Some("Feeds"))],
+            )]),
+        );
+        model.taps = HashMap::from([
+            (("library", "feeds.manage"), To::Screen("manage")),
+            (("manage", "Feeds"), To::Screen("library")),
+        ]);
+        model
+    }
+
+    #[test]
+    fn scrolls_a_list_to_reach_controls_below_the_fold() {
+        let mut model = long_list();
+        let report = run(&config(), &mut model, None, &mut Vec::new()).unwrap();
+        assert!(
+            model.log.iter().any(|l| l == "scroll down"),
+            "{:?}",
+            model.log
+        );
+        assert!(
+            model.log.iter().any(|l| l == "tap feeds.manage"),
+            "{:?}",
+            model.log
+        );
+        assert!(report
+            .screens
+            .iter()
+            .any(|s| s.title.as_deref() == Some("Manage")));
+        // The scroll is part of the way there, as a step `forge ui run` takes.
+        let manage = report
+            .screens
+            .iter()
+            .find(|s| s.title.as_deref() == Some("Manage"))
+            .unwrap();
+        assert!(
+            manage
+                .route
+                .iter()
+                .any(|r| r.starts_with("scroll = { kind = \"Table\", index = 0")),
+            "{:?}",
+            manage.route
+        );
+        let parsed = crate::focus::parse_route(
+            &manage
+                .route
+                .iter()
+                .map(|r| serde_json::json!(r))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        assert!(matches!(parsed.first(), Some(Action::Scroll(_, d)) if d == "down"));
+    }
+
+    #[test]
+    fn in_another_developers_app_row_content_is_not_written_down() {
+        // NetNewsWire on Cati, 2026-11-10: at `observe`, the refusal of a
+        // row tap printed the row's article title and excerpt.
+        const ROW: &str = "Daring Feed";
+        let dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Observe,
+            Box::new(policy::NoApprover),
+            Some(policy::Journal::create(dir.path()).unwrap()),
+        );
+        let mut model = long_list();
+        // WDA called NetNewsWire's list not visible: it is scrolled anyway.
+        if let Some(list) = model
+            .screens
+            .get_mut("library")
+            .unwrap()
+            .children
+            .iter_mut()
+            .find(|n| n.kind == "Table")
+        {
+            list.visible = false;
+            list.frame = Some(Rect {
+                x: 0.0,
+                y: 100.0,
+                width: 400.0,
+                height: 600.0,
+            });
+        }
+        let report =
+            run_gated(&config(), &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        drop(gate);
+        assert!(
+            model.log.iter().any(|l| l == "scroll down"),
+            "{:?}",
+            model.log
+        );
+        assert!(!model.log.iter().any(|l| l.starts_with("tap")));
+        let out = String::from_utf8(out).unwrap();
+        assert!(!out.contains(ROW), "{out}");
+        assert!(out.contains("(row text)"), "{out}");
+        let mut stack = vec![dir.path().to_path_buf()];
+        while let Some(path) = stack.pop() {
+            if path.is_dir() {
+                if !path.ends_with("screens") {
+                    stack.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                }
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            assert!(!text.contains(ROW), "{}: {text}", path.display());
+        }
+        let mut json = serde_json::to_value(&report).unwrap();
+        report.scrub_json(&mut json);
+        assert!(!json.to_string().contains(ROW));
+        // A control that isn't a row keeps its label.
+        assert!(json.to_string().contains("Manage Feeds"), "{json}");
+    }
+
+    #[test]
+    fn the_scroll_limit_holds_for_a_list_that_never_ends() {
+        // Every scroll shows new rows, so a new fingerprint: the rows further
+        // down are still the same screen, and share its three scrolls.
+        let mut model = long_list();
+        model.endless = 1;
+        run(&config(), &mut model, None, &mut Vec::new()).unwrap();
+        let scrolls = model.log.iter().filter(|l| l.starts_with("scroll")).count();
+        assert_eq!(scrolls, 3, "{:?}", model.log);
+    }
+
+    #[test]
+    fn scrolling_can_be_turned_off_and_stops_at_the_end_of_a_list() {
+        let off = Config {
+            scrolls_per_screen: 0,
+            ..config()
+        };
+        let mut model = long_list();
+        run(&off, &mut model, None, &mut Vec::new()).unwrap();
+        assert!(!model.log.iter().any(|l| l.starts_with("scroll")));
+        // With scrolling on, a list that no longer moves is scrolled once
+        // more at most, not up to the limit on every visit.
+        let many = Config {
+            scrolls_per_screen: 5,
+            ..config()
+        };
+        let mut model = long_list();
+        run(&many, &mut model, None, &mut Vec::new()).unwrap();
+        let scrolls = model.log.iter().filter(|l| l.starts_with("scroll")).count();
+        assert!(scrolls <= 3, "{scrolls} scrolls: {:?}", model.log);
+    }
+
+    #[test]
+    fn in_another_developers_app_the_policy_decides_each_action() {
+        // `observe`: launching and reading are allowed, tapping is not.
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Observe,
+            Box::new(policy::NoApprover),
+            None,
+        );
+        let mut model = ModelApp::pocket_library();
+        let report = run_gated(&config(), &mut model, None, &mut Vec::new(), &mut gate).unwrap();
+        assert!(
+            !model.log.iter().any(|l| l.starts_with("tap")),
+            "{:?}",
+            model.log
+        );
+        let skipped: Vec<&Skipped> = report.screens.iter().flat_map(|s| &s.skipped).collect();
+        assert!(
+            skipped
+                .iter()
+                .any(|s| s.reason.starts_with("the any-app policy") && s.reason.contains("operate")),
+            "{skipped:#?}"
+        );
+        // `deny`: not even launched.
+        let mut gate = Gate::foreign(APP, policy::Level::Deny, Box::new(policy::NoApprover), None);
+        let mut model = ModelApp::pocket_library();
+        let refused = run_gated(&config(), &mut model, None, &mut Vec::new(), &mut gate);
+        assert!(matches!(refused, Err(UiError::Refused(_))));
+        assert!(model.log.is_empty(), "{:?}", model.log);
+    }
+
+    #[test]
+    fn in_another_developers_app_typed_text_is_never_written_down() {
+        const SECRET: &str = "Secret search term";
+        let config = Config {
+            fixtures: HashMap::from([("bookForm.title".to_owned(), SECRET.to_owned())]),
+            ..config()
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let journal_dir = tempfile::tempdir().unwrap();
+        let mut out = Vec::new();
+        let mut gate = Gate::foreign(
+            APP,
+            policy::Level::Full,
+            Box::new(policy::NoApprover),
+            Some(policy::Journal::create(journal_dir.path()).unwrap()),
+        );
+        let mut model = ModelApp::pocket_library();
+        // The app echoes what was typed into an alert and a button label.
+        model.echo = true;
+        let report = run_gated(&config, &mut model, Some(dir.path()), &mut out, &mut gate).unwrap();
+        drop(gate);
+        // The app got the real text...
+        assert!(
+            model.log.iter().any(|l| l == &format!("type {SECRET}")),
+            "{:?}",
+            model.log
+        );
+        // ...and nothing the walk wrote has it: not the terminal, the report,
+        // the graph or a repro file. Only the length is kept.
+        let out = String::from_utf8(out).unwrap();
+        assert!(!out.contains(SECRET), "{out}");
+        assert!(out.contains("type 18 characters into"), "{out}");
+        let mut written = 0;
+        let mut stack = vec![dir.path().to_path_buf(), journal_dir.path().to_path_buf()];
+        while let Some(path) = stack.pop() {
+            if path.is_dir() {
+                // Trees and screenshots show what is on screen, typed text
+                // included; docs/forge-explore.md says so.
+                if path.ends_with("screens") {
+                    continue;
+                }
+                stack.extend(std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().path()));
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).unwrap_or_default();
+            assert!(!text.contains(SECRET), "{}: {text}", path.display());
+            written += 1;
+        }
+        assert!(written >= 2, "explore.json and graph.json");
+        let saved = std::fs::read_to_string(dir.path().join("explore.json")).unwrap();
+        assert!(saved.contains("(the text is not recorded)"), "{saved}");
+        // What the app echoed is reported, with the text taken out.
+        assert!(saved.contains("Couldn't save “(typed text)”"), "{saved}");
+        // The returned report scrubs the same way for `--json`.
+        let mut issues = serde_json::to_value(&report.issues).unwrap();
+        assert!(issues.to_string().contains(SECRET));
+        report.scrub_json(&mut issues);
+        assert!(!issues.to_string().contains(SECRET), "{issues}");
+        // A repro step types a stand-in and says so.
+        let step =
+            Action::Type(Locator::Id("bookForm.title".into()), not_recorded(SECRET)).toml_step(&[]);
+        assert!(
+            step.contains("not recorded") && !step.contains(SECRET),
+            "{step}"
+        );
+        assert!(crate::script::Script::parse(&format!(
+            "name = \"r\"\napp = \"{APP}\"\n[[step]]\n{step}\n"
+        ))
+        .is_ok());
+
+        // In the developer's own app the text is kept, so a repro retypes it.
+        let mut model = ModelApp::pocket_library();
+        let mut out = Vec::new();
+        run(&config, &mut model, None, &mut out).unwrap();
+        assert!(String::from_utf8(out).unwrap().contains(SECRET));
+    }
+
+    #[test]
+    fn writes_the_walk_as_a_transition_graph() {
+        let dir = tempfile::tempdir().unwrap();
+        let (report, _) = explore(&config(), Some(dir.path()));
+        let graph: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join("graph.json")).unwrap()).unwrap();
+        assert_eq!(graph["format"], "forge.explore-graph/1");
+        assert_eq!(
+            graph["screens"].as_array().unwrap().len(),
+            report.screens.len()
+        );
+        let root = report.screens[0].id.clone();
+        let settings = report
+            .screens
+            .iter()
+            .find(|s| s.title.as_deref() == Some("Settings"))
+            .unwrap()
+            .id
+            .clone();
+        let edge = graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["from"] == root && e["action"] == "tap id `library.settings`")
+            .expect("the settings edge");
+        assert_eq!(edge["to"], serde_json::json!([settings]));
+        // The crash is an edge too, so a later comparison sees it.
+        assert!(graph["edges"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|e| e["to"] == serde_json::json!(["app_closed"])));
     }
 
     #[test]
@@ -2827,6 +3670,48 @@ mod tests {
         let focus = report.focus.unwrap();
         assert_eq!(focus["not_reached"], serde_json::json!([]));
         assert!(focus["tried"]["detail.read"].is_number());
+    }
+
+    #[test]
+    fn a_target_not_reached_says_what_in_this_walk_could_explain_it() {
+        use crate::focus::Link;
+        let focus = || Focus {
+            links: vec![Link {
+                id: "feeds.nowhere".into(),
+                prefix: false,
+                strength: Strength::Direct,
+                file: "FeedListView.swift".into(),
+                how: "declared in FeedListView.swift".into(),
+            }],
+            ..Focus::default()
+        };
+        let reasons = |config: Config| {
+            let mut model = long_list();
+            let report = run(&config, &mut model, None, &mut Vec::new()).unwrap();
+            let focus = report.focus.unwrap();
+            assert_eq!(focus["not_reached"], serde_json::json!(["feeds.nowhere"]));
+            assert!(!focus["not_reached_note"]
+                .as_str()
+                .unwrap()
+                .contains("isn't built"));
+            focus["not_reached_reasons"].to_string()
+        };
+        // Scrolling ran to the end of the list.
+        let r = reasons(Config {
+            focus: focus(),
+            ..config()
+        });
+        assert!(r.contains("not reached after scrolling"), "{r}");
+        assert!(!r.contains("out of budget"), "{r}");
+        // Scrolling off, and the walk cut short.
+        let r = reasons(Config {
+            focus: focus(),
+            scrolls_per_screen: 0,
+            max_actions: 2,
+            ..config()
+        });
+        assert!(r.contains("scrolling was off"), "{r}");
+        assert!(r.contains("out of budget"), "{r}");
     }
 
     #[test]

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Fixture Daily</title>
+    <link>http://fixtures.local/</link>
+    <description>RSS 2.0 fixture for the replication benchmark. Written for the benchmark; not from any real site.</description>
+    <item>
+      <title>Hello from the fixture</title>
+      <link>http://fixtures.local/hello</link>
+      <guid>fixture-daily-1</guid>
+      <author>ada@fixtures.local (Ada Fixture)</author>
+      <pubDate>Mon, 09 Nov 2026 09:00:00 GMT</pubDate>
+      <description><![CDATA[<p>This is the first article of the fixture feed. It has <b>bold</b> and <a href="http://fixtures.local/link">a link</a>.</p><p>And a second paragraph, so the reader shows more than one.</p>]]></description>
+    </item>
+    <item>
+      <title>An article with an image</title>
+      <link>http://fixtures.local/image</link>
+      <guid>fixture-daily-2</guid>
+      <pubDate>Sun, 08 Nov 2026 18:30:00 GMT</pubDate>
+      <description><![CDATA[<p>The picture below is served by the fixture server.</p><figure><img src="http://fixtures.local/pixel.png" alt="A single pixel"><figcaption>A caption under the image.</figcaption></figure>]]></description>
+    </item>
+    <item>
+      <title>A long article for scrolling</title>
+      <link>http://fixtures.local/long</link>
+      <guid>fixture-daily-3</guid>
+      <pubDate>Sat, 07 Nov 2026 12:00:00 GMT</pubDate>
+      <description><![CDATA[<h2>Part one</h2><p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p><p>Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.</p><h2>Part two</h2><p>Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur.</p><ul><li>First point</li><li>Second point</li></ul><blockquote>A quotation, set apart.</blockquote><p>Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>]]></description>
+    </item>
+    <item>
+      <link>http://fixtures.local/untitled</link>
+      <guid>fixture-daily-4</guid>
+      <pubDate>Fri, 06 Nov 2026 08:15:00 GMT</pubDate>
+      <description>A post with no title, the way microblogs publish them.</description>
+    </item>
+  </channel>
+</rss>

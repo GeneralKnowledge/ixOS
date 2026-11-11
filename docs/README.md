@@ -50,6 +50,7 @@ Read these in order the first time.
 | [forge-device.md](forge-device.md) | Your iPhone from Linux: details, live logs, crash reports |
 | [forge-ui-testing.md](forge-ui-testing.md) | UI tests that tap and type on a real iPhone (`forge ui`) |
 | [forge-explore.md](forge-explore.md) | Walking an app's screens without a script to find problems (`forge ui explore`) |
+| [benchmarks/](benchmarks/README.md) | Replication benchmarks: rebuilding a real app (NetNewsWire, as Commonplace) to find what ixOS is missing; gap logs and pattern inventories |
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
 | [evidence.md](evidence.md) | Recording what a run proved, so a feature is shown to work rather than said to |
 

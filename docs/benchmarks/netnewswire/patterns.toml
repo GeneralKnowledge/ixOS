@@ -1,0 +1,91 @@
+# Reusable patterns used by Commonplace slice 1. Format: ../README.md#pattern-records.
+
+[[pattern]]
+id = "command-then-snapshot"
+does = "Every change is a serial command that commits one SQLite transaction, then publishes a fresh snapshot the screens read without waiting"
+provided_by = "forge-app Runtime::command and Published; forge-storage Database (migrations, transactions)"
+app_code = "examples/commonplace/rust/src/store.rs (schema, queries, Snapshot) and the publish() call after each command in lib.rs"
+duplicated = "The starter does the same with JsonFile; Commonplace is the first app on forge-storage's Database, so the snapshot-after-commit glue is new"
+shared = "candidate"
+why = "Any SQLite-backed app needs 'commit, then publish what the database now holds'. Wait for a second SQLite app before extracting"
+
+[[pattern]]
+id = "fetch-then-apply"
+does = "Network work runs off the command thread as cancellable on-screen work; only its result is applied by a command, so a cancelled or interrupted fetch saves nothing"
+provided_by = "forge-app Runtime::run with Runtime::foreground, then Runtime::command"
+app_code = "add_feed and refresh in examples/commonplace/rust/src/lib.rs"
+duplicated = "nothing"
+shared = "yes"
+why = "Already the runtime's shape; Commonplace uses it as documented"
+
+[[pattern]]
+id = "conditional-fetch"
+does = "Sends stored ETag and Last-Modified, treats 304 as 'unchanged', and stores the new validators"
+provided_by = "nothing beyond forge-net's headers"
+app_code = "fetch() in lib.rs; etag and last_modified columns in store.rs"
+duplicated = "nothing yet"
+shared = "candidate"
+why = "Generic HTTP behaviour; see gap http-conditional-fetch"
+
+[[pattern]]
+id = "filtered-timelines"
+does = "Smart lists (unread, bookmarked, all, one feed) as filters over one snapshot, with counts for the sidebar"
+provided_by = "nothing"
+app_code = "timeline() and counts() in lib.rs; Timeline enum in model.rs"
+duplicated = "nothing"
+shared = "no"
+why = "The filters are the app's domain"
+
+[[pattern]]
+id = "list-with-row-actions"
+does = "A list of rows that navigate, with swipe actions, a context menu and a confirmation before a destructive action"
+provided_by = "SwiftUI (swipeActions, contextMenu, confirmationDialog); ForgeUI ForgeRow for the row"
+app_code = "FeedListView.swift, TimelineView.swift"
+duplicated = "The confirm-before-delete dialog is plain SwiftUI, not ForgeAlert.confirm, because the alert value lives in the view rather than the model; the same choice the starter makes"
+shared = "no"
+why = "SwiftUI already does it; a wrapper would hide SwiftUI"
+
+[[pattern]]
+id = "single-field-sheet"
+does = "A sheet with one field, Cancel and a busy Add button, that stays open with the input and the error on failure"
+provided_by = "ForgeAppKit ForgeSubmission and forgeAlert(failure:)"
+app_code = "AddFeedView.swift"
+duplicated = "Same shape as the starter's ComposeNoteView"
+shared = "yes"
+why = "ForgeSubmission already carries the state; the view is a few lines of SwiftUI"
+
+[[pattern]]
+id = "error-words"
+does = "Every Rust error case gets words for the screen, a retryable flag and a framework kind"
+provided_by = "ForgeAppKit ForgeDescribedError and ForgeFailure; forge-app ErrorKind"
+app_code = "LibraryModel.describe and the AppError extension in LibraryModel.swift; app_error_kind in model.rs"
+duplicated = "The From<NetError>, From<Stopped>, From<OpenError> and From<StorageError> conversions and the AppError cases for them are copied from the starter, as in Pocket Library"
+shared = "candidate"
+why = "Three apps carry the same conversions; a derive or a shared error enum in forge-app could remove them"
+
+[[pattern]]
+id = "state-views"
+does = "Empty, loading and failed states with an action"
+provided_by = "ForgeUI ForgeStateView"
+app_code = "The copy, in FeedListView, TimelineView, ArticleView"
+duplicated = "nothing"
+shared = "yes"
+why = "Used as designed"
+
+[[pattern]]
+id = "reader-boundary"
+does = "Everything the reading surface shows comes in one value (ArticleText) and is drawn by one view (ArticleReader)"
+provided_by = "nothing yet; the native reader (Tier 1) will"
+app_code = "ArticleText in model.rs, feed::paragraphs, ArticleReader in ArticleView.swift"
+duplicated = "Pocket Library's reader has its own model (TextBlock) and view"
+shared = "candidate"
+why = "This is the second consumer the roadmap's reader waits for"
+
+[[pattern]]
+id = "throwaway-data-launch"
+does = "A launch argument starts the app on an empty temporary library, so UI tests and the explorer can change data freely; with -ForgeKeepTestData a relaunch finds the same library, so a test can check that something was saved"
+provided_by = "ForgeKit ForgeEnvironment (-ForgeTemporaryData, -ForgeKeepTestData since B0) and forge.toml [ui_test] test_data_args"
+app_code = "One line in forge.toml"
+duplicated = "Good Dog and Pocket Library each have their own -ForgeUITestData folder, which is emptied at every launch, so neither can check persistence by relaunching (Good Dog's journey.toml says so)"
+shared = "yes"
+why = "Already shared; keeping the data was added to the shared argument rather than to Commonplace. Good Dog and Pocket Library could move to it"

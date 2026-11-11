@@ -23,6 +23,7 @@ It prints each action and where it led, then a summary, and writes to `<app>/.fo
 | `screens/<id>.png`, `screens/<id>.json` | A screenshot and the accessibility tree of every new screen |
 | `visual/<id>.diff.png` | Screens that look different from the last clean walk launched the same way (M6.3; `data.visual` lists them). Information, never an issue: a difference is a change, not a defect |
 | `repro/issue-<n>-<kind>.toml` | A `forge ui run` file per issue: launch, the shortest known way to the screen, the action, a screenshot |
+| `graph.json` | The walk as a transition graph (`forge.explore-graph/1`): each screen, and for each action tried from a screen where it led every time (`to`, `times`, `repeatable`). Only what was seen, not everything the app can do |
 
 It exits with an error when it found an error-severity issue (a crash, an unlabelled control), so an agent or a script can treat it like a test. Re-run a finding with `forge ui run <out>/repro/issue-3-app_closed.toml`.
 
@@ -39,6 +40,7 @@ It exits with an error when it found an error-severity issue (a crash, an unlabe
 | `--appearance dark\|light` | the phone's | Launch in dark or light mode (`-ForgeAppearance`, which Forge apps honour from their root view; M6.3) |
 | `--launch-arg <ARG>` | none | One of the app's own launch arguments, after Forge's; repeat for more. For an app that can start past onboarding with sample data, so the walk reaches the rest of the app (seen on Cati: a Good Dog walk never left onboarding) |
 | `--per-screen N` | 15 | At most N controls tried per screen |
+| `--app BUNDLE_ID --any-app` | | Explore an installed app Forge didn't build ([Apps Forge didn't build](#apps-forge-didnt-build)) |
 | `--no-screenshots` | | Faster; trees are still saved |
 
 ## How it walks
@@ -49,6 +51,7 @@ The explorer is `forge_uitest::explore`. It drives any `Driver`, so the same cod
 - **Each control once.** On a new screen it lists the visible, enabled controls (buttons, cells, links, tabs, switches, menu items, text fields), shuffles them with the seed, and puts back and dismiss controls last. Rows of a list count once. Controls with neither an identifier nor a label are not tapped: Forge never uses coordinates (AGENTS.md rule 4), and the audit reports them.
 - **Typing** uses `--text` for that identifier, else a value that fits the field: digits for a field that shows a number or is named like one (pages, goal, amount, year…), an address for email, a URL for web, a phone number for phone, else `Forge`. WebDriverAgent's tree doesn't give the keyboard type, so this goes by identifier, label and current value. Then it puts the keyboard away (WebDriverAgent's `/wda/keyboard/dismiss`).
 - **Only the app's own part of the screen.** The keyboard, its keys and the panels a keyboard extension puts above them (anything from 100 pt above the top of the keys down) are cut from every tree before the walk looks at it, so they are never tapped, never fingerprinted and never audited, even when the keyboard can't be dismissed.
+- **Scrolling.** When nothing is left to try in view, the explorer scrolls the screen's first visible list or scroll view down (by its identifier, else by its kind and place among lists, never by coordinates) and carries on with what came into view, up to 3 times per screen. Scrolling changes which rows are in view and so the fingerprint, so the rows a scroll reveals are counted as the same screen: all of them share the 3 scrolls of the screen the scrolling started on. A scroll that moved nothing ends scrolling on that screen. Scrolls are steps of the route, so replays and repro files scroll too.
 - **Moving on.** When a screen has nothing left to try, the explorer leaves through its back or dismiss control (twice in a row at most), or relaunches the app and replays the shortest known path to the nearest screen with something left. If a path no longer leads where it did, that screen's remaining controls are dropped rather than looped on.
 - **Stopping.** At the action or time budget, or when nothing reachable is left (`stopped` in the report says which). Every wait is bounded (`find_timeout`, 5 s per control); there is no polling loop beyond the existing bounded `wait_for`.
 
@@ -111,7 +114,7 @@ On test data the word lists are a courtesy, not the protection: the protection i
 
 The explorer touches the app the way a curious person would, so it has a floor of rules that no option removes:
 
-- **Only Forge apps for now.** `--project` names an app folder with a `forge.toml`; there is no bundle id option. Other developers' apps come next: the any-app policy (`forge_uitest::policy`, merged in #107) exists, and the explorer has to ask its gate before each action, as `forge ui run --any-app` does, before it gets a bundle id option.
+- **Other developers' apps only through the any-app policy.** `--project` names a Forge app. `--app` names any other installed app, needs `--any-app`, and puts every action to the policy's gate ([Apps Forge didn't build](#apps-forge-didnt-build)).
 - **Never** starts a system service: dictation (it turns the microphone on), the camera, the keyboard switcher (Next keyboard, globe, emoji) or the system file picker (import), which is another app's interface. This is matched as whole words in every mode.
 - **Only cancels** iOS's Shake to Undo alert ("Undo Typing"): it is the system's, and tapping its Undo once emptied a field the walk had filled (Good Dog on Cati, 2026-11-08).
 - **Never** types into secure fields, and **never** taps a control whose identifier or label (as whole words, camelCase split) says it acts outside the phone or on someone else: send, post, reply, pay, buy, purchase, checkout, subscribe, transfer, share, call, publish, submit, invite, follow, report, block, donate.
@@ -120,7 +123,31 @@ The explorer touches the app the way a curious person would, so it has a floor o
 - Every skipped control is listed per screen in `explore.json` with the reason, so coverage gaps are visible.
 - Nothing typed is logged beyond the fixture text the person chose; trees and screenshots stay in the app's `.forge/runs`, which is not committed.
 
-The word lists are a floor, not the policy. Wiring the explorer to the any-app policy's commit gate (`policy::is_commit`) is the next step; then one list serves both.
+The word lists are a floor. In another developer's app (`--app`) every action also goes through the any-app policy's gate, commit check included ([Apps Forge didn't build](#apps-forge-didnt-build)); in the developer's own app the word lists alone decide.
+
+## Apps Forge didn't build
+
+A replication benchmark ([docs/benchmarks/](benchmarks/README.md)) walks a reference app that someone else built, such as NetNewsWire from the App Store:
+
+```bash
+forge ui explore --app com.ranchero.NetNewsWire-iOS --any-app --real-data --actions 40 --seed 1
+```
+
+- **The person's policy decides, and the levels keep the meaning the policy gives them** (`forge_uitest::policy`). The app needs a line in `~/.config/forge/device-control.toml` (a file the person writes, outside every project):
+
+  | Level | What the walk does |
+  |---|---|
+  | `deny` | Refused: Forge doesn't open the app |
+  | `observe` | Launches, reads, takes screenshots and scrolls. Every tap and all typing is skipped and listed with the policy's reason, and a walk that only looked ends successfully. `--real-data` is optional |
+  | `operate` | Taps and types on the person's own data, so it needs `--real-data`. The walk's real-data rules keep it to navigation (rows, tabs, back, cancel, search), and each commit (send, delete, a tap that doesn't say what it does) asks the person first. **Ordinary taps can still change data:** opening an article in a feed reader marks it read |
+  | `full` | Everything but the hard refusals: only for an app whose data is all throwaway test data (a reference app subscribed only to test feeds). It may save, star and type, as on a Forge app's test data, and `--allow-destructive` works. `--real-data` is refused, because it can't restrict what the gate allows; use `operate` for real data |
+
+- **Every action goes through the gate** of `forge ui run --any-app` (`forge_uitest::policy::Gate`): the hard refusals (Settings, Wallet, the App Store, secure fields…), the level, and at `operate` the commit gate. A refused tap is skipped and listed with the policy's reason; a refused launch ends the walk. Each decision is written to `journal.jsonl`.
+- **Typed text is not written down.** The policy's `journal.jsonl` keeps only the length of what was typed, and so does everything the walk writes: the terminal, `explore.json`, `graph.json`, issue descriptions and repro files say `type 18 characters into …`. A repro step types a stand-in, `(not recorded: 18 characters)`, with a comment to put your own text there. The text stays in memory only, for replaying routes during the walk. If the app shows the text back (a screen title, an alert, a button or row label such as "Results for …"), those copies are replaced by `(typed text)` too, in the same files, the terminal, `--json` and the policy's journal. Single characters are left alone, since taking them out would blank ordinary words.
+- **List rows are the person's content.** In another developer's app, the labels and values of cells (an article's title and excerpt, a feed's name, a message) are written as `(row text)` everywhere the walk writes, the policy's journal included. A row found by its label is then shown as `tap label "(row text)"`, so its replay step needs editing. Buttons, tabs, fields and titles keep their labels. Found on Cati on 2026-11-10, when a refused row tap in NetNewsWire printed an article's title.
+- **Screens are the person's data, and can show what was typed.** The saved accessibility trees (`screens/*.json`) and screenshots record whatever is on screen: the app's own content, and a field's value after the walk typed into it. They are not redacted. Everything goes to `~/.cache/forge/any-app/<UTC>-ui-explore/` (or `--out`), never into a project; don't share a walk's folder without looking at its screens. `--no-screenshots` leaves out the pictures but not the trees.
+- **What doesn't apply:** `--since`, `--changed`, `--focus`, `--previous` and `--fixture` (they read a Forge app's source and earlier walks) and `--appearance` (only Forge apps honour `-ForgeAppearance`). There is no evidence bundle, no log watch and no screenshot comparison, and findings in someone else's app don't fail the command; only a walk that tried nothing does.
+- **Limits.** Forge sees only what the accessibility tree and screenshots show: never the app's database or memory. Swipe actions, context menus and pull to refresh need gestures the explorer doesn't make. An app with few identifiers is fingerprinted by kinds and labels, which is less stable across visits.
 
 ## How it fits with the work alongside it
 
@@ -146,6 +173,10 @@ Three walks on Pocket Library: seed 1 (79 s, 40 actions, 27 screens, 44 issues, 
 
 On test data, with Pocket Library's own labels fixed by #116: 0 `no_label` errors in the app itself. But after typing in the library search the walk carried on in the keyboard. It tapped Next keyboard into third-party keyboards (Czech, GIF Keyboard's "Search Tenor", Grammarly's panel), typed on their keys, opened the EPUB import picker, and tapped `dictation`, which **turned the microphone on**. Most of the 73 issues were keyboard keys. In the second walk, WebDriverAgent closed the connection right after `dictation` and the phone dropped off USB, so no journal was saved and determinism is still unproven. Fixed by the keyboard cut, keyboard dismissal and the system-service list above; not yet re-run on the phone.
 
+### Third run, 2026-11-10 (Cati, NetNewsWire from the App Store, `observe`)
+
+The first walk of an app Forge didn't build, run by Reuben from his terminal: `forge ui explore --app com.ranchero.NetNewsWire.iOS --any-app --actions 40 --seed 1` with the policy at `observe`. At def409e the policy held (every row tap, the search typing and Back were refused, and nothing in his library changed), but three things were wrong: nothing scrolled, because WDA reports NetNewsWire's `CollectionView` with `visible` false; the walk ended in an error although refusals are what `observe` means; and a refused row tap printed an article's title and excerpt from his feeds. All three were fixed in a81e116 and the rerun passed: 2 screens, 3 actions (launch and two scrolls, about 10 s each), exit 0, and every row shown as `(row text)`.
+
 ### Still to run
 
 Run through the iPhone test session, not separately. Each proves something the Linux tests cannot:
@@ -159,7 +190,7 @@ Run through the iPhone test session, not separately. Each proves something the L
 
 ## Not built yet
 
-- Scrolling to controls below the fold, and long lists beyond the first row.
+- Long lists beyond 3 scrolls per screen, and scrolling sideways.
 - Invariants an app declares (for example "the count on the badge equals the rows"), and checks across a whole walk.
 - Performance during the walk (A3 FPS and memory).
 

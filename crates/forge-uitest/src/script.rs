@@ -1541,6 +1541,26 @@ mod example_files {
         }
     }
 
+    /// Commonplace's flows (docs/benchmarks/netnewswire/spec.md): the
+    /// bookmark flow ends on a relaunch that keeps the throwaway library.
+    #[test]
+    fn commonplace_tests_parse() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/commonplace/uitests");
+        for file in [
+            "smoke.toml",
+            "subscribe-and-read.toml",
+            "mark-all-read.toml",
+        ] {
+            let script = super::Script::load(&dir.join(file)).unwrap();
+            assert_eq!(script.app, "org.forgemobile.agentlab", "{file}");
+        }
+        let flow = std::fs::read_to_string(dir.join("subscribe-and-read.toml")).unwrap();
+        let relaunch = flow.rfind("-ForgeKeepTestData").unwrap();
+        assert!(flow[relaunch..].contains("feeds.bookmarks"));
+        assert!(flow[..relaunch].contains("tap = { id = \"feeds.bookmarks\" }"));
+    }
+
     /// The starter's test, which `forge init` copies with the bundle id filled in.
     #[test]
     fn starter_smoke_parses() {

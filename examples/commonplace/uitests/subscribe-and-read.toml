@@ -1,0 +1,85 @@
+# The benchmark's first flow (docs/benchmarks/netnewswire/spec.md, F1-F3):
+# subscribe to a fixture feed, open its timeline, read an article (the
+# unread count drops),
+# bookmark it, see it under Bookmarks, then relaunch and see it there
+# still (saved, not just shown). Needs the fixture server on the laptop
+# (docs/benchmarks/netnewswire/fixtures/serve.py); replace the address with
+# the laptop's. Starts on an empty, throwaway library; the relaunch keeps
+# that library with -ForgeKeepTestData, so the person's own is never used.
+
+name = "Subscribe, read and bookmark"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "feeds.add" }
+
+[[step]]
+type = { id = "addFeed.url", text = "http://192.168.1.169:8765/rss.xml" }
+
+[[step]]
+tap = { id = "addFeed.save" }
+
+# The new feed's timeline opens.
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+screenshot = "1-timeline"
+
+[[step]]
+tap = { label_contains = "Hello from the fixture" }
+
+[[step]]
+expect = { id = "article.title" }
+
+[[step]]
+screenshot = "2-article"
+
+[[step]]
+tap = { id = "article.bookmark" }
+
+[[step]]
+expect = { label = "Remove Bookmark" }
+
+# Back to the feed list, and the article is under Bookmarks.
+[[step]]
+tap = { id = "BackButton" }
+
+[[step]]
+tap = { id = "BackButton" }
+
+# Opening the article marked it read: the fixture feed has 4 articles
+# (one untitled), so 3 are left unread (F2).
+[[step]]
+expect = { label_contains = "3 unread" }
+
+[[step]]
+tap = { id = "feeds.bookmarks" }
+
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+screenshot = "3-bookmarks"
+
+# Quit and relaunch on the same throwaway library: the bookmark was saved.
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-ForgeKeepTestData"] }
+
+[[step]]
+tap = { id = "feeds.bookmarks" }
+
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+screenshot = "4-bookmarks-after-relaunch"

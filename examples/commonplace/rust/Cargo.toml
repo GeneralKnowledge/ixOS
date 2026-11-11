@@ -1,0 +1,59 @@
+# This app's Rust library: its logic, state, persistence and networking, and the
+# UniFFI API the SwiftUI app calls. Edit freely; `forge build`
+# rebuilds it and regenerates the bindings.
+[package]
+name = "commonplace-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# The library and UniFFI namespace keep Forge's fixed names (libforge_ffi.a /
+# libforge_ffi.so, Swift module ForgeFFI, Kotlin package uniffi.forge_ffi), so
+# the build scripts and host projects never need renaming.
+name = "forge_ffi"
+crate-type = ["staticlib", "cdylib", "lib"]
+
+[dependencies]
+# The Forge framework. `forge init` pins every Forge crate to one framework
+# release (git, at the ixOS commit that release was made from), matching the
+# ForgeKit version in Package.swift; apps made inside a Forge checkout with
+# unreleased changes use the checkout's crates instead.
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# SQLite (migrations, transactions, FTS5), compiled from source for iOS.
+forge-storage = { path = "../../../crates/forge-storage", features = ["sqlite"] }
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# Native services (Keychain, directories, notifications, permissions, deep
+# links): `forge_services::native_services!()` in src/lib.rs. To drop them,
+# remove that line, this dependency and async-trait. See docs/native-services.md.
+forge-services = { path = "../../../crates/forge-services" }
+# The live connection to `forge device` (pair, connect, status, snapshot, cmd).
+# Only in development builds: `forge run ios --devtools` turns the feature on,
+# so release builds contain none of it. See docs/forge-device.md.
+forge-devtools = { path = "../../../crates/forge-devtools", optional = true }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+# UniFFI's generated code for async host interfaces names it directly.
+async-trait = "0.1"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+# RSS, Atom and JSON Feed parsing. Pure Rust, so it cross-compiles for iOS.
+feed-rs = "2"
+
+[features]
+devtools = ["dep:forge-devtools"]
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace: the app builds the same inside or outside the Forge checkout.
+[workspace]
+
+[profile.release]
+# Smaller app binaries; Rust panics still reach the host as errors via UniFFI.
+lto = true
+codegen-units = 1

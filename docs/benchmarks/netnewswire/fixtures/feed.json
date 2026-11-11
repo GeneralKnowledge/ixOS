@@ -1,0 +1,15 @@
+{
+  "version": "https://jsonfeed.org/version/1.1",
+  "title": "JSON Fixture",
+  "home_page_url": "http://fixtures.local/json/",
+  "items": [
+    {
+      "id": "json-1",
+      "url": "http://fixtures.local/json/1",
+      "title": "A JSON Feed item",
+      "content_html": "<p>JSON Feed is the third format both apps should read.</p>",
+      "date_published": "2026-11-09T08:00:00Z",
+      "authors": [{ "name": "Linus Fixture" }]
+    }
+  ]
+}
