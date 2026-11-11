@@ -17,6 +17,21 @@ pub struct ForgeConfig {
     /// The app's Swift module names (docs/app-crate.md).
     #[serde(default)]
     pub swift: Option<SwiftSection>,
+    /// Other apps this one runs inside it (Device Lab's Apps screen).
+    #[serde(default)]
+    pub host: Option<HostSection>,
+}
+
+/// `[host]`: the other apps an app runs inside it. Their iOS settings
+/// (permission texts, background modes, URL schemes) and test-data
+/// arguments are merged into this app's when forge.toml is loaded, so each
+/// app declares what it needs once, in its own forge.toml.
+#[derive(Debug, Clone, Default, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct HostSection {
+    /// The hosted apps' folders, relative to this app (`"../chat"`).
+    #[serde(default)]
+    pub apps: Vec<String>,
 }
 
 /// `[swift]`: the names of the app's Swift modules. Each defaults to Forge's
@@ -126,6 +141,43 @@ impl ForgeConfig {
     /// The app's own Rust crate (`[rust] path`), relative to `app_dir`.
     pub fn rust_crate_dir(&self, app_dir: &std::path::Path) -> std::path::PathBuf {
         app_dir.join(self.rust.path.as_deref().unwrap_or("rust"))
+    }
+
+    /// Merges the iOS settings of the apps `[host] apps` names into this
+    /// one's. Lists are joined without repeats. A permission text this app
+    /// sets wins; otherwise the first hosted app's text is used. Signing and
+    /// entitlements are the host's alone.
+    pub fn merge_hosted(&mut self, project_dir: &std::path::Path) -> Result<(), String> {
+        let Some(host) = self.host.clone() else {
+            return Ok(());
+        };
+        fn add(into: &mut Vec<String>, from: Vec<String>) {
+            for v in from {
+                if !into.contains(&v) {
+                    into.push(v);
+                }
+            }
+        }
+        for rel in &host.apps {
+            let toml = project_dir.join(rel).join("forge.toml");
+            let text = std::fs::read_to_string(&toml)
+                .map_err(|e| format!("[host] apps: cannot read {}: {e}", toml.display()))?;
+            let other = ForgeConfig::parse(&text)
+                .map_err(|e| format!("[host] apps: {}: {e}", toml.display()))?;
+            if let Some(theirs) = other.ios {
+                let ours = self.ios.get_or_insert_with(Default::default);
+                for (name, text) in theirs.permissions {
+                    ours.permissions.entry(name).or_insert(text);
+                }
+                add(&mut ours.background_modes, theirs.background_modes);
+                add(&mut ours.url_schemes, theirs.url_schemes);
+            }
+            if let Some(theirs) = other.ui_test {
+                let ours = self.ui_test.get_or_insert_with(Default::default);
+                add(&mut ours.test_data_args, theirs.test_data_args);
+            }
+        }
+        self.validate()
     }
 
     /// The Swift module of the app's UniFFI bindings (`[swift] bindings_module`).

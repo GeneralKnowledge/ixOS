@@ -177,7 +177,9 @@ pub(crate) fn load_config(project_dir: &Path) -> Result<ForgeConfig, String> {
     let forge_toml = project_dir.join("forge.toml");
     let content = fs::read_to_string(&forge_toml)
         .map_err(|e| format!("cannot read {}: {e}", forge_toml.display()))?;
-    ForgeConfig::parse(&content)
+    let mut cfg = ForgeConfig::parse(&content)?;
+    cfg.merge_hosted(project_dir)?;
+    Ok(cfg)
 }
 
 #[cfg(test)]
