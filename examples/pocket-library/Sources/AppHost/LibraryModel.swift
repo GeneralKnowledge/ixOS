@@ -287,6 +287,23 @@ public final class LibraryModel {
         return URL(fileURLWithPath: path)
     }
 
+    /// Writes the books as a spreadsheet (CSV) and returns its URL for the
+    /// share sheet.
+    public func exportBooksCSV() async throws -> URL {
+        let path = try await run { try await $0.exportBooksCsv() }
+        return URL(fileURLWithPath: path)
+    }
+
+    /// Adds the books in a spreadsheet chosen in the document picker. Rows
+    /// Rust can't read are skipped and listed in the summary.
+    public func importBooksCSV(at url: URL) async throws -> CsvImportSummary {
+        #if canImport(Darwin)
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #endif
+        return try await run { try await $0.importBooksCsv(path: url.path) }
+    }
+
     public func eraseLibrary() async throws {
         try await run { try await $0.eraseLibrary() }
     }

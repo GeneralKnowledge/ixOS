@@ -153,6 +153,14 @@ impl Default for LibrarySettings {
     }
 }
 
+/// What a CSV import did.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct CsvImportSummary {
+    pub added: u32,
+    /// One line per row left out, saying where and why ("Line 4: ...").
+    pub skipped: Vec<String>,
+}
+
 /// A search result from the online catalogue.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct CatalogueBook {

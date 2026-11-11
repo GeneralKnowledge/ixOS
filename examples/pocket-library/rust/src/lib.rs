@@ -15,6 +15,7 @@
 //! or killed at any moment without losing anything.
 
 pub mod catalogue;
+mod csv_rows;
 pub mod domain;
 pub mod epub;
 mod error;
@@ -556,6 +557,63 @@ impl Library {
             })?;
             let path = store.write_export("PocketLibrary.json", &json)?;
             Ok(path.to_string_lossy().into_owned())
+        })
+        .await
+    }
+
+    /// Writes every book as a spreadsheet (CSV) for the share sheet, with
+    /// the columns other reading apps and spreadsheets understand, and
+    /// returns the file's path.
+    pub async fn export_books_csv(&self) -> Result<String, LibraryError> {
+        self.ensure_running()?;
+        let (state, store, _) = self.parts();
+        background("export-csv", move || {
+            let rows: Vec<csv_rows::BookRow> = lock(&state)
+                .data
+                .books
+                .iter()
+                .map(csv_rows::BookRow::from)
+                .collect();
+            let bytes = forge_storage::csv_file::to_csv(&rows)?;
+            let path = store.write_export("PocketLibrary.csv", &bytes)?;
+            Ok(path.to_string_lossy().into_owned())
+        })
+        .await
+    }
+
+    /// Adds the books in a CSV file (one this app exported, or a
+    /// spreadsheet with at least a Title column). Rows that can't be read
+    /// are skipped and listed by line; the rest are added in one save.
+    pub async fn import_books_csv(&self, path: String) -> Result<CsvImportSummary, LibraryError> {
+        self.ensure_running()?;
+        let (state, store, events) = self.parts();
+        background("import-csv", move || {
+            let read = forge_storage::csv_file::import_csv::<csv_rows::BookRow>(
+                std::path::Path::new(&path),
+            )?;
+            let mut skipped: Vec<String> = read
+                .problems
+                .iter()
+                .map(|p| format!("Line {}: {}", p.line, p.reason))
+                .collect();
+            let mut state = lock(&state);
+            let mut next = state.data.clone();
+            let now = now_ms();
+            let mut added = 0u32;
+            for (index, row) in read.rows.into_iter().enumerate() {
+                match row.into_input().and_then(validate) {
+                    Ok(input) => {
+                        next.add(input, BookSource::Manual, None, now)?;
+                        added += 1;
+                    }
+                    Err(e) => skipped.push(format!("Row {}: {e}", index + 1)),
+                }
+            }
+            if added > 0 {
+                store.save(&next)?;
+                apply(&mut state, next, &events);
+            }
+            Ok(CsvImportSummary { added, skipped })
         })
         .await
     }

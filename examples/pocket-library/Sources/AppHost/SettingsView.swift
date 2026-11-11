@@ -2,6 +2,7 @@
 import ForgeAppKit
 import ForgeUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Settings tab: preferences, and the user's local data.
 struct SettingsView: View {
@@ -10,6 +11,8 @@ struct SettingsView: View {
     @Environment(LibraryModel.self) private var model
     @State private var exportURL: URL?
     @State private var exporting = false
+    @State private var csvURL: URL?
+    @State private var importingCSV = false
     @State private var storage: StorageInfo?
     /// The erase confirmation, or an error (ForgeAppKit).
     @State private var alert: ForgeAlert<SettingsAction>?
@@ -59,6 +62,18 @@ struct SettingsView: View {
                         .disabled(exporting)
                         .accessibilityIdentifier("settings.export")
                     }
+                    if let csvURL {
+                        ShareLink(item: csvURL) {
+                            Text("Share Spreadsheet")
+                        }
+                        .accessibilityIdentifier("settings.shareCSV")
+                    } else {
+                        Button("Export as Spreadsheet") { exportCSV() }
+                            .disabled(exporting)
+                            .accessibilityIdentifier("settings.exportCSV")
+                    }
+                    Button("Import from Spreadsheet…") { importingCSV = true }
+                        .accessibilityIdentifier("settings.importCSV")
                     Button("Erase Library…", role: .destructive) {
                         alert = .confirm(
                             "Erase your whole library?",
@@ -73,7 +88,7 @@ struct SettingsView: View {
                 } header: {
                     Text("Your Data")
                 } footer: {
-                    Text("Your library is stored only on this iPhone. Export it to keep a copy elsewhere; the file includes your books, notes and history.")
+                    Text("Your library is stored only on this iPhone. Export it to keep a copy elsewhere; the file includes your books, notes and history. A spreadsheet holds your books only, and opens in Numbers or Excel.")
                 }
 
                 Section("About") {
@@ -86,6 +101,13 @@ struct SettingsView: View {
             .onChange(of: model.totalBooks) { _, _ in
                 storage = model.storageInfo()
                 exportURL = nil
+                csvURL = nil
+            }
+            .fileImporter(isPresented: $importingCSV, allowedContentTypes: [.commaSeparatedText]) { result in
+                switch result {
+                case .success(let url): importCSV(url)
+                case .failure(let error): alert = .failure(error)
+                }
             }
             .forgeAlert($alert) { action in
                 switch action {
@@ -143,12 +165,46 @@ struct SettingsView: View {
         }
     }
 
+    private func exportCSV() {
+        exporting = true
+        Task {
+            defer { exporting = false }
+            do {
+                csvURL = try await model.exportBooksCSV()
+            } catch {
+                alert = .failure(error)
+            }
+        }
+    }
+
+    /// Imports the chosen spreadsheet, then says how many books came in and
+    /// which rows were skipped.
+    private func importCSV(_ url: URL) {
+        Task {
+            do {
+                let summary = try await model.importBooksCSV(at: url)
+                let added = summary.added == 1 ? "1 book added" : "\(summary.added) books added"
+                var message: String?
+                if !summary.skipped.isEmpty {
+                    let shown = summary.skipped.prefix(5).joined(separator: "\n")
+                    let more = summary.skipped.count > 5 ? "\nand \(summary.skipped.count - 5) more" : ""
+                    message = "\(summary.skipped.count) rows skipped:\n\(shown)\(more)"
+                }
+                alert = ForgeAlert(title: added, message: message, buttons: [.ok])
+                storage = model.storageInfo()
+            } catch {
+                alert = .failure(error)
+            }
+        }
+    }
+
     private func erase() {
         Task {
             do {
                 try await model.eraseLibrary()
                 storage = model.storageInfo()
                 exportURL = nil
+                csvURL = nil
             } catch {
                 alert = .failure(error)
             }

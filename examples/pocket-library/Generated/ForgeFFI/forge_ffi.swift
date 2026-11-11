@@ -809,6 +809,13 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func events() throws  -> LibraryEvents
     
     /**
+     * Writes every book as a spreadsheet (CSV) for the share sheet, with
+     * the columns other reading apps and spreadsheets understand, and
+     * returns the file's path.
+     */
+    func exportBooksCsv() async throws  -> String
+    
+    /**
      * Writes the whole library (books, history, settings) as JSON for the
      * share sheet and returns the file's path.
      */
@@ -818,6 +825,13 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * Reading history, newest first; `book_id` limits it to one book.
      */
     func history(bookId: UInt64?, limit: UInt32)  -> [ActivityEntry]
+    
+    /**
+     * Adds the books in a CSV file (one this app exported, or a
+     * spreadsheet with at least a Title column). Rows that can't be read
+     * are skipped and listed by line; the rest are added in one save.
+     */
+    func importBooksCsv(path: String) async throws  -> CsvImportSummary
     
     /**
      * Adds the book in the EPUB at `path` as Want to Read: title, authors,
@@ -1087,6 +1101,27 @@ open func events()throws  -> LibraryEvents  {
 }
     
     /**
+     * Writes every book as a spreadsheet (CSV) for the share sheet, with
+     * the columns other reading apps and spreadsheets understand, and
+     * returns the file's path.
+     */
+open func exportBooksCsv()async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_library_export_books_csv(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
      * Writes the whole library (books, history, settings) as JSON for the
      * share sheet and returns the file's path.
      */
@@ -1118,6 +1153,27 @@ open func history(bookId: UInt64?, limit: UInt32) -> [ActivityEntry]  {
         FfiConverterUInt32.lower(limit),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Adds the books in a CSV file (one this app exported, or a
+     * spreadsheet with at least a Title column). Rows that can't be read
+     * are skipped and listed by line; the rest are added in one save.
+     */
+open func importBooksCsv(path: String)async throws  -> CsvImportSummary  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_forge_ffi_fn_method_library_import_books_csv(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(path)
+                )
+            },
+            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
+            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
+            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCsvImportSummary_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
 }
     
     /**
@@ -2088,6 +2144,69 @@ public func FfiConverterTypeChapterSummary_lift(_ buf: RustBuffer) throws -> Cha
 #endif
 public func FfiConverterTypeChapterSummary_lower(_ value: ChapterSummary) -> RustBuffer {
     return FfiConverterTypeChapterSummary.lower(value)
+}
+
+
+/**
+ * What a CSV import did.
+ */
+public struct CsvImportSummary: Equatable, Hashable {
+    public var added: UInt32
+    /**
+     * One line per row left out, saying where and why ("Line 4: ...").
+     */
+    public var skipped: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(added: UInt32, 
+        /**
+         * One line per row left out, saying where and why ("Line 4: ...").
+         */skipped: [String]) {
+        self.added = added
+        self.skipped = skipped
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CsvImportSummary: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCsvImportSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CsvImportSummary {
+        return
+            try CsvImportSummary(
+                added: FfiConverterUInt32.read(from: &buf), 
+                skipped: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CsvImportSummary, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.added, into: &buf)
+        FfiConverterSequenceString.write(value.skipped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCsvImportSummary_lift(_ buf: RustBuffer) throws -> CsvImportSummary {
+    return try FfiConverterTypeCsvImportSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCsvImportSummary_lower(_ value: CsvImportSummary) -> RustBuffer {
+    return FfiConverterTypeCsvImportSummary.lower(value)
 }
 
 
@@ -4226,10 +4345,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_forge_ffi_checksum_method_library_events() != 4119) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_forge_ffi_checksum_method_library_export_books_csv() != 36297) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_forge_ffi_checksum_method_library_export_library() != 59643) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_history() != 26648) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_library_import_books_csv() != 63712) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_library_import_epub() != 51301) {

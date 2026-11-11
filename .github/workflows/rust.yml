@@ -53,6 +53,10 @@ jobs:
         run: |
           cargo clippy -p forge-services --all-targets --features transfers,http -- -D warnings
           cargo test -p forge-services --features transfers,http
+      - name: forge-storage csv and backup features (clippy, tests)
+        run: |
+          cargo clippy -p forge-storage --all-targets --features sqlite,hash,csv,backup -- -D warnings
+          cargo test -p forge-storage --features sqlite,hash,csv,backup
       - name: native rebuild regression
         run: ./scripts/test-native-rebuild.sh
       # Apps made with forge init (examples/pocket-library) have their own

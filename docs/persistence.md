@@ -51,3 +51,45 @@ Fixtures prove the code reads old files, on Linux. They don't replace a release'
 
 - **JSON** (`JsonFile`, `Document`): additive changes use `#[serde(default)]` and keep the version. A change that old files can't be read as raises it and adds a step to the migration function. The migrated value is written at the next save, after the `.v<N>` copy is kept.
 - **SQLite** (`Database::open(path, migrations)`): append a SQL step. All pending steps run in one transaction after the `.v<N>` copy is made with `VACUUM INTO`, so a failed migration leaves the file as it was.
+
+## Export, import and backups
+
+Two optional `forge-storage` features cover the files a person takes out of an app or brings into it.
+
+### Spreadsheets (`csv` feature)
+
+```rust
+#[derive(Serialize, Deserialize)]
+struct BookRow { #[serde(rename = "Title")] title: String, /* ... */ }
+
+let bytes = forge_storage::csv_file::to_csv(&rows)?;           // header row from the field names
+let read = forge_storage::csv_file::import_csv::<BookRow>(path)?;
+// read.rows: the rows that parsed; read.problems: line number and reason for the rest
+```
+
+- Write a row struct for the spreadsheet, separate from the stored record, with the column names a person would expect (`#[serde(rename)]`) and `#[serde(default)]` on optional columns.
+- Import matches columns to fields by name, ignoring case, spaces, `_` and `-`, so a file re-saved by Numbers or Excel still reads. Blank rows are skipped. A row that doesn't parse becomes a problem with its line number; it never fails the whole import.
+- Export starts with a UTF-8 byte-order mark so Excel shows accented letters correctly.
+- Validate and save in one go after reading, and tell the person how many rows were added and which were skipped. Pocket Library's `import_books_csv` is the example.
+
+### Backup archives (`backup` feature)
+
+```rust
+use forge_storage::backup::{Backup, restore, replace_directory};
+
+// Making one
+Backup::new("org.example.app", SCHEMA_VERSION, now_ms)
+    .file("library.json", &data_dir.join("library.json"))
+    .directory("covers", &data_dir.join("covers"))?
+    .database("notes.sqlite", &db)?                 // a consistent copy via VACUUM INTO
+    .write(&out_path)?;                             // atomic: a .partial file, then a rename
+
+// Restoring one: unpack into a new directory, then swap it in
+restore(&archive, "org.example.app", SCHEMA_VERSION, &restored_dir)?;
+replace_directory(&data_dir, &restored_dir, now_ms)?; // keeps the old data as <data_dir>.before-restore-<ms>
+```
+
+- The archive is a zip with a `forge-backup.json` manifest: the app, format version, schema version and a size and SHA-256 for every file.
+- `restore` checks all of that before it writes anything, and unpacks into a scratch directory. It refuses another app's archive, a schema newer than the app knows (an older one is migrated as usual when the restored files are opened), names that escape the directory, and damaged files.
+- Close the stores before `replace_directory` and open them again after it, so nothing holds the old files.
+- Archives aren't encrypted. Say so where the app offers them.
