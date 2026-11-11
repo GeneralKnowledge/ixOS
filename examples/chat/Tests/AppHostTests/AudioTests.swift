@@ -1,5 +1,5 @@
 import AVFoundation
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import XCTest
 
 /// An AAC `.m4a` file of a 440 Hz tone, quiet until `loudFrom` seconds and

@@ -2,12 +2,12 @@
 // so this suite runs only where they exist: macOS (`forge test`), not
 // `forge check swift` on Linux.
 #if canImport(Security)
-import AppHost
-@preconcurrency import ForgeFFI
+import CommonplaceApp
+@preconcurrency import CommonplaceFFI
 import Foundation
 import XCTest
 
-/// The native services' Swift adapters (copied into ForgeFFI by
+/// The native services' Swift adapters (copied into CommonplaceFFI by
 /// `forge build`) against the app's real Rust core. Runs under `swift test`,
 /// which is not an app bundle, so the notification centre is absent and
 /// those services report `Unavailable` / `.unsupported`; the device runbook

@@ -28,6 +28,15 @@ thiserror = "2"
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.
 async-trait = "0.1"
+# The other apps of the showcase: their own Rust crates, linked into this
+# library so one app runs all of them (src/lib.rs, the Apps screen). Each
+# names its library after itself (weather_core, ...), which keeps them apart.
+weather-app = { path = "../../weather/rust" }
+checklist-core = { path = "../../checklist/rust" }
+pocket-library-core = { path = "../../pocket-library/rust" }
+good-dog-app = { path = "../../good-dog/rust" }
+commonplace-core = { path = "../../commonplace/rust" }
+chat-app = { path = "../../chat/rust" }
 
 [dev-dependencies]
 tempfile = "3.14"

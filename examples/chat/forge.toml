@@ -25,3 +25,8 @@ local_network = "Chat connects to the demo chat server on your local network."
 microphone = "Chat records a voice message while you tap the microphone button."
 # The optional app lock in Settings (native_services!(biometrics)).
 face_id = "Chat uses Face ID to unlock when you turn on the app lock in Settings."
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "ChatFFI"
+app_module = "ChatApp"

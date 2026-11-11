@@ -52,3 +52,8 @@ test_data_args = ["-ForgeTemporaryData"]
 [ios.signing]
 # team_type = "free"                # "free" (Apple ID) or "paid" (Developer Program)
 # team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
+
+# Swift module names: this app's own, so another app (Device Lab) can host it.
+[swift]
+bindings_module = "CommonplaceFFI"
+app_module = "CommonplaceApp"

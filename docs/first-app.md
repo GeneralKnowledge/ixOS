@@ -9,7 +9,7 @@ A Forge app has two halves:
 - **Rust owns the app.** Its data, the rules for changing it, and saving it live in `rust/src/lib.rs`. You test them with `cargo test` in seconds, without a phone or the iOS SDK.
 - **SwiftUI shows it.** The screens are in `Sources/AppHost/`. A small view model (`ItemsModel.swift`) calls Rust and holds what the screen shows.
 
-Forge generates the Swift API for your Rust (`import ForgeFFI`) every time you build, so a Rust function marked `#[uniffi::export]` is a Swift method a moment later.
+Forge generates the Swift API for your Rust (`import <App>FFI`, the module `[swift] bindings_module` in `forge.toml` names; `ForgeFFI` in apps made before 2026-11-11) every time you build, so a Rust function marked `#[uniffi::export]` is a Swift method a moment later.
 
 | I want to… | I edit |
 |---|---|

@@ -2,12 +2,12 @@
 // so this suite runs only where they exist: macOS (`forge test`), not
 // `forge check swift` on Linux.
 #if canImport(Security)
-import AppHost
-@preconcurrency import ForgeFFI
+import FORGE_MODULE_NAMEApp
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import Foundation
 import XCTest
 
-/// The native services' Swift adapters (copied into ForgeFFI by
+/// The native services' Swift adapters (copied into FORGE_MODULE_NAMEFFI by
 /// `forge build`) against the app's real Rust core. Runs under `swift test`,
 /// which is not an app bundle, so the notification centre is absent and
 /// those services report `Unavailable` / `.unsupported`; the device runbook

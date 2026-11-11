@@ -5,6 +5,12 @@
 //! `.../element/:e/click`, `.../element/:e/value`, `.../element/:e/clear`,
 //! `GET .../element/:e/attribute/:name`, `POST .../wda/apps/{launch,activate,terminate}`,
 //! `POST .../wda/deactivateApp`, `POST .../wda/keyboard/dismiss`, `POST .../wda/element/:e/scroll`, `GET .../wda/activeAppInfo`, `GET /source?format=json`, `GET /screenshot`.
+//! Gestures: `POST .../wda/element/:e/{swipe,touchAndHold,doubleTap,dragfromtoforduration}`,
+//! `GET .../element/:e/rect`, `POST .../wda/keys`, `.../wda/element/:e/{pinch,rotate,twoFingerTap}`.
+//! Device: `POST .../wda/homescreen`, `.../wda/pressButton`, `.../url`, `.../wda/apps/state`,
+//! `.../wda/resetAppAuth`, `.../wda/lock`, `.../wda/unlock`, `GET|POST .../orientation`,
+//! `GET .../window/size`, `GET .../wda/screen`. Alerts: `GET .../alert/text`,
+//! `GET .../wda/alert/buttons`, `POST .../alert/{accept,dismiss}`.
 
 use std::collections::HashMap;
 use std::time::Instant;
@@ -13,7 +19,18 @@ use base64::Engine as _;
 use serde_json::{json, Value};
 
 use crate::http::HttpTransport;
-use crate::{Driver, ElementRef, Locator, Result, UiError, UiNode};
+use crate::{
+    AppState, Driver, ElementRef, Key, Locator, Permission, PointTouch, Result, Screen, UiError,
+    UiNode,
+};
+
+/// An element's frame, as WDA's `rect` answers it.
+struct Frame {
+    x: f64,
+    y: f64,
+    width: f64,
+    height: f64,
+}
 
 /// The W3C WebDriver key that carries an element id.
 const ELEMENT_KEY: &str = "element-6066-11e4-a52e-4f735466cecf";
@@ -165,6 +182,44 @@ impl<T: HttpTransport> WdaDriver<T> {
     }
 
     /// Something may have changed on screen: forget what searches said.
+    /// The element's frame, in points on the screen.
+    fn rect(&mut self, element: &ElementRef) -> Result<Frame> {
+        let value = self.get(&format!("/element/{}/rect", element.0))?;
+        let number = |key: &str| {
+            value
+                .get(key)
+                .and_then(Value::as_f64)
+                .ok_or_else(|| UiError::Wda(format!("element rect without `{key}`")))
+        };
+        Ok(Frame {
+            x: number("x")?,
+            y: number("y")?,
+            width: number("width")?,
+            height: number("height")?,
+        })
+    }
+
+    /// Press at `from` for `hold` seconds, drag to `to` and let go; both in
+    /// points from the element's top-left corner.
+    fn drag(
+        &mut self,
+        element: &ElementRef,
+        from: (f64, f64),
+        to: (f64, f64),
+        hold: f64,
+    ) -> Result<()> {
+        self.changed();
+        self.post(
+            &format!("/wda/element/{}/dragfromtoforduration", element.0),
+            json!({
+                "fromX": from.0, "fromY": from.1,
+                "toX": to.0, "toY": to.1,
+                "duration": hold,
+            }),
+        )?;
+        Ok(())
+    }
+
     fn changed(&mut self) {
         self.described.clear();
     }
@@ -279,6 +334,221 @@ impl<T: HttpTransport> Driver for WdaDriver<T> {
             json!({ "direction": direction })
         };
         self.post(&format!("/wda/element/{}/scroll", element.0), body)?;
+        Ok(())
+    }
+
+    fn swipe(&mut self, element: &ElementRef, direction: &str) -> Result<()> {
+        self.changed();
+        self.post(
+            &format!("/wda/element/{}/swipe", element.0),
+            json!({ "direction": direction }),
+        )?;
+        Ok(())
+    }
+
+    fn long_press(&mut self, element: &ElementRef, seconds: f64) -> Result<()> {
+        self.changed();
+        self.post(
+            &format!("/wda/element/{}/touchAndHold", element.0),
+            json!({ "duration": seconds }),
+        )?;
+        Ok(())
+    }
+
+    fn double_tap(&mut self, element: &ElementRef) -> Result<()> {
+        self.changed();
+        self.post(&format!("/wda/element/{}/doubleTap", element.0), json!({}))?;
+        Ok(())
+    }
+
+    fn drag_to(&mut self, element: &ElementRef, to: &ElementRef, hold: f64) -> Result<()> {
+        // `dragfromtoforduration` on the element takes points from the
+        // element's top-left corner, and the end may lie outside it: from
+        // the element's centre to the target's.
+        let from = self.rect(element)?;
+        let target = self.rect(to)?;
+        let (fx, fy) = (from.width / 2.0, from.height / 2.0);
+        let (tx, ty) = (
+            target.x + target.width / 2.0 - from.x,
+            target.y + target.height / 2.0 - from.y,
+        );
+        self.drag(element, (fx, fy), (tx, ty), hold)
+    }
+
+    fn drag_by(&mut self, element: &ElementRef, direction: &str, fraction: f64) -> Result<()> {
+        let rect = self.rect(element)?;
+        let start = (rect.width / 2.0, rect.height / 2.0);
+        let (dx, dy) = match direction {
+            "up" => (0.0, -rect.height * fraction),
+            "down" => (0.0, rect.height * fraction),
+            "left" => (-rect.width * fraction, 0.0),
+            "right" => (rect.width * fraction, 0.0),
+            other => return Err(UiError::Device(format!("drag direction `{other}`"))),
+        };
+        self.drag(element, start, (start.0 + dx, start.1 + dy), 0.0)
+    }
+
+    fn press_key(&mut self, key: Key) -> Result<()> {
+        // XCUIKeyboardKey values: Return is "\n", Delete is backspace.
+        let text = match key {
+            Key::Dismiss => return self.dismiss_keyboard(),
+            Key::Return => "\n",
+            Key::Delete => "\u{8}",
+        };
+        self.changed();
+        self.post("/wda/keys", json!({ "value": [text] }))?;
+        Ok(())
+    }
+
+    fn pinch(&mut self, element: &ElementRef, scale: f64) -> Result<()> {
+        self.changed();
+        // XCTest wants the velocity's sign to match the direction: negative
+        // to zoom out.
+        let velocity = if scale < 1.0 { -1.0 } else { 1.0 };
+        self.post(
+            &format!("/wda/element/{}/pinch", element.0),
+            json!({ "scale": scale, "velocity": velocity }),
+        )?;
+        Ok(())
+    }
+
+    fn rotate(&mut self, element: &ElementRef, radians: f64) -> Result<()> {
+        self.changed();
+        let velocity = if radians < 0.0 { -1.0 } else { 1.0 };
+        self.post(
+            &format!("/wda/element/{}/rotate", element.0),
+            json!({ "rotation": radians, "velocity": velocity }),
+        )?;
+        Ok(())
+    }
+
+    fn two_finger_tap(&mut self, element: &ElementRef) -> Result<()> {
+        self.changed();
+        self.post(
+            &format!("/wda/element/{}/twoFingerTap", element.0),
+            json!({}),
+        )?;
+        Ok(())
+    }
+
+    fn touch_at(&mut self, touch: &PointTouch) -> Result<()> {
+        self.changed();
+        let (path, body) = match *touch {
+            PointTouch::Tap { x, y } => ("/wda/tap", json!({ "x": x, "y": y })),
+            PointTouch::DoubleTap { x, y } => ("/wda/doubleTap", json!({ "x": x, "y": y })),
+            PointTouch::LongPress { x, y, seconds } => (
+                "/wda/touchAndHold",
+                json!({ "x": x, "y": y, "duration": seconds }),
+            ),
+            PointTouch::Drag { from, to, hold } => (
+                "/wda/dragfromtoforduration",
+                json!({ "fromX": from.0, "fromY": from.1, "toX": to.0, "toY": to.1, "duration": hold }),
+            ),
+        };
+        self.post(path, body)?;
+        Ok(())
+    }
+
+    fn home(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/homescreen", json!({}))?;
+        Ok(())
+    }
+
+    fn press_button(&mut self, name: &str) -> Result<()> {
+        self.changed();
+        self.post("/wda/pressButton", json!({ "name": name }))?;
+        Ok(())
+    }
+
+    fn open_url(&mut self, url: &str) -> Result<()> {
+        self.changed();
+        self.post("/url", json!({ "url": url }))?;
+        Ok(())
+    }
+
+    fn app_state(&mut self, bundle_id: &str) -> Result<AppState> {
+        let raw = self.post("/wda/apps/state", json!({ "bundleId": bundle_id }))?;
+        Ok(AppState::from_raw(raw.as_i64().unwrap_or(0)))
+    }
+
+    fn reset_permission(&mut self, resource: Permission) -> Result<()> {
+        self.changed();
+        self.post("/wda/resetAppAuth", json!({ "resource": resource.raw() }))?;
+        Ok(())
+    }
+
+    fn alert_text(&mut self) -> Result<Option<String>> {
+        match self.get("/alert/text") {
+            Ok(text) => Ok(text.as_str().map(str::to_owned)),
+            Err(UiError::Wda(e)) if e.contains("no such alert") => Ok(None),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn alert_buttons(&mut self) -> Result<Vec<String>> {
+        let buttons = self.get("/wda/alert/buttons")?;
+        Ok(buttons
+            .as_array()
+            .map(|a| {
+                a.iter()
+                    .filter_map(|b| b.as_str().map(str::to_owned))
+                    .collect()
+            })
+            .unwrap_or_default())
+    }
+
+    fn alert_accept(&mut self, button: Option<&str>) -> Result<()> {
+        self.changed();
+        let body = match button {
+            Some(name) => json!({ "name": name }),
+            None => json!({}),
+        };
+        self.post("/alert/accept", body)?;
+        Ok(())
+    }
+
+    fn alert_dismiss(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/alert/dismiss", json!({}))?;
+        Ok(())
+    }
+
+    fn lock(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/lock", json!({}))?;
+        Ok(())
+    }
+
+    fn unlock(&mut self) -> Result<()> {
+        self.changed();
+        self.post("/wda/unlock", json!({}))?;
+        Ok(())
+    }
+
+    fn screen(&mut self) -> Result<Screen> {
+        let size = self.get("/window/size")?;
+        let screen = self.get("/wda/screen")?;
+        let orientation = self.get("/orientation")?;
+        let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+        Ok(Screen {
+            width: number(&size, "width"),
+            height: number(&size, "height"),
+            scale: number(&screen, "scale"),
+            orientation: orientation
+                .as_str()
+                .unwrap_or("")
+                .to_ascii_lowercase()
+                .replace("uiinterfaceorientation", ""),
+        })
+    }
+
+    fn set_orientation(&mut self, orientation: &str) -> Result<()> {
+        self.changed();
+        self.post(
+            "/orientation",
+            json!({ "orientation": orientation.to_ascii_uppercase() }),
+        )?;
         Ok(())
     }
 
@@ -460,6 +730,63 @@ mod tests {
                 "POST /session/S1/element/E7/click {}",
                 r#"POST /session/S1/element/E7/value {"text":"Hi","value":["H","i"]}"#,
                 "GET /session/S1/element/E7/attribute/value",
+            ]
+        );
+    }
+
+    #[test]
+    fn gestures_use_wdas_element_routes() {
+        let ok = || (200, json!({ "value": null }));
+        let rect = |x: f64, y: f64, w: f64, h: f64| {
+            (
+                200,
+                json!({ "value": { "x": x, "y": y, "width": w, "height": h } }),
+            )
+        };
+        let mut s = script(vec![
+            (200, json!({ "sessionId": "S1" })),
+            ok(),
+            ok(),
+            ok(),
+            rect(0.0, 100.0, 400.0, 60.0),
+            rect(0.0, 300.0, 400.0, 60.0),
+            ok(),
+            rect(0.0, 100.0, 400.0, 600.0),
+            ok(),
+            ok(),
+            ok(),
+        ]);
+        let mut driver = WdaDriver::connect(&mut s).unwrap();
+        let (row, other) = (ElementRef("E1".into()), ElementRef("E2".into()));
+        driver.swipe(&row, "left").unwrap();
+        driver.long_press(&row, 1.5).unwrap();
+        driver.double_tap(&row).unwrap();
+        driver.drag_to(&row, &other, 1.0).unwrap();
+        driver.drag_by(&row, "down", 0.5).unwrap();
+        driver.press_key(Key::Return).unwrap();
+        driver.press_key(Key::Dismiss).unwrap();
+        drop(driver);
+        let sent: Vec<_> = s
+            .sent
+            .iter()
+            .map(|l| l.replace("/session/S1", ""))
+            .collect();
+        assert_eq!(
+            sent[1..],
+            [
+                r#"POST /wda/element/E1/swipe {"direction":"left"}"#,
+                r#"POST /wda/element/E1/touchAndHold {"duration":1.5}"#,
+                "POST /wda/element/E1/doubleTap {}",
+                "GET /element/E1/rect",
+                "GET /element/E2/rect",
+                // From the row's centre to the other row's, in points from
+                // the row's corner: 200 down.
+                r#"POST /wda/element/E1/dragfromtoforduration {"duration":1.0,"fromX":200.0,"fromY":30.0,"toX":200.0,"toY":230.0}"#,
+                "GET /element/E1/rect",
+                // Half the list's height down from its centre, no hold.
+                r#"POST /wda/element/E1/dragfromtoforduration {"duration":0.0,"fromX":200.0,"fromY":300.0,"toX":200.0,"toY":600.0}"#,
+                r#"POST /wda/keys {"value":["\n"]}"#,
+                "POST /wda/keyboard/dismiss {}",
             ]
         );
     }

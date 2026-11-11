@@ -374,6 +374,26 @@ pub enum Action {
         presses_return: bool,
     },
     Clear(Target),
+    /// A swipe, long press, double tap or drag on an element (`gesture`
+    /// names which, as test files spell it).
+    Gesture {
+        gesture: &'static str,
+        target: Target,
+    },
+    /// Something done to the phone rather than to an element: `home`,
+    /// `button`, `open_url`, `orientation`, `reset_permission`, `lock`,
+    /// `unlock`. `what` says what, for the question and the journal (a
+    /// button's name, a URL's scheme and host).
+    Device {
+        name: &'static str,
+        what: String,
+    },
+    /// A keyboard key: Return, Delete, or hiding the keyboard.
+    Key {
+        name: &'static str,
+        /// Return sends in many apps.
+        presses_return: bool,
+    },
     Terminate,
 }
 
@@ -388,13 +408,19 @@ impl Action {
             Action::Tap(_) => "tap",
             Action::Type { .. } => "type",
             Action::Clear(_) => "clear",
+            Action::Gesture { gesture, .. } => gesture,
+            Action::Key { .. } => "key",
+            Action::Device { name, .. } => name,
             Action::Terminate => "terminate",
         }
     }
 
     fn target(&self) -> Option<&Target> {
         match self {
-            Action::Tap(t) | Action::Clear(t) | Action::Type { target: t, .. } => Some(t),
+            Action::Tap(t)
+            | Action::Clear(t)
+            | Action::Type { target: t, .. }
+            | Action::Gesture { target: t, .. } => Some(t),
             _ => None,
         }
     }
@@ -406,7 +432,14 @@ impl Action {
             | Action::Activate
             | Action::Background
             | Action::Read
-            | Action::Scroll => Level::Observe,
+            | Action::Scroll
+            | Action::Key {
+                name: "dismiss", ..
+            }
+            | Action::Device {
+                name: "home" | "orientation",
+                ..
+            } => Level::Observe,
             _ => Level::Operate,
         }
     }
@@ -641,6 +674,38 @@ impl Gate {
                 "type text ending in Return into {}, which can send it",
                 target.name()
             )),
+            // A full swipe runs a row's first action (often Delete) and a
+            // drag moves things: neither says what it will do.
+            Action::Gesture {
+                gesture: gesture @ ("swipe" | "drag"),
+                target,
+            } => Some(format!(
+                "{gesture} {}, which can delete, archive or move it",
+                target.name()
+            )),
+            // Like a tap: what the label says, or nothing to say.
+            Action::Gesture { gesture, target } => {
+                is_commit(target.label.as_deref(), target.identifier.as_deref())
+                    .map(|word| format!("{gesture} {} (\"{word}\")", target.name()))
+                    .or_else(|| {
+                        target.is_unidentified().then(|| {
+                            format!(
+                        "{gesture} {}, which has no label or identifier to say what it does",
+                        target.name()
+                    )
+                        })
+                    })
+            }
+            Action::Key {
+                presses_return: true,
+                ..
+            } => Some("press Return, which can send what was typed".to_string()),
+            // A link can start a call, a payment or a purchase; the Action
+            // and Camera buttons do whatever the person set them to.
+            Action::Device {
+                name: name @ ("open_url" | "button" | "reset_permission" | "lock" | "unlock"),
+                what,
+            } => Some(format!("{} {what}", name.replace('_', " "))),
             _ => None,
         };
         let Some(commit) = commit else {

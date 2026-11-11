@@ -1,6 +1,6 @@
 @preconcurrency import CoreLocation
 import Foundation
-@preconcurrency import ForgeFFI
+@preconcurrency import WeatherFFI
 
 /// One location reading from the platform.
 public struct LocationFix: Sendable, Equatable {

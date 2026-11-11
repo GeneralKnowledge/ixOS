@@ -31,7 +31,9 @@ use forge_storage::StorageError;
 use checklist::Checklist;
 pub use checklist::{Item, Summary, MAX_TITLE_CHARS};
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (checklist_core), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();
 
 const SAVE_FILE: &str = "checklist.json";
 const SAVE_VERSION: u32 = 1;

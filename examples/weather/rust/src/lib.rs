@@ -10,4 +10,6 @@ pub use weather::*;
 // Links forge-runtime's `ForgeAndroid.nativeInit` JNI export into this library.
 pub use forge_runtime as _runtime;
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (weather_core), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();

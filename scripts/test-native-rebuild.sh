@@ -48,7 +48,7 @@ fi
 APP="$TMP/app"
 STUBS="$TMP/stubs"
 mkdir -p "$APP/rust" "$STUBS"
-printf '[package]\nname = "stub"\n' >"$APP/rust/Cargo.toml"
+printf '[package]\nname = "stub"\n\n[lib]\nname = "forge_ffi"\n' >"$APP/rust/Cargo.toml"
 cat >"$STUBS/rustup" <<'STUB'
 #!/usr/bin/env bash
 echo aarch64-apple-ios

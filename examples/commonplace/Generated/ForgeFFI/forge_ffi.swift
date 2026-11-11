@@ -8,8 +8,8 @@ import Foundation
 // Depending on the consumer's build setup, the low-level FFI code
 // might be in a separate module, or it might be compiled inline into
 // this module. This is a bit of light hackery to work with both.
-#if canImport(forge_ffiFFI)
-import forge_ffiFFI
+#if canImport(commonplace_coreFFI)
+import commonplace_coreFFI
 #endif
 
 fileprivate extension RustBuffer {
@@ -26,13 +26,13 @@ fileprivate extension RustBuffer {
     }
 
     static func from(_ ptr: UnsafeBufferPointer<UInt8>) -> RustBuffer {
-        try! rustCall { ffi_forge_ffi_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
+        try! rustCall { ffi_commonplace_core_rustbuffer_from_bytes(ForeignBytes(bufferPointer: ptr), $0) }
     }
 
     // Frees the buffer in place.
     // The buffer must not be used after this is called.
     func deallocate() {
-        try! rustCall { ffi_forge_ffi_rustbuffer_free(self, $0) }
+        try! rustCall { ffi_commonplace_core_rustbuffer_free(self, $0) }
     }
 }
 
@@ -328,7 +328,7 @@ private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
     errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureCommonplaceCoreInitialized()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
@@ -791,7 +791,7 @@ open class AppCore: AppCoreProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_appcore(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_appcore(self.handle, $0) }
     }
     /**
      * Opens the library in `storage_directory` (created if missing) and
@@ -801,7 +801,7 @@ public convenience init(storageDirectory: String)throws  {
     let handle =
         try rustCallWithError(FfiConverterTypeAppError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_constructor_appcore_new(
+    uniffi_commonplace_core_fn_constructor_appcore_new(
         FfiConverterString.lower(storageDirectory),uniffiCallStatus
     )
 }
@@ -814,7 +814,7 @@ public convenience init(storageDirectory: String)throws  {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_appcore(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_appcore(handle, $0) }
     }
 
     
@@ -830,13 +830,13 @@ open func addFeed(url: String, cancellation: Cancellation?)async throws  -> Feed
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_add_feed(
+                uniffi_commonplace_core_fn_method_appcore_add_feed(
                         self.uniffiCloneHandle(),FfiConverterString.lower(url),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeFeed_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -848,7 +848,7 @@ open func addFeed(url: String, cancellation: Cancellation?)async throws  -> Feed
 open func article(id: Int64) -> ArticleSummary?  {
     return try!  FfiConverterOptionTypeArticleSummary.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_article(
+    uniffi_commonplace_core_fn_method_appcore_article(
             self.uniffiCloneHandle(),
         FfiConverterInt64.lower(id),uniffiCallStatus
     )
@@ -860,7 +860,7 @@ open func article(id: Int64) -> ArticleSummary?  {
      */
 open func backgroundTimeExpired()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_background_time_expired(
+    uniffi_commonplace_core_fn_method_appcore_background_time_expired(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -873,7 +873,7 @@ open func backgroundTimeExpired()  {try! rustCall() {
 open func backgroundWorkPending() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_background_work_pending(
+    uniffi_commonplace_core_fn_method_appcore_background_work_pending(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -885,7 +885,7 @@ open func backgroundWorkPending() -> Bool  {
 open func counts(timeline: Timeline) -> TimelineCounts  {
     return try!  FfiConverterTypeTimelineCounts_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_counts(
+    uniffi_commonplace_core_fn_method_appcore_counts(
             self.uniffiCloneHandle(),
         FfiConverterTypeTimeline_lower(timeline),uniffiCallStatus
     )
@@ -899,7 +899,7 @@ open func counts(timeline: Timeline) -> TimelineCounts  {
 open func events() -> RuntimeEvents?  {
     return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_events(
+    uniffi_commonplace_core_fn_method_appcore_events(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -911,7 +911,7 @@ open func events() -> RuntimeEvents?  {
 open func feeds() -> [Feed]  {
     return try!  FfiConverterSequenceTypeFeed.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_feeds(
+    uniffi_commonplace_core_fn_method_appcore_feeds(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -923,7 +923,7 @@ open func feeds() -> [Feed]  {
 open func launchReport() -> LaunchReport  {
     return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_launch_report(
+    uniffi_commonplace_core_fn_method_appcore_launch_report(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -937,13 +937,13 @@ open func markAllRead(feedId: Int64?)async throws  -> UInt32  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_mark_all_read(
+                uniffi_commonplace_core_fn_method_appcore_mark_all_read(
                         self.uniffiCloneHandle(),FfiConverterOptionInt64.lower(feedId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_u32,
-            completeFunc: ffi_forge_ffi_rust_future_complete_u32,
-            freeFunc: ffi_forge_ffi_rust_future_free_u32,
+            pollFunc: ffi_commonplace_core_rust_future_poll_u32,
+            completeFunc: ffi_commonplace_core_rust_future_complete_u32,
+            freeFunc: ffi_commonplace_core_rust_future_free_u32,
             liftFunc: FfiConverterUInt32.lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -956,13 +956,13 @@ open func openArticle(articleId: Int64)async throws  -> ArticleText  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_open_article(
+                uniffi_commonplace_core_fn_method_appcore_open_article(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeArticleText_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -974,7 +974,7 @@ open func openArticle(articleId: Int64)async throws  -> ArticleText  {
 open func phase() -> AppPhase  {
     return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_phase(
+    uniffi_commonplace_core_fn_method_appcore_phase(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -991,13 +991,13 @@ open func refresh(cancellation: Cancellation?)async throws  -> RefreshReport  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_refresh(
+                uniffi_commonplace_core_fn_method_appcore_refresh(
                         self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeRefreshReport_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -1010,13 +1010,13 @@ open func removeFeed(feedId: Int64)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_remove_feed(
+                uniffi_commonplace_core_fn_method_appcore_remove_feed(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -1029,13 +1029,13 @@ open func renameFeed(feedId: Int64, title: String)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_rename_feed(
+                uniffi_commonplace_core_fn_method_appcore_rename_feed(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(feedId),FfiConverterString.lower(title)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -1047,7 +1047,7 @@ open func renameFeed(feedId: Int64, title: String)async throws   {
 open func revision() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_revision(
+    uniffi_commonplace_core_fn_method_appcore_revision(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1057,13 +1057,13 @@ open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_set_bookmarked(
+                uniffi_commonplace_core_fn_method_appcore_set_bookmarked(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterBool.lower(bookmarked)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -1074,7 +1074,7 @@ open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
      */
 open func setPhase(phase: AppPhase)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_set_phase(
+    uniffi_commonplace_core_fn_method_appcore_set_phase(
             self.uniffiCloneHandle(),
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
@@ -1085,13 +1085,13 @@ open func setRead(articleId: Int64, read: Bool)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_appcore_set_read(
+                uniffi_commonplace_core_fn_method_appcore_set_read(
                         self.uniffiCloneHandle(),FfiConverterInt64.lower(articleId),FfiConverterBool.lower(read)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeAppError_lift
         )
@@ -1103,7 +1103,7 @@ open func setRead(articleId: Int64, read: Bool)async throws   {
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_shutdown(
+    uniffi_commonplace_core_fn_method_appcore_shutdown(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1115,7 +1115,7 @@ open func shutdown()  {try! rustCall() {
 open func timeline(timeline: Timeline) -> [ArticleSummary]  {
     return try!  FfiConverterSequenceTypeArticleSummary.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_appcore_timeline(
+    uniffi_commonplace_core_fn_method_appcore_timeline(
             self.uniffiCloneHandle(),
         FfiConverterTypeTimeline_lower(timeline),uniffiCallStatus
     )
@@ -1235,7 +1235,7 @@ open class BackgroundSchedulerImpl: BackgroundScheduler, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_backgroundscheduler(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundscheduler(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1245,7 +1245,7 @@ open class BackgroundSchedulerImpl: BackgroundScheduler, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_backgroundscheduler(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundscheduler(handle, $0) }
     }
 
     
@@ -1257,7 +1257,7 @@ open class BackgroundSchedulerImpl: BackgroundScheduler, @unchecked Sendable {
      */
 open func submit(request: BackgroundTaskRequest)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_backgroundscheduler_submit(
+    uniffi_commonplace_core_fn_method_backgroundscheduler_submit(
             self.uniffiCloneHandle(),
         FfiConverterTypeBackgroundTaskRequest_lower(request),uniffiCallStatus
     )
@@ -1269,7 +1269,7 @@ open func submit(request: BackgroundTaskRequest)throws   {try rustCallWithError(
      */
 open func cancel(identifier: String)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_backgroundscheduler_cancel(
+    uniffi_commonplace_core_fn_method_backgroundscheduler_cancel(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(identifier),uniffiCallStatus
     )
@@ -1283,7 +1283,7 @@ open func cancel(identifier: String)  {try! rustCall() {
 open func permitted() -> [String]  {
     return try!  FfiConverterSequenceString.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_backgroundscheduler_permitted(
+    uniffi_commonplace_core_fn_method_backgroundscheduler_permitted(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1404,7 +1404,7 @@ fileprivate struct UniffiCallbackInterfaceBackgroundScheduler {
 }
 
 private func uniffiCallbackInitBackgroundScheduler() {
-    uniffi_forge_ffi_fn_init_callback_vtable_backgroundscheduler(UniffiCallbackInterfaceBackgroundScheduler.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_backgroundscheduler(UniffiCallbackInterfaceBackgroundScheduler.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -1517,7 +1517,7 @@ open class BackgroundTaskCompletionImpl: BackgroundTaskCompletion, @unchecked Se
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_backgroundtaskcompletion(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundtaskcompletion(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1527,7 +1527,7 @@ open class BackgroundTaskCompletionImpl: BackgroundTaskCompletion, @unchecked Se
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_backgroundtaskcompletion(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundtaskcompletion(handle, $0) }
     }
 
     
@@ -1535,7 +1535,7 @@ open class BackgroundTaskCompletionImpl: BackgroundTaskCompletion, @unchecked Se
     
 open func finished(success: Bool)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_backgroundtaskcompletion_finished(
+    uniffi_commonplace_core_fn_method_backgroundtaskcompletion_finished(
             self.uniffiCloneHandle(),
         FfiConverterBool.lower(success),uniffiCallStatus
     )
@@ -1610,7 +1610,7 @@ fileprivate struct UniffiCallbackInterfaceBackgroundTaskCompletion {
 }
 
 private func uniffiCallbackInitBackgroundTaskCompletion() {
-    uniffi_forge_ffi_fn_init_callback_vtable_backgroundtaskcompletion(UniffiCallbackInterfaceBackgroundTaskCompletion.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_backgroundtaskcompletion(UniffiCallbackInterfaceBackgroundTaskCompletion.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -1732,7 +1732,7 @@ open class BackgroundTaskRun: BackgroundTaskRunProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_backgroundtaskrun(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_backgroundtaskrun(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1742,7 +1742,7 @@ open class BackgroundTaskRun: BackgroundTaskRunProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_backgroundtaskrun(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_backgroundtaskrun(handle, $0) }
     }
 
     
@@ -1755,7 +1755,7 @@ open class BackgroundTaskRun: BackgroundTaskRunProtocol, @unchecked Sendable {
      */
 open func expire()  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_backgroundtaskrun_expire(
+    uniffi_commonplace_core_fn_method_backgroundtaskrun_expire(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
@@ -1863,7 +1863,7 @@ open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_httptransport(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_httptransport(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -1873,7 +1873,7 @@ open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_httptransport(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_httptransport(handle, $0) }
     }
 
     
@@ -1882,7 +1882,7 @@ open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
 open func send(request: HttpRequest)throws  -> HttpResponse  {
     return try  FfiConverterTypeHttpResponse_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_httptransport_send(
+    uniffi_commonplace_core_fn_method_httptransport_send(
             self.uniffiCloneHandle(),
         FfiConverterTypeHttpRequest_lower(request),uniffiCallStatus
     )
@@ -1891,7 +1891,7 @@ open func send(request: HttpRequest)throws  -> HttpResponse  {
     
 open func cancel(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_httptransport_cancel(
+    uniffi_commonplace_core_fn_method_httptransport_cancel(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
     )
@@ -1991,7 +1991,7 @@ fileprivate struct UniffiCallbackInterfaceHttpTransport {
 }
 
 private func uniffiCallbackInitHttpTransport() {
-    uniffi_forge_ffi_fn_init_callback_vtable_httptransport(UniffiCallbackInterfaceHttpTransport.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_httptransport(UniffiCallbackInterfaceHttpTransport.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -2124,7 +2124,7 @@ open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_localnotifier(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_localnotifier(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2134,7 +2134,7 @@ open class LocalNotifierImpl: LocalNotifier, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_localnotifier(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_localnotifier(handle, $0) }
     }
 
     
@@ -2148,13 +2148,13 @@ open func schedule(notification: LocalNotification)async throws   {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_localnotifier_schedule(
+                uniffi_commonplace_core_fn_method_localnotifier_schedule(
                         self.uniffiCloneHandle(),FfiConverterTypeLocalNotification_lower(notification)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_void,
-            completeFunc: ffi_forge_ffi_rust_future_complete_void,
-            freeFunc: ffi_forge_ffi_rust_future_free_void,
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
             errorHandler: FfiConverterTypeNativeServiceError_lift
         )
@@ -2166,7 +2166,7 @@ open func schedule(notification: LocalNotification)async throws   {
      */
 open func cancel(id: String)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_localnotifier_cancel(
+    uniffi_commonplace_core_fn_method_localnotifier_cancel(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(id),uniffiCallStatus
     )
@@ -2181,13 +2181,13 @@ open func pending()async  -> [String]  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_localnotifier_pending(
+                uniffi_commonplace_core_fn_method_localnotifier_pending(
                         self.uniffiCloneHandle()
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterSequenceString.lift,
             errorHandler: nil
             
@@ -2200,7 +2200,7 @@ open func pending()async  -> [String]  {
      */
 open func setCategories(categories: [NotificationCategory])  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_localnotifier_set_categories(
+    uniffi_commonplace_core_fn_method_localnotifier_set_categories(
             self.uniffiCloneHandle(),
         FfiConverterSequenceTypeNotificationCategory.lower(categories),uniffiCallStatus
     )
@@ -2380,7 +2380,7 @@ fileprivate struct UniffiCallbackInterfaceLocalNotifier {
 }
 
 private func uniffiCallbackInitLocalNotifier() {
-    uniffi_forge_ffi_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_localnotifier(UniffiCallbackInterfaceLocalNotifier.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -2500,7 +2500,7 @@ open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_permissionprovider(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_permissionprovider(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2510,7 +2510,7 @@ open class PermissionProviderImpl: PermissionProvider, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_permissionprovider(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_permissionprovider(handle, $0) }
     }
 
     
@@ -2520,13 +2520,13 @@ open func status(permission: NativePermission)async  -> PermissionStatus  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_permissionprovider_status(
+                uniffi_commonplace_core_fn_method_permissionprovider_status(
                         self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePermissionStatus_lift,
             errorHandler: nil
             
@@ -2542,13 +2542,13 @@ open func request(permission: NativePermission)async  -> PermissionStatus  {
     return
         try!  await uniffiRustCallAsync(
             rustFutureFunc: {
-                uniffi_forge_ffi_fn_method_permissionprovider_request(
+                uniffi_commonplace_core_fn_method_permissionprovider_request(
                         self.uniffiCloneHandle(),FfiConverterTypeNativePermission_lower(permission)
                 )
             },
-            pollFunc: ffi_forge_ffi_rust_future_poll_rust_buffer,
-            completeFunc: ffi_forge_ffi_rust_future_complete_rust_buffer,
-            freeFunc: ffi_forge_ffi_rust_future_free_rust_buffer,
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypePermissionStatus_lift,
             errorHandler: nil
             
@@ -2683,7 +2683,7 @@ fileprivate struct UniffiCallbackInterfacePermissionProvider {
 }
 
 private func uniffiCallbackInitPermissionProvider() {
-    uniffi_forge_ffi_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_permissionprovider(UniffiCallbackInterfacePermissionProvider.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -2813,7 +2813,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_forge_ffi_fn_clone_securestore(self.handle, $0) }
+        return try! rustCall { uniffi_commonplace_core_fn_clone_securestore(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -2823,7 +2823,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_forge_ffi_fn_free_securestore(handle, $0) }
+        try! rustCall { uniffi_commonplace_core_fn_free_securestore(handle, $0) }
     }
 
     
@@ -2835,7 +2835,7 @@ open class SecureStoreImpl: SecureStore, @unchecked Sendable {
 open func get(key: String)throws  -> Data?  {
     return try  FfiConverterOptionData.lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_get(
+    uniffi_commonplace_core_fn_method_securestore_get(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),uniffiCallStatus
     )
@@ -2847,7 +2847,7 @@ open func get(key: String)throws  -> Data?  {
      */
 open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_set(
+    uniffi_commonplace_core_fn_method_securestore_set(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),
         FfiConverterData.lower(value),uniffiCallStatus
@@ -2860,7 +2860,7 @@ open func set(key: String, value: Data)throws   {try rustCallWithError(FfiConver
      */
 open func delete(key: String)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_method_securestore_delete(
+    uniffi_commonplace_core_fn_method_securestore_delete(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(key),uniffiCallStatus
     )
@@ -2988,7 +2988,7 @@ fileprivate struct UniffiCallbackInterfaceSecureStore {
 }
 
 private func uniffiCallbackInitSecureStore() {
-    uniffi_forge_ffi_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
+    uniffi_commonplace_core_fn_init_callback_vtable_securestore(UniffiCallbackInterfaceSecureStore.vtablePtr)
 }
 
 #if swift(>=5.8)
@@ -5992,7 +5992,7 @@ fileprivate func uniffiRustCallAsync<F, T>(
 ) async throws -> T {
     // Make sure to call the ensure init function since future creation doesn't have a
     // RustCallStatus param, so doesn't use makeRustCall()
-    uniffiEnsureForgeFfiInitialized()
+    uniffiEnsureCommonplaceCoreInitialized()
     let rustFuture = rustFutureFunc()
     defer {
         freeFunc(rustFuture)
@@ -6112,7 +6112,7 @@ private func uniffiForeignFutureDroppedCallback(handle: UInt64) {
 }
 
 // For testing
-public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
+public func uniffiForeignFutureHandleCountCommonplaceCore() -> Int {
     UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
 }
 /**
@@ -6121,7 +6121,7 @@ public func uniffiForeignFutureHandleCountForgeFfi() -> Int {
  */
 public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_forge_log(
+    uniffi_commonplace_core_fn_func_forge_log(
         FfiConverterTypeForgeLogLevel_lower(level),
         FfiConverterString.lower(category),
         FfiConverterString.lower(message),uniffiCallStatus
@@ -6135,7 +6135,7 @@ public func forgeLog(level: ForgeLogLevel, category: String, message: String)  {
 public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_forge_log_enabled(
+    uniffi_commonplace_core_fn_func_forge_log_enabled(
         FfiConverterTypeForgeLogLevel_lower(level),uniffiCallStatus
     )
 })
@@ -6146,7 +6146,7 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
 public func appErrorKind(error: AppError) -> ErrorKind  {
     return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_app_error_kind(
+    uniffi_commonplace_core_fn_func_app_error_kind(
         FfiConverterTypeAppError_lower(error),uniffiCallStatus
     )
 })
@@ -6158,7 +6158,7 @@ public func appErrorKind(error: AppError) -> ErrorKind  {
  */
 public func deliverNotificationResponse(response: NotificationResponse)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_deliver_notification_response(
+    uniffi_commonplace_core_fn_func_deliver_notification_response(
         FfiConverterTypeNotificationResponse_lower(response),uniffiCallStatus
     )
 }
@@ -6170,7 +6170,7 @@ public func deliverNotificationResponse(response: NotificationResponse)  {try! r
  */
 public func installNativeServices(directories: AppDirectories, secureStore: SecureStore, notifier: LocalNotifier, permissions: PermissionProvider)throws   {try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_install_native_services(
+    uniffi_commonplace_core_fn_func_install_native_services(
         FfiConverterTypeAppDirectories_lower(directories),
         FfiConverterTypeSecureStore_lower(secureStore),
         FfiConverterTypeLocalNotifier_lower(notifier),
@@ -6185,7 +6185,7 @@ public func installNativeServices(directories: AppDirectories, secureStore: Secu
 public func nativeServicesInstalled() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_native_services_installed(uniffiCallStatus
+    uniffi_commonplace_core_fn_func_native_services_installed(uniffiCallStatus
     )
 })
 }
@@ -6196,7 +6196,7 @@ public func nativeServicesInstalled() -> Bool  {
 public func nativeServicesVersion() -> UInt32  {
     return try!  FfiConverterUInt32.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_native_services_version(uniffiCallStatus
+    uniffi_commonplace_core_fn_func_native_services_version(uniffiCallStatus
     )
 })
 }
@@ -6206,14 +6206,14 @@ public func nativeServicesVersion() -> UInt32  {
 public func parseDeepLink(url: String)throws  -> DeepLink  {
     return try  FfiConverterTypeDeepLink_lift(try rustCallWithError(FfiConverterTypeNativeServiceError_lift) {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_parse_deep_link(
+    uniffi_commonplace_core_fn_func_parse_deep_link(
         FfiConverterString.lower(url),uniffiCallStatus
     )
 })
 }
 public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_install_native_background(
+    uniffi_commonplace_core_fn_func_install_native_background(
         FfiConverterTypeBackgroundScheduler_lower(scheduler),uniffiCallStatus
     )
 }
@@ -6226,7 +6226,7 @@ public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustC
 public func runNativeBackgroundTask(identifier: String, completion: BackgroundTaskCompletion) -> BackgroundTaskRun  {
     return try!  FfiConverterTypeBackgroundTaskRun_lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_run_native_background_task(
+    uniffi_commonplace_core_fn_func_run_native_background_task(
         FfiConverterString.lower(identifier),
         FfiConverterTypeBackgroundTaskCompletion_lower(completion),uniffiCallStatus
     )
@@ -6237,7 +6237,7 @@ public func runNativeBackgroundTask(identifier: String, completion: BackgroundTa
  */
 public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
         uniffiCallStatus in
-    uniffi_forge_ffi_fn_func_install_native_http(
+    uniffi_commonplace_core_fn_func_install_native_http(
         FfiConverterTypeHttpTransport_lower(transport),uniffiCallStatus
     )
 }
@@ -6254,152 +6254,152 @@ private let initializationResult: InitializationResult = {
     // Get the bindings contract version from our ComponentInterface
     let bindings_contract_version = 30
     // Get the scaffolding contract version by calling the into the dylib
-    let scaffolding_contract_version = ffi_forge_ffi_uniffi_contract_version()
+    let scaffolding_contract_version = ffi_commonplace_core_uniffi_contract_version()
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_forge_log() != 59998) {
+    if (uniffi_commonplace_core_checksum_func_forge_log() != 35830) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_forge_log_enabled() != 61613) {
+    if (uniffi_commonplace_core_checksum_func_forge_log_enabled() != 36837) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_app_error_kind() != 10327) {
+    if (uniffi_commonplace_core_checksum_func_app_error_kind() != 31479) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_deliver_notification_response() != 24007) {
+    if (uniffi_commonplace_core_checksum_func_deliver_notification_response() != 41140) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_install_native_services() != 51324) {
+    if (uniffi_commonplace_core_checksum_func_install_native_services() != 23861) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_native_services_installed() != 37330) {
+    if (uniffi_commonplace_core_checksum_func_native_services_installed() != 43316) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_native_services_version() != 54155) {
+    if (uniffi_commonplace_core_checksum_func_native_services_version() != 42292) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_parse_deep_link() != 63697) {
+    if (uniffi_commonplace_core_checksum_func_parse_deep_link() != 15687) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_install_native_background() != 2795) {
+    if (uniffi_commonplace_core_checksum_func_install_native_background() != 62275) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_run_native_background_task() != 63818) {
+    if (uniffi_commonplace_core_checksum_func_run_native_background_task() != 57156) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_func_install_native_http() != 14259) {
+    if (uniffi_commonplace_core_checksum_func_install_native_http() != 36437) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_add_feed() != 23121) {
+    if (uniffi_commonplace_core_checksum_method_appcore_add_feed() != 1709) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_article() != 9955) {
+    if (uniffi_commonplace_core_checksum_method_appcore_article() != 56582) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_background_time_expired() != 30300) {
+    if (uniffi_commonplace_core_checksum_method_appcore_background_time_expired() != 3226) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_background_work_pending() != 48583) {
+    if (uniffi_commonplace_core_checksum_method_appcore_background_work_pending() != 63345) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_counts() != 18702) {
+    if (uniffi_commonplace_core_checksum_method_appcore_counts() != 25863) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_events() != 11012) {
+    if (uniffi_commonplace_core_checksum_method_appcore_events() != 2896) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_feeds() != 11378) {
+    if (uniffi_commonplace_core_checksum_method_appcore_feeds() != 27839) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_launch_report() != 14665) {
+    if (uniffi_commonplace_core_checksum_method_appcore_launch_report() != 61151) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_mark_all_read() != 23351) {
+    if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 29790) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_open_article() != 40320) {
+    if (uniffi_commonplace_core_checksum_method_appcore_open_article() != 58821) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_phase() != 48108) {
+    if (uniffi_commonplace_core_checksum_method_appcore_phase() != 17381) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_refresh() != 30766) {
+    if (uniffi_commonplace_core_checksum_method_appcore_refresh() != 17773) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_remove_feed() != 52044) {
+    if (uniffi_commonplace_core_checksum_method_appcore_remove_feed() != 68) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_rename_feed() != 38024) {
+    if (uniffi_commonplace_core_checksum_method_appcore_rename_feed() != 56233) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_revision() != 12464) {
+    if (uniffi_commonplace_core_checksum_method_appcore_revision() != 2945) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_set_bookmarked() != 18754) {
+    if (uniffi_commonplace_core_checksum_method_appcore_set_bookmarked() != 19311) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_set_phase() != 53107) {
+    if (uniffi_commonplace_core_checksum_method_appcore_set_phase() != 56746) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_set_read() != 54835) {
+    if (uniffi_commonplace_core_checksum_method_appcore_set_read() != 20553) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_shutdown() != 46572) {
+    if (uniffi_commonplace_core_checksum_method_appcore_shutdown() != 58551) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_appcore_timeline() != 50875) {
+    if (uniffi_commonplace_core_checksum_method_appcore_timeline() != 61422) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_schedule() != 55943) {
+    if (uniffi_commonplace_core_checksum_method_localnotifier_schedule() != 37230) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_cancel() != 53584) {
+    if (uniffi_commonplace_core_checksum_method_localnotifier_cancel() != 48156) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_pending() != 43030) {
+    if (uniffi_commonplace_core_checksum_method_localnotifier_pending() != 36415) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_localnotifier_set_categories() != 27212) {
+    if (uniffi_commonplace_core_checksum_method_localnotifier_set_categories() != 63197) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_permissionprovider_status() != 55555) {
+    if (uniffi_commonplace_core_checksum_method_permissionprovider_status() != 55249) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_permissionprovider_request() != 61587) {
+    if (uniffi_commonplace_core_checksum_method_permissionprovider_request() != 12192) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_get() != 59813) {
+    if (uniffi_commonplace_core_checksum_method_securestore_get() != 9092) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_set() != 38015) {
+    if (uniffi_commonplace_core_checksum_method_securestore_set() != 45808) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_securestore_delete() != 58219) {
+    if (uniffi_commonplace_core_checksum_method_securestore_delete() != 25197) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_backgroundscheduler_submit() != 41315) {
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_submit() != 41112) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_backgroundscheduler_cancel() != 49060) {
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_cancel() != 3046) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_backgroundscheduler_permitted() != 5792) {
+    if (uniffi_commonplace_core_checksum_method_backgroundscheduler_permitted() != 59703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_backgroundtaskcompletion_finished() != 23886) {
+    if (uniffi_commonplace_core_checksum_method_backgroundtaskcompletion_finished() != 46037) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_backgroundtaskrun_expire() != 22610) {
+    if (uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire() != 42460) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_httptransport_send() != 584) {
+    if (uniffi_commonplace_core_checksum_method_httptransport_send() != 59421) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_method_httptransport_cancel() != 52582) {
+    if (uniffi_commonplace_core_checksum_method_httptransport_cancel() != 43012) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_forge_ffi_checksum_constructor_appcore_new() != 33612) {
+    if (uniffi_commonplace_core_checksum_constructor_appcore_new() != 61214) {
         return InitializationResult.apiChecksumMismatch
     }
 
@@ -6415,7 +6415,7 @@ private let initializationResult: InitializationResult = {
 
 // Make the ensure init function public so that other modules which have external type references to
 // our types can call it.
-public func uniffiEnsureForgeFfiInitialized() {
+public func uniffiEnsureCommonplaceCoreInitialized() {
     switch initializationResult {
     case .ok:
         break

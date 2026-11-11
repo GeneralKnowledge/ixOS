@@ -1,9 +1,9 @@
-import AppHost
+import FORGE_MODULE_NAMEApp
 import SwiftUI
 
 @main
 struct ForgeAppLauncher: App {
-    /// Owns the Rust core for the life of the process (AppHost.swift).
+    /// Owns the Rust core for the life of the process (FORGE_MODULE_NAMEApp.swift).
     @State private var host = makeAppHost()
 
     init() {

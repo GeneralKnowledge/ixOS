@@ -1,5 +1,5 @@
-import AppHost
-@preconcurrency import ForgeFFI
+import FORGE_MODULE_NAMEApp
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import ForgeAppKit
 import Foundation
 import XCTest

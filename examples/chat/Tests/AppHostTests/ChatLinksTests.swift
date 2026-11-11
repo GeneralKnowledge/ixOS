@@ -1,5 +1,5 @@
-@testable import AppHost
-@preconcurrency import ForgeFFI
+@testable import ChatApp
+@preconcurrency import ChatFFI
 import XCTest
 
 /// The deep link on a message notification leads back to that message.

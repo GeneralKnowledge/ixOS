@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import SwiftUI
 
 /// Text from Rust whose glossary terms are tappable. A tap opens the term in

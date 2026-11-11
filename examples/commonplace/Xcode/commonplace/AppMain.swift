@@ -1,4 +1,4 @@
-import AppHost
+import CommonplaceApp
 import SwiftUI
 
 @main

@@ -11,9 +11,13 @@ rust-version = "1.89"
 publish = false
 
 [lib]
-# Forge's fixed library name (libforge_ffi.a, Swift module ForgeFFI).
-name = "forge_ffi"
-crate-type = ["staticlib", "cdylib", "lib"]
+# The app's own library name, so another app can link this crate (the Device
+# Lab showcase does). Forge still stages it as libforge_ffi.a and generates
+# its Swift as the ForgeFFI module, so the Swift package is unchanged. No
+# cdylib: as another app's dependency Cargo would link it for iOS, which needs
+# Apple's linker; `forge bindings generate` builds the host one it needs.
+name = "checklist_core"
+crate-type = ["staticlib", "lib"]
 
 [dependencies]
 # The application runtime. Its contract types (AppPhase, ErrorKind,

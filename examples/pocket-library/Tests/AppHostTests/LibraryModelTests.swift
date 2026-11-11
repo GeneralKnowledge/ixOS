@@ -1,5 +1,5 @@
-import AppHost
-@preconcurrency import ForgeFFI
+import PocketLibraryApp
+@preconcurrency import PocketLibraryFFI
 import ForgeAppKit
 import Foundation
 import XCTest

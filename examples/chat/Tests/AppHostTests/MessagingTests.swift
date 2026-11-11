@@ -1,6 +1,6 @@
-@testable import AppHost
+@testable import ChatApp
 import CoreGraphics
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import ImageIO
 import UniformTypeIdentifiers
 import XCTest

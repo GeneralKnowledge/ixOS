@@ -1887,8 +1887,17 @@ LSApplicationQueriesSchemes = ["maps"]
         }
         // Device Lab selects all three and declares every text.
         let lab = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/device-lab");
-        let cfg = ForgeConfig::parse(&fs::read_to_string(lab.join("forge.toml")).unwrap()).unwrap();
+        let cfg = crate::commands::load_config(&lab).unwrap();
         assert!(selected_services(&lab).len() >= 3);
+        // The hosted apps' settings are merged in (`[host] apps`).
+        let ios = cfg.ios.as_ref().unwrap();
+        assert!(ios.background_modes.contains(&"audio".to_string()));
+        assert!(ios.url_schemes.contains(&"forgechat".to_string()));
+        assert!(ios.permissions.contains_key("microphone"));
+        assert!(ios.permissions["local_network"].contains("Commonplace"));
+        let args = &cfg.ui_test.as_ref().unwrap().test_data_args;
+        assert!(args.contains(&"-ForgeTemporaryData".to_string()));
+        assert!(args.contains(&"-ForgeUITestData".to_string()));
         assert!(selected_services_missing_permissions(&cfg, &lab).is_empty());
     }
 
@@ -1937,16 +1946,17 @@ LSApplicationQueriesSchemes = ["maps"]
         let mut checked = 0;
         for entry in fs::read_dir(&examples).unwrap() {
             let dir = entry.unwrap().path();
-            let Ok(toml) = fs::read_to_string(dir.join("forge.toml")) else {
+            if !dir.join("forge.toml").is_file() {
                 continue;
-            };
+            }
             if dir
                 .file_name()
                 .is_some_and(|n| n.as_encoded_bytes().starts_with(b"."))
             {
                 continue;
             }
-            let c = ForgeConfig::parse(&toml).unwrap();
+            // As `forge config sync` reads it: with `[host] apps` merged in.
+            let c = crate::commands::load_config(&dir).unwrap();
             if !c.ios_enabled() {
                 continue;
             }

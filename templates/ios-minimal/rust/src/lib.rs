@@ -3,7 +3,7 @@
 //! This is the minimal starter (`forge init --minimal`). It shows only what a
 //! first app needs: a type the screen shows ([`Item`]), the rules for
 //! changing it ([`AppCore`]), and saving it to a file. Everything marked
-//! `#[uniffi::export]` can be called from Swift (`import ForgeFFI`);
+//! `#[uniffi::export]` can be called from Swift (`import FORGE_MODULE_NAMEFFI`);
 //! `forge run ios` rebuilds this crate and regenerates that Swift API.
 //!
 //! It runs on the ixOS application runtime (`forge_app`): each change is a
@@ -22,7 +22,8 @@ use forge_app::{DataDirectory, ErrorKind, OpenError, Published, Runtime, Stopped
 use forge_storage::{JsonFile, StorageError};
 use serde::{Deserialize, Serialize};
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: it follows the library name (Cargo.toml).
+uniffi::setup_scaffolding!();
 
 /// Version of `items.json`. Bump it (and migrate) when [`Saved`] changes shape.
 const SAVE_VERSION: u32 = 1;

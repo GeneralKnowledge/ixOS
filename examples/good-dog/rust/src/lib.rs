@@ -31,7 +31,9 @@ pub use guided::{GuidedCard, GuidedCardKind, GuidedSession};
 pub use model::*;
 use training::{exercise, feedback_message, validated_profile, Stored};
 
-uniffi::setup_scaffolding!("forge_ffi");
+// No namespace argument: UniFFI takes the library's name (good_dog_app), so this
+// crate keeps its own bindings when another app links it.
+uniffi::setup_scaffolding!();
 
 // Native services (Keychain, app directories, local notifications,
 // permissions, deep links) as `crate::native`. Daily reminders (GD2) will use

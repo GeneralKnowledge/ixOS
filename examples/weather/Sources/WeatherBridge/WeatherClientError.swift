@@ -1,5 +1,5 @@
 import Foundation
-@preconcurrency import ForgeFFI
+@preconcurrency import WeatherFFI
 
 /// Errors from the weather bridge, translated from Rust's `WeatherError`.
 ///

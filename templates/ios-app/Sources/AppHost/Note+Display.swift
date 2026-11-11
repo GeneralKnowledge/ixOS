@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import FORGE_MODULE_NAMEFFI
 import Foundation
 
 // Small additions that let SwiftUI use the Rust record directly. They are
@@ -6,7 +6,7 @@ import Foundation
 // what a note may contain stay in Rust.
 
 // UniFFI records are Equatable and Hashable already; `id` is the Rust id.
-// No `@retroactive`: ForgeFFI is a target of this same package.
+// No `@retroactive`: FORGE_MODULE_NAMEFFI is a target of this same package.
 extension Note: Identifiable {}
 
 extension Note {

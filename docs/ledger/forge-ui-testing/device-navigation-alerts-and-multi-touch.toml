@@ -1,0 +1,9 @@
+order = 29
+capability = "Home, hardware buttons, open URL, system alerts and permission prompts, back, app state, permission reset, orientation, lock, settle, pickers, pinch, rotate, two-finger tap, tree filters, expect visible, hittable, selected and count, and terminal-only coordinate taps and swipes"
+framework = "Yes: forge-uitest `Driver::{home, press_button, open_url, app_state, reset_permission, alert_*, lock, unlock, screen, set_orientation, pinch, rotate, two_finger_tap, touch_at}` over WebDriverAgent; test-file steps; `forge ui` commands; `forge_ui_act` actions except coordinates, lock and unlock"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "No: Linux tests on the fake driver only; the targets are a permission prompt (Pocket Library's camera or photos), Home and relaunch, a deep link, a picker and a map pinch"
+iphone = "No: not yet run on a phone"
+documented = "Yes: forge-ui-testing.md (Tests as files, CLI, apps Forge didn't build), human-workflow.md (step 9)"
+limits = "Coordinates are for a person in the terminal only (test files have no form for them; forge_ui_act refuses them); unlock works only without a passcode; reset_permission stops the app; pick types into the wheel, which WebDriverAgent turns; opening a URL, a button, a permission reset, lock and unlock ask the person in another app"

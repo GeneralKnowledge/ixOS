@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import ChatFFI
 import Foundation
 
 /// The deep link a message notification opens: `forgechat://conversation/<id>?message=<id>`.

@@ -14,13 +14,17 @@ public enum AppServices {
     public static func install() {
         ForgeServices.install()
     }
-}
 
-extension View {
-    /// Routes the URLs the app is opened with to `onForgeDeepLink` handlers.
-    /// Attach once, to the root view.
+    /// Routes a URL the app was opened with: links for a hosted app go to
+    /// that app's ForgeDeepLinks, the rest to `onForgeDeepLink` handlers.
+    /// ContentView calls it from `onOpenURL`. Not a View helper called from
+    /// the App, as in the other apps: three hosted apps declare a public
+    /// `receivesDeepLinks()` too, and `forgeOpenURLs()` comes with every
+    /// app's bindings, so either call is ambiguous here (friction log F19).
     @MainActor
-    public func receivesDeepLinks() -> some View {
-        forgeOpenURLs()
+    public static func open(_ url: URL) {
+        if !EmbeddedApps.openDeepLink(url) {
+            ForgeDeepLinks.shared.open(url)
+        }
     }
 }

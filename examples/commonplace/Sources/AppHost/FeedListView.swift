@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import CommonplaceFFI
 import ForgeAppKit
 import ForgeUI
 import SwiftUI

@@ -9,9 +9,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use flate2::write::ZlibEncoder;
 use flate2::{Compression, Crc};
-use forge_ffi::domain::{validate, LibraryData, SavedPosition};
-use forge_ffi::store::Store;
-use forge_ffi::{BookInput, BookSource, LibrarySort, ReadingStatus};
+use pocket_library_core::domain::{validate, LibraryData, SavedPosition};
+use pocket_library_core::store::Store;
+use pocket_library_core::{BookInput, BookSource, LibrarySort, ReadingStatus};
 
 const HOUR: i64 = 3_600_000;
 const DAY: i64 = 24 * HOUR;

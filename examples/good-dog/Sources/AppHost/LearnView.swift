@@ -1,4 +1,4 @@
-@preconcurrency import ForgeFFI
+@preconcurrency import GoodDogFFI
 import SwiftUI
 
 /// The exercise library by topic, the glossary, and search across both.

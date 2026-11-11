@@ -14,6 +14,13 @@ path = "rust"
 ios_device = true
 ios_simulator = false
 
+# The app's Swift module names: its bindings (Generated/ForgeFFI) and its
+# views and models (Sources/AppHost). Named after the app, so another app
+# can host this one (docs/app-crate.md).
+[swift]
+bindings_module = "FORGE_MODULE_NAMEFFI"
+app_module = "FORGE_MODULE_NAMEApp"
+
 # iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
 # this section on every `forge build ios` / `forge run ios` (or `forge config
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.

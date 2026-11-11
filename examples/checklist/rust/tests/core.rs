@@ -2,8 +2,8 @@
 
 use std::sync::Arc;
 
+use checklist_core::{ChecklistCore, ChecklistError, Summary};
 use forge_app::{AppPhase, Cancellation, ErrorKind, RuntimeEvent};
-use forge_ffi::{ChecklistCore, ChecklistError, Summary};
 
 fn block_on<F: std::future::Future>(future: F) -> F::Output {
     forge_runtime::block_on(future)
@@ -105,7 +105,7 @@ fn after_shutdown_commands_are_refused_and_the_file_is_released() {
 
 #[test]
 fn error_kinds() {
-    use forge_ffi::checklist_error_kind as kind;
+    use checklist_core::checklist_error_kind as kind;
     assert_eq!(kind(ChecklistError::EmptyTitle), ErrorKind::Invalid);
     assert_eq!(kind(ChecklistError::InUse), ErrorKind::Unavailable);
     assert_eq!(kind(ChecklistError::NewerData), ErrorKind::NewerData);
