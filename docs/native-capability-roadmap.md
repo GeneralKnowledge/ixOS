@@ -89,7 +89,7 @@ Ranked by how many apps each enables and how much repeated work it removes. "Fir
 
 | # | Capability | Shape | Apple framework | First consumer |
 |---|---|---|---|---|
-| 1 | **Web view** (spec below) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
+| 1 | **Web view** (spec below). Built 2026-11-11: `ForgeWeb.swift` ([native-services.md](native-services.md#web-pages)) | Helper (`ForgeWebView`) | WebKit, SafariServices | Feed reader (showing the original article) |
 | 2 | **Documents**: PDF view, Quick Look preview of any file in the file store | Helpers (`ForgePDFView`, `ForgeQuickLook`) | PDFKit, Quick Look | Chat (attachments); Pocket Library if it imports PDFs |
 | 3 | **Native reader** (spec below) | Rust module plus Swift helper, extracted from Pocket Library | SwiftUI text layout, AVSpeechSynthesizer for read-aloud | Pocket Library, then the feed reader |
 | 4 | **Photos and camera**: the system photo picker returning the chosen items as files in the file store, and camera capture with its `camera` permission | Helper (picker, from Chat's code, no permission) and optional service `camera` | PhotosUI, AVFoundation | Chat (attachments) |

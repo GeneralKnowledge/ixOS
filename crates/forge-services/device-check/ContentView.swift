@@ -16,6 +16,10 @@ public struct ContentView: View {
     @State private var importing = false
     @State private var links: [String] = []
     @State private var permission = "unknown"
+    #if os(iOS)
+        @State private var webPage: ForgeWebPage?
+        @State private var safariURL: URL?
+    #endif
 
     public var body: some View {
         NavigationStack {
@@ -54,8 +58,25 @@ public struct ContentView: View {
                     }
                     Button("Import a file") { importing = true }
                 }
+                #if os(iOS)
+                    Section("4. Web pages (links off the site should open Safari)") {
+                        Button("Web page in the app") {
+                            webPage = .link(URL(string: "https://www.swift.org/about/")!, title: "Swift")
+                        }
+                        Button("HTML from the app (no network)") {
+                            webPage = .html(
+                                "<h1>Forge</h1><p>Shown offline. <img src='https://www.swift.org/favicon.ico' alt='blocked image'> <a href='https://www.swift.org'>This link opens Safari</a>.</p>",
+                                title: "HTML")
+                        }
+                        Button("Safari in the app") { safariURL = URL(string: "https://www.swift.org") }
+                    }
+                #endif
             }
             .navigationTitle("Services check")
+            #if os(iOS)
+                .forgeWebSheet($webPage)
+                .forgeSafari($safariURL)
+            #endif
             .onForgeDeepLink { link in
                 links.append("PASS \(link.url) → route \(link.route)")
             }

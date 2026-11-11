@@ -3,13 +3,16 @@ import ForgeUI
 import SwiftUI
 
 /// Screen 3: one article. Opening it marks it read (Rust does). The toolbar
-/// bookmarks it, marks it unread, opens the original in the browser and
-/// shares its link.
+/// bookmarks it, marks it unread, shows the original page and shares its
+/// link.
 struct ArticleView: View {
     let model: LibraryModel
     let articleID: Int64
     @State private var text: ArticleText?
     @State private var failed = false
+    #if os(iOS)
+        @State private var original: ForgeWebPage?
+    #endif
 
     var body: some View {
         Group {
@@ -21,10 +24,12 @@ struct ArticleView: View {
                 ForgeStateView.loading()
             }
         }
+        .toolbar { toolbar }
         #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            // The article's own site opens in the sheet; links elsewhere go to Safari.
+            .forgeWebSheet($original)
         #endif
-        .toolbar { toolbar }
         .task(id: articleID) {
             text = await model.open(articleID: articleID)
             failed = text == nil
@@ -52,6 +57,12 @@ struct ArticleView: View {
                     }
                     .accessibilityIdentifier("article.toggleRead")
                     if let link = summary.url.flatMap(URL.init(string:)) {
+                        #if os(iOS)
+                            Button("Show Original Page", systemImage: "globe") {
+                                original = .link(link)
+                            }
+                            .accessibilityIdentifier("article.showOriginal")
+                        #endif
                         Link(destination: link) {
                             Label("Open in Browser", systemImage: "safari")
                         }

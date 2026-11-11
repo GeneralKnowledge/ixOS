@@ -52,8 +52,17 @@ In Settings → Services check → Notifications, turn notifications off. Go bac
 
 This is the correct behaviour: Rust receives a typed `PermissionDenied`. **Open Settings** goes straight to the app's settings page.
 
+## 6. Web pages
+
+Section 4 of the app, about two minutes:
+
+- **Web page in the app** opens swift.org's About page in a sheet, with a progress bar while it loads and the page title at the top. Tap a link to another page on swift.org: it opens in the sheet and **Back** appears. Tap a link to another site (GitHub, say): Safari opens instead. **Done** closes the sheet.
+- **HTML from the app** shows "Forge" with no image (the network is blocked). Its link opens Safari.
+- **Safari in the app** opens swift.org in Safari's own view, inside the app; **Done** returns.
+- Turn on Airplane Mode and tap **Web page in the app**: an error view appears with **Try Again**. Turn Airplane Mode off and tap it: the page loads.
+
 ## Report back
 
-Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 5.
+Send the screen contents (a screenshot is fine), plus anything that differed, the xtool version (`xtool --version`), the iOS version, and the result of each of steps 3 to 6.
 
 To remove the app, delete it from the home screen, then run `rm -rf ~/forge-services-check`.

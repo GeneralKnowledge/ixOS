@@ -134,7 +134,29 @@ Some platform code has no Rust side at all. These files are copied into every ap
 | Helper | What it does |
 |--------|--------------|
 | `ForgeAudioSession` | `activate(.playback)` (spoken audio, plays with the ring switch on silent) or `activate(.record)`, and `deactivate()` so other apps' audio resumes. Needs no permission, so an app that only plays sound (Pocket Library's read-aloud) uses it without selecting `audio`. AVFoundation, iOS only; does nothing elsewhere |
+| `ForgeWeb` | Web pages inside the app, on WebKit and SafariServices; see [Web pages](#web-pages) below. iOS only |
 | `ForgeImages` | `thumbnail(of: url, maxPixels:, cached:)` and `thumbnail(of: data, maxPixels:)` decode an image straight to the size shown, the right way up, off the main actor; `writeDownscaledJPEG(from:maxPixels:to:)` turns a picked photo into a smaller JPEG without its location or other metadata; `pixels(_ points:, scale:)` converts a view size. Uses ImageIO only |
+
+### Web pages
+
+The jobs apps keep repeating, each in a line or two. All of them are iOS only (`#if os(iOS)`).
+
+| Job | Use |
+|-----|-----|
+| A help page, privacy policy, terms, or an article's original page | `.forgeWebSheet($page)` with `page = .link(url, title: "Privacy")`. The page's own site opens in the sheet, every other link in Safari |
+| HTML the app already has (an article body, a feed's rich text) | `page = .html(html, title:)`: no scripts, nothing from the network, links open in Safari |
+| A help page bundled with the app | `page = .bundled(Bundle.main.url(forResource: "help", withExtension: "html")!)`: may read files in its own folder only |
+| A link the app doesn't control | `.forgeSafari($url)`, Safari inside the app (`SFSafariViewController`): the person's own Safari, which the app can't see into |
+| A web page as part of the app's own flow | `ForgeWebScreen(page)` pushed in a `NavigationStack`, or `ForgeWebView(source, policy:, state:)` with a `ForgeWebState` for a custom screen |
+
+`ForgeWebScreen` adds a progress bar, Back, Open in Safari and an error view with Try Again around the page (identifiers `web.page`, `web.back`, `web.openInSafari`, `web.retry`, and `web.done` on the sheet). `ForgeWebState` exposes the title, address, progress, back and forward, and a `ForgeWebError` (`loadFailed`, `downloadRefused`, `contentCrashed`).
+
+`ForgeWebPolicy` keeps each power a separate opt-in (the spec is in [native-capability-roadmap.md](native-capability-roadmap.md#web-view)):
+
+- `allowedHosts`: where top-level navigation may go; a host includes its subdomains. Other web links open in Safari, and only when the person tapped them.
+- `externalSchemes`: non-web schemes (`mailto`, `tel`) handed to the system; any other scheme is refused.
+- `javaScript` (on by default), `persistentWebsiteData` (off: nothing kept between launches), `remoteContent` (on; off blocks every http and https load with a content rule list).
+- Never configurable here: downloads (refused, with `downloadRefused`), a JavaScript message bridge (there is none), a second window (`window.open` loads in place or not at all). A crashed web process reloads the page once, then reports `contentCrashed`.
 
 ## Optional services
 
