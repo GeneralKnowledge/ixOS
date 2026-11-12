@@ -89,59 +89,121 @@ macro_rules! __native_http {
                 }
             }
 
-            /// Implemented by the host (iOS: `URLSession`). `send` blocks
-            /// its calling thread, a Rust worker thread.
+            /// The status and headers of a streamed response.
+            #[derive(::uniffi::Record, Clone, Debug, PartialEq, Eq)]
+            pub struct HttpStreamHead {
+                pub status: u16,
+                pub headers: Vec<HttpHeader>,
+            }
+
+            /// Where the host delivers a streamed body, in order. None of
+            /// its calls block.
+            #[derive(::uniffi::Object)]
+            pub struct HttpStreamBody {
+                feed: $crate::http::StreamFeed,
+            }
+
+            #[::uniffi::export]
+            impl HttpStreamBody {
+                /// The next bytes of the body.
+                pub fn receive(&self, data: Vec<u8>) {
+                    self.feed.push(data);
+                }
+
+                /// The server closed the body normally.
+                pub fn finish(&self) {
+                    self.feed.finish();
+                }
+
+                /// The body stopped with an error (`Cancelled` when Rust
+                /// cancelled it).
+                pub fn fail(&self, error: HttpTransportError) {
+                    self.feed.fail(to_net_error(error));
+                }
+            }
+
+            /// Implemented by the host (iOS: `URLSession`). `send` and
+            /// `open_stream` block their calling thread, a Rust worker
+            /// thread.
             #[::uniffi::export(with_foreign)]
             pub trait HttpTransport: Send + Sync {
                 fn send(&self, request: HttpRequest) -> Result<HttpResponse, HttpTransportError>;
+                /// Returns once the status and headers have arrived (within
+                /// `timeout_ms`), then delivers the body into `body` until
+                /// it ends, fails or is cancelled. The body has no size
+                /// limit and no idle timeout.
+                fn open_stream(
+                    &self,
+                    request: HttpRequest,
+                    body: Arc<HttpStreamBody>,
+                ) -> Result<HttpStreamHead, HttpTransportError>;
                 fn cancel(&self, id: u64);
             }
 
             struct Host(Arc<dyn HttpTransport>);
+
+            fn host_request(request: $crate::http::HostRequest) -> HttpRequest {
+                let $crate::http::HostRequest {
+                    id,
+                    request,
+                    body_file,
+                    max_body_bytes,
+                } = request;
+                let timeout = request.timeout.unwrap_or($crate::http::DEFAULT_TIMEOUT);
+                HttpRequest {
+                    id,
+                    method: request.method.as_str().to_string(),
+                    url: request.url,
+                    headers: request
+                        .headers
+                        .into_iter()
+                        .map(|h| HttpHeader {
+                            name: h.name,
+                            value: h.value,
+                        })
+                        .collect(),
+                    body: if body_file.is_some() { Vec::new() } else { request.body },
+                    body_file: body_file.map(|p| p.to_string_lossy().into_owned()),
+                    timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
+                    max_body_bytes,
+                }
+            }
+
+            fn net_headers(headers: Vec<HttpHeader>) -> Vec<$crate::http::net::Header> {
+                headers
+                    .into_iter()
+                    .map(|h| $crate::http::net::Header {
+                        name: h.name,
+                        value: h.value,
+                    })
+                    .collect()
+            }
 
             impl $crate::http::HostHttp for Host {
                 fn send(
                     &self,
                     request: $crate::http::HostRequest,
                 ) -> Result<$crate::http::net::Response, $crate::http::net::NetError> {
-                    let $crate::http::HostRequest {
-                        id,
-                        request,
-                        body_file,
-                        max_body_bytes,
-                    } = request;
-                    let timeout = request.timeout.unwrap_or($crate::http::DEFAULT_TIMEOUT);
-                    let response = self
-                        .0
-                        .send(HttpRequest {
-                            id,
-                            method: request.method.as_str().to_string(),
-                            url: request.url,
-                            headers: request
-                                .headers
-                                .into_iter()
-                                .map(|h| HttpHeader {
-                                    name: h.name,
-                                    value: h.value,
-                                })
-                                .collect(),
-                            body: if body_file.is_some() { Vec::new() } else { request.body },
-                            body_file: body_file.map(|p| p.to_string_lossy().into_owned()),
-                            timeout_ms: u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
-                            max_body_bytes,
-                        })
-                        .map_err(to_net_error)?;
+                    let response = self.0.send(host_request(request)).map_err(to_net_error)?;
                     Ok($crate::http::net::Response {
                         status: response.status,
-                        headers: response
-                            .headers
-                            .into_iter()
-                            .map(|h| $crate::http::net::Header {
-                                name: h.name,
-                                value: h.value,
-                            })
-                            .collect(),
+                        headers: net_headers(response.headers),
                         body: response.body,
+                    })
+                }
+
+                fn open_stream(
+                    &self,
+                    request: $crate::http::HostRequest,
+                    feed: $crate::http::StreamFeed,
+                ) -> Result<$crate::http::StreamHead, $crate::http::net::NetError> {
+                    let head = self
+                        .0
+                        .open_stream(host_request(request), Arc::new(HttpStreamBody { feed }))
+                        .map_err(to_net_error)?;
+                    Ok($crate::http::StreamHead {
+                        status: head.status,
+                        headers: net_headers(head.headers),
                     })
                 }
 

@@ -335,6 +335,27 @@ typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod1)(uint64_t, R
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
 typedef struct UniffiVTableCallbackInterfaceLocalModelEngine {
@@ -395,6 +416,17 @@ typedef struct UniffiVTableCallbackInterfaceBiometricAuthenticator {
     UniffiCallbackInterfaceBiometricAuthenticatorMethod0 _Nonnull availability;
     UniffiCallbackInterfaceBiometricAuthenticatorMethod1 _Nonnull authenticate;
 } UniffiVTableCallbackInterfaceBiometricAuthenticator;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
 
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_CHATCORE
@@ -907,6 +939,61 @@ RustBuffer uniffi_chat_app_fn_method_biometricauthenticator_availability(uint64_
 uint64_t uniffi_chat_app_fn_method_biometricauthenticator_authenticate(uint64_t ptr, RustBuffer reason
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_chat_app_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_HTTPSTREAMBODY
+void uniffi_chat_app_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_chat_app_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_chat_app_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_chat_app_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_chat_app_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_HTTPTRANSPORT
+void uniffi_chat_app_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_chat_app_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_chat_app_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_chat_app_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_chat_app_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_APP_LOCK_METHOD
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_APP_LOCK_METHOD
 RustBuffer uniffi_chat_app_fn_func_app_lock_method(RustCallStatus *_Nonnull out_status
@@ -964,6 +1051,11 @@ void uniffi_chat_app_fn_func_install_native_audio(uint64_t files, RustCallStatus
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
 void uniffi_chat_app_fn_func_install_native_biometrics(uint64_t authenticator, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_chat_app_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_DELIVERY
@@ -1300,6 +1392,12 @@ uint16_t uniffi_chat_app_checksum_func_install_native_audio(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BIOMETRICS
 uint16_t uniffi_chat_app_checksum_func_install_native_biometrics(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_chat_app_checksum_func_install_native_http(void
     
 );
 #endif
@@ -1744,6 +1842,42 @@ uint16_t uniffi_chat_app_checksum_method_biometricauthenticator_availability(voi
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BIOMETRICAUTHENTICATOR_AUTHENTICATE
 uint16_t uniffi_chat_app_checksum_method_biometricauthenticator_authenticate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_chat_app_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_chat_app_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_chat_app_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_chat_app_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_chat_app_checksum_method_httptransport_open_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_chat_app_checksum_method_httptransport_cancel(void
     
 );
 #endif
