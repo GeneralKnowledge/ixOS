@@ -149,3 +149,46 @@ fn every_saved_version_still_opens() {
         "add fixtures/checklist-v<N>.json for the current save version"
     );
 }
+
+#[test]
+fn the_checklist_goes_out_and_comes_back_as_a_spreadsheet() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let milk = block_on(core.add("Buy oat milk".into())).unwrap();
+    block_on(core.add("Call the vet".into())).unwrap();
+    block_on(core.toggle(milk)).unwrap();
+    let path = block_on(core.export_csv(None)).unwrap();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert_eq!(
+        text.trim_start_matches('\u{feff}'),
+        "Item,Done\nBuy oat milk,Yes\nCall the vet,No\n"
+    );
+
+    // A spreadsheet someone edited: other column order, an extra column, a
+    // blank title and a row without the Done column.
+    let edited = dir.path().join("edited.csv");
+    std::fs::write(
+        &edited,
+        "done,Notes,item\nyes,,Pack the tent\n,,\nno,x,  \n,,Book the ferry\n",
+    )
+    .unwrap();
+    let summary = block_on(core.import_csv(edited.to_string_lossy().into_owned())).unwrap();
+    assert_eq!(summary.added, 2, "{summary:?}");
+    assert_eq!(summary.skipped.len(), 1, "{summary:?}");
+    assert!(summary.skipped[0].contains("needs a title"), "{summary:?}");
+    let items = core.items();
+    assert_eq!(items.len(), 4);
+    assert_eq!(
+        (items[2].title.as_str(), items[2].done),
+        ("Pack the tent", true)
+    );
+    assert_eq!(
+        (items[3].title.as_str(), items[3].done),
+        ("Book the ferry", false)
+    );
+
+    let junk = dir.path().join("junk.csv");
+    std::fs::write(&junk, "").unwrap();
+    let err = block_on(core.import_csv(junk.to_string_lossy().into_owned())).unwrap_err();
+    assert!(matches!(err, ChecklistError::Storage { .. }), "{err:?}");
+}

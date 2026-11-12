@@ -115,6 +115,37 @@ public final class ChecklistModel {
         }
     }
 
+    /// Writes the checklist as a spreadsheet (Item, Done) for sharing; nil
+    /// (with `errorMessage` set) if it couldn't.
+    public func exportCSV() async -> URL? {
+        do {
+            let path = try await withRustCancellation { cancellation in
+                try await self.core.exportCsv(cancellation: cancellation)
+            }
+            return URL(fileURLWithPath: path)
+        } catch {
+            errorMessage = Checklist.message(for: error)
+            return nil
+        }
+    }
+
+    /// Adds the rows of a spreadsheet chosen in the document picker. The
+    /// picker's URL is security-scoped: access is held while Rust reads it.
+    public func importCSV(at url: URL) async -> CsvImportSummary? {
+        #if canImport(Darwin)
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #endif
+        do {
+            let summary = try await core.importCsv(path: url.path)
+            reload()
+            return summary
+        } catch {
+            errorMessage = Checklist.message(for: error)
+            return nil
+        }
+    }
+
     /// Runs a command. The host's `changes` moves once it commits, and the
     /// view calls `reload()`; reloading here as well shows the result
     /// without waiting for the event.

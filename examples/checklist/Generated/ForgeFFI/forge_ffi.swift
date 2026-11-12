@@ -602,12 +602,25 @@ public protocol ChecklistCoreProtocol: AnyObject, Sendable {
     func events()  -> RuntimeEvents?
     
     /**
+     * Writes the checklist as a spreadsheet (Item, Done) for sharing;
+     * returns the file's path. Finishing work, like `export_text`.
+     */
+    func exportCsv(cancellation: Cancellation?) async throws  -> String
+    
+    /**
      * Writes the checklist as plain text for sharing; returns the file's
      * path. Finishing work: it keeps going when the app leaves the screen,
      * for as long as iOS gives the app (then `Stopped { Interrupted }`);
      * stopped by `cancellation` and shutdown.
      */
     func exportText(cancellation: Cancellation?) async throws  -> String
+    
+    /**
+     * Adds the rows of a spreadsheet at `path` (an "Item" column, and
+     * optionally "Done") after the existing items, in one save. Rows it
+     * can't use are skipped and listed; it adds nothing if none are usable.
+     */
+    func importCsv(path: String) async throws  -> CsvImportSummary
     
     /**
      * Every item, oldest first. Never waits for a command.
@@ -810,6 +823,26 @@ open func events() -> RuntimeEvents?  {
 }
     
     /**
+     * Writes the checklist as a spreadsheet (Item, Done) for sharing;
+     * returns the file's path. Finishing work, like `export_text`.
+     */
+open func exportCsv(cancellation: Cancellation?)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_checklist_core_fn_method_checklistcore_export_csv(
+                        self.uniffiCloneHandle(),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_checklist_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_checklist_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_checklist_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChecklistError_lift
+        )
+}
+    
+    /**
      * Writes the checklist as plain text for sharing; returns the file's
      * path. Finishing work: it keeps going when the app leaves the screen,
      * for as long as iOS gives the app (then `Stopped { Interrupted }`);
@@ -827,6 +860,27 @@ open func exportText(cancellation: Cancellation?)async throws  -> String  {
             completeFunc: ffi_checklist_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_checklist_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeChecklistError_lift
+        )
+}
+    
+    /**
+     * Adds the rows of a spreadsheet at `path` (an "Item" column, and
+     * optionally "Done") after the existing items, in one save. Rows it
+     * can't use are skipped and listed; it adds nothing if none are usable.
+     */
+open func importCsv(path: String)async throws  -> CsvImportSummary  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_checklist_core_fn_method_checklistcore_import_csv(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(path)
+                )
+            },
+            pollFunc: ffi_checklist_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_checklist_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_checklist_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCsvImportSummary_lift,
             errorHandler: FfiConverterTypeChecklistError_lift
         )
 }
@@ -1033,6 +1087,64 @@ public func FfiConverterTypeChecklistCore_lower(_ value: ChecklistCore) -> UInt6
 }
 
 
+
+
+/**
+ * What `import_csv` did: how many items it added, and why it skipped the
+ * rows it couldn't use ("Line 4: an item needs a title").
+ */
+public struct CsvImportSummary: Equatable, Hashable {
+    public var added: UInt32
+    public var skipped: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(added: UInt32, skipped: [String]) {
+        self.added = added
+        self.skipped = skipped
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CsvImportSummary: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCsvImportSummary: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CsvImportSummary {
+        return
+            try CsvImportSummary(
+                added: FfiConverterUInt32.read(from: &buf), 
+                skipped: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CsvImportSummary, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.added, into: &buf)
+        FfiConverterSequenceString.write(value.skipped, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCsvImportSummary_lift(_ buf: RustBuffer) throws -> CsvImportSummary {
+    return try FfiConverterTypeCsvImportSummary.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCsvImportSummary_lower(_ value: CsvImportSummary) -> RustBuffer {
+    return FfiConverterTypeCsvImportSummary.lower(value)
+}
 
 
 public struct Item: Equatable, Hashable {
@@ -1339,6 +1451,31 @@ fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
+    typealias SwiftType = [String]
+
+    public static func write(_ value: [String], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterString.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [String] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [String]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeItem: FfiConverterRustBuffer {
     typealias SwiftType = [Item]
 
@@ -1453,7 +1590,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_checklist_core_checksum_method_checklistcore_events() != 59558) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_checklist_core_checksum_method_checklistcore_export_csv() != 31376) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_checklist_core_checksum_method_checklistcore_export_text() != 43962) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_checklist_core_checksum_method_checklistcore_import_csv() != 19902) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_checklist_core_checksum_method_checklistcore_items() != 6887) {

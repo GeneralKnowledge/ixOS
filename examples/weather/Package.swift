@@ -61,7 +61,8 @@ let package = Package(
         ),
         .target(
             name: "WeatherApp",
-            dependencies: ["WeatherBridge"],
+            // WeatherFFI also carries Forge's Swift helpers (in-app Safari).
+            dependencies: ["WeatherBridge", "WeatherFFI"],
             path: "Sources/WeatherApp"
         ),
         .target(

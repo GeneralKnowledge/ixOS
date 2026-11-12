@@ -12,7 +12,8 @@
 //! - **Work**: `search` is on-screen work (stopped by the background, by
 //!   the host's cancellation, by shutdown); `export_text` writes a file to
 //!   share and is finishing work: if the app leaves the screen meanwhile,
-//!   the host asks iOS for time to finish it.
+//!   the host asks iOS for time to finish it. `export_csv` is the same work
+//!   as a spreadsheet; `import_csv` adds a spreadsheet's rows in one command.
 //! - **The runtime contract** (`events`, `set_phase`, `phase`, `revision`,
 //!   background work, the launch report, `shutdown`) comes from
 //!   `forge_app::export_runtime!`.
@@ -38,6 +39,25 @@ uniffi::setup_scaffolding!();
 const SAVE_FILE: &str = "checklist.json";
 const SAVE_VERSION: u32 = 1;
 const EXPORT_FILE: &str = "Checklist.txt";
+const CSV_FILE: &str = "Checklist.csv";
+
+/// One spreadsheet row: the columns a person sees in Numbers or Excel.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct CsvRow {
+    #[serde(rename = "Item")]
+    item: String,
+    /// "Yes" when done; anything else (or a missing column) is not done.
+    #[serde(rename = "Done", default)]
+    done: String,
+}
+
+/// What `import_csv` did: how many items it added, and why it skipped the
+/// rows it couldn't use ("Line 4: an item needs a title").
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct CsvImportSummary {
+    pub added: u32,
+    pub skipped: Vec<String>,
+}
 
 /// Everything that can go wrong, in the app's words. `checklist_error_kind`
 /// maps each case to the framework's [`ErrorKind`], so ForgeKit can present
@@ -262,6 +282,88 @@ impl ChecklistCore {
             })
             .await
     }
+
+    /// Writes the checklist as a spreadsheet (Item, Done) for sharing;
+    /// returns the file's path. Finishing work, like `export_text`.
+    pub async fn export_csv(
+        &self,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<String, ChecklistError> {
+        let items = self.items.get();
+        let path = self.caches.join(CSV_FILE);
+        let work = self.rt.finishing(cancellation.as_deref());
+        self.rt
+            .run("export-csv", work, move |cancel| {
+                if cancel.is_cancelled() {
+                    return Err(ChecklistError::Stopped {
+                        kind: ErrorKind::Cancelled,
+                    });
+                }
+                let rows: Vec<CsvRow> = items
+                    .iter()
+                    .map(|item| CsvRow {
+                        item: item.title.clone(),
+                        done: if item.done { "Yes" } else { "No" }.into(),
+                    })
+                    .collect();
+                let bytes = forge_storage::csv_file::to_csv(&rows)?;
+                if let Some(dir) = path.parent() {
+                    std::fs::create_dir_all(dir).map_err(|err| ChecklistError::Storage {
+                        reason: format!("create the export folder: {err}"),
+                    })?;
+                }
+                forge_storage::write_atomic(&path, &bytes)?;
+                Ok(path.to_string_lossy().into_owned())
+            })
+            .await
+    }
+
+    /// Adds the rows of a spreadsheet at `path` (an "Item" column, and
+    /// optionally "Done") after the existing items, in one save. Rows it
+    /// can't use are skipped and listed; it adds nothing if none are usable.
+    pub async fn import_csv(&self, path: String) -> Result<CsvImportSummary, ChecklistError> {
+        // Read the file outside the command, so a slow file doesn't hold up
+        // other commands.
+        // Not `?`: a corrupt *spreadsheet* is not a corrupt saved checklist.
+        let read =
+            forge_storage::csv_file::import_csv::<CsvRow>(Path::new(&path)).map_err(|err| {
+                ChecklistError::Storage {
+                    reason: format!("that spreadsheet can't be read: {err}"),
+                }
+            })?;
+        self.rt
+            .command("import-csv", move |state| {
+                let mut skipped: Vec<String> = read
+                    .problems
+                    .iter()
+                    .map(|p| format!("Line {}: {}", p.line, p.reason))
+                    .collect();
+                let added = state.change(|list| {
+                    let mut added = 0u32;
+                    for (index, row) in read.rows.iter().enumerate() {
+                        match list.add(&row.item) {
+                            Ok(id) => {
+                                added += 1;
+                                if is_yes(&row.done) {
+                                    list.toggle(id)?;
+                                }
+                            }
+                            Err(err) => skipped.push(format!("Row {}: {err}", index + 1)),
+                        }
+                    }
+                    Ok(added)
+                })?;
+                Ok(CsvImportSummary { added, skipped })
+            })
+            .await
+    }
+}
+
+fn is_yes(text: &str) -> bool {
+    matches!(
+        text.trim().to_ascii_lowercase().as_str(),
+        "yes" | "y" | "true" | "1" | "x" | "done"
+    )
 }
 
 fn write_export(path: &Path, text: &str) -> Result<(), ChecklistError> {

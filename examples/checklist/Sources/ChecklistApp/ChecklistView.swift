@@ -2,6 +2,7 @@
 import ChecklistFFI
 import ForgeKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The whole app: ForgeKit opens the core, then shows the checklist.
 public struct ChecklistRoot: View {
@@ -27,6 +28,8 @@ struct ChecklistScreen: View {
     @State private var results: [Item]?
     @State private var editing: Editing?
     @State private var export: ExportFile?
+    @State private var importing = false
+    @State private var imported: CsvImportSummary?
     @FocusState private var addFocused: Bool
 
     init(core: ChecklistCore, changes: UInt64) {
@@ -62,7 +65,21 @@ struct ChecklistScreen: View {
                 RenameSheet(item: editing.item) { title in await model.rename(editing.item, to: title) }
             }
             .sheet(item: $export) { file in
-                ShareSheet(url: file.url)
+                ShareSheet(file: file)
+            }
+            .fileImporter(isPresented: $importing, allowedContentTypes: [.commaSeparatedText]) { result in
+                if case .success(let url) = result {
+                    Task { imported = await model.importCSV(at: url) }
+                }
+            }
+            .alert(
+                importTitle,
+                isPresented: Binding(get: { imported != nil }, set: { if !$0 { imported = nil } })
+            ) {
+                Button("OK", role: .cancel) {}
+                    .accessibilityIdentifier("checklist.importOK")
+            } message: {
+                Text(importMessage)
             }
             .alert(
                 "Couldn't do that",
@@ -158,13 +175,28 @@ struct ChecklistScreen: View {
             Menu {
                 Button {
                     Task {
-                        if let url = await model.exportText() { export = ExportFile(url: url) }
+                        if let url = await model.exportText() { export = ExportFile(url: url, kind: .text) }
                     }
                 } label: {
                     Label("Share as Text", systemImage: "square.and.arrow.up")
                 }
                 .disabled(model.items.isEmpty)
                 .accessibilityIdentifier("checklist.share")
+                Button {
+                    Task {
+                        if let url = await model.exportCSV() { export = ExportFile(url: url, kind: .spreadsheet) }
+                    }
+                } label: {
+                    Label("Share as Spreadsheet", systemImage: "tablecells")
+                }
+                .disabled(model.items.isEmpty)
+                .accessibilityIdentifier("checklist.shareCSV")
+                Button {
+                    importing = true
+                } label: {
+                    Label("Import from Spreadsheet…", systemImage: "square.and.arrow.down")
+                }
+                .accessibilityIdentifier("checklist.importCSV")
                 Button(role: .destructive) {
                     Task { await model.clearDone() }
                 } label: {
@@ -177,6 +209,18 @@ struct ChecklistScreen: View {
             }
             .accessibilityIdentifier("checklist.more")
         }
+    }
+
+    private var importTitle: String {
+        let added = imported?.added ?? 0
+        return added == 1 ? "1 item added" : "\(added) items added"
+    }
+
+    /// The rows Rust skipped, the first few by line.
+    private var importMessage: String {
+        guard let skipped = imported?.skipped, !skipped.isEmpty else { return "" }
+        let more = skipped.count > 5 ? "\nand \(skipped.count - 5) more" : ""
+        return "\(skipped.count) skipped:\n" + skipped.prefix(5).joined(separator: "\n") + more
     }
 
     private func add() {
@@ -235,16 +279,19 @@ private struct RenameSheet: View {
 }
 
 private struct ShareSheet: View {
-    let url: URL
+    let file: ExportFile
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                Image(systemName: "doc.text").font(.largeTitle).foregroundStyle(.secondary)
-                Text("Your checklist is ready to share as text.")
+                Image(systemName: file.kind == .text ? "doc.text" : "tablecells")
+                    .font(.largeTitle).foregroundStyle(.secondary)
+                Text(file.kind == .text
+                    ? "Your checklist is ready to share as text."
+                    : "Your checklist is ready to share as a spreadsheet.")
                     .multilineTextAlignment(.center)
-                ShareLink(item: url) {
+                ShareLink(item: file.url) {
                     Label("Share", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.borderedProminent)
@@ -268,7 +315,9 @@ private struct Editing: Identifiable {
 }
 
 private struct ExportFile: Identifiable {
+    enum Kind { case text, spreadsheet }
     let url: URL
+    let kind: Kind
     var id: URL { url }
 }
 #endif
