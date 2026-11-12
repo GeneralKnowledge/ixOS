@@ -108,6 +108,12 @@ impl StoredBook {
                 .map(|name| covers_dir.join(name).to_string_lossy().into_owned()),
             cover_url: self.cover_url.clone(),
             source: self.source.clone(),
+            web_page: match &self.source {
+                BookSource::OpenLibrary { work_key } => {
+                    Some(format!("https://openlibrary.org{work_key}"))
+                }
+                _ => None,
+            },
             can_read: self.epub_file.is_some(),
             reading_position: self.reading_position.map(|p| ReadingPosition {
                 chapter: p.chapter,

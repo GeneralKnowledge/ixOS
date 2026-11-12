@@ -541,24 +541,38 @@ impl Library {
         .await
     }
 
-    /// Writes the whole library (books, history, settings) as JSON for the
-    /// share sheet and returns the file's path.
-    pub async fn export_library(&self) -> Result<String, LibraryError> {
+    /// Writes a backup of the whole library (books, history, settings,
+    /// covers and EPUBs) as one archive for the share sheet, and returns its
+    /// path. `restore_library` reads it back.
+    pub async fn backup_library(&self) -> Result<String, LibraryError> {
         self.ensure_running()?;
         let (state, store, _) = self.parts();
-        background("export", move || {
-            let data = lock(&state).data.clone();
-            let json = serde_json::to_vec_pretty(&serde_json::json!({
-                "format": "pocket-library-export",
-                "schema_version": store::STORE_VERSION,
-                "exported_at_ms": now_ms(),
-                "library": data,
-            }))
-            .map_err(|e| LibraryError::Storage {
-                reason: e.to_string(),
-            })?;
-            let path = store.write_export("PocketLibrary.json", &json)?;
+        background("backup", move || {
+            // Holding the lock keeps the files and the library consistent.
+            let _state = lock(&state);
+            let path = store.write_backup(now_ms())?;
             Ok(path.to_string_lossy().into_owned())
+        })
+        .await
+    }
+
+    /// Replaces the library with the backup at `path` (from
+    /// `backup_library`, on this phone or another). The archive is checked
+    /// in full first: another app's file, a newer version's, or a damaged
+    /// one is refused and the library is left as it was. Returns how many
+    /// books the restored library has.
+    pub async fn restore_library(&self, path: String) -> Result<u32, LibraryError> {
+        self.ensure_running()?;
+        let (state, store, events) = self.parts();
+        let open_book = Arc::clone(&self.open_book);
+        background("restore", move || {
+            let (restoring, data) = store.unpack_backup(std::path::Path::new(&path))?;
+            let mut state = lock(&state);
+            store.adopt_backup(&restoring, &data)?;
+            *lock(&open_book) = None;
+            let books = data.books.len() as u32;
+            apply(&mut state, data, &events);
+            Ok(books)
         })
         .await
     }

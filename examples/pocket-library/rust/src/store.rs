@@ -7,10 +7,12 @@
 //!   books/            saved EPUB files, named in library.json
 //!   reader/           images of the chapter being read (emptied at launch)
 //!   exports/          the latest export, for the share sheet
+//!   restoring/        a backup being restored (only during a restore)
 //! ```
 
 use std::path::{Path, PathBuf};
 
+use forge_storage::backup::Backup;
 use forge_storage::files::{safe_name, FileStore, Staged};
 use forge_storage::{JsonFile, StorageError};
 
@@ -21,6 +23,10 @@ use crate::error::LibraryError;
 /// this; a change that old files cannot be read as bumps it and adds a step to
 /// [`migrate`].
 pub const STORE_VERSION: u32 = 1;
+
+/// The app name in a backup's manifest: a backup from another app is refused.
+const BACKUP_APP: &str = "pocket-library";
+const BACKUP_FILE: &str = "PocketLibrary-backup.zip";
 
 /// The library file plus one [`FileStore`] per folder. The folders' file
 /// handling (atomic writes, safe names, crash clean-up, usage) is Forge's;
@@ -159,6 +165,69 @@ impl Store {
     pub fn write_export(&self, file_name: &str, bytes: &[u8]) -> Result<PathBuf, LibraryError> {
         let _ = self.exports.clear();
         Ok(self.exports.write(file_name, bytes)?.path)
+    }
+
+    /// Writes a backup archive of the library file, covers and EPUBs to
+    /// `exports/` for the share sheet, and returns its path.
+    pub fn write_backup(&self, now_ms: i64) -> Result<PathBuf, LibraryError> {
+        let _ = self.exports.clear();
+        std::fs::create_dir_all(self.exports.root()).map_err(|e| LibraryError::Storage {
+            reason: format!("create the export folder: {e}"),
+        })?;
+        let out = self.exports.root().join(BACKUP_FILE);
+        Backup::new(BACKUP_APP, STORE_VERSION, now_ms)
+            .file("library.json", self.file.path())
+            .directory("covers", self.covers.root())?
+            .directory("books", self.books.root())?
+            .write(&out)?;
+        Ok(out)
+    }
+
+    /// Checks `archive` and unpacks it into `restoring/`, then reads its
+    /// library (migrating an older schema). Nothing current is touched.
+    pub fn unpack_backup(&self, archive: &Path) -> Result<(PathBuf, LibraryData), LibraryError> {
+        let into = self.dir.join("restoring");
+        let _ = std::fs::remove_dir_all(&into);
+        forge_storage::backup::restore(archive, BACKUP_APP, STORE_VERSION, &into)?;
+        let unpacked = Store::new(&into);
+        match unpacked.load() {
+            Ok(data) => Ok((into, data)),
+            Err(err) => {
+                let _ = std::fs::remove_dir_all(&into);
+                Err(err)
+            }
+        }
+    }
+
+    /// Makes the unpacked backup current: its covers and EPUBs replace these
+    /// (the old folders are moved aside first and deleted at the end), then
+    /// `data` is saved. The caller holds the library's lock.
+    pub fn adopt_backup(&self, restoring: &Path, data: &LibraryData) -> Result<(), LibraryError> {
+        let io = |what: &str, e: std::io::Error| LibraryError::Storage {
+            reason: format!("{what}: {e}"),
+        };
+        let mut aside = Vec::new();
+        for folder in ["covers", "books"] {
+            let current = self.dir.join(folder);
+            let old = self.dir.join(format!("{folder}.before-restore"));
+            let _ = std::fs::remove_dir_all(&old);
+            if current.exists() {
+                std::fs::rename(&current, &old).map_err(|e| io("move the old files aside", e))?;
+                aside.push(old);
+            }
+            let restored = restoring.join(folder);
+            if restored.exists() {
+                std::fs::rename(&restored, &current)
+                    .map_err(|e| io("move the restored files in", e))?;
+            }
+        }
+        self.save(data)?;
+        let _ = self.reader.clear();
+        for old in aside {
+            let _ = std::fs::remove_dir_all(old);
+        }
+        let _ = std::fs::remove_dir_all(restoring);
+        Ok(())
     }
 
     /// Deletes covers, EPUBs, reader images and exports (the caller saves
