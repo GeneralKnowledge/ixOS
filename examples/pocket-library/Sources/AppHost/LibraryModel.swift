@@ -1,11 +1,63 @@
 @preconcurrency import PocketLibraryFFI
 import ForgeAppKit
+import ForgeKit
 import Foundation
 import Observation
 
+// The Rust library runs on forge-app's runtime (`export_runtime!`), so
+// ForgeKit can host it: one core per process, lifecycle, background time.
+extension Library: ForgeCore {}
+
+extension LibraryError: ForgeKindedError {
+    public var forgeKind: ErrorKind { libraryErrorKind(error: self) }
+}
+
+/// What the next open of the library uses, handed to the host's opener,
+/// which runs off the main actor. It keeps the opener's typed error, which
+/// the host reduces to text, so the model can tell whether starting fresh
+/// is safe.
+private final class OpenRequest: @unchecked Sendable {
+    private let lock = NSLock()
+    private var environment: ForgeEnvironment?
+    private var fresh = false
+    private var error: LibraryError?
+
+    func prepare(_ environment: ForgeEnvironment, fresh: Bool) {
+        lock.withLock {
+            self.environment = environment
+            self.fresh = fresh
+            error = nil
+        }
+    }
+
+    func currentEnvironment() throws -> ForgeEnvironment {
+        guard let environment = lock.withLock({ environment }) else { throw LibraryError.ShutDown }
+        return environment
+    }
+
+    func open(_ environment: ForgeEnvironment) throws -> Library {
+        let fresh = lock.withLock { self.fresh }
+        do {
+            return fresh
+                ? try Library.openFresh(storageDirectory: environment.dataDirectory)
+                : try Library(storageDirectory: environment.dataDirectory)
+        } catch let failure as LibraryError {
+            lock.withLock { error = failure }
+            throw failure
+        }
+    }
+
+    func takeError() -> LibraryError? {
+        lock.withLock {
+            defer { error = nil }
+            return error
+        }
+    }
+}
+
 /// The app's presentation state. It holds no reading rules: every change goes
 /// to the Rust `Library` (rust/src/lib.rs), and everything shown is read back
-/// from it, after a command or when a `LibraryEvent` arrives.
+/// from it, after a command or whenever the host's `changes` moves.
 @Observable
 @MainActor
 public final class LibraryModel {
@@ -66,14 +118,28 @@ public final class LibraryModel {
     public var statusFilter: ReadingStatus? { didSet { reload() } }
     public var sort: LibrarySort = .recentlyAdded { didSet { reload() } }
 
-    @ObservationIgnored public private(set) var library: Library?
+    /// Owns the Rust library for the life of the process: it opens it off
+    /// the main actor, reports the app's lifecycle to it, holds background
+    /// time while imports and exports finish, and moves `changes` whenever
+    /// Rust commits. Give it to `ForgeLifecycle.attach` in the App's init.
+    @ObservationIgnored public let host: ForgeHost<Library>
+    @ObservationIgnored private let request: OpenRequest
     @ObservationIgnored private let storageDirectory: String?
-    @ObservationIgnored private var events: LibraryEvents?
+
+    /// The open Rust library, or nil before it opens and after `close()`.
+    public var library: Library? { host.core }
+
+    /// Whether the last run ended while an import or export was still
+    /// finishing in the background, so it may not have happened.
+    public var lastRunWasCutShort: Bool { host.launch?.unfinishedBackgroundWork == true }
 
     /// - Parameter storageDirectory: where Rust keeps the library. Defaults to
     ///   Application Support/PocketLibrary; tests pass a temporary folder.
     public init(storageDirectory: String? = nil) {
+        let request = OpenRequest()
+        self.request = request
         self.storageDirectory = storageDirectory
+        host = ForgeHost(environment: { try request.currentEnvironment() }, open: { try request.open($0) })
     }
 
     // MARK: Lifecycle
@@ -82,83 +148,67 @@ public final class LibraryModel {
     /// again never opens a second instance.
     public func open() async {
         guard library == nil else { return }
-        await openLibrary { try Library(storageDirectory: $0) }
+        await openLibrary(fresh: false)
     }
 
     /// After an unreadable library: keeps the old file as a backup and
     /// starts empty.
     public func startFresh() async {
         guard library == nil else { return }
-        await openLibrary { try Library.openFresh(storageDirectory: $0) }
+        await openLibrary(fresh: true)
     }
 
-    private func openLibrary(_ make: @escaping @Sendable (String) throws -> Library) async {
+    private func openLibrary(fresh: Bool) async {
         phase = .opening
         do {
             let directory = try storageDirectory ?? Self.defaultDirectory()
-            // Opening reads files: off the main actor.
-            let library = try await Task.detached { try make(directory) }.value
-            // Subscribe before the first read, so no change slips between.
-            let events = try library.events()
-            self.library = library
-            self.events = events
-            settings = library.settings()
-            sort = settings.defaultSort
-            reload()
-            phase = .open
-        } catch let error as LibraryError {
-            if case .NewerLibrary = error {
-                phase = .failed(message: ErrorText.message(error), canStartFresh: false)
-            } else {
-                phase = .failed(message: ErrorText.message(error), canStartFresh: true)
-            }
+            // The library keeps no caches of its own.
+            request.prepare(ForgeEnvironment(dataDirectory: directory, cachesDirectory: directory), fresh: fresh)
         } catch {
             phase = .failed(message: error.localizedDescription, canStartFresh: false)
+            return
         }
-    }
-
-    /// Applies Rust's events until the stream ends (`close()`) or the
-    /// calling task is cancelled. Run it from one `.task` on the root view.
-    /// Cancelling a Swift task does not reach Rust by itself, so the
-    /// cancellation handler ends the stream explicitly.
-    public func listenForEvents() async {
-        guard let events else { return }
-        await withTaskCancellationHandler {
-            while let event = await events.next() {
-                switch event {
-                case .changed, .eventsDropped:
-                    reload()
-                case .settingsChanged(let settings):
-                    self.settings = settings
-                }
+        // Opening reads files: the host does it off the main actor, then
+        // subscribes to Rust's events before anything is read.
+        await host.start()
+        switch host.status {
+        case .ready:
+            reload()
+            sort = settings.defaultSort
+            phase = .open
+        case .failed(let text):
+            guard let error = request.takeError() else {
+                phase = .failed(message: text, canStartFresh: false)
+                return
             }
-        } onCancel: {
-            events.cancel()
+            switch error {
+            // A newer library must never be set aside, and one open
+            // elsewhere isn't broken.
+            case .NewerLibrary, .InUse:
+                phase = .failed(message: ErrorText.message(error), canStartFresh: false)
+            default:
+                phase = .failed(message: ErrorText.message(error), canStartFresh: true)
+            }
+        case .loading, .closed:
+            break
         }
     }
 
-    /// The app came back to the foreground: dates may have moved on ("this
-    /// year", "last 7 days"), so read everything again. Nothing needs saving
-    /// when going to the background: Rust saves every change before a
-    /// command returns.
-    public func becameActive() {
-        reload()
-    }
-
-    /// Ends the event stream and closes the Rust library. For tests and
-    /// teardown; the app keeps one library for its whole life.
+    /// Shuts the Rust library down. For tests and teardown; the app keeps
+    /// one library for its whole life. Every change is already saved.
     public func close() {
-        events?.cancel()
-        library?.shutdown()
-        library = nil
-        events = nil
+        host.close()
     }
 
     // MARK: Reading
 
     /// Re-reads the current view of the library from Rust (memory only).
+    /// The root view calls it whenever the host's `changes` moves: after a
+    /// command commits, and on the way back from the background, when
+    /// dates may have moved on ("this year", "last 7 days").
     public func reload() {
         guard let library else { return }
+        settings = library.settings()
         books = library.books(query: LibraryQuery(text: searchText, status: statusFilter, sort: sort))
         stats = library.stats(yearStartMs: Self.startOfYearMs())
         totalBooks = Int(stats?.total ?? 0)
@@ -219,28 +269,15 @@ public final class LibraryModel {
     /// throws `LibraryError.Cancelled`.
     public func searchCatalogue(_ query: String) async throws -> [CatalogueBook] {
         guard let library else { throw LibraryError.ShutDown }
-        return try await Self.stoppable { try await library.searchCatalogue(query: query, cancellation: $0) }
+        return try await withRustCancellation { try await library.searchCatalogue(query: query, cancellation: $0) }
     }
 
     /// Cancelling the calling task stops the import, and nothing is added.
+    /// If the app leaves the screen part way, the import keeps going while
+    /// iOS gives the app time, and fails with `Interrupted` if it runs out.
     public func importFromCatalogue(_ key: String) async throws -> ImportedBook {
         try await run { library in
-            try await Self.stoppable { try await library.importFromCatalogue(key: key, cancellation: $0) }
-        }
-    }
-
-    /// Runs a Rust request with a `Cancellation` that the calling task's
-    /// cancellation triggers: cancelling a Swift task does not reach Rust on
-    /// its own (UniFFI 0.32). Runs on the caller's actor.
-    private static func stoppable<T: Sendable>(
-        isolation: isolated (any Actor)? = #isolation,
-        _ request: (Cancellation) async throws -> T
-    ) async throws -> T {
-        let cancellation = Cancellation()
-        return try await withTaskCancellationHandler {
-            try await request(cancellation)
-        } onCancel: {
-            cancellation.cancel()
+            try await withRustCancellation { try await library.importFromCatalogue(key: key, cancellation: $0) }
         }
     }
 

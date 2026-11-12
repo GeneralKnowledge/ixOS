@@ -1,4 +1,4 @@
-use forge_app::{FieldError, Invalid};
+use forge_app::{ErrorKind, FieldError, Invalid, OpenError, Stopped};
 use forge_net::NetError;
 use forge_storage::{FileStoreError, StorageError};
 
@@ -59,15 +59,68 @@ pub enum LibraryError {
     /// The request was stopped with its `Cancellation`. Nothing changed.
     #[error("cancelled")]
     Cancelled,
+    /// The app went to the background and the work was stopped. Nothing
+    /// changed; it is safe to try again on return.
+    #[error("interrupted: the app went to the background")]
+    Interrupted,
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the library has been closed")]
     ShutDown,
+    /// Another copy of the library core has this library open.
+    #[error("the library is open elsewhere: {reason}")]
+    InUse { reason: String },
 }
 
 impl LibraryError {
     pub(crate) fn invalid(reason: impl Into<String>) -> Self {
         Self::InvalidInput {
             reason: reason.into(),
+        }
+    }
+}
+
+impl LibraryError {
+    /// The shared kind the host uses to treat every app's errors alike.
+    pub fn kind(&self) -> ErrorKind {
+        match self {
+            Self::InvalidInput { .. }
+            | Self::InvalidFields { .. }
+            | Self::AlreadyInLibrary { .. }
+            | Self::UnsupportedFile { .. }
+            | Self::NotReadable { .. } => ErrorKind::Invalid,
+            Self::NotFound { .. } => ErrorKind::NotFound,
+            Self::Storage { .. } => ErrorKind::Internal,
+            Self::NewerLibrary { .. } => ErrorKind::NewerData,
+            Self::CatalogueDisabled => ErrorKind::NeedsUser,
+            Self::Offline { .. }
+            | Self::Timeout
+            | Self::CatalogueUnavailable { .. }
+            | Self::BadResponse { .. }
+            | Self::Certificate { .. }
+            | Self::Network { .. }
+            | Self::InUse { .. } => ErrorKind::Unavailable,
+            Self::Cancelled => ErrorKind::Cancelled,
+            Self::Interrupted => ErrorKind::Interrupted,
+            Self::ShutDown => ErrorKind::ShutDown,
+        }
+    }
+}
+
+impl From<Stopped> for LibraryError {
+    fn from(stopped: Stopped) -> Self {
+        match stopped.kind {
+            ErrorKind::Cancelled => Self::Cancelled,
+            ErrorKind::Interrupted => Self::Interrupted,
+            _ => Self::ShutDown,
+        }
+    }
+}
+
+impl From<OpenError> for LibraryError {
+    fn from(err: OpenError) -> Self {
+        match err {
+            OpenError::InUse { path } => Self::InUse { reason: path },
+            OpenError::Io { reason } => Self::Storage { reason },
         }
     }
 }

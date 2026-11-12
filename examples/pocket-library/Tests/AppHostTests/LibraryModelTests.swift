@@ -1,6 +1,7 @@
 import PocketLibraryApp
 @preconcurrency import PocketLibraryFFI
 import ForgeAppKit
+import ForgeKit
 import Foundation
 import XCTest
 
@@ -116,16 +117,31 @@ final class LibraryModelTests: XCTestCase {
     }
 
     @MainActor
-    func testEventsFromAnotherInstanceReachTheModel() async throws {
-        let dir = try makeDirectory()
-        let model = await openModel(dir)
-        let listening = Task { await model.listenForEvents() }
-        // A command through the model's own library emits `changed`; the
-        // model re-reads on the event as well as after the command.
+    func testCommittedChangesMoveTheHost() async throws {
+        let model = await openModel(try makeDirectory())
+        let before = model.host.changes
+        // A command commits in Rust; the runtime's `Changed` event moves the
+        // host's `changes`, which the root view watches to re-read.
         try await model.add(input("Evented"))
         XCTAssertEqual(model.totalBooks, 1)
-        listening.cancel()
-        await listening.value // returns once the cancellation ends the stream
+        for _ in 0..<200 where model.host.changes == before {
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertGreaterThan(model.host.changes, before)
+        XCTAssertEqual(model.host.revision, 1)
+        XCTAssertFalse(model.lastRunWasCutShort)
+        model.close()
+    }
+
+    @MainActor
+    func testASecondCopyCannotOpenTheSameLibrary() async throws {
+        let dir = try makeDirectory()
+        let model = await openModel(dir)
+        let second = await openModel(dir)
+        guard case .failed(_, let canStartFresh) = second.phase else {
+            return XCTFail("expected a failure, got \(second.phase)")
+        }
+        XCTAssertFalse(canStartFresh, "a library open elsewhere is not broken")
         model.close()
     }
 

@@ -103,7 +103,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         switch self {
         case .weather: WeatherView()
         case .checklist: ChecklistRoot(host: EmbeddedApps.checklist)
-        case .library: PocketLibraryApp.ContentView()
+        case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
         case .goodDog: GoodDogApp.ContentView()
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
         case .chat: ChatApp.ContentView()
@@ -134,10 +134,11 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Checklist and Commonplace run on the application runtime: each host
-    /// owns its Rust core for the whole process, as in the standalone app,
-    /// so closing the sheet doesn't close the core.
+    /// Checklist, Pocket Library and Commonplace run on the application
+    /// runtime: each host owns its Rust core for the whole process, as in
+    /// the standalone app, so closing the sheet doesn't close the core.
     static let checklist = Checklist.makeHost()
+    static let library = LibraryModel()
     static let commonplace = CommonplaceApp.makeAppHost()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
@@ -164,5 +165,6 @@ public enum EmbeddedApps {
             ForgeLifecycle.attach(checklist)
             ForgeLifecycle.attach(commonplace)
         #endif
+        library.attachToLifecycle()
     }
 }

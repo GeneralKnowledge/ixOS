@@ -12,7 +12,7 @@ Status: 2026-11-11. Written from Pocket Library at main `1b1e01a`, before it mov
 | 2 | Rust rules | `rust/src/domain.rs` | `validate(BookInput) -> ValidInput` with `forge_app::Validator`, and `LibraryData::add`: the change, applied to a copy |
 | 3 | Rust errors | `rust/src/error.rs` | `LibraryError`, including `InvalidFields` built from `forge_app::Invalid`, so each field's problem reaches Swift by name |
 | 4 | Rust persistence | `rust/src/store.rs` | `Store::load`/`save` on `forge-storage`, `STORE_VERSION` and `migrate` for saved-version upgrades, fixtures in `rust/fixtures/` |
-| 5 | Rust command | `rust/src/lib.rs` | `Library::add_book`: validate, then `commit("add-book", …)`, which runs off the main thread, saves the copy and only then swaps it in and sends an event |
+| 5 | Rust command | `rust/src/lib.rs` | `Library::add_book`: validate, then `commit_book("add-book", …)`, a `forge-app` runtime command that runs off the main thread, saves the copy and only then swaps it in, publishes the snapshot and sends `Changed` |
 | 6 | Rust tests | `rust/src/tests.rs` | The rule, the refusal (nothing changes on an invalid input) and the round trip through a saved file |
 | 7 | Bindings | `Generated/` | `forge bindings generate --project examples/pocket-library` (also run by every `forge build ios`); never edited by hand |
 | 8 | View model | `Sources/AppHost/LibraryModel.swift` | `add(_:)` calls `addBook` through one `run` helper; Foundation and Observation only, so it compiles on Linux |
@@ -27,8 +27,8 @@ Status: 2026-11-11. Written from Pocket Library at main `1b1e01a`, before it mov
 1. **Records are data.** `model.rs` holds what crosses the boundary and nothing else. Optional fields are `Option`, enums are closed. ([ffi-policy.md](ffi-policy.md))
 2. **Validation returns every field's problem at once.** `Validator` collects them; the form shows them all after one save, in plain language. Text that isn't a number is caught in Swift before it reaches Rust, because it never becomes a `u32`.
 3. **A change is all or nothing.** The command works on a clone of the data, saves it, and replaces the live state only after the save succeeded. A failed save leaves the app exactly as it was. ([persistence.md](persistence.md))
-4. **Work happens off the main thread.** `commit` uses `background(name, …)`, so the Swift call is `async` and a slow disk never blocks the UI. ([ffi-policy.md](ffi-policy.md))
-5. **Other screens hear about it through events,** not by being told by the form. The library list reloads when `LibraryEvents` says the revision moved.
+4. **Work happens off the main thread.** Commands run one at a time on the runtime's command thread (`Runtime::command`), so the Swift call is `async` and a slow disk never blocks the UI; reads take the published snapshot without waiting. ([ffi-policy.md](ffi-policy.md))
+5. **Other screens hear about it through events,** not by being told by the form. The library list reloads when ForgeKit's host says the revision moved (`host.changes`, from the runtime's `Changed` event).
 6. **Errors are typed.** Swift matches `LibraryError.InvalidFields` and shows it under the fields; anything else becomes an alert through ForgeAppKit.
 7. **Tests prove behaviour on Linux first.** Rust tests and model tests run without a Mac or phone; the UI scenario is the one step that needs the iPhone, and it proves the screen is reachable and reacts.
 
@@ -40,6 +40,5 @@ It will not write domain rules beyond "required" and "at most N characters", rel
 
 ## Open before the template is written
 
-- **The runtime.** Pocket Library still has its own `commit`, `apply` and `EventHub` wiring in `lib.rs`. Once it runs on the `forge-app` `Runtime` (P3 exit criterion), steps 5 and 8 shrink, and this page changes with them.
 - **Repositories and queries.** `LibraryData::query` is app code today. P3 plans repositories and queries in `forge-app`; the template's list screen waits for them.
 - **A second app.** Extraction needs a second use (AGENTS.md rule 1). Check this recipe against a feature in a second app (Commonplace is the likely one) before writing the template.

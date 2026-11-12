@@ -26,7 +26,7 @@ Everything except catalogue search works offline. Catalogue failures (offline, t
 examples/pocket-library/
   forge.toml                 [rust] path = "rust"
   rust/src/
-    lib.rs                   the UniFFI API: Library, LibraryEvents
+    lib.rs                   the UniFFI API: Library, on forge-app's Runtime
     domain.rs                reading rules, search/sort, stats, history (pure, no I/O)
     store.rs                 library.json, covers/, books/ (EPUBs), exports/ (forge-storage JsonFile)
     catalogue.rs             BookCatalogue trait, Open Library client (forge-net)
@@ -45,7 +45,7 @@ examples/pocket-library/
 
 **Validation** is field by field: Rust's `validate` (domain.rs) returns `InvalidFields` with one `FieldError` per field, in `BookInput`'s field names, and the form shows each message under its field (`ForgeFieldErrors`).
 
-**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and on each `LibraryEvent`; it holds no rules of its own. Presentation state is ForgeAppKit values: the Library screen's sheets are one `LibraryDestination`, its delete confirmation and errors one `ForgeAlert`, so the model tests check "Delete asks first" without SwiftUI. `LibraryError` conforms to `ForgeDescribedError` (ErrorText.swift), so every alert uses the same words, and a cancelled request shows nothing.
+**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and whenever its ForgeKit `ForgeHost` says something changed; it holds no rules of its own. The App owns the model, so the Rust library lives as long as the process, and `attachToLifecycle()` reports the app's lifecycle: catalogue searches stop in the background, while imports and exports are `finishing` work that keeps going in the time iOS grants. Presentation state is ForgeAppKit values: the Library screen's sheets are one `LibraryDestination`, its delete confirmation and errors one `ForgeAlert`, so the model tests check "Delete asks first" without SwiftUI. `LibraryError` conforms to `ForgeDescribedError` (ErrorText.swift), so every alert uses the same words, and a cancelled request shows nothing.
 
 **Threads.** Every Rust method that touches the disk or network is `async` and runs on its own thread (`forge_runtime::background`), so SwiftUI awaits it from the main actor. Reads (`books`, `stats`, `history`) are plain memory reads.
 

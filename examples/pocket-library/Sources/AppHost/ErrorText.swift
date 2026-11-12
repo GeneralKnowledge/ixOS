@@ -23,7 +23,9 @@ public enum ErrorText {
         case .UnsupportedFile: return "Can't Read That File"
         case .NotReadable: return "Can't Open This Book"
         case .Cancelled: return "Search Stopped"
+        case .Interrupted: return "Stopped"
         case .ShutDown: return "Library Closed"
+        case .InUse: return "Library Already Open"
         }
     }
 
@@ -47,7 +49,9 @@ public enum ErrorText {
         case .UnsupportedFile(let reason): return "Pocket Library imports EPUB books. \(reason)"
         case .NotReadable(let reason): return String(reason.prefix(1)).uppercased() + String(reason.dropFirst()) + "."
         case .Cancelled: return "Nothing was changed."
+        case .Interrupted: return "Pocket Library went to the background before this finished. Nothing was changed; try again."
         case .ShutDown: return "Restart the app to keep going."
+        case .InUse: return "Another copy of Pocket Library has this library open. Close it and try again."
         }
     }
 
@@ -55,7 +59,7 @@ public enum ErrorText {
     public static func isRetryable(_ error: Error) -> Bool {
         guard let error = error as? LibraryError else { return false }
         switch error {
-        case .Offline, .Timeout, .CatalogueUnavailable, .Network: return true
+        case .Offline, .Timeout, .CatalogueUnavailable, .Network, .Interrupted: return true
         default: return false
         }
     }
