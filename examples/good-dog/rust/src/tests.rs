@@ -903,3 +903,102 @@ fn the_ui_tests_sample_dog_starts_today_on_a_four_step_exercise() {
     let steps = app.exercise(first.exercise_id.clone()).unwrap().steps.len();
     assert_eq!((first.exercise_id.as_str(), steps), ("ex-name-response", 4));
 }
+
+// MARK: Reminder (GD5)
+
+fn reminder_days(app: &AppCore, now: LocalTime) -> Vec<i64> {
+    lock(&app.state)
+        .reminders(now)
+        .iter()
+        .map(|n| reminders::day_of(&n.id).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_reminder_skips_a_day_already_practised_or_set_aside() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let today = training::local_day(at(NINE_AM));
+    assert_eq!(app.reminder_minute(), None);
+    assert!(
+        reminder_days(&app, at(NINE_AM)).is_empty(),
+        "off until turned on"
+    );
+
+    // 18:00. No native services on Linux, so no permission prompt.
+    assert!(block_on(app.set_reminder(Some(18 * 60), at(NINE_AM))).unwrap());
+    assert_eq!(app.reminder_minute(), Some(18 * 60));
+    let week: Vec<i64> = (today..today + 7).collect();
+    assert_eq!(reminder_days(&app, at(NINE_AM)), week);
+    let first = &lock(&app.state).reminders(at(NINE_AM))[0];
+    assert_eq!(
+        first.trigger,
+        native::NotificationTrigger::At {
+            unix_ms: today * DAY_MS + 18 * 3_600_000
+        }
+    );
+    assert_eq!(first.category.as_deref(), Some(reminders::CATEGORY));
+    assert!(first.title.contains("Moss"));
+
+    // After 18:00 today's has gone by.
+    assert_eq!(
+        reminder_days(&app, at(NINE_AM + 10 * 3_600_000))[0],
+        today + 1
+    );
+
+    // Practising today drops today's.
+    let plan = block_on(app.today(at(NINE_AM))).unwrap();
+    let activity = &plan.activities[0];
+    block_on(app.record_session(
+        activity.exercise_id.clone(),
+        Some(activity.id),
+        SessionResult::Easy,
+        false,
+        at(NINE_AM + 60_000),
+    ))
+    .unwrap();
+    assert_eq!(reminder_days(&app, at(NINE_AM))[0], today + 1);
+
+    // "Not today" from tomorrow's notification drops tomorrow's, tomorrow.
+    let tomorrow = at(NINE_AM + DAY_MS);
+    assert_eq!(reminder_days(&app, tomorrow)[0], today + 1);
+    block_on(app.skip_reminder_day(today + 1)).unwrap();
+    assert_eq!(reminder_days(&app, tomorrow)[0], today + 2);
+
+    // Kept across a relaunch; off again after erasing.
+    drop(app);
+    let app = open(dir.path());
+    assert_eq!(app.reminder_minute(), Some(18 * 60));
+    block_on(app.erase_all()).unwrap();
+    assert_eq!(app.reminder_minute(), None);
+    assert!(block_on(app.set_reminder(Some(24 * 60), at(NINE_AM))).is_err());
+}
+
+#[test]
+fn rescheduling_replaces_the_week_and_cancels_what_is_no_longer_wanted() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let (services, fakes) = native::NativeServices::for_tests(dir.path().join("native"));
+    // The fake refuses times already past, like iOS.
+    let now = at(forge_runtime::now_ms());
+    block_on(app.set_reminder(Some(18 * 60), now)).unwrap();
+    block_on(reminders::schedule(
+        &services,
+        lock(&app.state).reminders(now),
+        now,
+    ));
+    let week = fakes.notifier.scheduled().len();
+    assert!(week == 6 || week == 7, "{week}");
+
+    block_on(app.set_reminder(None, now)).unwrap();
+    block_on(reminders::schedule(
+        &services,
+        lock(&app.state).reminders(now),
+        now,
+    ));
+    assert!(fakes.notifier.scheduled().is_empty());
+
+    let buttons = reminders::category().actions;
+    assert_eq!(buttons[0].id, reminders::START);
+    assert_eq!(buttons[1].id, reminders::NOT_TODAY);
+}

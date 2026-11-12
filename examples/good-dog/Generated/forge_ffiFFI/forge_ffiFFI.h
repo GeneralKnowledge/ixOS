@@ -435,6 +435,16 @@ uint64_t uniffi_good_dog_app_fn_method_appcore_record_guided_session(uint64_t pt
 uint64_t uniffi_good_dog_app_fn_method_appcore_record_session(uint64_t ptr, RustBuffer exercise_id, RustBuffer activity_id, RustBuffer result, int8_t welfare_concern, RustBuffer now
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REFRESH_REMINDERS
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REFRESH_REMINDERS
+uint64_t uniffi_good_dog_app_fn_method_appcore_refresh_reminders(uint64_t ptr, RustBuffer now
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REMINDER_MINUTE
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_REMINDER_MINUTE
+RustBuffer uniffi_good_dog_app_fn_method_appcore_reminder_minute(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_RESUME_GOAL
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_RESUME_GOAL
 uint64_t uniffi_good_dog_app_fn_method_appcore_resume_goal(uint64_t ptr, uint64_t goal_id, RustBuffer now
@@ -458,6 +468,11 @@ uint64_t uniffi_good_dog_app_fn_method_appcore_set_goal_aside(uint64_t ptr, uint
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_PHASE
 void uniffi_good_dog_app_fn_method_appcore_set_phase(uint64_t ptr, RustBuffer phase, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_REMINDER
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SET_REMINDER
+uint64_t uniffi_good_dog_app_fn_method_appcore_set_reminder(uint64_t ptr, RustBuffer at_minute, RustBuffer now
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_SHORTEN_TODAY
@@ -1127,6 +1142,18 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_record_session(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REFRESH_REMINDERS
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REFRESH_REMINDERS
+uint16_t uniffi_good_dog_app_checksum_method_appcore_refresh_reminders(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REMINDER_MINUTE
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_REMINDER_MINUTE
+uint16_t uniffi_good_dog_app_checksum_method_appcore_reminder_minute(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_RESUME_GOAL
 uint16_t uniffi_good_dog_app_checksum_method_appcore_resume_goal(void
@@ -1154,6 +1181,12 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_set_goal_aside(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_PHASE
 uint16_t uniffi_good_dog_app_checksum_method_appcore_set_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_REMINDER
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_SET_REMINDER
+uint16_t uniffi_good_dog_app_checksum_method_appcore_set_reminder(void
     
 );
 #endif
