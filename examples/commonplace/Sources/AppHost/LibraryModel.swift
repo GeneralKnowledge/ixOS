@@ -23,6 +23,9 @@ public final class LibraryModel {
     public private(set) var lastRefresh: RefreshSummary?
     /// A failed action, presented by the feed list with `.forgeAlert`.
     public var alert: ForgeAlert<Never>?
+    /// Whether a background refresh that finds new articles sends a
+    /// notification (with a Mark All as Read button).
+    public private(set) var newArticleAlerts = false
 
     public let core: AppCore
     @ObservationIgnored private var refreshing: Cancellation?
@@ -30,6 +33,7 @@ public final class LibraryModel {
     public init(core: AppCore) {
         self.core = core
         feeds = core.feeds()
+        newArticleAlerts = core.newArticleAlerts()
     }
 
     /// Re-reads from Rust. Cheap: Rust hands over its published snapshot.
@@ -155,6 +159,17 @@ public final class LibraryModel {
     /// Marks a feed's articles read, or every feed's with nil.
     public func markAllRead(feedID: Int64?) async {
         await perform { _ = try await $0.markAllRead(feedId: feedID) }
+    }
+
+    /// Turns the new-articles notification on (iOS asks for permission the
+    /// first time) or off. Stays off if the person declined.
+    public func setNewArticleAlerts(_ enabled: Bool) async {
+        do {
+            newArticleAlerts = try await core.setNewArticleAlerts(enabled: enabled)
+        } catch {
+            log.warn("changing new-article alerts failed: \(error)")
+            alert = .failure(error)
+        }
     }
 
     // MARK: Private
