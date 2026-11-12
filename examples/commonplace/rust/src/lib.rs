@@ -158,7 +158,13 @@ impl AppCore {
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Feed, AppError> {
         let url = normalise_url(&url)?;
-        if let Some(existing) = self.snapshot.get().feeds.iter().find(|f| f.url == url) {
+        if let Some(existing) = self
+            .snapshot
+            .get()
+            .feeds
+            .iter()
+            .find(|f| same_address(&f.url, &url))
+        {
             return Err(AppError::AlreadySubscribed {
                 feed_id: existing.id,
             });
@@ -468,6 +474,21 @@ fn normalise_url(input: &str) -> Result<String, AppError> {
         });
     }
     Ok(url)
+}
+
+/// Whether two feed addresses name the same feed: `http` and `https`, the
+/// host's case and a trailing `/` don't make a different feed.
+fn same_address(a: &str, b: &str) -> bool {
+    fn key(url: &str) -> String {
+        let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+        let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
+        format!(
+            "{}/{}",
+            host.to_ascii_lowercase(),
+            path.trim_end_matches('/')
+        )
+    }
+    key(a) == key(b)
 }
 
 /// Fetches and parses one feed, asking only for changes when the last

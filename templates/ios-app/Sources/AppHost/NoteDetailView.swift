@@ -1,4 +1,5 @@
 @preconcurrency import FORGE_MODULE_NAMEFFI
+import ForgeAppKit
 import SwiftUI
 
 /// Screen 2: one note, edited in place. Changes are saved when you tap Done,
@@ -12,7 +13,6 @@ struct NoteDetailView: View {
     @State private var isDeleting = false
     @FocusState private var isEditing: Bool
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         if let note = model.note(id: noteID) {
@@ -68,13 +68,10 @@ struct NoteDetailView: View {
                 Text("This can't be undone.")
             }
             .onAppear { text = note.text }
-            .onDisappear {
+            // Saves when the screen closes and when the app leaves the
+            // screen (iOS may end it later without warning).
+            .forgeSaveOnLeave {
                 if !isDeleting { save(note) }
-            }
-            // Leaving the app doesn't make the screen disappear, and iOS may
-            // end the app later without warning: save on the way out too.
-            .onChange(of: scenePhase) { _, phase in
-                if phase != .active, !isDeleting { save(note) }
             }
     }
 

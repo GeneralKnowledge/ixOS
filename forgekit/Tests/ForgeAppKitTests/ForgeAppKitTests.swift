@@ -120,6 +120,21 @@ final class ForgeAppKitTests: XCTestCase {
         XCTAssertTrue(ForgeLoad<Int>.loading.isLoading)
     }
 
+    func testReloadKeepsContentAndNeverStrandsASpinner() async {
+        let shown = ForgeLoad<Int>.loaded(1)
+        XCTAssertEqual(shown.whileReloading, .loaded(1), "loaded content stays while reloading")
+        XCTAssertEqual(ForgeLoad<Int>.idle.whileReloading, .loading)
+
+        let fresh = await shown.reloaded { 2 }
+        XCTAssertEqual(fresh, .loaded(2))
+        let stopped = await shown.reloaded { throw CancellationError() }
+        XCTAssertEqual(stopped, .loaded(1), "a stopped reload changes nothing")
+        let stoppedSpinner = await ForgeLoad<Int>.loading.reloaded { throw CancellationError() }
+        XCTAssertEqual(stoppedSpinner, .idle)
+        let failed = await shown.reloaded { throw LibraryError.offline }
+        XCTAssertEqual(failed.failure?.title, "You're Offline")
+    }
+
     // MARK: Submission
 
     @MainActor

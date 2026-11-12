@@ -19,6 +19,8 @@ Model files `import ForgeAppKit` with Foundation and Observation; it never impor
 
 ## Errors: `ForgeFailure`
 
+ForgeKit's `ForgeErrors.title(kind)`, `ForgeErrors.describe(kind)` and `ForgeErrors.isRetryable(kind)` give default words for each framework error kind (`app_error_kind` in Rust), so an app's `ForgeDescribedError` conformance only words its own domain cases and falls back to the kind for the rest (Commonplace's `LibraryModel.title` does this).
+
 Describe your app's errors once, and every alert, failed load and failed save uses the same words:
 
 ```swift
@@ -122,6 +124,24 @@ ForgeLoadView(model.results, loading: "Searching",
               retry: ForgeStateAction("Try Again", identifier: "search.retry") { Task { await model.search(text) } }) { books in
     List(books) { BookRow(book: $0) }
 }
+```
+
+Loading again (pull to refresh, Try Again, coming back to the screen) should keep what is on screen. Swapping loaded results for a spinner also removes the list that owns `.refreshable`, which cancels the refresh and can leave "Loading…" for good. `whileReloading` keeps loaded content (anything else becomes the spinner), and `reloaded` returns the new state, or the old one when the reload was cancelled:
+
+```swift
+func refresh() async {
+    results = results.whileReloading
+    results = await results.reloaded { try await library.search(query) }
+}
+```
+
+## Saving when the person leaves: `forgeSaveOnLeave`
+
+`onDisappear` doesn't run when the person goes Home, and iOS may end the app later without warning. An editor that saves only on Done or `onDisappear` loses what was typed. `.forgeSaveOnLeave { save() }` runs `save` when the screen closes and when the app leaves the screen; make `save` do nothing when nothing changed, since it can run twice.
+
+```swift
+TextEditor(text: $text)
+    .forgeSaveOnLeave { save() }
 ```
 
 ## Saving: `ForgeSubmission`
