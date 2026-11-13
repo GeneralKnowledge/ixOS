@@ -12,7 +12,8 @@ showcase.
 |---|---|---|
 | F1 | Rust core: trips, track filtering and totals, notes with photo and voice files, SQLite | This folder's `rust/`; tested on Linux |
 | F2a | The app: trips list, Record, live map and totals, text notes, trip screen with Share as GPX or GeoJSON; the core follows the location service | Written; Swift checked by the laptop build and macOS CI only |
-| F2b | Photo and voice notes, with Chat's photo picker moved into the framework; hosted in Device Lab | Next |
+| F2b | Hosted in Device Lab (Apps, FieldKit) | Done; not run on an iPhone yet |
+| F2c | Photo and voice notes, with Chat's photo picker moved into the framework | Next |
 | F3 | GPX and GeoJSON export (Rust done early), charts, background recording | Export written and tested on Linux; the rest not started |
 
 ## The app

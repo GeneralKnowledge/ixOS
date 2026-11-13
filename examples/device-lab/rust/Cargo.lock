@@ -368,6 +368,7 @@ dependencies = [
  "chat-app",
  "checklist-core",
  "commonplace-core",
+ "fieldkit-core",
  "forge-runtime",
  "forge-services",
  "forge-storage",
@@ -463,6 +464,20 @@ dependencies = [
  "siphasher",
  "url",
  "uuid",
+]
+
+[[package]]
+name = "fieldkit-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "forge-app",
+ "forge-runtime",
+ "forge-services",
+ "forge-storage",
+ "serde_json",
+ "thiserror",
+ "uniffi",
 ]
 
 [[package]]

@@ -28,7 +28,7 @@ orientations = ["portrait"]
 # and -ForgeUITestData, so either one starts them all on throwaway data.
 # See docs/app-config.md.
 [host]
-apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../chat"]
+apps = ["../weather", "../checklist", "../pocket-library", "../good-dog", "../commonplace", "../chat", "../fieldkit"]
 
 # The text iOS shows when the app asks. Each one is asked only when the user
 # taps the matching "Allow" button on the dashboard.
