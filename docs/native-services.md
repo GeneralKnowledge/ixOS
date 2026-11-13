@@ -113,7 +113,7 @@ on_notification_response(move |response| match response.action_id.as_str() {
 });
 ```
 
-Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each); Chat's message notifications are the first user (Reply and Mark as Read).
+Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each); Chat's message notifications are the first user (Reply and Mark as Read); Commonplace's new-articles notification (Mark All as Read) and Good Dog's daily reminder (Start Now, Not Today, one notification per day scheduled a week ahead so a day can be skipped) follow.
 
 ### Tests
 

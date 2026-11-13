@@ -641,7 +641,8 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func dog()  -> DogProfile?
     
     /**
-     * Deletes the profile, plans, sessions and progress.
+     * Deletes the profile, plans, sessions and progress, and turns the
+     * reminder off.
      */
     func eraseAll() async throws 
     
@@ -717,6 +718,19 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func recordSession(exerciseId: String, activityId: UInt64?, result: SessionResult, welfareConcern: Bool, now: LocalTime) async throws  -> SessionFeedback
     
     /**
+     * Schedules the next week's reminders again. The host calls it when the
+     * app opens and comes back to the foreground (the week moves on, and
+     * the time zone may have changed).
+     */
+    func refreshReminders(now: LocalTime) async 
+    
+    /**
+     * The daily reminder's time in minutes after midnight, or `None` when
+     * it's off.
+     */
+    func reminderMinute()  -> UInt32?
+    
+    /**
      * Picks a paused or set-aside goal up again where it was.
      */
     func resumeGoal(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
@@ -743,6 +757,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      * emits `PhaseChanged { resumed: true }`; `Terminated` is `shutdown()`.
      */
     func setPhase(phase: AppPhase) 
+    
+    /**
+     * Turns the daily reminder on at `at_minute` (minutes after midnight),
+     * or off with `None`. Turning it on asks for permission the first time;
+     * returns false, and leaves it off, if the owner declined.
+     */
+    func setReminder(atMinute: UInt32?, now: LocalTime) async throws  -> Bool
     
     /**
      * Swaps today's plan for one short activity ("only a few minutes
@@ -901,7 +922,8 @@ open func dog() -> DogProfile?  {
 }
     
     /**
-     * Deletes the profile, plans, sessions and progress.
+     * Deletes the profile, plans, sessions and progress, and turns the
+     * reminder off.
      */
 open func eraseAll()async throws   {
     return
@@ -1115,6 +1137,41 @@ open func recordSession(exerciseId: String, activityId: UInt64?, result: Session
 }
     
     /**
+     * Schedules the next week's reminders again. The host calls it when the
+     * app opens and comes back to the foreground (the week moves on, and
+     * the time zone may have changed).
+     */
+open func refreshReminders(now: LocalTime)async   {
+    return
+        try!  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_refresh_reminders(
+                        self.uniffiCloneHandle(),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_void,
+            completeFunc: ffi_good_dog_app_rust_future_complete_void,
+            freeFunc: ffi_good_dog_app_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: nil
+            
+        )
+}
+    
+    /**
+     * The daily reminder's time in minutes after midnight, or `None` when
+     * it's off.
+     */
+open func reminderMinute() -> UInt32?  {
+    return try!  FfiConverterOptionUInt32.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_good_dog_app_fn_method_appcore_reminder_minute(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Picks a paused or set-aside goal up again where it was.
      */
 open func resumeGoal(goalId: UInt64, now: LocalTime)async throws  -> GoalDetail  {
@@ -1197,6 +1254,27 @@ open func setPhase(phase: AppPhase)  {try! rustCall() {
         FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * Turns the daily reminder on at `at_minute` (minutes after midnight),
+     * or off with `None`. Turning it on asks for permission the first time;
+     * returns false, and leaves it off, if the owner declined.
+     */
+open func setReminder(atMinute: UInt32?, now: LocalTime)async throws  -> Bool  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_set_reminder(
+                        self.uniffiCloneHandle(),FfiConverterOptionUInt32.lower(atMinute),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_i8,
+            completeFunc: ffi_good_dog_app_rust_future_complete_i8,
+            freeFunc: ffi_good_dog_app_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
     /**
@@ -8388,7 +8466,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_dog() != 32662) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_good_dog_app_checksum_method_appcore_erase_all() != 58831) {
+    if (uniffi_good_dog_app_checksum_method_appcore_erase_all() != 59952) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_events() != 32979) {
@@ -8433,6 +8511,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_good_dog_app_checksum_method_appcore_record_session() != 2508) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_good_dog_app_checksum_method_appcore_refresh_reminders() != 22190) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_reminder_minute() != 9119) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_good_dog_app_checksum_method_appcore_resume_goal() != 55985) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8446,6 +8530,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_phase() != 5404) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_set_reminder() != 32087) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_shorten_today() != 3401) {

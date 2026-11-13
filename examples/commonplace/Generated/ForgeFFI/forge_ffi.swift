@@ -697,6 +697,12 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func markAllRead(feedId: Int64?) async throws  -> UInt32
     
     /**
+     * Whether a background refresh that finds new articles shows a
+     * notification.
+     */
+    func newArticleAlerts()  -> Bool
+    
+    /**
      * Opens an article for reading: marks it read and returns its text.
      */
     func openArticle(articleId: Int64) async throws  -> ArticleText
@@ -731,6 +737,12 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func revision()  -> UInt64
     
     func setBookmarked(articleId: Int64, bookmarked: Bool) async throws 
+    
+    /**
+     * Turns those notifications on (asking for permission the first time;
+     * returns false if the person declined) or off.
+     */
+    func setNewArticleAlerts(enabled: Bool) async throws  -> Bool
     
     /**
      * The host reports the application lifecycle phase.
@@ -950,6 +962,19 @@ open func markAllRead(feedId: Int64?)async throws  -> UInt32  {
 }
     
     /**
+     * Whether a background refresh that finds new articles shows a
+     * notification.
+     */
+open func newArticleAlerts() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_new_article_alerts(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Opens an article for reading: marks it read and returns its text.
      */
 open func openArticle(articleId: Int64)async throws  -> ArticleText  {
@@ -1065,6 +1090,26 @@ open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
             completeFunc: ffi_commonplace_core_rust_future_complete_void,
             freeFunc: ffi_commonplace_core_rust_future_free_void,
             liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Turns those notifications on (asking for permission the first time;
+     * returns false if the person declined) or off.
+     */
+open func setNewArticleAlerts(enabled: Bool)async throws  -> Bool  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_set_new_article_alerts(
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(enabled)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_i8,
+            completeFunc: ffi_commonplace_core_rust_future_complete_i8,
+            freeFunc: ffi_commonplace_core_rust_future_free_i8,
+            liftFunc: FfiConverterBool.lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -6595,6 +6640,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_mark_all_read() != 29790) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_new_article_alerts() != 12825) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_open_article() != 58821) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6614,6 +6662,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_bookmarked() != 19311) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_set_new_article_alerts() != 55465) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_set_phase() != 56746) {

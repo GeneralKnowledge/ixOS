@@ -171,6 +171,10 @@ fn search_then_import_saves_description_and_cover() {
     assert!(imported.warnings.is_empty(), "{:?}", imported.warnings);
     let book = imported.book;
     assert_eq!(book.title, "The Hobbit");
+    assert_eq!(
+        book.web_page.as_deref(),
+        Some("https://openlibrary.org/works/OL27482W")
+    );
     assert_eq!(book.description, "There and back again.");
     assert_eq!(book.total_pages, Some(310));
     assert_eq!(book.status, ReadingStatus::WantToRead);
@@ -605,10 +609,11 @@ fn export_and_erase() {
     block_on(library.import_epub(dir_string(&file))).unwrap();
     block_on(library.add_book(input("Plain", None))).unwrap();
 
-    let path = block_on(library.export_library()).unwrap();
-    let json: serde_json::Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    assert_eq!(json["format"], "pocket-library-export");
-    assert_eq!(json["library"]["books"].as_array().unwrap().len(), 2);
+    let path = block_on(library.backup_library()).unwrap();
+    let manifest = forge_storage::backup::read_manifest(std::path::Path::new(&path)).unwrap();
+    assert_eq!(manifest.app, "pocket-library");
+    assert!(manifest.files.iter().any(|f| f.path == "library.json"));
+    assert!(manifest.files.iter().any(|f| f.path.starts_with("covers/")));
 
     let info = library.storage_info();
     assert_eq!((info.books, info.saved_covers), (2, 1));
@@ -834,6 +839,45 @@ fn books_go_out_and_come_back_as_a_spreadsheet() {
         (emma.status, emma.rating),
         (ReadingStatus::Finished, Some(5))
     );
+}
+
+#[test]
+fn a_backup_restores_books_covers_and_epubs() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let file = dir.path().join("b.epub");
+    std::fs::write(&file, sample_epub("Covered", 10, true)).unwrap();
+    let covered = block_on(library.import_epub(dir_string(&file))).unwrap();
+    block_on(library.add_book(input("Plain", None))).unwrap();
+    let backup = dir.path().join("backup.zip");
+    std::fs::copy(block_on(library.backup_library()).unwrap(), &backup).unwrap();
+
+    // Things change after the backup...
+    block_on(library.erase_library()).unwrap();
+    block_on(library.add_book(input("After", None))).unwrap();
+    assert_eq!(library.storage_info().books, 1);
+
+    // ...and the backup brings back the books, the cover and the EPUB.
+    assert_eq!(
+        block_on(library.restore_library(dir_string(&backup))).unwrap(),
+        2
+    );
+    let info = library.storage_info();
+    assert_eq!((info.books, info.saved_covers, info.saved_books), (2, 1, 1));
+    let reader = block_on(library.open_reader(covered.id)).unwrap();
+    assert!(!reader.chapters.is_empty());
+    assert!(!dir.path().join("restoring").exists());
+
+    // A reopened library sees the restored one.
+    drop(library);
+    let reopened = open(dir.path());
+    assert_eq!(reopened.storage_info().books, 2);
+
+    // Something that isn't a backup is refused and changes nothing.
+    let junk = dir.path().join("junk.zip");
+    std::fs::write(&junk, b"not a zip").unwrap();
+    assert!(block_on(reopened.restore_library(dir_string(&junk))).is_err());
+    assert_eq!(reopened.storage_info().books, 2);
 }
 
 #[test]

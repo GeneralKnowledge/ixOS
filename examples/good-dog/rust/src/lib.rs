@@ -22,6 +22,7 @@ use good_dog_core::dog_training::{
 mod goals;
 mod guided;
 mod model;
+mod reminders;
 #[cfg(test)]
 mod tests;
 mod training;
@@ -36,8 +37,8 @@ use training::{exercise, feedback_message, validated_profile, Stored};
 uniffi::setup_scaffolding!();
 
 // Native services (Keychain, app directories, local notifications,
-// permissions, deep links) as `crate::native`. Daily reminders (GD2) will use
-// the notifications. See docs/native-services.md.
+// permissions, deep links) as `crate::native`. The daily reminder
+// (src/reminders.rs) uses the notifications. See docs/native-services.md.
 forge_services::native_services!();
 
 forge_runtime::app_shell! {
@@ -123,7 +124,9 @@ impl AppCore {
     /// Fails with `Storage` if the saved data can't be used; it is left untouched.
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, AppError> {
-        Self::open(storage_directory, goals::Pathways::default())
+        let core = Self::open(storage_directory, goals::Pathways::default())?;
+        core.handle_reminder_actions();
+        Ok(core)
     }
 
     // MARK: The dog
@@ -208,21 +211,25 @@ impl AppCore {
         welfare_concern: bool,
         now: LocalTime,
     ) -> Result<SessionFeedback, AppError> {
-        self.change("record-session", move |stored| {
-            let objective =
-                stored.record(&exercise_id, activity_id, result, welfare_concern, now)?;
-            let skill = stored.skill(&objective);
-            let name = stored
-                .dog
-                .as_ref()
-                .map(|d| d.name.clone())
-                .unwrap_or_default();
-            Ok(SessionFeedback {
-                message: feedback_message(&name, result, welfare_concern, skill.level),
-                skill,
+        let feedback = self
+            .change("record-session", move |stored| {
+                let objective =
+                    stored.record(&exercise_id, activity_id, result, welfare_concern, now)?;
+                let skill = stored.skill(&objective);
+                let name = stored
+                    .dog
+                    .as_ref()
+                    .map(|d| d.name.clone())
+                    .unwrap_or_default();
+                Ok(SessionFeedback {
+                    message: feedback_message(&name, result, welfare_concern, skill.level),
+                    skill,
+                })
             })
-        })
-        .await
+            .await?;
+        // Practised today: no reminder today.
+        self.refresh_reminders(now).await;
+        Ok(feedback)
     }
 
     // MARK: Goals
@@ -393,7 +400,8 @@ impl AppCore {
         lock(&self.state).history(limit as usize)
     }
 
-    /// Deletes the profile, plans, sessions and progress.
+    /// Deletes the profile, plans, sessions and progress, and turns the
+    /// reminder off.
     pub async fn erase_all(&self) -> Result<(), AppError> {
         self.change("erase-all", |stored| {
             *stored = Stored {
@@ -402,7 +410,69 @@ impl AppCore {
             };
             Ok(())
         })
-        .await
+        .await?;
+        // Nothing is wanted now, so the time only picks the days to cancel,
+        // and the cancelled range is wide enough for any time zone.
+        let now = LocalTime {
+            ms: forge_runtime::now_ms(),
+            utc_offset_minutes: 0,
+        };
+        self.refresh_reminders(now).await;
+        Ok(())
+    }
+
+    // MARK: Reminder
+
+    /// The daily reminder's time in minutes after midnight, or `None` when
+    /// it's off.
+    pub fn reminder_minute(&self) -> Option<u32> {
+        lock(&self.state).reminder.at_minute
+    }
+
+    /// Turns the daily reminder on at `at_minute` (minutes after midnight),
+    /// or off with `None`. Turning it on asks for permission the first time;
+    /// returns false, and leaves it off, if the owner declined.
+    pub async fn set_reminder(
+        &self,
+        at_minute: Option<u32>,
+        now: LocalTime,
+    ) -> Result<bool, AppError> {
+        if let Some(minute) = at_minute {
+            if minute >= 24 * 60 {
+                return Err(AppError::InvalidInput {
+                    reason: format!("minute of the day out of range: {minute}"),
+                });
+            }
+            if let Ok(services) = native::NativeServices::installed() {
+                let status = services
+                    .request_permission(native::NativePermission::Notifications)
+                    .await;
+                if !matches!(
+                    status,
+                    native::PermissionStatus::Granted | native::PermissionStatus::Provisional
+                ) {
+                    return Ok(false);
+                }
+            }
+        }
+        self.change("set-reminder", move |stored| {
+            stored.reminder.at_minute = at_minute;
+            Ok(())
+        })
+        .await?;
+        self.refresh_reminders(now).await;
+        Ok(at_minute.is_some())
+    }
+
+    /// Schedules the next week's reminders again. The host calls it when the
+    /// app opens and comes back to the foreground (the week moves on, and
+    /// the time zone may have changed).
+    pub async fn refresh_reminders(&self, now: LocalTime) {
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        let wanted = lock(&self.state).reminders(now);
+        reminders::schedule(&services, wanted, now).await;
     }
 
     // MARK: Learn
@@ -578,6 +648,43 @@ impl AppCore {
 }
 
 impl AppCore {
+    /// The reminder's Not Today button. Start Now just opens the app, on
+    /// Today.
+    fn handle_reminder_actions(self: &Arc<Self>) {
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        if let Err(e) = services.set_notification_categories(vec![reminders::category()]) {
+            forge_runtime::logging::warn!("reminder buttons not set: {e}");
+        }
+        let core = Arc::downgrade(self);
+        native::on_notification_response(move |response| {
+            let Some(core) = core.upgrade() else { return };
+            if response.action_id != reminders::NOT_TODAY {
+                return;
+            }
+            let Some(day) = reminders::day_of(&response.notification_id) else {
+                return;
+            };
+            // iOS gives a background action a few seconds; this is one save.
+            std::thread::spawn(move || {
+                let skipped = forge_runtime::block_on(core.skip_reminder_day(day));
+                if let Err(e) = skipped {
+                    forge_runtime::logging::warn!("not today from a reminder failed: {e}");
+                }
+            });
+        });
+    }
+
+    /// No reminder on local `day`.
+    pub(crate) async fn skip_reminder_day(&self, day: i64) -> Result<(), AppError> {
+        self.change("not-today", move |stored| {
+            stored.reminder.skipped_day = Some(day);
+            Ok(())
+        })
+        .await
+    }
+
     /// Runs `apply` on a copy of the data off the calling thread, saves the
     /// copy, and only then makes it current and publishes `DataChanged`. A
     /// failed rule or save changes nothing.

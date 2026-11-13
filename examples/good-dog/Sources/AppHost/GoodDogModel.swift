@@ -36,6 +36,8 @@ public final class GoodDogModel {
     /// Why today's plan couldn't be built. The Today tab shows it with Try
     /// Again; the other tabs keep working.
     public private(set) var todayError: String?
+    /// The daily reminder's time in minutes after midnight; nil when off.
+    public private(set) var reminderMinute: UInt32?
     /// Increases after each recorded session; views use it as a haptic trigger.
     public private(set) var sessionCount = 0
 
@@ -134,6 +136,7 @@ public final class GoodDogModel {
             if let sampleDog, core.dog() == nil {
                 _ = try await core.saveDog(profile: sampleDog, now: clock())
             }
+            await core.refreshReminders(now: clock())
             await reload()
         } catch {
             log.error("could not open: \(error)")
@@ -167,6 +170,7 @@ public final class GoodDogModel {
         glossary = core.glossary()
         history = core.history(limit: 50)
         progress = core.progress(now: clock())
+        reminderMinute = core.reminderMinute()
         guard dog != nil else {
             today = nil
             todayError = nil
@@ -254,6 +258,16 @@ public final class GoodDogModel {
         return feedback
     }
 
+    /// Turns the daily reminder on at `minute` after midnight, or off with
+    /// nil. iOS asks for permission the first time; if the owner declines
+    /// it stays off.
+    public func setReminder(_ minute: UInt32?) async {
+        await perform { core, now in
+            _ = try await core.setReminder(atMinute: minute, now: now)
+        }
+        reminderMinute = core?.reminderMinute()
+    }
+
     /// Deletes everything and returns to onboarding.
     public func eraseAll() async {
         await perform { core, _ in try await core.eraseAll() }
@@ -282,7 +296,10 @@ public final class GoodDogModel {
                     await self.reload()
                 case .phaseChanged(_, let resumed):
                     // Back from the background, possibly on a new day.
-                    if resumed { await self.reload() }
+                    if resumed {
+                        await self.core?.refreshReminders(now: self.clock())
+                        await self.reload()
+                    }
                 }
             }
         }

@@ -51,6 +51,11 @@ const BACKGROUND_REFRESH: &str = "org.forgemobile.agentlab.commonplace.refresh";
 /// How often to ask iOS for a background refresh. iOS decides when (and
 /// whether) it runs, from how the app is used.
 const BACKGROUND_REFRESH_EVERY: Duration = Duration::from_secs(60 * 60);
+/// The notification after a background refresh found new articles; also
+/// its category (a Mark All as Read button).
+const NEW_ARTICLES: &str = "commonplace.new-articles";
+/// The file whose presence turns those notifications on.
+const NEW_ARTICLE_ALERTS_FILE: &str = "new-article-alerts";
 
 // `forge_log` for the host: Swift's `ForgeLog("Category")` writes into the
 // same log as Rust.
@@ -83,6 +88,7 @@ pub struct AppCore {
     rt: Runtime<State>,
     snapshot: Arc<Published<Snapshot>>,
     http: Arc<dyn HttpClient>,
+    storage_directory: PathBuf,
     /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
     transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
     #[cfg(feature = "devtools")]
@@ -105,6 +111,7 @@ impl AppCore {
         // Only for the log line saying which transport fetched the feeds.
         let _ = core.transport.set(http);
         core.register_background_refresh();
+        core.handle_notification_actions();
         Ok(core)
     }
 
@@ -345,7 +352,13 @@ impl AppCore {
                     run.on_cancel(move || stop.cancel());
                     // Not on-screen work: it lives until iOS ends the window.
                     let work = core.rt.lifetime(Some(&*cancellation));
-                    core.refresh_in(work).await.is_ok()
+                    match core.refresh_in(work).await {
+                        Ok(report) => {
+                            core.announce_new_articles(report.new_articles).await;
+                            true
+                        }
+                        Err(_) => false,
+                    }
                 }
             },
         );
@@ -353,6 +366,74 @@ impl AppCore {
             forge_runtime::logging::warn!("background refresh not registered: {e}");
         }
     }
+
+    /// After a background refresh: tells the person what's new, if they
+    /// turned the alerts on. Replaces the previous one, so they never pile up.
+    async fn announce_new_articles(&self, new_articles: u32) {
+        if new_articles == 0 || !self.new_article_alerts() {
+            return;
+        }
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        let titles: Vec<String> = self
+            .timeline(Timeline::Unread)
+            .into_iter()
+            .take(new_articles.min(3) as usize)
+            .map(|a| a.title)
+            .collect();
+        if let Err(e) = services
+            .schedule_notification(new_articles_notification(new_articles, &titles))
+            .await
+        {
+            // Turned off in Settings since, most likely.
+            forge_runtime::logging::warn!("new-articles notification not shown: {e}");
+        }
+    }
+
+    /// The Mark All as Read button on that notification.
+    fn handle_notification_actions(self: &Arc<Self>) {
+        let Ok(services) = native::NativeServices::installed() else {
+            return;
+        };
+        let category = native::NotificationCategory {
+            id: NEW_ARTICLES.into(),
+            actions: vec![native::NotificationAction::button(
+                "read",
+                "Mark All as Read",
+            )],
+        };
+        if let Err(e) = services.set_notification_categories(vec![category]) {
+            forge_runtime::logging::warn!("notification actions not set: {e}");
+        }
+        let core = Arc::downgrade(self);
+        native::on_notification_response(move |response| {
+            let Some(core) = core.upgrade() else { return };
+            if response.category.as_deref() == Some(NEW_ARTICLES) && response.action_id == "read" {
+                // iOS gives a background action a few seconds; the command
+                // is one SQLite transaction.
+                std::thread::spawn(move || {
+                    if let Err(e) = forge_runtime::block_on(core.mark_all_read(None)) {
+                        forge_runtime::logging::warn!(
+                            "mark all read from a notification failed: {e}"
+                        );
+                    }
+                });
+            }
+        });
+    }
+}
+
+/// "3 new articles", with the first few titles.
+fn new_articles_notification(count: u32, titles: &[String]) -> native::LocalNotification {
+    let title = if count == 1 {
+        "1 new article".to_string()
+    } else {
+        format!("{count} new articles")
+    };
+    let mut notification = native::LocalNotification::now(NEW_ARTICLES, title, titles.join("\n"));
+    notification.category = Some(NEW_ARTICLES.into());
+    notification
 }
 
 #[uniffi::export]
@@ -389,6 +470,42 @@ impl AppCore {
                 Ok(())
             })
             .await
+    }
+
+    /// Whether a background refresh that finds new articles shows a
+    /// notification.
+    pub fn new_article_alerts(&self) -> bool {
+        self.storage_directory
+            .join(NEW_ARTICLE_ALERTS_FILE)
+            .exists()
+    }
+
+    /// Turns those notifications on (asking for permission the first time;
+    /// returns false if the person declined) or off.
+    pub async fn set_new_article_alerts(&self, enabled: bool) -> Result<bool, AppError> {
+        let path = self.storage_directory.join(NEW_ARTICLE_ALERTS_FILE);
+        let io = |e: std::io::Error| AppError::Storage {
+            reason: format!("save the setting: {e}"),
+        };
+        if !enabled {
+            return match std::fs::remove_file(&path) {
+                Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
+                _ => Ok(false),
+            };
+        }
+        if let Ok(services) = native::NativeServices::installed() {
+            let status = services
+                .request_permission(native::NativePermission::Notifications)
+                .await;
+            if !matches!(
+                status,
+                native::PermissionStatus::Granted | native::PermissionStatus::Provisional
+            ) {
+                return Ok(false);
+            }
+        }
+        std::fs::write(&path, b"").map_err(io)?;
+        Ok(true)
     }
 
     /// Marks every article of one feed (or of every feed, with nil) read.
@@ -446,6 +563,7 @@ impl AppCore {
             rt,
             snapshot: published,
             http,
+            storage_directory,
             transport: std::sync::OnceLock::new(),
         }))
     }

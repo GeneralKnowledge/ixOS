@@ -66,6 +66,8 @@ pub struct Book {
     /// A remote cover, used when there is no saved one.
     pub cover_url: Option<String>,
     pub source: BookSource,
+    /// The book's page on Open Library, for catalogue books.
+    pub web_page: Option<String>,
     /// The book's EPUB is saved, so it can be opened in the reader.
     pub can_read: bool,
     /// Where the reader was left, if the book has been opened in it.

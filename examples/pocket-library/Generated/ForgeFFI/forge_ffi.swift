@@ -653,6 +653,13 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      */
     func backgroundWorkPending()  -> Bool
     
+    /**
+     * Writes a backup of the whole library (books, history, settings,
+     * covers and EPUBs) as one archive for the share sheet, and returns its
+     * path. `restore_library` reads it back.
+     */
+    func backupLibrary() async throws  -> String
+    
     func book(id: UInt64) throws  -> Book
     
     /**
@@ -682,12 +689,6 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * returns the file's path.
      */
     func exportBooksCsv() async throws  -> String
-    
-    /**
-     * Writes the whole library (books, history, settings) as JSON for the
-     * share sheet and returns the file's path.
-     */
-    func exportLibrary() async throws  -> String
     
     /**
      * Reading history, newest first; `book_id` limits it to one book.
@@ -746,6 +747,15 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * The text of chapter `index` of a book opened with `open_reader`.
      */
     func readerChapter(id: UInt64, index: UInt32) async throws  -> ReaderChapter
+    
+    /**
+     * Replaces the library with the backup at `path` (from
+     * `backup_library`, on this phone or another). The archive is checked
+     * in full first: another app's file, a newer version's, or a damaged
+     * one is refused and the library is left as it was. Returns how many
+     * books the restored library has.
+     */
+    func restoreLibrary(path: String) async throws  -> UInt32
     
     /**
      * The last committed revision.
@@ -937,6 +947,27 @@ open func backgroundWorkPending() -> Bool  {
 })
 }
     
+    /**
+     * Writes a backup of the whole library (books, history, settings,
+     * covers and EPUBs) as one archive for the share sheet, and returns its
+     * path. `restore_library` reads it back.
+     */
+open func backupLibrary()async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_backup_library(
+                        self.uniffiCloneHandle()
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
 open func book(id: UInt64)throws  -> Book  {
     return try  FfiConverterTypeBook_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
@@ -1021,26 +1052,6 @@ open func exportBooksCsv()async throws  -> String  {
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_pocket_library_core_fn_method_library_export_books_csv(
-                        self.uniffiCloneHandle()
-                )
-            },
-            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterString.lift,
-            errorHandler: FfiConverterTypeLibraryError_lift
-        )
-}
-    
-    /**
-     * Writes the whole library (books, history, settings) as JSON for the
-     * share sheet and returns the file's path.
-     */
-open func exportLibrary()async throws  -> String  {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_pocket_library_core_fn_method_library_export_library(
                         self.uniffiCloneHandle()
                 )
             },
@@ -1199,6 +1210,29 @@ open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter
             completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeReaderChapter_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
+     * Replaces the library with the backup at `path` (from
+     * `backup_library`, on this phone or another). The archive is checked
+     * in full first: another app's file, a newer version's, or a damaged
+     * one is refused and the library is left as it was. Returns how many
+     * books the restored library has.
+     */
+open func restoreLibrary(path: String)async throws  -> UInt32  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_restore_library(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(path)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_u32,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_u32,
+            freeFunc: ffi_pocket_library_core_rust_future_free_u32,
+            liftFunc: FfiConverterUInt32.lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
 }
@@ -1542,6 +1576,10 @@ public struct Book: Equatable, Hashable {
     public var coverUrl: String?
     public var source: BookSource
     /**
+     * The book's page on Open Library, for catalogue books.
+     */
+    public var webPage: String?
+    /**
      * The book's EPUB is saved, so it can be opened in the reader.
      */
     public var canRead: Bool
@@ -1575,6 +1613,9 @@ public struct Book: Equatable, Hashable {
          * A remote cover, used when there is no saved one.
          */coverUrl: String?, source: BookSource, 
         /**
+         * The book's page on Open Library, for catalogue books.
+         */webPage: String?, 
+        /**
          * The book's EPUB is saved, so it can be opened in the reader.
          */canRead: Bool, 
         /**
@@ -1596,6 +1637,7 @@ public struct Book: Equatable, Hashable {
         self.coverFile = coverFile
         self.coverUrl = coverUrl
         self.source = source
+        self.webPage = webPage
         self.canRead = canRead
         self.readingPosition = readingPosition
         self.addedAtMs = addedAtMs
@@ -1633,6 +1675,7 @@ public struct FfiConverterTypeBook: FfiConverterRustBuffer {
                 coverFile: FfiConverterOptionString.read(from: &buf), 
                 coverUrl: FfiConverterOptionString.read(from: &buf), 
                 source: FfiConverterTypeBookSource.read(from: &buf), 
+                webPage: FfiConverterOptionString.read(from: &buf), 
                 canRead: FfiConverterBool.read(from: &buf), 
                 readingPosition: FfiConverterOptionTypeReadingPosition.read(from: &buf), 
                 addedAtMs: FfiConverterInt64.read(from: &buf), 
@@ -1656,6 +1699,7 @@ public struct FfiConverterTypeBook: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.coverFile, into: &buf)
         FfiConverterOptionString.write(value.coverUrl, into: &buf)
         FfiConverterTypeBookSource.write(value.source, into: &buf)
+        FfiConverterOptionString.write(value.webPage, into: &buf)
         FfiConverterBool.write(value.canRead, into: &buf)
         FfiConverterOptionTypeReadingPosition.write(value.readingPosition, into: &buf)
         FfiConverterInt64.write(value.addedAtMs, into: &buf)
@@ -4073,6 +4117,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_background_work_pending() != 20736) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_backup_library() != 24412) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4089,9 +4136,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_export_books_csv() != 48382) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_pocket_library_core_checksum_method_library_export_library() != 1560) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_history() != 38899) {
@@ -4116,6 +4160,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_reader_chapter() != 45028) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_restore_library() != 48169) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_revision() != 29913) {

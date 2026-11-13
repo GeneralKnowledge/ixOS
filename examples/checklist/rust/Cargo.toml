@@ -25,7 +25,8 @@ crate-type = ["staticlib", "lib"]
 # types; their Swift is ForgeKit's ForgeApp module.
 forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
-forge-storage = { path = "../../../crates/forge-storage" }
+# `csv`: the checklist goes out to, and comes back from, a spreadsheet.
+forge-storage = { path = "../../../crates/forge-storage", features = ["csv"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }

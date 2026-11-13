@@ -591,24 +591,43 @@ impl Library {
             .await
     }
 
-    /// Writes the whole library (books, history, settings) as JSON for the
-    /// share sheet and returns the file's path.
-    pub async fn export_library(&self) -> Result<String, LibraryError> {
-        let (data, store) = (self.data.get(), Arc::clone(&self.store));
-        let work = self.rt.finishing(None);
+    /// Writes a backup of the whole library (books, history, settings,
+    /// covers and EPUBs) as one archive for the share sheet, and returns its
+    /// path. `restore_library` reads it back.
+    pub async fn backup_library(&self) -> Result<String, LibraryError> {
+        // On the command thread, so no change lands while the files are
+        // copied.
         self.rt
-            .run("export", work, move |_| {
-                let json = serde_json::to_vec_pretty(&serde_json::json!({
-                    "format": "pocket-library-export",
-                    "schema_version": store::STORE_VERSION,
-                    "exported_at_ms": now_ms(),
-                    "library": *data,
-                }))
-                .map_err(|e| LibraryError::Storage {
-                    reason: e.to_string(),
-                })?;
-                let path = store.write_export("PocketLibrary.json", &json)?;
+            .command("backup", move |state| {
+                let path = state.store.write_backup(now_ms())?;
                 Ok(path.to_string_lossy().into_owned())
+            })
+            .await
+    }
+
+    /// Replaces the library with the backup at `path` (from
+    /// `backup_library`, on this phone or another). The archive is checked
+    /// in full first: another app's file, a newer version's, or a damaged
+    /// one is refused and the library is left as it was. Returns how many
+    /// books the restored library has.
+    pub async fn restore_library(&self, path: String) -> Result<u32, LibraryError> {
+        let store = Arc::clone(&self.store);
+        let work = self.rt.finishing(None);
+        let (restoring, data) = self
+            .rt
+            .run("unpack-backup", work, move |_| {
+                store.unpack_backup(std::path::Path::new(&path))
+            })
+            .await?;
+        let open_book = Arc::clone(&self.open_book);
+        self.rt
+            .command("restore", move |state| {
+                state.store.adopt_backup(&restoring, &data)?;
+                *lock(&open_book) = None;
+                let books = data.books.len() as u32;
+                state.published.set(data.clone());
+                state.data = data;
+                Ok(books)
             })
             .await
     }

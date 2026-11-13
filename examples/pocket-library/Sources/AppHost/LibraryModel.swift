@@ -318,10 +318,21 @@ public final class LibraryModel {
         self.settings = try await run { try await $0.updateSettings(settings: settings) }
     }
 
-    /// Writes an export file and returns its URL for the share sheet.
-    public func exportLibrary() async throws -> URL {
-        let path = try await run { try await $0.exportLibrary() }
+    /// Writes a backup of the whole library and returns its URL for the
+    /// share sheet.
+    public func backupLibrary() async throws -> URL {
+        let path = try await run { try await $0.backupLibrary() }
         return URL(fileURLWithPath: path)
+    }
+
+    /// Replaces the library with a backup chosen in the document picker
+    /// (security-scoped while Rust reads it); returns how many books it has.
+    public func restoreLibrary(at url: URL) async throws -> UInt32 {
+        #if canImport(Darwin)
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #endif
+        return try await run { try await $0.restoreLibrary(path: url.path) }
     }
 
     /// Writes the books as a spreadsheet (CSV) and returns its URL for the

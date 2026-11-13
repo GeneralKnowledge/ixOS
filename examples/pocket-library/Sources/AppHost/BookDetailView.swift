@@ -12,6 +12,10 @@ struct BookDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var pageText = ""
     @State private var editing = false
+    #if os(iOS)
+    /// The book's Open Library page, shown in a sheet inside the app.
+    @State private var webPage: ForgeWebPage?
+    #endif
     /// The delete confirmation, or an error (ForgeAppKit).
     @State private var alert: ForgeAlert<DetailAction>?
     @State private var finishedCount = 0
@@ -103,6 +107,18 @@ struct BookDetailView: View {
                     }
                 }
             }
+            #if os(iOS)
+            if let page = book.webPage.flatMap(URL.init(string:)) {
+                Section {
+                    Button {
+                        webPage = .link(page, title: book.title)
+                    } label: {
+                        Label("View on Open Library", systemImage: "globe")
+                    }
+                    .accessibilityIdentifier("bookDetail.openLibrary")
+                }
+            }
+            #endif
             Section {
                 Button("Delete Book", role: .destructive) {
                     alert = .confirm(
@@ -118,6 +134,9 @@ struct BookDetailView: View {
             }
         }
         .groupedList()
+        #if os(iOS)
+        .forgeWebSheet($webPage)
+        #endif
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

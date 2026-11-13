@@ -1,5 +1,6 @@
 import SwiftUI
 import WeatherBridge
+import WeatherFFI
 
 /// One place: the big current-conditions header over its sky, then frosted
 /// cards for the summary and hours, the days ahead, and details.
@@ -493,12 +494,26 @@ private struct Tile: View {
 }
 
 private struct Footer: View {
+    #if os(iOS)
+        @State private var credit: URL?
+    #endif
+
     var body: some View {
-        // Open-Meteo's data is CC BY 4.0, which asks for this credit.
-        Link("Weather data by Open-Meteo.com", destination: URL(string: "https://open-meteo.com/")!)
-            .font(.footnote)
-            .foregroundStyle(.white.opacity(0.7))
-            .padding(.top, 8)
+        // Open-Meteo's data is CC BY 4.0, which asks for this credit. On iOS
+        // the page opens in Safari inside the app, so the forecast stays put.
+        #if os(iOS)
+            Button("Weather data by Open-Meteo.com") { credit = URL(string: "https://open-meteo.com/") }
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.7))
+                .padding(.top, 8)
+                .accessibilityIdentifier("forecast.credit")
+                .forgeSafari($credit)
+        #else
+            Link("Weather data by Open-Meteo.com", destination: URL(string: "https://open-meteo.com/")!)
+                .font(.footnote)
+                .foregroundStyle(.white.opacity(0.7))
+                .padding(.top, 8)
+        #endif
     }
 }
 

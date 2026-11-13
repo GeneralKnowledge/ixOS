@@ -68,6 +68,7 @@ enum Source {
     File(PathBuf),
     Bytes(Vec<u8>),
     /// A database copy made for this backup, deleted after writing.
+    #[cfg(feature = "sqlite")]
     Temporary(PathBuf),
 }
 
@@ -89,6 +90,7 @@ pub struct Backup {
     schema_version: u32,
     created_unix_ms: i64,
     entries: Vec<(String, Source)>,
+    #[cfg(feature = "sqlite")]
     scratch: Option<tempfile_dir::Scratch>,
 }
 
@@ -99,6 +101,7 @@ impl Backup {
             schema_version,
             created_unix_ms: now_unix_ms,
             entries: Vec::new(),
+            #[cfg(feature = "sqlite")]
             scratch: None,
         }
     }
@@ -215,21 +218,27 @@ impl Backup {
                     zip.write_all(chunk)
                         .map_err(|e| StorageError::write("write the backup", e))
                 };
-                match source {
-                    Source::Bytes(data) => copy(data)?,
-                    Source::File(path) | Source::Temporary(path) => {
-                        let mut file = fs::File::open(path)
+                let path = match source {
+                    Source::Bytes(data) => {
+                        copy(data)?;
+                        None
+                    }
+                    Source::File(path) => Some(path),
+                    #[cfg(feature = "sqlite")]
+                    Source::Temporary(path) => Some(path),
+                };
+                if let Some(path) = path {
+                    let mut file = fs::File::open(path)
+                        .map_err(|e| StorageError::read("read a file to back up", e))?;
+                    let mut buffer = vec![0u8; 64 * 1024];
+                    loop {
+                        let n = file
+                            .read(&mut buffer)
                             .map_err(|e| StorageError::read("read a file to back up", e))?;
-                        let mut buffer = vec![0u8; 64 * 1024];
-                        loop {
-                            let n = file
-                                .read(&mut buffer)
-                                .map_err(|e| StorageError::read("read a file to back up", e))?;
-                            if n == 0 {
-                                break;
-                            }
-                            copy(&buffer[..n])?;
+                        if n == 0 {
+                            break;
                         }
+                        copy(&buffer[..n])?;
                     }
                 }
                 manifest.files.push(BackupEntry {
@@ -440,6 +449,7 @@ fn hex(bytes: &[u8]) -> String {
 
 /// A private scratch directory for database copies, removed when the
 /// backup is dropped.
+#[cfg(feature = "sqlite")]
 mod tempfile_dir {
     use std::path::{Path, PathBuf};
 

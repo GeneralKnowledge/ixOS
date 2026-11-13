@@ -38,6 +38,9 @@ pub(crate) struct Stored {
     /// Added in schema version 2.
     #[serde(default)]
     pub goals: Vec<StoredGoal>,
+    /// The daily reminder (GD5). Missing in older files: off.
+    #[serde(default)]
+    pub reminder: crate::reminders::ReminderSettings,
     /// The pathways goals refer to (not saved).
     #[serde(skip)]
     pub pathways: Pathways,

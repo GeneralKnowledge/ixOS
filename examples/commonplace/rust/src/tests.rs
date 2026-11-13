@@ -410,6 +410,27 @@ fn background_refresh_runs_while_the_app_is_in_the_background() {
 }
 
 #[test]
+fn new_article_alerts_are_off_until_turned_on_and_say_what_arrived() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = subscribed(dir.path());
+    assert!(!core.new_article_alerts());
+    // No native services on Linux, so no permission prompt: it just turns on.
+    assert!(block_on(core.set_new_article_alerts(true)).unwrap());
+    assert!(core.new_article_alerts());
+    assert!(!block_on(core.set_new_article_alerts(false)).unwrap());
+    assert!(!core.new_article_alerts());
+    // Turning off twice is fine.
+    assert!(!block_on(core.set_new_article_alerts(false)).unwrap());
+
+    let one = new_articles_notification(1, &["Alpha".into()]);
+    assert_eq!(one.title, "1 new article");
+    assert_eq!(one.category.as_deref(), Some(NEW_ARTICLES));
+    let three = new_articles_notification(5, &["A".into(), "B".into(), "C".into()]);
+    assert_eq!(three.title, "5 new articles");
+    assert_eq!(three.body, "A\nB\nC");
+}
+
+#[test]
 fn old_read_articles_are_forgotten_once_the_feed_drops_them() {
     let dir = tempfile::tempdir().unwrap();
     let mut store = Store::open(dir.path()).unwrap();

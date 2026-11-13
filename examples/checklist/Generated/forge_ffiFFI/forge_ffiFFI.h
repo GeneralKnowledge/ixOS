@@ -283,9 +283,19 @@ uint64_t uniffi_checklist_core_fn_method_checklistcore_clear_done(uint64_t ptr
 RustBuffer uniffi_checklist_core_fn_method_checklistcore_events(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_EXPORT_CSV
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_EXPORT_CSV
+uint64_t uniffi_checklist_core_fn_method_checklistcore_export_csv(uint64_t ptr, RustBuffer cancellation
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_EXPORT_TEXT
 #define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_EXPORT_TEXT
 uint64_t uniffi_checklist_core_fn_method_checklistcore_export_text(uint64_t ptr, RustBuffer cancellation
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_IMPORT_CSV
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_IMPORT_CSV
+uint64_t uniffi_checklist_core_fn_method_checklistcore_import_csv(uint64_t ptr, RustBuffer path
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_FN_METHOD_CHECKLISTCORE_ITEMS
@@ -644,9 +654,21 @@ uint16_t uniffi_checklist_core_checksum_method_checklistcore_events(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_EXPORT_CSV
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_EXPORT_CSV
+uint16_t uniffi_checklist_core_checksum_method_checklistcore_export_csv(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_EXPORT_TEXT
 #define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_EXPORT_TEXT
 uint16_t uniffi_checklist_core_checksum_method_checklistcore_export_text(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_IMPORT_CSV
+#define UNIFFI_FFIDEF_UNIFFI_CHECKLIST_CORE_CHECKSUM_METHOD_CHECKLISTCORE_IMPORT_CSV
+uint16_t uniffi_checklist_core_checksum_method_checklistcore_import_csv(void
     
 );
 #endif

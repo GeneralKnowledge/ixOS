@@ -54,6 +54,12 @@ struct FeedListView: View {
                             }
                         }
                     }
+                    Section {
+                        Toggle("Notify About New Articles", isOn: alertsBinding)
+                            .accessibilityIdentifier("feeds.newArticleAlerts")
+                    } footer: {
+                        Text("When a refresh in the background finds new articles.")
+                    }
                 }
             }
             .overlay { emptyState }
@@ -128,6 +134,13 @@ struct FeedListView: View {
             }
             .forgeAlert($model.alert)
         }
+    }
+
+    private var alertsBinding: Binding<Bool> {
+        Binding(
+            get: { model.newArticleAlerts },
+            set: { on in Task { await model.setNewArticleAlerts(on) } }
+        )
     }
 
     private func smartRow(_ timeline: Timeline, systemImage: String, tone: ForgeTone) -> some View {

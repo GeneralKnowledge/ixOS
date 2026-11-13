@@ -8,6 +8,36 @@ struct MyDogView: View {
     @State private var editing = false
     @State private var confirmErase = false
 
+    /// 18:00 unless the owner picks another time.
+    private static let defaultReminderMinute: UInt32 = 18 * 60
+
+    private var reminderOn: Binding<Bool> {
+        Binding(
+            get: { model.reminderMinute != nil },
+            set: { on in
+                Task { await model.setReminder(on ? Self.defaultReminderMinute : nil) }
+            }
+        )
+    }
+
+    /// The reminder's minute after midnight as a time today, for the picker.
+    private var reminderTime: Binding<Date> {
+        let calendar = Calendar.current
+        return Binding(
+            get: {
+                let minute = Int(model.reminderMinute ?? Self.defaultReminderMinute)
+                return calendar.date(
+                    bySettingHour: minute / 60, minute: minute % 60, second: 0, of: .now
+                ) ?? .now
+            },
+            set: { date in
+                let parts = calendar.dateComponents([.hour, .minute], from: date)
+                let minute = UInt32((parts.hour ?? 18) * 60 + (parts.minute ?? 0))
+                Task { await model.setReminder(minute) }
+            }
+        )
+    }
+
     var body: some View {
         NavigationStack {
             List {
@@ -74,6 +104,20 @@ struct MyDogView: View {
                             }
                             .accessibilityElement(children: .combine)
                         }
+                    }
+                }
+                if model.dog != nil {
+                    Section {
+                        Toggle("Daily Reminder", isOn: reminderOn)
+                            .accessibilityIdentifier("dog.reminders.toggle")
+                        if model.reminderMinute != nil {
+                            DatePicker("Time", selection: reminderTime, displayedComponents: .hourAndMinute)
+                                .accessibilityIdentifier("dog.reminders.time")
+                        }
+                    } header: {
+                        Text("Reminder")
+                    } footer: {
+                        Text("One nudge a day, skipped once you've practised. Tap Not Today on it to skip a day.")
                     }
                 }
                 Section {
