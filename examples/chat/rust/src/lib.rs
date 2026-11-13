@@ -49,7 +49,7 @@ forge_runtime::app_shell! {
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
 // `ForgeServices.install()`; see docs/native-services.md.
-forge_services::native_services!(audio, biometrics);
+forge_services::native_services!(audio, biometrics, http);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).
@@ -125,7 +125,7 @@ impl ChatCore {
         let registered = {
             let server_url = server_url.clone();
             background("chat-sign-up", move || {
-                HttpRepo::with_ureq(server_url)
+                server_repo(server_url)
                     .register(&display_name)
                     .map_err(ChatError::from)
             })
@@ -160,7 +160,7 @@ impl ChatCore {
         let stored = self.credentials.load()?.ok_or(ChatError::NotSignedIn)?;
         let account = stored.public();
         let checked = background("chat-check-account", move || {
-            HttpRepo::with_ureq(&stored.server_url)
+            server_repo(&stored.server_url)
                 .with_token(&stored.token)
                 .identity()
                 .map_err(ChatError::from)
@@ -779,7 +779,7 @@ impl ChatCore {
         std::fs::create_dir_all(&directory).map_err(|err| ChatError::Storage {
             reason: format!("create {}: {err}", directory.display()),
         })?;
-        let repo = HttpRepo::with_ureq(&stored.server_url).with_token(&stored.token);
+        let repo = server_repo(&stored.server_url).with_token(&stored.token);
         let config = ChatConfig {
             user: stored.display_name.clone(),
             user_id: stored.user_id.clone(),
@@ -828,6 +828,26 @@ impl ChatCore {
         }
         error
     }
+}
+
+/// The chat server's API, through URLSession once the host has installed
+/// the `http` service (on iOS), and through ureq before that and in tests.
+fn server_repo(server_url: impl Into<String>) -> HttpRepo {
+    static CLIENT: std::sync::OnceLock<Arc<native::http::PreferInstalled>> =
+        std::sync::OnceLock::new();
+    let client = CLIENT.get_or_init(|| {
+        Arc::new(native::http::HttpService::prefer_installed(
+            Arc::new(forge_net::UreqClient::with_user_agent(concat!(
+                "forge-chat-example/",
+                env!("CARGO_PKG_VERSION")
+            ))),
+            |client| client,
+        ))
+    });
+    HttpRepo::new(
+        Arc::clone(client) as Arc<dyn forge_net::HttpClient>,
+        server_url,
+    )
 }
 
 /// Checks the server URL the user typed: http(s), no trailing slash.

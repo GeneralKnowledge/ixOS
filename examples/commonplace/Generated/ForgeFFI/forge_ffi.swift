@@ -1812,19 +1812,195 @@ public func FfiConverterTypeBackgroundTaskRun_lower(_ value: BackgroundTaskRun) 
 
 
 /**
- * Implemented by the host (iOS: `URLSession`). `send` blocks
- * its calling thread, a Rust worker thread.
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+public protocol HttpStreamBodyProtocol: AnyObject, Sendable {
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+    func fail(error: HttpTransportError) 
+    
+    /**
+     * The server closed the body normally.
+     */
+    func finish() 
+    
+    /**
+     * The next bytes of the body.
+     */
+    func receive(data: Data) 
+    
+}
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+open class HttpStreamBody: HttpStreamBodyProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_commonplace_core_fn_clone_httpstreambody(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_commonplace_core_fn_free_httpstreambody(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+open func fail(error: HttpTransportError)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_httpstreambody_fail(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpTransportError_lower(error),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The server closed the body normally.
+     */
+open func finish()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_httpstreambody_finish(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next bytes of the body.
+     */
+open func receive(data: Data)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_httpstreambody_receive(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(data),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamBody: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpStreamBody
+
+    public static func lift(_ handle: UInt64) throws -> HttpStreamBody {
+        return HttpStreamBody(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: HttpStreamBody) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamBody {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpStreamBody, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lift(_ handle: UInt64) throws -> HttpStreamBody {
+    return try FfiConverterTypeHttpStreamBody.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lower(_ value: HttpStreamBody) -> UInt64 {
+    return FfiConverterTypeHttpStreamBody.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
  */
 public protocol HttpTransport: AnyObject, Sendable {
     
     func send(request: HttpRequest) throws  -> HttpResponse
     
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    func openStream(request: HttpRequest, body: HttpStreamBody) throws  -> HttpStreamHead
+    
     func cancel(id: UInt64) 
     
 }
 /**
- * Implemented by the host (iOS: `URLSession`). `send` blocks
- * its calling thread, a Rust worker thread.
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
  */
 open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
     fileprivate let handle: UInt64
@@ -1889,6 +2065,23 @@ open func send(request: HttpRequest)throws  -> HttpResponse  {
 })
 }
     
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+open func openStream(request: HttpRequest, body: HttpStreamBody)throws  -> HttpStreamHead  {
+    return try  FfiConverterTypeHttpStreamHead_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_httptransport_open_stream(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),
+        FfiConverterTypeHttpStreamBody_lower(body),uniffiCallStatus
+    )
+})
+}
+    
 open func cancel(id: UInt64)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_commonplace_core_fn_method_httptransport_cancel(
@@ -1944,6 +2137,33 @@ fileprivate struct UniffiCallbackInterfaceHttpTransport {
 
             
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpResponse_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        openStream: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            body: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpStreamHead in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.openStream(
+                     request: try FfiConverterTypeHttpRequest_lift(request),
+                     body: try FfiConverterTypeHttpStreamBody_lift(body)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpStreamHead_lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
                 makeCall: makeCall,
@@ -3900,6 +4120,63 @@ public func FfiConverterTypeHttpResponse_lift(_ buf: RustBuffer) throws -> HttpR
 #endif
 public func FfiConverterTypeHttpResponse_lower(_ value: HttpResponse) -> RustBuffer {
     return FfiConverterTypeHttpResponse.lower(value)
+}
+
+
+/**
+ * The status and headers of a streamed response.
+ */
+public struct HttpStreamHead: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader]) {
+        self.status = status
+        self.headers = headers
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpStreamHead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamHead: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamHead {
+        return
+            try HttpStreamHead(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpStreamHead, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lift(_ buf: RustBuffer) throws -> HttpStreamHead {
+    return try FfiConverterTypeHttpStreamHead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> RustBuffer {
+    return FfiConverterTypeHttpStreamHead.lower(value)
 }
 
 
@@ -6393,10 +6670,22 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire() != 42460) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_httpstreambody_fail() != 56233) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_httpstreambody_finish() != 1217) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_httpstreambody_receive() != 42533) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_httptransport_send() != 59421) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_commonplace_core_checksum_method_httptransport_cancel() != 43012) {
+    if (uniffi_commonplace_core_checksum_method_httptransport_open_stream() != 31751) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_httptransport_cancel() != 11905) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_constructor_appcore_new() != 61214) {
