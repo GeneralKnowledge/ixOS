@@ -339,7 +339,14 @@ typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
-typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, uint64_t, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -403,7 +410,8 @@ typedef struct UniffiVTableCallbackInterfaceHttpTransport {
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
     UniffiCallbackInterfaceClone _Nonnull uniffiClone;
     UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
-    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
 } UniffiVTableCallbackInterfaceHttpTransport;
 
 #endif
@@ -687,6 +695,31 @@ void uniffi_commonplace_core_fn_free_backgroundtaskrun(uint64_t handle, RustCall
 void uniffi_commonplace_core_fn_method_backgroundtaskrun_expire(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_commonplace_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FREE_HTTPSTREAMBODY
+void uniffi_commonplace_core_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_commonplace_core_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_commonplace_core_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_commonplace_core_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPTRANSPORT
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_CLONE_HTTPTRANSPORT
 uint64_t uniffi_commonplace_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -705,6 +738,11 @@ void uniffi_commonplace_core_fn_init_callback_vtable_httptransport(const UniffiV
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPTRANSPORT_SEND
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPTRANSPORT_SEND
 RustBuffer uniffi_commonplace_core_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_commonplace_core_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
@@ -1311,9 +1349,33 @@ uint16_t uniffi_commonplace_core_checksum_method_backgroundtaskrun_expire(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_commonplace_core_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_commonplace_core_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_commonplace_core_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
 uint16_t uniffi_commonplace_core_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_commonplace_core_checksum_method_httptransport_open_stream(void
     
 );
 #endif

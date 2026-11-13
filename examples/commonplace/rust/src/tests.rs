@@ -116,6 +116,19 @@ fn a_feed_can_only_be_added_once_and_must_be_a_feed() {
         block_on(core.add_feed(URL.into(), None)),
         Err(AppError::AlreadySubscribed { feed_id: feed.id })
     );
+    // The same feed written another way is still the same feed.
+    for again in [
+        "http://fixtures.example/feed.xml",
+        "https://FIXTURES.example/feed.xml/",
+        "fixtures.example/feed.xml",
+    ] {
+        assert_eq!(
+            block_on(core.add_feed(again.into(), None)),
+            Err(AppError::AlreadySubscribed { feed_id: feed.id }),
+            "{again}"
+        );
+    }
+    assert!(!same_address(URL, "https://fixtures.example/other.xml"));
     drop(core);
 
     let dir = tempfile::tempdir().unwrap();
@@ -213,7 +226,8 @@ fn an_unchanged_or_failing_feed_is_reported_not_fatal() {
     assert_eq!(report.failures.len(), 1);
     assert_eq!(report.failures[0].error, AppError::Http { status: 500 });
     assert_eq!(report.failures[0].title, "Fixture Feed");
-    assert_eq!(core.feeds()[0].last_error.as_deref(), Some("HTTP 500"));
+    // The kind and status, for the screen to word; never the reason.
+    assert_eq!(core.feeds()[0].last_error.as_deref(), Some("http-500"));
     // The articles are still there.
     assert_eq!(core.timeline(Timeline::All).len(), 2);
 }
@@ -414,4 +428,62 @@ fn new_article_alerts_are_off_until_turned_on_and_say_what_arrived() {
     let three = new_articles_notification(5, &["A".into(), "B".into(), "C".into()]);
     assert_eq!(three.title, "5 new articles");
     assert_eq!(three.body, "A\nB\nC");
+}
+
+#[test]
+fn old_read_articles_are_forgotten_once_the_feed_drops_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut store = Store::open(dir.path()).unwrap();
+    let day = 24 * 60 * 60 * 1000;
+    let first = feed::parse(&rss(&[("a", "Alpha"), ("b", "Beta"), ("c", "Gamma")])).unwrap();
+    let (id, _) = store.add_feed(URL, &first, None, None, 0).unwrap();
+    let ids = |store: &Store| -> Vec<String> {
+        let mut titles: Vec<String> = store
+            .snapshot()
+            .unwrap()
+            .articles
+            .into_iter()
+            .map(|a| a.title)
+            .collect();
+        titles.sort();
+        titles
+    };
+    let article = |store: &Store, title: &str| {
+        store
+            .snapshot()
+            .unwrap()
+            .articles
+            .into_iter()
+            .find(|a| a.title == title)
+            .unwrap()
+            .id
+    };
+    // Alpha read, Beta read and bookmarked, Gamma unread.
+    store
+        .set_flag(article(&store, "Alpha"), Flag::Read, true)
+        .unwrap();
+    let beta = article(&store, "Beta");
+    store.set_flag(beta, Flag::Read, true).unwrap();
+    store.set_flag(beta, Flag::Bookmarked, true).unwrap();
+
+    // A month and more later the feed lists only a new post.
+    let later = feed::parse(&rss(&[("d", "Delta")])).unwrap();
+    let refresh = |feed: feed::ParsedFeed| Fetched {
+        feed_id: id,
+        result: Ok(FetchResult::Parsed {
+            feed,
+            etag: None,
+            last_modified: None,
+        }),
+    };
+    store.apply(&[refresh(later)], 31 * day).unwrap();
+    // Read Alpha is gone; bookmarked Beta and unread Gamma stay.
+    assert_eq!(ids(&store), ["Beta", "Delta", "Gamma"]);
+
+    // A read article the feed still lists is kept, or it would come back.
+    let delta = article(&store, "Delta");
+    store.set_flag(delta, Flag::Read, true).unwrap();
+    let still = feed::parse(&rss(&[("d", "Delta")])).unwrap();
+    store.apply(&[refresh(still)], 90 * day).unwrap();
+    assert_eq!(ids(&store), ["Beta", "Delta", "Gamma"]);
 }

@@ -198,17 +198,6 @@ pub struct StorageInfo {
     pub bytes: u64,
 }
 
-/// Something the host may want to react to.
-#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
-pub enum LibraryEvent {
-    /// The library changed and was saved. Re-run the current query.
-    Changed { revision: u64 },
-    /// Settings changed.
-    SettingsChanged { settings: LibrarySettings },
-    /// This stream fell behind and missed `count` events; re-read everything.
-    EventsDropped { count: u64 },
-}
-
 // MARK: Reading EPUBs
 
 /// A place in a book: a chapter (an index into `ReaderContents::chapters`)

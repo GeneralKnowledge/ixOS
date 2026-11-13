@@ -376,7 +376,7 @@ No background mode or entitlement is needed. Headers are saved in the ledger, so
 
 ### HTTP through URLSession (`http`)
 
-Ordinary requests (`send`, `send_cancellable`, `send_file`) through `URLSession` on iOS instead of Rust's own TLS connections, so they follow the system's proxy and VPN settings, use HTTP/2 and HTTP/3, respect Low Data Mode and use the system trust store. Code written against `forge_net::HttpClient` does not change:
+Requests (`send`, `send_cancellable`, `send_file`) and streams (`open_stream`, Server-Sent Events) through `URLSession` on iOS instead of Rust's own TLS connections, so they follow the system's proxy and VPN settings, use HTTP/2 and HTTP/3, respect Low Data Mode and use the system trust store. Code written against `forge_net::HttpClient` does not change:
 
 ```toml
 forge-services = { path = "...", features = ["http"] }
@@ -394,7 +394,9 @@ let http = native::http::HttpService::prefer_installed(
 );
 ```
 
-Cancelling a `CancelHandle` cancels the `URLSessionTask`. The response body is limited (8 MiB unless `configure` changes it): the adapter stops a response that announces or grows past the limit. Errors map to `NetError` the way ureq's do (`Offline`, `Certificate`, `Timeout`, `Cancelled`, `Transport`). Streams (`open_stream`, Server-Sent Events) still go through the fallback; they move in a later step. Commonplace fetches its feeds this way.
+Cancelling a `CancelHandle` cancels the `URLSessionTask`. The response body is limited (8 MiB unless `configure` changes it): the adapter stops a response that announces or grows past the limit. Errors map to `NetError` the way ureq's do (`Offline`, `Certificate`, `Timeout`, `Cancelled`, `Transport`). A stream returns once its status and headers arrive (within the request's timeout); its body is then read as it comes in, with no size limit and no idle timeout (URLSession's idle timeout is set to a day, since an event stream may be quiet). Cancelling, or dropping the body before its end, cancels the task, and a read blocked on a silent server fails at once with `forge_net::cancelled_io_error`. Commonplace fetches its feeds this way, and Chat sends its requests and its live event stream this way.
+
+Unlike ureq, `URLSession` applies App Transport Security: plain `http://` to a host name is refused unless the app allows it, while numeric IP addresses on the local network are not blocked by ATS (the local network permission still applies).
 
 **Foreground only.** Apart from `transfers`, nothing here runs in the background. Background location needs the "always" permission and the `location` background mode, which no service asks for yet.
 
@@ -408,7 +410,7 @@ The services need no `Info.plist` keys of their own. Notifications, Keychain, fi
 - **Universal links** (`https://example.com/...`) need the `associated_domains` entitlement in `forge.toml` and an `apple-app-site-association` file on your domain. A free Apple ID cannot sign that entitlement.
 - **Permissions that need a usage description** (camera, photos, location) go in `forge.toml` `[ios.permissions]` when you add their adapter. Asking for one without its description crashes the app.
 - **The microphone** (`microphone` in `[ios.permissions]`) is needed by the optional `audio` service.
-- **Networking from Rust and the local network.** `forge-net` (ureq) opens plain sockets, not `URLSession`, so App Transport Security doesn't apply: plain `http://` works without ATS exceptions. iOS's local network privacy permission does apply. The first connection to an address on the LAN (a device, or a development server on your laptop such as `http://192.168.1.20:8765`) shows the system prompt, and until the person allows it the connection fails as if nothing answered. Set `local_network` in `[ios.permissions]` (it writes `NSLocalNetworkUsageDescription`), and if a LAN connection fails, check Settings > Privacy & Security > Local Network before debugging ATS. Commonplace does this for its benchmark's fixture server.
+- **Networking from Rust and the local network.** `forge-net`'s `UreqClient` opens plain sockets, not `URLSession`, so App Transport Security doesn't apply to it: plain `http://` works without ATS exceptions. Requests through the `http` service do go through `URLSession` and ATS (see above). iOS's local network privacy permission does apply. The first connection to an address on the LAN (a device, or a development server on your laptop such as `http://192.168.1.20:8765`) shows the system prompt, and until the person allows it the connection fails as if nothing answered. Set `local_network` in `[ios.permissions]` (it writes `NSLocalNetworkUsageDescription`), and if a LAN connection fails, check Settings > Privacy & Security > Local Network before debugging ATS. Commonplace does this for its benchmark's fixture server.
 
 ## Adding a capability
 

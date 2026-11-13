@@ -13,7 +13,9 @@ extension ForgeServices {
 /// `HttpTransport` backed by `URLSession`, so Rust's ordinary requests get
 /// the system's proxy and VPN settings, HTTP/2 and HTTP/3, Low Data Mode and
 /// trust store. Rust calls `send` from a worker thread and it blocks until
-/// the response is complete; `cancel` stops it from another thread.
+/// the response is complete; `openStream` blocks only until the headers
+/// arrive and then hands the body to Rust as it comes in (Server-Sent
+/// Events); `cancel` stops either from another thread.
 public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDelegate,
     @unchecked Sendable
 {
@@ -26,10 +28,16 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
         var response: URLResponse?
         var error: Error?
         var tooLarge = false
+        /// For `send`: the whole response arrived. For `openStream`: the
+        /// headers arrived, or the request failed before them.
         let done = DispatchSemaphore(value: 0)
+        /// Set for a stream: where its body goes once the headers are in.
+        let stream: HttpStreamBody?
+        var headersDelivered = false
 
-        init(limit: UInt64) {
+        init(limit: UInt64, stream: HttpStreamBody? = nil) {
             self.limit = limit
+            self.stream = stream
         }
     }
 
@@ -38,6 +46,8 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     private var pending: [Int: Pending] = [:]
     /// By Rust's request id, for `cancel`.
     private var tasks: [UInt64: URLSessionTask] = [:]
+    /// Rust's request id by `taskIdentifier`, to unregister a finished stream.
+    private var ids: [Int: UInt64] = [:]
     /// Ids cancelled before their task started.
     private var cancelledEarly: Set<UInt64> = []
     private var announced = false
@@ -57,12 +67,65 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     // MARK: HttpTransport
 
     public func send(request: HttpRequest) throws -> HttpResponse {
+        let state = Pending(limit: request.maxBodyBytes)
+        _ = try start(request, state: state, idleTimeout: nil)
+        state.done.wait()
+        finished(request.id)
+
+        if state.tooLarge {
+            throw HttpTransportError.Transport(
+                reason: "the response body is larger than \(state.limit) bytes")
+        }
+        if let error = state.error {
+            throw Self.transportError(error)
+        }
+        guard let http = state.response as? HTTPURLResponse else {
+            throw HttpTransportError.Transport(reason: "not an HTTP response")
+        }
+        return HttpResponse(
+            status: UInt16(clamping: http.statusCode), headers: Self.headers(of: http),
+            body: state.data)
+    }
+
+    public func openStream(request: HttpRequest, body: HttpStreamBody) throws -> HttpStreamHead {
+        let state = Pending(limit: .max, stream: body)
+        // URLSession's timeout is an idle timeout, and a stream may be
+        // quiet for long stretches: give the body a day, and bound the
+        // wait for the headers here instead.
+        let task = try start(request, state: state, idleTimeout: 24 * 60 * 60)
+        let waited = state.done.wait(
+            timeout: .now() + max(0.001, Double(request.timeoutMs) / 1000))
+        if waited == .timedOut {
+            task.cancel()
+            state.done.wait()
+            finished(request.id)
+            throw HttpTransportError.Timeout
+        }
+        if let error = state.error {
+            finished(request.id)
+            throw Self.transportError(error)
+        }
+        guard let http = state.response as? HTTPURLResponse else {
+            task.cancel()
+            finished(request.id)
+            throw HttpTransportError.Transport(reason: "not an HTTP response")
+        }
+        // The task stays registered for `cancel` until it completes.
+        return HttpStreamHead(
+            status: UInt16(clamping: http.statusCode), headers: Self.headers(of: http))
+    }
+
+    /// Builds and starts the task for `request`, registered for `cancel`.
+    private func start(_ request: HttpRequest, state: Pending, idleTimeout: Double?) throws
+        -> URLSessionTask
+    {
         guard let url = URL(string: request.url), url.scheme == "https" || url.scheme == "http"
         else {
             throw HttpTransportError.InvalidRequest(reason: "not an http(s) URL")
         }
         var urlRequest = URLRequest(
-            url: url, timeoutInterval: max(0.001, Double(request.timeoutMs) / 1000))
+            url: url,
+            timeoutInterval: idleTimeout ?? max(0.001, Double(request.timeoutMs) / 1000))
         urlRequest.httpMethod = request.method
         for header in request.headers {
             urlRequest.addValue(header.value, forHTTPHeaderField: header.name)
@@ -76,7 +139,6 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
             }
             task = session.dataTask(with: urlRequest)
         }
-        let state = Pending(limit: request.maxBodyBytes)
         lock.lock()
         if cancelledEarly.remove(request.id) != nil {
             lock.unlock()
@@ -84,6 +146,7 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
         }
         pending[task.taskIdentifier] = state
         tasks[request.id] = task
+        ids[task.taskIdentifier] = request.id
         let firstRequest = !announced
         announced = true
         lock.unlock()
@@ -93,28 +156,21 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
             NSLog("[forge] http: requests go through URLSession")
         }
         task.resume()
-        state.done.wait()
+        return task
+    }
 
+    private func finished(_ id: UInt64) {
         lock.lock()
-        tasks[request.id] = nil
+        if let task = tasks.removeValue(forKey: id) {
+            ids[task.taskIdentifier] = nil
+        }
         lock.unlock()
+    }
 
-        if state.tooLarge {
-            throw HttpTransportError.Transport(
-                reason: "the response body is larger than \(state.limit) bytes")
+    private static func headers(of http: HTTPURLResponse) -> [HttpHeader] {
+        http.allHeaderFields.map { name, value in
+            HttpHeader(name: "\(name)", value: "\(value)")
         }
-        if let error = state.error {
-            throw Self.transportError(error)
-        }
-        guard let http = state.response as? HTTPURLResponse else {
-            throw HttpTransportError.Transport(reason: "not an HTTP response")
-        }
-        var headers: [HttpHeader] = []
-        for (name, value) in http.allHeaderFields {
-            headers.append(HttpHeader(name: "\(name)", value: "\(value)"))
-        }
-        return HttpResponse(
-            status: UInt16(clamping: http.statusCode), headers: headers, body: state.data)
     }
 
     public func cancel(id: UInt64) {
@@ -145,6 +201,12 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
             return
         }
         state.response = response
+        if state.stream != nil {
+            state.headersDelivered = true
+            completionHandler(.allow)
+            state.done.signal()
+            return
+        }
         if response.expectedContentLength > 0,
             UInt64(response.expectedContentLength) > state.limit
         {
@@ -159,6 +221,10 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
         _ session: URLSession, dataTask: URLSessionDataTask, didReceive data: Data
     ) {
         guard let state = state(of: dataTask), !state.tooLarge else { return }
+        if let stream = state.stream {
+            stream.receive(data: data)
+            return
+        }
         state.data.append(data)
         if UInt64(state.data.count) > state.limit {
             state.tooLarge = true
@@ -172,8 +238,20 @@ public final class ForgeHTTPTransport: NSObject, HttpTransport, URLSessionDataDe
     ) {
         lock.lock()
         let state = pending.removeValue(forKey: task.taskIdentifier)
+        if state?.stream != nil, let id = ids.removeValue(forKey: task.taskIdentifier) {
+            tasks[id] = nil
+        }
         lock.unlock()
         guard let state else { return }
+        if let stream = state.stream, state.headersDelivered {
+            // `openStream` has returned: the body's end goes to Rust.
+            if let error {
+                stream.fail(error: Self.transportError(error))
+            } else {
+                stream.finish()
+            }
+            return
+        }
         if state.response == nil {
             state.response = task.response
         }

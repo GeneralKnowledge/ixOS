@@ -287,8 +287,13 @@ public final class ForgeHost<Core: ForgeCore> {
 
 /// Runs a cancellable Rust call so that cancelling the Swift task (a view
 /// closing, `.task(id:)` restarting) cancels the work in Rust too. UniFFI
-/// does not forward Task cancellation by itself.
-public func withRustCancellation<T>(_ body: (Cancellation) async throws -> T) async throws -> T {
+/// does not forward Task cancellation by itself. Runs `body` on the
+/// caller's actor, so a main-actor model can call it under Swift 6's
+/// strict concurrency checks.
+public func withRustCancellation<T>(
+    isolation: isolated (any Actor)? = #isolation,
+    _ body: (Cancellation) async throws -> T
+) async throws -> T {
     let cancellation = Cancellation()
     return try await withTaskCancellationHandler {
         try await body(cancellation)
@@ -322,6 +327,33 @@ public enum ForgeErrors {
         case .newerData: return "This data was saved by a newer version of the app. Update the app to open it."
         case .shutDown: return "The app is closing."
         case .internal: return "Something went wrong."
+        }
+    }
+
+    /// A short alert title by kind, so an app's alerts say what kind of
+    /// problem it was without each app writing its own table. Apps override
+    /// it only for their domain cases.
+    public static func title(_ kind: ErrorKind) -> String {
+        switch kind {
+        case .invalid: return "Check the Details"
+        case .notFound: return "Not Found"
+        case .unavailable: return "Can't Connect"
+        case .interrupted: return "Stopped"
+        case .cancelled: return "Cancelled"
+        case .needsUser: return "Permission Needed"
+        case .corrupt: return "Can't Read Saved Data"
+        case .newerData: return "Update the App"
+        case .shutDown: return "Closing"
+        case .internal: return "Something Went Wrong"
+        }
+    }
+
+    /// Whether trying the same thing again might work: the network or a
+    /// service was down, or the app left the screen part way.
+    public static func isRetryable(_ kind: ErrorKind) -> Bool {
+        switch kind {
+        case .unavailable, .interrupted: return true
+        default: return false
         }
     }
 }

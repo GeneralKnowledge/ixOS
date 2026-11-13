@@ -1,18 +1,28 @@
 //! Pocket Library's Rust core: an offline-first reading tracker.
 //!
 //! Everything the SwiftUI host calls is in this file's `#[uniffi::export]`
-//! blocks; `forge build` turns them into Swift (`import ForgeFFI`). The rules
-//! are in [`domain`], the files in [`store`], the online catalogue in
-//! [`catalogue`], EPUB import in [`epub`] and the reader's text in
+//! blocks; `forge build` turns them into Swift (`import PocketLibraryFFI`).
+//! The rules are in [`domain`], the files in [`store`], the online catalogue
+//! in [`catalogue`], EPUB import in [`epub`] and the reader's text in
 //! [`reader`].
 //!
-//! Threading: every method that touches the disk or the network is `async`
-//! and runs on its own thread ([`forge_runtime::background`]), so Swift can
-//! await it from the main actor. The plain methods (`books`, `stats`, …) only
-//! read memory and are cheap enough for the UI thread.
+//! Built on the application runtime (`forge_app`), like Checklist:
 //!
-//! Each change is saved before the call returns, so the app can be suspended
-//! or killed at any moment without losing anything.
+//! - **Commands** (adding, editing and deleting books, progress, settings,
+//!   the last step of every import) run one at a time on the runtime's
+//!   command thread. Each saves before it returns; the runtime then raises
+//!   the revision and announces `Changed`, and the host re-reads.
+//! - **Queries** (`books`, `stats`, …) read the last saved library
+//!   ([`Published`]) and never wait for a command, so they are cheap
+//!   enough for the UI thread.
+//! - **Work** that is slow or touches the network runs on its own thread
+//!   in a runtime scope: catalogue search is on-screen work (stopped by the
+//!   background), imports and exports are finishing work (the host asks iOS
+//!   for time to finish them), and the reader's file reads may simply pause
+//!   while the app is suspended.
+//! - **The runtime contract** (`events`, `set_phase`, `revision`, background
+//!   work, the launch report, `shutdown`) comes from
+//!   `forge_app::export_runtime!`; ForgeKit's `ForgeHost` drives it.
 
 pub mod catalogue;
 mod csv_rows;
@@ -24,11 +34,11 @@ pub mod reader;
 pub mod store;
 
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
+use forge_app::{Cancellation, DataDirectory, ErrorKind, Published, Runtime};
 use forge_net::UreqClient;
-use forge_runtime::{background, background_cancellable, lock, now_ms, CancelHandle, EventHub};
+use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
 use domain::{fold, validate, LibraryData};
@@ -42,13 +52,6 @@ use store::Store;
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
 
-// A per-request `Cancellation` and the event stream object
-// (`LibraryEvents::subscribe(&hub)`). See `forge_runtime::app_shell!`.
-forge_runtime::app_shell! {
-    cancellation: Cancellation,
-    events: LibraryEvents(LibraryEvent::EventsDropped),
-}
-
 /// Sent with every catalogue request. Open Library asks clients to identify
 /// themselves.
 pub const USER_AGENT: &str = concat!(
@@ -57,23 +60,44 @@ pub const USER_AGENT: &str = concat!(
     " (Forge example app; https://github.com/GeneralKnowledge/ixOS)"
 );
 
+/// What the command thread owns: the saved library and its files.
 struct State {
     data: LibraryData,
-    revision: u64,
-    /// The latest catalogue results, so an import needs only the key.
-    last_search: HashMap<String, CatalogueHit>,
+    store: Arc<Store>,
+    published: Arc<Published<LibraryData>>,
+}
+
+impl State {
+    /// Applies `change` to a copy of the library, saves it, and only then
+    /// makes it current. A failed change or save changes nothing.
+    fn commit<T>(
+        &mut self,
+        change: impl FnOnce(&mut LibraryData, &Store, i64) -> Result<T, LibraryError>,
+    ) -> Result<T, LibraryError> {
+        let mut next = self.data.clone();
+        let out = change(&mut next, &self.store, now_ms())?;
+        self.store.save(&next)?;
+        self.published.set(next.clone());
+        self.data = next;
+        Ok(out)
+    }
+
+    /// A book as the host sees it.
+    fn book(&self, id: u64) -> Result<Book, LibraryError> {
+        Ok(self.data.book(id)?.to_book(self.store.covers_dir()))
+    }
 }
 
 /// The library the host opens once and shares. Thread-safe.
 #[derive(uniffi::Object)]
 pub struct Library {
-    state: Arc<Mutex<State>>,
+    rt: Runtime<State>,
+    /// The last saved library, for queries.
+    data: Arc<Published<LibraryData>>,
     store: Arc<Store>,
-    events: EventHub<LibraryEvent>,
     catalogue: Arc<dyn BookCatalogue>,
-    shut_down: Arc<AtomicBool>,
-    /// Cancelled by `shutdown`; every catalogue request runs under a child.
-    lifetime: CancelHandle,
+    /// The latest catalogue results, so an import needs only the key.
+    last_search: Arc<Mutex<HashMap<String, CatalogueHit>>>,
     /// The book open in the reader, so turning a page reads one chapter
     /// instead of the whole EPUB again.
     open_book: Arc<Mutex<Option<OpenBook>>>,
@@ -85,9 +109,23 @@ struct OpenBook {
     text: EpubText,
 }
 
+/// What an EPUB import does once the file has been read and staged.
+enum EpubPlan {
+    /// Give a book already in the library its EPUB.
+    Attach { id: u64, epub_file: Staged },
+    /// Add a new book.
+    Add {
+        input: Box<domain::ValidInput>,
+        file_name: String,
+        cover_file: Option<Staged>,
+        epub_file: Staged,
+    },
+}
+
 #[uniffi::export]
 impl Library {
-    /// Opens the library in `storage_directory` (created if missing). Fails
+    /// Opens the library in `storage_directory` (created if missing),
+    /// holding the directory so no second instance can write to it. Fails
     /// with `Storage` or `NewerLibrary` if the saved library cannot be used;
     /// the file is left untouched (see `open_fresh`).
     #[uniffi::constructor]
@@ -100,51 +138,38 @@ impl Library {
     /// library. Refuses to touch a library from a newer app version.
     #[uniffi::constructor]
     pub fn open_fresh(storage_directory: String) -> Result<Arc<Self>, LibraryError> {
-        let store = Store::new(non_empty(&storage_directory)?);
-        if let Err(err @ LibraryError::NewerLibrary { .. }) = store.load() {
-            return Err(err);
-        }
-        store.set_aside(now_ms())?;
-        Self::open(storage_directory, default_catalogue())
+        Self::open_with(storage_directory, default_catalogue(), true)
     }
 
     // MARK: Reading (memory only)
 
     /// The books matching `query`, in its order.
     pub fn books(&self, query: LibraryQuery) -> Vec<Book> {
-        let state = lock(&self.state);
+        let data = self.data.get();
         let covers = self.store.covers_dir();
-        state
-            .data
-            .query(&query)
+        data.query(&query)
             .into_iter()
             .map(|b| b.to_book(covers))
             .collect()
     }
 
     pub fn book(&self, id: u64) -> Result<Book, LibraryError> {
-        let state = lock(&self.state);
-        Ok(state.data.book(id)?.to_book(self.store.covers_dir()))
+        Ok(self.data.get().book(id)?.to_book(self.store.covers_dir()))
     }
 
     /// Counts and reading totals. `year_start_ms` is the start of the
     /// current year in the user's time zone.
     pub fn stats(&self, year_start_ms: i64) -> LibraryStats {
-        lock(&self.state).data.stats(year_start_ms, now_ms())
+        self.data.get().stats(year_start_ms, now_ms())
     }
 
     /// Reading history, newest first; `book_id` limits it to one book.
     pub fn history(&self, book_id: Option<u64>, limit: u32) -> Vec<ActivityEntry> {
-        lock(&self.state).data.history(book_id, limit as usize)
+        self.data.get().history(book_id, limit as usize)
     }
 
     pub fn settings(&self) -> LibrarySettings {
-        lock(&self.state).data.settings.clone()
-    }
-
-    /// Increases with every saved change.
-    pub fn revision(&self) -> u64 {
-        lock(&self.state).revision
+        self.data.get().settings.clone()
     }
 
     // MARK: Changing the library
@@ -152,7 +177,7 @@ impl Library {
     /// Adds a book typed in by the user.
     pub async fn add_book(&self, input: BookInput) -> Result<Book, LibraryError> {
         let input = validate(input)?;
-        self.commit("add-book", move |data, _, now| {
+        self.commit_book("add-book", move |data, _, now| {
             data.add(input, BookSource::Manual, None, now)
         })
         .await
@@ -162,7 +187,7 @@ impl Library {
     /// `update_progress` (the last page finishes a book, and so on).
     pub async fn update_book(&self, id: u64, input: BookInput) -> Result<Book, LibraryError> {
         let input = validate(input)?;
-        self.commit("update-book", move |data, _, now| {
+        self.commit_book("update-book", move |data, _, now| {
             data.update(id, input, now)?;
             Ok(id)
         })
@@ -171,7 +196,7 @@ impl Library {
 
     /// Records the page the reader is on.
     pub async fn update_progress(&self, id: u64, page: u32) -> Result<Book, LibraryError> {
-        self.commit("update-progress", move |data, _, now| {
+        self.commit_book("update-progress", move |data, _, now| {
             let status = data.book(id)?.status;
             let status = if status == ReadingStatus::Finished {
                 ReadingStatus::Reading
@@ -187,7 +212,7 @@ impl Library {
     /// Moves a book to `status`: Want to Read resets the page, Finished
     /// jumps to the last page.
     pub async fn set_status(&self, id: u64, status: ReadingStatus) -> Result<Book, LibraryError> {
-        self.commit("set-status", move |data, _, now| {
+        self.commit_book("set-status", move |data, _, now| {
             let page = match status {
                 ReadingStatus::WantToRead => 0,
                 _ => data.book(id)?.current_page,
@@ -200,41 +225,38 @@ impl Library {
 
     /// Deletes a book, its saved cover and its EPUB. Its history stays.
     pub async fn delete_book(&self, id: u64) -> Result<(), LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
         let open_book = Arc::clone(&self.open_book);
-        background("delete-book", move || {
-            let mut state = lock(&state);
-            let mut next = state.data.clone();
-            let removed = next.delete(id)?;
-            store.save(&next)?;
-            if let Some(cover) = &removed.cover_file {
-                store.delete_cover(cover);
-            }
-            if let Some(epub) = &removed.epub_file {
-                let mut open = lock(&open_book);
-                if open.as_ref().is_some_and(|o| o.id == id) {
-                    *open = None;
+        self.rt
+            .command("delete-book", move |state| {
+                let removed = state.commit(|data, _, _| data.delete(id))?;
+                // The library no longer names them: a crash before this
+                // leaves files the next launch sweeps.
+                if let Some(cover) = &removed.cover_file {
+                    state.store.delete_cover(cover);
                 }
-                store.delete_book_file(epub);
-            }
-            apply(&mut state, next, &events);
-            Ok(())
-        })
-        .await
+                if let Some(epub) = &removed.epub_file {
+                    let mut open = lock(&open_book);
+                    if open.as_ref().is_some_and(|o| o.id == id) {
+                        *open = None;
+                    }
+                    state.store.delete_book_file(epub);
+                }
+                Ok(())
+            })
+            .await
     }
 
     // MARK: Online catalogue
 
     /// Searches the online catalogue. Nothing in the library changes; on any
-    /// failure the library is exactly as it was.
-    /// `cancellation` stops it part way with `Cancelled`.
+    /// failure the library is exactly as it was. On-screen work:
+    /// `cancellation` stops it part way with `Cancelled`, and leaving the app
+    /// with `Interrupted`.
     pub async fn search_catalogue(
         &self,
         query: String,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Vec<CatalogueBook>, LibraryError> {
-        self.ensure_running()?;
         self.ensure_catalogue_enabled()?;
         let query = query.trim().to_string();
         if query.chars().count() < 2 {
@@ -243,97 +265,105 @@ impl Library {
             ));
         }
         let catalogue = Arc::clone(&self.catalogue);
-        let state = Arc::clone(&self.state);
-        self.cancellable("search-catalogue", cancellation, move |cancel| {
-            let hits = catalogue.search(&query, cancel)?;
-            let mut state = lock(&state);
-            state.last_search = hits.iter().map(|h| (h.key.clone(), h.clone())).collect();
-            Ok(hits
-                .into_iter()
-                .map(|hit| CatalogueBook {
-                    library_book_id: state
-                        .data
-                        .book_with_source(&BookSource::OpenLibrary {
-                            work_key: hit.key.clone(),
-                        })
-                        .map(|b| b.id),
-                    key: hit.key,
-                    title: hit.title,
-                    author: hit.author,
-                    first_published: hit.first_published,
-                    total_pages: hit.total_pages,
-                    cover_url: hit.cover_url,
-                })
-                .collect())
-        })
-        .await
+        let last_search = Arc::clone(&self.last_search);
+        let data = Arc::clone(&self.data);
+        let work = self.rt.foreground(cancellation.as_deref());
+        self.rt
+            .run("search-catalogue", work, move |cancel| {
+                let hits = catalogue.search(&query, cancel)?;
+                *lock(&last_search) = hits.iter().map(|h| (h.key.clone(), h.clone())).collect();
+                let data = data.get();
+                Ok(hits
+                    .into_iter()
+                    .map(|hit| CatalogueBook {
+                        library_book_id: data
+                            .book_with_source(&BookSource::OpenLibrary {
+                                work_key: hit.key.clone(),
+                            })
+                            .map(|b| b.id),
+                        key: hit.key,
+                        title: hit.title,
+                        author: hit.author,
+                        first_published: hit.first_published,
+                        total_pages: hit.total_pages,
+                        cover_url: hit.cover_url,
+                    })
+                    .collect())
+            })
+            .await
     }
 
     /// Adds a result of the latest search as a Want to Read book. Its
     /// description and a cover are fetched too; if they fail the book is
-    /// still added, without them, and `warnings` says so. `cancellation`
+    /// still added, without them, and `warnings` says so. Finishing work:
+    /// it may complete after the person leaves the app. `cancellation`
     /// stops it part way with `Cancelled`, and then nothing is added.
     pub async fn import_from_catalogue(
         &self,
         key: String,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<ImportedBook, LibraryError> {
-        self.ensure_running()?;
         self.ensure_catalogue_enabled()?;
         let source = BookSource::OpenLibrary {
             work_key: key.clone(),
         };
-        let hit = {
-            let state = lock(&self.state);
-            if let Some(existing) = state.data.book_with_source(&source) {
-                return Err(LibraryError::AlreadyInLibrary { id: existing.id });
-            }
-            state.last_search.get(&key).cloned().ok_or_else(|| {
-                LibraryError::invalid("that result is no longer available; search again")
-            })?
-        };
+        if let Some(existing) = self.data.get().book_with_source(&source) {
+            return Err(LibraryError::AlreadyInLibrary { id: existing.id });
+        }
+        let hit = lock(&self.last_search).get(&key).cloned().ok_or_else(|| {
+            LibraryError::invalid("that result is no longer available; search again")
+        })?;
         let catalogue = Arc::clone(&self.catalogue);
-        let (state, store, events) = self.parts();
-        self.cancellable("import-catalogue", cancellation, move |cancel| {
-            let mut warnings = Vec::new();
-            let description = match catalogue.description(&hit.key, cancel) {
-                Ok(text) => text.unwrap_or_default(),
-                Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
-                Err(err) => {
-                    warnings.push(format!("The description could not be loaded ({err})."));
-                    String::new()
-                }
-            };
-            let cover_file = match &hit.large_cover_url {
-                None => None,
-                Some(url) => match catalogue.cover(url, cancel).and_then(|(bytes, ext)| {
-                    store.stage_cover(&format!("ol-{}", hit.key), ext, &bytes)
-                }) {
-                    Ok(staged) => Some(staged),
+        let store = Arc::clone(&self.store);
+        let work = self.rt.finishing(cancellation.as_deref());
+        let (input, cover_file, warnings) = self
+            .rt
+            .run("import-catalogue", work, move |cancel| {
+                let mut warnings = Vec::new();
+                let description = match catalogue.description(&hit.key, cancel) {
+                    Ok(text) => text.unwrap_or_default(),
                     Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
                     Err(err) => {
-                        warnings.push(format!(
-                            "The cover could not be saved for offline use ({err})."
-                        ));
-                        None
+                        warnings.push(format!("The description could not be loaded ({err})."));
+                        String::new()
                     }
-                },
-            };
-            let input = validate(BookInput {
-                title: hit.title.clone(),
-                author: hit.author.clone(),
-                description,
-                status: ReadingStatus::WantToRead,
-                current_page: 0,
-                total_pages: hit.total_pages,
-                rating: None,
-                notes: String::new(),
-                cover_url: hit.cover_url.clone(),
-            })?;
-            let book = add_and_save(&state, &store, &events, input, source, cover_file, None)?;
-            Ok(ImportedBook { book, warnings })
-        })
-        .await
+                };
+                let cover_file = match &hit.large_cover_url {
+                    None => None,
+                    Some(url) => match catalogue.cover(url, cancel).and_then(|(bytes, ext)| {
+                        store.stage_cover(&format!("ol-{}", hit.key), ext, &bytes)
+                    }) {
+                        Ok(staged) => Some(staged),
+                        Err(LibraryError::Cancelled) => return Err(LibraryError::Cancelled),
+                        Err(err) => {
+                            warnings.push(format!(
+                                "The cover could not be saved for offline use ({err})."
+                            ));
+                            None
+                        }
+                    },
+                };
+                let input = validate(BookInput {
+                    title: hit.title.clone(),
+                    author: hit.author.clone(),
+                    description,
+                    status: ReadingStatus::WantToRead,
+                    current_page: 0,
+                    total_pages: hit.total_pages,
+                    rating: None,
+                    notes: String::new(),
+                    cover_url: hit.cover_url.clone(),
+                })?;
+                Ok((input, cover_file, warnings))
+            })
+            .await?;
+        let book = self
+            .rt
+            .command("import-catalogue", move |state| {
+                add_book_with_files(state, input, source, cover_file, None)
+            })
+            .await?;
+        Ok(ImportedBook { book, warnings })
     }
 
     // MARK: EPUB import
@@ -342,6 +372,7 @@ impl Library {
     /// description and cover from the file, and a page count estimated from
     /// its length. A copy of the file is kept so the book can be read in the
     /// app (`open_reader`); the host may delete its own copy afterwards.
+    /// Finishing work: it may complete after the person leaves the app.
     ///
     /// If the book is already in the library without a saved EPUB (typed
     /// in, found in the catalogue, or imported before EPUBs were kept), the
@@ -349,81 +380,106 @@ impl Library {
     /// book is returned. Otherwise a second import fails with
     /// `AlreadyInLibrary`.
     pub async fn import_epub(&self, path: String) -> Result<Book, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
-        background("import-epub", move || {
-            let path = std::path::PathBuf::from(path);
-            let file_name = path
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "book.epub".into());
-            let size = std::fs::metadata(&path)
-                .map_err(|e| LibraryError::UnsupportedFile {
+        let store = Arc::clone(&self.store);
+        let data = Arc::clone(&self.data);
+        let work = self.rt.finishing(None);
+        let plan = self
+            .rt
+            .run("import-epub", work, move |_| {
+                let path = std::path::PathBuf::from(path);
+                let file_name = path
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| "book.epub".into());
+                let size = std::fs::metadata(&path)
+                    .map_err(|e| LibraryError::UnsupportedFile {
+                        reason: format!("cannot read {file_name}: {e}"),
+                    })?
+                    .len();
+                if size > epub::MAX_EPUB_BYTES as u64 {
+                    return Err(LibraryError::UnsupportedFile {
+                        reason: "the file is larger than 100 MB".into(),
+                    });
+                }
+                let bytes = std::fs::read(&path).map_err(|e| LibraryError::UnsupportedFile {
                     reason: format!("cannot read {file_name}: {e}"),
-                })?
-                .len();
-            if size > epub::MAX_EPUB_BYTES as u64 {
-                return Err(LibraryError::UnsupportedFile {
-                    reason: "the file is larger than 100 MB".into(),
-                });
-            }
-            let bytes = std::fs::read(&path).map_err(|e| LibraryError::UnsupportedFile {
-                reason: format!("cannot read {file_name}: {e}"),
-            })?;
-            let meta = epub::read_metadata(bytes.clone())?;
-            // Check now that the reader can open it, so an import never
-            // promises a book that cannot be read.
-            EpubText::open(std::io::Cursor::new(&bytes))?;
-            let existing = {
-                let state = lock(&state);
-                let (title, author) = (fold(&meta.title), fold(&meta.author));
-                state
-                    .data
-                    .books
-                    .iter()
-                    .find(|b| fold(&b.title) == title && fold(&b.author) == author)
-                    .map(|b| (b.id, b.epub_file.is_some()))
-            };
-            let stem = format!("epub-{}", now_ms());
-            match existing {
-                Some((id, true)) => Err(LibraryError::AlreadyInLibrary { id }),
-                Some((id, false)) => {
-                    let epub_file = store.stage_book_file(&stem, &bytes)?;
-                    attach_and_save(&state, &store, &events, id, epub_file)
+                })?;
+                let meta = epub::read_metadata(bytes.clone())?;
+                // Check now that the reader can open it, so an import never
+                // promises a book that cannot be read.
+                EpubText::open(std::io::Cursor::new(&bytes))?;
+                let existing = {
+                    let (title, author) = (fold(&meta.title), fold(&meta.author));
+                    data.get()
+                        .books
+                        .iter()
+                        .find(|b| fold(&b.title) == title && fold(&b.author) == author)
+                        .map(|b| (b.id, b.epub_file.is_some()))
+                };
+                let stem = format!("epub-{}", now_ms());
+                match existing {
+                    Some((id, true)) => Err(LibraryError::AlreadyInLibrary { id }),
+                    Some((id, false)) => Ok(EpubPlan::Attach {
+                        id,
+                        epub_file: store.stage_book_file(&stem, &bytes)?,
+                    }),
+                    None => {
+                        // Staged files are deleted again if anything below,
+                        // or the command that saves the book, fails.
+                        let cover_file = match &meta.cover {
+                            Some(cover) => {
+                                Some(store.stage_cover(&stem, cover.extension, &cover.bytes)?)
+                            }
+                            None => None,
+                        };
+                        let epub_file = store.stage_book_file(&stem, &bytes)?;
+                        let input = validate(BookInput {
+                            title: meta.title,
+                            author: meta.author,
+                            description: meta.description,
+                            status: ReadingStatus::WantToRead,
+                            current_page: 0,
+                            total_pages: meta.estimated_pages,
+                            rating: None,
+                            notes: String::new(),
+                            cover_url: None,
+                        })?;
+                        Ok(EpubPlan::Add {
+                            input: Box::new(input),
+                            file_name,
+                            cover_file,
+                            epub_file,
+                        })
+                    }
                 }
-                None => {
-                    // Staged files are deleted again if anything below fails.
-                    let cover_file = match &meta.cover {
-                        Some(cover) => {
-                            Some(store.stage_cover(&stem, cover.extension, &cover.bytes)?)
-                        }
-                        None => None,
-                    };
-                    let epub_file = store.stage_book_file(&stem, &bytes)?;
-                    let input = validate(BookInput {
-                        title: meta.title,
-                        author: meta.author,
-                        description: meta.description,
-                        status: ReadingStatus::WantToRead,
-                        current_page: 0,
-                        total_pages: meta.estimated_pages,
-                        rating: None,
-                        notes: String::new(),
-                        cover_url: None,
-                    })?;
-                    add_and_save(
-                        &state,
-                        &store,
-                        &events,
-                        input,
-                        BookSource::Epub { file_name },
-                        cover_file,
-                        Some(epub_file),
-                    )
+            })
+            .await?;
+        self.rt
+            .command("import-epub", move |state| match plan {
+                EpubPlan::Attach { id, epub_file } => {
+                    // Another import may have given it one meanwhile.
+                    if state.data.book(id)?.epub_file.is_some() {
+                        return Err(LibraryError::AlreadyInLibrary { id });
+                    }
+                    state
+                        .commit(|data, _, _| data.attach_epub(id, Some(epub_file.name().into())))?;
+                    epub_file.commit();
+                    state.book(id)
                 }
-            }
-        })
-        .await
+                EpubPlan::Add {
+                    input,
+                    file_name,
+                    cover_file,
+                    epub_file,
+                } => add_book_with_files(
+                    state,
+                    *input,
+                    BookSource::Epub { file_name },
+                    cover_file,
+                    Some(epub_file),
+                ),
+            })
+            .await
     }
 
     // MARK: Reading
@@ -432,67 +488,68 @@ impl Library {
     /// start (see `ReaderContents::start`). Fails with `NotReadable` for a
     /// book without one. Images of earlier chapters are deleted.
     pub async fn open_reader(&self, id: u64) -> Result<ReaderContents, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, _) = self.parts();
+        let (data, store) = (Arc::clone(&self.data), Arc::clone(&self.store));
         let open_book = Arc::clone(&self.open_book);
-        background("open-reader", move || {
-            let (title, epub_file) = {
-                let state = lock(&state);
-                let book = state.data.book(id)?;
-                (book.title.clone(), book.epub_file.clone())
-            };
-            let epub_file = epub_file.ok_or_else(|| LibraryError::NotReadable {
-                reason: "there is no EPUB for this book; import its EPUB file to read it here"
-                    .into(),
-            })?;
-            let mut open = lock(&open_book);
-            let reuse = open
-                .as_ref()
-                .is_some_and(|o| o.id == id && o.epub_file == epub_file);
-            if !reuse {
-                let path =
-                    store
-                        .book_file(&epub_file)
-                        .ok_or_else(|| LibraryError::NotReadable {
-                            reason: "the saved EPUB's name is not valid".into(),
-                        })?;
-                *open = Some(OpenBook {
-                    id,
-                    epub_file,
-                    text: EpubText::open_file(&path)?,
-                });
-            }
-            store.reset_reader();
-            let book = open.as_ref().expect("opened above");
-            let (words, chapters) = (book.text.chapter_words(), book.text.chapters().to_vec());
-            // Lock order is state, then open_book (as in delete_book).
-            drop(open);
-            let start = lock(&state).data.reader_start(id, &words)?;
-            Ok(ReaderContents {
-                book_id: id,
-                title,
-                chapters,
-                total_words: words.iter().map(|&w| u64::from(w)).sum(),
-                start,
+        let work = self.rt.lifetime(None);
+        self.rt
+            .run("open-reader", work, move |_| {
+                let (title, epub_file) = {
+                    let data = data.get();
+                    let book = data.book(id)?;
+                    (book.title.clone(), book.epub_file.clone())
+                };
+                let epub_file = epub_file.ok_or_else(|| LibraryError::NotReadable {
+                    reason: "there is no EPUB for this book; import its EPUB file to read it here"
+                        .into(),
+                })?;
+                let mut open = lock(&open_book);
+                let reuse = open
+                    .as_ref()
+                    .is_some_and(|o| o.id == id && o.epub_file == epub_file);
+                if !reuse {
+                    let path =
+                        store
+                            .book_file(&epub_file)
+                            .ok_or_else(|| LibraryError::NotReadable {
+                                reason: "the saved EPUB's name is not valid".into(),
+                            })?;
+                    *open = Some(OpenBook {
+                        id,
+                        epub_file,
+                        text: EpubText::open_file(&path)?,
+                    });
+                }
+                store.reset_reader();
+                let book = open.as_ref().expect("opened above");
+                let (words, chapters) = (book.text.chapter_words(), book.text.chapters().to_vec());
+                drop(open);
+                let start = data.get().reader_start(id, &words)?;
+                Ok(ReaderContents {
+                    book_id: id,
+                    title,
+                    chapters,
+                    total_words: words.iter().map(|&w| u64::from(w)).sum(),
+                    start,
+                })
             })
-        })
-        .await
+            .await
     }
 
     /// The text of chapter `index` of a book opened with `open_reader`.
     pub async fn reader_chapter(&self, id: u64, index: u32) -> Result<ReaderChapter, LibraryError> {
-        self.ensure_running()?;
         let store = Arc::clone(&self.store);
         let open_book = Arc::clone(&self.open_book);
-        background("reader-chapter", move || {
-            let mut open = lock(&open_book);
-            let book = open
-                .as_mut()
-                .filter(|o| o.id == id)
-                .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
-            book.text.chapter(index, &store.reader_images(id))
-        })
-        .await
+        let work = self.rt.lifetime(None);
+        self.rt
+            .run("reader-chapter", work, move |_| {
+                let mut open = lock(&open_book);
+                let book = open
+                    .as_mut()
+                    .filter(|o| o.id == id)
+                    .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
+                book.text.chapter(index, &store.reader_images(id))
+            })
+            .await
     }
 
     /// Saves where the reader is, and moves the book's current page to
@@ -511,7 +568,7 @@ impl Library {
                 .map(|o| o.text.chapter_words())
                 .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?
         };
-        self.commit("save-reading-position", move |data, _, now| {
+        self.commit_book("save-reading-position", move |data, _, now| {
             data.save_reading_position(id, position, &words, now)?;
             Ok(id)
         })
@@ -524,36 +581,28 @@ impl Library {
         &self,
         settings: LibrarySettings,
     ) -> Result<LibrarySettings, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
-        background("update-settings", move || {
-            let mut state = lock(&state);
-            let mut next = state.data.clone();
-            next.settings = settings.clone();
-            store.save(&next)?;
-            state.data = next;
-            state.revision += 1;
-            events.publish(LibraryEvent::SettingsChanged {
-                settings: settings.clone(),
-            });
-            Ok(settings)
-        })
-        .await
+        self.rt
+            .command("update-settings", move |state| {
+                state.commit(|data, _, _| {
+                    data.settings = settings.clone();
+                    Ok(settings)
+                })
+            })
+            .await
     }
 
     /// Writes a backup of the whole library (books, history, settings,
     /// covers and EPUBs) as one archive for the share sheet, and returns its
     /// path. `restore_library` reads it back.
     pub async fn backup_library(&self) -> Result<String, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, _) = self.parts();
-        background("backup", move || {
-            // Holding the lock keeps the files and the library consistent.
-            let _state = lock(&state);
-            let path = store.write_backup(now_ms())?;
-            Ok(path.to_string_lossy().into_owned())
-        })
-        .await
+        // On the command thread, so no change lands while the files are
+        // copied.
+        self.rt
+            .command("backup", move |state| {
+                let path = state.store.write_backup(now_ms())?;
+                Ok(path.to_string_lossy().into_owned())
+            })
+            .await
     }
 
     /// Replaces the library with the backup at `path` (from
@@ -562,126 +611,129 @@ impl Library {
     /// one is refused and the library is left as it was. Returns how many
     /// books the restored library has.
     pub async fn restore_library(&self, path: String) -> Result<u32, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
+        let store = Arc::clone(&self.store);
+        let work = self.rt.finishing(None);
+        let (restoring, data) = self
+            .rt
+            .run("unpack-backup", work, move |_| {
+                store.unpack_backup(std::path::Path::new(&path))
+            })
+            .await?;
         let open_book = Arc::clone(&self.open_book);
-        background("restore", move || {
-            let (restoring, data) = store.unpack_backup(std::path::Path::new(&path))?;
-            let mut state = lock(&state);
-            store.adopt_backup(&restoring, &data)?;
-            *lock(&open_book) = None;
-            let books = data.books.len() as u32;
-            apply(&mut state, data, &events);
-            Ok(books)
-        })
-        .await
+        self.rt
+            .command("restore", move |state| {
+                state.store.adopt_backup(&restoring, &data)?;
+                *lock(&open_book) = None;
+                let books = data.books.len() as u32;
+                state.published.set(data.clone());
+                state.data = data;
+                Ok(books)
+            })
+            .await
     }
 
     /// Writes every book as a spreadsheet (CSV) for the share sheet, with
     /// the columns other reading apps and spreadsheets understand, and
     /// returns the file's path.
     pub async fn export_books_csv(&self) -> Result<String, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, _) = self.parts();
-        background("export-csv", move || {
-            let rows: Vec<csv_rows::BookRow> = lock(&state)
-                .data
-                .books
-                .iter()
-                .map(csv_rows::BookRow::from)
-                .collect();
-            let bytes = forge_storage::csv_file::to_csv(&rows)?;
-            let path = store.write_export("PocketLibrary.csv", &bytes)?;
-            Ok(path.to_string_lossy().into_owned())
-        })
-        .await
+        let (data, store) = (self.data.get(), Arc::clone(&self.store));
+        let work = self.rt.finishing(None);
+        self.rt
+            .run("export-csv", work, move |_| {
+                let rows: Vec<csv_rows::BookRow> =
+                    data.books.iter().map(csv_rows::BookRow::from).collect();
+                let bytes = forge_storage::csv_file::to_csv(&rows)?;
+                let path = store.write_export("PocketLibrary.csv", &bytes)?;
+                Ok(path.to_string_lossy().into_owned())
+            })
+            .await
     }
 
     /// Adds the books in a CSV file (one this app exported, or a
     /// spreadsheet with at least a Title column). Rows that can't be read
     /// are skipped and listed by line; the rest are added in one save.
     pub async fn import_books_csv(&self, path: String) -> Result<CsvImportSummary, LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
-        background("import-csv", move || {
-            let read = forge_storage::csv_file::import_csv::<csv_rows::BookRow>(
-                std::path::Path::new(&path),
-            )?;
-            let mut skipped: Vec<String> = read
-                .problems
-                .iter()
-                .map(|p| format!("Line {}: {}", p.line, p.reason))
-                .collect();
-            let mut state = lock(&state);
-            let mut next = state.data.clone();
-            let now = now_ms();
-            let mut added = 0u32;
-            for (index, row) in read.rows.into_iter().enumerate() {
-                match row.into_input().and_then(validate) {
-                    Ok(input) => {
-                        next.add(input, BookSource::Manual, None, now)?;
-                        added += 1;
+        let work = self.rt.finishing(None);
+        let read = self
+            .rt
+            .run("read-csv", work, move |_| {
+                forge_storage::csv_file::import_csv::<csv_rows::BookRow>(std::path::Path::new(
+                    &path,
+                ))
+                .map_err(LibraryError::from)
+            })
+            .await?;
+        self.rt
+            .command("import-csv", move |state| {
+                let mut skipped: Vec<String> = read
+                    .problems
+                    .iter()
+                    .map(|p| format!("Line {}: {}", p.line, p.reason))
+                    .collect();
+                let mut added = 0u32;
+                let mut inputs = Vec::new();
+                for (index, row) in read.rows.into_iter().enumerate() {
+                    match row.into_input().and_then(validate) {
+                        Ok(input) => inputs.push(input),
+                        Err(e) => skipped.push(format!("Row {}: {e}", index + 1)),
                     }
-                    Err(e) => skipped.push(format!("Row {}: {e}", index + 1)),
                 }
-            }
-            if added > 0 {
-                store.save(&next)?;
-                apply(&mut state, next, &events);
-            }
-            Ok(CsvImportSummary { added, skipped })
-        })
-        .await
+                if !inputs.is_empty() {
+                    state.commit(|data, _, now| {
+                        for input in inputs {
+                            data.add(input, BookSource::Manual, None, now)?;
+                            added += 1;
+                        }
+                        Ok(())
+                    })?;
+                }
+                Ok(CsvImportSummary { added, skipped })
+            })
+            .await
     }
 
     /// Deletes every book, the history and saved covers. Settings stay.
     pub async fn erase_library(&self) -> Result<(), LibraryError> {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
         let open_book = Arc::clone(&self.open_book);
-        background("erase", move || {
-            let mut state = lock(&state);
-            let next = LibraryData {
-                settings: state.data.settings.clone(),
-                ..LibraryData::default()
-            };
-            store.save(&next)?;
-            *lock(&open_book) = None;
-            store.clear_files();
-            apply(&mut state, next, &events);
-            Ok(())
-        })
-        .await
+        self.rt
+            .command("erase", move |state| {
+                state.commit(|data, _, _| {
+                    *data = LibraryData {
+                        settings: data.settings.clone(),
+                        ..LibraryData::default()
+                    };
+                    Ok(())
+                })?;
+                *lock(&open_book) = None;
+                state.store.clear_files();
+                Ok(())
+            })
+            .await
     }
 
     pub fn storage_info(&self) -> StorageInfo {
-        let state = lock(&self.state);
+        let data = self.data.get();
         let (saved_covers, saved_books, bytes) = self.store.usage();
         StorageInfo {
             directory: self.store.dir().to_string_lossy().into_owned(),
-            books: state.data.books.len() as u32,
-            activity_entries: state.data.activity.len() as u32,
+            books: data.books.len() as u32,
+            activity_entries: data.activity.len() as u32,
             saved_covers,
             saved_books,
             bytes,
         }
     }
+}
 
-    // MARK: Events and lifecycle
+// The runtime half of the API: `events`, `set_phase`, `phase`, `revision`,
+// background work, the launch report and `shutdown`.
+forge_app::export_runtime!(Library, rt);
 
-    /// A new event stream. Each consumer takes its own.
-    pub fn events(&self) -> Result<Arc<LibraryEvents>, LibraryError> {
-        LibraryEvents::subscribe(&self.events).ok_or(LibraryError::ShutDown)
-    }
-
-    /// Refuses new commands with `ShutDown`, stops catalogue requests in
-    /// flight (they fail with `ShutDown`) and ends every event stream. Saves
-    /// already running finish, so no write is cut short. Idempotent.
-    pub fn shutdown(&self) {
-        self.shut_down.store(true, Ordering::SeqCst);
-        self.lifetime.cancel();
-        self.events.close();
-    }
+/// The framework kind of each error, so ForgeKit presents it like any
+/// app's (`LibraryError: ForgeKindedError` in Swift).
+#[uniffi::export]
+pub fn library_error_kind(error: LibraryError) -> ErrorKind {
+    error.kind()
 }
 
 impl Library {
@@ -690,152 +742,89 @@ impl Library {
         storage_directory: String,
         catalogue: Arc<dyn BookCatalogue>,
     ) -> Result<Arc<Self>, LibraryError> {
+        Self::open_with(storage_directory, catalogue, false)
+    }
+
+    fn open_with(
+        storage_directory: String,
+        catalogue: Arc<dyn BookCatalogue>,
+        fresh: bool,
+    ) -> Result<Arc<Self>, LibraryError> {
         forge_runtime::logging::init();
-        let store = Store::new(non_empty(&storage_directory)?);
+        let directory = DataDirectory::open(non_empty(&storage_directory)?)?;
+        let store = Store::new(directory.path());
+        if fresh {
+            if let Err(err @ LibraryError::NewerLibrary { .. }) = store.load() {
+                return Err(err);
+            }
+            store.set_aside(now_ms())?;
+        }
         let data = store.load()?;
         store.remove_orphan_covers(&data);
+        let store = Arc::new(store);
+        let published = Arc::new(Published::new(data.clone()));
+        let state = State {
+            data,
+            store: Arc::clone(&store),
+            published: Arc::clone(&published),
+        };
         Ok(Arc::new(Self {
-            state: Arc::new(Mutex::new(State {
-                data,
-                revision: 0,
-                last_search: HashMap::new(),
-            })),
-            store: Arc::new(store),
-            events: EventHub::new(),
+            rt: Runtime::with_directory("pocket-library", directory, state),
+            data: published,
+            store,
             catalogue,
-            shut_down: Arc::new(AtomicBool::new(false)),
-            lifetime: CancelHandle::new(),
+            last_search: Arc::new(Mutex::new(HashMap::new())),
             open_book: Arc::new(Mutex::new(None)),
         }))
     }
 
-    /// Runs catalogue work on its own thread under a handle that is
-    /// cancelled by `cancellation`, by `shutdown`, or by dropping the future.
-    /// A request stopped by `shutdown` fails with `ShutDown`.
-    async fn cancellable<T, F>(
-        &self,
-        name: &str,
-        cancellation: Option<Arc<Cancellation>>,
-        work: F,
-    ) -> Result<T, LibraryError>
-    where
-        T: Send + 'static,
-        F: FnOnce(&CancelHandle) -> Result<T, LibraryError> + Send + 'static,
-    {
-        let lifetime = self.lifetime.clone();
-        let (cancel, under_lifetime) = self.lifetime.child();
-        let from_host = cancellation.map(|c| {
-            let cancel = cancel.clone();
-            c.handle.on_cancel(move || cancel.cancel())
-        });
-        background_cancellable(name, cancel, move |cancel| {
-            let _links = (under_lifetime, from_host); // released when the work ends
-            match work(cancel) {
-                Err(LibraryError::Cancelled) if lifetime.is_cancelled() => {
-                    Err(LibraryError::ShutDown)
-                }
-                result => result,
-            }
-        })
-        .await
-    }
-
-    fn ensure_running(&self) -> Result<(), LibraryError> {
-        if self.shut_down.load(Ordering::SeqCst) {
-            Err(LibraryError::ShutDown)
-        } else {
-            Ok(())
-        }
-    }
-
     fn ensure_catalogue_enabled(&self) -> Result<(), LibraryError> {
-        if lock(&self.state).data.settings.catalogue_enabled {
+        if self.data.get().settings.catalogue_enabled {
             Ok(())
         } else {
             Err(LibraryError::CatalogueDisabled)
         }
     }
 
-    fn parts(&self) -> (Arc<Mutex<State>>, Arc<Store>, EventHub<LibraryEvent>) {
-        (
-            Arc::clone(&self.state),
-            Arc::clone(&self.store),
-            self.events.clone(),
-        )
-    }
-
-    /// Applies `change` to a copy of the library, saves it, and only then
-    /// makes it current and announces it. A failed save changes nothing.
-    async fn commit<F>(&self, name: &'static str, change: F) -> Result<Book, LibraryError>
+    /// A command that changes the library and returns the book it names.
+    async fn commit_book<F>(&self, name: &'static str, change: F) -> Result<Book, LibraryError>
     where
         F: FnOnce(&mut LibraryData, &Store, i64) -> Result<u64, LibraryError> + Send + 'static,
     {
-        self.ensure_running()?;
-        let (state, store, events) = self.parts();
-        background(name, move || {
-            let mut state = lock(&state);
-            let mut next = state.data.clone();
-            let id = change(&mut next, &store, now_ms())?;
-            store.save(&next)?;
-            apply(&mut state, next, &events);
-            Ok(state.data.book(id)?.to_book(store.covers_dir()))
-        })
-        .await
+        self.rt
+            .command(name, move |state| {
+                let id = state.commit(change)?;
+                state.book(id)
+            })
+            .await
     }
 }
 
-fn apply(state: &mut State, next: LibraryData, events: &EventHub<LibraryEvent>) {
-    state.data = next;
-    state.revision += 1;
-    events.publish(LibraryEvent::Changed {
-        revision: state.revision,
-    });
-}
-
-/// Adds an imported book with its staged cover and EPUB. The files are
-/// committed once the library naming them is saved; on any failure they are
-/// dropped, which deletes them, so a failure leaves nothing behind.
-fn add_and_save(
-    state: &Mutex<State>,
-    store: &Store,
-    events: &EventHub<LibraryEvent>,
+/// Adds an imported book with its staged cover and EPUB, on the command
+/// thread. The files are committed once the library naming them is saved;
+/// on any failure they are dropped, which deletes them, so a failure leaves
+/// nothing behind.
+fn add_book_with_files(
+    state: &mut State,
     input: domain::ValidInput,
     source: BookSource,
     cover_file: Option<Staged>,
     epub_file: Option<Staged>,
 ) -> Result<Book, LibraryError> {
-    let mut state = lock(state);
     if let Some(existing) = state.data.book_with_source(&source) {
         return Err(LibraryError::AlreadyInLibrary { id: existing.id });
     }
-    let mut next = state.data.clone();
     let name = |file: &Option<Staged>| file.as_ref().map(|f| f.name().to_string());
-    let id = next.add(input, source, name(&cover_file), now_ms())?;
-    next.attach_epub(id, name(&epub_file))?;
-    store.save(&next)?;
+    let (cover, epub) = (name(&cover_file), name(&epub_file));
+    let id = state.commit(|data, _, now| {
+        let id = data.add(input, source, cover, now)?;
+        data.attach_epub(id, epub)?;
+        Ok(id)
+    })?;
     for file in [cover_file, epub_file].into_iter().flatten() {
         file.commit();
     }
-    apply(&mut state, next, events);
-    Ok(state.data.book(id)?.to_book(store.covers_dir()))
-}
-
-/// Gives an existing book a staged EPUB, committed once the library is
-/// saved (and deleted if it cannot be).
-fn attach_and_save(
-    state: &Mutex<State>,
-    store: &Store,
-    events: &EventHub<LibraryEvent>,
-    id: u64,
-    epub_file: Staged,
-) -> Result<Book, LibraryError> {
-    let mut state = lock(state);
-    let mut next = state.data.clone();
-    next.attach_epub(id, Some(epub_file.name().to_string()))?;
-    store.save(&next)?;
-    epub_file.commit();
-    apply(&mut state, next, events);
-    Ok(state.data.book(id)?.to_book(store.covers_dir()))
+    state.book(id)
 }
 
 /// The library's default query for a fresh screen: everything, in the

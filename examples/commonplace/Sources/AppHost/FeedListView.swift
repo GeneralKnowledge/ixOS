@@ -65,8 +65,15 @@ struct FeedListView: View {
             .overlay { emptyState }
             .refreshable { await model.refresh() }
             .task { await refreshWhenConnected() }
+            // Fresh articles on launch, without a pull.
+            .task { await model.refreshIfStale() }
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { Task { await model.refreshIfOffline() } }
+                if phase == .active {
+                    Task {
+                        await model.refreshIfOffline()
+                        await model.refreshIfStale()
+                    }
+                }
             }
             .navigationTitle("Commonplace")
             .navigationDestination(for: Route.self) { route in
@@ -204,7 +211,7 @@ private struct FeedRow: View {
     var body: some View {
         ForgeRow(
             feed.title,
-            subtitle: feed.lastError == nil ? nil : "Couldn't refresh",
+            subtitle: feed.lastError.map(LibraryModel.refreshProblem),
             systemImage: feed.lastError == nil ? "dot.radiowaves.up.forward" : "exclamationmark.triangle.fill",
             tone: feed.lastError == nil ? .accent : .danger
         ) {

@@ -43,6 +43,11 @@ const MIGRATIONS: &[&str] = &["
 
 /// How long a row's summary is, in characters.
 const SUMMARY_CHARS: usize = 200;
+/// Read articles that aren't bookmarked are forgotten this long after they
+/// were fetched, once the feed no longer lists them (a feed still listing
+/// one would bring it back as new). Keeps the file, and every snapshot,
+/// from growing for ever.
+const KEEP_READ_MS: i64 = 30 * 24 * 60 * 60 * 1000;
 
 /// What a fetch learnt about a feed, applied in one transaction.
 pub struct Fetched {
@@ -232,11 +237,14 @@ impl Store {
                             params![f.feed_id, feed.title, feed.site_url, etag, last_modified, now_ms],
                         )?;
                         added += merge_articles(tx, f.feed_id, feed, now_ms)?;
+                        forget_old_articles(tx, f.feed_id, feed, now_ms)?;
                     }
                     Err(e) => {
+                        // The kind, not the message: the screen words it,
+                        // and a reason can hold the address.
                         tx.execute(
                             "UPDATE feeds SET last_error = ?2 WHERE id = ?1",
-                            params![f.feed_id, e.to_string()],
+                            params![f.feed_id, e.problem()],
                         )?;
                     }
                 }
@@ -378,6 +386,38 @@ fn merge_articles(
         }
     }
     Ok(added)
+}
+
+/// Deletes the feed's read, unbookmarked articles fetched more than
+/// `KEEP_READ_MS` ago that the feed no longer lists. Unread and bookmarked
+/// articles are always kept.
+fn forget_old_articles(
+    tx: &Transaction<'_>,
+    feed_id: i64,
+    parsed: &ParsedFeed,
+    now_ms: i64,
+) -> Result<u32, AppError> {
+    let listed: std::collections::HashSet<&str> =
+        parsed.articles.iter().map(|a| a.guid.as_str()).collect();
+    let old: Vec<(i64, String)> = {
+        let mut q = tx.prepare(
+            "SELECT id, guid FROM articles
+             WHERE feed_id = ?1 AND read = 1 AND bookmarked = 0 AND fetched_at_ms < ?2",
+        )?;
+        let rows = q
+            .query_map(params![feed_id, now_ms - KEEP_READ_MS], |r| {
+                Ok((r.get(0)?, r.get(1)?))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+    let mut forgotten = 0;
+    for (id, guid) in old {
+        if !listed.contains(guid.as_str()) {
+            forgotten += tx.execute("DELETE FROM articles WHERE id = ?1", [id])? as u32;
+        }
+    }
+    Ok(forgotten)
 }
 
 /// A name for a feed that has no title: its address's host.

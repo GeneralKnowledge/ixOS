@@ -68,13 +68,23 @@ public final class LibraryModel {
     /// alert set, if it can't be opened.
     public func open(articleID: Int64) async -> ArticleText? {
         do {
+            return try await openArticle(articleID)
+        } catch {
+            alert = .failure(error)
+            return nil
+        }
+    }
+
+    /// Opens an article for reading (Rust marks it read). Throws, so the
+    /// article screen can say why where the person is, and offer Try Again.
+    public func openArticle(_ articleID: Int64) async throws -> ArticleText {
+        do {
             let text = try await core.openArticle(articleId: articleID)
             reload()
             return text
         } catch {
             log.warn("opening an article failed: \(error)")
-            alert = .failure(error)
-            return nil
+            throw error
         }
     }
 
@@ -134,6 +144,26 @@ public final class LibraryModel {
         }
     }
 
+    /// How old the newest refresh may be before opening the app, or coming
+    /// back to it, refreshes by itself.
+    public static let staleAfter: TimeInterval = 30 * 60
+
+    /// Refreshes when the feeds haven't been refreshed for `staleAfter`
+    /// (or ever): on launch and when the app comes back, so the person
+    /// doesn't open yesterday's articles and have to pull.
+    public func refreshIfStale(now: Date = Date()) async {
+        guard isStale(now: now) else { return }
+        await refresh()
+    }
+
+    /// Whether `refreshIfStale` would refresh now.
+    public func isStale(now: Date = Date()) -> Bool {
+        guard !feeds.isEmpty else { return false }
+        let newest = [lastRefresh?.at, feeds.compactMap(\.refreshedAt).max()].compactMap { $0 }.max()
+        guard let newest else { return true }
+        return now.timeIntervalSince(newest) >= Self.staleAfter
+    }
+
     /// Refreshes again if the last refresh found the device offline. The
     /// view calls it when the network comes back and when the app returns
     /// to the foreground, which is what the offline footer promises.
@@ -189,8 +219,37 @@ public final class LibraryModel {
 
     /// Words for the screen. `reason` fields are diagnostics from Rust:
     /// they go to the log where the error is caught, never on screen.
+    /// A short alert title: the framework's word for the error's kind,
+    /// except where Commonplace has a better one.
+    nonisolated public static func title(_ error: AppError) -> String {
+        switch error {
+        case .AlreadySubscribed: return "Already Subscribed"
+        case .NotAFeed: return "Not a Feed"
+        case .Offline: return "You're Offline"
+        case .Timeout: return "No Response"
+        case .Http: return "The Site Had a Problem"
+        case .Storage: return "Couldn't Save"
+        default: return ForgeErrors.title(error.forgeKind)
+        }
+    }
+
+    /// Words for why a feed's last refresh failed (`Feed.lastError` holds
+    /// the kind Rust stored).
+    nonisolated public static func refreshProblem(_ stored: String) -> String {
+        switch stored {
+        case "offline": return "Offline when it last refreshed"
+        case "timeout": return "The site didn't answer"
+        case "not-a-feed": return "No longer a feed at this address"
+        case "certificate": return "The site's certificate was rejected"
+        case "network": return "Couldn't reach the site"
+        default:
+            if stored.hasPrefix("http-") { return "The site answered with an error (HTTP \(stored.dropFirst(5)))" }
+            return "Couldn't refresh"
+        }
+    }
+
     nonisolated public static func describe(_ error: Error) -> String {
-        guard let error = error as? AppError else { return error.localizedDescription }
+        guard let error = error as? AppError else { return ForgeFailure(error).message }
         switch error {
         case .InvalidInput: return "That doesn't look like a web address. Check it and try again."
         case .NotFound: return "That's no longer in your library."
@@ -238,7 +297,7 @@ extension AppError: ForgeDescribedError {
         case .Offline, .Timeout, .Network, .Interrupted, .Http: retryable = true
         default: retryable = false
         }
-        return ForgeFailure(title: "Something Went Wrong", message: LibraryModel.describe(self), isRetryable: retryable)
+        return ForgeFailure(title: LibraryModel.title(self), message: LibraryModel.describe(self), isRetryable: retryable)
     }
 
     public var isCancellation: Bool {

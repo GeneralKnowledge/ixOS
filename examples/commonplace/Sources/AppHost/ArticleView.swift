@@ -1,4 +1,5 @@
 @preconcurrency import CommonplaceFFI
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -8,21 +9,21 @@ import SwiftUI
 struct ArticleView: View {
     let model: LibraryModel
     let articleID: Int64
-    @State private var text: ArticleText?
-    @State private var failed = false
+    @State private var text: ForgeLoad<ArticleText> = .loading
+    /// Moves to open the article again (Try Again).
+    @State private var attempt = 0
     #if os(iOS)
         @State private var original: ForgeWebPage?
     #endif
 
     var body: some View {
-        Group {
-            if let text {
-                ArticleReader(text: text)
-            } else if failed {
-                ForgeStateView.failed("Can't Open Article", message: "It may have been removed with its feed.")
-            } else {
-                ForgeStateView.loading()
-            }
+        // A failure says why (Rust's error, in LibraryModel's words), with
+        // Try Again when it might pass.
+        ForgeLoadView(
+            text,
+            retry: ForgeStateAction("Try Again", identifier: "article.retry") { attempt += 1 }
+        ) { text in
+            ArticleReader(text: text)
         }
         .toolbar { toolbar }
         #if os(iOS)
@@ -30,9 +31,9 @@ struct ArticleView: View {
             // The article's own site opens in the sheet; links elsewhere go to Safari.
             .forgeWebSheet($original)
         #endif
-        .task(id: articleID) {
-            text = await model.open(articleID: articleID)
-            failed = text == nil
+        .task(id: OpenRequest(articleID: articleID, attempt: attempt)) {
+            text = text.whileReloading
+            text = await text.reloaded { try await model.openArticle(articleID) }
         }
     }
 
@@ -75,6 +76,11 @@ struct ArticleView: View {
             }
         }
     }
+}
+
+private struct OpenRequest: Hashable {
+    let articleID: Int64
+    let attempt: Int
 }
 
 /// The reader's boundary: everything the reading surface shows comes in

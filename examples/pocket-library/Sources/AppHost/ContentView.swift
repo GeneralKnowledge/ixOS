@@ -1,18 +1,22 @@
 @preconcurrency import PocketLibraryFFI
 import ForgeAppKit
+import ForgeKit
 import ForgeUI
 import SwiftUI
 
-/// The app's root: three tabs over one library.
+/// The app's root: three tabs over one library. The App owns the model
+/// (and so the Rust library) for the life of the process, and attaches its
+/// host to the lifecycle.
 public struct ContentView: View {
-    @State private var model = LibraryModel()
-    @Environment(\.scenePhase) private var scenePhase
+    @Bindable private var model: LibraryModel
     /// The app reopens on the tab it was left on. A launch argument
     /// (`-selectedTab activity`) overrides it, which is how the screenshot
     /// job opens each tab without UI automation.
     @AppStorage("selectedTab") private var selectedTab = "library"
 
-    public init() {}
+    public init(model: LibraryModel) {
+        self.model = model
+    }
 
     public var body: some View {
         Group {
@@ -49,13 +53,21 @@ public struct ContentView: View {
         // its accent on plain SwiftUI controls.
         .forgeTheme(.standard)
         .task { await model.open() }
-        // One event loop for the app, started whenever the library opens.
-        .task(id: model.phase == .open) {
-            if model.phase == .open { await model.listenForEvents() }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { model.becameActive() }
-        }
+        // Rust committed something, missed events were caught up, or the
+        // app came back from the background: read everything again.
+        .onChange(of: model.host.changes) { model.reload() }
+    }
+}
+
+extension LibraryModel {
+    /// Reports the application lifecycle to the Rust library: searches stop
+    /// in the background, imports and exports finish in the time iOS gives
+    /// (`beginBackgroundTask`), and the screens re-read on the way back.
+    /// Call once, from the App's init.
+    public func attachToLifecycle() {
+        #if canImport(UIKit)
+        ForgeLifecycle.attach(host)
+        #endif
     }
 }
 

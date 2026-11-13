@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 105 capabilities, 15 work on an iPhone, 13 partly work, 56 are built but haven't been run on an iPhone, and 21 aren't built yet.**
+**Of 105 capabilities, 14 work on an iPhone, 14 partly work, 56 are built but haven't been run on an iPhone, and 21 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -17,7 +17,6 @@ A person ran an app that uses it on a physical iPhone and recorded the result.
 | Foundation | App-owned Rust crate with UniFFI async exports | Pocket Library (a `forge init` app with its own crate) on iPhone16,2, iOS 26.3.1, 2026-11-07: UI test m0 passed 11/11, watched by Reuben. A fresh app from the current starter has not been recorded on a phone |
 | Data and files | JSON snapshot storage with migration hook | Chat, 2026-11-05 |
 | Networking | HTTPS requests with typed errors | 2026-11-05 and 2026-11-06 |
-| Networking | Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode) | Commonplace refresh through URLSession, and airplane mode reported as offline, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-11 |
 | Networking | Long-lived streams (SSE) with reconnect | Chat |
 | Extensions and restricted frameworks | Core ML | Qwen3.5 0.8B (copied in over USB) compiled on the phone and run, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-07 |
 | Forge Device | Phone details from Linux (`forge device list`, `info`) | iPhone16,2, iOS 26.3.1, 2026-11-07 |
@@ -41,6 +40,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 | Foundation | Logging (platform log, recent records, extra sinks, panics logged) | Warn reached the USB log on iPhone (iOS 26.3.1, 2026-11-07); Info did not (LOG_INFO dropped by the relay), fixed to notice priority, recheck pending |
 | Foundation | `forge.toml` app config (Info.plist, entitlements, xtool.yml) | builds only |
 | Data and files | Background transfers | Device Lab on iPhone 15 Pro Max, iOS 26.3.1 (2026-11-11, 494faf1, reported by a person): downloads delivered after the app was ended (tests 1 and 3) and after leaving it running (test 2, completion callback not seen in the log), force quit marked Interrupted (test 6), once only on the second launch; Retry (then only a swipe action) was not found, so retry after force quit not yet seen |
+| Networking | Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode) | Commonplace refresh through URLSession, and airplane mode reported as offline, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-11; Chat's stream through URLSession not yet run on a phone |
 | Media, sensors and rendering | Audio session handling | playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run |
 | Media, sensors and rendering | Location fix | Weather's own provider, 2026-11-06; the service is not yet run on an iPhone |
 | Extensions and restricted frameworks | Apple Foundation Models (on-device text generation) | Chat L1 on iPhone 15 Pro Max, iOS 26.3.1, free team (2026-11-08, ada3d23): streaming (first words 0.6-1.4 s), Stop, interrupted answers and airplane mode passed; characters wrote both sides and then refused (fixed in #104, rechecked on ba45825: in character, no refusals); characters now write requested content in their own voice (#113, rechecked on 90905a0) |

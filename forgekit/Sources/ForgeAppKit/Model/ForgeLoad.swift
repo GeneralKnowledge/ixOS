@@ -35,6 +35,36 @@ public enum ForgeLoad<Value> {
         }
     }
 
+    /// What to show while loading again: loaded content stays on screen;
+    /// anything else becomes the spinner. Pair it with `reloaded`:
+    ///
+    ///     func refresh() async {
+    ///         results = results.whileReloading
+    ///         results = await results.reloaded { try await library.search(query) }
+    ///     }
+    ///
+    /// Swapping loaded content for a spinner would also remove a list's
+    /// `.refreshable`, which cancels the refresh it started.
+    public var whileReloading: ForgeLoad {
+        value != nil ? self : .loading
+    }
+
+    /// Runs `work` and returns the new state: the value, or the failure (so
+    /// the screen says what went wrong). When the work is cancelled (pull to
+    /// refresh let go, a newer load started, the screen closed) it returns
+    /// the state it was called on, with a spinner turned back into `.idle`,
+    /// so a stopped reload never leaves "Loading…" behind.
+    public func reloaded(
+        isolation: isolated (any Actor)? = #isolation,
+        _ work: () async throws -> Value
+    ) async -> ForgeLoad {
+        let outcome = await ForgeLoad.capture(isolation: isolation, work)
+        if case .idle = outcome {
+            return isLoading ? .idle : self
+        }
+        return outcome
+    }
+
     public var value: Value? {
         if case .loaded(let value) = self { value } else { nil }
     }
