@@ -17,7 +17,6 @@ struct ReaderRoute: Hashable {
 struct ReaderView: View {
     let bookID: UInt64
     @Environment(LibraryModel.self) private var model
-    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var systemTextSize
     /// Steps larger or smaller than the system text size.
     @AppStorage("readerTextSizeStep") private var textStep = 0
@@ -76,13 +75,10 @@ struct ReaderView: View {
             do { try await Task.sleep(for: .seconds(1.5)) } catch { return }
             savePosition()
         }
+        .forgeSaveOnLeave { savePosition() }
         .onDisappear {
-            savePosition()
             readAloud.stop()
             readAloud.removeRemoteCommands()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active { savePosition() }
         }
     }
 

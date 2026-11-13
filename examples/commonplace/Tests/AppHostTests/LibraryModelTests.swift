@@ -74,6 +74,21 @@ final class LibraryModelTests: XCTestCase {
         host.close()
     }
 
+    @MainActor
+    func testNothingToRefreshIsNeverStale() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        XCTAssertFalse(model.isStale(), "no feeds, nothing to refresh on launch")
+        host.close()
+    }
+
+    func testAlertsAndFeedRowsSayWhatHappened() {
+        XCTAssertEqual(AppError.Offline(reason: "x").failure.title, "You're Offline")
+        XCTAssertEqual(AppError.NotFound.failure.title, "Not Found")
+        XCTAssertEqual(LibraryModel.refreshProblem("http-503"), "The site answered with an error (HTTP 503)")
+        XCTAssertEqual(LibraryModel.refreshProblem("offline"), "Offline when it last refreshed")
+        XCTAssertEqual(LibraryModel.refreshProblem("HTTP 500"), "Couldn't refresh", "rows saved before kinds were stored")
+    }
+
     func testErrorsHaveFrameworkKinds() {
         XCTAssertEqual(appErrorKind(error: .AlreadySubscribed(feedId: 1)), .invalid)
         XCTAssertEqual(appErrorKind(error: .Http(status: 503)), .unavailable)

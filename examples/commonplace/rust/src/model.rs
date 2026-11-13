@@ -172,6 +172,15 @@ impl From<NetError> for AppError {
 }
 
 impl AppError {
+    /// What a feed's last refresh hit, as stored on the feed for the screen
+    /// to word (`Feed.last_error`): the kind, and an HTTP status.
+    pub fn problem(&self) -> String {
+        match self {
+            Self::Http { status } => format!("http-{status}"),
+            other => other.kind().to_string(),
+        }
+    }
+
     /// The variant's name, for logs (never the reason, which may hold an
     /// address the user typed).
     pub fn kind(&self) -> &'static str {
