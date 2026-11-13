@@ -37,7 +37,7 @@ twin = ["LibraryModelTests.testAnUnreadableLibraryCanBeStartedFreshAndIsKept"]
 [[requirement]]
 id = "PL-6"
 statement = "A change made elsewhere in the app reaches the library screen."
-twin = ["LibraryModelTests.testEventsFromAnotherInstanceReachTheModel"]
+twin = ["LibraryModelTests.testCommittedChangesMoveTheHost"]
 
 [[requirement]]
 id = "PL-7"

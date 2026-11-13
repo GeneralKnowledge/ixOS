@@ -39,8 +39,8 @@ let package = Package(
         .library(name: "PocketLibraryXtool", targets: ["PocketLibraryXtoolApp"]),
     ],
     dependencies: [
-        // ixOS's Swift package: ForgeApp (the shared contract types, such as
-        // FieldError, that this app's API uses), ForgeUI and ForgeAppKit.
+        // ixOS's Swift package: ForgeKit (the runtime host, with the shared
+        // contract types such as FieldError), ForgeUI and ForgeAppKit.
         .package(path: "../../forgekit"),
     ],
     targets: [
@@ -57,10 +57,14 @@ let package = Package(
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         // SwiftUI views and the view model; they call the Rust API in ForgeFFI
-        // and draw with ForgeUI and ForgeAppKit.
+        // through ForgeKit's host, and draw with ForgeUI and ForgeAppKit.
         .target(
             name: "PocketLibraryApp",
-            dependencies: ["PocketLibraryFFI", .product(name: "ForgeAppKit", package: "forgekit")],
+            dependencies: [
+                "PocketLibraryFFI",
+                .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeKit", package: "forgekit"),
+            ],
             path: "Sources/AppHost"
         ),
         .target(
@@ -77,7 +81,12 @@ let package = Package(
         ),
         .testTarget(
             name: "AppHostTests",
-            dependencies: ["PocketLibraryApp", "PocketLibraryFFI", .product(name: "ForgeAppKit", package: "forgekit")],
+            dependencies: [
+                "PocketLibraryApp",
+                "PocketLibraryFFI",
+                .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeKit", package: "forgekit"),
+            ],
             path: "Tests/AppHostTests",
             linkerSettings: rustLibrary
         ),

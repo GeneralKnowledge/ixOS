@@ -633,150 +633,6 @@ fileprivate struct FfiConverterString: FfiConverter {
 
 
 /**
- * Lets the host stop one request part way. Swift: create one per
- * call and cancel it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
- * cancelling the coroutine is enough; pass `null`.
- */
-public protocol CancellationProtocol: AnyObject, Sendable {
-    
-    /**
-     * Stops the request: it fails with `Cancelled` at once, even
-     * while waiting for a slow server. Idempotent.
-     */
-    func cancel() 
-    
-}
-/**
- * Lets the host stop one request part way. Swift: create one per
- * call and cancel it from `withTaskCancellationHandler`, because
- * cancelling a Swift `Task` does not reach Rust on its own. Kotlin:
- * cancelling the coroutine is enough; pass `null`.
- */
-open class Cancellation: CancellationProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_pocket_library_core_fn_clone_cancellation(self.handle, $0) }
-    }
-public convenience init() {
-    let handle =
-        try! rustCall() {
-        uniffiCallStatus in
-    uniffi_pocket_library_core_fn_constructor_cancellation_new(uniffiCallStatus
-    )
-}
-    self.init(unsafeFromHandle: handle)
-}
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_pocket_library_core_fn_free_cancellation(handle, $0) }
-    }
-
-    
-
-    
-    /**
-     * Stops the request: it fails with `Cancelled` at once, even
-     * while waiting for a slow server. Idempotent.
-     */
-open func cancel()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_pocket_library_core_fn_method_cancellation_cancel(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeCancellation: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = Cancellation
-
-    public static func lift(_ handle: UInt64) throws -> Cancellation {
-        return Cancellation(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: Cancellation) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Cancellation {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: Cancellation, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCancellation_lift(_ handle: UInt64) throws -> Cancellation {
-    return try FfiConverterTypeCancellation.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeCancellation_lower(_ value: Cancellation) -> UInt64 {
-    return FfiConverterTypeCancellation.lower(value)
-}
-
-
-
-
-
-
-/**
  * The library the host opens once and shares. Thread-safe.
  */
 public protocol LibraryProtocol: AnyObject, Sendable {
@@ -785,6 +641,17 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * Adds a book typed in by the user.
      */
     func addBook(input: BookInput) async throws  -> Book
+    
+    /**
+     * The host's background time ran out: finishing work stops.
+     */
+    func backgroundTimeExpired() 
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+    func backgroundWorkPending()  -> Bool
     
     func book(id: UInt64) throws  -> Book
     
@@ -804,9 +671,10 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func eraseLibrary() async throws 
     
     /**
-     * A new event stream. Each consumer takes its own.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-    func events() throws  -> LibraryEvents
+    func events()  -> RuntimeEvents?
     
     /**
      * Writes every book as a spreadsheet (CSV) for the share sheet, with
@@ -838,6 +706,7 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * description and cover from the file, and a page count estimated from
      * its length. A copy of the file is kept so the book can be read in the
      * app (`open_reader`); the host may delete its own copy afterwards.
+     * Finishing work: it may complete after the person leaves the app.
      *
      * If the book is already in the library without a saved EPUB (typed
      * in, found in the catalogue, or imported before EPUBs were kept), the
@@ -850,10 +719,16 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     /**
      * Adds a result of the latest search as a Want to Read book. Its
      * description and a cover are fetched too; if they fail the book is
-     * still added, without them, and `warnings` says so. `cancellation`
+     * still added, without them, and `warnings` says so. Finishing work:
+     * it may complete after the person leaves the app. `cancellation`
      * stops it part way with `Cancelled`, and then nothing is added.
      */
     func importFromCatalogue(key: String, cancellation: Cancellation?) async throws  -> ImportedBook
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+    func launchReport()  -> LaunchReport
     
     /**
      * Opens a book's saved EPUB for reading: its chapters, and where to
@@ -863,12 +738,17 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func openReader(id: UInt64) async throws  -> ReaderContents
     
     /**
+     * The phase last reported.
+     */
+    func phase()  -> AppPhase
+    
+    /**
      * The text of chapter `index` of a book opened with `open_reader`.
      */
     func readerChapter(id: UInt64, index: UInt32) async throws  -> ReaderChapter
     
     /**
-     * Increases with every saved change.
+     * The last committed revision.
      */
     func revision()  -> UInt64
     
@@ -882,10 +762,16 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
-     * failure the library is exactly as it was.
-     * `cancellation` stops it part way with `Cancelled`.
+     * failure the library is exactly as it was. On-screen work:
+     * `cancellation` stops it part way with `Cancelled`, and leaving the app
+     * with `Interrupted`.
      */
     func searchCatalogue(query: String, cancellation: Cancellation?) async throws  -> [CatalogueBook]
+    
+    /**
+     * The host reports the application lifecycle phase.
+     */
+    func setPhase(phase: AppPhase) 
     
     /**
      * Moves a book to `status`: Want to Read resets the page, Finished
@@ -896,9 +782,8 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func settings()  -> LibrarySettings
     
     /**
-     * Refuses new commands with `ShutDown`, stops catalogue requests in
-     * flight (they fail with `ShutDown`) and ends every event stream. Saves
-     * already running finish, so no write is cut short. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
     
@@ -967,7 +852,8 @@ open class Library: LibraryProtocol, @unchecked Sendable {
         return try! rustCall { uniffi_pocket_library_core_fn_clone_library(self.handle, $0) }
     }
     /**
-     * Opens the library in `storage_directory` (created if missing). Fails
+     * Opens the library in `storage_directory` (created if missing),
+     * holding the directory so no second instance can write to it. Fails
      * with `Storage` or `NewerLibrary` if the saved library cannot be used;
      * the file is left untouched (see `open_fresh`).
      */
@@ -1025,6 +911,30 @@ open func addBook(input: BookInput)async throws  -> Book  {
             liftFunc: FfiConverterTypeBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
+}
+    
+    /**
+     * The host's background time ran out: finishing work stops.
+     */
+open func backgroundTimeExpired()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_background_time_expired(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Whether commands or finishing work are still running; the
+     * host holds background time while they are.
+     */
+open func backgroundWorkPending() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_background_work_pending(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
 open func book(id: UInt64)throws  -> Book  {
@@ -1089,10 +999,11 @@ open func eraseLibrary()async throws   {
 }
     
     /**
-     * A new event stream. Each consumer takes its own.
+     * The runtime's event stream: `Changed { revision }` after each
+     * committed command, phase changes, and drops. Nil after shutdown.
      */
-open func events()throws  -> LibraryEvents  {
-    return try  FfiConverterTypeLibraryEvents_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
+open func events() -> RuntimeEvents?  {
+    return try!  FfiConverterOptionTypeRuntimeEvents.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_pocket_library_core_fn_method_library_events(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -1181,6 +1092,7 @@ open func importBooksCsv(path: String)async throws  -> CsvImportSummary  {
      * description and cover from the file, and a page count estimated from
      * its length. A copy of the file is kept so the book can be read in the
      * app (`open_reader`); the host may delete its own copy afterwards.
+     * Finishing work: it may complete after the person leaves the app.
      *
      * If the book is already in the library without a saved EPUB (typed
      * in, found in the catalogue, or imported before EPUBs were kept), the
@@ -1207,7 +1119,8 @@ open func importEpub(path: String)async throws  -> Book  {
     /**
      * Adds a result of the latest search as a Want to Read book. Its
      * description and a cover are fetched too; if they fail the book is
-     * still added, without them, and `warnings` says so. `cancellation`
+     * still added, without them, and `warnings` says so. Finishing work:
+     * it may complete after the person leaves the app. `cancellation`
      * stops it part way with `Cancelled`, and then nothing is added.
      */
 open func importFromCatalogue(key: String, cancellation: Cancellation?)async throws  -> ImportedBook  {
@@ -1224,6 +1137,18 @@ open func importFromCatalogue(key: String, cancellation: Cancellation?)async thr
             liftFunc: FfiConverterTypeImportedBook_lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
+}
+    
+    /**
+     * What the runtime found at open (unfinished background work).
+     */
+open func launchReport() -> LaunchReport  {
+    return try!  FfiConverterTypeLaunchReport_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_launch_report(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -1248,6 +1173,18 @@ open func openReader(id: UInt64)async throws  -> ReaderContents  {
 }
     
     /**
+     * The phase last reported.
+     */
+open func phase() -> AppPhase  {
+    return try!  FfiConverterTypeAppPhase_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_phase(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The text of chapter `index` of a book opened with `open_reader`.
      */
 open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter  {
@@ -1267,7 +1204,7 @@ open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter
 }
     
     /**
-     * Increases with every saved change.
+     * The last committed revision.
      */
 open func revision() -> UInt64  {
     return try!  FfiConverterUInt64.lift(try! rustCall() {
@@ -1302,8 +1239,9 @@ open func saveReadingPosition(id: UInt64, position: ReadingPosition)async throws
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
-     * failure the library is exactly as it was.
-     * `cancellation` stops it part way with `Cancelled`.
+     * failure the library is exactly as it was. On-screen work:
+     * `cancellation` stops it part way with `Cancelled`, and leaving the app
+     * with `Interrupted`.
      */
 open func searchCatalogue(query: String, cancellation: Cancellation?)async throws  -> [CatalogueBook]  {
     return
@@ -1319,6 +1257,18 @@ open func searchCatalogue(query: String, cancellation: Cancellation?)async throw
             liftFunc: FfiConverterSequenceTypeCatalogueBook.lift,
             errorHandler: FfiConverterTypeLibraryError_lift
         )
+}
+    
+    /**
+     * The host reports the application lifecycle phase.
+     */
+open func setPhase(phase: AppPhase)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_set_phase(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeAppPhase_lower(phase),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1351,9 +1301,8 @@ open func settings() -> LibrarySettings  {
 }
     
     /**
-     * Refuses new commands with `ShutDown`, stops catalogue requests in
-     * flight (they fail with `ShutDown`) and ends every event stream. Saves
-     * already running finish, so no write is cut short. Idempotent.
+     * Refuses new commands, stops work in flight and ends event
+     * streams. Commands already accepted still finish and save.
      */
 open func shutdown()  {try! rustCall() {
         uniffiCallStatus in
@@ -1484,159 +1433,6 @@ public func FfiConverterTypeLibrary_lift(_ handle: UInt64) throws -> Library {
 #endif
 public func FfiConverterTypeLibrary_lower(_ value: Library) -> UInt64 {
     return FfiConverterTypeLibrary.lower(value)
-}
-
-
-
-
-
-
-/**
- * One consumer's events. Await `next()` in a loop; `None` means it ended.
- */
-public protocol LibraryEventsProtocol: AnyObject, Sendable {
-    
-    /**
-     * Ends this stream; a pending `next()` returns `None`.
-     */
-    func cancel() 
-    
-    /**
-     * The next event, or `None` once this stream has ended.
-     */
-    func next() async  -> LibraryEvent?
-    
-}
-/**
- * One consumer's events. Await `next()` in a loop; `None` means it ended.
- */
-open class LibraryEvents: LibraryEventsProtocol, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_pocket_library_core_fn_clone_libraryevents(self.handle, $0) }
-    }
-    // No primary constructor declared for this class.
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_pocket_library_core_fn_free_libraryevents(handle, $0) }
-    }
-
-    
-
-    
-    /**
-     * Ends this stream; a pending `next()` returns `None`.
-     */
-open func cancel()  {try! rustCall() {
-        uniffiCallStatus in
-    uniffi_pocket_library_core_fn_method_libraryevents_cancel(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-}
-}
-    
-    /**
-     * The next event, or `None` once this stream has ended.
-     */
-open func next()async  -> LibraryEvent?  {
-    return
-        try!  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_pocket_library_core_fn_method_libraryevents_next(
-                        self.uniffiCloneHandle()
-                )
-            },
-            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
-            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
-            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
-            liftFunc: FfiConverterOptionTypeLibraryEvent.lift,
-            errorHandler: nil
-            
-        )
-}
-    
-
-    
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeLibraryEvents: FfiConverter {
-    typealias FfiType = UInt64
-    typealias SwiftType = LibraryEvents
-
-    public static func lift(_ handle: UInt64) throws -> LibraryEvents {
-        return LibraryEvents(unsafeFromHandle: handle)
-    }
-
-    public static func lower(_ value: LibraryEvents) -> UInt64 {
-        return value.uniffiCloneHandle()
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibraryEvents {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: LibraryEvents, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLibraryEvents_lift(_ handle: UInt64) throws -> LibraryEvents {
-    return try FfiConverterTypeLibraryEvents.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLibraryEvents_lower(_ value: LibraryEvents) -> UInt64 {
-    return FfiConverterTypeLibraryEvents.lower(value)
 }
 
 
@@ -3183,9 +2979,19 @@ enum LibraryError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case Cancelled
     /**
+     * The app went to the background and the work was stopped. Nothing
+     * changed; it is safe to try again on return.
+     */
+    case Interrupted
+    /**
      * `shutdown()` was called; the instance accepts no more work.
      */
     case ShutDown
+    /**
+     * Another copy of the library core has this library open.
+     */
+    case InUse(reason: String
+    )
 
     
 
@@ -3258,7 +3064,11 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             reason: try FfiConverterString.read(from: &buf)
             )
         case 16: return .Cancelled
-        case 17: return .ShutDown
+        case 17: return .Interrupted
+        case 18: return .ShutDown
+        case 19: return .InUse(
+            reason: try FfiConverterString.read(from: &buf)
+            )
 
          default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -3349,9 +3159,18 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(16))
         
         
-        case .ShutDown:
+        case .Interrupted:
             writeInt(&buf, Int32(17))
         
+        
+        case .ShutDown:
+            writeInt(&buf, Int32(18))
+        
+        
+        case let .InUse(reason):
+            writeInt(&buf, Int32(19))
+            FfiConverterString.write(reason, into: &buf)
+            
         }
     }
 }
@@ -3370,100 +3189,6 @@ public func FfiConverterTypeLibraryError_lift(_ buf: RustBuffer) throws -> Libra
 public func FfiConverterTypeLibraryError_lower(_ value: LibraryError) -> RustBuffer {
     return FfiConverterTypeLibraryError.lower(value)
 }
-
-
-/**
- * Something the host may want to react to.
- */
-
-public enum LibraryEvent: Equatable, Hashable {
-    
-    /**
-     * The library changed and was saved. Re-run the current query.
-     */
-    case changed(revision: UInt64
-    )
-    /**
-     * Settings changed.
-     */
-    case settingsChanged(settings: LibrarySettings
-    )
-    /**
-     * This stream fell behind and missed `count` events; re-read everything.
-     */
-    case eventsDropped(count: UInt64
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension LibraryEvent: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeLibraryEvent: FfiConverterRustBuffer {
-    typealias SwiftType = LibraryEvent
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LibraryEvent {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .changed(revision: try FfiConverterUInt64.read(from: &buf)
-        )
-        
-        case 2: return .settingsChanged(settings: try FfiConverterTypeLibrarySettings.read(from: &buf)
-        )
-        
-        case 3: return .eventsDropped(count: try FfiConverterUInt64.read(from: &buf)
-        )
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: LibraryEvent, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case let .changed(revision):
-            writeInt(&buf, Int32(1))
-            FfiConverterUInt64.write(revision, into: &buf)
-            
-        
-        case let .settingsChanged(settings):
-            writeInt(&buf, Int32(2))
-            FfiConverterTypeLibrarySettings.write(settings, into: &buf)
-            
-        
-        case let .eventsDropped(count):
-            writeInt(&buf, Int32(3))
-            FfiConverterUInt64.write(count, into: &buf)
-            
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLibraryEvent_lift(_ buf: RustBuffer) throws -> LibraryEvent {
-    return try FfiConverterTypeLibraryEvent.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLibraryEvent_lower(_ value: LibraryEvent) -> RustBuffer {
-    return FfiConverterTypeLibraryEvent.lower(value)
-}
-
 
 
 /**
@@ -3963,6 +3688,30 @@ fileprivate struct FfiConverterOptionTypeCancellation: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
+    typealias SwiftType = RuntimeEvents?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeRuntimeEvents.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeRuntimeEvents.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeReadingPosition: FfiConverterRustBuffer {
     typealias SwiftType = ReadingPosition?
 
@@ -3979,30 +3728,6 @@ fileprivate struct FfiConverterOptionTypeReadingPosition: FfiConverterRustBuffer
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeReadingPosition.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-fileprivate struct FfiConverterOptionTypeLibraryEvent: FfiConverterRustBuffer {
-    typealias SwiftType = LibraryEvent?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeLibraryEvent.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeLibraryEvent.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -4302,6 +4027,18 @@ public func epubWordsPerPage() -> UInt32  {
     )
 })
 }
+/**
+ * The framework kind of each error, so ForgeKit presents it like any
+ * app's (`LibraryError: ForgeKindedError` in Swift).
+ */
+public func libraryErrorKind(error: LibraryError) -> ErrorKind  {
+    return try!  FfiConverterTypeErrorKind_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_func_library_error_kind(
+        FfiConverterTypeLibraryError_lower(error),uniffiCallStatus
+    )
+})
+}
 
 private enum InitializationResult {
     case ok
@@ -4324,10 +4061,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_func_epub_words_per_page() != 51851) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_cancellation_cancel() != 16228) {
+    if (uniffi_pocket_library_core_checksum_func_library_error_kind() != 3528) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_add_book() != 15939) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_background_time_expired() != 24437) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_background_work_pending() != 20736) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
@@ -4342,7 +4085,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_erase_library() != 647) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_events() != 10274) {
+    if (uniffi_pocket_library_core_checksum_method_library_events() != 29464) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_export_books_csv() != 48382) {
@@ -4357,25 +4100,34 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_import_books_csv() != 1034) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_import_epub() != 45226) {
+    if (uniffi_pocket_library_core_checksum_method_library_import_epub() != 38132) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_import_from_catalogue() != 5971) {
+    if (uniffi_pocket_library_core_checksum_method_library_import_from_catalogue() != 60732) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_launch_report() != 11453) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_open_reader() != 37535) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_phase() != 29225) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_reader_chapter() != 45028) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_revision() != 32146) {
+    if (uniffi_pocket_library_core_checksum_method_library_revision() != 29913) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_save_reading_position() != 38892) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_search_catalogue() != 62950) {
+    if (uniffi_pocket_library_core_checksum_method_library_search_catalogue() != 47288) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_set_phase() != 27204) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_set_status() != 16166) {
@@ -4384,7 +4136,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_settings() != 62238) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_shutdown() != 9634) {
+    if (uniffi_pocket_library_core_checksum_method_library_shutdown() != 21930) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_stats() != 28212) {
@@ -4402,16 +4154,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_update_settings() != 27241) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_libraryevents_cancel() != 35180) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_pocket_library_core_checksum_method_libraryevents_next() != 50671) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_pocket_library_core_checksum_constructor_cancellation_new() != 56017) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_pocket_library_core_checksum_constructor_library_new() != 60930) {
+    if (uniffi_pocket_library_core_checksum_constructor_library_new() != 59207) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_constructor_library_open_fresh() != 18839) {

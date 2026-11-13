@@ -87,7 +87,7 @@ Changes, in order:
 
 1. Rewrite `architecture.md` around `forge-app` + ForgeKit, with Checklist as the reference; move Counter's command-thread and persistence sections to a short history note or into `examples/counter/README.md`. Update the README's opening and command examples to Checklist. (Docs only; the next PR after this one.)
 2. Release each framework version promptly after it merges, so new apps stay independent (0.4.0: done in #158).
-3. Move Pocket Library onto `Runtime` before its App Store submission (app model phase 5; it fixes the data layout before users have data). Then Good Dog, then Chat (whose outbox becomes the durable contract, section 3).
+3. Move Pocket Library onto `Runtime` before its App Store submission (app model phase 5). Done (2026-11-12): commands, a published snapshot, `foreground` searches, `finishing` imports and exports, and `ForgeHost` in Swift. Its data stays in Application Support/PocketLibrary, so existing libraries open unchanged; moving it into `ForgeEnvironment`'s layout waits for storage classes. Then Good Dog, then Chat (whose outbox becomes the durable contract, section 3).
 4. Decide Counter's fate: keep it as the Android twin's crate, but stop calling it the reference app anywhere.
 
 ### 2. Persistence guarantees
@@ -265,7 +265,7 @@ Reuben's order, with the concrete first step for each. Each is small enough to r
 |---|---|---|---|
 | 1 | Canonical architecture | Reconcile `architecture.md`, `ffi-policy.md` and the README with the runtime (docs only) | 1 docs PR |
 | 2 | Persistence | `FileStore` directory sync; staged-file API used by Pocket Library's EPUB import and Chat's attachments; fixtures directory and test convention; storage classes in `ForgeEnvironment` | 2 to 3 PRs |
-| 3 | Lifecycle and durable work | Finishing scope with `beginBackgroundTask` and relaunch report (done 2026-11-11); Pocket Library onto `Runtime`. Durable contract waits for its second user | 2 PRs, one short phone check |
+| 3 | Lifecycle and durable work | Finishing scope with `beginBackgroundTask` and relaunch report (done 2026-11-11); Pocket Library onto `Runtime` (done 2026-11-12). Durable contract waits for its second user | 2 PRs, one short phone check |
 | 4 | Swift developer experience | Default error text by kind; ForgeKit tests; service adapters into ForgeKit; one entry point | 2 PRs, macOS CI |
 | 5 | Networking | `is_retryable` and `RetryPolicy`; connectivity into the runtime; then the URLSession transport per the roadmap | 1 PR, then the roadmap item |
 | 6 | Verification | `forge_app::testing` harness; common subset run by Checklist, Pocket Library and Chat | 1 to 2 PRs |

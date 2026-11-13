@@ -3,12 +3,20 @@
 use super::*;
 use crate::catalogue::tests::{catalogue, API, COVERS, SEARCH_BODY};
 use crate::epub::tests::sample_epub;
+use forge_app::RuntimeEvent;
 use forge_net::{Method, NetError, Response, StaticClient};
-use forge_runtime::block_on;
+use forge_runtime::{block_on, CancelHandle};
 use std::path::Path;
 
 fn dir_string(dir: &Path) -> String {
     dir.to_string_lossy().into_owned()
+}
+
+/// Closes `library` and opens what it saved, as the next launch would.
+fn reopen(library: Arc<Library>, dir: &Path) -> Arc<Library> {
+    library.shutdown();
+    drop(library);
+    open(dir)
 }
 
 /// A library whose catalogue never answers (as if offline).
@@ -249,10 +257,8 @@ fn epub_import_saves_metadata_cover_and_file() {
     assert_eq!(book.reading_position, None);
     // The host may delete its copy; the library keeps its own.
     std::fs::remove_file(&file).unwrap();
-    assert_eq!(
-        open(dir.path()).book(book.id).unwrap().title,
-        "The Test Book"
-    );
+    let library = reopen(library, dir.path());
+    assert_eq!(library.book(book.id).unwrap().title, "The Test Book");
 
     std::fs::write(&file, sample_epub("The Test Book", 10, false)).unwrap();
     assert_eq!(
@@ -362,6 +368,7 @@ fn reading_moves_the_page_and_is_remembered() {
 
     // Reopened later, the reader starts where it was left.
     library.shutdown();
+    drop(library);
     let library = open(dir.path());
     let contents = block_on(library.open_reader(book.id)).unwrap();
     assert_eq!(contents.start, end);
@@ -485,7 +492,7 @@ fn events_announce_saved_changes_and_end_on_shutdown() {
     block_on(library.add_book(input("One", None))).unwrap();
     assert_eq!(
         block_on(events.next()),
-        Some(LibraryEvent::Changed { revision: 1 })
+        Some(RuntimeEvent::Changed { revision: 1 })
     );
     let settings = LibrarySettings {
         default_sort: LibrarySort::Author,
@@ -494,34 +501,38 @@ fn events_announce_saved_changes_and_end_on_shutdown() {
     block_on(library.update_settings(settings.clone())).unwrap();
     assert_eq!(
         block_on(events.next()),
-        Some(LibraryEvent::SettingsChanged { settings })
+        Some(RuntimeEvent::Changed { revision: 2 })
     );
-    // A failed command announces nothing.
+    assert_eq!(library.settings(), settings);
+    // A failed command announces nothing and keeps the revision.
     assert!(block_on(library.update_progress(99, 1)).is_err());
+    assert_eq!(library.revision(), 2);
 
     library.shutdown();
+    assert!(matches!(
+        block_on(events.next()),
+        Some(RuntimeEvent::PhaseChanged { .. })
+    ));
     assert_eq!(block_on(events.next()), None);
     assert_eq!(
         block_on(library.add_book(input("Late", None))),
         Err(LibraryError::ShutDown)
     );
-    assert!(library.events().is_err());
+    assert!(library.events().is_none());
     // Reads still work after shutdown: the host may render the last state.
     assert_eq!(library.books(all()).len(), 1);
 }
 
 #[test]
-fn a_slow_subscriber_is_told_it_missed_events() {
+fn a_second_core_cannot_open_the_same_library() {
     let dir = tempfile::tempdir().unwrap();
     let library = open(dir.path());
-    let events = library.events().unwrap();
-    for i in 0..(forge_runtime::DEFAULT_QUEUE_CAPACITY + 5) {
-        block_on(library.add_book(input(&format!("Book {i}"), None))).unwrap();
-    }
     assert!(matches!(
-        block_on(events.next()),
-        Some(LibraryEvent::EventsDropped { count: 5 })
+        Library::open(dir_string(dir.path()), Arc::new(OfflineCatalogue)),
+        Err(LibraryError::InUse { .. })
     ));
+    drop(library);
+    open(dir.path());
 }
 
 #[test]
@@ -615,7 +626,7 @@ fn export_and_erase() {
         (0, 0, 0)
     );
     assert_eq!(library.settings().default_sort, LibrarySort::Progress);
-    assert!(open(dir.path()).books(all()).is_empty());
+    assert!(reopen(library, dir.path()).books(all()).is_empty());
 }
 
 #[test]
@@ -631,7 +642,11 @@ fn concurrent_commands_all_land() {
     for f in futures {
         f.join().unwrap().unwrap();
     }
-    let mut ids: Vec<u64> = open(dir.path()).books(all()).iter().map(|b| b.id).collect();
+    let mut ids: Vec<u64> = reopen(library, dir.path())
+        .books(all())
+        .iter()
+        .map(|b| b.id)
+        .collect();
     ids.sort_unstable();
     assert_eq!(ids, (1..=16).collect::<Vec<_>>());
 }
@@ -740,14 +755,15 @@ fn a_cancelled_import_adds_nothing() {
     // reusing the first library's results.
     let library = Library::open(dir_string(dir.path()), Arc::new(catalogue(client))).unwrap();
     block_on(library.search_catalogue("hobbit".into(), None)).unwrap();
-    let last_search = lock(&library.state).last_search.clone();
+    let last_search = lock(&library.last_search).clone();
     library.shutdown();
+    drop(library);
     let library = Library::open(
         dir_string(dir.path()),
         Arc::new(HangingCatalogue { started }),
     )
     .unwrap();
-    lock(&library.state).last_search = last_search;
+    *lock(&library.last_search) = last_search;
 
     let cancellation = Cancellation::new();
     let (result, _) = {
@@ -818,4 +834,52 @@ fn books_go_out_and_come_back_as_a_spreadsheet() {
         (emma.status, emma.rating),
         (ReadingStatus::Finished, Some(5))
     );
+}
+
+#[test]
+fn the_background_interrupts_a_search_but_not_an_import() {
+    let dir = tempfile::tempdir().unwrap();
+    let (library, on_start) = open_hanging(dir.path());
+    let (result, _) = {
+        let searching = Arc::clone(&library);
+        stop_in_flight(
+            &on_start,
+            move || block_on(searching.search_catalogue("dune".into(), None)),
+            || library.set_phase(forge_app::AppPhase::Background),
+        )
+    };
+    assert_eq!(result.unwrap_err(), LibraryError::Interrupted);
+    assert_eq!(
+        LibraryError::Interrupted.kind(),
+        forge_app::ErrorKind::Interrupted
+    );
+
+    // An import is finishing work: it carries on in the background, and
+    // the host holds background time until it ends or the time runs out.
+    *lock(&library.last_search) = HashMap::from([(
+        "/works/OL1W".to_string(),
+        CatalogueHit {
+            key: "/works/OL1W".into(),
+            title: "Dune".into(),
+            author: "Frank Herbert".into(),
+            first_published: None,
+            total_pages: None,
+            cover_url: None,
+            large_cover_url: None,
+        },
+    )]);
+    let (result, _) = {
+        let importing = Arc::clone(&library);
+        stop_in_flight(
+            &on_start,
+            move || block_on(importing.import_from_catalogue("/works/OL1W".into(), None)),
+            || {
+                assert!(library.background_work_pending());
+                library.background_time_expired();
+            },
+        )
+    };
+    assert_eq!(result.unwrap_err(), LibraryError::Interrupted);
+    assert!(!library.background_work_pending());
+    assert_eq!(library.books(all()), vec![]);
 }

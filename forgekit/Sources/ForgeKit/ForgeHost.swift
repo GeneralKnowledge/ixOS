@@ -287,8 +287,13 @@ public final class ForgeHost<Core: ForgeCore> {
 
 /// Runs a cancellable Rust call so that cancelling the Swift task (a view
 /// closing, `.task(id:)` restarting) cancels the work in Rust too. UniFFI
-/// does not forward Task cancellation by itself.
-public func withRustCancellation<T>(_ body: (Cancellation) async throws -> T) async throws -> T {
+/// does not forward Task cancellation by itself. Runs `body` on the
+/// caller's actor, so a main-actor model can call it under Swift 6's
+/// strict concurrency checks.
+public func withRustCancellation<T>(
+    isolation: isolated (any Actor)? = #isolation,
+    _ body: (Cancellation) async throws -> T
+) async throws -> T {
     let cancellation = Cancellation()
     return try await withTaskCancellationHandler {
         try await body(cancellation)
