@@ -156,10 +156,43 @@ and (in stage 2) the tailnet and relay paths. Nothing new to borrow.
   (paid team), and a mailbox would hold people's messages. A store and
   forward mailbox, encrypted to the recipient's key, is a later option on
   Hetzner if waiting turns out to annoy.
-- **Storage:** the conversation history lives in the core (SQLite, as the
-  other apps), never logged.
+- **Storage:** the conversation history lives in the core (Chat's SQLite
+  store, below), never logged.
 - **AI asks** (protocol 2 today) become a kind of message too: "ask this
   device's model" is a message whose answer streams back.
+
+### Reuse Chat instead of writing a second messenger
+
+Chat (`examples/chat`, `examples/chat-core`) already has what Relay's
+messages need: conversations, an outbox that keeps sending until the other
+side has the message, drafts, read marks, reactions, replies, edits,
+SQLite storage with full-text search, attachments checked by hash, local
+notifications, and a finished SwiftUI conversation screen. Its client talks
+to its server through one trait, `ChatRepo` (today `HttpRepo` for the chat
+server and `InMemoryRepo` for tests).
+
+**Recommendation: share, don't merge.** Relay adds a third backend,
+`PeerRepo`, which implements `ChatRepo` over Relay's iroh connection:
+
+| `ChatRepo` call | Over Relay |
+|---|---|
+| a conversation | one trusted device |
+| `post_message` | send it to that device; fails while the device is away, so Chat's outbox keeps it as "waiting" and retries, which is the behaviour planned above |
+| `open_stream` | messages, edits, reactions and read marks arriving from that device |
+| `load_messages(since)` | ask the device for what changed since, to catch up after being apart |
+| `upload_attachment` / `download_attachment` | iroh-blobs, keeping Chat's SHA-256 ids beside the BLAKE3 hash |
+| `mark_read` | a read mark sent to the device |
+
+So Relay's Rust core depends on `chat-core` and gets the client, store,
+outbox and search unchanged, and Relay's conversation screen reuses Chat's
+SwiftUI views. Chat stays its own app with its server. This is the second
+use the architecture rule waits for, so Chat's conversation views (and
+`chat-core`, if Relay's dependency on an example crate feels wrong) move
+into a shared module in stage 1, with Chat as their first user. Two
+directions this opens later, not in the plan's stages: Chat talking to
+nearby devices with no server (its fourth backend would be `PeerRepo`), or
+one app that has both. Merging the apps now would tie Relay's quick
+send-a-file flow to Chat's account and server, which Relay doesn't need.
 
 ## Code phrases: words or letters?
 
