@@ -40,6 +40,7 @@ public struct ContentView: View {
         // sensors running, so toggling Wi-Fi or Bluetooth shows up live.
         // Another app open on top (the Apps screen) stops them too.
         .onChange(of: scenePhase, initial: true) { _, phase in
+            model.setInForeground(phase != .background)
             model.setActive(phase != .background && openApp == nil)
         }
         .onChange(of: openApp) { _, app in

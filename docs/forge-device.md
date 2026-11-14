@@ -96,7 +96,7 @@ Lines look like `+  12.345s INFO  [chat] sent`: the time since the app started, 
 
 ### What an app exposes
 
-The starter app (`forge init`) shows a `notes` probe and a `log` command (`forge device cmd log hello` writes "hello" to the app's log). In `rust/src/lib.rs`, the `devtools` module registers them; add your own there:
+The starter app (`forge init`) shows a `notes` probe and a `log` command (`forge device cmd log hello` writes "hello" to the app's log). In `rust/src/lib.rs`, the `devtools` module registers them; add your own there. Device Lab registers `active`, `permissions` and `connectivity` probes and the same `log` command, and streams the log of every app on its Apps screen ([examples/device-lab](../examples/device-lab/README.md#the-live-connection-development-builds)). Add your own like this:
 
 ```rust
 tools.probe("outbox", move || outbox.len().to_string());

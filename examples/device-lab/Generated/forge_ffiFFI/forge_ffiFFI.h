@@ -595,6 +595,11 @@ void uniffi_forge_ffi_fn_method_devicelab_reset(uint64_t ptr, RustCallStatus *_N
 void uniffi_forge_ffi_fn_method_devicelab_set_active(uint64_t ptr, int8_t active, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_DEVICELAB_SET_IN_FOREGROUND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_DEVICELAB_SET_IN_FOREGROUND
+void uniffi_forge_ffi_fn_method_devicelab_set_in_foreground(uint64_t ptr, int8_t foreground, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_DEVICELAB_SNAPSHOT
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_FN_METHOD_DEVICELAB_SNAPSHOT
 RustBuffer uniffi_forge_ffi_fn_method_devicelab_snapshot(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1485,6 +1490,12 @@ uint16_t uniffi_forge_ffi_checksum_method_devicelab_reset(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_SET_ACTIVE
 #define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_SET_ACTIVE
 uint16_t uniffi_forge_ffi_checksum_method_devicelab_set_active(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_SET_IN_FOREGROUND
+#define UNIFFI_FFIDEF_UNIFFI_FORGE_FFI_CHECKSUM_METHOD_DEVICELAB_SET_IN_FOREGROUND
+uint16_t uniffi_forge_ffi_checksum_method_devicelab_set_in_foreground(void
     
 );
 #endif

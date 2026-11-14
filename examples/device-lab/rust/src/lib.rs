@@ -19,7 +19,7 @@ pub mod transfer_test;
 
 use std::sync::{Arc, Mutex};
 
-use forge_runtime::{lock, now_ms};
+use forge_runtime::{lock, now_ms, Lifecycle, Phase};
 use forge_services::Watch;
 
 uniffi::setup_scaffolding!("forge_ffi");
@@ -400,6 +400,11 @@ pub struct DeviceLab {
     watches: Mutex<Watches>,
     info: Option<DeviceInfo>,
     availability: Option<MotionAvailability>,
+    /// Whether the app itself is on screen (not whether the lab's own
+    /// screen is: an app opened from Apps keeps the app in the foreground).
+    lifecycle: Lifecycle,
+    #[cfg(feature = "devtools")]
+    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -408,7 +413,13 @@ impl DeviceLab {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         forge_runtime::logging::init();
-        Arc::new(Self::with_services(LabServices::installed()))
+        #[allow(unused_mut)]
+        let mut lab = Self::with_services(LabServices::installed());
+        #[cfg(feature = "devtools")]
+        {
+            lab._devtools = devtools::start(&lab);
+        }
+        Arc::new(lab)
     }
 
     /// Everything on screen, copied from memory. Re-reads storage and memory
@@ -515,6 +526,19 @@ impl DeviceLab {
         }
     }
 
+    /// The host reports whether the app is in the foreground (the scene
+    /// phase), separately from `set_active`, which is also false
+    /// while an app opened from Apps covers the lab. In development builds
+    /// the live connection to `forge device` listens only while this is
+    /// true.
+    pub fn set_in_foreground(&self, foreground: bool) {
+        self.lifecycle.enter(if foreground {
+            Phase::Active
+        } else {
+            Phase::Background
+        });
+    }
+
     /// Re-reads the permission statuses (on launch and when the app comes
     /// back from Settings) and starts what they now allow.
     pub async fn refresh_permissions(&self) -> PermissionStatuses {
@@ -582,6 +606,9 @@ impl DeviceLab {
             watches: Mutex::new(Watches::default()),
             info,
             availability,
+            lifecycle: Lifecycle::new(),
+            #[cfg(feature = "devtools")]
+            _devtools: None,
         }
     }
 
@@ -672,3 +699,51 @@ impl DeviceLab {
 
 #[cfg(test)]
 mod tests;
+
+/// What Device Lab shows `forge device` in development builds: which sensors
+/// run and what the permissions are. Never positions, headings or anything
+/// an app opened from Apps keeps for its user.
+#[cfg(feature = "devtools")]
+mod devtools {
+    use super::*;
+    use forge_devtools::{Config, DevTools};
+
+    pub(crate) fn start(lab: &DeviceLab) -> Option<DevTools> {
+        let Some(native) = &lab.services.native else {
+            forge_runtime::logging::warn!("devtools did not start: no native services");
+            return None;
+        };
+        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
+        let config = Config::new(
+            app,
+            env!("CARGO_PKG_VERSION"),
+            std::path::Path::new(&native.directories.application_support)
+                .join(".forge-devtools-pairing"),
+        );
+        let tools = match DevTools::start(config, lab.lifecycle.clone()) {
+            Ok(tools) => tools,
+            Err(e) => {
+                forge_runtime::logging::warn!("devtools did not start: {e}");
+                return None;
+            }
+        };
+        let s = lab.state.clone();
+        tools.probe("active", move || lock(&s).active.to_string());
+        let s = lab.state.clone();
+        tools.probe("permissions", move || {
+            let p = lock(&s).permissions;
+            format!(
+                "location={:?} motion={:?} bluetooth={:?}",
+                p.location, p.motion, p.bluetooth
+            )
+        });
+        let s = lab.state.clone();
+        tools.probe("connectivity", move || {
+            format!(
+                "{:?}",
+                lock(&s).connectivity.as_ref().map(|c| c.reachability)
+            )
+        });
+        Some(tools)
+    }
+}

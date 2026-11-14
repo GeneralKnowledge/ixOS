@@ -42,6 +42,13 @@ public final class LabModel {
         }
     }
 
+    /// Whether the app itself is on screen, whatever covers the lab. In a
+    /// development build (`forge run ios --devtools`) the live connection to
+    /// `forge device` listens only while it is.
+    public func setInForeground(_ foreground: Bool) {
+        lab.setInForeground(foreground: foreground)
+    }
+
     public func refreshPermissions() async {
         _ = await lab.refreshPermissions()
         refresh()
