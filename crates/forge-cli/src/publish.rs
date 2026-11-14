@@ -29,6 +29,9 @@ use crate::runner::{Cmd, CommandRunner};
 /// there, and `tailscale serve --bg` would replace it.
 pub const DEFAULT_HTTPS_PORT: u16 = 8443;
 
+/// How many builds of each app the page keeps by default.
+pub const DEFAULT_KEEP: usize = 5;
+
 /// The local file server's port (127.0.0.1 only).
 pub const LOCAL_PORT: u16 = 47411;
 
@@ -56,9 +59,12 @@ pub struct IpaInfo {
     pub devices: Vec<String>,
 }
 
-/// One published app, as `apps.json` lists it.
+/// One published build, as `apps.json` lists it (newest first).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Entry {
+    /// Unique per app: `<published>-<commit>`. A folder and URL segment.
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub bundle_id: String,
     pub version: String,
@@ -69,6 +75,9 @@ pub struct Entry {
     pub expires: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub commit: Option<String>,
+    /// The branch or `--label`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
     pub size: u64,
 }
 
@@ -211,15 +220,40 @@ pub fn page_url(base: &str) -> String {
     format!("{}/", base.trim_end_matches('/'))
 }
 
-pub fn manifest_url(base: &str, bundle_id: &str) -> String {
-    format!("{}/{bundle_id}/manifest.plist", base.trim_end_matches('/'))
+/// A build id is safe as a folder and URL path segment.
+fn safe_build(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
-/// The link iOS follows to install (Safari asks first).
-pub fn install_url(base: &str, bundle_id: &str) -> String {
+/// `1794664323-8a8c56a`: when it was published, then its commit.
+fn build_id(now: u64, commit: Option<&str>) -> String {
+    let commit: String = commit
+        .unwrap_or("")
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .take(12)
+        .collect();
+    if commit.is_empty() {
+        now.to_string()
+    } else {
+        format!("{now}-{commit}")
+    }
+}
+
+pub fn manifest_url(base: &str, entry: &Entry) -> String {
+    format!(
+        "{}/{}/{}/manifest.plist",
+        base.trim_end_matches('/'),
+        entry.bundle_id,
+        entry.id
+    )
+}
+
+/// The link iOS follows to install this build (Safari asks first).
+pub fn install_url(base: &str, entry: &Entry) -> String {
     format!(
         "itms-services://?action=download-manifest&url={}",
-        manifest_url(base, bundle_id)
+        manifest_url(base, entry)
     )
 }
 
@@ -231,10 +265,10 @@ pub fn manifest(base: &str, entry: &Entry) -> Result<Vec<u8>, String> {
     asset.insert(
         "url".into(),
         format!(
-            "{}/{}/app.ipa?v={}",
+            "{}/{}/{}/app.ipa",
             base.trim_end_matches('/'),
             entry.bundle_id,
-            entry.published
+            entry.id
         )
         .into(),
     );
@@ -258,11 +292,16 @@ pub fn manifest(base: &str, entry: &Entry) -> Result<Vec<u8>, String> {
     Ok(out)
 }
 
+/// The builds in `apps.json`, newest first. Entries from before builds had
+/// ids (one build per app) are dropped.
 fn read_entries(dir: &Path) -> Vec<Entry> {
-    fs::read(dir.join(APPS_JSON))
+    let mut entries: Vec<Entry> = fs::read(dir.join(APPS_JSON))
         .ok()
         .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    entries.retain(|e| safe_build(&e.id) && safe_id(&e.bundle_id).is_ok());
+    entries.sort_by_key(|e| std::cmp::Reverse(e.published));
+    entries
 }
 
 /// Writes `bytes` to `path` through a temporary file, so the server never
@@ -273,49 +312,91 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&tmp, path).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
-/// Copies the `.ipa` into the folder and rewrites every manifest, `apps.json`
-/// and the page for `base` (the HTTPS address the phone uses).
+/// Adds the `.ipa` as a new build, keeps the newest `keep` builds of each
+/// app (deleting older ones), and rewrites `apps.json` and the page for
+/// `base` (the HTTPS address the phone uses). Earlier builds stay
+/// installable: a publish never replaces another.
 pub fn stage(
     dir: &Path,
     ipa: &Path,
     info: &IpaInfo,
     base: &str,
-    commit: Option<String>,
+    source: Source,
     now: u64,
+    keep: usize,
 ) -> Result<Entry, String> {
     safe_id(&info.bundle_id)?;
-    let app_dir = dir.join(&info.bundle_id);
-    fs::create_dir_all(&app_dir)
-        .map_err(|e| format!("cannot create {}: {e}", app_dir.display()))?;
-    let tmp = app_dir.join("app.ipa.partial");
+    let mut entries = read_entries(dir);
+    let mut id = build_id(now, source.commit.as_deref());
+    // Two publishes in the same second from the same commit.
+    let mut n = 1;
+    while entries
+        .iter()
+        .any(|e| e.bundle_id == info.bundle_id && e.id == id)
+    {
+        n += 1;
+        id = format!("{}-{n}", build_id(now, source.commit.as_deref()));
+    }
+    let build_dir = dir.join(&info.bundle_id).join(&id);
+    fs::create_dir_all(&build_dir)
+        .map_err(|e| format!("cannot create {}: {e}", build_dir.display()))?;
+    let tmp = build_dir.join("app.ipa.partial");
     let size = fs::copy(ipa, &tmp).map_err(|e| format!("cannot copy {}: {e}", ipa.display()))?;
-    fs::rename(&tmp, app_dir.join("app.ipa"))
+    fs::rename(&tmp, build_dir.join("app.ipa"))
         .map_err(|e| format!("cannot publish the .ipa: {e}"))?;
     let entry = Entry {
+        id,
         name: info.name.clone(),
         bundle_id: info.bundle_id.clone(),
         version: info.version.clone(),
         build: info.build.clone(),
         published: now,
         expires: info.expires,
-        commit,
+        commit: source.commit,
+        label: source.label,
         size,
     };
-    let mut entries = read_entries(dir);
-    entries.retain(|e| e.bundle_id != entry.bundle_id);
-    entries.push(entry.clone());
+    entries.insert(0, entry.clone());
     entries.sort_by_key(|e| std::cmp::Reverse(e.published));
-    rewrite(dir, &entries, base)?;
+
+    // Keep the newest `keep` builds of each app.
+    let mut seen: Vec<(String, usize)> = Vec::new();
+    let mut kept = Vec::new();
+    for e in entries {
+        let count = match seen.iter_mut().find(|(b, _)| *b == e.bundle_id) {
+            Some((_, n)) => {
+                *n += 1;
+                *n
+            }
+            None => {
+                seen.push((e.bundle_id.clone(), 1));
+                1
+            }
+        };
+        if count <= keep.max(1) {
+            kept.push(e);
+        } else {
+            let _ = fs::remove_dir_all(dir.join(&e.bundle_id).join(&e.id));
+        }
+    }
+    rewrite(dir, &kept, base)?;
     Ok(entry)
+}
+
+/// Where a build came from: shown on the page so builds from different
+/// branches are easy to tell apart.
+#[derive(Debug, Clone, Default)]
+pub struct Source {
+    pub commit: Option<String>,
+    /// The branch, or what `--label` says (a PR, a feature).
+    pub label: Option<String>,
 }
 
 fn rewrite(dir: &Path, entries: &[Entry], base: &str) -> Result<(), String> {
     for e in entries {
-        if safe_id(&e.bundle_id).is_ok() && dir.join(&e.bundle_id).is_dir() {
-            write_atomic(
-                &dir.join(&e.bundle_id).join("manifest.plist"),
-                &manifest(base, e)?,
-            )?;
+        let build_dir = dir.join(&e.bundle_id).join(&e.id);
+        if build_dir.is_dir() {
+            write_atomic(&build_dir.join("manifest.plist"), &manifest(base, e)?)?;
         }
     }
     let json = serde_json::to_vec_pretty(entries).map_err(|e| e.to_string())?;
@@ -336,37 +417,73 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// The page the phone opens: every published app, newest first.
-pub fn index_html(base: &str, entries: &[Entry]) -> String {
-    let mut cards = String::new();
-    for e in entries {
-        let mut details = format!("Published {}", when(e.published));
-        if let Some(c) = &e.commit {
-            details.push_str(&format!(" · {}", esc(c)));
-        }
-        let expiry = e
-            .expires
-            .map(|x| {
-                format!(
-                    r#"<p class="expires" data-expires="{x}">Signed until {}</p>"#,
-                    when(x)
-                )
-            })
-            .unwrap_or_default();
-        cards.push_str(&format!(
-            r#"<section>
-<h2>{name}</h2>
-<p class="version">{version} ({build})</p>
+/// One build on the page.
+fn build_html(base: &str, e: &Entry, newest: bool) -> String {
+    let title = e
+        .label
+        .as_deref()
+        .map(esc)
+        .unwrap_or_else(|| esc(e.commit.as_deref().unwrap_or("Build")));
+    let mut details = format!("{} ({})", esc(&e.version), esc(&e.build));
+    if let (Some(c), Some(_)) = (&e.commit, &e.label) {
+        details.push_str(&format!(" · {}", esc(c)));
+    }
+    details.push_str(&format!(" · published {}", when(e.published)));
+    let expiry = e
+        .expires
+        .map(|x| {
+            format!(
+                r#"<p class="expires" data-expires="{x}">Signed until {}</p>"#,
+                when(x)
+            )
+        })
+        .unwrap_or_default();
+    let badge = if newest {
+        r#" <span class="badge">Newest</span>"#
+    } else {
+        ""
+    };
+    format!(
+        r#"<div class="build{class}">
+<h3>{title}{badge}</h3>
 <p>{details}</p>
-{expiry}<a class="install" href="{href}" data-testid="install.{id}">Install {name}</a>
-</section>
+{expiry}<a class="install" href="{href}" data-testid="install.{bundle}.{id}" aria-label="Install {name}, {title}">Install</a>
+</div>
 "#,
-            name = esc(&e.name),
-            version = esc(&e.version),
-            build = esc(&e.build),
-            href = esc(&install_url(base, &e.bundle_id)),
-            id = esc(&e.bundle_id),
-        ));
+        class = if newest { " newest" } else { "" },
+        href = esc(&install_url(base, e)),
+        bundle = esc(&e.bundle_id),
+        id = esc(&e.id),
+        name = esc(&e.name),
+    )
+}
+
+/// The page the phone opens: each app (the most recently published first)
+/// with its builds, newest first.
+pub fn index_html(base: &str, entries: &[Entry]) -> String {
+    let mut apps: Vec<(&str, Vec<&Entry>)> = Vec::new();
+    for e in entries {
+        match apps.iter_mut().find(|(b, _)| *b == e.bundle_id) {
+            Some((_, builds)) => builds.push(e),
+            None => apps.push((&e.bundle_id, vec![e])),
+        }
+    }
+    let mut cards = String::new();
+    for (_, builds) in &apps {
+        cards.push_str(&format!("<section>\n<h2>{}</h2>\n", esc(&builds[0].name)));
+        cards.push_str(&build_html(base, builds[0], true));
+        if builds.len() > 1 {
+            cards.push_str(&format!(
+                "<details><summary>{} earlier build{}</summary>\n",
+                builds.len() - 1,
+                if builds.len() == 2 { "" } else { "s" }
+            ));
+            for b in &builds[1..] {
+                cards.push_str(&build_html(base, b, false));
+            }
+            cards.push_str("</details>\n");
+        }
+        cards.push_str("</section>\n");
     }
     if cards.is_empty() {
         cards.push_str(
@@ -381,22 +498,27 @@ pub fn index_html(base: &str, entries: &[Entry]) -> String {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Forge builds</title>
 <style>
-:root {{ color-scheme: light dark; --bg: #f2f2f7; --card: #fff; --text: #1c1c1e; --muted: #6c6c70; --accent: #007aff; --warn: #c93400; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --warn: #ff9f0a; }} }}
+:root {{ color-scheme: light dark; --bg: #f2f2f7; --card: #fff; --text: #1c1c1e; --muted: #6c6c70; --accent: #007aff; --warn: #c93400; --line: #e5e5ea; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --warn: #ff9f0a; --line: #38383a; }} }}
 body {{ margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 17px/1.4 -apple-system, system-ui, sans-serif; }}
 h1 {{ font-size: 28px; margin: 8px 0 4px; }}
 .hint {{ color: var(--muted); margin: 0 0 16px; }}
 section {{ background: var(--card); border-radius: 12px; padding: 16px; margin: 0 0 12px; }}
-h2 {{ margin: 0; font-size: 20px; }}
-p {{ margin: 4px 0; }}
-.version, section p {{ color: var(--muted); }}
+h2 {{ margin: 0 0 8px; font-size: 22px; }}
+h3 {{ margin: 0; font-size: 17px; overflow-wrap: anywhere; }}
+p {{ margin: 2px 0; color: var(--muted); font-size: 15px; }}
+.build {{ padding: 12px 0; border-top: 1px solid var(--line); }}
+.build.newest {{ border-top: none; padding-top: 0; }}
+.badge {{ font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }}
 .expired {{ color: var(--warn); font-weight: 600; }}
-.install {{ display: block; margin-top: 12px; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff; text-align: center; font-weight: 600; text-decoration: none; }}
+.install {{ display: block; margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff; text-align: center; font-weight: 600; text-decoration: none; }}
+.build:not(.newest) .install {{ background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 8px; }}
+summary {{ color: var(--accent); padding: 8px 0; cursor: pointer; }}
 </style>
 </head>
 <body>
 <h1>Forge builds</h1>
-<p class="hint">Tap Install, then Install again. The app updates in place and keeps its data.</p>
+<p class="hint">Tap Install, then Install again. A build replaces the app on the phone and keeps its data, so you can go back to an earlier one the same way.</p>
 {cards}<script>
 for (const p of document.querySelectorAll("[data-expires]")) {{
   if (Number(p.dataset.expires) * 1000 < Date.now()) {{ p.textContent = "Signature expired: publish it again"; p.className = "expired"; }}
@@ -429,8 +551,10 @@ fn resolve(dir: &Path, url_path: &str) -> Option<PathBuf> {
     match parts.as_slice() {
         [""] | [INDEX_HTML] => Some(dir.join(INDEX_HTML)),
         [APPS_JSON] => Some(dir.join(APPS_JSON)),
-        [id, file @ ("manifest.plist" | "app.ipa")] if safe_id(id).is_ok() => {
-            Some(dir.join(id).join(file))
+        [id, build, file @ ("manifest.plist" | "app.ipa")]
+            if safe_id(id).is_ok() && safe_build(build) =>
+        {
+            Some(dir.join(id).join(build).join(file))
         }
         _ => None,
     }
@@ -756,6 +880,78 @@ fn explain_serve(output: &str, code: Option<i32>, https_port: u16) -> String {
 }
 
 // ---------------------------------------------------------------------------
+// Keeping the server up
+
+const UNIT: &str = "forge-publish.service";
+
+/// The systemd user unit that runs `forge publish serve` at boot.
+fn unit_text(exe: &Path, dir: &Path, port: u16) -> String {
+    format!(
+        "[Unit]\nDescription=Forge over-the-air builds (forge publish serve)\nAfter=network-online.target\n\n[Service]\nExecStart={} publish serve --port {port}\nEnvironment=FORGE_PUBLISH_DIR={}\nRestart=on-failure\n\n[Install]\nWantedBy=default.target\n",
+        exe.display(),
+        dir.display()
+    )
+}
+
+/// `forge publish enable`: runs the server as a systemd user service, so the
+/// Install page survives a reboot (`tailscale serve --bg` already does).
+pub fn enable(
+    runner: &dyn CommandRunner,
+    dir: &Path,
+    env: &dyn Fn(&str) -> Option<String>,
+) -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|e| format!("cannot find the forge binary: {e}"))?;
+    if exe.components().any(|c| c.as_os_str() == "target") {
+        println!(
+            "[forge] Note: the service runs {}, a build inside a checkout. Install forge (`cargo install --path crates/forge-cli`) and run this again from the installed one if that checkout may go away.",
+            exe.display()
+        );
+    }
+    let config = env("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(env("HOME").unwrap_or_default()).join(".config"));
+    let units = config.join("systemd/user");
+    fs::create_dir_all(&units).map_err(|e| format!("cannot create {}: {e}", units.display()))?;
+    fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
+    fs::write(units.join(UNIT), unit_text(&exe, dir, LOCAL_PORT))
+        .map_err(|e| format!("cannot write the service: {e}"))?;
+    // A server `publish ios` started by hand holds the port: hand it over.
+    if probe(LOCAL_PORT).as_deref() == Some(folder_token(dir).as_str()) {
+        if let Ok(pid) = fs::read_to_string(dir.join(PID_FILE)) {
+            let pid = pid.trim();
+            if !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit()) {
+                let _ = runner.capture(&Cmd::new("kill").arg(pid));
+                std::thread::sleep(Duration::from_millis(300));
+            }
+        }
+    }
+    for args in [
+        vec!["--user", "daemon-reload"],
+        vec!["--user", "enable", "--now", UNIT],
+    ] {
+        let out = runner.capture(&Cmd::new("systemctl").args(&args))?;
+        if !out.status.success() {
+            return Err(format!(
+                "`systemctl {}` failed: {}",
+                args.join(" "),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+    }
+    // Without lingering, user services stop when the last session ends.
+    let user = env("USER").unwrap_or_default();
+    let linger = runner.capture(&Cmd::new("loginctl").args(["enable-linger", &user]));
+    if !linger.is_ok_and(|o| o.status.success()) {
+        println!(
+            "[forge] Run `sudo loginctl enable-linger {user}` once, so the service also runs when nobody is logged in."
+        );
+    }
+    println!("[forge] The publish server now starts with this computer ({UNIT}). `systemctl --user disable --now {UNIT}` turns it off.");
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
 // Commands
 
 /// What `forge publish ios` did.
@@ -774,7 +970,8 @@ pub fn publish(
     ipa: &Path,
     https_port: u16,
     base_url: Option<String>,
-    commit: Option<String>,
+    source: Source,
+    keep: usize,
 ) -> Result<Published, String> {
     let info = read_ipa(ipa)?;
     let custom = base_url.is_some();
@@ -782,20 +979,21 @@ pub fn publish(
         Some(url) => url.trim_end_matches('/').to_string(),
         None => tailscale_base(runner, https_port)?,
     };
+    // Before anything is staged: refuses a port another serve uses. With
+    // --url, whatever serves that address is the person's own setup.
+    if !custom {
+        tailscale_serve(runner, https_port, LOCAL_PORT)?;
+    }
     fs::create_dir_all(dir).map_err(|e| format!("cannot create {}: {e}", dir.display()))?;
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    let entry = stage(dir, ipa, &info, &base, commit, now)?;
+    let entry = stage(dir, ipa, &info, &base, source, now, keep)?;
     ensure_server(dir, LOCAL_PORT)?;
-    // With --url, whatever serves that address is the person's own setup.
-    if !custom {
-        tailscale_serve(runner, https_port, LOCAL_PORT)?;
-    }
     Ok(Published {
         page: page_url(&base),
-        install: install_url(&base, &entry.bundle_id),
+        install: install_url(&base, &entry),
         entry,
         devices: info.devices,
     })
@@ -901,70 +1099,121 @@ mod tests {
     }
 
     #[test]
-    fn the_manifest_names_the_signed_bundle_id_and_the_ipa() {
+    fn the_manifest_names_the_signed_bundle_id_and_the_build() {
         let entry = Entry {
+            id: "100-abc1234".into(),
             name: "Device Lab".into(),
             bundle_id: "XTL-T.org.x".into(),
             version: "0.3".into(),
             build: "7".into(),
             published: 100,
             expires: None,
-            commit: None,
+            commit: Some("abc1234".into()),
+            label: None,
             size: 1,
         };
         let xml =
             String::from_utf8(manifest("https://create.t.ts.net:8443/", &entry).unwrap()).unwrap();
         assert!(
-            xml.contains("<string>https://create.t.ts.net:8443/XTL-T.org.x/app.ipa?v=100</string>"),
+            xml.contains(
+                "<string>https://create.t.ts.net:8443/XTL-T.org.x/100-abc1234/app.ipa</string>"
+            ),
             "{xml}"
         );
-        assert!(
-            xml.contains("<key>bundle-identifier</key>\n\t\t\t\t<string>XTL-T.org.x</string>")
-                || xml.contains("<string>XTL-T.org.x</string>")
-        );
+        assert!(xml.contains("<string>XTL-T.org.x</string>"));
         assert!(xml.contains("<string>software-package</string>"));
         assert_eq!(
-            install_url("https://h.ts.net:8443", "XTL-T.org.x"),
-            "itms-services://?action=download-manifest&url=https://h.ts.net:8443/XTL-T.org.x/manifest.plist"
+            install_url("https://h.ts.net:8443", &entry),
+            "itms-services://?action=download-manifest&url=https://h.ts.net:8443/XTL-T.org.x/100-abc1234/manifest.plist"
         );
     }
 
+    fn source(commit: &str, label: &str) -> Source {
+        Source {
+            commit: Some(commit.into()).filter(|c: &String| !c.is_empty()),
+            label: Some(label.into()).filter(|l: &String| !l.is_empty()),
+        }
+    }
+
     #[test]
-    fn staging_keeps_one_entry_per_app_newest_first() {
+    fn builds_never_replace_each_other() {
         let tmp = tempfile::tempdir().unwrap();
         let ipa = tmp.path().join("App.ipa");
         write_ipa(&ipa);
         let dir = tmp.path().join("pub");
+        let base = "https://h.ts.net:8443";
         let mut info = read_ipa(&ipa).unwrap();
-        stage(&dir, &ipa, &info, "https://h.ts.net:8443", None, 10).unwrap();
-        info.bundle_id = "XTL-T.org.other".into();
-        info.name = "Other".into();
-        stage(
+        let summaries = stage(
             &dir,
             &ipa,
             &info,
-            "https://h.ts.net:8443",
-            Some("abc1234".into()),
-            20,
+            base,
+            source("aaa1111", "summaries"),
+            10,
+            5,
         )
         .unwrap();
-        info.bundle_id = "XTL-ND4P87PX52.org.forgemobile.devicelab".into();
-        info.name = "Device Lab".into();
-        stage(&dir, &ipa, &info, "https://h.ts.net:8443", None, 30).unwrap();
+        let ota = stage(&dir, &ipa, &info, base, source("bbb2222", "ota"), 20, 5).unwrap();
+        // Same second, same commit: still a separate build.
+        let again = stage(&dir, &ipa, &info, base, source("bbb2222", "ota"), 20, 5).unwrap();
+        assert_ne!(again.id, ota.id);
+        info.bundle_id = "XTL-T.org.other".into();
+        info.name = "Other".into();
+        stage(&dir, &ipa, &info, base, Source::default(), 15, 5).unwrap();
 
         let entries = read_entries(&dir);
         let order: Vec<_> = entries
             .iter()
             .map(|e| (e.name.as_str(), e.published))
             .collect();
-        assert_eq!(order, [("Device Lab", 30), ("Other", 20)]);
-        assert!(dir.join("XTL-T.org.other/app.ipa").is_file());
-        assert!(dir.join("XTL-T.org.other/manifest.plist").is_file());
+        assert_eq!(
+            order,
+            [
+                ("Device Lab", 20),
+                ("Device Lab", 20),
+                ("Other", 15),
+                ("Device Lab", 10)
+            ]
+        );
+        for e in [&summaries, &ota, &again] {
+            let build = dir.join(&e.bundle_id).join(&e.id);
+            assert!(build.join("app.ipa").is_file() && build.join("manifest.plist").is_file());
+        }
         let page = fs::read_to_string(dir.join("index.html")).unwrap();
-        assert!(page.find("Device Lab").unwrap() < page.find("Other").unwrap());
-        assert!(page.contains("abc1234"));
-        assert!(page.contains("itms-services://?action=download-manifest&amp;url=https://h.ts.net:8443/XTL-T.org.other/manifest.plist"));
+        // Apps in order of their newest build; each app's builds newest first.
+        assert!(page.find("<h2>Device Lab").unwrap() < page.find("<h2>Other").unwrap());
+        assert_eq!(page.matches("<h2>Device Lab").count(), 1);
+        assert!(page.find(">ota").unwrap() < page.find(">summaries").unwrap());
+        assert!(page.contains("2 earlier builds"));
+        assert!(page.contains("aaa1111"));
+        assert!(page.contains(&esc(&install_url(base, &summaries))));
         assert!(page.contains("Signed until 2026-11-21 13:24 UTC"));
+    }
+
+    #[test]
+    fn keeps_the_newest_builds_of_each_app() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ipa = tmp.path().join("App.ipa");
+        write_ipa(&ipa);
+        let dir = tmp.path().join("pub");
+        let info = read_ipa(&ipa).unwrap();
+        let first = stage(&dir, &ipa, &info, "https://h", Source::default(), 1, 2).unwrap();
+        stage(&dir, &ipa, &info, "https://h", Source::default(), 2, 2).unwrap();
+        stage(&dir, &ipa, &info, "https://h", Source::default(), 3, 2).unwrap();
+        let ids: Vec<_> = read_entries(&dir).into_iter().map(|e| e.id).collect();
+        assert_eq!(ids, ["3", "2"]);
+        assert!(!dir.join(&first.bundle_id).join(&first.id).exists());
+    }
+
+    #[test]
+    fn entries_from_before_build_ids_are_dropped() {
+        let tmp = tempfile::tempdir().unwrap();
+        fs::write(
+            tmp.path().join(APPS_JSON),
+            r#"[{"name":"Old","bundle_id":"XTL-T.org.x","version":"1","build":"1","published":1,"size":1}]"#,
+        )
+        .unwrap();
+        assert!(read_entries(tmp.path()).is_empty());
     }
 
     #[test]
@@ -974,17 +1223,43 @@ mod tests {
         write_ipa(&ipa);
         let mut info = read_ipa(&ipa).unwrap();
         info.bundle_id = "../escape".into();
-        assert!(stage(tmp.path(), &ipa, &info, "https://h", None, 1).is_err());
+        assert!(stage(
+            tmp.path(),
+            &ipa,
+            &info,
+            "https://h",
+            Source::default(),
+            1,
+            5
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn the_service_runs_the_server_for_this_folder() {
+        let unit = unit_text(
+            Path::new("/home/red/.cargo/bin/forge"),
+            Path::new("/p"),
+            47411,
+        );
+        assert!(unit.contains("ExecStart=/home/red/.cargo/bin/forge publish serve --port 47411"));
+        assert!(unit.contains("Environment=FORGE_PUBLISH_DIR=/p"));
+        assert!(unit.contains("WantedBy=default.target"));
     }
 
     #[test]
     fn the_server_never_leaves_its_folder() {
         let dir = Path::new("/srv/pub");
-        assert_eq!(resolve(dir, "/a/app.ipa?v=3"), Some(dir.join("a/app.ipa")));
         assert_eq!(
-            resolve(dir, "/a/manifest.plist"),
-            Some(dir.join("a/manifest.plist"))
+            resolve(dir, "/a/1-b/app.ipa?v=3"),
+            Some(dir.join("a/1-b/app.ipa"))
         );
+        assert_eq!(
+            resolve(dir, "/a/1-b/manifest.plist"),
+            Some(dir.join("a/1-b/manifest.plist"))
+        );
+        assert_eq!(resolve(dir, "/a/app.ipa"), None);
+        assert_eq!(resolve(dir, "/a/../app.ipa"), None);
         assert_eq!(resolve(dir, "/"), Some(dir.join("index.html")));
         assert_eq!(resolve(dir, "/apps.json"), Some(dir.join("apps.json")));
         assert_eq!(resolve(dir, "/../etc/passwd"), None);
@@ -1001,8 +1276,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().to_path_buf();
         fs::write(dir.join("index.html"), "<p>hi</p>").unwrap();
-        fs::create_dir(dir.join("a")).unwrap();
-        fs::write(dir.join("a/manifest.plist"), "<plist/>").unwrap();
+        fs::create_dir_all(dir.join("a/1-b")).unwrap();
+        fs::write(dir.join("a/1-b/manifest.plist"), "<plist/>").unwrap();
         let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
         let port = listener.local_addr().unwrap().port();
         let served = dir.clone();
@@ -1023,7 +1298,7 @@ mod tests {
             root.starts_with("HTTP/1.1 200") && root.ends_with("<p>hi</p>"),
             "{root}"
         );
-        let manifest = get("/a/manifest.plist");
+        let manifest = get("/a/1-b/manifest.plist");
         assert!(manifest.contains("Content-Type: text/xml"), "{manifest}");
         assert!(get("/missing").starts_with("HTTP/1.1 404"));
         assert!(get("/../x").starts_with("HTTP/1.1 404"));

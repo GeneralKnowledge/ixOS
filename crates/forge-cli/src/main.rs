@@ -1180,7 +1180,17 @@ enum PublishCommands {
         /// iPhone trusts)
         #[arg(long, value_name = "URL")]
         url: Option<String>,
+        /// What the page calls this build, such as a PR or a feature
+        /// (default: the branch it was built from)
+        #[arg(long)]
+        label: Option<String>,
+        /// How many builds of each app the page keeps; older ones are deleted
+        #[arg(long, default_value_t = publish::DEFAULT_KEEP)]
+        keep: usize,
     },
+    /// Start the publish server with this computer (a systemd user
+    /// service), so the Install page survives a reboot
+    Enable,
     /// Serve the published builds on 127.0.0.1 in the foreground (`publish
     /// ios` starts this in the background when it isn't running)
     Serve {
@@ -1378,6 +1388,7 @@ fn command_name(command: &Commands) -> String {
         Commands::Publish { cmd } => match cmd {
             PublishCommands::Ios { .. } => "publish ios",
             PublishCommands::Serve { .. } => "publish serve",
+            PublishCommands::Enable => "publish enable",
             PublishCommands::Stop { .. } => "publish stop",
         },
         Commands::Device { cmd } => match cmd {
@@ -1507,15 +1518,32 @@ fn publish_command(
     match cmd {
         PublishCommands::Serve { port } => publish::serve(&dir, port),
         PublishCommands::Stop { port } => publish::stop(runner, &dir, port),
+        PublishCommands::Enable => publish::enable(runner, &dir, &env),
         PublishCommands::Ios {
             project,
             release,
             ipa,
             port,
             url,
+            label,
+            keep,
         } => {
-            let (ipa, commit) = match ipa {
-                Some(ipa) => (absolute_from_cwd(&ipa), None),
+            let git = |dir: &Path, args: &[&str]| {
+                runner
+                    .capture(&runner::Cmd::new("git").args(args).cwd(dir))
+                    .ok()
+                    .filter(|o| o.status.success())
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                    .filter(|v| !v.is_empty() && v != "HEAD")
+            };
+            let (ipa, source) = match ipa {
+                Some(ipa) => (
+                    absolute_from_cwd(&ipa),
+                    publish::Source {
+                        commit: None,
+                        label,
+                    },
+                ),
                 None => {
                     let project = project_or_default(project, "examples/counter");
                     let ipa = commands::build_signed_ipa(
@@ -1525,24 +1553,25 @@ fn publish_command(
                         &project,
                         configuration(release),
                     )?;
-                    let commit = runner
-                        .capture(
-                            &runner::Cmd::new("git")
-                                .args(["rev-parse", "--short", "HEAD"])
-                                .cwd(ipa.parent().unwrap_or(root)),
-                        )
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                        .filter(|c| !c.is_empty());
-                    (ipa, commit)
+                    let repo = ipa.parent().unwrap_or(root);
+                    let source = publish::Source {
+                        commit: git(repo, &["rev-parse", "--short", "HEAD"]),
+                        label: label.or_else(|| git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])),
+                    };
+                    (ipa, source)
                 }
             };
-            let done = publish::publish(runner, &dir, &ipa, port, url, commit)?;
+            let done = publish::publish(runner, &dir, &ipa, port, url, source, keep)?;
             let e = &done.entry;
+            let from = match (&e.label, &e.commit) {
+                (Some(l), Some(c)) => format!(" from {l} at {c}"),
+                (Some(l), None) => format!(" ({l})"),
+                (None, Some(c)) => format!(" at {c}"),
+                (None, None) => String::new(),
+            };
             println!(
-                "[forge] Published {} {} ({}). On the iPhone, with Tailscale on, open\n\n    {}\n\nin Safari and tap Install.",
-                e.name, e.version, e.bundle_id, done.page
+                "[forge] Published {} {}{from}. Earlier builds stay on the page. On the iPhone, with Tailscale on, open\n\n    {}\n\nin Safari and tap Install.",
+                e.name, e.version, done.page
             );
             if let Some(expires) = e.expires {
                 println!(
@@ -1567,6 +1596,8 @@ fn publish_command(
                 "signed_until": e.expires,
                 "devices": done.devices,
                 "commit": e.commit,
+                "label": e.label,
+                "build_id": e.id,
                 "ipa": ipa,
                 "folder": dir,
             }));

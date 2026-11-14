@@ -198,12 +198,14 @@ for app in "${APPS[@]}"; do
   printf '  %-18s %-24s %4ss\n' "$app" "${RESULT[$app]}" "${SECONDS_TAKEN[$app]}"
 done
 echo "[ios-check] Logs: $LOGS"
-# The builds above are what `forge run ios` installs: in this checkout it
-# rebuilds only what changed (same configuration: debug Swift, release Rust),
-# then signs and installs. Nothing here needs the phone.
+# The builds above are what `forge publish ios` (over the air) and `forge run
+# ios` (by cable) install: in this checkout they rebuild only what changed
+# (same configuration: debug Swift, release Rust), then sign. Nothing here
+# needs the phone.
 for app in "${APPS[@]}"; do
   if [[ "${RESULT[$app]}" == ok && -f "examples/$app/forge.toml" ]]; then
-    echo "[ios-check] Install $app from this build: $FORGE run ios --project $ROOT/examples/$app"
+    echo "[ios-check] Publish $app from this build: $FORGE publish ios --project $ROOT/examples/$app"
+    echo "[ios-check]   or install it by cable:    $FORGE run ios --project $ROOT/examples/$app"
   fi
 done
 if [[ $FAILED -gt 0 ]]; then
