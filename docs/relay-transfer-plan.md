@@ -373,7 +373,8 @@ Open since then:
    default.
 9. **Rooms on Nostr** (relays, Marmot for end to end, NIP-29 for hosted
    groups, NIP-11 for what a server supports), with Matrix and IRC as
-   possible bridges later. Proposed; a spike comes first.
+   possible bridges later. Approved by Reuben on 2026-11-14; a spike comes
+   before stage 2.
 
 ## Sources
 
