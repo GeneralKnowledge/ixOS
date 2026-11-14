@@ -157,9 +157,13 @@ Expected — Rust returns `ForgeAppError.WouldUnderflow`; the UI should show a m
 
 Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.
 
-## A build says another build is running and waits
+## A build says it is queued, or was killed at the memory cap
 
-That is the machine-wide build lock ([builds.md](builds.md#one-build-at-a-time)): one heavy build at a time, so builds don't starve the machine. The message names the build running now (pid, command, branch, note). Wait, or if that build is stuck, stop its process: the lock frees itself as soon as the process exits. `FORGE_BUILD_LOCK=off` turns the lock off on a machine only you build on.
+That is the build queue ([builds.md](builds.md#the-build-queue)): one heavy build at a time, so builds can't freeze the machine. The message gives your place in line and the build running now (pid, command, branch, note); `forge queue status` shows the whole queue. Wait, or if that build is stuck, stop its process: its turn frees itself as soon as the process exits.
+
+A build killed with signal 9 (SIGKILL) and a note about the memory cap used more memory than this machine allows a build. Build fewer things at once (`FORGE_BUILD_JOBS=2`), or raise `memory_max_gib` in `~/.config/forge/build-host.toml` if the machine has room.
+
+"this machine is a shared build host ... can't be applied" means the cap stopped working (for example the user's systemd isn't running): run `scripts/setup-build-host.sh --check` to see why.
 
 ## Did the laptop run start?
 

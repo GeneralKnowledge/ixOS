@@ -11,7 +11,8 @@ FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust
 5. **Never edit `Generated/`, `Info.plist`, `App.entitlements` or `xtool.yml`.** Bindings come from `forge bindings generate`; the rest from `forge.toml` (`forge config show`).
 6. **Log with `forge_runtime::logging`** in Rust. Never log user content.
 7. **Installing, removing apps and accepting results are the person's.** Publish every build meant for the phone with `forge publish ios`: it builds and signs without the phone and adds the build to the Install page on the tailnet, labelled with its branch and commit, next to the earlier builds. The person installs it from the page in Safari whenever and wherever they like, so tell them the build is there instead of asking for the phone. Use `forge run ios` when a step needs the cable (logs, `forge ui`, the live connection): it compiles before it looks for the phone and stops with the build ready if there is none, so start it as soon as there is something to try and ask for the phone only then. Ask before `forge run ios` installs an app that isn't on the phone yet (a free Apple team allows 3 sideloaded apps and 10 new App IDs a week; `forge doctor` says which team signs). Never run `forge verify --accept`: only a person records an acceptance.
-8. **Say what you didn't check.** Without the iOS SDK, SwiftUI is not compiled; a Linux check is not an iPhone result.
+8. **Heavy builds go through the build queue** on a machine others build on. `forge build ios`, `forge run ios` and `forge publish ios` queue by themselves; run anything else heavy (`cargo build`, `swift build`, `xtool dev build`) as `forge queue run -- <command>`, and check `forge queue status` before saying a build has started. Never start a second build to get around the wait.
+9. **Say what you didn't check.** Without the iOS SDK, SwiftUI is not compiled; a Linux check is not an iPhone result.
 
 ## Commands
 

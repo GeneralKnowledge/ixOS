@@ -31,45 +31,26 @@ usage() {
   exit 2
 }
 
-# One heavy build at a time on this machine: the same lock file as `forge
-# build ios`/`run ios`/`publish ios` (crates/forge-cli/src/build_lock.rs), so
-# sessions sharing the laptop queue instead of starving it. A second caller
-# says who holds it and waits up to FORGE_BUILD_LOCK_TIMEOUT seconds (3600).
-# The kernel frees the lock when this script exits, however it exits.
-# FORGE_BUILD_LOCK_HELD tells the `forge build ios` runs below (and the
-# --ref re-run) that the lock is already ours. The builds run at nice 10 and
-# the lowest best-effort I/O priority unless FORGE_BUILD_NICE=0.
-take_build_lock() {
+# The build queue (docs/builds.md#the-build-queue): one heavy build at a time
+# on this machine, in arrival order, inside a memory and CPU cap. Unless we
+# are already inside a queued build (FORGE_BUILD_LOCK_HELD), build this
+# checkout's forge (briefly holding the same lock file, at low priority),
+# then run this whole script again as `forge queue run -- <this script>`:
+# it waits its turn, prints who is building, and everything below (the
+# --ref worktree too) runs capped. FORGE_BUILD_LOCK=off skips the queue.
+queue_this_run() {
   [[ -n "${FORGE_BUILD_LOCK_HELD:-}" ]] && return 0
+  case "${FORGE_BUILD_LOCK:-}" in off | 0 | false | no) return 0 ;; esac
   local lock="${FORGE_BUILD_LOCK:-${XDG_CACHE_HOME:-$HOME/.cache}/forge/build.lock}"
-  case "$lock" in off | 0 | false | no) return 0 ;; esac
-  if ! command -v flock >/dev/null; then
-    echo "[ios-check] warning: flock (util-linux) is missing; not queueing behind other builds" >&2
-    return 0
-  fi
-  local wait="${FORGE_BUILD_LOCK_TIMEOUT:-3600}"
   mkdir -p "$(dirname "$lock")"
-  exec 9>>"$lock"
-  if ! flock -n 9; then
-    echo "[ios-check] Another build is running on this machine, so this one waits its turn (up to $(( (wait + 59) / 60 )) min). Running now: $(cat "$lock" 2>/dev/null)"
-    if ! flock -w "$wait" 9; then
-      echo "error: gave up waiting for another build on this machine to finish. Running now: $(cat "$lock" 2>/dev/null). If it is stuck, stop that process (the lock frees itself when it exits)." >&2
-      exit 1
-    fi
-    echo "[ios-check] The other build finished; building now."
+  echo "[ios-check] Building forge, then joining the build queue"
+  if command -v flock >/dev/null; then
+    flock -n "$lock" true || echo "[ios-check] Waiting for the build running now: $(cat "$lock" 2>/dev/null)"
+    flock -w "${FORGE_BUILD_LOCK_TIMEOUT:-3600}" "$lock" nice -n 10 cargo build -q -p forge-cli
+  else
+    nice -n 10 cargo build -q -p forge-cli
   fi
-  local branch
-  branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || true)"
-  printf 'pid %s since %s: scripts/check-ios-xtool.sh %s in %s%s%s\n' \
-    "$$" "$(date -u +%Y-%m-%dT%H-%M-%S)" "$*" "$ROOT" \
-    "${branch:+ (branch $branch)}" "${FORGE_BUILD_LOCK_NOTE:+ [$FORGE_BUILD_LOCK_NOTE]}" >"$lock"
-  export FORGE_BUILD_LOCK_HELD=$$
-  case "${FORGE_BUILD_NICE:-}" in
-    0 | off | false | no) ;;
-    *)
-      renice -n 10 -p $$ >/dev/null 2>&1 || true
-      ionice -c 2 -n 7 -p $$ >/dev/null 2>&1 || true ;;
-  esac
+  exec "$ROOT/target/debug/forge" queue run -- "$ROOT/scripts/check-ios-xtool.sh" "$@"
 }
 
 # --ref: build another commit in a worktree, by running this script from there.
@@ -78,7 +59,8 @@ if [[ "${1:-}" == "--ref" ]]; then
   shift 2
   [[ $# -gt 0 ]] || usage
   # Before touching the shared worktree: another check may be building in it.
-  [[ "${1:-}" == "--list" ]] || take_build_lock --ref "$ref" "$@"
+  # Before touching the shared worktree: another check may be building in it.
+  [[ "${1:-}" == "--list" ]] || queue_this_run --ref "$ref" "$@"
   base_dir="${FORGE_IOS_CHECK_DIR:-$HOME/.cache/forge/ios-check}"
   wt="$base_dir/ixOS"
   mkdir -p "$base_dir"
@@ -171,7 +153,7 @@ for app in "${APPS[@]}"; do
   has "$app" || { echo "error: unknown app '$app' (known: ${ALL[*]})" >&2; exit 2; }
 done
 
-take_build_lock "$@"
+queue_this_run "$@"
 
 if ! command -v xtool >/dev/null; then
   echo "error: xtool is not installed; this check needs xtool and its Darwin SDK (docs/linux-setup.md)" >&2
