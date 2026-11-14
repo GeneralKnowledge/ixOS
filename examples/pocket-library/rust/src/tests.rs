@@ -1074,3 +1074,38 @@ fn a_stopped_whole_book_run_carries_on_where_it_left_off() {
         .contains("Chapter: Answer"));
     assert_eq!(library.book_run(book.id), None);
 }
+
+#[test]
+fn a_whole_book_run_stopped_inside_a_chapter_carries_on_from_the_next_part() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Half Read");
+
+    // Throttled after the first of chapter 1's two parts.
+    let mut busy = FakeModel::new();
+    busy.busy_after = Some(1);
+    assert_eq!(
+        block_on(library.summarise_book(book.id, Arc::new(busy), None, None)),
+        Err(LibraryError::Interrupted)
+    );
+    let data = library.data.get();
+    let run = data.book_run(book.id).unwrap();
+    assert_eq!(run.sections_done, 0);
+    let so_far = run.chapter.clone().unwrap();
+    assert_eq!((so_far.parts, so_far.parts_done), (2, 1));
+    assert_eq!(so_far.notes, vec!["Answer 1.".to_string()]);
+    drop(data);
+
+    // After a relaunch, chapter 1 carries on from its second part, with the
+    // first part's notes.
+    let library = reopen(library, dir.path());
+    let model = Arc::new(FakeModel::new());
+    let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
+    let asked = model.asked.lock().unwrap().clone();
+    assert!(asked[0].prompt.contains("part 2 of 2") && asked[0].prompt.contains("Answer 1."));
+    // Part 2, writer, cast; chapter 2 in full; the overview's two writers.
+    assert_eq!(asked.len(), 9);
+    assert_eq!(synopsis.model_requests, 10);
+    assert_eq!(library.book_run(book.id), None);
+}

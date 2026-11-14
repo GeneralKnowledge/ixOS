@@ -75,6 +75,10 @@ pub struct StoredBookRun {
     pub chapters_skipped: u32,
     pub model_requests: u32,
     pub seconds: u32,
+    /// How far into the next chapter the run got, so a stop in the middle
+    /// of a long chapter loses at most one part.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chapter: Option<crate::summary::ReadSoFar>,
 }
 
 /// A whole-book summary as saved; its chapters are the book's saved

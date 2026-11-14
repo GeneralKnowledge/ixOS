@@ -1014,6 +1014,21 @@ pub struct Written {
     pub skipped_passages: u32,
 }
 
+/// How far the reader got through a chapter: saved during a whole-book
+/// run so that a stopped run carries on from the next part.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReadSoFar {
+    /// The chapter's parts, to check it is split the same way again.
+    pub parts: u32,
+    pub parts_done: u32,
+    pub notes: Vec<String>,
+    pub skipped: u32,
+    /// Requests this run made on the chapter (not counting a resumed
+    /// run's).
+    #[serde(default)]
+    pub requests: u32,
+}
+
 /// Runs the plan above on a Rust thread. `cancel` stops it between and
 /// during requests.
 pub struct Summariser<'a> {
@@ -1032,6 +1047,17 @@ impl Summariser<'_> {
     /// repeats the book word for word (checked here, in Rust) an editor
     /// rewrites it from the facts.
     pub fn run(&self, paragraphs: &[String]) -> Result<Written, LibraryError> {
+        self.run_from(paragraphs, None, None)
+    }
+
+    /// [`Summariser::run`], carrying on from `resume` (if the chapter is
+    /// split the same way) and telling `checkpoint` after every part.
+    pub fn run_from(
+        &self,
+        paragraphs: &[String],
+        resume: Option<ReadSoFar>,
+        checkpoint: Option<&dyn Fn(ReadSoFar)>,
+    ) -> Result<Written, LibraryError> {
         let parts = split_into_parts(paragraphs, PART_TOKENS);
         if parts.is_empty() {
             return Err(LibraryError::invalid(
@@ -1039,9 +1065,13 @@ impl Summariser<'_> {
             ));
         }
         let count = parts.len();
-        let mut notes: Vec<String> = Vec::new();
-        let mut skipped = 0u32;
-        for (i, part) in parts.iter().enumerate() {
+        let resume = resume
+            .filter(|r| r.parts as usize == count && (r.parts_done as usize) <= count)
+            .unwrap_or_default();
+        let first = resume.parts_done as usize;
+        let mut notes: Vec<String> = resume.notes;
+        let mut skipped = resume.skipped;
+        for (i, part) in parts.iter().enumerate().skip(first) {
             self.report(SummaryStage::ReadingPart {
                 part: i as u32 + 1,
                 parts: count as u32,
@@ -1051,6 +1081,15 @@ impl Summariser<'_> {
             skipped += missed;
             if let Some(note) = note {
                 notes.push(note);
+            }
+            if let Some(checkpoint) = checkpoint {
+                checkpoint(ReadSoFar {
+                    parts: count as u32,
+                    parts_done: i as u32 + 1,
+                    notes: notes.clone(),
+                    skipped,
+                    requests: self.requests.get(),
+                });
             }
         }
         if notes.is_empty() {

@@ -48,6 +48,7 @@ use forge_storage::Staged;
 pub use model::*;
 use reader::EpubText;
 use store::Store;
+use summary::ReadSoFar;
 pub use summary::{
     BookRunProgress, BookSynopsis, CastMember, ChapterSynopsis, SummaryModel, SummaryModelError,
     SummaryModelInfo, SummaryProgress, SummaryRequest, SummarySink, SummaryStage,
@@ -843,6 +844,12 @@ impl Library {
                     let (model, progress, text) =
                         (Arc::clone(&model), progress.clone(), Arc::clone(&text));
                     let (source, range2) = (source(&title), range.clone());
+                    // Part way into this chapter when the last run stopped.
+                    let resume = resumed
+                        .as_ref()
+                        .filter(|_| n as u32 == done)
+                        .and_then(|r| r.chapter.clone());
+                    let (sender, read_so_far) = std::sync::mpsc::channel::<ReadSoFar>();
                     let work = self.rt.lifetime(cancellation.as_deref());
                     let result = self
                         .rt
@@ -861,10 +868,49 @@ impl Library {
                                 requests: Default::default(),
                                 source,
                             };
-                            let written = summariser.run(&paragraphs);
+                            let checkpoint = |r: ReadSoFar| {
+                                let _ = sender.send(r);
+                            };
+                            let written =
+                                summariser.run_from(&paragraphs, resume, Some(&checkpoint));
                             Ok::<_, LibraryError>((written, summariser.requests.get()))
                         })
-                        .await?;
+                        .await;
+                    // Stopped part way: save how far it read into the chapter.
+                    let stopped = match &result {
+                        Err(err) => Some(err.clone()),
+                        Ok((Err(err), _))
+                            if !matches!(
+                                err,
+                                LibraryError::SummaryRefused { .. }
+                                    | LibraryError::InvalidInput { .. }
+                            ) =>
+                        {
+                            Some(err.clone())
+                        }
+                        Ok(_) => None,
+                    };
+                    if let Some(err) = stopped {
+                        if let Some(so_far) = read_so_far.try_iter().last() {
+                            self.save_book_run(
+                                id,
+                                StoredBookRun {
+                                    epub_file: epub_file.clone(),
+                                    sections_done: n as u32,
+                                    sections: total,
+                                    cast: cast.clone(),
+                                    chapters_read: summaries.len() as u32,
+                                    chapters_skipped: skipped,
+                                    model_requests: requests + so_far.requests,
+                                    seconds: seconds(&started),
+                                    chapter: Some(so_far),
+                                },
+                            )
+                            .await?;
+                        }
+                        return Err(err);
+                    }
+                    let result = result?;
                     requests += result.1;
                     match result.0 {
                         Ok(written) => {
@@ -918,14 +964,17 @@ impl Library {
             summaries.push(format!("{title}: {chapter_text}"));
             self.save_book_run(
                 id,
-                &epub_file,
-                n as u32 + 1,
-                total,
-                &cast,
-                summaries.len() as u32,
-                skipped,
-                requests,
-                seconds(&started),
+                StoredBookRun {
+                    epub_file: epub_file.clone(),
+                    sections_done: n as u32 + 1,
+                    sections: total,
+                    cast: cast.clone(),
+                    chapters_read: summaries.len() as u32,
+                    chapters_skipped: skipped,
+                    model_requests: requests,
+                    seconds: seconds(&started),
+                    chapter: None,
+                },
             )
             .await?;
         }
@@ -1183,29 +1232,7 @@ impl Library {
     }
 
     /// Saves where a whole-book run got to, after each chapter.
-    #[allow(clippy::too_many_arguments)]
-    async fn save_book_run(
-        &self,
-        id: u64,
-        epub_file: &str,
-        sections_done: u32,
-        sections: u32,
-        cast: &[CastMember],
-        chapters_read: u32,
-        chapters_skipped: u32,
-        model_requests: u32,
-        seconds: u32,
-    ) -> Result<(), LibraryError> {
-        let run = StoredBookRun {
-            epub_file: epub_file.to_string(),
-            sections_done,
-            sections,
-            cast: cast.to_vec(),
-            chapters_read,
-            chapters_skipped,
-            model_requests,
-            seconds,
-        };
+    async fn save_book_run(&self, id: u64, run: StoredBookRun) -> Result<(), LibraryError> {
         self.rt
             .command("save-book-run", move |state| {
                 state.commit(|data, _, _| data.save_book_run(id, run))
