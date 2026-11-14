@@ -136,7 +136,13 @@ class ForgeHost<Core : ForgeCore>(
         opening = true
         try {
             _status.value = Status.Loading
-            val linked = forgeAppContractVersion()
+            val linked = try {
+                forgeAppContractVersion()
+            } catch (e: Throwable) {
+                // The native library didn't load (a missing ABI, JNA not packaged).
+                _status.value = Status.Failed("The app's Rust library couldn't be loaded: $e")
+                return
+            }
             if (linked != FORGE_HOST_CONTRACT_VERSION) {
                 _status.value = Status.Failed(
                     "This build mixes framework versions (Rust contract $linked, host $FORGE_HOST_CONTRACT_VERSION).",
@@ -146,7 +152,7 @@ class ForgeHost<Core : ForgeCore>(
             val opened = try {
                 withContext(io) { open(environment()) }
             } catch (e: Exception) {
-                _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened.")
+                _status.value = Status.Failed(e.message ?: "The app's data couldn't be opened ($e).")
                 return
             }
             // Subscribe before anyone reads, so no change is missed.
