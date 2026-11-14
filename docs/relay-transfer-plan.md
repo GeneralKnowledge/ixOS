@@ -235,7 +235,37 @@ admin keeps it open. When the host closes it, it's gone.
   VoIP call), which App Review rejects and we won't do. A room meant to last
   is hosted from the laptop, the iMac or a Hetzner server with
   `relay room open`.
-- **Stage:** after stage 1's messages, as the first part of stage 2. It
+- **Security levels** (Reuben, 2026-11-14), set by the admin when opening
+  the room and shown to everyone before they join:
+
+  | Level | Leaving the screen | Room history |
+  |---|---|---|
+  | **Relaxed** | Nothing happens; the room stays while the host is up | In memory while the room is open |
+  | **Standard** (default) | iPhone host: grace period above. Joiners stay | In memory; a joiner's copy is wiped when they leave |
+  | **Strict** | Anyone, on every platform, is removed the moment Relay leaves the screen: app backgrounded or phone locked on iPhone and Android, window minimised or unfocused on a computer. They rejoin with the code (and the admin's OK). A screenshot or screen recording on iPhone is announced to the room, and content is hidden while the screen is being recorded | Joiners see only messages sent while they are in |
+
+  Each device enforces its own level, so these protect against slips, not
+  against someone running a modified Relay; the app says so. The `relay`
+  command can join Strict rooms only in terminals that report focus;
+  otherwise it can host or relay them but not read them.
+- **Computers as permanent hosts, acting as relays.** The laptop, the iMac
+  or a Hetzner server can keep a room up indefinitely (`relay room host`),
+  forwarding messages between members, while the admin is a person's
+  device. Whether that host can read the room is an open decision (below);
+  both are designed:
+  - **End to end (proposed default):** the host only forwards ciphertext.
+    Members share the room's keys with **MLS** (Messaging Layer Security,
+    RFC 9420, the IETF standard for group chats; the `openmls` crate), not
+    a scheme of our own: a joiner proves the code to the admin or any
+    member, gets added to the MLS group, and removing someone rotates the
+    keys. The host sees who is connected and when, never what is said.
+  - **Host can read:** the host is the room's hub, as the chat server is
+    for Chat, and decrypts everything. Shown to every member before they
+    join and on the room's title ("The host can read this room"), never
+    silent. Fits a team room on a server you own and want logged.
+- **Stage:** after stage 1's messages, as the first part of stage 2 (rooms
+  hosted by a device, the three levels). Permanent relay hosts with MLS
+  come after stage 2's servers. It
   works on one Wi-Fi with stage 1's code, and across the internet once
   stage 2's relay is up.
 
@@ -325,6 +355,14 @@ Reuben approved every recommendation:
 6. **Browser receiver:** in stage 3, after a spike picks iroh in the
    browser or WebRTC.
 7. **Old pairing:** Relay's QR pairing is replaced by trusted devices.
+
+Open since then:
+
+8. **Can a permanent room host read the room?** End to end with MLS, so
+   the host only relays (proposed default), or the host reads everything,
+   shown to all members. Reuben's note said owners "should automatically be
+   able to read every message"; waiting for him to confirm which he meant.
+   Both are designed above, so either can be the default.
 
 ## Sources
 
