@@ -218,9 +218,23 @@ admin keeps it open. When the host closes it, it's gone.
 - **Chat does the work again:** the host runs the room as a `ChatRepo`
   backend for the joiners (it plays the chat server's part), and Chat's
   client and conversation screen show it, with an in-memory store.
-- **Hosting from the iPhone** lasts while Relay is on screen, because iOS
-  suspends it in the background. The laptop, the iMac or a Hetzner server
-  running `relay room open` can keep a room up for as long as wanted.
+- **Collapse when the host looks away (a feature).** On iPhone a room lives
+  while Relay is on screen; leaving the app, locking the phone or a call
+  closes it for everyone. Reuben likes this as a security property, so it
+  is deliberate, not a limit to hide:
+  - a **grace period**, on by default: when the host leaves the app, the
+    room stays up for the time iOS gives a background task (about 30
+    seconds; iOS decides, so "up to 30 seconds"), joiners see "the host
+    stepped away", and coming back in time keeps the room;
+  - **Collapse at once**, a switch in the room's settings, skips the grace
+    period: the room closes the moment the host leaves the screen;
+  - a joiner's copy is also wiped when the joiner's own app is closed or
+    suspended.
+- **Longer hosting in the background isn't possible on iPhone** without
+  misusing a background mode (playing silent audio, or pretending to be a
+  VoIP call), which App Review rejects and we won't do. A room meant to last
+  is hosted from the laptop, the iMac or a Hetzner server with
+  `relay room open`.
 - **Stage:** after stage 1's messages, as the first part of stage 2. It
   works on one Wi-Fi with stage 1's code, and across the internet once
   stage 2's relay is up.
