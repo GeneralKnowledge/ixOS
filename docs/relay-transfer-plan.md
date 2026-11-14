@@ -263,6 +263,16 @@ admin keeps it open. When the host closes it, it's gone.
     for Chat, and decrypts everything. Shown to every member before they
     join and on the room's title ("The host can read this room"), never
     silent. Fits a team room on a server you own and want logged.
+- **Built on Nostr** (Reuben, 2026-11-14: servers as "types of relays", an
+  IRC and Discord hybrid where each server chooses what it supports, on
+  existing infrastructure). After comparing Matrix, IRC, XMTP, Nostr and
+  iroh-gossip ([research/relay-rooms-protocols.md](research/relay-rooms-protocols.md)),
+  rooms speak Nostr: a plain relay carries end to end rooms (Marmot, which
+  is MLS over Nostr) and sees only ciphertext; a relay that hosts NIP-29
+  groups can offer "sub-servers" and rooms the host can read; each relay
+  publishes what it supports (NIP-11), and Relay shows that before anyone
+  joins. A host-kept room is a tiny relay on the host device. Files and
+  messages between your own devices stay on iroh.
 - **Stage:** after stage 1's messages, as the first part of stage 2 (rooms
   hosted by a device, the three levels). Permanent relay hosts with MLS
   come after stage 2's servers. It
@@ -358,11 +368,12 @@ Reuben approved every recommendation:
 
 Open since then:
 
-8. **Can a permanent room host read the room?** End to end with MLS, so
-   the host only relays (proposed default), or the host reads everything,
-   shown to all members. Reuben's note said owners "should automatically be
-   able to read every message"; waiting for him to confirm which he meant.
-   Both are designed above, so either can be the default.
+8. **Can a permanent room host read the room?** Answered: it is each
+   server's choice, shown to members before they join; end to end is the
+   default.
+9. **Rooms on Nostr** (relays, Marmot for end to end, NIP-29 for hosted
+   groups, NIP-11 for what a server supports), with Matrix and IRC as
+   possible bridges later. Proposed; a spike comes first.
 
 ## Sources
 
