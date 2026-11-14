@@ -1062,6 +1062,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 name = "pocket-library-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "flate2",
  "forge-app",
  "forge-net",

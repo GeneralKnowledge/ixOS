@@ -22,6 +22,14 @@ xtool_product = "PocketLibraryXtool"
 orientations = ["portrait"]
 # Read-aloud keeps speaking when the screen locks or the app is in the background.
 background_modes = ["audio"]
+# "Read the Whole Book" carries on in the background as an iOS 26
+# continued-processing task (BookBackgroundTask.swift), whose identifier
+# must start with the bundle id. xtool signs as XTL-<team>.<bundle id>, so
+# both spellings are permitted.
+background_tasks = [
+    "org.forgemobile.pocketlibrary.booksummary.*",
+    "XTL-ND4P87PX52.org.forgemobile.pocketlibrary.booksummary.*",
+]
 
 # UI automation. This launch argument starts the app on an empty, throwaway
 # library (Application Support/PocketLibrary-UITest), so `forge ui explore`

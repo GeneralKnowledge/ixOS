@@ -26,6 +26,9 @@ public enum ErrorText {
         case .Interrupted: return "Stopped"
         case .ShutDown: return "Library Closed"
         case .InUse: return "Library Already Open"
+        case .SummaryUnavailable: return "Summaries Unavailable"
+        case .SummaryRefused: return "Couldn't Summarise"
+        case .SummaryFailed: return "Summary Failed"
         }
     }
 
@@ -52,6 +55,9 @@ public enum ErrorText {
         case .Interrupted: return "Pocket Library went to the background before this finished. Nothing was changed; try again."
         case .ShutDown: return "Restart the app to keep going."
         case .InUse: return "Another copy of Pocket Library has this library open. Close it and try again."
+        case .SummaryUnavailable(let reason): return reason
+        case .SummaryRefused: return "Apple Intelligence declined to summarise this chapter."
+        case .SummaryFailed(let reason): return "Apple Intelligence couldn't finish the summary (\(reason)). Try again."
         }
     }
 
@@ -59,7 +65,7 @@ public enum ErrorText {
     public static func isRetryable(_ error: Error) -> Bool {
         guard let error = error as? LibraryError else { return false }
         switch error {
-        case .Offline, .Timeout, .CatalogueUnavailable, .Network, .Interrupted: return true
+        case .Offline, .Timeout, .CatalogueUnavailable, .Network, .Interrupted, .SummaryFailed: return true
         default: return false
         }
     }

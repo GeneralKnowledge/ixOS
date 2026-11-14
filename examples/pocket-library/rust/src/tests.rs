@@ -927,3 +927,150 @@ fn the_background_interrupts_a_search_but_not_an_import() {
     assert!(!library.background_work_pending());
     assert_eq!(library.books(all()), vec![]);
 }
+
+// MARK: Chapter summaries
+
+#[test]
+fn a_chapter_summary_is_saved_with_the_book() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Summarised");
+    block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        None
+    );
+
+    let model = Arc::new(FakeModel::new());
+    let synopsis =
+        block_on(library.summarise_chapter(book.id, 1, model.clone(), None, None)).unwrap();
+    assert_eq!(synopsis.chapter, 1);
+    // Two parts read, then the writer.
+    assert_eq!(synopsis.text, "Answer 3.");
+    assert_eq!(synopsis.model_name, "Fake Model");
+    // The book's title and the chapter's text went to the model.
+    let asked = model.asked.lock().unwrap().clone();
+    assert!(asked[0].prompt.contains("Summarised") && asked[0].prompt.contains("word word"));
+
+    // Saved: it is there after a relaunch, and only for its chapter.
+    let library = reopen(library, dir.path());
+    block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        Some(synopsis)
+    );
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 0)).unwrap(),
+        None
+    );
+
+    // Summarising again replaces it.
+    let again =
+        block_on(library.summarise_chapter(book.id, 1, Arc::new(FakeModel::new()), None, None))
+            .unwrap();
+    let book_data = library.data.get();
+    assert_eq!(book_data.book(book.id).unwrap().synopses.len(), 1);
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        Some(again)
+    );
+}
+
+#[test]
+fn summaries_need_an_available_model_and_an_open_book() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Unsummarised");
+    let model = Arc::new(FakeModel::new());
+    assert!(matches!(
+        block_on(library.summarise_chapter(book.id, 0, model.clone(), None, None)),
+        Err(LibraryError::InvalidInput { .. })
+    ));
+    block_on(library.open_reader(book.id)).unwrap();
+    let mut off = FakeModel::new();
+    off.available = false;
+    assert_eq!(
+        block_on(library.summarise_chapter(book.id, 0, Arc::new(off), None, None)),
+        Err(LibraryError::SummaryUnavailable {
+            reason: "Turn it on.".into()
+        })
+    );
+    // A cancelled summary saves nothing.
+    let cancellation = Cancellation::new();
+    cancellation.cancel();
+    assert_eq!(
+        block_on(library.summarise_chapter(book.id, 0, model.clone(), None, Some(cancellation))),
+        Err(LibraryError::Cancelled)
+    );
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 0)).unwrap(),
+        None
+    );
+    assert!(model.asked.lock().unwrap().is_empty());
+}
+
+#[test]
+fn a_whole_book_summary_reads_every_chapter_and_reuses_saved_ones() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Whole");
+    assert_eq!(library.book_synopsis(book.id), None);
+
+    let model = Arc::new(FakeModel::new());
+    let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
+    assert_eq!((synopsis.chapters_read, synopsis.chapters_skipped), (2, 0));
+    assert_eq!(synopsis.chapters.len(), 2);
+    // Per chapter: two parts read, the writer, the cast keeper; then
+    // the overview's two writers (a two-chapter book has no middle).
+    assert_eq!(synopsis.model_requests, 10);
+    let asked = model.asked.lock().unwrap().clone();
+    assert!(asked[8].prompt.contains("the beginning of a book"));
+    let last = &asked.last().unwrap().prompt;
+    assert!(last.contains("the end of a book") && last.contains("Chapter: Answer"));
+    assert!(last.contains("The paragraph before yours"));
+    assert_eq!(synopsis.text, "Answer 9.\n\nAnswer 10.");
+
+    // Saved, and a second run reuses the chapter summaries.
+    let library = reopen(library, dir.path());
+    assert_eq!(library.book_synopsis(book.id), Some(synopsis));
+    let again =
+        block_on(library.summarise_book(book.id, Arc::new(FakeModel::new()), None, None)).unwrap();
+    assert_eq!(again.model_requests, 4);
+}
+
+#[test]
+fn a_stopped_whole_book_run_carries_on_where_it_left_off() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Paused");
+
+    // The model is throttled after the first chapter (two parts, writer,
+    // cast).
+    let mut busy = FakeModel::new();
+    busy.busy_after = Some(4);
+    assert_eq!(
+        block_on(library.summarise_book(book.id, Arc::new(busy), None, None)),
+        Err(LibraryError::Interrupted)
+    );
+    let run = library.book_run(book.id).unwrap();
+    assert_eq!(
+        (run.chapters_done, run.chapters, run.model_requests),
+        (1, 2, 4)
+    );
+
+    // After a relaunch, the next run does only chapter 2 and the overview.
+    let library = reopen(library, dir.path());
+    let model = Arc::new(FakeModel::new());
+    let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
+    assert_eq!(model.asked.lock().unwrap().len(), 6);
+    assert_eq!(synopsis.model_requests, 10);
+    assert_eq!(synopsis.chapters_read, 2);
+    assert!(model.asked.lock().unwrap()[4]
+        .prompt
+        .contains("Chapter: Answer"));
+    assert_eq!(library.book_run(book.id), None);
+}

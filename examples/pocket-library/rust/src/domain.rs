@@ -9,6 +9,7 @@ use crate::model::{
     ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibrarySettings,
     LibrarySort, LibraryStats, ReadingPosition, ReadingStatus,
 };
+use crate::summary::{BookSynopsis, CastMember, ChapterSynopsis};
 
 pub const MAX_TITLE_CHARS: usize = 300;
 pub const MAX_AUTHOR_CHARS: usize = 200;
@@ -50,6 +51,76 @@ pub struct StoredBook {
     pub epub_file: Option<String>,
     #[serde(default)]
     pub reading_position: Option<SavedPosition>,
+    /// Chapter summaries written on this phone, for the saved EPUB.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub synopses: Vec<StoredSynopsis>,
+    /// The whole-book summary, for the saved EPUB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub book_synopsis: Option<StoredBookSynopsis>,
+    /// A whole-book run that has not finished, so the next one resumes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub book_run: Option<StoredBookRun>,
+}
+
+/// Where an unfinished whole-book run got to: saved after every chapter.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredBookRun {
+    pub epub_file: String,
+    /// Sections done (an index into `summary::book_sections`).
+    pub sections_done: u32,
+    pub sections: u32,
+    #[serde(default)]
+    pub cast: Vec<CastMember>,
+    pub chapters_read: u32,
+    pub chapters_skipped: u32,
+    pub model_requests: u32,
+    pub seconds: u32,
+}
+
+/// A whole-book summary as saved; its chapters are the book's saved
+/// chapter summaries.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredBookSynopsis {
+    pub epub_file: String,
+    pub text: String,
+    #[serde(default)]
+    pub cast: Vec<CastMember>,
+    pub chapters_read: u32,
+    #[serde(default)]
+    pub chapters_skipped: u32,
+    pub model_requests: u32,
+    pub seconds: u32,
+    pub model_name: String,
+    pub created_at_ms: i64,
+}
+
+/// A chapter summary as saved. `epub_file` is the EPUB it was written
+/// from: a summary of a file since replaced is never shown.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredSynopsis {
+    pub chapter: u32,
+    pub title: String,
+    pub epub_file: String,
+    pub text: String,
+    pub parts: u32,
+    #[serde(default)]
+    pub skipped_passages: u32,
+    pub model_name: String,
+    pub created_at_ms: i64,
+}
+
+impl StoredSynopsis {
+    pub fn to_synopsis(&self) -> ChapterSynopsis {
+        ChapterSynopsis {
+            chapter: self.chapter,
+            title: self.title.clone(),
+            text: self.text.clone(),
+            parts: self.parts,
+            skipped_passages: self.skipped_passages,
+            model_name: self.model_name.clone(),
+            created_at_ms: self.created_at_ms,
+        }
+    }
 }
 
 /// Where the reader was left, and the page that put the book on. If the
@@ -331,6 +402,9 @@ impl LibraryData {
             updated_at_ms: now,
             epub_file: None,
             reading_position: None,
+            synopses: Vec::new(),
+            book_synopsis: None,
+            book_run: None,
         });
         let title = self.book(id)?.title.clone();
         self.record(id, &title, now, ActivityKind::Added);
@@ -408,6 +482,99 @@ impl LibraryData {
         let book = self.book_mut(id)?;
         book.epub_file = epub_file;
         book.reading_position = None;
+        book.synopses.clear();
+        book.book_synopsis = None;
+        book.book_run = None;
+        Ok(())
+    }
+
+    /// The saved summary of the chapter starting at `chapter`, if it was
+    /// written from the book's current EPUB.
+    pub fn synopsis(&self, id: u64, chapter: u32) -> Option<&StoredSynopsis> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        book.synopses
+            .iter()
+            .find(|s| s.chapter == chapter && s.epub_file == epub)
+    }
+
+    /// The saved whole-book summary, with every saved chapter summary, if
+    /// it was written from the book's current EPUB.
+    pub fn book_synopsis(&self, id: u64) -> Option<BookSynopsis> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        let saved = book
+            .book_synopsis
+            .as_ref()
+            .filter(|s| s.epub_file == epub)?;
+        Some(BookSynopsis {
+            text: saved.text.clone(),
+            cast: saved.cast.clone(),
+            chapters: book
+                .synopses
+                .iter()
+                .filter(|s| s.epub_file == epub)
+                .map(StoredSynopsis::to_synopsis)
+                .collect(),
+            chapters_read: saved.chapters_read,
+            chapters_skipped: saved.chapters_skipped,
+            model_requests: saved.model_requests,
+            seconds: saved.seconds,
+            model_name: saved.model_name.clone(),
+            created_at_ms: saved.created_at_ms,
+        })
+    }
+
+    /// The unfinished whole-book run for the book's current EPUB.
+    pub fn book_run(&self, id: u64) -> Option<&StoredBookRun> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        book.book_run.as_ref().filter(|r| r.epub_file == epub)
+    }
+
+    /// Saves where a whole-book run got to.
+    pub fn save_book_run(&mut self, id: u64, run: StoredBookRun) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(run.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.book_run = Some(run);
+        Ok(())
+    }
+
+    /// Saves a whole-book summary in place of the last one. Refused if the
+    /// book's EPUB changed meanwhile.
+    pub fn save_book_synopsis(
+        &mut self,
+        id: u64,
+        synopsis: StoredBookSynopsis,
+    ) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(synopsis.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.book_synopsis = Some(synopsis);
+        book.book_run = None;
+        Ok(())
+    }
+
+    /// Saves a chapter summary, replacing an earlier one of that chapter.
+    /// Refused if the book's EPUB changed while it was written.
+    pub fn save_synopsis(&mut self, id: u64, synopsis: StoredSynopsis) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(synopsis.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.synopses
+            .retain(|s| s.chapter != synopsis.chapter && s.epub_file == synopsis.epub_file);
+        book.synopses.push(synopsis);
+        book.synopses.sort_by_key(|s| s.chapter);
         Ok(())
     }
 
