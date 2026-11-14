@@ -17,7 +17,9 @@ label. `tests/content.rs` allows exactly these three.
 
 `pathways.json` holds goal pathways (docs/good-dog-demo.md, "Pathway format"). They are
 written in [GeneralKnowledge/DogResearch](https://github.com/GeneralKnowledge/DogResearch)
-first (Reuben, 2026-11-08) and exported here; until DogResearch publishes them the file
-is an empty list, and the app offers no goals. `tests/fixtures/pathways-sample.json` is a
+first (Reuben, 2026-11-08) and exported here. The current file is the `pathways` array of
+DogResearch's `dist/good-dog-pathways.json` (`npm run export:good-dog`) from DogResearch PR #9
+(branch `claude/goal-pathways`, commit `f27e26c`, 2026-11-14): recall, loose lead, settling and
+visitors. Re-export once that PR merges or its wording changes. `tests/fixtures/pathways-sample.json` is a
 test-only sample in the same format. `tests/pathways.rs` checks every shipped pathway
 against the exercises.

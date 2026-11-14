@@ -277,4 +277,57 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertEqual(second.dog?.name, "Moss")
         second.close()
     }
+
+    @MainActor
+    func testOnboardingStartsTheChosenGoalAndTodayLeadsWithIt() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        XCTAssertEqual(model.pathways.count, 4)
+        XCTAssertEqual(model.activeGoals.map(\.pathwayId), ["path-recall"])
+        let focus = try XCTUnwrap(model.today?.goalFocus)
+        XCTAssertEqual(focus.stageNumber, 1)
+        XCTAssertFalse(focus.everydayPractice.isEmpty)
+        XCTAssertEqual(model.suggestGoals("he pulls on the lead").first?.id, "path-loose-lead")
+        XCTAssertTrue(model.suggestGoals("   ").isEmpty)
+    }
+
+    @MainActor
+    func testPassingAStageCelebratesAndPauseKeepsTheGoal() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        let goal = try XCTUnwrap(model.activeGoals.first)
+        await model.answerGate(goal.id, met: false)
+        XCTAssertNil(model.celebration, "not yet is not a celebration")
+        await model.answerGate(goal.id, met: true)
+        XCTAssertNil(model.actionError)
+        let celebration = try XCTUnwrap(model.celebration)
+        XCTAssertEqual(celebration.stageNumber, 1)
+        XCTAssertNotNil(celebration.nextStage)
+        XCTAssertEqual(model.goal(id: goal.id)?.summary.stageNumber, 2)
+
+        await model.pauseGoal(goal.id)
+        XCTAssertTrue(model.activeGoals.isEmpty)
+        await model.resumeGoal(goal.id)
+        XCTAssertEqual(model.activeGoals.first?.stageNumber, 2)
+        let second = try await model.startGoal(pathwayId: "path-settle", ownWords: "  can't relax  ")
+        XCTAssertEqual(second.summary.ownWords, "can't relax")
+        XCTAssertEqual(model.activeGoals.count, 2)
+    }
+
+    @MainActor
+    func testNotTodayIsARestDayAndTheWeekCountsDaysNotStreaks() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        XCTAssertEqual(model.today?.canSayNotToday, true)
+        await model.setNotToday(true)
+        XCTAssertEqual(model.today?.notToday, true)
+        await model.setNotToday(false)
+        XCTAssertEqual(model.today?.notToday, false)
+
+        let rhythm = try XCTUnwrap(model.progress?.rhythm)
+        XCTAssertEqual(rhythm.targetDays, 3)
+        XCTAssertEqual(rhythm.daysPractised, 0)
+        XCTAssertEqual(rhythm.todayIndex, 3, "15 January 2026 is a Thursday")
+        XCTAssertFalse(rhythm.summary.isEmpty)
+    }
 }

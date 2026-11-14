@@ -5,6 +5,7 @@ import SwiftUI
 /// Today's plan: two or three short activities, each with why it was chosen.
 struct TodayView: View {
     @Bindable var model: GoodDogModel
+    @State private var choosingGoal = false
 
     var body: some View {
         NavigationStack {
@@ -12,6 +13,35 @@ struct TodayView: View {
                 if let plan = model.today {
                     Section {
                         ProgressRow(plan: plan, dogName: model.dog?.name ?? "your dog")
+                        if let rhythm = model.progress?.rhythm {
+                            RhythmRow(rhythm: rhythm)
+                        }
+                    }
+                    if plan.notToday {
+                        Section {
+                            RestDayRow(dogName: model.dog?.name ?? "your dog")
+                            Button("Practise After All", systemImage: "figure.walk") {
+                                Task { await model.setNotToday(false) }
+                            }
+                            .accessibilityIdentifier("today.practiseAfterAll")
+                        }
+                    }
+                    Section {
+                        if let focus = plan.goalFocus {
+                            NavigationLink(value: GoalRoute(goalId: focus.goalId)) {
+                                GoalFocusRow(focus: focus)
+                            }
+                            .accessibilityIdentifier("today.goal")
+                        } else if model.activeGoals.isEmpty, !model.pathways.isEmpty {
+                            Button {
+                                choosingGoal = true
+                            } label: {
+                                Label("Choose What to Work On", systemImage: "map")
+                            }
+                            .accessibilityIdentifier("today.chooseGoal")
+                        }
+                    } header: {
+                        if plan.goalFocus != nil { Text("Your goal") }
                     }
                     Section {
                         ForEach(Array(plan.activities.enumerated()), id: \.element.id) { index, activity in
@@ -42,12 +72,24 @@ struct TodayView: View {
                             Text("Swipe left on an activity to try something else.")
                         }
                     }
-                    if plan.canShorten {
+                    if (plan.canShorten && !plan.notToday) || (plan.canSayNotToday && !plan.notToday) {
                         Section {
-                            Button("Only a Few Minutes Today", systemImage: "timer") {
-                                Task { await model.shortenToday() }
+                            if plan.canShorten {
+                                Button("Only a Few Minutes Today", systemImage: "timer") {
+                                    Task { await model.shortenToday() }
+                                }
+                                .accessibilityIdentifier("today.shorten")
                             }
-                            .accessibilityIdentifier("today.shorten")
+                            if plan.canSayNotToday {
+                                Button("Not Today", systemImage: "moon.zzz") {
+                                    Task { await model.setNotToday(true) }
+                                }
+                                .accessibilityIdentifier("today.notToday")
+                            }
+                        } footer: {
+                            if plan.canSayNotToday {
+                                Text("Rest is part of learning. A day off never undoes your week.")
+                            }
                         }
                     }
                 }
@@ -73,6 +115,10 @@ struct TodayView: View {
             .navigationDestination(for: ExerciseRoute.self) { route in
                 ExerciseView(model: model, route: route)
             }
+            .navigationDestination(for: GoalRoute.self) { route in
+                GoalPathView(model: model, goalId: route.goalId)
+            }
+            .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
             .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
         }
     }
@@ -149,5 +195,56 @@ private struct ActivityRow: View {
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
         .accessibilityValue(activity.result == nil ? "Not done yet" : "Done")
+    }
+}
+
+/// The goal today's plan works towards: where the dog is on its path, and
+/// one thing to try in ordinary life.
+private struct GoalFocusRow: View {
+    let focus: GoalFocus
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(focus.goalTitle).font(.headline)
+                Spacer()
+                ForgeBadge("\(focus.stageNumber) of \(focus.stageCount)", systemImage: "flag", tone: .accent)
+            }
+            ProgressView(value: Double(focus.stageNumber - 1), total: Double(max(focus.stageCount, 1)))
+                .forgeTint(.accent)
+                .accessibilityHidden(true)
+            Text("Now: \(focus.stageTitle)")
+                .font(.subheadline.weight(.semibold))
+            Label(focus.everydayPractice, systemImage: "house")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Your goal: \(focus.goalTitle). Stage \(focus.stageNumber) of \(focus.stageCount), \(focus.stageTitle)")
+        .accessibilityHint("Shows the whole path")
+    }
+}
+
+/// "Not today" was chosen.
+private struct RestDayRow: View {
+    let dogName: String
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "moon.zzz.fill")
+                .font(.title2)
+                .forgeForeground(.info)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("A rest day for \(dogName)").font(.headline)
+                Text("No reminder today. Rest helps learning settle in.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("today.restDay")
     }
 }

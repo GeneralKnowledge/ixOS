@@ -7,6 +7,7 @@ struct MyDogView: View {
     @Bindable var model: GoodDogModel
     @State private var editing = false
     @State private var confirmErase = false
+    @State private var choosingGoal = false
 
     /// 18:00 unless the owner picks another time.
     private static let defaultReminderMinute: UInt32 = 18 * 60
@@ -49,6 +50,35 @@ struct MyDogView: View {
                         LabeledContent("Experience", value: dog.experience.title)
                     } header: {
                         Text(dog.name)
+                    }
+                }
+                if model.dog != nil, !model.pathways.isEmpty {
+                    Section {
+                        ForEach(model.goals) { goal in
+                            NavigationLink(value: GoalRoute(goalId: goal.id)) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(goal.title).font(.headline)
+                                    Text(goal.status == .finished
+                                         ? goal.status.title
+                                         : "Stage \(goal.stageNumber) of \(goal.stageCount): \(goal.stageTitle)")
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                    if goal.status == .paused || goal.status == .setAside {
+                                        Text(goal.status.title)
+                                            .font(.footnote)
+                                            .forgeForeground(.warning)
+                                    }
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                            .accessibilityIdentifier("dog.goal.\(goal.pathwayId)")
+                        }
+                        Button("Add a Goal", systemImage: "plus") { choosingGoal = true }
+                            .accessibilityIdentifier("dog.addGoal")
+                    } header: {
+                        Text("Goals")
+                    } footer: {
+                        Text("Work on up to three at once. Pausing or setting one aside keeps its progress.")
                     }
                 }
                 if let progress = model.progress {
@@ -128,6 +158,13 @@ struct MyDogView: View {
                 }
             }
             .navigationTitle("My Dog")
+            .navigationDestination(for: GoalRoute.self) { route in
+                GoalPathView(model: model, goalId: route.goalId)
+            }
+            .navigationDestination(for: ExerciseRoute.self) { route in
+                ExerciseView(model: model, route: route)
+            }
+            .sheet(isPresented: $choosingGoal) { GoalPickerView(model: model) }
             .toolbar {
                 if model.dog != nil {
                     ToolbarItem(placement: .primaryAction) {

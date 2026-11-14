@@ -753,6 +753,12 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func setGoalAside(goalId: UInt64, now: LocalTime) async throws  -> GoalDetail
     
     /**
+     * "Not today": a rest day, with no reminder today. Refused once
+     * something has been practised today. `false` takes it back.
+     */
+    func setNotToday(notToday: Bool, now: LocalTime) async throws  -> TodayPlan
+    
+    /**
      * The host reports a lifecycle change. Coming back from the background
      * emits `PhaseChanged { resumed: true }`; `Terminated` is `shutdown()`.
      */
@@ -1239,6 +1245,26 @@ open func setGoalAside(goalId: UInt64, now: LocalTime)async throws  -> GoalDetai
             completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
             freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * "Not today": a rest day, with no reminder today. Refused once
+     * something has been practised today. `false` takes it back.
+     */
+open func setNotToday(notToday: Bool, now: LocalTime)async throws  -> TodayPlan  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_set_not_today(
+                        self.uniffiCloneHandle(),FfiConverterBool.lower(notToday),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeTodayPlan_lift,
             errorHandler: FfiConverterTypeAppError_lift
         )
 }
@@ -3764,20 +3790,38 @@ public struct GoalFocus: Equatable, Hashable {
     public var goalTitle: String
     public var stageTitle: String
     /**
+     * 1-based.
+     */
+    public var stageNumber: UInt32
+    public var stageCount: UInt32
+    /**
      * Rust's wording: why this stage matters now.
      */
     public var why: String
+    /**
+     * One way to practise in ordinary life today, outside a session.
+     */
+    public var everydayPractice: String
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
     public init(goalId: UInt64, goalTitle: String, stageTitle: String, 
         /**
+         * 1-based.
+         */stageNumber: UInt32, stageCount: UInt32, 
+        /**
          * Rust's wording: why this stage matters now.
-         */why: String) {
+         */why: String, 
+        /**
+         * One way to practise in ordinary life today, outside a session.
+         */everydayPractice: String) {
         self.goalId = goalId
         self.goalTitle = goalTitle
         self.stageTitle = stageTitle
+        self.stageNumber = stageNumber
+        self.stageCount = stageCount
         self.why = why
+        self.everydayPractice = everydayPractice
     }
 
     
@@ -3799,7 +3843,10 @@ public struct FfiConverterTypeGoalFocus: FfiConverterRustBuffer {
                 goalId: FfiConverterUInt64.read(from: &buf), 
                 goalTitle: FfiConverterString.read(from: &buf), 
                 stageTitle: FfiConverterString.read(from: &buf), 
-                why: FfiConverterString.read(from: &buf)
+                stageNumber: FfiConverterUInt32.read(from: &buf), 
+                stageCount: FfiConverterUInt32.read(from: &buf), 
+                why: FfiConverterString.read(from: &buf), 
+                everydayPractice: FfiConverterString.read(from: &buf)
         )
     }
 
@@ -3807,7 +3854,10 @@ public struct FfiConverterTypeGoalFocus: FfiConverterRustBuffer {
         FfiConverterUInt64.write(value.goalId, into: &buf)
         FfiConverterString.write(value.goalTitle, into: &buf)
         FfiConverterString.write(value.stageTitle, into: &buf)
+        FfiConverterUInt32.write(value.stageNumber, into: &buf)
+        FfiConverterUInt32.write(value.stageCount, into: &buf)
         FfiConverterString.write(value.why, into: &buf)
+        FfiConverterString.write(value.everydayPractice, into: &buf)
     }
 }
 
@@ -4886,6 +4936,10 @@ public struct ProgressSummary: Equatable, Hashable {
      * Skills that have started, the furthest along first.
      */
     public var skills: [SkillProgress]
+    /**
+     * Practice days this calendar week against a gentle weekly target.
+     */
+    public var rhythm: WeeklyRhythm
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -4898,11 +4952,15 @@ public struct ProgressSummary: Equatable, Hashable {
          */daysPractisedThisWeek: UInt32, 
         /**
          * Skills that have started, the furthest along first.
-         */skills: [SkillProgress]) {
+         */skills: [SkillProgress], 
+        /**
+         * Practice days this calendar week against a gentle weekly target.
+         */rhythm: WeeklyRhythm) {
         self.sessionsTotal = sessionsTotal
         self.sessionsThisWeek = sessionsThisWeek
         self.daysPractisedThisWeek = daysPractisedThisWeek
         self.skills = skills
+        self.rhythm = rhythm
     }
 
     
@@ -4924,7 +4982,8 @@ public struct FfiConverterTypeProgressSummary: FfiConverterRustBuffer {
                 sessionsTotal: FfiConverterUInt32.read(from: &buf), 
                 sessionsThisWeek: FfiConverterUInt32.read(from: &buf), 
                 daysPractisedThisWeek: FfiConverterUInt32.read(from: &buf), 
-                skills: FfiConverterSequenceTypeSkillProgress.read(from: &buf)
+                skills: FfiConverterSequenceTypeSkillProgress.read(from: &buf), 
+                rhythm: FfiConverterTypeWeeklyRhythm.read(from: &buf)
         )
     }
 
@@ -4933,6 +4992,7 @@ public struct FfiConverterTypeProgressSummary: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.sessionsThisWeek, into: &buf)
         FfiConverterUInt32.write(value.daysPractisedThisWeek, into: &buf)
         FfiConverterSequenceTypeSkillProgress.write(value.skills, into: &buf)
+        FfiConverterTypeWeeklyRhythm.write(value.rhythm, into: &buf)
     }
 }
 
@@ -5444,6 +5504,14 @@ public struct TodayPlan: Equatable, Hashable {
      * The active goal today's plan works towards most, when there is one.
      */
     public var goalFocus: GoalFocus?
+    /**
+     * The owner said "not today": a rest day, and no reminder today.
+     */
+    public var notToday: Bool
+    /**
+     * "Not today" is offered: nothing practised yet today.
+     */
+    public var canSayNotToday: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -5459,7 +5527,13 @@ public struct TodayPlan: Equatable, Hashable {
          */starter: Bool, 
         /**
          * The active goal today's plan works towards most, when there is one.
-         */goalFocus: GoalFocus?) {
+         */goalFocus: GoalFocus?, 
+        /**
+         * The owner said "not today": a rest day, and no reminder today.
+         */notToday: Bool, 
+        /**
+         * "Not today" is offered: nothing practised yet today.
+         */canSayNotToday: Bool) {
         self.activities = activities
         self.totalMinutes = totalMinutes
         self.doneCount = doneCount
@@ -5467,6 +5541,8 @@ public struct TodayPlan: Equatable, Hashable {
         self.canShorten = canShorten
         self.starter = starter
         self.goalFocus = goalFocus
+        self.notToday = notToday
+        self.canSayNotToday = canSayNotToday
     }
 
     
@@ -5491,7 +5567,9 @@ public struct FfiConverterTypeTodayPlan: FfiConverterRustBuffer {
                 shortPlan: FfiConverterBool.read(from: &buf), 
                 canShorten: FfiConverterBool.read(from: &buf), 
                 starter: FfiConverterBool.read(from: &buf), 
-                goalFocus: FfiConverterOptionTypeGoalFocus.read(from: &buf)
+                goalFocus: FfiConverterOptionTypeGoalFocus.read(from: &buf), 
+                notToday: FfiConverterBool.read(from: &buf), 
+                canSayNotToday: FfiConverterBool.read(from: &buf)
         )
     }
 
@@ -5503,6 +5581,8 @@ public struct FfiConverterTypeTodayPlan: FfiConverterRustBuffer {
         FfiConverterBool.write(value.canShorten, into: &buf)
         FfiConverterBool.write(value.starter, into: &buf)
         FfiConverterOptionTypeGoalFocus.write(value.goalFocus, into: &buf)
+        FfiConverterBool.write(value.notToday, into: &buf)
+        FfiConverterBool.write(value.canSayNotToday, into: &buf)
     }
 }
 
@@ -5519,6 +5599,105 @@ public func FfiConverterTypeTodayPlan_lift(_ buf: RustBuffer) throws -> TodayPla
 #endif
 public func FfiConverterTypeTodayPlan_lower(_ value: TodayPlan) -> RustBuffer {
     return FfiConverterTypeTodayPlan.lower(value)
+}
+
+
+/**
+ * A weekly rhythm instead of a daily streak: rest days never break it.
+ */
+public struct WeeklyRhythm: Equatable, Hashable {
+    /**
+     * Days with practice that make a good week.
+     */
+    public var targetDays: UInt32
+    /**
+     * Monday to Sunday of this local week: whether the dog practised.
+     */
+    public var days: [Bool]
+    /**
+     * 0 is Monday; the index of today in `days`.
+     */
+    public var todayIndex: UInt32
+    /**
+     * Days practised so far this week.
+     */
+    public var daysPractised: UInt32
+    /**
+     * Weeks in a row that reached the target, this one included once it has.
+     */
+    public var weeksInARow: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Days with practice that make a good week.
+         */targetDays: UInt32, 
+        /**
+         * Monday to Sunday of this local week: whether the dog practised.
+         */days: [Bool], 
+        /**
+         * 0 is Monday; the index of today in `days`.
+         */todayIndex: UInt32, 
+        /**
+         * Days practised so far this week.
+         */daysPractised: UInt32, 
+        /**
+         * Weeks in a row that reached the target, this one included once it has.
+         */weeksInARow: UInt32) {
+        self.targetDays = targetDays
+        self.days = days
+        self.todayIndex = todayIndex
+        self.daysPractised = daysPractised
+        self.weeksInARow = weeksInARow
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension WeeklyRhythm: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeWeeklyRhythm: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WeeklyRhythm {
+        return
+            try WeeklyRhythm(
+                targetDays: FfiConverterUInt32.read(from: &buf), 
+                days: FfiConverterSequenceBool.read(from: &buf), 
+                todayIndex: FfiConverterUInt32.read(from: &buf), 
+                daysPractised: FfiConverterUInt32.read(from: &buf), 
+                weeksInARow: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: WeeklyRhythm, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.targetDays, into: &buf)
+        FfiConverterSequenceBool.write(value.days, into: &buf)
+        FfiConverterUInt32.write(value.todayIndex, into: &buf)
+        FfiConverterUInt32.write(value.daysPractised, into: &buf)
+        FfiConverterUInt32.write(value.weeksInARow, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeeklyRhythm_lift(_ buf: RustBuffer) throws -> WeeklyRhythm {
+    return try FfiConverterTypeWeeklyRhythm.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeWeeklyRhythm_lower(_ value: WeeklyRhythm) -> RustBuffer {
+    return FfiConverterTypeWeeklyRhythm.lower(value)
 }
 
 
@@ -7779,6 +7958,31 @@ fileprivate struct FfiConverterOptionTypeSessionResult: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceBool: FfiConverterRustBuffer {
+    typealias SwiftType = [Bool]
+
+    public static func write(_ value: [Bool], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterBool.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [Bool] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [Bool]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterBool.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -8527,6 +8731,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_goal_aside() != 20277) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_set_not_today() != 32623) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_set_phase() != 5404) {

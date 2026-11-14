@@ -398,9 +398,14 @@ fn open_with_goals(dir: &std::path::Path) -> Arc<AppCore> {
     AppCore::with_pathways(dir.to_string_lossy().into_owned(), sample_pathways()).unwrap()
 }
 
+/// Onboarded with "General" as the answer, so no goal starts by itself.
 fn onboarded_with_goals(dir: &std::path::Path) -> Arc<AppCore> {
     let app = open_with_goals(dir);
-    block_on(app.save_dog(moss(), at(NINE_AM))).unwrap();
+    let dog = DogProfile {
+        goal: TrainingGoal::General,
+        ..moss()
+    };
+    block_on(app.save_dog(dog, at(NINE_AM))).unwrap();
     app
 }
 
@@ -433,15 +438,120 @@ fn gd1_data_is_migrated_and_keeps_everything() {
 }
 
 #[test]
-fn the_bundled_app_offers_no_goals_until_dogresearch_publishes_them() {
+fn the_bundled_app_offers_the_four_dogresearch_goals_and_onboarding_starts_one() {
+    let dir = tempfile::tempdir().unwrap();
+    // Moss's onboarding answer is "Coming back when called".
+    let app = onboarded(dir.path());
+    assert_eq!(
+        app.pathways()
+            .iter()
+            .map(|p| p.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "path-recall",
+            "path-loose-lead",
+            "path-settle",
+            "path-visitors"
+        ]
+    );
+    let goals = app.goals();
+    assert_eq!(goals.len(), 1);
+    assert_eq!(goals[0].pathway_id, "path-recall");
+    let focus = block_on(app.today(at(NINE_AM)))
+        .unwrap()
+        .goal_focus
+        .unwrap();
+    assert_eq!((focus.stage_number, focus.stage_count), (1, 3));
+    assert!(!focus.everyday_practice.is_empty());
+
+    // Changing the answer later doesn't start another goal.
+    let edited = DogProfile {
+        goal: TrainingGoal::LooseLead,
+        ..moss()
+    };
+    block_on(app.save_dog(edited, at(NINE_AM))).unwrap();
+    assert_eq!(app.goals().len(), 1);
+
+    // "General" starts none.
+    let other = tempfile::tempdir().unwrap();
+    let app = open(other.path());
+    let general = DogProfile {
+        goal: TrainingGoal::General,
+        ..moss()
+    };
+    block_on(app.save_dog(general, at(NINE_AM))).unwrap();
+    assert!(app.goals().is_empty());
+}
+
+#[test]
+fn not_today_is_a_rest_day_that_can_be_taken_back() {
     let dir = tempfile::tempdir().unwrap();
     let app = onboarded(dir.path());
-    assert!(app.pathways().is_empty());
+    let plan = block_on(app.today(at(NINE_AM))).unwrap();
+    assert!(plan.can_say_not_today && !plan.not_today);
+
+    let plan = block_on(app.set_not_today(true, at(NINE_AM))).unwrap();
+    assert!(plan.not_today);
+    assert!(
+        !plan.activities.is_empty(),
+        "the plan stays for a change of mind"
+    );
+    // Tomorrow is an ordinary day.
+    let tomorrow = block_on(app.today(at(NINE_AM + DAY_MS))).unwrap();
+    assert!(!tomorrow.not_today);
+
+    let plan = block_on(app.set_not_today(false, at(NINE_AM))).unwrap();
+    assert!(!plan.not_today);
+
+    // Once something is practised, it's not offered and is refused.
+    let first = plan.activities[0].clone();
+    block_on(app.record_session(
+        first.exercise_id,
+        Some(first.id),
+        SessionResult::Easy,
+        false,
+        at(NINE_AM + 60_000),
+    ))
+    .unwrap();
+    assert!(!block_on(app.today(at(NINE_AM))).unwrap().can_say_not_today);
     assert!(matches!(
-        block_on(app.start_goal("path-recall".into(), None, at(NINE_AM))),
-        Err(AppError::NotFound { .. })
+        block_on(app.set_not_today(true, at(NINE_AM + 120_000))),
+        Err(AppError::InvalidInput { .. })
     ));
-    assert_eq!(block_on(app.today(at(NINE_AM))).unwrap().goal_focus, None);
+}
+
+#[test]
+fn the_weekly_rhythm_counts_practice_days_and_rest_days_never_break_it() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let monday = NINE_AM - 3 * DAY_MS;
+    // Monday 12 January 2026. Practise Monday, Wednesday and Friday for two weeks.
+    for week in 0..2 {
+        for weekday in [0, 2, 4] {
+            let t = at(monday + (week * 7 + weekday) * DAY_MS);
+            block_on(app.record_session(
+                "ex-name-response".into(),
+                None,
+                SessionResult::Easy,
+                false,
+                t,
+            ))
+            .unwrap();
+        }
+    }
+    // The second Saturday: two good weeks in a row, rest days between.
+    let rhythm = app.progress(at(monday + 12 * DAY_MS)).rhythm;
+    assert_eq!(rhythm.target_days, 3);
+    assert_eq!(rhythm.today_index, 5);
+    assert_eq!(rhythm.days, [true, false, true, false, true, false, false]);
+    assert_eq!((rhythm.days_practised, rhythm.weeks_in_a_row), (3, 2));
+    // The next Monday: a new week that hasn't reached the target yet keeps
+    // the run going without counting itself.
+    let rhythm = app.progress(at(monday + 14 * DAY_MS)).rhythm;
+    assert_eq!((rhythm.days_practised, rhythm.weeks_in_a_row), (0, 2));
+    // A week with too few days ends the run.
+    let rhythm = app.progress(at(monday + 21 * DAY_MS)).rhythm;
+    assert_eq!(rhythm.weeks_in_a_row, 0);
 }
 
 #[test]

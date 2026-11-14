@@ -119,6 +119,10 @@ pub struct TodayPlan {
     pub starter: bool,
     /// The active goal today's plan works towards most, when there is one.
     pub goal_focus: Option<GoalFocus>,
+    /// The owner said "not today": a rest day, and no reminder today.
+    pub not_today: bool,
+    /// "Not today" is offered: nothing practised yet today.
+    pub can_say_not_today: bool,
 }
 
 /// Which goal today's plan serves, and why, for the top of Today.
@@ -127,8 +131,13 @@ pub struct GoalFocus {
     pub goal_id: u64,
     pub goal_title: String,
     pub stage_title: String,
+    /// 1-based.
+    pub stage_number: u32,
+    pub stage_count: u32,
     /// Rust's wording: why this stage matters now.
     pub why: String,
+    /// One way to practise in ordinary life today, outside a session.
+    pub everyday_practice: String,
 }
 
 /// Where a goal stands.
@@ -380,6 +389,23 @@ pub struct ProgressSummary {
     pub days_practised_this_week: u32,
     /// Skills that have started, the furthest along first.
     pub skills: Vec<SkillProgress>,
+    /// Practice days this calendar week against a gentle weekly target.
+    pub rhythm: WeeklyRhythm,
+}
+
+/// A weekly rhythm instead of a daily streak: rest days never break it.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct WeeklyRhythm {
+    /// Days with practice that make a good week.
+    pub target_days: u32,
+    /// Monday to Sunday of this local week: whether the dog practised.
+    pub days: Vec<bool>,
+    /// 0 is Monday; the index of today in `days`.
+    pub today_index: u32,
+    /// Days practised so far this week.
+    pub days_practised: u32,
+    /// Weeks in a row that reached the target, this one included once it has.
+    pub weeks_in_a_row: u32,
 }
 
 /// One recorded session.
