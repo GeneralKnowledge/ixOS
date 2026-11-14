@@ -461,7 +461,13 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 
 
 // Public interface members begin here.
-
+// Magic number for the Rust proxy to call using the same mechanism as every other method,
+// to free the callback once it's dropped by Rust.
+private let IDX_CALLBACK_FREE: Int32 = 0
+// Callback return codes
+private let UNIFFI_CALLBACK_SUCCESS: Int32 = 0
+private let UNIFFI_CALLBACK_ERROR: Int32 = 1
+private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
@@ -663,9 +669,28 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func book(id: UInt64) throws  -> Book
     
     /**
+     * Where an unfinished whole-book run got to, if one did: the next
+     * `summarise_book` carries on from there.
+     */
+    func bookRun(id: UInt64)  -> BookRunProgress?
+    
+    /**
+     * The saved whole-book summary, with every saved chapter summary.
+     */
+    func bookSynopsis(id: UInt64)  -> BookSynopsis?
+    
+    /**
      * The books matching `query`, in its order.
      */
     func books(query: LibraryQuery)  -> [Book]
+    
+    /**
+     * The saved summary of the chapter that reader chapter `index` is part
+     * of (a chapter can span several files; see `summary::section`), for
+     * a book opened with `open_reader`. None if there is none for the
+     * book's current EPUB.
+     */
+    func chapterSynopsis(id: UInt64, index: UInt32) async throws  -> ChapterSynopsis?
     
     /**
      * Deletes a book, its saved cover and its EPUB. Its history stays.
@@ -804,6 +829,32 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func stats(yearStartMs: Int64)  -> LibraryStats
     
     func storageInfo()  -> StorageInfo
+    
+    /**
+     * The whole-book "swarm": every chapter is read (summaries already
+     * saved are reused, and each new one is saved as soon as it is done,
+     * so a stopped run resumes where it left off), a cast keeper updates
+     * the list of people after each chapter, and the overview is written
+     * from the chapter summaries and the cast. A chapter the model
+     * declines is skipped and counted. Takes minutes. It keeps going when
+     * the app leaves the screen (the host asks iOS for background time;
+     * iOS may still suspend it, or the model may refuse to work in the
+     * background, which stops it with `Interrupted`). After every chapter
+     * it saves where it got to (`book_run`), so the next call carries on
+     * from the next chapter with the cast and counts so far.
+     */
+    func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?) async throws  -> BookSynopsis
+    
+    /**
+     * Writes a summary of the chapter that reader chapter `index` is part
+     * of, with `model` (Apple's on-device model, from Swift), saves it in
+     * place of any earlier one, and returns it. Long chapters are read in
+     * parts that fit the model's small window (see `summary`); `progress`
+     * hears each stage and the summary as it is written. On-screen work:
+     * `cancellation` stops it with `Cancelled`, leaving the app with
+     * `Interrupted`, and either way nothing is saved.
+     */
+    func summariseChapter(id: UInt64, index: UInt32, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?) async throws  -> ChapterSynopsis
     
     /**
      * Saves the edit form. Status and page follow the same rules as
@@ -979,6 +1030,33 @@ open func book(id: UInt64)throws  -> Book  {
 }
     
     /**
+     * Where an unfinished whole-book run got to, if one did: the next
+     * `summarise_book` carries on from there.
+     */
+open func bookRun(id: UInt64) -> BookRunProgress?  {
+    return try!  FfiConverterOptionTypeBookRunProgress.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_book_run(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The saved whole-book summary, with every saved chapter summary.
+     */
+open func bookSynopsis(id: UInt64) -> BookSynopsis?  {
+    return try!  FfiConverterOptionTypeBookSynopsis.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_book_synopsis(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * The books matching `query`, in its order.
      */
 open func books(query: LibraryQuery) -> [Book]  {
@@ -989,6 +1067,28 @@ open func books(query: LibraryQuery) -> [Book]  {
         FfiConverterTypeLibraryQuery_lower(query),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The saved summary of the chapter that reader chapter `index` is part
+     * of (a chapter can span several files; see `summary::section`), for
+     * a book opened with `open_reader`. None if there is none for the
+     * book's current EPUB.
+     */
+open func chapterSynopsis(id: UInt64, index: UInt32)async throws  -> ChapterSynopsis?  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_chapter_synopsis(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(index)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterOptionTypeChapterSynopsis.lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
 }
     
     /**
@@ -1370,6 +1470,60 @@ open func storageInfo() -> StorageInfo  {
 }
     
     /**
+     * The whole-book "swarm": every chapter is read (summaries already
+     * saved are reused, and each new one is saved as soon as it is done,
+     * so a stopped run resumes where it left off), a cast keeper updates
+     * the list of people after each chapter, and the overview is written
+     * from the chapter summaries and the cast. A chapter the model
+     * declines is skipped and counted. Takes minutes. It keeps going when
+     * the app leaves the screen (the host asks iOS for background time;
+     * iOS may still suspend it, or the model may refuse to work in the
+     * background, which stops it with `Interrupted`). After every chapter
+     * it saves where it got to (`book_run`), so the next call carries on
+     * from the next chapter with the cast and counts so far.
+     */
+open func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?)async throws  -> BookSynopsis  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_summarise_book(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeSummaryModel_lower(model),FfiConverterOptionTypeSummaryProgress.lower(progress),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeBookSynopsis_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
+     * Writes a summary of the chapter that reader chapter `index` is part
+     * of, with `model` (Apple's on-device model, from Swift), saves it in
+     * place of any earlier one, and returns it. Long chapters are read in
+     * parts that fit the model's small window (see `summary`); `progress`
+     * hears each stage and the summary as it is written. On-screen work:
+     * `cancellation` stops it with `Cancelled`, leaving the app with
+     * `Interrupted`, and either way nothing is saved.
+     */
+open func summariseChapter(id: UInt64, index: UInt32, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?)async throws  -> ChapterSynopsis  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_summarise_chapter(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(index),FfiConverterTypeSummaryModel_lower(model),FfiConverterOptionTypeSummaryProgress.lower(progress),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeChapterSynopsis_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
+}
+    
+    /**
      * Saves the edit form. Status and page follow the same rules as
      * `update_progress` (the last page finishes a book, and so on).
      */
@@ -1467,6 +1621,636 @@ public func FfiConverterTypeLibrary_lift(_ handle: UInt64) throws -> Library {
 #endif
 public func FfiConverterTypeLibrary_lower(_ value: Library) -> UInt64 {
     return FfiConverterTypeLibrary.lower(value)
+}
+
+
+
+
+
+
+/**
+ * A language model, implemented in Swift. Rust calls it from a thread of
+ * its own, one request at a time.
+ */
+public protocol SummaryModel: AnyObject, Sendable {
+    
+    /**
+     * Whether the model can run now. Cheap.
+     */
+    func describe()  -> SummaryModelInfo
+    
+    /**
+     * Answers `request`. While it writes, it passes the answer so far to
+     * `sink.update`, and stops (returning `Stopped`) as soon as that
+     * returns false.
+     */
+    func generate(request: SummaryRequest, sink: SummarySink) async throws  -> String
+    
+}
+/**
+ * A language model, implemented in Swift. Rust calls it from a thread of
+ * its own, one request at a time.
+ */
+open class SummaryModelImpl: SummaryModel, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_summarymodel(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pocket_library_core_fn_free_summarymodel(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Whether the model can run now. Cheap.
+     */
+open func describe() -> SummaryModelInfo  {
+    return try!  FfiConverterTypeSummaryModelInfo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_summarymodel_describe(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Answers `request`. While it writes, it passes the answer so far to
+     * `sink.update`, and stops (returning `Stopped`) as soon as that
+     * returns false.
+     */
+open func generate(request: SummaryRequest, sink: SummarySink)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_summarymodel_generate(
+                        self.uniffiCloneHandle(),FfiConverterTypeSummaryRequest_lower(request),FfiConverterTypeSummarySink_lower(sink)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
+            errorHandler: FfiConverterTypeSummaryModelError_lift
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSummaryModel {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSummaryModel = UniffiVTableCallbackInterfaceSummaryModel(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSummaryModel.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SummaryModel: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSummaryModel.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SummaryModel: handle missing in uniffiClone")
+            }
+        },
+        describe: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> SummaryModelInfo in
+                guard let uniffiObj = try? FfiConverterTypeSummaryModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.describe(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeSummaryModelInfo_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        generate: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            sink: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteRustBuffer,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> String in
+                guard let uniffiObj = try? FfiConverterTypeSummaryModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.generate(
+                     request: try FfiConverterTypeSummaryRequest_lift(request),
+                     sink: try FfiConverterTypeSummarySink_lift(sink)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: String) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: FfiConverterString.lower(returnValue),
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer(
+                        returnValue: RustBuffer.empty(),
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeSummaryModelError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSummaryModel> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSummaryModel>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSummaryModel() {
+    uniffi_pocket_library_core_fn_init_callback_vtable_summarymodel(UniffiCallbackInterfaceSummaryModel.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryModel: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SummaryModel>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SummaryModel
+
+    public static func lift(_ handle: UInt64) throws -> SummaryModel {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SummaryModelImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SummaryModel) -> UInt64 {
+         if let rustImpl = value as? SummaryModelImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryModel {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SummaryModel, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModel_lift(_ handle: UInt64) throws -> SummaryModel {
+    return try FfiConverterTypeSummaryModel.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModel_lower(_ value: SummaryModel) -> UInt64 {
+    return FfiConverterTypeSummaryModel.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Told about each stage, on Rust's thread.
+ */
+public protocol SummaryProgress: AnyObject, Sendable {
+    
+    func changed(stage: SummaryStage) 
+    
+}
+/**
+ * Told about each stage, on Rust's thread.
+ */
+open class SummaryProgressImpl: SummaryProgress, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_summaryprogress(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pocket_library_core_fn_free_summaryprogress(handle, $0) }
+    }
+
+    
+
+    
+open func changed(stage: SummaryStage)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_summaryprogress_changed(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeSummaryStage_lower(stage),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceSummaryProgress {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceSummaryProgress = UniffiVTableCallbackInterfaceSummaryProgress(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeSummaryProgress.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface SummaryProgress: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeSummaryProgress.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface SummaryProgress: handle missing in uniffiClone")
+            }
+        },
+        changed: { (
+            uniffiHandle: UInt64,
+            stage: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeSummaryProgress.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.changed(
+                     stage: try FfiConverterTypeSummaryStage_lift(stage)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceSummaryProgress> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceSummaryProgress>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitSummaryProgress() {
+    uniffi_pocket_library_core_fn_init_callback_vtable_summaryprogress(UniffiCallbackInterfaceSummaryProgress.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryProgress: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<SummaryProgress>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = SummaryProgress
+
+    public static func lift(_ handle: UInt64) throws -> SummaryProgress {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return SummaryProgressImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: SummaryProgress) -> UInt64 {
+         if let rustImpl = value as? SummaryProgressImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryProgress {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SummaryProgress, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryProgress_lift(_ handle: UInt64) throws -> SummaryProgress {
+    return try FfiConverterTypeSummaryProgress.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryProgress_lower(_ value: SummaryProgress) -> UInt64 {
+    return FfiConverterTypeSummaryProgress.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Where the engine reports the answer so far, and learns it should stop.
+ */
+public protocol SummarySinkProtocol: AnyObject, Sendable {
+    
+    func isStopped()  -> Bool
+    
+    /**
+     * The whole answer so far. Returns false once the summary was
+     * stopped: the engine must end the generation.
+     */
+    func update(textSoFar: String)  -> Bool
+    
+}
+/**
+ * Where the engine reports the answer so far, and learns it should stop.
+ */
+open class SummarySink: SummarySinkProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_summarysink(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pocket_library_core_fn_free_summarysink(handle, $0) }
+    }
+
+    
+
+    
+open func isStopped() -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_summarysink_is_stopped(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The whole answer so far. Returns false once the summary was
+     * stopped: the engine must end the generation.
+     */
+open func update(textSoFar: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_summarysink_update(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(textSoFar),uniffiCallStatus
+    )
+})
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummarySink: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = SummarySink
+
+    public static func lift(_ handle: UInt64) throws -> SummarySink {
+        return SummarySink(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: SummarySink) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummarySink {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: SummarySink, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummarySink_lift(_ handle: UInt64) throws -> SummarySink {
+    return try FfiConverterTypeSummarySink.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummarySink_lower(_ value: SummarySink) -> UInt64 {
+    return FfiConverterTypeSummarySink.lower(value)
 }
 
 
@@ -1818,6 +2602,242 @@ public func FfiConverterTypeBookInput_lower(_ value: BookInput) -> RustBuffer {
 
 
 /**
+ * A whole-book run that stopped part way (stopped, interrupted, the app
+ * closed): the next run carries on from `next_chapter`, with the cast and
+ * counts so far.
+ */
+public struct BookRunProgress: Equatable, Hashable {
+    /**
+     * Chapters done, so the next is `chapters_done + 1`.
+     */
+    public var chaptersDone: UInt32
+    public var chapters: UInt32
+    public var seconds: UInt32
+    public var modelRequests: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Chapters done, so the next is `chapters_done + 1`.
+         */chaptersDone: UInt32, chapters: UInt32, seconds: UInt32, modelRequests: UInt32) {
+        self.chaptersDone = chaptersDone
+        self.chapters = chapters
+        self.seconds = seconds
+        self.modelRequests = modelRequests
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BookRunProgress: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBookRunProgress: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BookRunProgress {
+        return
+            try BookRunProgress(
+                chaptersDone: FfiConverterUInt32.read(from: &buf), 
+                chapters: FfiConverterUInt32.read(from: &buf), 
+                seconds: FfiConverterUInt32.read(from: &buf), 
+                modelRequests: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BookRunProgress, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.chaptersDone, into: &buf)
+        FfiConverterUInt32.write(value.chapters, into: &buf)
+        FfiConverterUInt32.write(value.seconds, into: &buf)
+        FfiConverterUInt32.write(value.modelRequests, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookRunProgress_lift(_ buf: RustBuffer) throws -> BookRunProgress {
+    return try FfiConverterTypeBookRunProgress.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookRunProgress_lower(_ value: BookRunProgress) -> RustBuffer {
+    return FfiConverterTypeBookRunProgress.lower(value)
+}
+
+
+/**
+ * A summary of a whole book: an overview, the people in it, and every
+ * chapter's summary.
+ */
+public struct BookSynopsis: Equatable, Hashable {
+    public var text: String
+    public var cast: [CastMember]
+    /**
+     * Every chapter summary saved for the book, in order (the whole-book
+     * run writes the missing ones).
+     */
+    public var chapters: [ChapterSynopsis]
+    /**
+     * Chapters the model read, and chapters it declined or failed.
+     */
+    public var chaptersRead: UInt32
+    public var chaptersSkipped: UInt32
+    /**
+     * How hard the phone worked: model requests, and wall-clock seconds.
+     */
+    public var modelRequests: UInt32
+    public var seconds: UInt32
+    public var modelName: String
+    public var createdAtMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, cast: [CastMember], 
+        /**
+         * Every chapter summary saved for the book, in order (the whole-book
+         * run writes the missing ones).
+         */chapters: [ChapterSynopsis], 
+        /**
+         * Chapters the model read, and chapters it declined or failed.
+         */chaptersRead: UInt32, chaptersSkipped: UInt32, 
+        /**
+         * How hard the phone worked: model requests, and wall-clock seconds.
+         */modelRequests: UInt32, seconds: UInt32, modelName: String, createdAtMs: Int64) {
+        self.text = text
+        self.cast = cast
+        self.chapters = chapters
+        self.chaptersRead = chaptersRead
+        self.chaptersSkipped = chaptersSkipped
+        self.modelRequests = modelRequests
+        self.seconds = seconds
+        self.modelName = modelName
+        self.createdAtMs = createdAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BookSynopsis: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBookSynopsis: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BookSynopsis {
+        return
+            try BookSynopsis(
+                text: FfiConverterString.read(from: &buf), 
+                cast: FfiConverterSequenceTypeCastMember.read(from: &buf), 
+                chapters: FfiConverterSequenceTypeChapterSynopsis.read(from: &buf), 
+                chaptersRead: FfiConverterUInt32.read(from: &buf), 
+                chaptersSkipped: FfiConverterUInt32.read(from: &buf), 
+                modelRequests: FfiConverterUInt32.read(from: &buf), 
+                seconds: FfiConverterUInt32.read(from: &buf), 
+                modelName: FfiConverterString.read(from: &buf), 
+                createdAtMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BookSynopsis, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterSequenceTypeCastMember.write(value.cast, into: &buf)
+        FfiConverterSequenceTypeChapterSynopsis.write(value.chapters, into: &buf)
+        FfiConverterUInt32.write(value.chaptersRead, into: &buf)
+        FfiConverterUInt32.write(value.chaptersSkipped, into: &buf)
+        FfiConverterUInt32.write(value.modelRequests, into: &buf)
+        FfiConverterUInt32.write(value.seconds, into: &buf)
+        FfiConverterString.write(value.modelName, into: &buf)
+        FfiConverterInt64.write(value.createdAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookSynopsis_lift(_ buf: RustBuffer) throws -> BookSynopsis {
+    return try FfiConverterTypeBookSynopsis.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookSynopsis_lower(_ value: BookSynopsis) -> RustBuffer {
+    return FfiConverterTypeBookSynopsis.lower(value)
+}
+
+
+/**
+ * One person in a book, as the cast keeper describes them.
+ */
+public struct CastMember: Equatable, Hashable {
+    public var name: String
+    public var role: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, role: String) {
+        self.name = name
+        self.role = role
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CastMember: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCastMember: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CastMember {
+        return
+            try CastMember(
+                name: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CastMember, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCastMember_lift(_ buf: RustBuffer) throws -> CastMember {
+    return try FfiConverterTypeCastMember.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCastMember_lower(_ value: CastMember) -> RustBuffer {
+    return FfiConverterTypeCastMember.lower(value)
+}
+
+
+/**
  * A search result from the online catalogue.
  */
 public struct CatalogueBook: Equatable, Hashable {
@@ -1984,6 +3004,113 @@ public func FfiConverterTypeChapterSummary_lift(_ buf: RustBuffer) throws -> Cha
 #endif
 public func FfiConverterTypeChapterSummary_lower(_ value: ChapterSummary) -> RustBuffer {
     return FfiConverterTypeChapterSummary.lower(value)
+}
+
+
+/**
+ * A summary of one chapter.
+ */
+public struct ChapterSynopsis: Equatable, Hashable {
+    /**
+     * The reader chapter the summary starts at (see [`section`]).
+     */
+    public var chapter: UInt32
+    /**
+     * The chapter's title.
+     */
+    public var title: String
+    public var text: String
+    /**
+     * How many parts the chapter was read in.
+     */
+    public var parts: UInt32
+    /**
+     * Passages the model declined to read, which the summary leaves out.
+     */
+    public var skippedPassages: UInt32
+    /**
+     * Which model wrote it ("Apple Intelligence").
+     */
+    public var modelName: String
+    public var createdAtMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The reader chapter the summary starts at (see [`section`]).
+         */chapter: UInt32, 
+        /**
+         * The chapter's title.
+         */title: String, text: String, 
+        /**
+         * How many parts the chapter was read in.
+         */parts: UInt32, 
+        /**
+         * Passages the model declined to read, which the summary leaves out.
+         */skippedPassages: UInt32, 
+        /**
+         * Which model wrote it ("Apple Intelligence").
+         */modelName: String, createdAtMs: Int64) {
+        self.chapter = chapter
+        self.title = title
+        self.text = text
+        self.parts = parts
+        self.skippedPassages = skippedPassages
+        self.modelName = modelName
+        self.createdAtMs = createdAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ChapterSynopsis: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeChapterSynopsis: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ChapterSynopsis {
+        return
+            try ChapterSynopsis(
+                chapter: FfiConverterUInt32.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                text: FfiConverterString.read(from: &buf), 
+                parts: FfiConverterUInt32.read(from: &buf), 
+                skippedPassages: FfiConverterUInt32.read(from: &buf), 
+                modelName: FfiConverterString.read(from: &buf), 
+                createdAtMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ChapterSynopsis, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.chapter, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterUInt32.write(value.parts, into: &buf)
+        FfiConverterUInt32.write(value.skippedPassages, into: &buf)
+        FfiConverterString.write(value.modelName, into: &buf)
+        FfiConverterInt64.write(value.createdAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChapterSynopsis_lift(_ buf: RustBuffer) throws -> ChapterSynopsis {
+    return try FfiConverterTypeChapterSynopsis.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeChapterSynopsis_lower(_ value: ChapterSynopsis) -> RustBuffer {
+    return FfiConverterTypeChapterSynopsis.lower(value)
 }
 
 
@@ -2623,6 +3750,168 @@ public func FfiConverterTypeStorageInfo_lower(_ value: StorageInfo) -> RustBuffe
 
 
 /**
+ * What the engine says about itself.
+ */
+public struct SummaryModelInfo: Equatable, Hashable {
+    /**
+     * The name shown under a summary ("Apple Intelligence").
+     */
+    public var name: String
+    public var available: Bool
+    /**
+     * Why not, in words the reader can act on, when `available` is false.
+     */
+    public var unavailableReason: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The name shown under a summary ("Apple Intelligence").
+         */name: String, available: Bool, 
+        /**
+         * Why not, in words the reader can act on, when `available` is false.
+         */unavailableReason: String?) {
+        self.name = name
+        self.available = available
+        self.unavailableReason = unavailableReason
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SummaryModelInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryModelInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryModelInfo {
+        return
+            try SummaryModelInfo(
+                name: FfiConverterString.read(from: &buf), 
+                available: FfiConverterBool.read(from: &buf), 
+                unavailableReason: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SummaryModelInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterOptionString.write(value.unavailableReason, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModelInfo_lift(_ buf: RustBuffer) throws -> SummaryModelInfo {
+    return try FfiConverterTypeSummaryModelInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModelInfo_lower(_ value: SummaryModelInfo) -> RustBuffer {
+    return FfiConverterTypeSummaryModelInfo.lower(value)
+}
+
+
+/**
+ * One request to the model.
+ */
+public struct SummaryRequest: Equatable, Hashable {
+    /**
+     * The system instructions.
+     */
+    public var instructions: String
+    /**
+     * The text and what to write.
+     */
+    public var prompt: String
+    /**
+     * The longest answer, in tokens.
+     */
+    public var maxTokens: UInt32
+    /**
+     * Sampling temperature, 0 to 1.
+     */
+    public var temperature: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * The system instructions.
+         */instructions: String, 
+        /**
+         * The text and what to write.
+         */prompt: String, 
+        /**
+         * The longest answer, in tokens.
+         */maxTokens: UInt32, 
+        /**
+         * Sampling temperature, 0 to 1.
+         */temperature: Double) {
+        self.instructions = instructions
+        self.prompt = prompt
+        self.maxTokens = maxTokens
+        self.temperature = temperature
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SummaryRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryRequest {
+        return
+            try SummaryRequest(
+                instructions: FfiConverterString.read(from: &buf), 
+                prompt: FfiConverterString.read(from: &buf), 
+                maxTokens: FfiConverterUInt32.read(from: &buf), 
+                temperature: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SummaryRequest, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.instructions, into: &buf)
+        FfiConverterString.write(value.prompt, into: &buf)
+        FfiConverterUInt32.write(value.maxTokens, into: &buf)
+        FfiConverterDouble.write(value.temperature, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryRequest_lift(_ buf: RustBuffer) throws -> SummaryRequest {
+    return try FfiConverterTypeSummaryRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryRequest_lower(_ value: SummaryRequest) -> RustBuffer {
+    return FfiConverterTypeSummaryRequest.lower(value)
+}
+
+
+/**
  * One paragraph, heading, image… of a chapter, in reading order.
  */
 public struct TextBlock: Equatable, Hashable {
@@ -3032,6 +4321,22 @@ enum LibraryError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
      */
     case ShutDown
     /**
+     * The on-device model can't run now; `reason` says why in words the
+     * reader can act on ("Turn on Apple Intelligence in Settings").
+     */
+    case SummaryUnavailable(reason: String
+    )
+    /**
+     * The model's safety rules declined the chapter.
+     */
+    case SummaryRefused(reason: String
+    )
+    /**
+     * The model failed some other way. Trying again may work.
+     */
+    case SummaryFailed(reason: String
+    )
+    /**
      * Another copy of the library core has this library open.
      */
     case InUse(reason: String
@@ -3110,7 +4415,16 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
         case 16: return .Cancelled
         case 17: return .Interrupted
         case 18: return .ShutDown
-        case 19: return .InUse(
+        case 19: return .SummaryUnavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 20: return .SummaryRefused(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 21: return .SummaryFailed(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 22: return .InUse(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -3211,8 +4525,23 @@ public struct FfiConverterTypeLibraryError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(18))
         
         
-        case let .InUse(reason):
+        case let .SummaryUnavailable(reason):
             writeInt(&buf, Int32(19))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .SummaryRefused(reason):
+            writeInt(&buf, Int32(20))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .SummaryFailed(reason):
+            writeInt(&buf, Int32(21))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .InUse(reason):
+            writeInt(&buf, Int32(22))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -3402,6 +4731,298 @@ public func FfiConverterTypeReadingStatus_lift(_ buf: RustBuffer) throws -> Read
 #endif
 public func FfiConverterTypeReadingStatus_lower(_ value: ReadingStatus) -> RustBuffer {
     return FfiConverterTypeReadingStatus.lower(value)
+}
+
+
+
+/**
+ * Why the engine gave no answer.
+ */
+public 
+enum SummaryModelError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * The model can't run now (Apple Intelligence off, still downloading,
+     * an iPhone that doesn't support it).
+     */
+    case Unavailable(reason: String
+    )
+    /**
+     * The model's safety rules declined the text.
+     */
+    case Refused(reason: String
+    )
+    /**
+     * The request did not fit the model's context window.
+     */
+    case ContextTooLong(reason: String
+    )
+    /**
+     * Stopped through the sink.
+     */
+    case Stopped
+    /**
+     * The model is throttled for now (Foundation Models limits apps in
+     * the background). Nothing is lost: the run pauses and carries on
+     * when the app is back on screen.
+     */
+    case Busy(reason: String
+    )
+    case Engine(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension SummaryModelError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryModelError: FfiConverterRustBuffer {
+    typealias SwiftType = SummaryModelError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryModelError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Unavailable(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Refused(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .ContextTooLong(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 4: return .Stopped
+        case 5: return .Busy(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Engine(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SummaryModelError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Unavailable(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Refused(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .ContextTooLong(reason):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Stopped:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .Busy(reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Engine(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModelError_lift(_ buf: RustBuffer) throws -> SummaryModelError {
+    return try FfiConverterTypeSummaryModelError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryModelError_lower(_ value: SummaryModelError) -> RustBuffer {
+    return FfiConverterTypeSummaryModelError.lower(value)
+}
+
+
+/**
+ * What the summary is doing now.
+ */
+
+public enum SummaryStage: Equatable, Hashable {
+    
+    /**
+     * Getting the chapter's text.
+     */
+    case opening
+    /**
+     * Writing notes on part `part` (1-based) of `parts`.
+     */
+    case readingPart(part: UInt32, parts: UInt32
+    )
+    /**
+     * Bringing long notes together.
+     */
+    case combining
+    /**
+     * Writing the summary; `draft` is the text so far.
+     */
+    case writing(draft: String
+    )
+    /**
+     * The summary repeated the book word for word; rewriting it.
+     */
+    case revising
+    /**
+     * Whole book: starting chapter `chapter` (1-based) of `chapters`. The
+     * chapter's own stages follow; `saved` means its summary was already
+     * there and is reused.
+     */
+    case chapter(chapter: UInt32, chapters: UInt32, title: String, saved: Bool
+    )
+    /**
+     * Whole book: updating the list of people after a chapter.
+     */
+    case updatingCast
+    /**
+     * Whole book: writing the overview. `Combining` and `Writing` follow.
+     */
+    case overview
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SummaryStage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSummaryStage: FfiConverterRustBuffer {
+    typealias SwiftType = SummaryStage
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SummaryStage {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .opening
+        
+        case 2: return .readingPart(part: try FfiConverterUInt32.read(from: &buf), parts: try FfiConverterUInt32.read(from: &buf)
+        )
+        
+        case 3: return .combining
+        
+        case 4: return .writing(draft: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .revising
+        
+        case 6: return .chapter(chapter: try FfiConverterUInt32.read(from: &buf), chapters: try FfiConverterUInt32.read(from: &buf), title: try FfiConverterString.read(from: &buf), saved: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 7: return .updatingCast
+        
+        case 8: return .overview
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SummaryStage, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .opening:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .readingPart(part,parts):
+            writeInt(&buf, Int32(2))
+            FfiConverterUInt32.write(part, into: &buf)
+            FfiConverterUInt32.write(parts, into: &buf)
+            
+        
+        case .combining:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .writing(draft):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(draft, into: &buf)
+            
+        
+        case .revising:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .chapter(chapter,chapters,title,saved):
+            writeInt(&buf, Int32(6))
+            FfiConverterUInt32.write(chapter, into: &buf)
+            FfiConverterUInt32.write(chapters, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterBool.write(saved, into: &buf)
+            
+        
+        case .updatingCast:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .overview:
+            writeInt(&buf, Int32(8))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryStage_lift(_ buf: RustBuffer) throws -> SummaryStage {
+    return try FfiConverterTypeSummaryStage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSummaryStage_lower(_ value: SummaryStage) -> RustBuffer {
+    return FfiConverterTypeSummaryStage.lower(value)
 }
 
 
@@ -3756,6 +5377,102 @@ fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeSummaryProgress: FfiConverterRustBuffer {
+    typealias SwiftType = SummaryProgress?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeSummaryProgress.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeSummaryProgress.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeBookRunProgress: FfiConverterRustBuffer {
+    typealias SwiftType = BookRunProgress?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBookRunProgress.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBookRunProgress.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeBookSynopsis: FfiConverterRustBuffer {
+    typealias SwiftType = BookSynopsis?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBookSynopsis.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBookSynopsis.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeChapterSynopsis: FfiConverterRustBuffer {
+    typealias SwiftType = ChapterSynopsis?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeChapterSynopsis.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeChapterSynopsis.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeReadingPosition: FfiConverterRustBuffer {
     typealias SwiftType = ReadingPosition?
 
@@ -3904,6 +5621,31 @@ fileprivate struct FfiConverterSequenceTypeBook: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCastMember: FfiConverterRustBuffer {
+    typealias SwiftType = [CastMember]
+
+    public static func write(_ value: [CastMember], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCastMember.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CastMember] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CastMember]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCastMember.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCatalogueBook: FfiConverterRustBuffer {
     typealias SwiftType = [CatalogueBook]
 
@@ -3946,6 +5688,31 @@ fileprivate struct FfiConverterSequenceTypeChapterSummary: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChapterSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChapterSynopsis: FfiConverterRustBuffer {
+    typealias SwiftType = [ChapterSynopsis]
+
+    public static func write(_ value: [ChapterSynopsis], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChapterSynopsis.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChapterSynopsis] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChapterSynopsis]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChapterSynopsis.read(from: &buf))
         }
         return seq
     }
@@ -4048,6 +5815,96 @@ fileprivate func uniffiFutureContinuationCallback(handle: UInt64, pollResult: In
         print("uniffiFutureContinuationCallback invalid handle")
     }
 }
+private func uniffiTraitInterfaceCallAsync<T>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // Note: it's important we call either `handleSuccess` or `handleError` exactly once.  Each
+        // call consumes an Arc reference, which means there should be no possibility of a double
+        // call.  The following code is structured so that will will never call both `handleSuccess`
+        // and `handleError`, even in the face of weird errors.
+        //
+        // On platforms that need extra machinery to make C-ABI calls, like JNA or ctypes, it's
+        // possible that we fail to make either call.  However, it doesn't seem like this is
+        // possible on Swift since swift can just make the C call directly.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+private func uniffiTraitInterfaceCallAsyncWithError<T, E>(
+    makeCall: @escaping () async throws -> T,
+    handleSuccess: @escaping (T) -> (),
+    handleError: @escaping (Int8, RustBuffer) -> (),
+    lowerError: @escaping (E) -> RustBuffer,
+    droppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+) {
+    let task = Task {
+        // See the note in uniffiTraitInterfaceCallAsync for details on `handleSuccess` and
+        // `handleError`.
+        var callResult: T
+        do {
+            callResult = try await makeCall()
+        } catch let error as E {
+            handleError(CALL_ERROR, lowerError(error))
+            return
+        } catch {
+            handleError(CALL_UNEXPECTED_ERROR, FfiConverterString.lower(String(describing: error)))
+            return
+        }
+        handleSuccess(callResult)
+    }
+    let handle = UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.insert(obj: task)
+    droppedCallback.pointee = UniffiForeignFutureDroppedCallbackStruct(
+        handle: handle,
+        free: uniffiForeignFutureDroppedCallback
+    )
+}
+
+// Borrow the callback handle map implementation to store foreign future handles
+// TODO: consolidate the handle-map code (https://github.com/mozilla/uniffi-rs/pull/1823)
+fileprivate let UNIFFI_FOREIGN_FUTURE_HANDLE_MAP = UniffiHandleMap<UniffiForeignFutureTask>()
+
+// Protocol for tasks that handle foreign futures.
+//
+// Defining a protocol allows all tasks to be stored in the same handle map.  This can't be done
+// with the task object itself, since has generic parameters.
+fileprivate protocol UniffiForeignFutureTask {
+    func cancel()
+}
+
+extension Task: UniffiForeignFutureTask {}
+
+private func uniffiForeignFutureDroppedCallback(handle: UInt64) {
+    do {
+        let task = try UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.remove(handle: handle)
+        // Set the cancellation flag on the task.  If it's still running, the code can check the
+        // cancellation flag or call `Task.checkCancellation()`.  If the task has completed, this is
+        // a no-op.
+        task.cancel()
+    } catch {
+        print("uniffiForeignFutureDroppedCallback: handle missing from handlemap")
+    }
+}
+
+// For testing
+public func uniffiForeignFutureHandleCountPocketLibraryCore() -> Int {
+    UNIFFI_FOREIGN_FUTURE_HANDLE_MAP.count
+}
 /**
  * The library's default query for a fresh screen: everything, in the
  * user's preferred order.
@@ -4123,7 +5980,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_book_run() != 1821) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_book_synopsis() != 3612) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_books() != 23157) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_chapter_synopsis() != 32633) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_delete_book() != 5841) {
@@ -4192,6 +6058,12 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_storage_info() != 16703) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_summarise_book() != 10671) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_summarise_chapter() != 16118) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_update_book() != 64436) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4201,6 +6073,21 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_update_settings() != 27241) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_summarymodel_describe() != 48256) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_summarymodel_generate() != 45577) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_summaryprogress_changed() != 55110) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_summarysink_is_stopped() != 15892) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_summarysink_update() != 45381) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_constructor_library_new() != 59207) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -4208,6 +6095,8 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitSummaryModel()
+    uniffiCallbackInitSummaryProgress()
     uniffiEnsureForgeAppInitialized()
     return InitializationResult.ok
 }()

@@ -5,6 +5,10 @@
 <dict>
 	<key>BGTaskSchedulerPermittedIdentifiers</key>
 	<array>
+		<string>org.forgemobile.devicelab.booksummary.*</string>
+		<string>XTL-ND4P87PX52.org.forgemobile.devicelab.booksummary.*</string>
+		<string>org.forgemobile.pocketlibrary.booksummary.*</string>
+		<string>XTL-ND4P87PX52.org.forgemobile.pocketlibrary.booksummary.*</string>
 		<string>org.forgemobile.agentlab.commonplace.refresh</string>
 	</array>
 	<key>CFBundleDisplayName</key>

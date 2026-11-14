@@ -33,6 +33,8 @@ struct ReaderView: View {
     @State private var pendingScroll: Int?
     @State private var loadingChapter = false
     @State private var showingContents = false
+    @State private var showingSummary = false
+    @State private var showingBookSummary = false
     @State private var lastSaved: ReadingPosition?
     @State private var finishedCount = 0
     /// Counts chapter loads: each gets a fresh scroll view.
@@ -65,6 +67,25 @@ struct ReaderView: View {
                 }
                 .presentationDetents([.medium, .large])
             }
+        }
+        .sheet(isPresented: $showingSummary) {
+            if let chapter {
+                ChapterSummarySheet(
+                    chapterTitle: chapter.title,
+                    state: ChapterSummaryState(
+                        library: model, bookID: bookID, chapter: chapter.index,
+                        model: AppleIntelligenceSummarizer())
+                )
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $showingBookSummary) {
+            BookSummarySheet(
+                bookTitle: contents?.title ?? "",
+                state: BookSummaryState(
+                    library: model, bookID: bookID, bookTitle: contents?.title ?? "",
+                    model: AppleIntelligenceSummarizer())
+            )
         }
         .forgeAlert($error)
         .sensoryFeedback(.success, trigger: finishedCount)
@@ -269,6 +290,19 @@ struct ReaderView: View {
             Button("Contents", systemImage: "list.bullet") { showingContents = true }
                 .disabled(contents == nil)
                 .accessibilityIdentifier("reader.contents")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button("Summarise Chapter", systemImage: "text.alignleft") { showingSummary = true }
+                    .disabled(chapter == nil)
+                    .accessibilityIdentifier("reader.summary.chapter")
+                Button("Read the Whole Book", systemImage: "books.vertical") { showingBookSummary = true }
+                    .disabled(contents == nil)
+                    .accessibilityIdentifier("reader.summary.book")
+            } label: {
+                Label("Summaries", systemImage: "sparkles")
+            }
+            .accessibilityIdentifier("reader.summary")
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Read Aloud", systemImage: "headphones") {

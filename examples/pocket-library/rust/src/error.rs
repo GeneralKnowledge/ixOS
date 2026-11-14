@@ -66,6 +66,16 @@ pub enum LibraryError {
     /// `shutdown()` was called; the instance accepts no more work.
     #[error("the library has been closed")]
     ShutDown,
+    /// The on-device model can't run now; `reason` says why in words the
+    /// reader can act on ("Turn on Apple Intelligence in Settings").
+    #[error("summaries unavailable: {reason}")]
+    SummaryUnavailable { reason: String },
+    /// The model's safety rules declined the chapter.
+    #[error("summary declined: {reason}")]
+    SummaryRefused { reason: String },
+    /// The model failed some other way. Trying again may work.
+    #[error("summary failed: {reason}")]
+    SummaryFailed { reason: String },
     /// Another copy of the library core has this library open.
     #[error("the library is open elsewhere: {reason}")]
     InUse { reason: String },
@@ -87,7 +97,8 @@ impl LibraryError {
             | Self::InvalidFields { .. }
             | Self::AlreadyInLibrary { .. }
             | Self::UnsupportedFile { .. }
-            | Self::NotReadable { .. } => ErrorKind::Invalid,
+            | Self::NotReadable { .. }
+            | Self::SummaryRefused { .. } => ErrorKind::Invalid,
             Self::NotFound { .. } => ErrorKind::NotFound,
             Self::Storage { .. } => ErrorKind::Internal,
             Self::NewerLibrary { .. } => ErrorKind::NewerData,
@@ -98,7 +109,9 @@ impl LibraryError {
             | Self::BadResponse { .. }
             | Self::Certificate { .. }
             | Self::Network { .. }
-            | Self::InUse { .. } => ErrorKind::Unavailable,
+            | Self::InUse { .. }
+            | Self::SummaryUnavailable { .. }
+            | Self::SummaryFailed { .. } => ErrorKind::Unavailable,
             Self::Cancelled => ErrorKind::Cancelled,
             Self::Interrupted => ErrorKind::Interrupted,
             Self::ShutDown => ErrorKind::ShutDown,

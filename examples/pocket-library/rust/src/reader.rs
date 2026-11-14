@@ -153,6 +153,45 @@ impl<R: Read + Seek> EpubText<R> {
     }
 }
 
+impl<R: Read + Seek> EpubText<R> {
+    /// The paragraphs of chapter `index` as plain text (headings, quotes
+    /// and list items included; images and scene breaks left out), for
+    /// summaries. Saves no images.
+    pub fn chapter_text(&mut self, index: u32) -> Result<Vec<String>, LibraryError> {
+        let path = self
+            .paths
+            .get(index as usize)
+            .ok_or_else(|| LibraryError::invalid(format!("the book has no chapter {index}")))?
+            .clone();
+        let Some(xhtml) = read_text(&mut self.archive, &path, MAX_CHAPTER_BYTES)? else {
+            return Ok(Vec::new());
+        };
+        Ok(parse_blocks(&xhtml, &mut |_| None)
+            .into_iter()
+            .filter_map(|block| match block.kind {
+                TextBlockKind::Image { .. } | TextBlockKind::Separator => None,
+                TextBlockKind::ListItem { marker } => Some(format!(
+                    "{marker} {}",
+                    block
+                        .spans
+                        .iter()
+                        .map(|s| s.text.as_str())
+                        .collect::<String>()
+                )),
+                _ => Some(
+                    block
+                        .spans
+                        .iter()
+                        .map(|s| s.text.as_str())
+                        .collect::<String>(),
+                ),
+            })
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty())
+            .collect())
+    }
+}
+
 /// Copies images a chapter refers to out of the zip, once each.
 struct ImageSaver<'a, R: Read + Seek> {
     archive: &'a mut Archive<R>,
