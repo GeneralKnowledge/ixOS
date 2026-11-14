@@ -38,6 +38,8 @@ cd ~/ixOS && git fetch -q origin && ./scripts/check-ios-xtool.sh --ref <branch> 
 
 Report the results table. If the laptop can't be reached, say the Swift side wasn't compiled; start the macOS workflow only if the person asks.
 
+When the change also needs a phone run, install from the build the check just made: the script ends with one `forge run ios --project …` line per app it built, pointing into the `--ref` worktree. That run uses the same configuration (debug Swift on release Rust), so it recompiles nothing, then looks for the iPhone; with none it stops with the build ready, and the run that installs, once the person has the phone, takes seconds. Building again in another checkout, or with `--release` on one side only, starts from scratch.
+
 ## What it covers, and what it doesn't
 
 | Check | Before (macOS workflow) | Now |

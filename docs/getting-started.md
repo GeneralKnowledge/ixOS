@@ -97,7 +97,7 @@ forge run ios
 Every `forge build ios` / `forge run ios` failure names the layer that failed and the fix:
 
 ```
-error: `xtool dev run` failed (exit status: 1)
+error: `xtool install …/xtool/AppHostXtool.app` failed (exit status: 1)
 
 What went wrong:
   [Signing and provisioning] A free Apple account can have at most 3 sideloaded apps on a device at once.

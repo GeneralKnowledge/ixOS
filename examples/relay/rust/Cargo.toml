@@ -1,0 +1,53 @@
+# Relay's own Rust library: pairing by QR code, the encrypted peer protocol,
+# sending and receiving notes and files, and the UniFFI API (RelayCore) the
+# SwiftUI app calls. Also the `relay` command, the second device on a Linux
+# machine (built only with `--features cli`). Built the way a hostable app
+# is (docs/research/app-friction-log.md).
+[package]
+name = "relay-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+name = "relay_core"
+crate-type = ["staticlib", "lib"]
+
+[[bin]]
+name = "relay"
+path = "src/bin/relay.rs"
+required-features = ["cli"]
+
+[features]
+# The `relay` command for Linux and macOS. Never built for iOS.
+cli = ["dep:qrcode"]
+
+[dependencies]
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# The device tools' wire layer, reused as it is: length-prefixed frames, a
+# Noise XXpsk3 handshake keyed by a shared secret, CBOR messages, over any
+# blocking stream (friction R1: it lives in a tooling crate).
+forge-devproto = { path = "../../../crates/forge-devproto" }
+# Relay's record (peers, history) is one JSON document; received files are
+# kept only if their SHA-256 matches what the sender announced.
+forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+# The `relay` command prints its pairing code as a QR code in the terminal.
+qrcode = { version = "0.14", default-features = false, optional = true }
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1

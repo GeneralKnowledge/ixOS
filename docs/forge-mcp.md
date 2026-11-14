@@ -182,7 +182,7 @@ Signing happens inside `forge run ios` (xtool signs online with the logged-in Ap
 | Tool | What it does | Built on | Gap | M0 |
 |---|---|---|---|---|
 | `forge_device_status` | Connected phones; for the chosen one: unlocked, Developer Mode, disk image mounted, free app slots, profile expiry per app, usbmuxd health | `forge device list/info`, `ios_env.rs`, `forge doctor` | `forge device apps` and `forge doctor --device` (DL5 fixes 1 and 3) | Yes |
-| `forge_install_device` | Build, sign, install the project's app | `forge run ios` (`xtool dev run`) | `--json`; a timeout and a clear "phone dropped off USB" result | Yes |
+| `forge_install_device` | Build, sign, install the project's app | `forge run ios` (`xtool dev build`, then `xtool install`) | `--json`; a timeout and a clear "phone dropped off USB" result | Yes |
 | `forge_launch_app` / `forge_terminate_app` | Start or stop the app on the phone | WDA `launch` step from #61 (on main, used by M0). A runner-free route is not built: `idevice` CoreDevice app service | DL2 (`forge device launch`, with automatic DDI mount) | Yes |
 | `forge_remove_app` | Delete an app from the phone to free a slot | Nothing yet | DL5 fix 1 (`--remove`). Always needs approval | No (M1) |
 

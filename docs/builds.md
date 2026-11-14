@@ -7,7 +7,7 @@ Forge has several ways to build an app. They differ in the host machine, the too
 | Command or tool | Host | Platform tool | Runs on | Swift / Kotlin config | Rust profile | Status |
 |---|---|---|---|---|---|---|
 | `forge build ios` | Linux (or macOS) | xtool (`xtool dev build`) | iPhone (device) | debug | release | Supported. Counter, Weather and Chat installed on an iPhone (2026-11-06) |
-| `forge run ios` | Linux (or macOS) | xtool (`xtool dev run`) | iPhone, installed (open it from the home screen; xtool does not launch apps) | debug | release | Supported, same runs as above |
+| `forge run ios` | Linux (or macOS) | xtool (`xtool dev build`, then `xtool install` of that build once an iPhone is connected) | iPhone, installed (open it from the home screen; xtool does not launch apps) | debug | release | Supported, same runs as above |
 | `forge build ios --release`, `forge run ios --release` | Linux (or macOS) | xtool (`xtool dev build -c release`) | iPhone (device) | release | release | Supported. Counter, Weather and Chat built in release with xtool on Linux (2026-11-06); not yet recorded on a device through this flag |
 | `forge build ios --package-only`, then Xcode | macOS | Xcode (`xcodebuild`) | iPhone (device) | Debug or Release, chosen in Xcode | release | Supported. CI does unsigned Debug builds of the Chat, Pocket Library and freshly generated Xcode projects |
 | `forge check swift` in an iOS app | Linux (or macOS) | Cargo, then plain SwiftPM (`swift test`), no iOS SDK | the host | debug | debug | Supported. Compiles the Swift files that import nothing Apple-only (view model, bindings) and runs the tests that need no SwiftUI; views are left out |

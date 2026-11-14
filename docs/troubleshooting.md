@@ -161,4 +161,10 @@ Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permi
 
 A `forge run ios` started from somewhere else (Remote Control, an agent, a script over SSH) may be refused before it runs, and nothing on the phone says so. Every run writes `<app>/.forge/status/run-ios.json` the moment it starts: its `phase` (`starting`, `building`, `waiting_for_device`, `installing`, then `done` or `failed` with the `error`), the `pid`, and `updated`, which moves every 10 seconds while it runs. Read it within a minute of asking. If there is no file newer than the request, nothing started. If `updated` is more than a minute old and the phase isn't `done` or `failed`, the process died.
 
-Ask for the phone only when it is needed: `forge run ios --wait-for-device 20` builds the Rust and Swift first and then waits up to 20 minutes for the iPhone, and its status says `waiting_for_device` at that point.
+## Build without the phone, install when it's there
+
+`forge run ios` never waits on the iPhone to compile. It checks the setup that would stop a build (xtool, the Darwin SDK, the Rust target, the Apple sign-in), builds the Rust and the Swift app, and only then looks for the phone (restarting a stuck usbmuxd once). With no phone it stops with `Built …, ready to install` (exit code 13, stage `device`, `data.built: true`). Running the same command again once the phone is connected rebuilds only what changed, which takes seconds, and then signs and installs.
+
+So start `forge run ios` as soon as there is something to put on the phone, and ask for the phone only when it says the build is ready. With `--wait-for-device 20` it waits up to 20 minutes for the iPhone after the build instead of stopping, and its status says `waiting_for_device` at that point.
+
+Signing happens with the install: xtool makes the provisioning profile for the connected phone, so it can't be done ahead. It takes seconds, not a rebuild.

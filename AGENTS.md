@@ -54,6 +54,8 @@ Swift: SwiftUI compiles only with the Darwin SDK. The check is `scripts/check-io
 
 ## Device tools
 
+Never make a build wait on the phone. `forge run ios` builds first and looks for the iPhone only at the end; with no phone it stops with the build ready, and the next run rebuilds only what changed and installs. So when a change needs a phone run, start `forge run ios` on the laptop in the same turn, fix any compile errors, and ask the person for the phone only once it says the build is ready: an approval for installing then covers just the quick install. To reuse a build check's work, install from the checkout it built: `scripts/check-ios-xtool.sh` ends by printing the `forge run ios --project …` line for each app it built (with `--ref`, that is the reused worktree), and both build debug Swift on release Rust, so the install recompiles nothing.
+
 On a machine with an iPhone over USB: `forge device list|info|logs|crashes` (`crashes --pull <dir>` symbolicates; `forge crash <file.ips>` reads a report offline), and for a development build (`forge run ios --devtools`) `forge device pair|status|snapshot|cmd|connect`. See [forge-device.md](docs/forge-device.md). The agent-facing design of the dev loop and the MCP server is in [dev-loop.md](docs/dev-loop.md) and [forge-mcp.md](docs/forge-mcp.md).
 
 ## Docs to read for a task

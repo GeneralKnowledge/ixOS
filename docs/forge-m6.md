@@ -276,7 +276,7 @@ Reuben (2026-11-08): silent failures break unattended automation, so look for al
 | Found | Effect | Status |
 |---|---|---|
 | A request to the laptop that never starts looks the same as one that is building | A person waits at the phone for nothing (pain point 18) | Fixed: `forge run ios` writes `.forge/status/run-ios.json` at once and a heartbeat every 10 s. Whoever sends a laptop run (a person, an agent, Remote Control) reads it within a minute and says "building" only after seeing `phase: building` |
-| `forge run ios` asks for the phone before anything is built | The phone waits on the build (pain point 17) | Fixed: `--wait-for-device` |
+| `forge run ios` asks for the phone before anything is built | The phone waits on the build (pain point 17) | Fixed: `forge run ios` always builds first and looks for the phone after; `--wait-for-device` waits for it instead of stopping |
 | `ci-macos.sh affected`: a base commit that can't be fetched made `git diff` fail inside a process substitution, which reads as "no files changed" | No Swift CI at all, reported as "Nothing to check" | Fixed: a failed diff checks every app |
 | `ci-macos.sh`: an example not in its hand-kept list (Good Dog) fell into the shared-code branch | A change to Good Dog's Swift built the template and Device Lab, never Good Dog (pain point 11) | Fixed: apps with `forge.toml` and an Xcode project are discovered |
 | `rust.yml` ran the headless twin for Pocket Library only | A new app's `requirements.toml` was never checked in CI (pain point 11) | Fixed: every `examples/*/requirements.toml` |
