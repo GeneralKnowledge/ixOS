@@ -37,6 +37,7 @@ pocket-library-core = { path = "../../pocket-library/rust" }
 good-dog-app = { path = "../../good-dog/rust" }
 commonplace-core = { path = "../../commonplace/rust" }
 chat-app = { path = "../../chat/rust" }
+fieldkit-core = { path = "../../fieldkit/rust" }
 
 [dev-dependencies]
 tempfile = "3.14"

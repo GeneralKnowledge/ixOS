@@ -339,6 +339,21 @@ That is two or three PRs and a ForgeKit release (which needs the laptop to
 push), so it should follow this one. It also removes most of what is
 copied into `Generated/` today.
 
+## Third round: FieldKit (2026-11-13)
+
+FieldKit was the first app written in the hostable shape from the start
+(after #167), so hosting it took exactly the four steps in Device Lab's
+README and no change to FieldKit: the Rust dependency and `use fieldkit_core
+as _;`, the package and its `FieldKitApp` product, `"../fieldkit"` in
+`[host] apps`, and an `EmbeddedApp` case plus its services install. Nothing
+new for this log. F15 still applies: FieldKit installs its own copy of the
+native services, which is fine for location (each crate has its own Rust
+side) but means FieldKit's `ForgeDeepLinks` gets no links inside Device Lab;
+it has no URL scheme or notifications today, so nothing is lost yet.
+
+Every Forge example app is now hosted except Counter (F17) and Kataster,
+which is a Bevy trial rather than a Forge app.
+
 ## What went well
 
 - The Rust side composes once the names differ: four cores, two of them on
