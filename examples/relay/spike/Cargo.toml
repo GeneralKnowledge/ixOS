@@ -1,0 +1,28 @@
+[package]
+name = "relay-spike"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+iroh = { version = "1", default-features = false, features = ["tls-ring"] }
+iroh-blobs = "0.105"
+spake2 = "0.4"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+pgp-words = "1.1"
+mdns-sd = "0.13"
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+
+[workspace]
+
+[lib]
+name = "relay_spike"
+crate-type = ["staticlib"]
+path = "src/lib.rs"
+
+[profile.release]
+lto = true
+codegen-units = 1

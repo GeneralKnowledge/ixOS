@@ -1,0 +1,397 @@
+# Relay as a file transfer app: plan
+
+Status: approved by Reuben on 2026-11-14. This is now a supporting
+specification (transfer, messages, rooms) under the canonical
+[Relay platform plan](relay-platform-plan.md),
+whose milestones M0 to M7 replace the stages below (stage 0 is M0, stage 1 is
+M1 and M3, stage 2 is M2, M4 and M5, stage 3 is M7). Stage 0 on Linux is done
+([results](research/relay-stage0-spike.md)); its iPhone half waits for the
+laptop.
+
+Relay today sends notes and files between devices that paired once by QR
+code, on the same network ([examples/relay](../examples/relay/README.md)).
+This plan grows it into a product of its own: send any file to any of your
+devices, first on the local network and later over the internet, with the
+"send, get a short code, type it on the other device" flow that
+[croc](https://github.com/schollz/croc) and fsend made popular.
+
+## What the person does
+
+```text
+Laptop                                   iPhone
+$ relay send holiday.zip                 Relay > Receive
+Code: 7-orbit-velvet                     types 7-orbit-velvet (or scans the QR)
+Sending holiday.zip (1.2 GB) ...         Receiving holiday.zip ... saved to Files
+```
+
+- **Send:** pick files, photos or a folder (or `relay send <paths>`). Relay
+  shows a code and a QR code and waits.
+- **Receive:** type the code, or scan the QR code from the sender's screen.
+  The receiver sees the file names and total size and accepts.
+- **Trusted devices:** after a transfer, "remember this device" (on by
+  default for your own devices) lets later sends skip the code: pick
+  "MacBook" from a list, as Relay's paired devices work now.
+- **Messages:** text between trusted devices, as a conversation per device
+  ("the build finished", a link, a code snippet), with delivered and read
+  marks. Text can also go with a code (`relay send --text "…"`), for a
+  one-off to a device that isn't trusted. Today's Relay notes become these
+  messages. See [Messages](#messages).
+- Works with no internet on the same Wi-Fi (stage 1). Works across networks
+  later (stage 2): phone on 5G, laptop at home.
+
+Devices: iPhone app (in Device Lab, and on its own), the `relay` command on
+Linux (and macOS, same code), Android on the emulator once stage 1 works.
+Reuben's own set: the Ubuntu laptop, the iMac, Hetzner and Oracle servers,
+the iPhone, all on Tailscale. The goal is a universal, account-free file
+transfer utility: no sign-up, no Tailscale needed by the other person.
+
+## What exists to reuse
+
+| Option | What it is | Fit |
+|---|---|---|
+| **croc** | Go, MIT. Word code, PAKE, public relays, direct path when NAT traversal succeeds | The flow we want. Go, so not embeddable in a Rust core on iOS. Borrow the UX, not the code |
+| **fsend** | Go CLI with the same send/receive-by-code flow | Borrow the UX only |
+| **magic-wormhole** | A published protocol (SPAKE2 code phrases `7-guitar-revenge`, a "mailbox" rendezvous server, a "transit" relay), many clients (Python CLI, Warp, Wormhole William on Android). Rust crate `magic-wormhole` 0.8.1 (May 2026), **EUPL-1.2** licence | Proven code-phrase design. But the rendezvous server is always on the internet, even for two devices on one Wi-Fi, so it fails our "local first, offline" start. Transfer v2 is unfinished in the Rust crate, and EUPL is a copyleft licence beside MIT ForgeKit. Borrow the design (SPAKE2, numbered word codes), don't adopt the protocol now |
+| **iroh** | Rust, MIT/Apache-2.0. **1.0 stable since June 2026** (wire compatible within v1). QUIC connections dialled by public key: direct on a LAN, hole punching across NATs, relay fallback (n0's public relays, rate limited, or our own: the relay is open source). Officially supports Swift/iOS embedding. `iroh-blobs` (BLAKE3 verified, resumable transfers) is what `sendme` is built on | The transport and file layer for both stages: one stack for LAN and internet, written in Rust. No short codes: tickets are long strings. We add the code phrase on top |
+| **LocalSend** | Open LAN protocol v2: UDP multicast discovery, HTTP or HTTPS (self-signed certs), optional PIN | LAN only, PIN or trust-on-first-use instead of a PAKE. Its multicast discovery needs Apple's multicast entitlement (see below). A possible later "send to LocalSend apps" bridge, not the base |
+| **Network.framework / Bonjour** | Apple's discovery and sockets | Already how Relay finds devices on iOS. Keeps doing discovery on Apple; not cross-platform crypto |
+| **Multipeer Connectivity** | Apple peer to peer | Apple only, so no Linux or Android. Not used |
+| **Floe** | Go + TypeScript, MIT. Word code (`olive-tiger-castle`), WebRTC with a signalling server and optional TURN, self-hostable. One wire protocol across browser, desktop and CLI | Its idea worth taking: a **browser receiver**, so a device without the app can still get a file. WebRTC in a Rust core on iOS is heavy; see stage 3 |
+| **wush** (Coder) | Go, CC0. `wush serve` prints an auth key (address, DERP region, public keys); WireGuard via Tailscale's `tsnet` and Tailscale's public DERP relays, no Tailscale account. Files and shells | Shows how far a borrowed relay network goes. Its key is long (pasted, not typed); and it rides Tailscale's free relays, which exist for Tailscale users |
+| **derphole** | CLI (run with `npx`) for one-shot transfers, tunnels and terminal sharing over DERP relays, which never get payload keys; not affiliated with Tailscale | Same lesson as wush. Interesting, young, not something to build on |
+| **Taildrop** | Tailscale's own file sending between devices on one tailnet | Works today on Reuben's devices, but needs everyone on the tailnet. Its useful idea: when both ends are on a tailnet, use the tailnet address directly |
+| **ptransfer** | Short-code transfers through a self-hosted relay | Couldn't find a canonical project under this name; the pattern (self-hosted relay + code) is what stage 2 does with iroh |
+| **Relay today** | TCP + Noise `XXpsk3` (from `forge-devproto`), CBOR frames, QR pairing with a 32-byte one-time secret, Bonjour `_forgerelay._tcp` | Keep the product shape (identity, trusted devices, history, inbox, CLI, AI asks). Replace the hand-built wire with iroh, which also clears friction A16 (Noise living in a frozen tooling crate) |
+
+Other building blocks, in one line each:
+
+- **QUIC:** yes, through iroh (fast, encrypted, many streams on one
+  connection).
+- **STUN/TURN-style NAT traversal and relay fallback:** yes, through iroh's
+  hole punching and relays (the same job, without running coturn).
+- **WebRTC:** only if a browser receiver is wanted (stage 3); iroh's
+  browser build (relay only) is the lighter alternative to compare.
+- **libp2p:** does what iroh does with far more moving parts and a weaker
+  iOS story; not needed.
+- **BitTorrent/WebTorrent, IPFS:** made for one file to many strangers; a
+  two-device transfer gains nothing. iroh-blobs already gives content
+  addressing (BLAKE3) and resume.
+- **Syncthing:** continuous folder sync is a different product. A later
+  "keep this folder in sync with my laptop" mode could borrow its ideas;
+  not in scope.
+
+### Three kinds of network dependency
+
+The real difference between these tools is whose servers they lean on when
+two devices can't reach each other directly.
+
+| Kind | Examples | For Relay |
+|---|---|---|
+| **Someone else's public infrastructure** | croc's and magic-wormhole's public servers, n0's iroh relays, Tailscale's DERP (wush, derphole) | Zero setup, but rate limits, someone else's goodwill, and their uptime. Fine for development, not a foundation |
+| **Infrastructure you already have** | Tailscale (Taildrop, tailnet addresses) | Free win for Reuben's own devices: when both ends are on the tailnet, connect to the tailnet address directly, no relay at all. Not universal (the other person needs the tailnet) |
+| **A server you run** | ptransfer-style self-hosted relay, croc relay, `iroh-relay`, a rendezvous service | The universal answer, and cheap here: Reuben already has Hetzner and Oracle servers. Account-free for users, nothing borrowed |
+
+**Plan: all three, in order of preference.** Direct on the LAN first; then
+the tailnet address if both ends have one; then our own relay and
+rendezvous on Hetzner (with Oracle as a second region later); n0's public
+relays only during development.
+
+## Recommendation
+
+**Own product flow, borrowed protocols: iroh for transport and files,
+magic-wormhole's code-phrase design on top, Bonjour for discovery on
+iPhone.**
+
+It takes the best idea from each: croc's and fsend's send-and-type-a-code
+flow, magic-wormhole's PAKE word codes, iroh's transport (the same job as
+DERP in wush and derphole, with relays we run), Taildrop's direct tailnet
+path, and later Floe's browser receiver.
+
+1. **Transport: iroh 1.0.** Each device has an iroh endpoint (an Ed25519 key)
+   as its identity. On a LAN, connections go direct with no internet. Across
+   networks iroh does the hole punching and falls back to a relay that only
+   sees ciphertext. One stack for both stages, so stage 2 adds servers, not
+   a second transport.
+2. **Files: iroh-blobs.** Content-addressed (BLAKE3), verified while
+   streaming, resumable after a dropped connection, folders as collections.
+   This replaces Relay's own Offer/Chunk/Done and SHA-256 check. (iroh-blobs
+   is not yet 1.0; pin the version, and keep a plain QUIC stream fallback in
+   mind if it moves too much.)
+3. **Codes: SPAKE2, as magic-wormhole does it,** with the `spake2` crate
+   (RustCrypto, MIT/Apache). The code is `<number>-<word>-<word>`. The
+   number (the "nameplate") finds the sender; the words are the password.
+   Both sides run SPAKE2 over the first connection, so the code is never
+   sent and an eavesdropper can't test guesses offline. The agreed key
+   then confirms the two iroh endpoint keys, so the rest of the transfer
+   is iroh's normal encrypted QUIC.
+4. **Discovery:** on a LAN, the sender advertises Bonjour
+   `_forgerelay._tcp` with the nameplate number and its endpoint key in the
+   TXT record; the receiver looks for that number (Swift on iOS, as now; a
+   Rust mDNS crate in the CLI). Over the internet (stage 2), a small
+   rendezvous service maps the nameplate to the sender's endpoint key for a
+   few minutes, then iroh connects.
+5. **Not now:** magic-wormhole wire compatibility. It would let Relay talk to
+   `wormhole send` on any machine, but needs the internet even on a LAN and
+   brings EUPL code into the app. It can come later as a `relay wormhole`
+   CLI bridge if wanted.
+
+What we write ourselves: the code layer (a few hundred lines around
+`spake2`), the rendezvous service in stage 2 (a small Rust server with a
+key-value map and expiry), the Bonjour glue, and the app. Everything that is
+hard (crypto, NAT traversal, relays, verified resumable transfer) is
+borrowed.
+
+## Messages
+
+Messages ride the same iroh connection as files, on their own protocol
+(`forge-relay/msg/1`), so they share identity, trusted devices, encryption
+and (in stage 2) the tailnet and relay paths. Nothing new to borrow.
+
+- **Shape:** each message has an id (random, so a resend isn't a
+  duplicate), the sender's device, a time, and text up to 64 KB. A file sent
+  in a conversation appears in it as a message that points at the transfer.
+  Replies "delivered" when stored and "read" when shown.
+- **Who:** trusted devices only, or one message with a code. A message from
+  an unknown endpoint is refused, as files are.
+- **When the other device is away:** the sender keeps the message as
+  "waiting" and delivers it the next time the two devices see each other
+  (Bonjour on the LAN, iroh's address lookup over the internet). There is no
+  server mailbox: the iPhone can't be woken without push notifications
+  (paid team), and a mailbox would hold people's messages. A store and
+  forward mailbox, encrypted to the recipient's key, is a later option on
+  Hetzner if waiting turns out to annoy.
+- **Storage:** the conversation history lives in the core (Chat's SQLite
+  store, below), never logged.
+- **AI asks** (protocol 2 today) become a kind of message too: "ask this
+  device's model" is a message whose answer streams back.
+
+### Reuse Chat instead of writing a second messenger
+
+Chat (`examples/chat`, `examples/chat-core`) already has what Relay's
+messages need: conversations, an outbox that keeps sending until the other
+side has the message, drafts, read marks, reactions, replies, edits,
+SQLite storage with full-text search, attachments checked by hash, local
+notifications, and a finished SwiftUI conversation screen. Its client talks
+to its server through one trait, `ChatRepo` (today `HttpRepo` for the chat
+server and `InMemoryRepo` for tests).
+
+**Recommendation: share, don't merge.** Relay adds a third backend,
+`PeerRepo`, which implements `ChatRepo` over Relay's iroh connection:
+
+| `ChatRepo` call | Over Relay |
+|---|---|
+| a conversation | one trusted device |
+| `post_message` | send it to that device; fails while the device is away, so Chat's outbox keeps it as "waiting" and retries, which is the behaviour planned above |
+| `open_stream` | messages, edits, reactions and read marks arriving from that device |
+| `load_messages(since)` | ask the device for what changed since, to catch up after being apart |
+| `upload_attachment` / `download_attachment` | iroh-blobs, keeping Chat's SHA-256 ids beside the BLAKE3 hash |
+| `mark_read` | a read mark sent to the device |
+
+So Relay's Rust core depends on `chat-core` and gets the client, store,
+outbox and search unchanged, and Relay's conversation screen reuses Chat's
+SwiftUI views. Chat stays its own app with its server. This is the second
+use the architecture rule waits for, so Chat's conversation views (and
+`chat-core`, if Relay's dependency on an example crate feels wrong) move
+into a shared module in stage 1, with Chat as their first user. Two
+directions this opens later, not in the plan's stages: Chat talking to
+nearby devices with no server (its fourth backend would be `PeerRepo`), or
+one app that has both. Merging the apps now would tie Relay's quick
+send-a-file flow to Chat's account and server, which Relay doesn't need.
+
+### Rooms that live only while the host keeps them open
+
+Reuben's idea (2026-11-14): a chat room that exists only as long as its
+admin keeps it open. When the host closes it, it's gone.
+
+- **The host is the hub.** `relay room open` (or Open Room in the app)
+  makes the host device the room's server: it shows a code and a QR code,
+  each joiner proves the code with SPAKE2 as in a transfer, and the host
+  passes every message to everyone in the room. No server of ours stores
+  anything; in stage 2 our relay only carries ciphertext between a joiner
+  and the host.
+- **Gone means gone.** The room's messages live in memory on every device,
+  never on disk; when the host closes the room (or its device goes away),
+  joiners see "the room was closed" and their copies are wiped. Nobody can
+  stop a screenshot, so the app says "disappears when closed", not
+  "secret".
+- **The admin** sees who is in, can remove someone (their key is refused
+  from then on), and can lock the room so the code stops working.
+- **The code is reusable while the room is open,** unlike a transfer code,
+  so the host limits guessing: after 3 wrong attempts the code changes and
+  the host shows the new one.
+- **Chat does the work again:** the host runs the room as a `ChatRepo`
+  backend for the joiners (it plays the chat server's part), and Chat's
+  client and conversation screen show it, with an in-memory store.
+- **Collapse when the host looks away (a feature).** On iPhone a room lives
+  while Relay is on screen; leaving the app, locking the phone or a call
+  closes it for everyone. Reuben likes this as a security property, so it
+  is deliberate, not a limit to hide:
+  - a **grace period**, on by default: when the host leaves the app, the
+    room stays up for the time iOS gives a background task (about 30
+    seconds; iOS decides, so "up to 30 seconds"), joiners see "the host
+    stepped away", and coming back in time keeps the room;
+  - **Collapse at once**, a switch in the room's settings, skips the grace
+    period: the room closes the moment the host leaves the screen;
+  - a joiner's copy is also wiped when the joiner's own app is closed or
+    suspended.
+- **Longer hosting in the background isn't possible on iPhone** without
+  misusing a background mode (playing silent audio, or pretending to be a
+  VoIP call), which App Review rejects and we won't do. A room meant to last
+  is hosted from the laptop, the iMac or a Hetzner server with
+  `relay room open`.
+- **Security levels** (Reuben, 2026-11-14), set by the admin when opening
+  the room and shown to everyone before they join:
+
+  | Level | Leaving the screen | Room history |
+  |---|---|---|
+  | **Relaxed** | Nothing happens; the room stays while the host is up | In memory while the room is open |
+  | **Standard** (default) | iPhone host: grace period above. Joiners stay | In memory; a joiner's copy is wiped when they leave |
+  | **Strict** | Anyone, on every platform, is removed the moment Relay leaves the screen: app backgrounded or phone locked on iPhone and Android, window minimised or unfocused on a computer. They rejoin with the code (and the admin's OK). A screenshot or screen recording on iPhone is announced to the room, and content is hidden while the screen is being recorded | Joiners see only messages sent while they are in |
+
+  Each device enforces its own level, so these protect against slips, not
+  against someone running a modified Relay; the app says so. The `relay`
+  command can join Strict rooms only in terminals that report focus;
+  otherwise it can host or relay them but not read them.
+- **Computers as permanent hosts, acting as relays.** The laptop, the iMac
+  or a Hetzner server can keep a room up indefinitely (`relay room host`),
+  forwarding messages between members, while the admin is a person's
+  device. Whether that host can read the room is an open decision (below);
+  both are designed:
+  - **End to end (proposed default):** the host only forwards ciphertext.
+    Members share the room's keys with **MLS** (Messaging Layer Security,
+    RFC 9420, the IETF standard for group chats; the `openmls` crate), not
+    a scheme of our own: a joiner proves the code to the admin or any
+    member, gets added to the MLS group, and removing someone rotates the
+    keys. The host sees who is connected and when, never what is said.
+  - **Host can read:** the host is the room's hub, as the chat server is
+    for Chat, and decrypts everything. Shown to every member before they
+    join and on the room's title ("The host can read this room"), never
+    silent. Fits a team room on a server you own and want logged.
+- **Built on Nostr** (Reuben, 2026-11-14: servers as "types of relays", an
+  IRC and Discord hybrid where each server chooses what it supports, on
+  existing infrastructure). After comparing Matrix, IRC, XMTP, Nostr and
+  iroh-gossip ([research/relay-rooms-protocols.md](research/relay-rooms-protocols.md)),
+  rooms speak Nostr: a plain relay carries end to end rooms (Marmot, which
+  is MLS over Nostr) and sees only ciphertext; a relay that hosts NIP-29
+  groups can offer "sub-servers" and rooms the host can read; each relay
+  publishes what it supports (NIP-11), and Relay shows that before anyone
+  joins. A host-kept room is a tiny relay on the host device. Files and
+  messages between your own devices stay on iroh.
+- **Stage:** after stage 1's messages, as the first part of stage 2 (rooms
+  hosted by a device, the three levels). Permanent relay hosts with MLS
+  come after stage 2's servers. It
+  works on one Wi-Fi with stage 1's code, and across the internet once
+  stage 2's relay is up.
+
+## Code phrases: words or letters?
+
+| Style | Example | For | Against |
+|---|---|---|---|
+| Number + 2 words (magic-wormhole) | `7-orbit-velvet` | Easy to say aloud and type on a phone, autocorrect-friendly with completion | English words |
+| Number + 3 words (croc style) | `4821-orbit-velvet-canyon` | More margin | Longer to type |
+| Letters (fsend style) | `abc-defg-jkm` | No language | Hard to read aloud (b/d/p), awkward on a phone keyboard |
+
+**Recommend number + 2 words** from a 256-word list (magic-wormhole uses the
+PGP word list; the EFF short list is an alternative), with word completion
+in the app and the CLI, plus a QR code for devices in the same room.
+Because of the PAKE, 2 words is enough: an attacker gets one live guess per
+code (about 1 in 65,000), a wrong guess ends the code, and the sender sees
+"someone tried a wrong code". Codes expire after 10 minutes or one use.
+
+## Security
+
+- **Threats covered:** someone on the same Wi-Fi or a relay operator reading
+  or changing files; someone guessing a code (one online guess); a lost
+  code reused later (single use, expiry).
+- **Keys:** SPAKE2 per transfer, then iroh's QUIC (TLS 1.3 with the
+  endpoints' raw public keys). Forward secrecy from QUIC's ephemeral keys.
+  Relays and the rendezvous service see only endpoint keys, sizes and
+  timing, never names or content.
+- **Trusted devices** are stored endpoint keys. A trusted send needs no code
+  and is refused if the key doesn't match. Secrets and the device key live
+  in the Keychain on iOS (friction A17 needs fixing first, so the core can
+  reach it) and in a 0600 file on Linux.
+- **Receiver consent:** every incoming transfer from a code shows names and
+  size before anything is written; trusted devices can be set to accept
+  automatically. Received files keep their names but are written only
+  inside Relay's inbox (no path tricks).
+- **Optional verify words:** both screens can show two words derived from
+  the session key, as magic-wormhole's `--verify` does, for the cautious.
+- **Logging** through `forge_runtime::logging`: sizes, times, outcomes.
+  Never file names, notes, codes or keys.
+- **Review:** the code layer and rendezvous get a focused security review
+  before stage 2 ships to anyone but Reuben.
+
+## iPhone limits on the free Apple team
+
+| Limit | Effect | Plan |
+|---|---|---|
+| Local network permission | iOS asks once; needs `NSLocalNetworkUsageDescription` and every Bonjour type in `NSBonjourServices` | Already in `forge.toml` |
+| Multicast entitlement (`com.apple.developer.networking.multicast`) | Needs a request to Apple and a paid team. Without it the app can't send raw mDNS or UDP multicast (iroh's own mDNS discovery, LocalSend discovery) | Discovery on iOS stays on Bonjour (Network.framework), which needs no entitlement, and hands addresses to iroh |
+| No background sockets | A transfer stops a few seconds after the app leaves the screen (about 30 s with a background task) | Keep the screen awake during a transfer, resume with iroh-blobs when the app returns. Background `URLSession` only helps for HTTP to a server, so it fits a later "upload to a store" mode, not peer to peer |
+| No push notifications | The phone can't be woken for an incoming file | Receiving happens with Relay open. Fine for a code flow |
+| Share extension | Costs an App ID (10 new per week) and has a small memory budget; under Device Lab it belongs to the host | Stage 3, after Reuben decides on Device Lab vs its own app |
+| 7-day signing | Re-sign weekly, as every app now | Nothing new |
+
+## Stages
+
+| Stage | What | Proves | Size |
+|---|---|---|---|
+| **0. Spikes** | iroh 1.0 + iroh-blobs + spake2 in `relay_core`: Linux to Linux offline; iOS build size and first launch; a direct LAN connection from addresses Bonjour found; Wi-Fi throughput on a 1 GB file. Builds go through the laptop's build queue once builds resume | iroh works inside Forge's runtime on iOS and keeps the app reasonably small. If it doesn't: keep today's TCP + Noise for LAN, use magic-wormhole for stage 2 | 2 to 3 days |
+| **1. Local network** | `relay send <paths>` / `relay receive <code>`; app Send (files, photos, folder) and Receive (type or scan); progress, cancel, resume; trusted devices; messages between trusted devices (conversation per device, delivered and read, waiting until the other device is seen) and `relay send --text`; history; received files in the Files app; AI asks (protocol 2) moved onto an iroh protocol; old TCP wire removed. Hosted in Device Lab. Android emulator screen if time | The croc flow on one Wi-Fi with no internet: phone to laptop, laptop to phone, phone to phone | 1.5 to 2 weeks |
+| **2. Over the internet** | Rooms that live only while the host keeps them open ([above](#rooms-that-live-only-while-the-host-keeps-them-open)), first on one Wi-Fi; rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices, and their messages, reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
+| **3. Product polish** | Share extension ("Send with Relay" from Photos), a browser receiver page for devices without the app (Floe's idea; iroh in the browser or WebRTC, decided by a spike), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
+
+Each stage has one short phone check (about 10 minutes, batched with
+others), built and published over the air before the phone is needed.
+Capability changes update the ledger (`docs/ledger/`) in the same PR.
+
+## Where it lives
+
+Relay stays `examples/relay` in ixOS, its own module hosted in Device Lab,
+so it can move to its own repository later without changes (its crate is
+already its own workspace). Splitting ixOS into repositories is parked, so
+the plan doesn't assume it. If it becomes a real product, its own repo,
+name and App ID make sense at stage 2 or 3.
+
+## Decisions (2026-11-14)
+
+Reuben approved every recommendation:
+
+1. **Approach:** own flow on iroh with magic-wormhole-style codes, not
+   magic-wormhole compatibility.
+2. **Code style:** a number and 2 words (`7-orbit-velvet`), plus a QR code.
+3. **Repository:** stays in ixOS as `examples/relay`, its own module hosted
+   in Device Lab; a separate repository can come later.
+4. **Name:** "Relay" for now; a better name later.
+5. **Stage 2 servers:** rendezvous service and relay on Hetzner (Oracle as a
+   second region later); n0's public relays meanwhile, for development.
+6. **Browser receiver:** in stage 3, after a spike picks iroh in the
+   browser or WebRTC.
+7. **Old pairing:** Relay's QR pairing is replaced by trusted devices.
+
+Open since then:
+
+8. **Can a permanent room host read the room?** Answered: it is each
+   server's choice, shown to members before they join; end to end is the
+   default.
+9. **Rooms on Nostr** (relays, Marmot for end to end, NIP-29 for hosted
+   groups, NIP-11 for what a server supports), with Matrix and IRC as
+   possible bridges later. Approved by Reuben on 2026-11-14; a spike comes
+   before stage 2.
+
+## Sources
+
+- croc: <https://github.com/schollz/croc>
+- magic-wormhole protocol: <https://magic-wormhole.readthedocs.io/>; Rust
+  crate: <https://docs.rs/crate/magic-wormhole/latest>
+- iroh 1.0: <https://iroh.computer/blog/v1>; sendme:
+  <https://github.com/n0-computer/sendme>
+- LocalSend protocol: <https://github.com/localsend/protocol>
+- Floe: <https://github.com/jannskiee/floe>; wush:
+  <https://github.com/coder/wush>; derphole:
+  <https://shayne.github.io/derphole/>; Taildrop:
+  <https://tailscale.com/docs/features/taildrop>
+- Relay today: [examples/relay/README.md](../examples/relay/README.md),
+  friction A16 to A19 and A26 to A27 in
+  [research/app-friction-log.md](research/app-friction-log.md)
