@@ -217,7 +217,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim
           working-directory: examples/pocket-library-android
           # On a failure, the app's log (the Rust core logs through logcat) shows why.
-          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon || { adb logcat -d -t 400 | grep -iE "pocketlibrary|forge|AndroidRuntime|jna|uniffi|TestRunner" | tail -150; exit 1; }
+          script: ./gradlew :app:connectedDebugAndroidTest --no-daemon || { adb logcat -d -b crash; adb logcat -d | grep -E "AndroidRuntime|TestRunner|DEBUG|libc|forge|jna|uniffi" | tail -120; exit 1; }
 
       - name: Upload test reports
         if: failure()
