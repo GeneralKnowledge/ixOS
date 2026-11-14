@@ -373,6 +373,149 @@ pub fn usbmuxd_running(
 /// Where usbmuxd listens on Linux.
 pub const USBMUXD_SOCKET: &str = "/var/run/usbmuxd";
 
+/// The environment variable that caps how many times one command restarts
+/// usbmuxd while it expects an iPhone and sees none (`0` turns it off).
+pub const USBMUXD_RESTARTS_ENV: &str = "FORGE_USBMUXD_RESTARTS";
+
+/// Restarts per command when [`USBMUXD_RESTARTS_ENV`] is unset.
+pub const DEFAULT_USBMUXD_RESTARTS: u32 = 3;
+
+/// How long usbmuxd gets after a restart to find the phone again.
+const USBMUXD_SETTLE_SECS: &str = "4";
+
+/// What happened when Forge tried to restart usbmuxd.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UsbmuxdRestart {
+    /// `systemctl restart usbmuxd` ran and succeeded.
+    Restarted,
+    /// This user may not run it without a password, so Forge never tries
+    /// (it never prompts). The fix is a one-line sudoers rule.
+    NotAllowed,
+    /// It was allowed but failed or timed out.
+    Failed(String),
+}
+
+/// The one-time setup that lets Forge restart usbmuxd on its own.
+pub const USBMUXD_SUDOERS_HINT: &str = "To let Forge restart usbmuxd by itself when the iPhone drops off USB, allow that one command without a password (docs/linux-setup.md#let-forge-restart-usbmuxd-optional): echo \"$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart usbmuxd\" | sudo tee /etc/sudoers.d/forge-usbmuxd && sudo chmod 440 /etc/sudoers.d/forge-usbmuxd";
+
+/// How many restarts one command may make: `None` when it must not try at
+/// all (not Linux, a custom usbmuxd socket, or `FORGE_USBMUXD_RESTARTS=0`).
+pub fn usbmuxd_restarts_allowed(env: &dyn Fn(&str) -> Option<String>) -> Option<u32> {
+    if !cfg!(target_os = "linux") || env("USBMUXD_SOCKET_ADDRESS").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    let n = match env(USBMUXD_RESTARTS_ENV) {
+        Some(v) if !v.trim().is_empty() => v.trim().parse().unwrap_or(DEFAULT_USBMUXD_RESTARTS),
+        _ => DEFAULT_USBMUXD_RESTARTS,
+    };
+    (n > 0).then_some(n)
+}
+
+/// Restarts usbmuxd once (`sudo -n systemctl restart usbmuxd`, under a
+/// 20-second `timeout`), then gives it a few seconds to find the phone.
+///
+/// `sudo -n` never asks for a password: unless the sudoers rule in
+/// [`USBMUXD_SUDOERS_HINT`] allows the command, `sudo -n -l` says no first
+/// and nothing runs.
+pub fn restart_usbmuxd(runner: &dyn CommandRunner) -> UsbmuxdRestart {
+    let restart = ["systemctl", "restart", "usbmuxd"];
+    let allowed = runner
+        .capture(&Cmd::new("sudo").args(["-n", "-l"]).args(restart))
+        .is_ok_and(|o| o.status.success());
+    if !allowed {
+        return UsbmuxdRestart::NotAllowed;
+    }
+    let sudo = Cmd::new("sudo").arg("-n").args(restart);
+    let cmd = if crate::commands::which_program(runner, "timeout") {
+        Cmd::new("timeout")
+            .arg("20")
+            .arg(&sudo.program)
+            .args(&sudo.args)
+    } else {
+        sudo
+    };
+    match runner.capture(&cmd) {
+        Ok(out) if out.status.success() => {
+            // Through the runner, so tests don't wait.
+            let _ = runner.capture(&Cmd::new("sleep").arg(USBMUXD_SETTLE_SECS));
+            UsbmuxdRestart::Restarted
+        }
+        Ok(out) if out.status.code() == Some(124) => {
+            UsbmuxdRestart::Failed("`systemctl restart usbmuxd` timed out after 20 s".into())
+        }
+        Ok(out) => {
+            let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            UsbmuxdRestart::Failed(if err.is_empty() {
+                format!("`systemctl restart usbmuxd` failed ({})", out.status)
+            } else {
+                format!("`systemctl restart usbmuxd` failed: {err}")
+            })
+        }
+        Err(e) => UsbmuxdRestart::Failed(e),
+    }
+}
+
+/// Bounded usbmuxd restarts for a command that waits for an iPhone it
+/// cannot see (`forge run ios --wait-for-device`).
+///
+/// On the device host the phone sometimes drops off usbmuxd while still
+/// plugged in, and only a restart (or a replug) brings it back. The first
+/// restart comes after `first_after` without a phone, so a person still
+/// plugging it in is left alone; each later one waits twice as long as the
+/// gap before, and there are at most [`usbmuxd_restarts_allowed`] of them.
+/// Without the sudoers rule it says how to add it, once, and stops.
+#[derive(Debug)]
+pub struct UsbmuxdRecovery {
+    left: u32,
+    max: u32,
+    next: std::time::Duration,
+    gap: std::time::Duration,
+}
+
+impl UsbmuxdRecovery {
+    pub fn new(env: &dyn Fn(&str) -> Option<String>, first_after: std::time::Duration) -> Self {
+        let max = usbmuxd_restarts_allowed(env).unwrap_or(0);
+        Self {
+            left: max,
+            max,
+            next: first_after,
+            gap: first_after.max(std::time::Duration::from_secs(15)) * 2,
+        }
+    }
+
+    /// Call while no phone is seen, with how long the command has been
+    /// waiting. Restarts usbmuxd when one is due and returns a line saying
+    /// what happened; `None` when nothing was done.
+    pub fn tick(
+        &mut self,
+        runner: &dyn CommandRunner,
+        waited: std::time::Duration,
+    ) -> Option<String> {
+        if self.left == 0 || waited < self.next {
+            return None;
+        }
+        let attempt = self.max - self.left + 1;
+        self.left -= 1;
+        self.next = waited + self.gap;
+        self.gap *= 2;
+        let secs = waited.as_secs();
+        Some(match restart_usbmuxd(runner) {
+            UsbmuxdRestart::Restarted => format!(
+                "No iPhone seen for {secs} s: restarted usbmuxd (attempt {attempt} of {})",
+                self.max
+            ),
+            UsbmuxdRestart::NotAllowed => {
+                self.left = 0;
+                format!("No iPhone seen for {secs} s, and Forge may not restart usbmuxd. {USBMUXD_SUDOERS_HINT}")
+            }
+            UsbmuxdRestart::Failed(why) => format!(
+                "No iPhone seen for {secs} s; restarting usbmuxd failed (attempt {attempt} of {}): {why}",
+                self.max
+            ),
+        })
+    }
+}
+
 /// The Swift compiler's version, e.g. `(6, 2)` from `Swift version 6.2.3 (...)`.
 pub fn swift_version(runner: &dyn CommandRunner) -> Option<(u32, u32)> {
     let out = stdout_of(runner, Cmd::new("swift").arg("--version"))?;
@@ -537,6 +680,92 @@ mod tests {
         let mock = MockRunner::default();
         mock.respond("xtool auth status", 0, "Logged out\n");
         assert_eq!(signing_team(&mock), None);
+    }
+
+    /// A host whose sudoers rule allows the restart.
+    fn restart_allowed() -> MockRunner {
+        let mock = MockRunner::default();
+        mock.respond("sudo -n -l systemctl restart usbmuxd", 0, "")
+            .respond("timeout --version", 0, "timeout (GNU coreutils) 9.4\n")
+            .respond("timeout 20 sudo -n systemctl restart usbmuxd", 0, "")
+            .respond("sleep", 0, "");
+        mock
+    }
+
+    fn restarts(mock: &MockRunner) -> usize {
+        mock.call_lines()
+            .iter()
+            .filter(|l| l.ends_with("sudo -n systemctl restart usbmuxd"))
+            .count()
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn usbmuxd_restarts_are_spaced_out_and_capped() {
+        use std::time::Duration;
+        let mock = restart_allowed();
+        let mut r = UsbmuxdRecovery::new(&|_| None, Duration::from_secs(20));
+        // Not yet: someone may still be plugging the phone in.
+        assert_eq!(r.tick(&mock, Duration::from_secs(10)), None);
+        let note = r.tick(&mock, Duration::from_secs(20)).unwrap();
+        assert!(
+            note.contains("restarted usbmuxd (attempt 1 of 3)"),
+            "{note}"
+        );
+        // Then 40 s later, then 80 s after that, then never again.
+        assert_eq!(r.tick(&mock, Duration::from_secs(59)), None);
+        assert!(r.tick(&mock, Duration::from_secs(60)).is_some());
+        assert_eq!(r.tick(&mock, Duration::from_secs(139)), None);
+        assert!(r
+            .tick(&mock, Duration::from_secs(140))
+            .unwrap()
+            .contains("3 of 3"));
+        assert_eq!(r.tick(&mock, Duration::from_secs(10_000)), None);
+        assert_eq!(restarts(&mock), 3);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn usbmuxd_is_not_restarted_without_the_sudoers_rule_or_when_turned_off() {
+        use std::time::Duration;
+        // `sudo -n -l` says no: explain the rule once, never run sudo itself.
+        let mock = MockRunner::default();
+        mock.respond("sudo -n -l", 1, "");
+        let mut r = UsbmuxdRecovery::new(&|_| None, Duration::ZERO);
+        let note = r.tick(&mock, Duration::ZERO).unwrap();
+        assert!(
+            note.contains("NOPASSWD: /usr/bin/systemctl restart usbmuxd"),
+            "{note}"
+        );
+        assert_eq!(r.tick(&mock, Duration::from_secs(600)), None);
+        assert_eq!(restarts(&mock), 0);
+
+        let mock = restart_allowed();
+        let off = |k: &str| (k == USBMUXD_RESTARTS_ENV).then(|| "0".to_string());
+        let mut r = UsbmuxdRecovery::new(&off, Duration::ZERO);
+        assert_eq!(r.tick(&mock, Duration::ZERO), None);
+        assert!(mock.call_lines().is_empty());
+        let one = |k: &str| (k == USBMUXD_RESTARTS_ENV).then(|| "1".to_string());
+        assert_eq!(usbmuxd_restarts_allowed(&one), Some(1));
+        let custom =
+            |k: &str| (k == "USBMUXD_SOCKET_ADDRESS").then(|| "127.0.0.1:27015".to_string());
+        assert_eq!(usbmuxd_restarts_allowed(&custom), None);
+    }
+
+    #[test]
+    fn a_failed_or_hung_restart_is_reported() {
+        let mock = restart_allowed();
+        mock.respond("timeout 20 sudo", 124, "");
+        assert!(
+            matches!(restart_usbmuxd(&mock), UsbmuxdRestart::Failed(why) if why.contains("timed out"))
+        );
+        let mock = restart_allowed();
+        mock.respond("timeout 20 sudo", 5, "");
+        assert!(matches!(restart_usbmuxd(&mock), UsbmuxdRestart::Failed(_)));
+        assert_eq!(
+            restart_usbmuxd(&restart_allowed()),
+            UsbmuxdRestart::Restarted
+        );
     }
 
     #[test]

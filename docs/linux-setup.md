@@ -67,6 +67,20 @@ swift sdk list
 # darwin
 ```
 
+### Let Forge restart usbmuxd (optional)
+
+Sometimes the iPhone drops off usbmuxd while it is still plugged in, and only `sudo systemctl restart usbmuxd` (or a replug) brings it back. When `forge run ios` or `forge devices` expects an iPhone and sees none, Forge restarts usbmuxd once and looks again; `forge run ios --wait-for-device` does it up to three times while it waits, first after 20 seconds without a phone, then 40 and 80 seconds later. It only restarts while no phone is listed, so it never cuts off an install or a running session.
+
+Forge calls `sudo -n`, which never asks for a password, so this only happens on a machine that allows that one command. To allow it (once per machine):
+
+```bash
+echo "$USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart usbmuxd" | sudo tee /etc/sudoers.d/forge-usbmuxd
+sudo chmod 440 /etc/sudoers.d/forge-usbmuxd
+sudo -n -l systemctl restart usbmuxd   # prints the command when it is allowed
+```
+
+Without the rule, Forge prints these lines once and carries on. `FORGE_USBMUXD_RESTARTS=0` turns the restarts off; another number changes how many `--wait-for-device` may make.
+
 ## Forge Mobile bootstrap
 
 ```bash

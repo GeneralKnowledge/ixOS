@@ -1155,6 +1155,10 @@ pub fn run_ios(
 /// How often `--wait-for-device` looks for the phone.
 const DEVICE_POLL: std::time::Duration = std::time::Duration::from_secs(5);
 
+/// How long `--wait-for-device` goes without seeing a phone before it first
+/// restarts usbmuxd (ios_env::UsbmuxdRecovery spaces out the later ones).
+const USBMUXD_RESTART_AFTER: std::time::Duration = std::time::Duration::from_secs(20);
+
 /// `forge run ios`. With `wait_for_device`, the app is built (Rust and
 /// Swift, type-checked) before the phone is needed, and the command then
 /// waits up to that long for it: ask the person for the phone only once it
@@ -1226,11 +1230,19 @@ fn run_ios_steps(
             "[forge] Built. Waiting up to {} min for the iPhone: connect it by USB and unlock it.",
             limit.as_secs().div_ceil(60)
         );
-        let deadline = std::time::Instant::now() + limit;
+        let started = std::time::Instant::now();
+        let deadline = started + limit;
+        let env = |k: &str| std::env::var(k).ok();
+        let mut recovery = crate::ios_env::UsbmuxdRecovery::new(&env, USBMUXD_RESTART_AFTER);
         loop {
             let listed = crate::ios_env::ios_devices(runner);
             match listed {
                 Some(ref devices) if !devices.is_empty() => break,
+                _ if std::time::Instant::now() < deadline
+                    && recovery
+                        .tick(runner, started.elapsed())
+                        .map(|note| println!("[forge] {note}"))
+                        .is_some() => {}
                 _ if std::time::Instant::now() >= deadline => {
                     // Say which: no phone, or phones couldn't be listed.
                     let why = if listed.is_none() {
@@ -1510,12 +1522,27 @@ pub fn devices(runner: &dyn CommandRunner, ios: &dyn IosBuilder) -> Result<(), S
         }
         found_tool = true;
         println!("--- {label} ---");
-        match runner.capture(&cmd) {
+        let ios = label.starts_with("iOS");
+        let mut result = runner.capture(&cmd);
+        let no_phone = |r: &Result<std::process::Output, String>| {
+            !r.as_ref()
+                .is_ok_and(|o| o.status.success() && !o.stdout.trim_ascii().is_empty())
+        };
+        if ios && no_phone(&result) {
+            // The phone sometimes drops off usbmuxd while still plugged in.
+            let env = |k: &str| std::env::var(k).ok();
+            let mut recovery =
+                crate::ios_env::UsbmuxdRecovery::new(&env, std::time::Duration::ZERO);
+            if let Some(note) = recovery.tick(runner, std::time::Duration::ZERO) {
+                println!("[forge] {note}");
+                result = runner.capture(&cmd);
+            }
+        }
+        match result {
             Ok(output) => {
                 let listing = String::from_utf8_lossy(&output.stdout);
                 print!("{listing}");
-                if output.status.success() && listing.trim().is_empty() && label.starts_with("iOS")
-                {
+                if output.status.success() && listing.trim().is_empty() && ios {
                     println!("No iPhone found. Connect it by USB, unlock it and tap Trust. If it still does not show: sudo systemctl restart usbmuxd, then replug.");
                 }
                 if output.status.success() {
