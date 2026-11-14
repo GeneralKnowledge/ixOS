@@ -1,8 +1,10 @@
 # Relay stage 0 spike: iroh and word codes
 
-> **Not production code.** A throwaway Linux experiment. The iOS build and
-> the test on a real iPhone are still outstanding (issue #198), and the
-> limitations below must be fixed before any of it reaches Relay's core.
+> **Not production code.** A throwaway Linux experiment. M0 is now Linux to
+> Linux (Reuben, 2026-11-14); the iOS build and the iPhone test move to the
+> start of M1. The review's limitations below are fixed in the spike
+> ([M0 on Linux](#m0-on-linux-2026-11-14)) but not yet proven by a model
+> (see Verification in the platform plan).
 
 2026-11-14. Answers the stage 0 questions in
 [relay-transfer-plan.md](../relay-transfer-plan.md) on Linux. The iPhone half
@@ -49,12 +51,32 @@ lines, its own workspace, not part of the app.
 
 ## Known limitations (from review, 2026-11-14)
 
-| Limitation | Risk | Fix in M0 |
+| Limitation | Risk | Fix |
 |---|---|---|
 | **Code number collisions.** The number is random from 1 to 99 and the receiver takes the first sender advertising it | Two transfers at once on one network can send the receiver to the wrong sender, which also spends that sender's code | Senders pick a number nobody nearby is using and re-pick if one appears; a receiver that finds two senders with its number stops and asks for a new code rather than guessing (a guess would burn an unrelated code) |
 | **The code is spent before the proof is checked** | Intended (one guess per code), but anyone on the network can burn a code and interrupt a transfer | A time limit on the handshake, one handshake at a time (others are told "busy" without spending the code), the sender is told, and a new code is issued at once |
 | **16 bits in the code** (two PGP words) | SPAKE2 stops offline guessing, but an active attacker's single online guess is 1 in 65,536 | Three words from the EFF short list (about 31 bits) with completion; the QR code stays the easiest way |
 | **Memory stores** on both sides | A large file is held in RAM; nothing resumes | iroh-blobs' file store, bounded streaming, resume after an interruption |
+
+## M0 on Linux (2026-11-14)
+
+The review's fixes, tested between processes on one Linux machine (two
+real machines next):
+
+| Check | Result |
+|---|---|
+| Code | A number and three EFF short words (`37-grasp-gag-drum`), about 31 bits; words checked against the list when typed |
+| Numbers in use | A second sender picked a different number (37, then 97) after listening for 1.5 s |
+| Forced collision (test switch `RELAY_SPIKE_NAMEPLATE`) | The sender saw another sender take its number and issued a new code; a receiver that saw two senders with one number stopped with "two senders nearby are using number 37; ask the sender for a new code" and spent nobody's code |
+| Wrong guess | The receiver is told; the sender says "Someone tried a wrong code, so it no longer works. New code: …"; the new code works and the file is identical |
+| Busy | A second receiver during a transfer is told "the sender is busy" and the code is not spent |
+| Resume | 4 GB transfer, receiver killed after about 0.3 to 0.4 GB, twice: the sender noticed within 8 s (receivers tick every 2 s) and issued a new code; the receiver resumed with "332791808 of 4000000000 bytes already here" and the file was identical (`cmp`) |
+| Memory | Peak resident memory during a 4 GB transfer: receiver 24 MB, sender 21 MB (iroh-blobs file store; the sender hashes the file in place) |
+| Speed | 290 to 364 MB/s over loopback with the file store |
+| Stranger | Still refused with the right hash |
+
+Not covered yet: two physical machines on a real network (next), and the
+iPhone (M1).
 
 ## Not answered yet (needs the laptop)
 

@@ -274,8 +274,8 @@ estimates are for planning, not promises.
 
 | Milestone | Contents | Was | Estimate |
 |---|---|---|---|
-| **M0 Foundation validation** | Done on Linux: iroh spike, SPAKE2 codes, 1 GB offline transfer. Left: iOS static library build and size, Bonjour from Swift to the Rust iroh endpoint, iPhone to Linux both ways, real Wi-Fi throughput, iPhone memory, disk-backed store and interrupted resume | Stage 0 | 2 to 3 days |
-| **M1 Relay Transfer** | Production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
+| **M0 Foundation validation** (Linux to Linux) | Done on one Linux machine: iroh, SPAKE2 codes of three EFF words, no number collisions, busy and wrong-code handling with new codes, disk store, a 4 GB transfer resumed after the receiver was killed, 24 MB peak memory. Left: two real machines on a real network (the laptop, the iMac or Hetzner over Tailscale) and the Lean model of the code session | Stage 0 | 1 to 2 days |
+| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0 (iOS build and size, Bonjour to the Rust endpoint, iPhone to Linux both ways, Wi-Fi speed, memory); then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
 | **M2 Personal device network** | Persistent identities (person and device), discovery and status, the resolver, Tailscale routes, direct internet, our rendezvous and relay, diagnostics | Stage 2 (servers) | 1 to 2 weeks |
 | **M3 Direct communications** | `PeerRepo`, messages between devices, outbox, delivered and read, attachments, history, AI asks as messages | Stage 1 (messages) | 1 to 2 weeks |
 | **M4 Temporary rooms** | Host and join, codes, members, permissions, memory only, closing, Relaxed / Standard / Strict | Stage 2 (rooms) | 1 to 2 weeks |
@@ -290,7 +290,8 @@ focused PRs, each with one acceptance condition:
 
 | Scope | Accepted when |
 |---|---|
-| iOS feasibility (M0) | The iPhone connects to Linux over Wi-Fi and moves a file both ways |
+| Linux to Linux (M0) | Two Linux machines move a file both ways with a code, and a dropped transfer resumes byte for byte |
+| iOS feasibility (start of M1) | Send on Ubuntu, enter or scan the code on the iPhone, accept, and the file matches byte for byte |
 | Production transfer core | A transfer resumes after an interruption and verifies |
 | Native Relay UI | Send and receive work on the phone |
 | CLI | Linux and macOS work with the phone |
@@ -300,6 +301,27 @@ focused PRs, each with one acceptance condition:
 | Temporary rooms | Host and join lifecycle works |
 | Nostr/Marmot spike | An encrypted group works with another client |
 | Each capability | One service at a time |
+
+## Verification
+
+Following the rule in [foundation-review.md](foundation-review.md#where-lean-helps-and-where-it-does-not)
+(Reuben, 2026-11-14: Relay is a place where Lean verification is useful and
+needed): Lean for small protocols whose properties must hold for every
+interleaving, tests for the rest.
+
+| What | Tool | Property |
+|---|---|---|
+| **The code session** (first, once M0's code is settled) | Lean | Whatever order connections, timeouts, collisions and new codes arrive in: a code allows at most one guess; "busy" and "gone" never spend a code; at most one receiver is ever allowed per code; an expired or spent code never comes back; a receiver never runs the handshake with two senders for one number |
+| **Trust and permissions** (M2, M6) | Lean | No capability is used without a grant; a revoked device never regains one; revocation reaches every capability |
+| **Message delivery** (M3) | Lean | With retries, reconnects and relaunches, each message is stored once and its final state reported once (the property Chat's outbox relies on, foundation review N1) |
+| **Composition of the cryptography** (code proof bound to both device keys; later MLS rooms over relays) | Tamarin or ProVerif | Secrecy and authentication of the session key against an active network attacker. A symbolic protocol prover fits this better than Lean |
+| The cryptography itself (SPAKE2, QUIC, MLS) | Proven libraries | Not ours to prove |
+| Concurrency in Rust code | `loom` | Exhaustive interleavings of the real code |
+
+Models live in `verification/relay/`, outside the Cargo workspace, with a
+CI job once a proof exists. Each model names the Rust function it describes,
+and a test checks the code against the model's transitions, so they don't
+drift apart.
 
 ## Not yet, on purpose
 
