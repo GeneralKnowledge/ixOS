@@ -1,6 +1,7 @@
 # Relay as a file transfer app: plan
 
-Status: proposal, 2026-11-14. No app code until it is approved.
+Status: approved by Reuben on 2026-11-14 (all recommendations below). Stage 0
+spikes are next.
 
 Relay today sends notes and files between devices that paired once by QR
 code, on the same network ([examples/relay](../examples/relay/README.md)).
@@ -201,24 +202,21 @@ already its own workspace). Splitting ixOS into repositories is parked, so
 the plan doesn't assume it. If it becomes a real product, its own repo,
 name and App ID make sense at stage 2 or 3.
 
-## Decisions for Reuben
+## Decisions (2026-11-14)
 
-1. **Approach:** own flow on iroh with magic-wormhole-style codes
-   (recommended), or full magic-wormhole compatibility (talks to existing
-   `wormhole` clients, but needs the internet even on a LAN).
-2. **Code style:** number + 2 words (recommended), number + 3 words, or
-   letters.
-3. **Repository:** stay in ixOS as `examples/relay` (recommended for now),
-   or a separate repository today.
-4. **Name:** keep "Relay", or a new product name (Relay also means "relay
-   server" in this design, which can confuse).
-5. **Stage 2 servers:** run the rendezvous service and relay on Hetzner
-   (recommended; Oracle as a second region later), and whether n0's public
-   relays are fine until then.
-6. **Browser receiver:** wanted in stage 3 (Floe's idea), or CLI and apps
-   only.
-7. **Old pairing:** replace Relay's QR pairing with trusted devices
-   (recommended; it's a demo with no users), or keep both for a while.
+Reuben approved every recommendation:
+
+1. **Approach:** own flow on iroh with magic-wormhole-style codes, not
+   magic-wormhole compatibility.
+2. **Code style:** a number and 2 words (`7-orbit-velvet`), plus a QR code.
+3. **Repository:** stays in ixOS as `examples/relay`, its own module hosted
+   in Device Lab; a separate repository can come later.
+4. **Name:** "Relay" for now; a better name later.
+5. **Stage 2 servers:** rendezvous service and relay on Hetzner (Oracle as a
+   second region later); n0's public relays meanwhile, for development.
+6. **Browser receiver:** in stage 3, after a spike picks iroh in the
+   browser or WebRTC.
+7. **Old pairing:** Relay's QR pairing is replaced by trusted devices.
 
 ## Sources
 
