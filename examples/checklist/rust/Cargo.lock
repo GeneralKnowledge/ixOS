@@ -263,6 +263,7 @@ version = "0.5.0"
 dependencies = [
  "forge-runtime",
  "forge-storage",
+ "libc",
  "serde",
  "uniffi",
 ]

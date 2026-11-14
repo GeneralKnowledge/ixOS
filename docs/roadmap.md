@@ -41,6 +41,17 @@ Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progre
 
 Rust interfaces stay platform-neutral, so Android implementations can be added when the work resumes. Contributions that keep Android building are welcome; larger Android work should wait until this section changes.
 
+**Android parity plan** (agreed 2026-11-14, Reuben). Rust stays the one shared core; Android's interface is Jetpack Compose with Material 3, with no shared UI code. Every stage runs on the emulator; a physical phone only at the end.
+
+| Stage | Work | Size | Status |
+|---|---|---|---|
+| 0 | Pocket Library's own Rust core under a minimal Compose app (add, open, delete), a Kotlin `ForgeHost`, a Compose UI test by `screen.element` ids on a CI emulator ([examples/pocket-library-android](../examples/pocket-library-android/README.md)) | 3 to 5 days | **In progress** (started early, alongside P2 to P4) |
+| 1 | One token file generating ForgeUI's Swift and Kotlin tokens; ForgeUI Compose 0.1 and an Android showcase | 1.5 to 2 weeks | After P4 |
+| 2 | ForgeAppKit's model types and their Compose views in Kotlin | About 1 week | After P4 |
+| 3 | Android adapters for the native services; an "emulator" column in the ledger | 1 to 2 weeks | After P4 |
+| 4 | The whole of Pocket Library on Android, meeting its requirements on the emulator | 2 to 3 weeks | After P4 |
+| 5 | `forge run android --emulator` and logcat (device tooling stays frozen) | Small | After P4 |
+
 ### Tooling freeze and reuse rules
 
 Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-audit.md). The framework mostly builds on existing tools; the custom code is in the tooling, so:
