@@ -12,6 +12,7 @@ struct BookSummarySheet: View {
     let bookTitle: String
     @State var state: BookSummaryState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -33,6 +34,10 @@ struct BookSummarySheet: View {
             keepAwake(false)
         }
         .onChange(of: state.phase) { _, phase in keepAwake(phase == .working) }
+        // Stopped in the background: carry on from the saved progress.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active, state.pausedInBackground { state.start() }
+        }
         .interactiveDismissDisabled(state.phase == .working)
     }
 
@@ -55,7 +60,7 @@ struct BookSummarySheet: View {
     private var offer: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Apple Intelligence reads the whole book on this iPhone, chapter by chapter, and writes an overview, a who's who and a summary of every chapter.")
-            Text("A team of roles takes turns on the phone's model: a reader lists what happens in each part, a writer summarises each chapter, an editor checks it doesn't copy the book, and a cast keeper follows the people. A novel can take 10 to 20 minutes; keep Pocket Library open. Chapter summaries are kept as it goes, so stopping and starting again picks up where it left off.")
+            Text("A team of roles takes turns on the phone's model: a reader lists what happens in each part, a writer summarises each chapter, an editor checks it doesn't copy the book, and a cast keeper follows the people. A novel can take 10 to 20 minutes. You can leave Pocket Library: on iOS 26 it carries on in the background, with its progress on the Lock Screen, for as long as iOS allows. Progress is saved after every chapter, so a stopped run picks up where it left off.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Label("The overview tells you how the book ends.", systemImage: "eye.trianglebadge.exclamationmark")
@@ -64,13 +69,18 @@ struct BookSummarySheet: View {
             Button {
                 state.start()
             } label: {
-                Label("Read the Whole Book", systemImage: "sparkles")
+                Label(startTitle, systemImage: "sparkles")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
             .accessibilityIdentifier("bookSummary.start")
         }
+    }
+
+    private var startTitle: String {
+        guard let run = state.unfinished else { return "Read the Whole Book" }
+        return "Carry On from Chapter \(run.chaptersDone + 1) of \(run.chapters)"
     }
 
     private var unavailable: some View {
@@ -92,11 +102,16 @@ struct BookSummarySheet: View {
             .animation(.default, value: state.fractionDone)
             if let startedAt = state.startedAt {
                 TimelineView(.periodic(from: startedAt, by: 1)) { context in
-                    Text("\(elapsed(since: startedAt, now: context.date)) so far · keep Pocket Library open")
+                    Text("\(elapsed(since: startedAt, now: context.date)) so far")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
                 }
+            }
+            if let note = state.backgroundNote {
+                Label("Keep Pocket Library open: it can't read in the background here. \(note).", systemImage: "info.circle")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
             if !state.draft.isEmpty {
                 Text(state.draft)
@@ -157,11 +172,13 @@ struct BookSummarySheet: View {
                 Text(ErrorText.title(error)).font(.headline)
                 Text(ErrorText.message(error))
             }
-            Text("Chapters already summarised are kept, so trying again carries on from there.")
+            Text(state.pausedInBackground
+                ? "It stopped while Pocket Library was in the background. It carries on from the last chapter when you come back."
+                : "Progress is saved after every chapter, so trying again carries on from there.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             if state.info.available {
-                Button("Try Again") { state.start() }
+                Button("Carry On") { state.start() }
                     .buttonStyle(.borderedProminent)
                     .accessibilityIdentifier("bookSummary.retry")
             }

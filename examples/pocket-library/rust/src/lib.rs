@@ -42,15 +42,15 @@ use forge_net::UreqClient;
 use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
-use domain::{fold, validate, LibraryData, StoredBookSynopsis, StoredSynopsis};
+use domain::{fold, validate, LibraryData, StoredBookRun, StoredBookSynopsis, StoredSynopsis};
 pub use error::LibraryError;
 use forge_storage::Staged;
 pub use model::*;
 use reader::EpubText;
 use store::Store;
 pub use summary::{
-    BookSynopsis, CastMember, ChapterSynopsis, SummaryModel, SummaryModelError, SummaryModelInfo,
-    SummaryProgress, SummaryRequest, SummarySink, SummaryStage,
+    BookRunProgress, BookSynopsis, CastMember, ChapterSynopsis, SummaryModel, SummaryModelError,
+    SummaryModelInfo, SummaryProgress, SummaryRequest, SummarySink, SummaryStage,
 };
 
 // No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
@@ -711,13 +711,28 @@ impl Library {
         self.data.get().book_synopsis(id)
     }
 
+    /// Where an unfinished whole-book run got to, if one did: the next
+    /// `summarise_book` carries on from there.
+    pub fn book_run(&self, id: u64) -> Option<BookRunProgress> {
+        self.data.get().book_run(id).map(|r| BookRunProgress {
+            chapters_done: r.sections_done,
+            chapters: r.sections,
+            seconds: r.seconds,
+            model_requests: r.model_requests,
+        })
+    }
+
     /// The whole-book "swarm": every chapter is read (summaries already
     /// saved are reused, and each new one is saved as soon as it is done,
     /// so a stopped run resumes where it left off), a cast keeper updates
     /// the list of people after each chapter, and the overview is written
     /// from the chapter summaries and the cast. A chapter the model
-    /// declines is skipped and counted. Takes minutes; on-screen work, like
-    /// `summarise_chapter`.
+    /// declines is skipped and counted. Takes minutes. It keeps going when
+    /// the app leaves the screen (the host asks iOS for background time;
+    /// iOS may still suspend it, or the model may refuse to work in the
+    /// background, which stops it with `Interrupted`). After every chapter
+    /// it saves where it got to (`book_run`), so the next call carries on
+    /// from the next chapter with the cast and counts so far.
     pub async fn summarise_book(
         &self,
         id: u64,
@@ -756,7 +771,7 @@ impl Library {
             .rt
             .run(
                 "open-book-text",
-                self.rt.foreground(cancellation.as_deref()),
+                self.rt.lifetime(cancellation.as_deref()),
                 move |_| EpubText::open_file(&path).map(|t| Arc::new(Mutex::new(t))),
             )
             .await?;
@@ -768,15 +783,43 @@ impl Library {
             ));
         }
         let total = sections.len() as u32;
+        // Carry on from an unfinished run of this EPUB with as many sections.
+        let resumed = self
+            .data
+            .get()
+            .book_run(id)
+            .filter(|r| r.sections == total)
+            .cloned();
         let source = |chapter_title: &str| summary::Source {
             book_title: book_title.clone(),
             author: author.clone(),
             chapter_title: chapter_title.to_string(),
         };
         let mut cast: Vec<CastMember> = Vec::new();
-        let mut summaries: Vec<String> = Vec::new();
-        let (mut requests, mut skipped) = (0u32, 0u32);
-        for (n, range) in sections.into_iter().enumerate() {
+        let (mut requests, mut skipped, mut earlier_seconds, mut done) = (0u32, 0u32, 0u32, 0u32);
+        if let Some(run) = &resumed {
+            cast = run.cast.clone();
+            requests = run.model_requests;
+            skipped = run.chapters_skipped;
+            earlier_seconds = run.seconds;
+            done = run.sections_done;
+        }
+        let seconds = |started: &std::time::Instant| {
+            earlier_seconds
+                .saturating_add(started.elapsed().as_secs().min(u64::from(u32::MAX)) as u32)
+        };
+        // The summaries of sections already done, for the overview.
+        let mut summaries: Vec<String> = {
+            let data = self.data.get();
+            sections[..done as usize]
+                .iter()
+                .filter_map(|range| {
+                    data.synopsis(id, range.start)
+                        .map(|s| format!("{}: {}", s.title, s.text))
+                })
+                .collect()
+        };
+        for (n, range) in sections.into_iter().enumerate().skip(done as usize) {
             let title = chapters[range.start as usize].title.clone();
             let saved = self.data.get().synopsis(id, range.start).cloned();
             if let Some(progress) = &progress {
@@ -793,7 +836,7 @@ impl Library {
                     let (model, progress, text) =
                         (Arc::clone(&model), progress.clone(), Arc::clone(&text));
                     let (source, range2) = (source(&title), range.clone());
-                    let work = self.rt.foreground(cancellation.as_deref());
+                    let work = self.rt.lifetime(cancellation.as_deref());
                     let result = self
                         .rt
                         .run("summarise-book-chapter", work, move |cancel| {
@@ -848,7 +891,7 @@ impl Library {
             // The cast keeper's turn.
             let (model, progress, current) = (Arc::clone(&model), progress.clone(), cast.clone());
             let (source2, title2, text2) = (source(&title), title.clone(), chapter_text.clone());
-            let work = self.rt.foreground(cancellation.as_deref());
+            let work = self.rt.lifetime(cancellation.as_deref());
             let (updated, used) = self
                 .rt
                 .run("update-cast", work, move |cancel| {
@@ -866,6 +909,18 @@ impl Library {
             cast = updated;
             requests += used;
             summaries.push(format!("{title}: {chapter_text}"));
+            self.save_book_run(
+                id,
+                &epub_file,
+                n as u32 + 1,
+                total,
+                &cast,
+                summaries.len() as u32,
+                skipped,
+                requests,
+                seconds(&started),
+            )
+            .await?;
         }
         if summaries.is_empty() {
             return Err(LibraryError::SummaryRefused {
@@ -879,7 +934,7 @@ impl Library {
             summaries.clone(),
         );
         let source2 = source("");
-        let work = self.rt.foreground(cancellation.as_deref());
+        let work = self.rt.lifetime(cancellation.as_deref());
         let (overview, used) = self
             .rt
             .run("book-overview", work, move |cancel| {
@@ -902,7 +957,7 @@ impl Library {
             chapters_read: summaries.len() as u32,
             chapters_skipped: skipped,
             model_requests: requests,
-            seconds: started.elapsed().as_secs().min(u64::from(u32::MAX)) as u32,
+            seconds: seconds(&started),
             model_name: info.name,
             created_at_ms: now_ms(),
         };
@@ -1118,6 +1173,37 @@ impl Library {
             last_search: Arc::new(Mutex::new(HashMap::new())),
             open_book: Arc::new(Mutex::new(None)),
         }))
+    }
+
+    /// Saves where a whole-book run got to, after each chapter.
+    #[allow(clippy::too_many_arguments)]
+    async fn save_book_run(
+        &self,
+        id: u64,
+        epub_file: &str,
+        sections_done: u32,
+        sections: u32,
+        cast: &[CastMember],
+        chapters_read: u32,
+        chapters_skipped: u32,
+        model_requests: u32,
+        seconds: u32,
+    ) -> Result<(), LibraryError> {
+        let run = StoredBookRun {
+            epub_file: epub_file.to_string(),
+            sections_done,
+            sections,
+            cast: cast.to_vec(),
+            chapters_read,
+            chapters_skipped,
+            model_requests,
+            seconds,
+        };
+        self.rt
+            .command("save-book-run", move |state| {
+                state.commit(|data, _, _| data.save_book_run(id, run))
+            })
+            .await
     }
 
     fn ensure_catalogue_enabled(&self) -> Result<(), LibraryError> {

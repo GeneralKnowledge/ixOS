@@ -80,6 +80,8 @@ public final class AppleIntelligenceSummarizer: SummaryModel, Sendable {
                     throw SummaryModelError.Refused(reason: "Apple Intelligence declined this passage.")
                 case .exceededContextWindowSize:
                     throw SummaryModelError.ContextTooLong(reason: "\(error)")
+                case .rateLimited:
+                    throw SummaryModelError.Busy(reason: "Apple Intelligence is limiting requests from the background.")
                 case .assetsUnavailable:
                     throw SummaryModelError.Unavailable(reason: availability().1 ?? "\(error)")
                 default:

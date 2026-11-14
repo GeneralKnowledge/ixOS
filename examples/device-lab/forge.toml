@@ -20,6 +20,13 @@ ios_simulator = false
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.
 [ios]
 orientations = ["portrait"]
+# Pocket Library's "Read the Whole Book" runs on as a continued-processing
+# task named after the host's bundle id (with and without xtool's
+# XTL-<team>. prefix); see examples/pocket-library/forge.toml.
+background_tasks = [
+    "org.forgemobile.devicelab.booksummary.*",
+    "XTL-ND4P87PX52.org.forgemobile.devicelab.booksummary.*",
+]
 
 # The apps on the Apps screen. Forge merges their iOS settings into this
 # app's when it reads this file: Pocket Library's audio background mode,

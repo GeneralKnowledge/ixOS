@@ -341,6 +341,11 @@ public final class LibraryModel {
         library?.bookSynopsis(id: id)
     }
 
+    /// Where an unfinished whole-book run got to, if one did.
+    public func bookRun(_ id: UInt64) -> BookRunProgress? {
+        library?.bookRun(id: id)
+    }
+
     /// Reads the whole book with `model` (minutes) and saves its summary.
     /// Chapter summaries are saved as it goes, so a stopped run resumes.
     public func summariseBook(

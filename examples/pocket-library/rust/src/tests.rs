@@ -1036,3 +1036,36 @@ fn a_whole_book_summary_reads_every_chapter_and_reuses_saved_ones() {
         block_on(library.summarise_book(book.id, Arc::new(FakeModel::new()), None, None)).unwrap();
     assert_eq!(again.model_requests, 3);
 }
+
+#[test]
+fn a_stopped_whole_book_run_carries_on_where_it_left_off() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Paused");
+
+    // The model is throttled after the first chapter (reader, writer, cast).
+    let mut busy = FakeModel::new();
+    busy.busy_after = Some(3);
+    assert_eq!(
+        block_on(library.summarise_book(book.id, Arc::new(busy), None, None)),
+        Err(LibraryError::Interrupted)
+    );
+    let run = library.book_run(book.id).unwrap();
+    assert_eq!(
+        (run.chapters_done, run.chapters, run.model_requests),
+        (1, 2, 3)
+    );
+
+    // After a relaunch, the next run does only chapter 2 and the overview.
+    let library = reopen(library, dir.path());
+    let model = Arc::new(FakeModel::new());
+    let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
+    assert_eq!(model.asked.lock().unwrap().len(), 4);
+    assert_eq!(synopsis.model_requests, 7);
+    assert_eq!(synopsis.chapters_read, 2);
+    assert!(model.asked.lock().unwrap()[3]
+        .prompt
+        .contains("Chapter: Answer"));
+    assert_eq!(library.book_run(book.id), None);
+}

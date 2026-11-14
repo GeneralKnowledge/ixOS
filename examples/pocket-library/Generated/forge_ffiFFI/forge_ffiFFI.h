@@ -327,6 +327,11 @@ uint64_t uniffi_pocket_library_core_fn_method_library_backup_library(uint64_t pt
 RustBuffer uniffi_pocket_library_core_fn_method_library_book(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_RUN
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_RUN
+RustBuffer uniffi_pocket_library_core_fn_method_library_book_run(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_SYNOPSIS
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_SYNOPSIS
 RustBuffer uniffi_pocket_library_core_fn_method_library_book_synopsis(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
@@ -863,6 +868,12 @@ uint16_t uniffi_pocket_library_core_checksum_method_library_backup_library(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK
 uint16_t uniffi_pocket_library_core_checksum_method_library_book(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK_RUN
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK_RUN
+uint16_t uniffi_pocket_library_core_checksum_method_library_book_run(void
     
 );
 #endif

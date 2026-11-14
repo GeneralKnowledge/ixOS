@@ -112,6 +112,11 @@ pub enum SummaryModelError {
     /// Stopped through the sink.
     #[error("stopped")]
     Stopped,
+    /// The model is throttled for now (Foundation Models limits apps in
+    /// the background). Nothing is lost: the run pauses and carries on
+    /// when the app is back on screen.
+    #[error("busy: {reason}")]
+    Busy { reason: String },
     #[error("{reason}")]
     Engine { reason: String },
 }
@@ -266,6 +271,18 @@ pub struct BookSynopsis {
     pub seconds: u32,
     pub model_name: String,
     pub created_at_ms: i64,
+}
+
+/// A whole-book run that stopped part way (stopped, interrupted, the app
+/// closed): the next run carries on from `next_chapter`, with the cast and
+/// counts so far.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct BookRunProgress {
+    /// Chapters done, so the next is `chapters_done + 1`.
+    pub chapters_done: u32,
+    pub chapters: u32,
+    pub seconds: u32,
+    pub model_requests: u32,
 }
 
 /// The sections a whole-book summary reads: one per chapter (see
@@ -1054,6 +1071,7 @@ impl Summariser<'_> {
                 LibraryError::SummaryUnavailable { reason }
             }
             SummaryModelError::Refused { reason } => LibraryError::SummaryRefused { reason },
+            SummaryModelError::Busy { .. } => LibraryError::Interrupted,
             SummaryModelError::ContextTooLong { reason } | SummaryModelError::Engine { reason } => {
                 LibraryError::SummaryFailed { reason }
             }
@@ -1083,6 +1101,8 @@ pub(crate) mod tests {
         /// Prompts estimated above this many tokens are "too long".
         pub window: usize,
         pub available: bool,
+        /// Requests after this many answer `Busy`.
+        pub busy_after: Option<usize>,
     }
 
     impl FakeModel {
@@ -1092,6 +1112,7 @@ pub(crate) mod tests {
                 refuse: None,
                 window: CONTEXT_TOKENS,
                 available: true,
+                busy_after: None,
             }
         }
 
@@ -1125,6 +1146,11 @@ pub(crate) mod tests {
                 asked.push(request.clone());
                 asked.len()
             };
+            if self.busy_after.is_some_and(|limit| n > limit) {
+                return Err(SummaryModelError::Busy {
+                    reason: "rate limited".into(),
+                });
+            }
             if self.refuse.is_some_and(|r| request.prompt.contains(r)) {
                 return Err(SummaryModelError::Refused {
                     reason: "no".into(),

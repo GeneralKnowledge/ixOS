@@ -669,6 +669,12 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func book(id: UInt64) throws  -> Book
     
     /**
+     * Where an unfinished whole-book run got to, if one did: the next
+     * `summarise_book` carries on from there.
+     */
+    func bookRun(id: UInt64)  -> BookRunProgress?
+    
+    /**
      * The saved whole-book summary, with every saved chapter summary.
      */
     func bookSynopsis(id: UInt64)  -> BookSynopsis?
@@ -830,8 +836,12 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * so a stopped run resumes where it left off), a cast keeper updates
      * the list of people after each chapter, and the overview is written
      * from the chapter summaries and the cast. A chapter the model
-     * declines is skipped and counted. Takes minutes; on-screen work, like
-     * `summarise_chapter`.
+     * declines is skipped and counted. Takes minutes. It keeps going when
+     * the app leaves the screen (the host asks iOS for background time;
+     * iOS may still suspend it, or the model may refuse to work in the
+     * background, which stops it with `Interrupted`). After every chapter
+     * it saves where it got to (`book_run`), so the next call carries on
+     * from the next chapter with the cast and counts so far.
      */
     func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?) async throws  -> BookSynopsis
     
@@ -1013,6 +1023,20 @@ open func book(id: UInt64)throws  -> Book  {
     return try  FfiConverterTypeBook_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
     uniffi_pocket_library_core_fn_method_library_book(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Where an unfinished whole-book run got to, if one did: the next
+     * `summarise_book` carries on from there.
+     */
+open func bookRun(id: UInt64) -> BookRunProgress?  {
+    return try!  FfiConverterOptionTypeBookRunProgress.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_book_run(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
     )
@@ -1451,8 +1475,12 @@ open func storageInfo() -> StorageInfo  {
      * so a stopped run resumes where it left off), a cast keeper updates
      * the list of people after each chapter, and the overview is written
      * from the chapter summaries and the cast. A chapter the model
-     * declines is skipped and counted. Takes minutes; on-screen work, like
-     * `summarise_chapter`.
+     * declines is skipped and counted. Takes minutes. It keeps going when
+     * the app leaves the screen (the host asks iOS for background time;
+     * iOS may still suspend it, or the model may refuse to work in the
+     * background, which stops it with `Interrupted`). After every chapter
+     * it saves where it got to (`book_run`), so the next call carries on
+     * from the next chapter with the cast and counts so far.
      */
 open func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?)async throws  -> BookSynopsis  {
     return
@@ -2570,6 +2598,79 @@ public func FfiConverterTypeBookInput_lift(_ buf: RustBuffer) throws -> BookInpu
 #endif
 public func FfiConverterTypeBookInput_lower(_ value: BookInput) -> RustBuffer {
     return FfiConverterTypeBookInput.lower(value)
+}
+
+
+/**
+ * A whole-book run that stopped part way (stopped, interrupted, the app
+ * closed): the next run carries on from `next_chapter`, with the cast and
+ * counts so far.
+ */
+public struct BookRunProgress: Equatable, Hashable {
+    /**
+     * Chapters done, so the next is `chapters_done + 1`.
+     */
+    public var chaptersDone: UInt32
+    public var chapters: UInt32
+    public var seconds: UInt32
+    public var modelRequests: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Chapters done, so the next is `chapters_done + 1`.
+         */chaptersDone: UInt32, chapters: UInt32, seconds: UInt32, modelRequests: UInt32) {
+        self.chaptersDone = chaptersDone
+        self.chapters = chapters
+        self.seconds = seconds
+        self.modelRequests = modelRequests
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BookRunProgress: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBookRunProgress: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BookRunProgress {
+        return
+            try BookRunProgress(
+                chaptersDone: FfiConverterUInt32.read(from: &buf), 
+                chapters: FfiConverterUInt32.read(from: &buf), 
+                seconds: FfiConverterUInt32.read(from: &buf), 
+                modelRequests: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BookRunProgress, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.chaptersDone, into: &buf)
+        FfiConverterUInt32.write(value.chapters, into: &buf)
+        FfiConverterUInt32.write(value.seconds, into: &buf)
+        FfiConverterUInt32.write(value.modelRequests, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookRunProgress_lift(_ buf: RustBuffer) throws -> BookRunProgress {
+    return try FfiConverterTypeBookRunProgress.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookRunProgress_lower(_ value: BookRunProgress) -> RustBuffer {
+    return FfiConverterTypeBookRunProgress.lower(value)
 }
 
 
@@ -4662,6 +4763,13 @@ enum SummaryModelError: Swift.Error, Equatable, Hashable, Foundation.LocalizedEr
      * Stopped through the sink.
      */
     case Stopped
+    /**
+     * The model is throttled for now (Foundation Models limits apps in
+     * the background). Nothing is lost: the run pauses and carries on
+     * when the app is back on screen.
+     */
+    case Busy(reason: String
+    )
     case Engine(reason: String
     )
 
@@ -4703,7 +4811,10 @@ public struct FfiConverterTypeSummaryModelError: FfiConverterRustBuffer {
             reason: try FfiConverterString.read(from: &buf)
             )
         case 4: return .Stopped
-        case 5: return .Engine(
+        case 5: return .Busy(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Engine(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -4737,8 +4848,13 @@ public struct FfiConverterTypeSummaryModelError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
         
         
-        case let .Engine(reason):
+        case let .Busy(reason):
             writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Engine(reason):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -5277,6 +5393,30 @@ fileprivate struct FfiConverterOptionTypeSummaryProgress: FfiConverterRustBuffer
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeSummaryProgress.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeBookRunProgress: FfiConverterRustBuffer {
+    typealias SwiftType = BookRunProgress?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBookRunProgress.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBookRunProgress.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -5840,6 +5980,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_book_run() != 1821) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_book_synopsis() != 3612) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5915,7 +6058,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_storage_info() != 16703) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_summarise_book() != 5864) {
+    if (uniffi_pocket_library_core_checksum_method_library_summarise_book() != 10671) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_summarise_chapter() != 16118) {

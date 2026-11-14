@@ -82,7 +82,9 @@ struct ReaderView: View {
         .sheet(isPresented: $showingBookSummary) {
             BookSummarySheet(
                 bookTitle: contents?.title ?? "",
-                state: BookSummaryState(library: model, bookID: bookID, model: AppleIntelligenceSummarizer())
+                state: BookSummaryState(
+                    library: model, bookID: bookID, bookTitle: contents?.title ?? "",
+                    model: AppleIntelligenceSummarizer())
             )
         }
         .forgeAlert($error)

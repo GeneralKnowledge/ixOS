@@ -24,22 +24,29 @@ public final class BookSummaryState {
     public private(set) var writingOverview = false
     /// When the current run started, for the elapsed time.
     public private(set) var startedAt: Date?
+    /// An unfinished earlier run the next one carries on from.
+    public private(set) var unfinished: BookRunProgress?
+    /// Why iOS won't keep the run going in the background, if it won't.
+    public private(set) var backgroundNote: String?
     public let info: SummaryModelInfo
 
     private let library: LibraryModel
     private let bookID: UInt64
+    private let bookTitle: String
     private let model: SummaryModel
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    public init(library: LibraryModel, bookID: UInt64, model: SummaryModel) {
+    public init(library: LibraryModel, bookID: UInt64, bookTitle: String, model: SummaryModel) {
         self.library = library
         self.bookID = bookID
+        self.bookTitle = bookTitle
         self.model = model
         info = model.describe()
     }
 
     public func load() {
         synopsis = library.bookSynopsis(bookID)
+        unfinished = library.bookRun(bookID)
         phase = synopsis == nil ? .empty : .ready
     }
 
@@ -54,10 +61,15 @@ public final class BookSummaryState {
         stage = .opening
         startedAt = Date()
         let relay = SummaryProgressRelay { [weak self] stage in self?.apply(stage) }
+        backgroundNote = BookBackgroundTask.shared.begin(title: "Reading \u{201C}\(bookTitle)\u{201D}") { [weak self] in
+            self?.stop()
+        }
         task = Task {
+            var finished = false
             do {
                 synopsis = try await library.summariseBook(bookID, model: model, progress: relay)
                 phase = .ready
+                finished = true
             } catch let error as LibraryError where error.isCancellation {
                 synopsis = previous
                 phase = previous == nil ? .empty : .ready
@@ -66,6 +78,8 @@ public final class BookSummaryState {
                 self.error = error
                 phase = .failed
             }
+            BookBackgroundTask.shared.end(success: finished)
+            unfinished = library.bookRun(bookID)
             startedAt = nil
         }
     }
@@ -74,14 +88,26 @@ public final class BookSummaryState {
         task?.cancel()
     }
 
+    /// Whether the run stopped because the app was in the background (iOS
+    /// or Apple's model wouldn't let it carry on there): the sheet starts
+    /// it again when the app is back.
+    public var pausedInBackground: Bool {
+        guard phase == .failed, let error = error as? LibraryError else { return false }
+        if case .Interrupted = error { return true }
+        return false
+    }
+
     private func apply(_ stage: SummaryStage) {
         switch stage {
         case .chapter(let chapter, let chapters, let title, _):
             self.chapter = Int(chapter)
             self.chapters = Int(chapters)
             chapterTitle = title
+            BookBackgroundTask.shared.update(
+                done: Int(chapter) - 1, total: Int(chapters), subtitle: "Chapter \(chapter) of \(chapters)")
         case .overview:
             writingOverview = true
+            BookBackgroundTask.shared.update(done: chapters, total: chapters + 1, subtitle: "Writing the overview")
         default:
             break
         }

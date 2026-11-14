@@ -57,6 +57,24 @@ pub struct StoredBook {
     /// The whole-book summary, for the saved EPUB.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub book_synopsis: Option<StoredBookSynopsis>,
+    /// A whole-book run that has not finished, so the next one resumes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub book_run: Option<StoredBookRun>,
+}
+
+/// Where an unfinished whole-book run got to: saved after every chapter.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredBookRun {
+    pub epub_file: String,
+    /// Sections done (an index into `summary::book_sections`).
+    pub sections_done: u32,
+    pub sections: u32,
+    #[serde(default)]
+    pub cast: Vec<CastMember>,
+    pub chapters_read: u32,
+    pub chapters_skipped: u32,
+    pub model_requests: u32,
+    pub seconds: u32,
 }
 
 /// A whole-book summary as saved; its chapters are the book's saved
@@ -386,6 +404,7 @@ impl LibraryData {
             reading_position: None,
             synopses: Vec::new(),
             book_synopsis: None,
+            book_run: None,
         });
         let title = self.book(id)?.title.clone();
         self.record(id, &title, now, ActivityKind::Added);
@@ -465,6 +484,7 @@ impl LibraryData {
         book.reading_position = None;
         book.synopses.clear();
         book.book_synopsis = None;
+        book.book_run = None;
         Ok(())
     }
 
@@ -505,6 +525,25 @@ impl LibraryData {
         })
     }
 
+    /// The unfinished whole-book run for the book's current EPUB.
+    pub fn book_run(&self, id: u64) -> Option<&StoredBookRun> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        book.book_run.as_ref().filter(|r| r.epub_file == epub)
+    }
+
+    /// Saves where a whole-book run got to.
+    pub fn save_book_run(&mut self, id: u64, run: StoredBookRun) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(run.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.book_run = Some(run);
+        Ok(())
+    }
+
     /// Saves a whole-book summary in place of the last one. Refused if the
     /// book's EPUB changed meanwhile.
     pub fn save_book_synopsis(
@@ -519,6 +558,7 @@ impl LibraryData {
             });
         }
         book.book_synopsis = Some(synopsis);
+        book.book_run = None;
         Ok(())
     }
 
