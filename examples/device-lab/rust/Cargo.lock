@@ -1360,6 +1360,7 @@ dependencies = [
  "forge-app",
  "forge-devproto",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "serde",
  "thiserror",

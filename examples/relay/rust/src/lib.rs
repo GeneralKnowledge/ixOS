@@ -18,6 +18,11 @@
 //! - **Receiving.** `start_listening` opens a TCP port (the app advertises
 //!   it with Bonjour) and takes notes and files from paired devices. A file
 //!   is kept only if its SHA-256 matches what the sender announced.
+//! - **Asking another device's model** (protocol 2, docs/forge-ai-plan.md
+//!   A1): `ask` sends Forge AI's request to a paired device and streams the
+//!   answer back; `answer_asks` makes this device answer paired devices'
+//!   asks with a model, one at a time. The `relay serve-ai` command answers
+//!   with any OpenAI-compatible server (llama.cpp, Ollama, LM Studio).
 //! - The `relay` command (`--features cli`) is the same code on Linux, so
 //!   one iPhone and a laptop are enough to try it.
 
@@ -35,8 +40,10 @@ use std::time::Duration;
 
 use forge_app::{Cancellation, DataDirectory, Document, Published, Runtime};
 use forge_runtime::{lock, now_ms};
+use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, TextOut};
 use forge_storage::FileStore;
 
+pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
 pub use model::{
     relay_error_kind, Direction, Identity, Invitation, Item, Peer, RelayError, Transfer,
@@ -92,6 +99,8 @@ pub struct RelayCore {
     invitation: Mutex<Pending>,
     progress: Mutex<HashMap<u64, u64>>,
     listening: Mutex<Option<Listening>>,
+    /// The model this device answers paired devices' asks with.
+    answers_with: Mutex<Option<Arc<dyn LanguageModel>>>,
     me: Weak<RelayCore>,
 }
 
@@ -142,6 +151,7 @@ impl RelayCore {
             invitation: Mutex::new(None),
             progress: Mutex::new(HashMap::new()),
             listening: Mutex::new(None),
+            answers_with: Mutex::new(None),
             me: me.clone(),
         }))
     }
@@ -427,6 +437,79 @@ enum Payload {
 }
 
 impl RelayCore {
+    /// Answers paired devices' asks with `model`, one at a time (another
+    /// ask meanwhile gets `Busy`); `None` stops answering. Used by `relay
+    /// serve-ai`; the app gets it with the AI Lab (A2).
+    pub fn answer_asks(&self, model: Option<Arc<dyn LanguageModel>>) {
+        *lock(&self.answers_with) = model.map(|model| {
+            Arc::new(OneAtATime {
+                model,
+                busy: Mutex::new(()),
+            }) as Arc<dyn LanguageModel>
+        });
+    }
+
+    /// Asks a paired device's model (at `addresses`, or where it was last
+    /// reached). The answer arrives in `out` piece by piece; when `out`
+    /// says stop, the other device stops its model. Blocks until the answer
+    /// ends: call it from a worker thread. The outer result is the
+    /// connection's, the inner the model's (`Ok` with the model's name).
+    pub fn ask(
+        &self,
+        device_id: &str,
+        request: ChatRequest,
+        addresses: Vec<String>,
+        out: &dyn TextOut,
+    ) -> Result<Result<String, AiError>, RelayError> {
+        let (addresses, secret) = self.route(device_id, addresses)?;
+        let mut link = Link::dial(
+            &addresses,
+            &self.me_now(),
+            Purpose::Session,
+            &secret,
+            device_id,
+        )?;
+        let answer = link.ask(request, out)?;
+        let (them, address) = (link.them.clone(), link.address.clone());
+        link.close();
+        let saved = forge_runtime::block_on(self.rt.command("reached", move |state| {
+            state.change(|r| {
+                r.reached(&them.device_id, &them.name, Some(address));
+                Ok(())
+            })
+        }));
+        if let Err(err) = saved {
+            forge_runtime::logging::warn!("relay couldn't save where a peer was: {err}");
+        }
+        Ok(answer)
+    }
+
+    /// Where to reach a paired device, and the pair's secret.
+    fn route(
+        &self,
+        device_id: &str,
+        addresses: Vec<String>,
+    ) -> Result<(Vec<String>, [u8; 32]), RelayError> {
+        let record = self.record.get();
+        let peer = record
+            .peer(device_id)
+            .ok_or_else(|| RelayError::UnknownPeer {
+                id: device_id.to_string(),
+            })?;
+        let secret = record.secret(device_id).ok_or(RelayError::Refused)?;
+        let addresses = if addresses.is_empty() {
+            peer.last_address.iter().cloned().collect()
+        } else {
+            addresses
+        };
+        if addresses.is_empty() {
+            return Err(RelayError::Unreachable {
+                reason: "the other device hasn't been found on this network".into(),
+            });
+        }
+        Ok((addresses, secret))
+    }
+
     fn me_now(&self) -> Me {
         let id = self.identity();
         Me {
@@ -461,23 +544,7 @@ impl RelayCore {
         addresses: Vec<String>,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<Transfer, RelayError> {
-        let record = self.record.get();
-        let peer = record
-            .peer(&device_id)
-            .ok_or_else(|| RelayError::UnknownPeer {
-                id: device_id.clone(),
-            })?;
-        let secret = record.secret(&device_id).ok_or(RelayError::Refused)?;
-        let addresses = if addresses.is_empty() {
-            peer.last_address.iter().cloned().collect()
-        } else {
-            addresses
-        };
-        if addresses.is_empty() {
-            return Err(RelayError::Unreachable {
-                reason: "the other device hasn't been found on this network".into(),
-            });
-        }
+        let (addresses, secret) = self.route(&device_id, addresses)?;
         let peer_id = device_id.clone();
         let id = self
             .rt
@@ -590,6 +657,27 @@ fn serve(listener: TcpListener, core: Weak<RelayCore>, stop: Arc<AtomicBool>) {
     }
 }
 
+/// A model that answers one ask at a time.
+struct OneAtATime {
+    model: Arc<dyn LanguageModel>,
+    busy: Mutex<()>,
+}
+
+impl LanguageModel for OneAtATime {
+    fn describe(&self) -> ModelInfo {
+        self.model.describe()
+    }
+
+    fn generate(&self, request: ChatRequest, out: Arc<dyn TextOut>) -> Result<(), AiError> {
+        let Ok(_turn) = self.busy.try_lock() else {
+            return Err(AiError::Busy {
+                reason: "it is answering another request; try again shortly".into(),
+            });
+        };
+        self.model.generate(request, out)
+    }
+}
+
 /// The listening side's decisions, made against the core. Commands are
 /// queued from the connection's thread and waited for there.
 struct Answering<'a> {
@@ -680,6 +768,22 @@ impl Inbound for Answering<'_> {
         }) {
             forge_runtime::logging::warn!("relay couldn't save a transfer: {err}");
         }
+    }
+
+    fn model(&self) -> Option<Arc<dyn LanguageModel>> {
+        lock(&self.core.answers_with).clone()
+    }
+
+    fn answered(&self, them: &Them, report: &AskReport) {
+        // Timings only, never the text.
+        forge_runtime::logging::info!(
+            "relay answered an ask from {}: model={} pieces={} ms={} error={:?}",
+            them.name,
+            report.model,
+            report.pieces,
+            report.elapsed.as_millis(),
+            report.error,
+        );
     }
 }
 
