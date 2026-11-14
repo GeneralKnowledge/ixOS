@@ -5,10 +5,12 @@
 package org.forgemobile.pocketlibrary
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.forgemobile.pocketlibrary.host.ForgeCore
 import org.forgemobile.pocketlibrary.host.ForgeHost
 import uniffi.forge_app.AppPhase
@@ -66,27 +68,34 @@ class LibraryModel(
      */
     suspend fun add(title: String, author: String): Book {
         val core = library ?: throw IllegalStateException("The library isn't open yet.")
-        return core.addBook(
-            BookInput(
-                title = title,
-                author = author,
-                description = "",
-                status = ReadingStatus.WANT_TO_READ,
-                currentPage = 0u,
-                totalPages = null,
-                rating = null,
-                notes = "",
-                coverUrl = null,
-            ),
+        val input = BookInput(
+            title = title,
+            author = author,
+            description = "",
+            status = ReadingStatus.WANT_TO_READ,
+            currentPage = 0u,
+            totalPages = null,
+            rating = null,
+            notes = "",
+            coverUrl = null,
         )
+        return withContext(RUST_CALLS) { core.addBook(input) }
     }
 
     suspend fun delete(id: ULong) {
         val core = library ?: throw IllegalStateException("The library isn't open yet.")
-        core.deleteBook(id)
+        withContext(RUST_CALLS) { core.deleteBook(id) }
     }
 
     companion object {
+        /**
+         * Where the model awaits Rust's async calls. UniFFI resumes the Kotlin coroutine from
+         * Rust's waker; on a dispatcher that resumes in place (Compose's, in UI tests) the next
+         * poll then runs inside that callback and the app crashes in JNA. A pool dispatcher
+         * always posts the resume.
+         */
+        val RUST_CALLS = Dispatchers.Default
+
         val ALL_BOOKS = LibraryQuery(text = "", status = null, sort = LibrarySort.RECENTLY_ADDED)
 
         /** Text for an error, by the framework's error kind (ForgeErrors.describe in Swift). */

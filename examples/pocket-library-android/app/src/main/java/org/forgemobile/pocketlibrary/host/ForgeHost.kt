@@ -199,7 +199,9 @@ class ForgeHost<Core : ForgeCore>(
     }
 
     private fun listen(events: RuntimeEvents) {
-        listener = scope.launch {
+        // Awaited on a pool thread, not the caller's (often main) dispatcher: UniFFI resumes
+        // from Rust's waker, and a dispatcher that resumes in place re-enters Rust there.
+        listener = scope.launch(io) {
             while (true) {
                 val event = events.next() ?: break
                 when (event) {
