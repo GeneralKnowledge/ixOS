@@ -26,10 +26,16 @@
 	<string>1</string>
 	<key>NSBluetoothAlwaysUsageDescription</key>
 	<string>Device Lab shows whether Bluetooth is on. It does not connect to anything.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_forgerelay._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Relay scans another device's pairing code.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Chat uses Face ID to unlock when you turn on the app lock in Settings.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Chat connects to the demo chat server, and Commonplace reads feeds, on your local network.</string>
+	<string>Chat connects to the demo chat server, Commonplace reads feeds, and Relay finds your paired devices and sends to them, on your local network.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone.</string>
 	<key>NSMicrophoneUsageDescription</key>

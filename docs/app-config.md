@@ -82,6 +82,7 @@ When `minimum_ios` changes, Forge rewrites the `.iOS(...)` entry in `Package.swi
 | `icon` | `xtool.yml` `iconPath` | A PNG inside the app. Use 1024x1024 with no alpha channel. xtool copies it into the app and sets `CFBundleIconFile`; iOS scales it. |
 | `orientations` | `UISupportedInterfaceOrientations` | Default `["portrait"]`. |
 | `url_schemes` | `CFBundleURLTypes` | Custom schemes for deep links. System schemes (`https`, `tel`, …) are refused: use `associated_domains` for https links. |
+| `bonjour_services` | `NSBonjourServices` | Bonjour service types the app advertises or browses, such as `"_forgerelay._tcp"`. iOS refuses a type that isn't listed. Also needs a `local_network` permission text. Hosted apps' types are merged into the host's. |
 | `background_modes` | `UIBackgroundModes` | `audio`, `bluetooth-central`, `bluetooth-peripheral`, `external-accessory`, `fetch`, `location`, `nearby-interaction`, `processing`, `push-to-talk`, `remote-notification`, `voip`. |
 | `background_tasks` | `BGTaskSchedulerPermittedIdentifiers` | Background task identifiers for the `background` native service ([native-services.md](native-services.md#background-tasks-background)), such as `["org.example.app.refresh"]`. Also adds the `fetch` and `processing` background modes. Works on a free team. |
 | `languages` | `CFBundleDevelopmentRegion`, `CFBundleLocalizations` | The app's languages, development language first, such as `["en", "es"]` ([localization.md](localization.md)). |
