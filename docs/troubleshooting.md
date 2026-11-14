@@ -157,6 +157,10 @@ Expected — Rust returns `ForgeAppError.WouldUnderflow`; the UI should show a m
 
 Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.
 
+## A build says another build is running and waits
+
+That is the machine-wide build lock ([builds.md](builds.md#one-build-at-a-time)): one heavy build at a time, so builds don't starve the machine. The message names the build running now (pid, command, branch, note). Wait, or if that build is stuck, stop its process: the lock frees itself as soon as the process exits. `FORGE_BUILD_LOCK=off` turns the lock off on a machine only you build on.
+
 ## Did the laptop run start?
 
 A `forge run ios` started from somewhere else (Remote Control, an agent, a script over SSH) may be refused before it runs, and nothing on the phone says so. Every run writes `<app>/.forge/status/run-ios.json` the moment it starts: its `phase` (`starting`, `building`, `waiting_for_device`, `installing`, then `done` or `failed` with the `error`), the `pid`, and `updated`, which moves every 10 seconds while it runs. Read it within a minute of asking. If there is no file newer than the request, nothing started. If `updated` is more than a minute old and the phase isn't `done` or `failed`, the process died.
