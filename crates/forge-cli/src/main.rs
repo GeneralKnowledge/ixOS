@@ -1,6 +1,7 @@
 mod agent;
 mod app_config;
 mod app_diagnose;
+mod build_lock;
 mod check;
 mod commands;
 mod config;
