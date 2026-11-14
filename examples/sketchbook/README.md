@@ -2,7 +2,7 @@
 
 A drawing notebook: sketches drawn with a finger, in layers, with undo and
 redo, exported to PNG and PDF. The second of the remaining demo apps
-([plan](../../docs/research/app-friction-log.md)); it runs inside Device Lab
+([friction log](../../docs/research/app-friction-log.md)); it runs inside Device Lab
 once its SwiftUI app exists.
 
 ## Where it is
