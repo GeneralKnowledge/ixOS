@@ -35,6 +35,9 @@ thiserror = "2.0"
 zip = { version = "9.4", default-features = false, features = ["deflate-flate2"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 quick-xml = "0.42"
+# Chapter summaries: the on-device model is a Swift object with an async
+# method (UniFFI foreign trait).
+async-trait = "0.1"
 
 [dev-dependencies]
 tempfile = "3.14"

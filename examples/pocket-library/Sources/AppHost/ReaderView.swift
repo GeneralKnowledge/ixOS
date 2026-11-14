@@ -33,6 +33,7 @@ struct ReaderView: View {
     @State private var pendingScroll: Int?
     @State private var loadingChapter = false
     @State private var showingContents = false
+    @State private var showingSummary = false
     @State private var lastSaved: ReadingPosition?
     @State private var finishedCount = 0
     /// Counts chapter loads: each gets a fresh scroll view.
@@ -63,6 +64,17 @@ struct ReaderView: View {
                 ReaderContentsSheet(contents: contents, current: chapter?.index ?? 0) { index in
                     Task { await show(chapter: index, fraction: 0) }
                 }
+                .presentationDetents([.medium, .large])
+            }
+        }
+        .sheet(isPresented: $showingSummary) {
+            if let chapter {
+                ChapterSummarySheet(
+                    chapterTitle: chapter.title,
+                    state: ChapterSummaryState(
+                        library: model, bookID: bookID, chapter: chapter.index,
+                        model: AppleIntelligenceSummarizer())
+                )
                 .presentationDetents([.medium, .large])
             }
         }
@@ -269,6 +281,11 @@ struct ReaderView: View {
             Button("Contents", systemImage: "list.bullet") { showingContents = true }
                 .disabled(contents == nil)
                 .accessibilityIdentifier("reader.contents")
+        }
+        ToolbarItem(placement: .primaryAction) {
+            Button("Summarise Chapter", systemImage: "sparkles") { showingSummary = true }
+                .disabled(chapter == nil)
+                .accessibilityIdentifier("reader.summary")
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Read Aloud", systemImage: "headphones") {

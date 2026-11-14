@@ -9,6 +9,7 @@ use crate::model::{
     ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibrarySettings,
     LibrarySort, LibraryStats, ReadingPosition, ReadingStatus,
 };
+use crate::summary::ChapterSynopsis;
 
 pub const MAX_TITLE_CHARS: usize = 300;
 pub const MAX_AUTHOR_CHARS: usize = 200;
@@ -50,6 +51,38 @@ pub struct StoredBook {
     pub epub_file: Option<String>,
     #[serde(default)]
     pub reading_position: Option<SavedPosition>,
+    /// Chapter summaries written on this phone, for the saved EPUB.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub synopses: Vec<StoredSynopsis>,
+}
+
+/// A chapter summary as saved. `epub_file` is the EPUB it was written
+/// from: a summary of a file since replaced is never shown.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredSynopsis {
+    pub chapter: u32,
+    pub title: String,
+    pub epub_file: String,
+    pub text: String,
+    pub parts: u32,
+    #[serde(default)]
+    pub skipped_passages: u32,
+    pub model_name: String,
+    pub created_at_ms: i64,
+}
+
+impl StoredSynopsis {
+    pub fn to_synopsis(&self) -> ChapterSynopsis {
+        ChapterSynopsis {
+            chapter: self.chapter,
+            title: self.title.clone(),
+            text: self.text.clone(),
+            parts: self.parts,
+            skipped_passages: self.skipped_passages,
+            model_name: self.model_name.clone(),
+            created_at_ms: self.created_at_ms,
+        }
+    }
 }
 
 /// Where the reader was left, and the page that put the book on. If the
@@ -331,6 +364,7 @@ impl LibraryData {
             updated_at_ms: now,
             epub_file: None,
             reading_position: None,
+            synopses: Vec::new(),
         });
         let title = self.book(id)?.title.clone();
         self.record(id, &title, now, ActivityKind::Added);
@@ -408,6 +442,33 @@ impl LibraryData {
         let book = self.book_mut(id)?;
         book.epub_file = epub_file;
         book.reading_position = None;
+        book.synopses.clear();
+        Ok(())
+    }
+
+    /// The saved summary of the chapter starting at `chapter`, if it was
+    /// written from the book's current EPUB.
+    pub fn synopsis(&self, id: u64, chapter: u32) -> Option<&StoredSynopsis> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        book.synopses
+            .iter()
+            .find(|s| s.chapter == chapter && s.epub_file == epub)
+    }
+
+    /// Saves a chapter summary, replacing an earlier one of that chapter.
+    /// Refused if the book's EPUB changed while it was written.
+    pub fn save_synopsis(&mut self, id: u64, synopsis: StoredSynopsis) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(synopsis.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.synopses
+            .retain(|s| s.chapter != synopsis.chapter && s.epub_file == synopsis.epub_file);
+        book.synopses.push(synopsis);
+        book.synopses.sort_by_key(|s| s.chapter);
         Ok(())
     }
 

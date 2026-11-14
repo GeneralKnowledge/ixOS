@@ -32,6 +32,7 @@ mod error;
 mod model;
 pub mod reader;
 pub mod store;
+pub mod summary;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -41,12 +42,16 @@ use forge_net::UreqClient;
 use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
-use domain::{fold, validate, LibraryData};
+use domain::{fold, validate, LibraryData, StoredSynopsis};
 pub use error::LibraryError;
 use forge_storage::Staged;
 pub use model::*;
 use reader::EpubText;
 use store::Store;
+pub use summary::{
+    ChapterSynopsis, SummaryModel, SummaryModelError, SummaryModelInfo, SummaryProgress,
+    SummaryRequest, SummarySink, SummaryStage,
+};
 
 // No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
 // crate keeps its own bindings when another app links it.
@@ -573,6 +578,131 @@ impl Library {
             Ok(id)
         })
         .await
+    }
+
+    // MARK: Chapter summaries
+
+    /// The saved summary of the chapter that reader chapter `index` is part
+    /// of (a chapter can span several files; see `summary::section`), for
+    /// a book opened with `open_reader`. None if there is none for the
+    /// book's current EPUB.
+    pub async fn chapter_synopsis(
+        &self,
+        id: u64,
+        index: u32,
+    ) -> Result<Option<ChapterSynopsis>, LibraryError> {
+        let (data, open_book) = (Arc::clone(&self.data), Arc::clone(&self.open_book));
+        let work = self.rt.lifetime(None);
+        self.rt
+            .run("chapter-synopsis", work, move |_| {
+                let start = {
+                    let open = lock(&open_book);
+                    let book = open.as_ref().filter(|o| o.id == id).ok_or_else(|| {
+                        LibraryError::invalid("open the book in the reader first")
+                    })?;
+                    summary::section(book.text.chapters(), index).start
+                };
+                Ok(data
+                    .get()
+                    .synopsis(id, start)
+                    .map(StoredSynopsis::to_synopsis))
+            })
+            .await
+    }
+
+    /// Writes a summary of the chapter that reader chapter `index` is part
+    /// of, with `model` (Apple's on-device model, from Swift), saves it in
+    /// place of any earlier one, and returns it. Long chapters are read in
+    /// parts that fit the model's small window (see `summary`); `progress`
+    /// hears each stage and the summary as it is written. On-screen work:
+    /// `cancellation` stops it with `Cancelled`, leaving the app with
+    /// `Interrupted`, and either way nothing is saved.
+    pub async fn summarise_chapter(
+        &self,
+        id: u64,
+        index: u32,
+        model: Arc<dyn SummaryModel>,
+        progress: Option<Arc<dyn SummaryProgress>>,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<ChapterSynopsis, LibraryError> {
+        let info = model.describe();
+        if !info.available {
+            return Err(LibraryError::SummaryUnavailable {
+                reason: info
+                    .unavailable_reason
+                    .unwrap_or_else(|| format!("{} is not available", info.name)),
+            });
+        }
+        let (data, open_book) = (Arc::clone(&self.data), Arc::clone(&self.open_book));
+        let work = self.rt.foreground(cancellation.as_deref());
+        let synopsis = self
+            .rt
+            .run("summarise-chapter", work, move |cancel| {
+                if let Some(progress) = &progress {
+                    progress.changed(SummaryStage::Opening);
+                }
+                let (start, title, epub_file, paragraphs) = {
+                    let mut open = lock(&open_book);
+                    let book = open.as_mut().filter(|o| o.id == id).ok_or_else(|| {
+                        LibraryError::invalid("open the book in the reader first")
+                    })?;
+                    let range = summary::section(book.text.chapters(), index);
+                    let chapters = &book.text.chapters()[range.start as usize..range.end as usize];
+                    let words: u32 = chapters.iter().map(|c| c.words).sum();
+                    if words < summary::MIN_WORDS {
+                        return Err(LibraryError::invalid(
+                            "this section is too short to summarise",
+                        ));
+                    }
+                    if words > summary::MAX_WORDS {
+                        return Err(LibraryError::invalid(format!(
+                            "this chapter is too long to summarise on the phone ({words} words; \
+                             the most is {})",
+                            summary::MAX_WORDS
+                        )));
+                    }
+                    let title = chapters[0].title.clone();
+                    let mut paragraphs = Vec::new();
+                    for i in range.clone() {
+                        paragraphs.extend(book.text.chapter_text(i)?);
+                    }
+                    (range.start, title, book.epub_file.clone(), paragraphs)
+                };
+                let (book_title, author) = {
+                    let data = data.get();
+                    let book = data.book(id)?;
+                    (book.title.clone(), book.author.clone())
+                };
+                let written = summary::Summariser {
+                    model: model.as_ref(),
+                    cancel,
+                    progress,
+                    source: summary::Source {
+                        book_title,
+                        author,
+                        chapter_title: title.clone(),
+                    },
+                }
+                .run(&paragraphs)?;
+                Ok(StoredSynopsis {
+                    chapter: start,
+                    title,
+                    epub_file,
+                    text: written.text,
+                    parts: written.parts,
+                    skipped_passages: written.skipped_passages,
+                    model_name: info.name,
+                    created_at_ms: now_ms(),
+                })
+            })
+            .await?;
+        self.rt
+            .command("save-summary", move |state| {
+                let out = synopsis.to_synopsis();
+                state.commit(|data, _, _| data.save_synopsis(id, synopsis))?;
+                Ok(out)
+            })
+            .await
     }
 
     // MARK: LibrarySettings and data

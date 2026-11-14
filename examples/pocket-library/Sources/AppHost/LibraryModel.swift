@@ -314,6 +314,28 @@ public final class LibraryModel {
         }
     }
 
+    // MARK: Chapter summaries
+
+    /// The saved summary of the chapter that reader chapter `index` is part
+    /// of, for the book `openReader` opened.
+    public func chapterSynopsis(_ id: UInt64, index: UInt32) async throws -> ChapterSynopsis? {
+        guard let library else { throw LibraryError.ShutDown }
+        return try await library.chapterSynopsis(id: id, index: index)
+    }
+
+    /// Writes and saves a summary of that chapter with `model`. Cancelling
+    /// the calling task stops it, and nothing is saved.
+    public func summariseChapter(
+        _ id: UInt64, index: UInt32, model: SummaryModel, progress: SummaryProgress?
+    ) async throws -> ChapterSynopsis {
+        try await run { library in
+            try await withRustCancellation {
+                try await library.summariseChapter(
+                    id: id, index: index, model: model, progress: progress, cancellation: $0)
+            }
+        }
+    }
+
     public func updateSettings(_ settings: LibrarySettings) async throws {
         self.settings = try await run { try await $0.updateSettings(settings: settings) }
     }

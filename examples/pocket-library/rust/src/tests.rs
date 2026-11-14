@@ -927,3 +927,85 @@ fn the_background_interrupts_a_search_but_not_an_import() {
     assert!(!library.background_work_pending());
     assert_eq!(library.books(all()), vec![]);
 }
+
+// MARK: Chapter summaries
+
+#[test]
+fn a_chapter_summary_is_saved_with_the_book() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Summarised");
+    block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        None
+    );
+
+    let model = Arc::new(FakeModel::new());
+    let synopsis =
+        block_on(library.summarise_chapter(book.id, 1, model.clone(), None, None)).unwrap();
+    assert_eq!(synopsis.chapter, 1);
+    assert_eq!(synopsis.text, "Answer 1.");
+    assert_eq!(synopsis.model_name, "Fake Model");
+    // The book's title and the chapter's text went to the model.
+    let asked = model.asked.lock().unwrap().clone();
+    assert!(asked[0].prompt.contains("Summarised") && asked[0].prompt.contains("word word"));
+
+    // Saved: it is there after a relaunch, and only for its chapter.
+    let library = reopen(library, dir.path());
+    block_on(library.open_reader(book.id)).unwrap();
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        Some(synopsis)
+    );
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 0)).unwrap(),
+        None
+    );
+
+    // Summarising again replaces it.
+    let again =
+        block_on(library.summarise_chapter(book.id, 1, Arc::new(FakeModel::new()), None, None))
+            .unwrap();
+    let book_data = library.data.get();
+    assert_eq!(book_data.book(book.id).unwrap().synopses.len(), 1);
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 1)).unwrap(),
+        Some(again)
+    );
+}
+
+#[test]
+fn summaries_need_an_available_model_and_an_open_book() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Unsummarised");
+    let model = Arc::new(FakeModel::new());
+    assert!(matches!(
+        block_on(library.summarise_chapter(book.id, 0, model.clone(), None, None)),
+        Err(LibraryError::InvalidInput { .. })
+    ));
+    block_on(library.open_reader(book.id)).unwrap();
+    let mut off = FakeModel::new();
+    off.available = false;
+    assert_eq!(
+        block_on(library.summarise_chapter(book.id, 0, Arc::new(off), None, None)),
+        Err(LibraryError::SummaryUnavailable {
+            reason: "Turn it on.".into()
+        })
+    );
+    // A cancelled summary saves nothing.
+    let cancellation = Cancellation::new();
+    cancellation.cancel();
+    assert_eq!(
+        block_on(library.summarise_chapter(book.id, 0, model.clone(), None, Some(cancellation))),
+        Err(LibraryError::Cancelled)
+    );
+    assert_eq!(
+        block_on(library.chapter_synopsis(book.id, 0)).unwrap(),
+        None
+    );
+    assert!(model.asked.lock().unwrap().is_empty());
+}

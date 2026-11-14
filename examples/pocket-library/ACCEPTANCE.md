@@ -29,6 +29,8 @@ Status as of 2026-11-07. A step is marked done only when it was actually perform
 | 7 | Add, edit and delete books | physical device | **Not yet done** | Covered on the Mac host by XCTest (step 4) |
 | 8 | Restart the app and check persistence | physical device | **Not yet done** | Covered in Rust (`everything_survives_a_relaunch`) and XCTest |
 | 9 | Catalogue lookup and failure handling (airplane mode) | physical device | **Not yet done** | Parsing and every failure type are covered by Rust tests on canned responses; openlibrary.org is not reachable from the cloud environment, so no live request has been made yet |
+| S1 | Chapter summaries, planned in Rust: parts fit the budget and keep order, notes carry the part before, long notes are combined, a declined passage is split and counted, a whole chapter declined is an error, a smaller window than expected splits parts, cancelling saves nothing, summaries survive a relaunch and are replaced by Summarise Again | automated | Done | `cargo test summary` and `a_chapter_summary_is_saved_with_the_book`, `summaries_need_an_available_model_and_an_open_book` (fake model) |
+| S2 | Summarise a long chapter of a real book on the iPhone (Apple Intelligence on): the sheet counts the parts, the summary streams in, it names the right people and events, and it is still there after closing and reopening the reader | physical device | **Not yet done** | |
 | 10 | Change Rust logic, rebuild, reinstall, see the change on the phone | physical device | **Not yet done** | Rebuild detection has a regression test (`scripts/test-native-rebuild.sh`) |
 
 ## Framework problems found and fixed
