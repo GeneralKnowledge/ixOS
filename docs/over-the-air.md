@@ -85,4 +85,5 @@ With `--json`, `data` has `page_url`, `install_url` (this build's), `build_id`, 
 | `tailscale serve` waits, or says HTTPS isn't enabled | Turn on HTTPS Certificates in the admin console (DNS page) |
 | Safari can't open the page | Tailscale isn't on on the phone, or the laptop is asleep |
 | "Unable to install" | The profile doesn't list this iPhone (`forge publish` prints the devices it does list), or the app's 3-slot limit is full. Build once with `forge run ios` over the cable to register a new phone |
+| The app still shows the old build after Install | The download was cut off and iOS kept the old app (seen 2026-11-14 while the laptop was busy with several builds: the 46 MB download dropped mid-transfer). Compare Device Lab's **Apps > This Build** with the page, and tap Install again. The server answers range requests, so iOS can resume a download |
 | The app won't open after a week | The free team's signature expired: publish again and reinstall |

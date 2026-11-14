@@ -660,9 +660,15 @@ fn handle(mut stream: TcpStream, dir: &Path) {
     if reader.read_line(&mut line).is_err() {
         return;
     }
-    // Skip the headers.
+    // Keep only Range: iOS can resume a large .ipa download with it.
+    let mut range = None;
     let mut header = String::new();
     while reader.read_line(&mut header).is_ok_and(|n| n > 2) {
+        if let Some((name, value)) = header.split_once(':') {
+            if name.trim().eq_ignore_ascii_case("range") {
+                range = Some(value.trim().to_string());
+            }
+        }
         header.clear();
     }
     let mut parts = line.split_whitespace();
@@ -700,14 +706,56 @@ fn handle(mut stream: TcpStream, dir: &Path) {
         );
     };
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
+    let kind = content_type(&path);
+    let (status, start, end) = match range.as_deref().map(|r| byte_range(r, len)) {
+        None => ("200 OK", 0, len),
+        Some(Some((start, end))) => ("206 Partial Content", start, end),
+        Some(None) => {
+            let _ = write!(
+                stream,
+                "HTTP/1.1 416 Range Not Satisfiable\r\nContent-Range: bytes */{len}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            return;
+        }
+    };
+    let content_range = if status.starts_with("206") {
+        format!("Content-Range: bytes {start}-{}/{len}\r\n", end - 1)
+    } else {
+        String::new()
+    };
     let _ = write!(
         stream,
-        "HTTP/1.1 200 OK\r\nContent-Type: {}\r\nContent-Length: {len}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
-        content_type(&path)
+        "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n{content_range}Accept-Ranges: bytes\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        end - start
     );
     if !head {
-        let _ = std::io::copy(&mut file, &mut stream);
+        use std::io::Seek;
+        if file.seek(std::io::SeekFrom::Start(start)).is_ok() {
+            let _ = std::io::copy(&mut (&mut file).take(end - start), &mut stream);
+        }
     }
+}
+
+/// `bytes=N-`, `bytes=N-M` or `bytes=-N` as `[start, end)` within `len`
+/// bytes; None if it can't be served (several ranges, or past the end).
+fn byte_range(header: &str, len: u64) -> Option<(u64, u64)> {
+    let spec = header.strip_prefix("bytes=")?.trim();
+    if spec.contains(',') {
+        return None;
+    }
+    let (a, b) = spec.split_once('-')?;
+    let (start, end) = match (a.trim(), b.trim()) {
+        ("", n) => {
+            let n: u64 = n.parse().ok()?;
+            (len.saturating_sub(n), len)
+        }
+        (a, "") => (a.parse().ok()?, len),
+        (a, b) => (
+            a.parse().ok()?,
+            b.parse::<u64>().ok()?.saturating_add(1).min(len),
+        ),
+    };
+    (start < end && start < len).then_some((start, end))
 }
 
 /// `forge publish serve`: serves `dir` on 127.0.0.1:`port` until stopped.
@@ -1337,6 +1385,17 @@ mod tests {
     }
 
     #[test]
+    fn byte_ranges() {
+        assert_eq!(byte_range("bytes=10-", 100), Some((10, 100)));
+        assert_eq!(byte_range("bytes=10-19", 100), Some((10, 20)));
+        assert_eq!(byte_range("bytes=90-200", 100), Some((90, 100)));
+        assert_eq!(byte_range("bytes=-30", 100), Some((70, 100)));
+        assert_eq!(byte_range("bytes=100-", 100), None);
+        assert_eq!(byte_range("bytes=0-1,5-6", 100), None);
+        assert_eq!(byte_range("items=0-1", 100), None);
+    }
+
+    #[test]
     fn the_service_runs_the_server_for_this_folder() {
         let unit = unit_text(
             Path::new("/home/red/.cargo/bin/forge"),
@@ -1404,6 +1463,13 @@ mod tests {
         assert!(get("/missing").starts_with("HTTP/1.1 404"));
         assert!(get("/../x").starts_with("HTTP/1.1 404"));
         assert!(get("/server.pid").starts_with("HTTP/1.1 404"));
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        write!(s, "GET / HTTP/1.1\r\nHost: x\r\nRange: bytes=3-\r\n\r\n").unwrap();
+        let mut partial = String::new();
+        s.read_to_string(&mut partial).unwrap();
+        assert!(partial.starts_with("HTTP/1.1 206"), "{partial}");
+        assert!(partial.contains("Content-Range: bytes 3-8/9"), "{partial}");
+        assert!(partial.ends_with("hi</p>"), "{partial}");
         let token = probe(port).unwrap();
         assert_eq!(token, folder_token(&dir));
         assert!(!token.contains('/'), "the probe must not reveal the folder");
