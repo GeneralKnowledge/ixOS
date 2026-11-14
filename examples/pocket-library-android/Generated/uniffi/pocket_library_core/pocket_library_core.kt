@@ -675,30 +675,132 @@ internal open class UniffiForeignFutureResultVoid(
 internal interface UniffiForeignFutureCompleteVoid : com.sun.jna.Callback {
     fun callback(`callbackData`: Long,`result`: UniffiForeignFutureResultVoid.UniffiByValue,)
 }
-internal interface UniffiCallbackInterfaceSummaryModelMethod0 : com.sun.jna.Callback {
+internal interface UniffiCallbackInterfaceLocalNotifierMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`notification`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteVoid,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
+}
+internal interface UniffiCallbackInterfaceLocalNotifierMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`id`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceLocalNotifierMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
+}
+internal interface UniffiCallbackInterfaceLocalNotifierMethod3 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`categories`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfacePermissionProviderMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`permission`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
+}
+internal interface UniffiCallbackInterfacePermissionProviderMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`permission`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
+}
+internal interface UniffiCallbackInterfaceSecureStoreMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceSecureStoreMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceSecureStoreMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceAiModelMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-internal interface UniffiCallbackInterfaceSummaryModelMethod1 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`sink`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
+internal interface UniffiCallbackInterfaceAiModelMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`sink`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteVoid,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
 }
 internal interface UniffiCallbackInterfaceSummaryProgressMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`stage`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-@Structure.FieldOrder("uniffiFree", "uniffiClone", "describe", "generate")
-internal open class UniffiVTableCallbackInterfaceSummaryModel(
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "schedule", "cancel", "pending", "setCategories")
+internal open class UniffiVTableCallbackInterfaceLocalNotifier(
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
     @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
-    @JvmField internal var `describe`: UniffiCallbackInterfaceSummaryModelMethod0? = null,
-    @JvmField internal var `generate`: UniffiCallbackInterfaceSummaryModelMethod1? = null,
+    @JvmField internal var `schedule`: UniffiCallbackInterfaceLocalNotifierMethod0? = null,
+    @JvmField internal var `cancel`: UniffiCallbackInterfaceLocalNotifierMethod1? = null,
+    @JvmField internal var `pending`: UniffiCallbackInterfaceLocalNotifierMethod2? = null,
+    @JvmField internal var `setCategories`: UniffiCallbackInterfaceLocalNotifierMethod3? = null,
 ) : Structure() {
     class UniffiByValue(
         `uniffiFree`: UniffiCallbackInterfaceFree? = null,
         `uniffiClone`: UniffiCallbackInterfaceClone? = null,
-        `describe`: UniffiCallbackInterfaceSummaryModelMethod0? = null,
-        `generate`: UniffiCallbackInterfaceSummaryModelMethod1? = null,
-    ): UniffiVTableCallbackInterfaceSummaryModel(`uniffiFree`,`uniffiClone`,`describe`,`generate`,), Structure.ByValue
+        `schedule`: UniffiCallbackInterfaceLocalNotifierMethod0? = null,
+        `cancel`: UniffiCallbackInterfaceLocalNotifierMethod1? = null,
+        `pending`: UniffiCallbackInterfaceLocalNotifierMethod2? = null,
+        `setCategories`: UniffiCallbackInterfaceLocalNotifierMethod3? = null,
+    ): UniffiVTableCallbackInterfaceLocalNotifier(`uniffiFree`,`uniffiClone`,`schedule`,`cancel`,`pending`,`setCategories`,), Structure.ByValue
 
-   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceSummaryModel) {
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceLocalNotifier) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `schedule` = other.`schedule`
+        `cancel` = other.`cancel`
+        `pending` = other.`pending`
+        `setCategories` = other.`setCategories`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "status", "request")
+internal open class UniffiVTableCallbackInterfacePermissionProvider(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `status`: UniffiCallbackInterfacePermissionProviderMethod0? = null,
+    @JvmField internal var `request`: UniffiCallbackInterfacePermissionProviderMethod1? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `status`: UniffiCallbackInterfacePermissionProviderMethod0? = null,
+        `request`: UniffiCallbackInterfacePermissionProviderMethod1? = null,
+    ): UniffiVTableCallbackInterfacePermissionProvider(`uniffiFree`,`uniffiClone`,`status`,`request`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfacePermissionProvider) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `status` = other.`status`
+        `request` = other.`request`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "get", "set", "delete")
+internal open class UniffiVTableCallbackInterfaceSecureStore(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `get`: UniffiCallbackInterfaceSecureStoreMethod0? = null,
+    @JvmField internal var `set`: UniffiCallbackInterfaceSecureStoreMethod1? = null,
+    @JvmField internal var `delete`: UniffiCallbackInterfaceSecureStoreMethod2? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `get`: UniffiCallbackInterfaceSecureStoreMethod0? = null,
+        `set`: UniffiCallbackInterfaceSecureStoreMethod1? = null,
+        `delete`: UniffiCallbackInterfaceSecureStoreMethod2? = null,
+    ): UniffiVTableCallbackInterfaceSecureStore(`uniffiFree`,`uniffiClone`,`get`,`set`,`delete`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceSecureStore) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `get` = other.`get`
+        `set` = other.`set`
+        `delete` = other.`delete`
+    }
+
+}
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "describe", "generate")
+internal open class UniffiVTableCallbackInterfaceAiModel(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `describe`: UniffiCallbackInterfaceAiModelMethod0? = null,
+    @JvmField internal var `generate`: UniffiCallbackInterfaceAiModelMethod1? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `describe`: UniffiCallbackInterfaceAiModelMethod0? = null,
+        `generate`: UniffiCallbackInterfaceAiModelMethod1? = null,
+    ): UniffiVTableCallbackInterfaceAiModel(`uniffiFree`,`uniffiClone`,`describe`,`generate`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceAiModel) {
         `uniffiFree` = other.`uniffiFree`
         `uniffiClone` = other.`uniffiClone`
         `describe` = other.`describe`
@@ -755,6 +857,18 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_pocket_library_core_checksum_func_epub_words_per_page(
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_library_error_kind(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_deliver_notification_response(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_install_native_services(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_native_services_installed(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_native_services_version(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_parse_deep_link(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_install_native_ai(
     ): Int
     external fun uniffi_pocket_library_core_checksum_method_library_add_book(
     ): Int
@@ -828,15 +942,33 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pocket_library_core_checksum_method_library_update_settings(
     ): Int
-    external fun uniffi_pocket_library_core_checksum_method_summarymodel_describe(
+    external fun uniffi_pocket_library_core_checksum_method_localnotifier_schedule(
     ): Int
-    external fun uniffi_pocket_library_core_checksum_method_summarymodel_generate(
+    external fun uniffi_pocket_library_core_checksum_method_localnotifier_cancel(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_localnotifier_pending(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_localnotifier_set_categories(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_permissionprovider_status(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_permissionprovider_request(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_securestore_get(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_securestore_set(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_securestore_delete(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_aimodel_describe(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_aimodel_generate(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_textsink_is_stopped(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_textsink_push(
     ): Int
     external fun uniffi_pocket_library_core_checksum_method_summaryprogress_changed(
-    ): Int
-    external fun uniffi_pocket_library_core_checksum_method_summarysink_is_stopped(
-    ): Int
-    external fun uniffi_pocket_library_core_checksum_method_summarysink_update(
     ): Int
     external fun uniffi_pocket_library_core_checksum_constructor_library_new(
     ): Int
@@ -856,7 +988,10 @@ internal object UniffiLib {
 
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "pocket_library_core"))
-        uniffiCallbackInterfaceSummaryModel.register(this)
+        uniffiCallbackInterfaceAiModel.register(this)
+        uniffiCallbackInterfaceLocalNotifier.register(this)
+        uniffiCallbackInterfacePermissionProvider.register(this)
+        uniffiCallbackInterfaceSecureStore.register(this)
         uniffiCallbackInterfaceSummaryProgress.register(this)
         uniffi.forge_app.uniffiEnsureInitialized()
         
@@ -941,16 +1076,60 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_pocket_library_core_fn_method_library_update_settings(`ptr`: Long,`settings`: RustBuffer.ByValue,
     ): Long
-    external fun uniffi_pocket_library_core_fn_clone_summarymodel(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_pocket_library_core_fn_clone_localnotifier(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-    external fun uniffi_pocket_library_core_fn_free_summarymodel(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_pocket_library_core_fn_free_localnotifier(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    external fun uniffi_pocket_library_core_fn_init_callback_vtable_summarymodel(`vtable`: UniffiVTableCallbackInterfaceSummaryModel,
+    external fun uniffi_pocket_library_core_fn_init_callback_vtable_localnotifier(`vtable`: UniffiVTableCallbackInterfaceLocalNotifier,
     ): Unit
-    external fun uniffi_pocket_library_core_fn_method_summarymodel_describe(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    external fun uniffi_pocket_library_core_fn_method_localnotifier_schedule(`ptr`: Long,`notification`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_pocket_library_core_fn_method_localnotifier_cancel(`ptr`: Long,`id`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_localnotifier_pending(`ptr`: Long,
+    ): Long
+    external fun uniffi_pocket_library_core_fn_method_localnotifier_set_categories(`ptr`: Long,`categories`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_clone_permissionprovider(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_pocket_library_core_fn_free_permissionprovider(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_init_callback_vtable_permissionprovider(`vtable`: UniffiVTableCallbackInterfacePermissionProvider,
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_permissionprovider_status(`ptr`: Long,`permission`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_pocket_library_core_fn_method_permissionprovider_request(`ptr`: Long,`permission`: RustBuffer.ByValue,
+    ): Long
+    external fun uniffi_pocket_library_core_fn_clone_securestore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_pocket_library_core_fn_free_securestore(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_init_callback_vtable_securestore(`vtable`: UniffiVTableCallbackInterfaceSecureStore,
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_securestore_get(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    external fun uniffi_pocket_library_core_fn_method_summarymodel_generate(`ptr`: Long,`request`: RustBuffer.ByValue,`sink`: Long,
+    external fun uniffi_pocket_library_core_fn_method_securestore_set(`ptr`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_securestore_delete(`ptr`: Long,`key`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_clone_aimodel(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
+    external fun uniffi_pocket_library_core_fn_free_aimodel(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_init_callback_vtable_aimodel(`vtable`: UniffiVTableCallbackInterfaceAiModel,
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_aimodel_describe(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pocket_library_core_fn_method_aimodel_generate(`ptr`: Long,`request`: RustBuffer.ByValue,`sink`: Long,
+    ): Long
+    external fun uniffi_pocket_library_core_fn_clone_textsink(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_pocket_library_core_fn_free_textsink(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_textsink_is_stopped(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    external fun uniffi_pocket_library_core_fn_method_textsink_push(`ptr`: Long,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
     external fun uniffi_pocket_library_core_fn_clone_summaryprogress(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_pocket_library_core_fn_free_summaryprogress(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -959,20 +1138,24 @@ internal object UniffiLib {
     ): Unit
     external fun uniffi_pocket_library_core_fn_method_summaryprogress_changed(`ptr`: Long,`stage`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    external fun uniffi_pocket_library_core_fn_clone_summarysink(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Long
-    external fun uniffi_pocket_library_core_fn_free_summarysink(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Unit
-    external fun uniffi_pocket_library_core_fn_method_summarysink_is_stopped(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
-    ): Byte
-    external fun uniffi_pocket_library_core_fn_method_summarysink_update(`ptr`: Long,`textSoFar`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-    ): Byte
     external fun uniffi_pocket_library_core_fn_func_default_query(`settings`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_pocket_library_core_fn_func_epub_words_per_page(uniffi_out_err: UniffiRustCallStatus, 
     ): Int
     external fun uniffi_pocket_library_core_fn_func_library_error_kind(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBufferErrorKind.ByValue
+    external fun uniffi_pocket_library_core_fn_func_deliver_notification_response(`response`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_func_install_native_services(`directories`: RustBuffer.ByValue,`secureStore`: Long,`notifier`: Long,`permissions`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_func_native_services_installed(uniffi_out_err: UniffiRustCallStatus, 
+    ): Byte
+    external fun uniffi_pocket_library_core_fn_func_native_services_version(uniffi_out_err: UniffiRustCallStatus, 
+    ): Int
+    external fun uniffi_pocket_library_core_fn_func_parse_deep_link(`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pocket_library_core_fn_func_install_native_ai(`model`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun ffi_pocket_library_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun ffi_pocket_library_core_rustbuffer_from_bytes(`bytes`: ForeignBytes.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1101,6 +1284,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_func_library_error_kind() and 0xFFFF) != 3528) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_pocket_library_core_checksum_func_deliver_notification_response() and 0xFFFF) != 21590) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_install_native_services() and 0xFFFF) != 500) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_native_services_installed() and 0xFFFF) != 4033) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_native_services_version() and 0xFFFF) != 64422) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_parse_deep_link() and 0xFFFF) != 57434) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_install_native_ai() and 0xFFFF) != 30586) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_add_book() and 0xFFFF) != 15939) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1194,10 +1395,10 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_storage_info() and 0xFFFF) != 16703) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_summarise_book() and 0xFFFF) != 10671) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_summarise_book() and 0xFFFF) != 24509) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_summarise_chapter() and 0xFFFF) != 16118) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_summarise_chapter() and 0xFFFF) != 42287) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_update_book() and 0xFFFF) != 64436) {
@@ -1209,19 +1410,46 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_update_settings() and 0xFFFF) != 27241) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_summarymodel_describe() and 0xFFFF) != 48256) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_localnotifier_schedule() and 0xFFFF) != 56620) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_summarymodel_generate() and 0xFFFF) != 45577) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_localnotifier_cancel() and 0xFFFF) != 25584) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_localnotifier_pending() and 0xFFFF) != 45889) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_localnotifier_set_categories() and 0xFFFF) != 35046) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_permissionprovider_status() and 0xFFFF) != 8675) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_permissionprovider_request() and 0xFFFF) != 19827) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_securestore_get() and 0xFFFF) != 59414) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_securestore_set() and 0xFFFF) != 44971) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_securestore_delete() and 0xFFFF) != 45174) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_aimodel_describe() and 0xFFFF) != 6430) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_aimodel_generate() and 0xFFFF) != 42787) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_textsink_is_stopped() and 0xFFFF) != 10960) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_textsink_push() and 0xFFFF) != 47536) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_summaryprogress_changed() and 0xFFFF) != 55110) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if ((lib.uniffi_pocket_library_core_checksum_method_summarysink_is_stopped() and 0xFFFF) != 15892) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if ((lib.uniffi_pocket_library_core_checksum_method_summarysink_update() and 0xFFFF) != 45381) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_constructor_library_new() and 0xFFFF) != 59207) {
@@ -1766,6 +1994,1326 @@ public object FfiConverterString: FfiConverter<String, RustBuffer.ByValue> {
     }
 }
 
+/**
+ * @suppress
+ */
+public object FfiConverterByteArray: FfiConverterRustBuffer<ByteArray> {
+    override fun read(buf: ByteBuffer): ByteArray {
+        val len = buf.getInt()
+        val byteArr = ByteArray(len)
+        buf.get(byteArr)
+        return byteArr
+    }
+    override fun allocationSize(value: ByteArray): ULong {
+        return 4UL + value.size.toULong()
+    }
+    override fun write(value: ByteArray, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        buf.put(value)
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+public interface AiModel {
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */
+    fun `describe`(): AiModelInfo
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+    suspend fun `generate`(`request`: AiRequest, `sink`: TextSink)
+    
+    companion object
+}
+
+/**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+open class AiModelImpl: Disposable, AutoCloseable, AiModel
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_pocket_library_core_fn_free_aimodel(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_pocket_library_core_fn_clone_aimodel(handle, status)
+        }
+    }
+
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */override fun `describe`(): AiModelInfo {
+            return FfiConverterTypeAiModelInfo.lift(
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_aimodel_describe(
+        it,
+        _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+    @Throws(AiModelException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `generate`(`request`: AiRequest, `sink`: TextSink) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_pocket_library_core_fn_method_aimodel_generate(
+                uniffiHandle,
+                
+        FfiConverterTypeAiRequest.lower(`request`),
+        FfiConverterTypeTextSink.lower(`sink`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_void(future) },
+        // lift function
+        { },
+        
+        // Error FFI converter
+        AiModelException.ErrorHandler,
+    )
+    }
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceAiModel {
+    internal object `describe`: UniffiCallbackInterfaceAiModelMethod0 {
+        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeAiModel.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`describe`(
+                )
+            }
+            val writeReturn = { value: AiModelInfo -> uniffiOutReturn.setValue(FfiConverterTypeAiModelInfo.lower(value)) }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `generate`: UniffiCallbackInterfaceAiModelMethod1 {
+        override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`sink`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteVoid,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
+            val uniffiObj = FfiConverterTypeAiModel.handleMap.get(uniffiHandle)
+            val makeCall = suspend { ->
+                uniffiObj.`generate`(
+                    FfiConverterTypeAiRequest.lift(`request`),
+                    FfiConverterTypeTextSink.lift(`sink`),
+                )
+            }
+            val uniffiHandleSuccess = { _: Unit ->
+                val uniffiResult = UniffiForeignFutureResultVoid.UniffiByValue(
+                    UniffiRustCallStatus.ByValue()
+                )
+                uniffiResult.write()
+                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
+            }
+            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
+                uniffiFutureCallback.callback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid.UniffiByValue(
+                        callStatus,
+                    ),
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                { e: AiModelException -> FfiConverterTypeAiModelError.lower(e) },
+                uniffiOutDroppedCallback
+            )
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeAiModel.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeAiModel.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceAiModel.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `describe`,
+        `generate`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_pocket_library_core_fn_init_callback_vtable_aimodel(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiModel: FfiConverter<AiModel, Long> {
+    internal val handleMap = UniffiHandleMap<AiModel>()
+
+    override fun lower(value: AiModel): Long {
+        if (value is AiModelImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): AiModel {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AiModelImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): AiModel {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: AiModel) = 8UL
+
+    override fun write(value: AiModel, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Local notifications (no push server involved).
+ */
+public interface LocalNotifier {
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+    suspend fun `schedule`(`notification`: LocalNotification)
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */
+    fun `cancel`(`id`: kotlin.String)
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+    suspend fun `pending`(): List<kotlin.String>
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */
+    fun `setCategories`(`categories`: List<NotificationCategory>)
+    
+    companion object
+}
+
+/**
+ * Local notifications (no push server involved).
+ */
+open class LocalNotifierImpl: Disposable, AutoCloseable, LocalNotifier
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_pocket_library_core_fn_free_localnotifier(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_pocket_library_core_fn_clone_localnotifier(handle, status)
+        }
+    }
+
+    
+    /**
+     * Schedules (or replaces) a notification. Fails with
+     * `PermissionDenied` when notifications are off for the app.
+     */
+    @Throws(NativeServiceException::class)
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `schedule`(`notification`: LocalNotification) {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_pocket_library_core_fn_method_localnotifier_schedule(
+                uniffiHandle,
+                
+        FfiConverterTypeLocalNotification.lower(`notification`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_void(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_void(future, continuation) },
+        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_void(future) },
+        // lift function
+        { },
+        
+        // Error FFI converter
+        NativeServiceException.ErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Cancels a pending notification and removes it from the
+     * notification list if it was delivered.
+     */override fun `cancel`(`id`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_localnotifier_cancel(
+        it,
+        
+        FfiConverterString.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Ids of the notifications that are scheduled and not yet
+     * delivered.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `pending`() : List<kotlin.String> {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_pocket_library_core_fn_method_localnotifier_pending(
+                uniffiHandle,
+                
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterSequenceString.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Replaces the app's notification categories (their action
+     * buttons).
+     */override fun `setCategories`(`categories`: List<NotificationCategory>)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_localnotifier_set_categories(
+        it,
+        
+        FfiConverterSequenceTypeNotificationCategory.lower(`categories`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceLocalNotifier {
+    internal object `schedule`: UniffiCallbackInterfaceLocalNotifierMethod0 {
+        override fun callback(`uniffiHandle`: Long,`notification`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteVoid,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
+            val uniffiObj = FfiConverterTypeLocalNotifier.handleMap.get(uniffiHandle)
+            val makeCall = suspend { ->
+                uniffiObj.`schedule`(
+                    FfiConverterTypeLocalNotification.lift(`notification`),
+                )
+            }
+            val uniffiHandleSuccess = { _: Unit ->
+                val uniffiResult = UniffiForeignFutureResultVoid.UniffiByValue(
+                    UniffiRustCallStatus.ByValue()
+                )
+                uniffiResult.write()
+                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
+            }
+            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
+                uniffiFutureCallback.callback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid.UniffiByValue(
+                        callStatus,
+                    ),
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                { e: NativeServiceException -> FfiConverterTypeNativeServiceError.lower(e) },
+                uniffiOutDroppedCallback
+            )
+        }
+    }
+    internal object `cancel`: UniffiCallbackInterfaceLocalNotifierMethod1 {
+        override fun callback(`uniffiHandle`: Long,`id`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeLocalNotifier.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`cancel`(
+                    FfiConverterString.lift(`id`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+    internal object `pending`: UniffiCallbackInterfaceLocalNotifierMethod2 {
+        override fun callback(`uniffiHandle`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
+            val uniffiObj = FfiConverterTypeLocalNotifier.handleMap.get(uniffiHandle)
+            val makeCall = suspend { ->
+                uniffiObj.`pending`(
+                )
+            }
+            val uniffiHandleSuccess = { returnValue: List<kotlin.String> ->
+                val uniffiResult = UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                    FfiConverterSequenceString.lower(returnValue),
+                    UniffiRustCallStatus.ByValue()
+                )
+                uniffiResult.write()
+                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
+            }
+            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
+                uniffiFutureCallback.callback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                        RustBuffer.ByValue(),
+                        callStatus,
+                    ),
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                uniffiOutDroppedCallback
+            )
+        }
+    }
+    internal object `setCategories`: UniffiCallbackInterfaceLocalNotifierMethod3 {
+        override fun callback(`uniffiHandle`: Long,`categories`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeLocalNotifier.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`setCategories`(
+                    FfiConverterSequenceTypeNotificationCategory.lift(`categories`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeLocalNotifier.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeLocalNotifier.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceLocalNotifier.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `schedule`,
+        `cancel`,
+        `pending`,
+        `setCategories`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_pocket_library_core_fn_init_callback_vtable_localnotifier(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalNotifier: FfiConverter<LocalNotifier, Long> {
+    internal val handleMap = UniffiHandleMap<LocalNotifier>()
+
+    override fun lower(value: LocalNotifier): Long {
+        if (value is LocalNotifierImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): LocalNotifier {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return LocalNotifierImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): LocalNotifier {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: LocalNotifier) = 8UL
+
+    override fun write(value: LocalNotifier, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+public interface PermissionProvider {
+    
+    suspend fun `status`(`permission`: NativePermission): PermissionStatus
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+    suspend fun `request`(`permission`: NativePermission): PermissionStatus
+    
+    companion object
+}
+
+/**
+ * Permission status and requests, one interface for every
+ * permission.
+ */
+open class PermissionProviderImpl: Disposable, AutoCloseable, PermissionProvider
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_pocket_library_core_fn_free_permissionprovider(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_pocket_library_core_fn_clone_permissionprovider(handle, status)
+        }
+    }
+
+    
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `status`(`permission`: NativePermission) : PermissionStatus {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_pocket_library_core_fn_method_permissionprovider_status(
+                uniffiHandle,
+                
+        FfiConverterTypeNativePermission.lower(`permission`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypePermissionStatus.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+    /**
+     * Shows the system prompt if the user has not been asked
+     * yet; otherwise returns the current status. Call it in
+     * response to something the user did.
+     */
+    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
+    override suspend fun `request`(`permission`: NativePermission) : PermissionStatus {
+        return uniffiRustCallAsync(
+        callWithHandle { uniffiHandle ->
+            UniffiLib.uniffi_pocket_library_core_fn_method_permissionprovider_request(
+                uniffiHandle,
+                
+        FfiConverterTypeNativePermission.lower(`permission`),
+            )
+        },
+        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
+        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_rust_buffer(future, continuation) },
+        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_rust_buffer(future) },
+        // lift function
+        { FfiConverterTypePermissionStatus.lift(it) },
+        // Error FFI converter
+        UniffiNullRustCallStatusErrorHandler,
+    )
+    }
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfacePermissionProvider {
+    internal object `status`: UniffiCallbackInterfacePermissionProviderMethod0 {
+        override fun callback(`uniffiHandle`: Long,`permission`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
+            val uniffiObj = FfiConverterTypePermissionProvider.handleMap.get(uniffiHandle)
+            val makeCall = suspend { ->
+                uniffiObj.`status`(
+                    FfiConverterTypeNativePermission.lift(`permission`),
+                )
+            }
+            val uniffiHandleSuccess = { returnValue: PermissionStatus ->
+                val uniffiResult = UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                    FfiConverterTypePermissionStatus.lower(returnValue),
+                    UniffiRustCallStatus.ByValue()
+                )
+                uniffiResult.write()
+                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
+            }
+            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
+                uniffiFutureCallback.callback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                        RustBuffer.ByValue(),
+                        callStatus,
+                    ),
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                uniffiOutDroppedCallback
+            )
+        }
+    }
+    internal object `request`: UniffiCallbackInterfacePermissionProviderMethod1 {
+        override fun callback(`uniffiHandle`: Long,`permission`: RustBuffer.ByValue,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
+            val uniffiObj = FfiConverterTypePermissionProvider.handleMap.get(uniffiHandle)
+            val makeCall = suspend { ->
+                uniffiObj.`request`(
+                    FfiConverterTypeNativePermission.lift(`permission`),
+                )
+            }
+            val uniffiHandleSuccess = { returnValue: PermissionStatus ->
+                val uniffiResult = UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                    FfiConverterTypePermissionStatus.lower(returnValue),
+                    UniffiRustCallStatus.ByValue()
+                )
+                uniffiResult.write()
+                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
+            }
+            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
+                uniffiFutureCallback.callback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultRustBuffer.UniffiByValue(
+                        RustBuffer.ByValue(),
+                        callStatus,
+                    ),
+                )
+            }
+            uniffiTraitInterfaceCallAsync(
+                makeCall,
+                uniffiHandleSuccess,
+                uniffiHandleError,
+                uniffiOutDroppedCallback
+            )
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypePermissionProvider.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypePermissionProvider.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfacePermissionProvider.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `status`,
+        `request`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_pocket_library_core_fn_init_callback_vtable_permissionprovider(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePermissionProvider: FfiConverter<PermissionProvider, Long> {
+    internal val handleMap = UniffiHandleMap<PermissionProvider>()
+
+    override fun lower(value: PermissionProvider): Long {
+        if (value is PermissionProviderImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): PermissionProvider {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return PermissionProviderImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): PermissionProvider {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: PermissionProvider) = 8UL
+
+    override fun write(value: PermissionProvider, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
 
 // This template implements a class for working with a Rust struct via a handle
 // to the live Rust struct on the other side of the FFI.
@@ -2067,7 +3615,7 @@ public interface PocketLibraryInterface {
      * it saves where it got to (`book_run`), so the next call carries on
      * from the next chapter with the cast and counts so far.
      */
-    suspend fun `summariseBook`(`id`: kotlin.ULong, `model`: SummaryModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?): BookSynopsis
+    suspend fun `summariseBook`(`id`: kotlin.ULong, `model`: AiModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?): BookSynopsis
     
     /**
      * Writes a summary of the chapter that reader chapter `index` is part
@@ -2078,7 +3626,7 @@ public interface PocketLibraryInterface {
      * `cancellation` stops it with `Cancelled`, leaving the app with
      * `Interrupted`, and either way nothing is saved.
      */
-    suspend fun `summariseChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt, `model`: SummaryModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?): ChapterSynopsis
+    suspend fun `summariseChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt, `model`: AiModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?): ChapterSynopsis
     
     /**
      * Saves the edit form. Status and page follow the same rules as
@@ -2905,14 +4453,14 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `summariseBook`(`id`: kotlin.ULong, `model`: SummaryModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?) : BookSynopsis {
+    override suspend fun `summariseBook`(`id`: kotlin.ULong, `model`: AiModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?) : BookSynopsis {
         return uniffiRustCallAsync(
         callWithHandle { uniffiHandle ->
             UniffiLib.uniffi_pocket_library_core_fn_method_library_summarise_book(
                 uniffiHandle,
                 
         FfiConverterULong.lower(`id`),
-        FfiConverterTypeSummaryModel.lower(`model`),
+        FfiConverterTypeAiModel.lower(`model`),
         FfiConverterOptionalTypeSummaryProgress.lower(`progress`),
         FfiConverterOptionalTypeCancellation.lower(`cancellation`),
             )
@@ -2939,7 +4487,7 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `summariseChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt, `model`: SummaryModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?) : ChapterSynopsis {
+    override suspend fun `summariseChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt, `model`: AiModel, `progress`: SummaryProgress?, `cancellation`: Cancellation?) : ChapterSynopsis {
         return uniffiRustCallAsync(
         callWithHandle { uniffiHandle ->
             UniffiLib.uniffi_pocket_library_core_fn_method_library_summarise_chapter(
@@ -2947,7 +4495,7 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
                 
         FfiConverterULong.lower(`id`),
         FfiConverterUInt.lower(`index`),
-        FfiConverterTypeSummaryModel.lower(`model`),
+        FfiConverterTypeAiModel.lower(`model`),
         FfiConverterOptionalTypeSummaryProgress.lower(`progress`),
         FfiConverterOptionalTypeCancellation.lower(`cancellation`),
             )
@@ -3172,31 +4720,38 @@ public object FfiConverterTypePocketLibrary: FfiConverter<PocketLibrary, Long> {
 
 
 /**
- * A language model, implemented in Swift. Rust calls it from a thread of
- * its own, one request at a time.
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
  */
-public interface SummaryModel {
+public interface SecureStore {
     
     /**
-     * Whether the model can run now. Cheap.
+     * The value stored under `key`, or `None`.
      */
-    fun `describe`(): SummaryModelInfo
+    fun `get`(`key`: kotlin.String): kotlin.ByteArray?
     
     /**
-     * Answers `request`. While it writes, it passes the answer so far to
-     * `sink.update`, and stops (returning `Stopped`) as soon as that
-     * returns false.
+     * Stores `value` under `key`, replacing any old value.
      */
-    suspend fun `generate`(`request`: SummaryRequest, `sink`: SummarySink): kotlin.String
+    fun `set`(`key`: kotlin.String, `value`: kotlin.ByteArray)
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+    fun `delete`(`key`: kotlin.String)
     
     companion object
 }
 
 /**
- * A language model, implemented in Swift. Rust calls it from a thread of
- * its own, one request at a time.
+ * Secrets (tokens, keys, passwords), stored by the platform's
+ * secure store: the iOS Keychain, readable after the first
+ * unlock and never synced or restored to another device.
+ * Survives app updates; on iOS it can survive deleting the app.
  */
-open class SummaryModelImpl: Disposable, AutoCloseable, SummaryModel
+open class SecureStoreImpl: Disposable, AutoCloseable, SecureStore
 {
 
     @Suppress("UNUSED_PARAMETER")
@@ -3280,7 +4835,7 @@ open class SummaryModelImpl: Disposable, AutoCloseable, SummaryModel
                 return;
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_pocket_library_core_fn_free_summarymodel(handle, status)
+                UniffiLib.uniffi_pocket_library_core_fn_free_securestore(handle, status)
             }
         }
     }
@@ -3293,20 +4848,22 @@ open class SummaryModelImpl: Disposable, AutoCloseable, SummaryModel
             throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
         return uniffiRustCall() { status ->
-            UniffiLib.uniffi_pocket_library_core_fn_clone_summarymodel(handle, status)
+            UniffiLib.uniffi_pocket_library_core_fn_clone_securestore(handle, status)
         }
     }
 
     
     /**
-     * Whether the model can run now. Cheap.
-     */override fun `describe`(): SummaryModelInfo {
-            return FfiConverterTypeSummaryModelInfo.lift(
+     * The value stored under `key`, or `None`.
+     */
+    @Throws(NativeServiceException::class)override fun `get`(`key`: kotlin.String): kotlin.ByteArray? {
+            return FfiConverterOptionalByteArray.lift(
     callWithHandle {
-    uniffiRustCall() { _status ->
-    UniffiLib.uniffi_pocket_library_core_fn_method_summarymodel_describe(
+    uniffiRustCallWithError(NativeServiceException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_securestore_get(
         it,
-        _status)
+        
+        FfiConverterString.lower(`key`),_status)
 }
     }
     )
@@ -3315,31 +4872,38 @@ open class SummaryModelImpl: Disposable, AutoCloseable, SummaryModel
 
     
     /**
-     * Answers `request`. While it writes, it passes the answer so far to
-     * `sink.update`, and stops (returning `Stopped`) as soon as that
-     * returns false.
+     * Stores `value` under `key`, replacing any old value.
      */
-    @Throws(SummaryModelException::class)
-    @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `generate`(`request`: SummaryRequest, `sink`: SummarySink) : kotlin.String {
-        return uniffiRustCallAsync(
-        callWithHandle { uniffiHandle ->
-            UniffiLib.uniffi_pocket_library_core_fn_method_summarymodel_generate(
-                uniffiHandle,
-                
-        FfiConverterTypeSummaryRequest.lower(`request`),
-        FfiConverterTypeSummarySink.lower(`sink`),
-            )
-        },
-        { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
-        { future, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_complete_rust_buffer(future, continuation) },
-        { future -> UniffiLib.ffi_pocket_library_core_rust_future_free_rust_buffer(future) },
-        // lift function
-        { FfiConverterString.lift(it) },
-        // Error FFI converter
-        SummaryModelException.ErrorHandler,
-    )
+    @Throws(NativeServiceException::class)override fun `set`(`key`: kotlin.String, `value`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(NativeServiceException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_securestore_set(
+        it,
+        
+        FfiConverterString.lower(`key`),
+        FfiConverterByteArray.lower(`value`),_status)
+}
     }
+    
+    
+
+    
+    /**
+     * Removes `key`. Removing a missing key is not an error.
+     */
+    @Throws(NativeServiceException::class)override fun `delete`(`key`: kotlin.String)
+        = 
+    callWithHandle {
+    uniffiRustCallWithError(NativeServiceException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_securestore_delete(
+        it,
+        
+        FfiConverterString.lower(`key`),_status)
+}
+    }
+    
+    
 
     
 
@@ -3358,88 +4922,95 @@ open class SummaryModelImpl: Disposable, AutoCloseable, SummaryModel
 
 
 // Put the implementation in an object so we don't pollute the top-level namespace
-internal object uniffiCallbackInterfaceSummaryModel {
-    internal object `describe`: UniffiCallbackInterfaceSummaryModelMethod0 {
-        override fun callback(`uniffiHandle`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
-            val uniffiObj = FfiConverterTypeSummaryModel.handleMap.get(uniffiHandle)
+internal object uniffiCallbackInterfaceSecureStore {
+    internal object `get`: UniffiCallbackInterfaceSecureStoreMethod0 {
+        override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeSecureStore.handleMap.get(uniffiHandle)
             val makeCall = { ->
-                uniffiObj.`describe`(
+                uniffiObj.`get`(
+                    FfiConverterString.lift(`key`),
                 )
             }
-            val writeReturn = { value: SummaryModelInfo -> uniffiOutReturn.setValue(FfiConverterTypeSummaryModelInfo.lower(value)) }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+            val writeReturn = { value: kotlin.ByteArray? -> uniffiOutReturn.setValue(FfiConverterOptionalByteArray.lower(value)) }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: NativeServiceException -> FfiConverterTypeNativeServiceError.lower(e) }
+            )
         }
     }
-    internal object `generate`: UniffiCallbackInterfaceSummaryModelMethod1 {
-        override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`sink`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteRustBuffer,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,) {
-            val uniffiObj = FfiConverterTypeSummaryModel.handleMap.get(uniffiHandle)
-            val makeCall = suspend { ->
-                uniffiObj.`generate`(
-                    FfiConverterTypeSummaryRequest.lift(`request`),
-                    FfiConverterTypeSummarySink.lift(`sink`),
+    internal object `set`: UniffiCallbackInterfaceSecureStoreMethod1 {
+        override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeSecureStore.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`set`(
+                    FfiConverterString.lift(`key`),
+                    FfiConverterByteArray.lift(`value`),
                 )
             }
-            val uniffiHandleSuccess = { returnValue: kotlin.String ->
-                val uniffiResult = UniffiForeignFutureResultRustBuffer.UniffiByValue(
-                    FfiConverterString.lower(returnValue),
-                    UniffiRustCallStatus.ByValue()
-                )
-                uniffiResult.write()
-                uniffiFutureCallback.callback(uniffiCallbackData, uniffiResult)
-            }
-            val uniffiHandleError = { callStatus: UniffiRustCallStatus.ByValue ->
-                uniffiFutureCallback.callback(
-                    uniffiCallbackData,
-                    UniffiForeignFutureResultRustBuffer.UniffiByValue(
-                        RustBuffer.ByValue(),
-                        callStatus,
-                    ),
-                )
-            }
-            uniffiTraitInterfaceCallAsyncWithError(
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
                 makeCall,
-                uniffiHandleSuccess,
-                uniffiHandleError,
-                { e: SummaryModelException -> FfiConverterTypeSummaryModelError.lower(e) },
-                uniffiOutDroppedCallback
+                writeReturn,
+                { e: NativeServiceException -> FfiConverterTypeNativeServiceError.lower(e) }
+            )
+        }
+    }
+    internal object `delete`: UniffiCallbackInterfaceSecureStoreMethod2 {
+        override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeSecureStore.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`delete`(
+                    FfiConverterString.lift(`key`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: NativeServiceException -> FfiConverterTypeNativeServiceError.lower(e) }
             )
         }
     }
 
     internal object uniffiFree: UniffiCallbackInterfaceFree {
         override fun callback(handle: Long) {
-            FfiConverterTypeSummaryModel.handleMap.remove(handle)
+            FfiConverterTypeSecureStore.handleMap.remove(handle)
         }
     }
 
     internal object uniffiClone: UniffiCallbackInterfaceClone {
         override fun callback(handle: Long): Long {
-            return FfiConverterTypeSummaryModel.handleMap.clone(handle)
+            return FfiConverterTypeSecureStore.handleMap.clone(handle)
         }
     }
 
-    internal var vtable = UniffiVTableCallbackInterfaceSummaryModel.UniffiByValue(
+    internal var vtable = UniffiVTableCallbackInterfaceSecureStore.UniffiByValue(
         uniffiFree,
         uniffiClone,
-        `describe`,
-        `generate`,
+        `get`,
+        `set`,
+        `delete`,
     )
 
     // Registers the foreign callback with the Rust side.
     // This method is generated for each callback interface.
     internal fun register(lib: UniffiLib) {
-        lib.uniffi_pocket_library_core_fn_init_callback_vtable_summarymodel(vtable)
+        lib.uniffi_pocket_library_core_fn_init_callback_vtable_securestore(vtable)
     }
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeSummaryModel: FfiConverter<SummaryModel, Long> {
-    internal val handleMap = UniffiHandleMap<SummaryModel>()
+public object FfiConverterTypeSecureStore: FfiConverter<SecureStore, Long> {
+    internal val handleMap = UniffiHandleMap<SecureStore>()
 
-    override fun lower(value: SummaryModel): Long {
-        if (value is SummaryModelImpl) {
+    override fun lower(value: SecureStore): Long {
+        if (value is SecureStoreImpl) {
              // Rust-implemented object.  Clone the handle and return it
             return value.uniffiCloneHandle()
          } else {
@@ -3448,24 +5019,24 @@ public object FfiConverterTypeSummaryModel: FfiConverter<SummaryModel, Long> {
          }
     }
 
-    override fun lift(value: Long): SummaryModel {
+    override fun lift(value: Long): SecureStore {
         if ((value and 1.toLong()) == 0.toLong()) {
             // Rust-generated handle, construct a new class that uses the handle to implement the
             // interface
-            return SummaryModelImpl(UniffiWithHandle, value)
+            return SecureStoreImpl(UniffiWithHandle, value)
         } else {
             // Kotlin-generated handle, get the object from the handle map
             return handleMap.remove(value)
         }
     }
 
-    override fun read(buf: ByteBuffer): SummaryModel {
+    override fun read(buf: ByteBuffer): SecureStore {
         return lift(buf.getLong())
     }
 
-    override fun allocationSize(value: SummaryModel) = 8UL
+    override fun allocationSize(value: SecureStore) = 8UL
 
-    override fun write(value: SummaryModel, buf: ByteBuffer) {
+    override fun write(value: SecureStore, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -3884,25 +5455,32 @@ public object FfiConverterTypeSummaryProgress: FfiConverter<SummaryProgress, Lon
 
 
 /**
- * Where the engine reports the answer so far, and learns it should stop.
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
  */
-public interface SummarySinkInterface {
+public interface TextSinkInterface {
     
+    /**
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
+     */
     fun `isStopped`(): kotlin.Boolean
     
     /**
-     * The whole answer so far. Returns false once the summary was
-     * stopped: the engine must end the generation.
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
      */
-    fun `update`(`textSoFar`: kotlin.String): kotlin.Boolean
+    fun `push`(`text`: kotlin.String): kotlin.Boolean
     
     companion object
 }
 
 /**
- * Where the engine reports the answer so far, and learns it should stop.
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
  */
-open class SummarySink: Disposable, AutoCloseable, SummarySinkInterface
+open class TextSink: Disposable, AutoCloseable, TextSinkInterface
 {
 
     @Suppress("UNUSED_PARAMETER")
@@ -3986,7 +5564,7 @@ open class SummarySink: Disposable, AutoCloseable, SummarySinkInterface
                 return;
             }
             uniffiRustCall { status ->
-                UniffiLib.uniffi_pocket_library_core_fn_free_summarysink(handle, status)
+                UniffiLib.uniffi_pocket_library_core_fn_free_textsink(handle, status)
             }
         }
     }
@@ -3999,15 +5577,19 @@ open class SummarySink: Disposable, AutoCloseable, SummarySinkInterface
             throw InternalException("uniffiCloneHandle() called on NoHandle object");
         }
         return uniffiRustCall() { status ->
-            UniffiLib.uniffi_pocket_library_core_fn_clone_summarysink(handle, status)
+            UniffiLib.uniffi_pocket_library_core_fn_clone_textsink(handle, status)
         }
     }
 
-    override fun `isStopped`(): kotlin.Boolean {
+    
+    /**
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
+     */override fun `isStopped`(): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_pocket_library_core_fn_method_summarysink_is_stopped(
+    UniffiLib.uniffi_pocket_library_core_fn_method_textsink_is_stopped(
         it,
         _status)
 }
@@ -4018,16 +5600,17 @@ open class SummarySink: Disposable, AutoCloseable, SummarySinkInterface
 
     
     /**
-     * The whole answer so far. Returns false once the summary was
-     * stopped: the engine must end the generation.
-     */override fun `update`(`textSoFar`: kotlin.String): kotlin.Boolean {
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
+     */override fun `push`(`text`: kotlin.String): kotlin.Boolean {
             return FfiConverterBoolean.lift(
     callWithHandle {
     uniffiRustCall() { _status ->
-    UniffiLib.uniffi_pocket_library_core_fn_method_summarysink_update(
+    UniffiLib.uniffi_pocket_library_core_fn_method_textsink_push(
         it,
         
-        FfiConverterString.lower(`textSoFar`),_status)
+        FfiConverterString.lower(`text`),_status)
 }
     }
     )
@@ -4052,22 +5635,22 @@ open class SummarySink: Disposable, AutoCloseable, SummarySinkInterface
 /**
  * @suppress
  */
-public object FfiConverterTypeSummarySink: FfiConverter<SummarySink, Long> {
-    override fun lower(value: SummarySink): Long {
+public object FfiConverterTypeTextSink: FfiConverter<TextSink, Long> {
+    override fun lower(value: TextSink): Long {
         return value.uniffiCloneHandle()
     }
 
-    override fun lift(value: Long): SummarySink {
-        return SummarySink(UniffiWithHandle, value)
+    override fun lift(value: Long): TextSink {
+        return TextSink(UniffiWithHandle, value)
     }
 
-    override fun read(buf: ByteBuffer): SummarySink {
+    override fun read(buf: ByteBuffer): TextSink {
         return lift(buf.getLong())
     }
 
-    override fun allocationSize(value: SummarySink) = 8UL
+    override fun allocationSize(value: TextSink) = 8UL
 
-    override fun write(value: SummarySink, buf: ByteBuffer) {
+    override fun write(value: TextSink, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -4125,6 +5708,237 @@ public object FfiConverterTypeActivityEntry: FfiConverterRustBuffer<ActivityEntr
             FfiConverterString.write(value.`bookTitle`, buf)
             FfiConverterLong.write(value.`atMs`, buf)
             FfiConverterTypeActivityKind.write(value.`kind`, buf)
+    }
+}
+
+
+
+data class AiMessage (
+    var `role`: AiRole
+    , 
+    var `content`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiMessage: FfiConverterRustBuffer<AiMessage> {
+    override fun read(buf: ByteBuffer): AiMessage {
+        return AiMessage(
+            FfiConverterTypeAiRole.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AiMessage) = (
+            FfiConverterTypeAiRole.allocationSize(value.`role`) +
+            FfiConverterString.allocationSize(value.`content`)
+    )
+
+    override fun write(value: AiMessage, buf: ByteBuffer) {
+            FfiConverterTypeAiRole.write(value.`role`, buf)
+            FfiConverterString.write(value.`content`, buf)
+    }
+}
+
+
+
+/**
+ * What a model is and whether it can answer now.
+ */
+data class AiModelInfo (
+    /**
+     * Stable id, recorded with each answer
+     * ("apple-foundation-models").
+     */
+    var `id`: kotlin.String
+    , 
+    /**
+     * The name the app shows ("Apple Intelligence").
+     */
+    var `name`: kotlin.String
+    , 
+    var `available`: kotlin.Boolean
+    , 
+    /**
+     * Why not, in words the user can act on.
+     */
+    var `unavailableReason`: kotlin.String?
+    , 
+    /**
+     * Tokens one request can read and write together.
+     */
+    var `contextTokens`: kotlin.UInt
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiModelInfo: FfiConverterRustBuffer<AiModelInfo> {
+    override fun read(buf: ByteBuffer): AiModelInfo {
+        return AiModelInfo(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AiModelInfo) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterBoolean.allocationSize(value.`available`) +
+            FfiConverterOptionalString.allocationSize(value.`unavailableReason`) +
+            FfiConverterUInt.allocationSize(value.`contextTokens`)
+    )
+
+    override fun write(value: AiModelInfo, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterBoolean.write(value.`available`, buf)
+            FfiConverterOptionalString.write(value.`unavailableReason`, buf)
+            FfiConverterUInt.write(value.`contextTokens`, buf)
+    }
+}
+
+
+
+/**
+ * One request: OpenAI's chat completions, text only. System
+ * messages come first; the last message is the one to answer.
+ */
+data class AiRequest (
+    var `model`: kotlin.String?
+    , 
+    var `messages`: List<AiMessage>
+    , 
+    /**
+     * The longest answer, in tokens.
+     */
+    var `maxTokens`: kotlin.UInt
+    , 
+    /**
+     * Sampling temperature, 0 to 1.5.
+     */
+    var `temperature`: kotlin.Double
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiRequest: FfiConverterRustBuffer<AiRequest> {
+    override fun read(buf: ByteBuffer): AiRequest {
+        return AiRequest(
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceTypeAiMessage.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AiRequest) = (
+            FfiConverterOptionalString.allocationSize(value.`model`) +
+            FfiConverterSequenceTypeAiMessage.allocationSize(value.`messages`) +
+            FfiConverterUInt.allocationSize(value.`maxTokens`) +
+            FfiConverterDouble.allocationSize(value.`temperature`)
+    )
+
+    override fun write(value: AiRequest, buf: ByteBuffer) {
+            FfiConverterOptionalString.write(value.`model`, buf)
+            FfiConverterSequenceTypeAiMessage.write(value.`messages`, buf)
+            FfiConverterUInt.write(value.`maxTokens`, buf)
+            FfiConverterDouble.write(value.`temperature`, buf)
+    }
+}
+
+
+
+/**
+ * Where the app may keep files. Absolute paths, given by the host
+ * at launch. On iOS the container path changes between installs,
+ * so store paths relative to one of these, never absolute ones.
+ */
+data class AppDirectories (
+    /**
+     * User-visible documents (shown in the Files app when the app
+     * opts in). Backed up.
+     */
+    var `documents`: kotlin.String
+    , 
+    /**
+     * The app's own data. Backed up, never shown to the user.
+     */
+    var `applicationSupport`: kotlin.String
+    , 
+    /**
+     * Re-creatable data. The system may delete it when space is low.
+     */
+    var `caches`: kotlin.String
+    , 
+    /**
+     * Scratch space, cleared by the system between launches.
+     */
+    var `temporary`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAppDirectories: FfiConverterRustBuffer<AppDirectories> {
+    override fun read(buf: ByteBuffer): AppDirectories {
+        return AppDirectories(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: AppDirectories) = (
+            FfiConverterString.allocationSize(value.`documents`) +
+            FfiConverterString.allocationSize(value.`applicationSupport`) +
+            FfiConverterString.allocationSize(value.`caches`) +
+            FfiConverterString.allocationSize(value.`temporary`)
+    )
+
+    override fun write(value: AppDirectories, buf: ByteBuffer) {
+            FfiConverterString.write(value.`documents`, buf)
+            FfiConverterString.write(value.`applicationSupport`, buf)
+            FfiConverterString.write(value.`caches`, buf)
+            FfiConverterString.write(value.`temporary`, buf)
     }
 }
 
@@ -4808,6 +6622,91 @@ public object FfiConverterTypeCsvImportSummary: FfiConverterRustBuffer<CsvImport
 
 
 /**
+ * A URL the app was opened with (custom scheme, universal link
+ * or notification tap), split into parts.
+ */
+data class DeepLink (
+    /**
+     * The URL as received.
+     */
+    var `url`: kotlin.String
+    , 
+    /**
+     * Lowercased, e.g. `myapp` or `https`.
+     */
+    var `scheme`: kotlin.String
+    , 
+    /**
+     * Lowercased host, if the URL has one.
+     */
+    var `host`: kotlin.String?
+    , 
+    /**
+     * Decoded path segments, empty ones dropped.
+     */
+    var `path`: List<kotlin.String>
+    , 
+    var `query`: List<QueryItem>
+    , 
+    var `fragment`: kotlin.String?
+    , 
+    /**
+     * What to route on. For `http(s)` links the path; for custom
+     * schemes the host followed by the path, so
+     * `myapp://note/42` and `https://example.com/note/42` both
+     * give `["note", "42"]`.
+     */
+    var `route`: List<kotlin.String>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeDeepLink: FfiConverterRustBuffer<DeepLink> {
+    override fun read(buf: ByteBuffer): DeepLink {
+        return DeepLink(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeQueryItem.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterSequenceString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: DeepLink) = (
+            FfiConverterString.allocationSize(value.`url`) +
+            FfiConverterString.allocationSize(value.`scheme`) +
+            FfiConverterOptionalString.allocationSize(value.`host`) +
+            FfiConverterSequenceString.allocationSize(value.`path`) +
+            FfiConverterSequenceTypeQueryItem.allocationSize(value.`query`) +
+            FfiConverterOptionalString.allocationSize(value.`fragment`) +
+            FfiConverterSequenceString.allocationSize(value.`route`)
+    )
+
+    override fun write(value: DeepLink, buf: ByteBuffer) {
+            FfiConverterString.write(value.`url`, buf)
+            FfiConverterString.write(value.`scheme`, buf)
+            FfiConverterOptionalString.write(value.`host`, buf)
+            FfiConverterSequenceString.write(value.`path`, buf)
+            FfiConverterSequenceTypeQueryItem.write(value.`query`, buf)
+            FfiConverterOptionalString.write(value.`fragment`, buf)
+            FfiConverterSequenceString.write(value.`route`, buf)
+    }
+}
+
+
+
+/**
  * The result of importing a catalogue book. The book is saved even when the
  * extras could not be fetched; `warnings` says what is missing.
  */
@@ -5013,6 +6912,299 @@ public object FfiConverterTypeLibraryStats: FfiConverterRustBuffer<LibraryStats>
             FfiConverterUInt.write(value.`finishedThisYear`, buf)
             FfiConverterUInt.write(value.`pagesLast7Days`, buf)
             FfiConverterOptionalDouble.write(value.`averageRating`, buf)
+    }
+}
+
+
+
+/**
+ * A local notification. Scheduling one with an `id` that is
+ * already pending replaces it.
+ */
+data class LocalNotification (
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    var `body`: kotlin.String
+    , 
+    var `subtitle`: kotlin.String?
+    , 
+    /**
+     * Groups related notifications (iOS `threadIdentifier`).
+     */
+    var `threadId`: kotlin.String?
+    , 
+    /**
+     * Opened when the user taps the notification, through the
+     * same path as any other deep link.
+     */
+    var `deepLink`: kotlin.String?
+    , 
+    var `trigger`: NotificationTrigger
+    , 
+    /**
+     * The category whose action buttons the notification shows
+     * (`set_notification_categories`). None: no buttons.
+     */
+    var `category`: kotlin.String? = null 
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeLocalNotification: FfiConverterRustBuffer<LocalNotification> {
+    override fun read(buf: ByteBuffer): LocalNotification {
+        return LocalNotification(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterTypeNotificationTrigger.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: LocalNotification) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterString.allocationSize(value.`body`) +
+            FfiConverterOptionalString.allocationSize(value.`subtitle`) +
+            FfiConverterOptionalString.allocationSize(value.`threadId`) +
+            FfiConverterOptionalString.allocationSize(value.`deepLink`) +
+            FfiConverterTypeNotificationTrigger.allocationSize(value.`trigger`) +
+            FfiConverterOptionalString.allocationSize(value.`category`)
+    )
+
+    override fun write(value: LocalNotification, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterString.write(value.`body`, buf)
+            FfiConverterOptionalString.write(value.`subtitle`, buf)
+            FfiConverterOptionalString.write(value.`threadId`, buf)
+            FfiConverterOptionalString.write(value.`deepLink`, buf)
+            FfiConverterTypeNotificationTrigger.write(value.`trigger`, buf)
+            FfiConverterOptionalString.write(value.`category`, buf)
+    }
+}
+
+
+
+/**
+ * One action button on a notification.
+ */
+data class NotificationAction (
+    /**
+     * Comes back in `NotificationResponse::action_id`.
+     */
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    var `kind`: NotificationActionKind
+    , 
+    /**
+     * iOS asks the person to unlock the phone first.
+     */
+    var `requiresUnlock`: kotlin.Boolean
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotificationAction: FfiConverterRustBuffer<NotificationAction> {
+    override fun read(buf: ByteBuffer): NotificationAction {
+        return NotificationAction(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterTypeNotificationActionKind.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: NotificationAction) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterTypeNotificationActionKind.allocationSize(value.`kind`) +
+            FfiConverterBoolean.allocationSize(value.`requiresUnlock`)
+    )
+
+    override fun write(value: NotificationAction, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterTypeNotificationActionKind.write(value.`kind`, buf)
+            FfiConverterBoolean.write(value.`requiresUnlock`, buf)
+    }
+}
+
+
+
+/**
+ * A set of action buttons notifications can name.
+ */
+data class NotificationCategory (
+    var `id`: kotlin.String
+    , 
+    var `actions`: List<NotificationAction>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotificationCategory: FfiConverterRustBuffer<NotificationCategory> {
+    override fun read(buf: ByteBuffer): NotificationCategory {
+        return NotificationCategory(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeNotificationAction.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: NotificationCategory) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterSequenceTypeNotificationAction.allocationSize(value.`actions`)
+    )
+
+    override fun write(value: NotificationCategory, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterSequenceTypeNotificationAction.write(value.`actions`, buf)
+    }
+}
+
+
+
+/**
+ * What the person did with a notification: tapped it
+ * (`action_id` is [`NOTIFICATION_OPENED`]), dismissed it
+ * ([`NOTIFICATION_DISMISSED`], only for categories) or chose an
+ * action.
+ */
+data class NotificationResponse (
+    var `notificationId`: kotlin.String
+    , 
+    var `actionId`: kotlin.String
+    , 
+    /**
+     * What they typed, for a `TextInput` action.
+     */
+    var `text`: kotlin.String?
+    , 
+    var `category`: kotlin.String?
+    , 
+    /**
+     * The notification's `thread_id` (its group: a chat room, a
+     * list).
+     */
+    var `threadId`: kotlin.String?
+    , 
+    var `deepLink`: kotlin.String?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotificationResponse: FfiConverterRustBuffer<NotificationResponse> {
+    override fun read(buf: ByteBuffer): NotificationResponse {
+        return NotificationResponse(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: NotificationResponse) = (
+            FfiConverterString.allocationSize(value.`notificationId`) +
+            FfiConverterString.allocationSize(value.`actionId`) +
+            FfiConverterOptionalString.allocationSize(value.`text`) +
+            FfiConverterOptionalString.allocationSize(value.`category`) +
+            FfiConverterOptionalString.allocationSize(value.`threadId`) +
+            FfiConverterOptionalString.allocationSize(value.`deepLink`)
+    )
+
+    override fun write(value: NotificationResponse, buf: ByteBuffer) {
+            FfiConverterString.write(value.`notificationId`, buf)
+            FfiConverterString.write(value.`actionId`, buf)
+            FfiConverterOptionalString.write(value.`text`, buf)
+            FfiConverterOptionalString.write(value.`category`, buf)
+            FfiConverterOptionalString.write(value.`threadId`, buf)
+            FfiConverterOptionalString.write(value.`deepLink`, buf)
+    }
+}
+
+
+
+/**
+ * One `name=value` pair of a URL query, decoded.
+ */
+data class QueryItem (
+    var `name`: kotlin.String
+    , 
+    var `value`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeQueryItem: FfiConverterRustBuffer<QueryItem> {
+    override fun read(buf: ByteBuffer): QueryItem {
+        return QueryItem(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: QueryItem) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`value`)
+    )
+
+    override fun write(value: QueryItem, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`value`, buf)
     }
 }
 
@@ -5228,121 +7420,6 @@ public object FfiConverterTypeStorageInfo: FfiConverterRustBuffer<StorageInfo> {
             FfiConverterUInt.write(value.`savedCovers`, buf)
             FfiConverterUInt.write(value.`savedBooks`, buf)
             FfiConverterULong.write(value.`bytes`, buf)
-    }
-}
-
-
-
-/**
- * What the engine says about itself.
- */
-data class SummaryModelInfo (
-    /**
-     * The name shown under a summary ("Apple Intelligence").
-     */
-    var `name`: kotlin.String
-    , 
-    var `available`: kotlin.Boolean
-    , 
-    /**
-     * Why not, in words the reader can act on, when `available` is false.
-     */
-    var `unavailableReason`: kotlin.String?
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeSummaryModelInfo: FfiConverterRustBuffer<SummaryModelInfo> {
-    override fun read(buf: ByteBuffer): SummaryModelInfo {
-        return SummaryModelInfo(
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterOptionalString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: SummaryModelInfo) = (
-            FfiConverterString.allocationSize(value.`name`) +
-            FfiConverterBoolean.allocationSize(value.`available`) +
-            FfiConverterOptionalString.allocationSize(value.`unavailableReason`)
-    )
-
-    override fun write(value: SummaryModelInfo, buf: ByteBuffer) {
-            FfiConverterString.write(value.`name`, buf)
-            FfiConverterBoolean.write(value.`available`, buf)
-            FfiConverterOptionalString.write(value.`unavailableReason`, buf)
-    }
-}
-
-
-
-/**
- * One request to the model.
- */
-data class SummaryRequest (
-    /**
-     * The system instructions.
-     */
-    var `instructions`: kotlin.String
-    , 
-    /**
-     * The text and what to write.
-     */
-    var `prompt`: kotlin.String
-    , 
-    /**
-     * The longest answer, in tokens.
-     */
-    var `maxTokens`: kotlin.UInt
-    , 
-    /**
-     * Sampling temperature, 0 to 1.
-     */
-    var `temperature`: kotlin.Double
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeSummaryRequest: FfiConverterRustBuffer<SummaryRequest> {
-    override fun read(buf: ByteBuffer): SummaryRequest {
-        return SummaryRequest(
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterDouble.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: SummaryRequest) = (
-            FfiConverterString.allocationSize(value.`instructions`) +
-            FfiConverterString.allocationSize(value.`prompt`) +
-            FfiConverterUInt.allocationSize(value.`maxTokens`) +
-            FfiConverterDouble.allocationSize(value.`temperature`)
-    )
-
-    override fun write(value: SummaryRequest, buf: ByteBuffer) {
-            FfiConverterString.write(value.`instructions`, buf)
-            FfiConverterString.write(value.`prompt`, buf)
-            FfiConverterUInt.write(value.`maxTokens`, buf)
-            FfiConverterDouble.write(value.`temperature`, buf)
     }
 }
 
@@ -5575,6 +7652,225 @@ public object FfiConverterTypeActivityKind : FfiConverterRustBuffer<ActivityKind
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+
+
+/**
+ * Why the model gave no answer.
+ */
+sealed class AiModelException: kotlin.Exception() {
+    
+    /**
+     * Apple Intelligence off or still downloading, an iPhone
+     * that doesn't support it.
+     */
+    class Unavailable(
+        
+        val `reason`: kotlin.String
+        ) : AiModelException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The model's safety rules declined the request.
+     */
+    class Refused(
+        
+        val `reason`: kotlin.String
+        ) : AiModelException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The request doesn't fit the model's context window.
+     */
+    class ContextTooLong(
+        
+        val `reason`: kotlin.String
+        ) : AiModelException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Throttled for now (Apple's model limits apps in the
+     * background).
+     */
+    class Busy(
+        
+        val `reason`: kotlin.String
+        ) : AiModelException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Stopped through the sink.
+     */
+    class Stopped(
+        ) : AiModelException() {
+        override val message
+            get() = ""
+    }
+    
+    class Engine(
+        
+        val `reason`: kotlin.String
+        ) : AiModelException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+
+    
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<AiModelException> {
+        override fun lift(error_buf: RustBuffer.ByValue): AiModelException = FfiConverterTypeAiModelError.lift(error_buf)
+    }
+
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiModelError : FfiConverterRustBuffer<AiModelException> {
+    override fun read(buf: ByteBuffer): AiModelException {
+        
+
+        return when(buf.getInt()) {
+            1 -> AiModelException.Unavailable(
+                FfiConverterString.read(buf),
+                )
+            2 -> AiModelException.Refused(
+                FfiConverterString.read(buf),
+                )
+            3 -> AiModelException.ContextTooLong(
+                FfiConverterString.read(buf),
+                )
+            4 -> AiModelException.Busy(
+                FfiConverterString.read(buf),
+                )
+            5 -> AiModelException.Stopped()
+            6 -> AiModelException.Engine(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: AiModelException): ULong {
+        return when(value) {
+            is AiModelException.Unavailable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is AiModelException.Refused -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is AiModelException.ContextTooLong -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is AiModelException.Busy -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is AiModelException.Stopped -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is AiModelException.Engine -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+        }
+    }
+
+    override fun write(value: AiModelException, buf: ByteBuffer) {
+        when(value) {
+            is AiModelException.Unavailable -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is AiModelException.Refused -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is AiModelException.ContextTooLong -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is AiModelException.Busy -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is AiModelException.Stopped -> {
+                buf.putInt(5)
+                Unit
+            }
+            is AiModelException.Engine -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * Who wrote a message.
+ */
+
+enum class AiRole {
+    
+    SYSTEM,
+    USER,
+    ASSISTANT;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeAiRole: FfiConverterRustBuffer<AiRole> {
+    override fun read(buf: ByteBuffer) = try {
+        AiRole.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: AiRole) = 4UL
+
+    override fun write(value: AiRole, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
     }
 }
 
@@ -6284,6 +8580,526 @@ public object FfiConverterTypeLibrarySort: FfiConverterRustBuffer<LibrarySort> {
 
 
 /**
+ * A permission the app can ask the user for. More cases (camera,
+ * photos, microphone) are added as their adapters are; see
+ * docs/native-services.md. A permission whose service the app
+ * did not select reports `Unsupported`.
+ */
+
+enum class NativePermission {
+    
+    /**
+     * Alerts, sounds and badges from local notifications.
+     */
+    NOTIFICATIONS,
+    /**
+     * Location while the app is in use (`location` service).
+     */
+    LOCATION,
+    /**
+     * Motion & Fitness: the barometer, pedometer and activity
+     * (`motion` service). The other motion sensors need none.
+     */
+    MOTION,
+    /**
+     * Bluetooth (`bluetooth` service).
+     */
+    BLUETOOTH,
+    /**
+     * Recording audio (`audio` service, since interface v3).
+     * Needs `microphone` under `[ios.permissions]` in forge.toml.
+     */
+    MICROPHONE;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNativePermission: FfiConverterRustBuffer<NativePermission> {
+    override fun read(buf: ByteBuffer) = try {
+        NativePermission.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: NativePermission) = 4UL
+
+    override fun write(value: NativePermission, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+
+
+/**
+ * Errors from the native services. `reason` fields are
+ * diagnostics, not UI copy.
+ */
+sealed class NativeServiceException: kotlin.Exception() {
+    
+    /**
+     * The host has not called `install_native_services` (on iOS,
+     * `ForgeServices.install()`), or this platform has no
+     * implementation yet.
+     */
+    class NotInstalled(
+        
+        val `service`: kotlin.String
+        ) : NativeServiceException() {
+        override val message
+            get() = "service=${ `service` }"
+    }
+    
+    /**
+     * The arguments were rejected before reaching the platform.
+     */
+    class InvalidInput(
+        
+        val `reason`: kotlin.String
+        ) : NativeServiceException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The user has not allowed this (for example notifications
+     * are turned off for the app).
+     */
+    class PermissionDenied(
+        
+        val `reason`: kotlin.String
+        ) : NativeServiceException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The service cannot work in this process (for example no
+     * notification centre under `swift test`).
+     */
+    class Unavailable(
+        
+        val `reason`: kotlin.String
+        ) : NativeServiceException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The platform reported an error. On iOS `code` is the
+     * `OSStatus` or `NSError` code.
+     */
+    class Platform(
+        
+        val `code`: kotlin.Long, 
+        
+        val `reason`: kotlin.String
+        ) : NativeServiceException() {
+        override val message
+            get() = "code=${ `code` }, reason=${ `reason` }"
+    }
+    
+
+    
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<NativeServiceException> {
+        override fun lift(error_buf: RustBuffer.ByValue): NativeServiceException = FfiConverterTypeNativeServiceError.lift(error_buf)
+    }
+
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNativeServiceError : FfiConverterRustBuffer<NativeServiceException> {
+    override fun read(buf: ByteBuffer): NativeServiceException {
+        
+
+        return when(buf.getInt()) {
+            1 -> NativeServiceException.NotInstalled(
+                FfiConverterString.read(buf),
+                )
+            2 -> NativeServiceException.InvalidInput(
+                FfiConverterString.read(buf),
+                )
+            3 -> NativeServiceException.PermissionDenied(
+                FfiConverterString.read(buf),
+                )
+            4 -> NativeServiceException.Unavailable(
+                FfiConverterString.read(buf),
+                )
+            5 -> NativeServiceException.Platform(
+                FfiConverterLong.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NativeServiceException): ULong {
+        return when(value) {
+            is NativeServiceException.NotInstalled -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`service`)
+            )
+            is NativeServiceException.InvalidInput -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is NativeServiceException.PermissionDenied -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is NativeServiceException.Unavailable -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is NativeServiceException.Platform -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterLong.allocationSize(value.`code`)
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+        }
+    }
+
+    override fun write(value: NativeServiceException, buf: ByteBuffer) {
+        when(value) {
+            is NativeServiceException.NotInstalled -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`service`, buf)
+                Unit
+            }
+            is NativeServiceException.InvalidInput -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is NativeServiceException.PermissionDenied -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is NativeServiceException.Unavailable -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is NativeServiceException.Platform -> {
+                buf.putInt(5)
+                FfiConverterLong.write(value.`code`, buf)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
+
+
+
+/**
+ * What an action button does.
+ */
+sealed class NotificationActionKind {
+    
+    /**
+     * A button handled without opening the app (Mark as Read,
+     * Snooze); `destructive` shows it in red.
+     */
+    data class Button(
+        val `destructive`: kotlin.Boolean) : NotificationActionKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * A button that opens the app (View, Open).
+     */
+    object OpensApp : NotificationActionKind()
+    
+    
+    /**
+     * A text field, for a quick reply.
+     */
+    data class TextInput(
+        val `sendTitle`: kotlin.String, 
+        val `placeholder`: kotlin.String) : NotificationActionKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotificationActionKind : FfiConverterRustBuffer<NotificationActionKind>{
+    override fun read(buf: ByteBuffer): NotificationActionKind {
+        return when(buf.getInt()) {
+            1 -> NotificationActionKind.Button(
+                FfiConverterBoolean.read(buf),
+                )
+            2 -> NotificationActionKind.OpensApp
+            3 -> NotificationActionKind.TextInput(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NotificationActionKind): ULong = when(value) {
+        is NotificationActionKind.Button -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterBoolean.allocationSize(value.`destructive`)
+            )
+        }
+        is NotificationActionKind.OpensApp -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is NotificationActionKind.TextInput -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`sendTitle`)
+                + FfiConverterString.allocationSize(value.`placeholder`)
+            )
+        }
+    }
+
+    override fun write(value: NotificationActionKind, buf: ByteBuffer) {
+        when(value) {
+            is NotificationActionKind.Button -> {
+                buf.putInt(1)
+                FfiConverterBoolean.write(value.`destructive`, buf)
+                Unit
+            }
+            is NotificationActionKind.OpensApp -> {
+                buf.putInt(2)
+                Unit
+            }
+            is NotificationActionKind.TextInput -> {
+                buf.putInt(3)
+                FfiConverterString.write(value.`sendTitle`, buf)
+                FfiConverterString.write(value.`placeholder`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * When a local notification fires.
+ */
+sealed class NotificationTrigger {
+    
+    /**
+     * Straight away (shown as a banner even while the app is open).
+     */
+    object Now : NotificationTrigger()
+    
+    
+    /**
+     * After `seconds`. Repeating needs at least 60 seconds on iOS.
+     */
+    data class After(
+        val `seconds`: kotlin.UInt, 
+        val `repeats`: kotlin.Boolean) : NotificationTrigger()
+        
+    {
+        
+
+        companion object
+    }
+    
+    /**
+     * At a moment in time (Unix milliseconds), in the device's
+     * time zone at that moment. Must be in the future.
+     */
+    data class At(
+        val `unixMs`: kotlin.Long) : NotificationTrigger()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeNotificationTrigger : FfiConverterRustBuffer<NotificationTrigger>{
+    override fun read(buf: ByteBuffer): NotificationTrigger {
+        return when(buf.getInt()) {
+            1 -> NotificationTrigger.Now
+            2 -> NotificationTrigger.After(
+                FfiConverterUInt.read(buf),
+                FfiConverterBoolean.read(buf),
+                )
+            3 -> NotificationTrigger.At(
+                FfiConverterLong.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: NotificationTrigger): ULong = when(value) {
+        is NotificationTrigger.Now -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is NotificationTrigger.After -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUInt.allocationSize(value.`seconds`)
+                + FfiConverterBoolean.allocationSize(value.`repeats`)
+            )
+        }
+        is NotificationTrigger.At -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterLong.allocationSize(value.`unixMs`)
+            )
+        }
+    }
+
+    override fun write(value: NotificationTrigger, buf: ByteBuffer) {
+        when(value) {
+            is NotificationTrigger.Now -> {
+                buf.putInt(1)
+                Unit
+            }
+            is NotificationTrigger.After -> {
+                buf.putInt(2)
+                FfiConverterUInt.write(value.`seconds`, buf)
+                FfiConverterBoolean.write(value.`repeats`, buf)
+                Unit
+            }
+            is NotificationTrigger.At -> {
+                buf.putInt(3)
+                FfiConverterLong.write(value.`unixMs`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
+/**
+ * The same states on every platform.
+ */
+
+enum class PermissionStatus {
+    
+    /**
+     * Never asked. A request shows the system prompt.
+     */
+    NOT_DETERMINED,
+    GRANTED,
+    /**
+     * iOS provisional notifications: delivered quietly, without
+     * asking first.
+     */
+    PROVISIONAL,
+    /**
+     * The user said no. Only the Settings app can change it.
+     */
+    DENIED,
+    /**
+     * Blocked by parental controls or device management.
+     */
+    RESTRICTED,
+    /**
+     * This platform or process has no such permission.
+     */
+    UNSUPPORTED;
+
+    
+
+
+    companion object
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypePermissionStatus: FfiConverterRustBuffer<PermissionStatus> {
+    override fun read(buf: ByteBuffer) = try {
+        PermissionStatus.values()[buf.getInt() - 1]
+    } catch (e: IndexOutOfBoundsException) {
+        throw RuntimeException("invalid enum value, something is very wrong!!", e)
+    }
+
+    override fun allocationSize(value: PermissionStatus) = 4UL
+
+    override fun write(value: PermissionStatus, buf: ByteBuffer) {
+        buf.putInt(value.ordinal + 1)
+    }
+}
+
+
+
+
+
+/**
  * Where a book is in the reader's life.
  */
 
@@ -6321,185 +9137,121 @@ public object FfiConverterTypeReadingStatus: FfiConverterRustBuffer<ReadingStatu
 
 
 
-
-
 /**
- * Why the engine gave no answer.
+ * Something the user can share through the system share sheet.
+ * The host presents it (on iOS `ForgeShareLink`).
  */
-sealed class SummaryModelException: kotlin.Exception() {
+sealed class ShareItem {
     
-    /**
-     * The model can't run now (Apple Intelligence off, still downloading,
-     * an iPhone that doesn't support it).
-     */
-    class Unavailable(
+    data class Text(
+        val `text`: kotlin.String) : ShareItem()
         
-        val `reason`: kotlin.String
-        ) : SummaryModelException() {
-        override val message
-            get() = "reason=${ `reason` }"
+    {
+        
+
+        companion object
+    }
+    
+    data class Url(
+        val `url`: kotlin.String) : ShareItem()
+        
+    {
+        
+
+        companion object
     }
     
     /**
-     * The model's safety rules declined the text.
+     * A file the app wrote, by absolute path.
      */
-    class Refused(
+    data class File(
+        val `path`: kotlin.String, 
+        val `title`: kotlin.String?) : ShareItem()
         
-        val `reason`: kotlin.String
-        ) : SummaryModelException() {
-        override val message
-            get() = "reason=${ `reason` }"
-    }
-    
-    /**
-     * The request did not fit the model's context window.
-     */
-    class ContextTooLong(
+    {
         
-        val `reason`: kotlin.String
-        ) : SummaryModelException() {
-        override val message
-            get() = "reason=${ `reason` }"
-    }
-    
-    /**
-     * Stopped through the sink.
-     */
-    class Stopped(
-        ) : SummaryModelException() {
-        override val message
-            get() = ""
-    }
-    
-    /**
-     * The model is throttled for now (Foundation Models limits apps in
-     * the background). Nothing is lost: the run pauses and carries on
-     * when the app is back on screen.
-     */
-    class Busy(
-        
-        val `reason`: kotlin.String
-        ) : SummaryModelException() {
-        override val message
-            get() = "reason=${ `reason` }"
-    }
-    
-    class Engine(
-        
-        val `reason`: kotlin.String
-        ) : SummaryModelException() {
-        override val message
-            get() = "reason=${ `reason` }"
+
+        companion object
     }
     
 
     
 
-
-    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<SummaryModelException> {
-        override fun lift(error_buf: RustBuffer.ByValue): SummaryModelException = FfiConverterTypeSummaryModelError.lift(error_buf)
-    }
-
     
+    
+
+
+    companion object
 }
 
 /**
  * @suppress
  */
-public object FfiConverterTypeSummaryModelError : FfiConverterRustBuffer<SummaryModelException> {
-    override fun read(buf: ByteBuffer): SummaryModelException {
-        
-
+public object FfiConverterTypeShareItem : FfiConverterRustBuffer<ShareItem>{
+    override fun read(buf: ByteBuffer): ShareItem {
         return when(buf.getInt()) {
-            1 -> SummaryModelException.Unavailable(
+            1 -> ShareItem.Text(
                 FfiConverterString.read(buf),
                 )
-            2 -> SummaryModelException.Refused(
+            2 -> ShareItem.Url(
                 FfiConverterString.read(buf),
                 )
-            3 -> SummaryModelException.ContextTooLong(
+            3 -> ShareItem.File(
                 FfiConverterString.read(buf),
+                FfiConverterOptionalString.read(buf),
                 )
-            4 -> SummaryModelException.Stopped()
-            5 -> SummaryModelException.Busy(
-                FfiConverterString.read(buf),
-                )
-            6 -> SummaryModelException.Engine(
-                FfiConverterString.read(buf),
-                )
-            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
         }
     }
 
-    override fun allocationSize(value: SummaryModelException): ULong {
-        return when(value) {
-            is SummaryModelException.Unavailable -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
+    override fun allocationSize(value: ShareItem): ULong = when(value) {
+        is ShareItem.Text -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
                 4UL
-                + FfiConverterString.allocationSize(value.`reason`)
+                + FfiConverterString.allocationSize(value.`text`)
             )
-            is SummaryModelException.Refused -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
+        }
+        is ShareItem.Url -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
                 4UL
-                + FfiConverterString.allocationSize(value.`reason`)
+                + FfiConverterString.allocationSize(value.`url`)
             )
-            is SummaryModelException.ContextTooLong -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
+        }
+        is ShareItem.File -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
                 4UL
-                + FfiConverterString.allocationSize(value.`reason`)
-            )
-            is SummaryModelException.Stopped -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
-            )
-            is SummaryModelException.Busy -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
-                + FfiConverterString.allocationSize(value.`reason`)
-            )
-            is SummaryModelException.Engine -> (
-                // Add the size for the Int that specifies the variant plus the size needed for all fields
-                4UL
-                + FfiConverterString.allocationSize(value.`reason`)
+                + FfiConverterString.allocationSize(value.`path`)
+                + FfiConverterOptionalString.allocationSize(value.`title`)
             )
         }
     }
 
-    override fun write(value: SummaryModelException, buf: ByteBuffer) {
+    override fun write(value: ShareItem, buf: ByteBuffer) {
         when(value) {
-            is SummaryModelException.Unavailable -> {
+            is ShareItem.Text -> {
                 buf.putInt(1)
-                FfiConverterString.write(value.`reason`, buf)
+                FfiConverterString.write(value.`text`, buf)
                 Unit
             }
-            is SummaryModelException.Refused -> {
+            is ShareItem.Url -> {
                 buf.putInt(2)
-                FfiConverterString.write(value.`reason`, buf)
+                FfiConverterString.write(value.`url`, buf)
                 Unit
             }
-            is SummaryModelException.ContextTooLong -> {
+            is ShareItem.File -> {
                 buf.putInt(3)
-                FfiConverterString.write(value.`reason`, buf)
-                Unit
-            }
-            is SummaryModelException.Stopped -> {
-                buf.putInt(4)
-                Unit
-            }
-            is SummaryModelException.Busy -> {
-                buf.putInt(5)
-                FfiConverterString.write(value.`reason`, buf)
-                Unit
-            }
-            is SummaryModelException.Engine -> {
-                buf.putInt(6)
-                FfiConverterString.write(value.`reason`, buf)
+                FfiConverterString.write(value.`path`, buf)
+                FfiConverterOptionalString.write(value.`title`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
     }
-
 }
+
+
 
 
 
@@ -7141,6 +9893,38 @@ public object FfiConverterOptionalString: FfiConverterRustBuffer<kotlin.String?>
 /**
  * @suppress
  */
+public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteArray?> {
+    override fun read(buf: ByteBuffer): kotlin.ByteArray? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterByteArray.read(buf)
+    }
+
+    override fun allocationSize(value: kotlin.ByteArray?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterByteArray.allocationSize(value)
+        }
+    }
+
+    override fun write(value: kotlin.ByteArray?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterByteArray.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeCancellation: FfiConverterRustBuffer<Cancellation?> {
     override fun read(buf: ByteBuffer): Cancellation? {
         if (buf.get().toInt() == 0) {
@@ -7481,6 +10265,34 @@ public object FfiConverterSequenceTypeActivityEntry: FfiConverterRustBuffer<List
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeAiMessage: FfiConverterRustBuffer<List<AiMessage>> {
+    override fun read(buf: ByteBuffer): List<AiMessage> {
+        val len = buf.getInt()
+        return List<AiMessage>(len) {
+            FfiConverterTypeAiMessage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<AiMessage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeAiMessage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<AiMessage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeAiMessage.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeBook: FfiConverterRustBuffer<List<Book>> {
     override fun read(buf: ByteBuffer): List<Book> {
         val len = buf.getInt()
@@ -7621,6 +10433,90 @@ public object FfiConverterSequenceTypeChapterSynopsis: FfiConverterRustBuffer<Li
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer<List<NotificationAction>> {
+    override fun read(buf: ByteBuffer): List<NotificationAction> {
+        val len = buf.getInt()
+        return List<NotificationAction>(len) {
+            FfiConverterTypeNotificationAction.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<NotificationAction>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeNotificationAction.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<NotificationAction>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeNotificationAction.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeNotificationCategory: FfiConverterRustBuffer<List<NotificationCategory>> {
+    override fun read(buf: ByteBuffer): List<NotificationCategory> {
+        val len = buf.getInt()
+        return List<NotificationCategory>(len) {
+            FfiConverterTypeNotificationCategory.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<NotificationCategory>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeNotificationCategory.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<NotificationCategory>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeNotificationCategory.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer<List<QueryItem>> {
+    override fun read(buf: ByteBuffer): List<QueryItem> {
+        val len = buf.getInt()
+        return List<QueryItem>(len) {
+            FfiConverterTypeQueryItem.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<QueryItem>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeQueryItem.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<QueryItem>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeQueryItem.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer<List<TextBlock>> {
     override fun read(buf: ByteBuffer): List<TextBlock> {
         val len = buf.getInt()
@@ -7732,6 +10628,97 @@ public object FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer<List<Text
 }
     )
     }
+    
+
+        /**
+         * Called by the host when the person responds to a
+         * notification. Kept until the app sets a handler with
+         * [`on_notification_response`].
+         */ fun `deliverNotificationResponse`(`response`: NotificationResponse)
+        = 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_deliver_notification_response(
+    
+        
+        FfiConverterTypeNotificationResponse.lower(`response`),_status)
+}
+    
+    
+
+        /**
+         * Called once by the host at launch (on iOS by
+         * `ForgeServices.install()`). Installing again replaces the
+         * previous services.
+         */
+    @Throws(NativeServiceException::class) fun `installNativeServices`(`directories`: AppDirectories, `secureStore`: SecureStore, `notifier`: LocalNotifier, `permissions`: PermissionProvider)
+        = 
+    uniffiRustCallWithError(NativeServiceException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_install_native_services(
+    
+        
+        FfiConverterTypeAppDirectories.lower(`directories`),
+        FfiConverterTypeSecureStore.lower(`secureStore`),
+        FfiConverterTypeLocalNotifier.lower(`notifier`),
+        FfiConverterTypePermissionProvider.lower(`permissions`),_status)
+}
+    
+    
+
+        /**
+         * True once the host has installed the services. For
+         * diagnostics and tests.
+         */ fun `nativeServicesInstalled`(): kotlin.Boolean {
+            return FfiConverterBoolean.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_native_services_installed(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * The services interface version these bindings were built
+         * with. The host's adapters check it at install time.
+         */ fun `nativeServicesVersion`(): kotlin.UInt {
+            return FfiConverterUInt.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_native_services_version(
+    
+        _status)
+}
+    )
+    }
+    
+
+        /**
+         * Splits a URL the app was opened with into its parts.
+         */
+    @Throws(NativeServiceException::class) fun `parseDeepLink`(`url`: kotlin.String): DeepLink {
+            return FfiConverterTypeDeepLink.lift(
+    uniffiRustCallWithError(NativeServiceException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_parse_deep_link(
+    
+        
+        FfiConverterString.lower(`url`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * Called by the host at launch (`ForgeServices.install()`):
+         * makes `model` the device's model.
+         */ fun `installNativeAi`(`model`: AiModel)
+        = 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_install_native_ai(
+    
+        
+        FfiConverterTypeAiModel.lower(`model`),_status)
+}
+    
     
 
 

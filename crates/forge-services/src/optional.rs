@@ -1,7 +1,7 @@
 //! The optional services an app selects in `native_services!(...)`:
 //! `connectivity`, `device_status`, `motion`, `location`, `bluetooth`,
-//! `audio`, `transfers`, `http` (each of those two needs the feature of the
-//! same name), `background` (in background.rs) and `biometrics` (in
+//! `audio`, `transfers`, `http`, `ai` (each of those three needs the feature
+//! of the same name), `background` (in background.rs) and `biometrics` (in
 //! biometrics.rs).
 //!
 //! Each one emits a submodule of the app's `native` module with its records,
@@ -39,6 +39,9 @@ macro_rules! __native_service {
     (http) => {
         $crate::__native_http!();
     };
+    (ai) => {
+        $crate::__native_ai!();
+    };
     (background) => {
         $crate::__native_background!();
     };
@@ -49,7 +52,7 @@ macro_rules! __native_service {
         compile_error!(concat!(
             "unknown native service `",
             stringify!($other),
-            "`: use connectivity, device_status, motion, location, bluetooth, audio, transfers, http, background or biometrics"
+            "`: use connectivity, device_status, motion, location, bluetooth, audio, transfers, http, ai, background or biometrics"
         ));
     };
 }

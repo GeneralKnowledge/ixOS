@@ -1,4 +1,4 @@
-//! One answer being written: the state the engine's [`TokenSink`] fills and
+//! One answer being written: the state the model's [`TextSink`] fills and
 //! the [`AssistantGeneration`] the screen reads.
 //!
 //! The engine may push a piece every few milliseconds. The screen does not
@@ -6,7 +6,7 @@
 //! at most about every [`DELIVERY_INTERVAL`], so SwiftUI redraws about 20
 //! times a second however fast the model is.
 //!
-//! [`TokenSink`]: super::TokenSink
+//! [`TextSink`]: super::TextSink
 
 use std::future::Future;
 use std::pin::Pin;
@@ -63,6 +63,17 @@ pub(crate) struct Outcome {
     pub first_piece: Option<Duration>,
     pub elapsed: Duration,
     pub pieces_after_stop: u32,
+}
+
+/// The model writes into the answer through Forge AI's sink.
+impl super::TextOut for Shared {
+    fn push(&self, delta: &str) -> bool {
+        Shared::push(self, delta.to_string())
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.is_cancelled()
+    }
 }
 
 impl Shared {

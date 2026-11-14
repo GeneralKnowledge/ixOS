@@ -91,7 +91,7 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Device services | Experimental | Partial: compiled in CI, not yet run on an iPhone |
 | Media | Experimental | Partial: Chat and Pocket Library use it; device run pending |
 | Developer tools | Experimental | Partial: host tools proven, live session in #57 |
-| Local AI | In progress: L1 in the Chat crate | Partial: L0 check app ran on an iPhone 15 Pro Max (2026-11-07): Foundation Models available on a free team; Qwen3.5 0.8B at ~36 tok/s in release; stopping, offline and the 2B skipped, not measured. L1 (Chat's Assistant on Foundation Models) built, not yet run on the phone |
+| Local AI | In progress: A0 shared by Chat and Pocket Library; Relay asks next (A1) | Partial: L0 check app ran on an iPhone 15 Pro Max (2026-11-07): Foundation Models available on a free team; Qwen3.5 0.8B at ~36 tok/s in release; stopping, offline and the 2B skipped, not measured. L1 (Chat's Assistant on Foundation Models) built, not yet run on the phone |
 | Attachments | Planned | Partial: Chat M3 (#56) |
 | Documents | Planned | Partial: Pocket Library (#53) |
 | Audio | Experimental | Partial: compiled and tested in CI (macOS), not yet run on an iPhone |

@@ -39,6 +39,9 @@
 //! crate keeps one namespace. The logic that does not cross the boundary
 //! (URL parsing, validation) lives here as plain Rust and is tested here.
 
+#[cfg(feature = "ai")]
+pub mod ai;
+mod ai_service;
 #[doc(hidden)]
 pub mod background;
 mod biometrics;

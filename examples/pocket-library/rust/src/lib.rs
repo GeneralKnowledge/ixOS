@@ -50,13 +50,18 @@ use reader::EpubText;
 use store::Store;
 use summary::ReadSoFar;
 pub use summary::{
-    BookRunProgress, BookSynopsis, CastMember, ChapterSynopsis, SummaryModel, SummaryModelError,
-    SummaryModelInfo, SummaryProgress, SummaryRequest, SummarySink, SummaryStage,
+    BookRunProgress, BookSynopsis, CastMember, ChapterSynopsis, SummaryProgress, SummaryRequest,
+    SummaryStage,
 };
 
 // No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
+
+// Forge AI (docs/forge-ai-plan.md): the on-device model the summaries ask,
+// `native::ai::AiModel` (Swift: `ForgeAppleModel`).
+forge_services::native_services!(ai);
+use native::ai::AiModel;
 
 /// Sent with every catalogue request. Open Library asks clients to identify
 /// themselves.
@@ -622,7 +627,7 @@ impl Library {
         &self,
         id: u64,
         index: u32,
-        model: Arc<dyn SummaryModel>,
+        model: Arc<dyn AiModel>,
         progress: Option<Arc<dyn SummaryProgress>>,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<ChapterSynopsis, LibraryError> {
@@ -737,7 +742,7 @@ impl Library {
     pub async fn summarise_book(
         &self,
         id: u64,
-        model: Arc<dyn SummaryModel>,
+        model: Arc<dyn AiModel>,
         progress: Option<Arc<dyn SummaryProgress>>,
         cancellation: Option<Arc<Cancellation>>,
     ) -> Result<BookSynopsis, LibraryError> {

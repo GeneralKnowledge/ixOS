@@ -49,7 +49,7 @@ forge_runtime::app_shell! {
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
 // `ForgeServices.install()`; see docs/native-services.md.
-forge_services::native_services!(audio, biometrics, http);
+forge_services::native_services!(audio, biometrics, http, ai);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).

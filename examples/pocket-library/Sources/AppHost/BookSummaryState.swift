@@ -28,15 +28,15 @@ public final class BookSummaryState {
     public private(set) var unfinished: BookRunProgress?
     /// Why iOS won't keep the run going in the background, if it won't.
     public private(set) var backgroundNote: String?
-    public let info: SummaryModelInfo
+    public let info: AiModelInfo
 
     private let library: LibraryModel
     private let bookID: UInt64
     private let bookTitle: String
-    private let model: SummaryModel
+    private let model: AiModel
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    public init(library: LibraryModel, bookID: UInt64, bookTitle: String, model: SummaryModel) {
+    public init(library: LibraryModel, bookID: UInt64, bookTitle: String, model: AiModel) {
         self.library = library
         self.bookID = bookID
         self.bookTitle = bookTitle

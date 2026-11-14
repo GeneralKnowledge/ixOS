@@ -424,6 +424,9 @@ name = "forge-services"
 version = "0.1.0"
 dependencies = [
  "forge-net",
+ "forge-runtime",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
