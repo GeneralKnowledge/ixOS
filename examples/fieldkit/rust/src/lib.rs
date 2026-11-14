@@ -94,9 +94,13 @@ impl State {
     }
 
     /// Copies a photo or recording into the media store, named by the
-    /// SHA-256 of its contents, so the same file added twice is kept once.
+    /// SHA-256 of its contents and keeping its extension (`.jpg`, `.m4a`)
+    /// for AVFoundation, so the same file added twice is kept once.
     fn import_media(&self, source: &str) -> Result<String, FieldKitError> {
-        Ok(self.media.import_hashed(Path::new(source))?.name)
+        Ok(self
+            .media
+            .import_hashed_keeping_extension(Path::new(source))?
+            .name)
     }
 
     /// Removes media files no note uses any more.

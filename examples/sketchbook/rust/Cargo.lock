@@ -844,7 +844,6 @@ dependencies = [
  "forge-runtime",
  "forge-storage",
  "serde",
- "sha2",
  "tempfile",
  "thiserror",
  "uniffi",

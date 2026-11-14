@@ -348,31 +348,13 @@ fn receive_file(
                 reason: "it changed on the way".into(),
             });
         }
-        let kept = format!("{sha256}/{}", inbox_name(name));
+        let kept = format!("{sha256}/{}", forge_storage::files::safe_file_name(name));
         Ok(inbox.accept(&partial, &kept)?.name)
     })();
     if result.is_err() {
         let _ = std::fs::remove_file(&partial);
     }
     result
-}
-
-/// A name the file store takes that keeps the extension, so Quick Look
-/// and the share sheet know the type: `safe_name` turns the dot into a
-/// dash (friction R4).
-pub fn inbox_name(name: &str) -> String {
-    let base = Path::new(name)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    match base.rsplit_once('.') {
-        Some((stem, ext)) if !stem.is_empty() && !ext.is_empty() => format!(
-            "{}.{}",
-            forge_storage::files::safe_name(stem),
-            forge_storage::files::safe_name(ext)
-        ),
-        _ => forge_storage::files::safe_name(base.trim_start_matches('.')),
-    }
 }
 
 fn protocol(what: &str) -> RelayError {
@@ -384,18 +366,5 @@ fn protocol(what: &str) -> RelayError {
 fn stopped() -> RelayError {
     RelayError::Stopped {
         kind: forge_app::ErrorKind::Cancelled,
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn inbox_names_keep_the_extension() {
-        assert_eq!(inbox_name("Holiday photo.JPG"), "Holiday-photo.JPG");
-        assert_eq!(inbox_name("../../etc/passwd"), "passwd");
-        assert_eq!(inbox_name(".hidden"), "hidden");
-        assert_eq!(inbox_name(""), "file");
     }
 }

@@ -1,9 +1,9 @@
 order = 80
 capability = "Managed file store"
-framework = "Yes: forge-storage `FileStore` (`files` module, `hash` feature for SHA-256); `stage_write`/`Staged::commit` for a file and the record that names it"
+framework = "Yes: forge-storage `FileStore` (`files` module, `hash` feature for SHA-256 names, with or without the file extension); `stage_write`/`Staged::commit` for a file and the record that names it"
 rust_api = "Yes"
 ios_native = "n/a"
-in_app = "Partial: Chat M3 attachments (`AttachmentStore` keeps Chat's limits on top); Pocket Library covers, EPUBs, reader images and exports"
+in_app = "Partial: Chat M3 attachments (`AttachmentStore` keeps Chat's limits on top); Pocket Library covers, EPUBs, reader images and exports; FieldKit media, Sketchbook drawings, Soundscape recordings and Relay's inbox (Rust cores)"
 iphone = "No"
 documented = "Yes: rustdoc, persistence.md"
 limits = "No backup exclusion yet"

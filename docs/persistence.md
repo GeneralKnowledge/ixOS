@@ -35,7 +35,7 @@ If the record can't be saved, the `?` returns early and drops `cover`, which del
 | after the record is saved, before `commit` | the file, named by the record | nothing to do; `commit` only releases the in-memory guard |
 | after the record drops a name, before `remove` | a file no record names | the sweep removes it |
 
-Content-named files (`FileStore::import_hashed`, `accept_verified`) are immutable by their names, so they need no staging. Chat's attachments use them.
+Content-named files (`FileStore::import_hashed`, `write_hashed`, `accept_verified`) are immutable by their names, so they need no staging. Chat's attachments use them. Apple's media frameworks and Quick Look tell a file's type by its extension, so a file they open keeps one: `import_hashed_keeping_extension` names it `<sha256>.<ext>` after the source, `import_hashed_with_extension` and `write_hashed` take the extension to use, and `safe_file_name` cleans a name a person or another device gave while keeping its extension (FieldKit, Soundscape, Relay).
 
 ### 2. Sweep at launch
 
