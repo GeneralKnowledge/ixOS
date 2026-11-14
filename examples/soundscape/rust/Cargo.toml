@@ -1,0 +1,41 @@
+# Soundscape's own Rust library: projects of looping tracks, their mix
+# settings, waveforms and the mixdown, and the UniFFI API (SoundscapeCore)
+# the SwiftUI app calls. AVAudioEngine records and plays; this crate decides
+# what a project is, what each setting means in Apple's units, and renders
+# the finished mix. Built the way a hostable app is
+# (docs/research/app-friction-log.md).
+[package]
+name = "soundscape-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.89"
+publish = false
+
+[lib]
+name = "soundscape_core"
+crate-type = ["staticlib", "lib"]
+
+[dependencies]
+# The application runtime: one core per process, serial commands, revisions,
+# lifecycle, cancellation, shutdown (docs/app-model-review.md).
+forge-app = { path = "../../../crates/forge-app" }
+forge-runtime = { path = "../../../crates/forge-runtime" }
+# Projects are one JSON document; recordings are files named by their
+# SHA-256.
+forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
+# WAV reading and writing (AVAudioFile records WAV; the mixdown is WAV).
+hound = "3.5"
+# Must match the uniffi-bindgen Forge generates bindings with.
+uniffi = "=0.32.2"
+serde = { version = "1.0", features = ["derive"] }
+thiserror = "2.0"
+
+[dev-dependencies]
+tempfile = "3.14"
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1

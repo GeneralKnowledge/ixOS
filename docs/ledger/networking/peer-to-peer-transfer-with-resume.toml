@@ -1,9 +1,9 @@
 order = 60
 capability = "Peer-to-peer transfer with resume"
 framework = "No"
-rust_api = "No"
+rust_api = "Partial: Relay's core sends notes and files, SHA-256 checked"
 ios_native = "No"
-in_app = "No"
+in_app = "Partial: Relay's Rust core and the `relay` command on Linux (no iOS app yet)"
 iphone = "No"
 documented = "No"
-limits = ""
+limits = "No resume yet; one item at a time per connection; TCP from Rust, Bonjour in Swift (not built)"

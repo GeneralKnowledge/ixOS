@@ -84,7 +84,7 @@ Layers: **Core** (any app may need it), **Optional** (a substantial system an ap
 | File-backed upload and download with progress | Partial: forge-net `HttpClient::send_file`, `download_to_file` | Yes | n/a | Partial: Chat M3 | No | No | Streams from and to files; downloads take a byte limit and use FileStore temporary names, so a killed download is swept; no progress reporting or resume yet |
 | Background transfers | Partial: forge-services `transfers` (downloads; uploads not yet) | Yes: `TransferService` (ledger saved before start, size and SHA-256 checks, delivery into a `FileStore`, reconcile after relaunch) | Yes: background `URLSession` (`ForgeTransfers`), app delegate hook | Yes: Device Lab (Background Downloads) | Partial: Device Lab on iPhone 15 Pro Max, iOS 26.3.1 (2026-11-11, 494faf1, reported by a person): downloads delivered after the app was ended (tests 1 and 3) and after leaving it running (test 2, completion callback not seen in the log), force quit marked Interrupted (test 6), once only on the second launch; Retry (then only a swipe action) was not found, so retry after force quit not yet seen | Partial: native-services.md | Not yet seen on a phone: the completion callback after a background wake and a retry after force quit (both rechecked after the fix for a force-quit download shown as Running until the next launch); acceptance tests 4 and 5 are unit tests. No automatic retry (the app calls `retry`); no uploads |
 | CSV import and export | Yes: forge-storage `csv` feature (`export_csv`, `to_csv`, `import_csv`, `from_csv`) | Yes: rows are any serde struct; import matches columns to fields by name (case, spaces, `_` and `-` ignored) and reports bad rows by line instead of failing | n/a | Yes: Pocket Library (Settings: Export as Spreadsheet, Import from Spreadsheet), Checklist (Share as Spreadsheet, Import from Spreadsheet) | No | Yes: persistence.md | Exports start with a UTF-8 BOM so Excel reads accents. Import stops at 100,000 rows. The apps' Swift screens compiled on macOS CI only so far |
-| Report export (zip, GPX, GeoJSON, PDF, PNG) | No | No | No | No | No | No | PDF and PNG drawn natively. GPX and GeoJSON written by FieldKit's Rust core (no app yet); zip, PDF and PNG not built |
+| Report export (zip, GPX, GeoJSON, PDF, PNG) | No | No | No | No | No | No | PDF and PNG drawn natively. GPX and GeoJSON written by FieldKit's Rust core; Sketchbook's core plans PNG and PDF pages (no app renders them yet); WAV mixdown in Soundscape's core; zip not built |
 
 ## Offline delivery (W11)
 
@@ -109,9 +109,9 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Long-lived streams (SSE) with reconnect | Yes | Yes | n/a | Yes: Chat | Yes: Chat | Yes: chat-demo.md | |
 | Cancellable requests | Yes | Yes | Yes: task cancellation | Yes: starter | No | Yes | |
 | Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes) | Yes: forge-services `connectivity` | Yes: `ConnectivityService`, `TransferPolicy::Unmetered` | Yes: `NWPathMonitor` | Yes: Device Lab | No | Partial: native-services.md | Wi-Fi network name needs the paid-team Access Wi-Fi Information entitlement; no signal strength or carrier |
-| Bonjour advertise and browse | No | No | No | No | No | No | Needs `NSBonjourServices` key |
-| Peer-to-peer transfer with resume | No | No | No | No | No | No | |
-| Device identity and encrypted channel | Partial: Keychain only | Partial | Partial | No | No | No | Use a reviewed library |
+| Bonjour advertise and browse | No | No | No | No | No | No | Needs `NSBonjourServices` key. Relay listens on TCP from Rust and will advertise and browse `_forgerelay._tcp` with NWListener and NWBrowser |
+| Peer-to-peer transfer with resume | No | Partial: Relay's core sends notes and files, SHA-256 checked | No | Partial: Relay's Rust core and the `relay` command on Linux (no iOS app yet) | No | No | No resume yet; one item at a time per connection; TCP from Rust, Bonjour in Swift (not built) |
+| Device identity and encrypted channel | Partial: Keychain only | Partial | Partial | Partial: Relay's Rust core pairs by QR code and keys Noise XXpsk3 sessions by the pair's secret (no iOS app yet) | No | No | Reuses forge-devproto's Noise channel; Relay keeps pair secrets in its data file, not the Keychain, for now |
 | Multicast discovery | No | No | No | No | No | No | Paid team plus Apple approval |
 
 ## Native services and permissions (W3, W4)
@@ -141,7 +141,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Audio session handling | Yes: forge-services Swift helper, in every app (no permission needed) | n/a | Yes: `ForgeAudioSession` | Partial: Chat M4 voice, Pocket Library read-aloud | Partial: playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run | Partial: native-services.md | Record and spoken playback only; no mixing or ducking options yet |
 | Record and play audio files | Yes: forge-services `audio` (optional) | Yes: `AudioService::duration`, `NativePermission::Microphone` | Yes: `ForgeAudioRecorder`, `ForgeAudioPlayer`, waveforms | Partial: Chat M4 | No | Partial: native-services.md | AAC `.m4a`; copied only into apps that select `audio` |
 | Waveform summaries | Yes: forge-services `audio` (optional) | n/a | Yes: `ForgeAudio.waveform(of:bars:)`, off the main actor | Partial: Chat M4 | No | Partial: native-services.md | Peaks per slice from the decoded file; no precomputed summaries sent with messages |
-| Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4 |
+| Real-time audio processing in Rust | No | No | No | No | No | No | UniFFI unusable on the render thread; S4. Soundscape's core runs its low-pass and echo offline (mixdown) only |
 | Background audio | Partial: config | No | No | No | No | Partial | |
 | Location fix | Yes: forge-services `location` | Yes: `LocationService` | Yes: `CLLocationManager` | Yes: Device Lab; Weather still has its own one-shot provider | Partial: Weather's own provider, 2026-11-06; the service is not yet run on an iPhone | Partial: native-services.md | When in use only |
 | Continuous location and tracks | Partial: continuous fixes and `distance_m`; no track storage | Yes | Yes | Partial: Device Lab distance travelled; FieldKit records tracks from the location service (not run on an iPhone yet) | No | Yes | No GPX or track file yet (FieldKit) |
@@ -153,7 +153,7 @@ Chat's offline behaviour, tracked as its own capability because it tests the app
 | Forms with Rust validation | Partial: compose sheet | Partial | Partial | Yes: starter | No | Partial | |
 | Charts (Swift Charts) | No | n/a | No | No | No | No | |
 | Custom drawing and gestures | No | n/a | No | No | No | No | |
-| Apple Pencil (PencilKit) | No | n/a | No | No | No | No | |
+| Apple Pencil (PencilKit) | No | n/a | No | Partial: Sketchbook's Rust core keeps each layer's PencilKit drawing, layers and one undo history (no SwiftUI app yet) | No | No | Finger drawing only on iPhone; Rust stores drawings as opaque data and never parses them |
 | Metal rendering | No | No | No | No | No | No | Precompiled shaders need a Mac; S3 |
 
 ## Extensions and restricted frameworks (W9, W10)

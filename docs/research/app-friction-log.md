@@ -36,6 +36,14 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
 | A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
+| A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Open |
+| A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Open: third app to hit it, fix now |
+| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Open |
+| A16 | Relay | The Noise channel and framing Relay needs live in `forge-devproto`, a frozen tooling crate | Limit | Open: second use, extract after merge |
+| A17 | Relay | Pair secrets sit in the app's JSON file: the Keychain service needs the iOS host, so tests and the Linux command can't use it | Limit | Open |
+| A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
+| A19 | Relay | `ErrorKind` has no network or refused kind, so connection failures are `Unavailable` and a refused pairing is `Invalid` | Annoyance | Open |
+| A20 | Soundscape | No audio file reading in the framework: the core brings `hound` for WAV, and Chat's audio service is Swift only | Annoyance | Accept for now |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -67,6 +75,10 @@ AVAudioPlayer plays the file anyway (Chat stores voice notes the same way).
 
 **Framework.** Export `sha256_file` (and `is_sha256_hex`), or let
 `import_hashed` keep the source's extension.
+
+**Since then.** `forge_storage::files` is public now, so
+`files::sha256_file` can be called. Soundscape and Relay hit the missing
+extension again (A14).
 
 ## A3. Two kinds of id
 
@@ -208,3 +220,110 @@ except Counter and Device Lab.
 `LIBRARY_SEARCH_PATHS` gets the app's `build/ios-device/lib` and
 `OTHER_LDFLAGS` gets `-lforge_ffi -framework Security`, in the template and
 the six affected examples.
+
+## A13. Hashing bytes in memory
+
+**What happened.** Sketchbook gets each PencilKit drawing from Swift as
+bytes and keeps it as a file named by its SHA-256, so undo steps share
+files. `FileStore::import_hashed` only takes a path.
+
+**Workaround.** Sketchbook depends on `sha2`, hashes the bytes, writes its
+own hex, and calls `FileStore::write`.
+
+**Framework.** `FileStore::write_hashed(bytes)`, the in-memory twin of
+`import_hashed`.
+
+## A14. Content-named files still lose their extension
+
+**What happened.** A2, twice more. Soundscape's recordings must end in
+`.wav` for AVAudioFile, so it hashes the file with `files::sha256_file`
+and then imports it as `<hash>.wav`, reading it twice. Relay keeps received
+files as `<hash>/<name>` so Quick Look and the share sheet know the type,
+but `files::safe_name` maps every `.` to `-`, so `photo.jpg` became
+`photo-jpg`.
+
+**Workaround.** Soundscape reads twice. Relay splits the extension off and
+cleans each half (`link::inbox_name`).
+
+**Framework.** Fix now: `import_hashed` keeps the source's extension (or
+takes one), and `safe_name` keeps one dot before an extension.
+
+## A15. The same Document boilerplate in every app
+
+**What happened.** Sketchbook, Soundscape and Relay each keep their data in
+one `forge_app::Document`, as Checklist does. Each wrote the same
+`From<DocumentError>`, `From<OpenError>`, `From<FileStoreError>` and
+`From<Stopped>` for its error enum, the same `start_fresh` constructor, and
+(with FieldKit) the same "letters, digits, spaces and dashes" file name
+from a title.
+
+**Workaround.** Copied.
+
+**Framework.** Fix later: a small helper in forge-app for the error
+conversions (or a documented `#[derive]`), `Document`-backed `start_fresh`
+in the template, and `forge_storage::files::title_file_name` with
+numbering for repeats.
+
+## A16. The encrypted channel lives in a tooling crate
+
+**What happened.** Relay needs what the device tools already have:
+length-prefixed frames, a Noise `XXpsk3` handshake keyed by a shared
+secret, CBOR messages over any blocking stream. That is `forge-devproto`,
+which belongs to the frozen live-connection tooling.
+
+**Workaround.** Relay depends on `forge-devproto` unchanged and adds only
+its own messages.
+
+**Framework.** Second use: after this lands, move `frame`, `secure` and
+`conn` into a framework module (in `forge-net`, or a `forge-peer` crate)
+that `forge-devproto` re-exports, so the tooling freeze isn't touched.
+
+## A17. Secrets without a Keychain on Linux
+
+**What happened.** A pair's secret belongs in the Keychain. The Keychain
+service is a native service the iOS host installs, so Relay's tests and
+the `relay` command on Linux have none.
+
+**Workaround.** Secrets are in Relay's JSON file in the app's data
+container, which iOS encrypts while the phone is locked.
+
+**Framework.** A file-backed Keychain stand-in in forge-services for Linux
+hosts and tests, so an app can call the Keychain everywhere and Relay R2
+can move the secrets there.
+
+## A18. No shape for a long-lived listener
+
+**What happened.** Relay listens for connections for as long as it is on
+screen. The runtime has commands, on-screen work and finishing work, but
+nothing that runs until stopped and feeds commands as things arrive.
+
+**Workaround.** A plain thread with a stop flag and a weak reference to the
+core; each connection has its own thread and waits for its commands with
+`forge_runtime::block_on`. The app stops it when it leaves the screen.
+
+**Framework.** With A9: a documented "service loop" in forge-app that stops
+on background and shutdown and hands events to commands.
+
+## A19. No error kind for the network
+
+**What happened.** Relay's failures are mostly "can't reach the other
+device" and "the other device said no". `ErrorKind` has neither, so they
+are `Unavailable` and `Invalid`, and the app can't tell "try again" from
+"pair again" by kind.
+
+**Workaround.** The app matches on `RelayError` cases.
+
+**Framework.** Add `Network` (retryable) and `Refused` to `ErrorKind`,
+which also helps Weather, Chat and Commonplace.
+
+## A20. No audio file reading in Rust
+
+**What happened.** Soundscape's waveforms and mixdown read WAV files in
+Rust. Forge's audio service is Swift (`ForgeAudio`), which can't run in
+Linux tests.
+
+**Workaround.** The core depends on `hound` for WAV.
+
+**Framework.** Accept: WAV is the only format Soundscape needs, and
+`hound` is small. Revisit if a second app needs audio in Rust.
+
