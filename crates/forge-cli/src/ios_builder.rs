@@ -235,7 +235,7 @@ impl IosBuilder for XtoolBuilder {
         configuration: IosConfiguration,
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
-        run_explained(runner, xtool_dev("build", project_dir, configuration))
+        crate::build_lock::run_heavy(runner, xtool_dev("build", project_dir, configuration))
     }
 
     fn build_signed_ipa(
@@ -251,7 +251,7 @@ impl IosBuilder for XtoolBuilder {
         // Only for SwiftPM projects, which every Forge app is.
         let ipa = built_ipa(project_dir, product);
         let _ = std::fs::remove_file(&ipa);
-        run_explained(
+        crate::build_lock::run_heavy(
             runner,
             xtool_dev("build", project_dir, configuration).args(["--sign", "--ipa"]),
         )?;

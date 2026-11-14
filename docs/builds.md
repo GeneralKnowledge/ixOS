@@ -26,23 +26,51 @@ Notes:
 - **Android builds are debug APKs**, signed with the SDK's debug key. A release build type, signing from the environment, an `.aab` bundle and R8 rules are on the roadmap.
 - **Emulators.** The Android ABIs in `forge.toml` include `x86_64`, so the APK also runs on an x86_64 emulator. Android HTTPS has only been tested on the JVM and in Rust tests so far ([toolchain-validation.md](toolchain-validation.md#manual-acceptance-android-https-on-a-device)).
 
-## One build at a time
+## The build queue
 
-A machine that several people or sessions build on (the laptop the apps are installed from) can't take several iOS builds at once: Cargo, SwiftPM and xtool each use every core, and together they starve everything else, including a Remote Control session and the over-the-air install page. So the heavy part of `forge build ios`, `forge run ios`, `forge publish ios` and [`scripts/check-ios-xtool.sh`](ios-build-check.md) takes a machine-wide lock first. A second build says who holds it and waits its turn:
+A machine that several people or sessions build on (the laptop the apps are installed from) can't take several iOS builds at once: Cargo, SwiftPM and xtool each use every core and gigabytes of memory, and together they run it out of memory until it freezes (2026-11-14: `ps` hung and the laptop needed a forced restart). So every heavy build goes through one queue, and runs inside a cap:
 
-```text
-[forge] Another build is running on this machine, so this one waits its turn (up to 60 min, FORGE_BUILD_LOCK_TIMEOUT). Running now: pid 4242 since 2026-11-14T15-10-02: forge run ios in /home/red/ixOS/examples/device-lab (branch claude/ota-fix) [PR #189]
+- **One at a time, in arrival order.** `forge build ios`, `forge run ios` (its build part), `forge publish ios`, `scripts/check-ios-xtool.sh` and `forge queue run -- <command>` wait in line until it is their turn. A waiting build says its place in line and whose build is running:
+
+  ```text
+  [forge] Another build is running on this machine, so this one is queued: number 2 in line (`forge queue status` shows the queue; waits up to 60 min, FORGE_BUILD_LOCK_TIMEOUT). Building now: pid 4242 since 2026-11-14T15-10-02: forge publish ios in /home/red/ixOS/examples/device-lab (branch claude/ota-fix) [PR #189]
+  ```
+
+- **`forge queue status`** (`--json` too) shows the build running now and everyone waiting.
+- **`forge queue run -- <command>`** puts any other heavy command in the queue: a raw `cargo build`, `swift build`, `xtool dev build`, or a script. It exits with the command's exit code. Use it for anything heavy that isn't one of the commands above.
+- **Caps.** On Linux with systemd, each heavy step runs in a `systemd-run --user --scope` with `MemoryMax` (no swap) and `CPUQuota`, and Cargo gets fewer jobs (`CARGO_BUILD_JOBS`). By default a build may use all but a quarter of the memory (at least 2 GiB stays free), every core but one, and one Cargo job per 2 GiB. It never takes memory that something already running needs: if another job (an ML model on the GPU, say) holds memory when the build starts, the cap shrinks to what is free less room for that job to grow (an eighth of the machine, at least 1 GiB). The build is then slower or may be stopped, and the other job is not touched. A capped build is the only thing the cap can stop: the kernel kills inside the build's own scope, never outside it. A build that outgrows its cap is killed by the kernel and fails with a message saying so, instead of freezing the machine. Builds also run at nice 10 and the lowest best-effort I/O priority, so Remote Control, SSH and the over-the-air install page come first.
+- **Nothing stale.** `forge run ios` leaves the queue as soon as its build is done, so waiting for the phone or installing holds up no one. The lock (`flock` on `~/.cache/forge/build.lock`) frees itself when its process exits, however it exits, and places in line (`~/.cache/forge/build-queue/`) of processes that are gone are skipped. A build that hangs keeps its turn: waiters give up after an hour and name its pid, so you can stop it.
+
+### Setting up a shared build host
+
+Run this once on the machine (it asks for your sudo password), and again after any step it says is still to do:
+
+```bash
+cd ~/ixOS && git pull && scripts/setup-build-host.sh     # --check only reports
 ```
 
-- `forge run ios` holds the lock only while it builds; waiting for the iPhone and installing don't hold up the next build. Its status file shows `waiting_for_build_lock` meanwhile.
-- The lock is `flock` on `~/.cache/forge/build.lock` (or `$XDG_CACHE_HOME/forge/build.lock`). The kernel frees it when the holder exits, however it exits, so there are no stale locks to clear. A build that hangs keeps it: the waiter gives up after an hour and names the holder's pid, so you can stop that process.
-- Builds run at nice 10 and the lowest best-effort I/O priority, so interactive work on the same machine comes first.
+It turns on lingering for your user and delegates the memory controller to your user's systemd (so `systemd-run --user` caps work, also from Remote Control); installs `earlyoom`, which stops the biggest compiler first before the machine runs out of memory, even if something bypassed the queue, and never stops a protected process (below); installs the current `forge` into `~/.cargo/bin` and lists older copies that don't queue; and, once a test proves the cap stops a process at its limit, writes `~/.config/forge/build-host.toml`. With that file, forge refuses to build without the cap instead of risking the machine. The file can also set the caps (`memory_max_gib`, `cpu_quota_percent`, `jobs`).
+
+### Protecting your own jobs
+
+earlyoom never stops a protected process. The setup script protects:
+
+- every process using a GPU when it runs (NVIDIA, AMD and Intel GPUs, and what `nvidia-smi` lists)
+- common ML runtimes: `python`, `ollama`, `llama-server`, `llama-cli`, `jupyter-lab`, `torchrun`
+- sshd, tailscaled, usbmuxd, Claude (`claude`, `node`) and systemd
+- any name in `~/.config/forge/protected-processes`, one per line
+
+To add a job, run `scripts/setup-build-host.sh --protect <process name>`. It is remembered for later runs. Run the script again after starting a new GPU job, so the job is picked up automatically. To protect a single running process from any out-of-memory kill, kernel or earlyoom, run `sudo choom -n -1000 -p <pid>`.
+
+Elsewhere (a machine only you build on, macOS) the queue still works and a missing cap is only a note.
 
 | Variable | Effect |
 |---|---|
-| `FORGE_BUILD_LOCK_NOTE` | Who is building (a thread, PR or person), shown to whoever waits |
-| `FORGE_BUILD_LOCK_TIMEOUT` | Seconds to wait for the lock (default 3600) |
-| `FORGE_BUILD_LOCK` | Another lock file, or `off` for no lock (a machine only you build on) |
+| `FORGE_BUILD_LOCK_NOTE` | Who is building (a thread, PR or person), shown to whoever waits (`forge queue run --note` too) |
+| `FORGE_BUILD_LOCK_TIMEOUT` | Seconds to wait in line (default 3600) |
+| `FORGE_BUILD_LOCK` | Another lock file, or `off` for no queue |
+| `FORGE_BUILD_MEMORY_MAX` | The memory cap in GiB, or `off` for none |
+| `FORGE_BUILD_JOBS` | Cargo jobs |
 | `FORGE_BUILD_NICE=0` | Keep normal CPU and disk priority |
 
 ## Which one should I use?

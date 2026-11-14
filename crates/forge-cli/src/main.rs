@@ -147,6 +147,12 @@ enum Commands {
         #[command(subcommand)]
         cmd: PublishCommands,
     },
+    /// The machine's build queue: heavy builds run one at a time, in the
+    /// order they arrived, inside a memory and CPU cap (docs/builds.md)
+    Queue {
+        #[command(subcommand)]
+        cmd: QueueCommands,
+    },
     /// Why isn't my app working? Checks the last `forge run ios`, the iPhone,
     /// whether the app is installed and still signed, its newest crash report,
     /// and what it logs while you open it, then says what to do next
@@ -1157,6 +1163,24 @@ enum InstallCommands {
 }
 
 #[derive(Subcommand)]
+enum QueueCommands {
+    /// Show the build running now and the builds waiting, first in line first
+    Status,
+    /// Run any heavy command (cargo, swift build, xtool, a script) as a
+    /// queued, capped build: wait for its turn, then run it with the
+    /// machine's memory and CPU caps. Exits with the command's exit code
+    Run {
+        /// Who is building (a thread, PR or person), shown to whoever waits
+        /// (default: FORGE_BUILD_LOCK_NOTE)
+        #[arg(long)]
+        note: Option<String>,
+        /// The command and its arguments, after `--`
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        command: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum PublishCommands {
     /// Build and sign the app into an .ipa (no iPhone needed), then publish
     /// it at https://<this computer>.<tailnet>.ts.net:8443/. On the iPhone,
@@ -1386,6 +1410,10 @@ fn command_name(command: &Commands) -> String {
         },
         Commands::Install { .. } => "install ios",
         Commands::Run { .. } => "run ios",
+        Commands::Queue { cmd } => match cmd {
+            QueueCommands::Status => "queue status",
+            QueueCommands::Run { .. } => "queue run",
+        },
         Commands::Publish { cmd } => match cmd {
             PublishCommands::Ios { .. } => "publish ios",
             PublishCommands::Serve { .. } => "publish serve",
@@ -1786,6 +1814,19 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         },
         Commands::Devices => commands::devices(runner, &ios),
         Commands::Publish { cmd } => publish_command(runner, &ios, &root, cmd),
+        Commands::Queue { cmd } => match cmd {
+            QueueCommands::Status => {
+                print!("{}", build_lock::queue_status());
+                Ok(())
+            }
+            QueueCommands::Run { note, command } => {
+                let code = build_lock::queue_run(&command, note.as_deref())?;
+                if code != 0 {
+                    std::process::exit(code);
+                }
+                Ok(())
+            }
+        },
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
         Commands::Inspect { project } => {
             let project = project_or_default(project, "");

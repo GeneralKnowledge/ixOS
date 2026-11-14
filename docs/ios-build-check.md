@@ -36,7 +36,7 @@ A cloud session has no Darwin SDK. It pushes its branch and runs the check on th
 cd ~/ixOS && git fetch -q origin && ./scripts/check-ios-xtool.sh --ref <branch> affected origin/main
 ```
 
-It takes the same machine-wide build lock as `forge build ios` ([builds.md](builds.md#one-build-at-a-time)), so when another session is already building on the laptop it prints whose build that is and waits its turn instead of running alongside; set `FORGE_BUILD_LOCK_NOTE=<your thread or PR>` on the command so others can see yours. Don't work around the wait by running Cargo or xtool directly.
+It goes through the build queue ([builds.md](builds.md#the-build-queue)): it builds `forge`, then runs itself as `forge queue run`, so when another session is building on the laptop it prints its place in line and whose build is running, and waits its turn; the whole check then runs inside the memory cap. Set `FORGE_BUILD_LOCK_NOTE=<your thread or PR>` on the command so others can see yours, and `forge queue status` shows the queue. Don't work around the wait by running Cargo or xtool directly.
 
 Report the results table. If the laptop can't be reached, say the Swift side wasn't compiled; start the macOS workflow only if the person asks.
 

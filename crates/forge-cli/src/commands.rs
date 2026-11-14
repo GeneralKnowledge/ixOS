@@ -1096,7 +1096,8 @@ fn package_ios(
             "FORGE_RUST_FEATURES",
             if devtools { "devtools" } else { "" },
         );
-    run_explained(runner, with_app_crate(package, cfg, project_dir))
+    // Cargo for iOS: the heaviest step, capped (build_lock.rs).
+    crate::build_lock::run_heavy(runner, with_app_crate(package, cfg, project_dir))
 }
 
 pub fn build_ios(
