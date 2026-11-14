@@ -18,7 +18,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde::{Deserialize, Serialize};
@@ -421,23 +421,27 @@ fn content_type(path: &Path) -> &'static str {
     }
 }
 
-/// The file `url_path` names inside `dir`, refusing anything that would
-/// leave it.
+/// The file `url_path` names inside `dir`. Only the page, `apps.json` and
+/// each app's manifest and `.ipa` are served: never the server's pid or log.
 fn resolve(dir: &Path, url_path: &str) -> Option<PathBuf> {
     let path = url_path.split(['?', '#']).next().unwrap_or("");
-    let rel = Path::new(path.trim_start_matches('/'));
-    if !rel
-        .components()
-        .all(|c| matches!(c, Component::Normal(s) if !s.to_string_lossy().starts_with('.')))
-    {
-        return None;
+    let parts: Vec<&str> = path.trim_start_matches('/').split('/').collect();
+    match parts.as_slice() {
+        [""] | [INDEX_HTML] => Some(dir.join(INDEX_HTML)),
+        [APPS_JSON] => Some(dir.join(APPS_JSON)),
+        [id, file @ ("manifest.plist" | "app.ipa")] if safe_id(id).is_ok() => {
+            Some(dir.join(id).join(file))
+        }
+        _ => None,
     }
-    let full = dir.join(rel);
-    if full.is_dir() {
-        Some(full.join(INDEX_HTML))
-    } else {
-        Some(full)
-    }
+}
+
+/// What the probe answers: a fingerprint of the folder, so the folder's
+/// path (and the user name in it) never leaves the computer.
+fn folder_token(dir: &Path) -> String {
+    use sha2::{Digest, Sha256};
+    let digest = Sha256::digest(dir.to_string_lossy().as_bytes());
+    digest.iter().take(12).map(|b| format!("{b:02x}")).collect()
 }
 
 fn respond(stream: &mut TcpStream, status: &str, kind: &str, body: &[u8], head: bool) {
@@ -479,7 +483,7 @@ fn handle(mut stream: TcpStream, dir: &Path) {
         );
     }
     if target == PROBE_PATH {
-        let body = dir.to_string_lossy().into_owned();
+        let body = folder_token(dir);
         return respond(&mut stream, "200 OK", "text/plain", body.as_bytes(), head);
     }
     let Some(path) = resolve(dir, target) else {
@@ -528,7 +532,8 @@ pub fn serve(dir: &Path, port: u16) -> Result<(), String> {
     Ok(())
 }
 
-/// The folder the server on `port` serves, if a Forge server answers there.
+/// The [`folder_token`] of the folder the server on `port` serves, if a
+/// Forge server answers there.
 fn probe(port: u16) -> Option<String> {
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let mut s = TcpStream::connect_timeout(&addr, Duration::from_millis(500)).ok()?;
@@ -543,10 +548,10 @@ fn probe(port: u16) -> Option<String> {
 /// Starts `forge publish serve` in the background unless it already runs.
 fn ensure_server(dir: &Path, port: u16) -> Result<(), String> {
     match probe(port) {
-        Some(served) if Path::new(&served) == dir => return Ok(()),
-        Some(served) => {
+        Some(served) if served == folder_token(dir) => return Ok(()),
+        Some(_) => {
             return Err(format!(
-                "another Forge publish server on 127.0.0.1:{port} serves {served}: stop it with `forge publish stop` or use the same FORGE_PUBLISH_DIR"
+                "another Forge publish server on 127.0.0.1:{port} serves a different folder: stop it with `forge publish stop` from the same FORGE_PUBLISH_DIR"
             ))
         }
         None => {}
@@ -625,13 +630,93 @@ pub fn tailscale_base(runner: &dyn CommandRunner, https_port: u16) -> Result<Str
     })
 }
 
-/// Points `https_port` on the tailnet at the local server. Replaces only
-/// that port's configuration.
+/// What `https_port` on the tailnet is proxied to now, from `tailscale serve
+/// status --json` (background and foreground serves), if anything.
+fn serving_on(status: &serde_json::Value, https_port: u16) -> Option<String> {
+    let suffix = format!(":{https_port}");
+    let from_web = |web: &serde_json::Value| -> Option<String> {
+        web.as_object()?.iter().find_map(|(host, cfg)| {
+            if !host.ends_with(&suffix) {
+                return None;
+            }
+            let handlers = cfg["Handlers"].as_object()?;
+            Some(
+                handlers
+                    .values()
+                    .map(|h| {
+                        h["Proxy"]
+                            .as_str()
+                            .or(h["Path"].as_str())
+                            .or(h["Text"].as_str().map(|_| "text"))
+                            .unwrap_or("something")
+                            .to_string()
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+            )
+        })
+    };
+    if let Some(found) = from_web(&status["Web"]) {
+        return Some(found);
+    }
+    if let Some(sessions) = status["Foreground"].as_object() {
+        for session in sessions.values() {
+            if let Some(found) = from_web(&session["Web"]) {
+                return Some(found);
+            }
+        }
+    }
+    let tcp = |cfg: &serde_json::Value| cfg["TCP"].get(https_port.to_string()).is_some();
+    if tcp(status)
+        || status["Foreground"]
+            .as_object()
+            .is_some_and(|s| s.values().any(tcp))
+    {
+        return Some("something".into());
+    }
+    None
+}
+
+/// Whether `https_port` is free or already Forge's, or else what holds it.
+fn port_owner(runner: &dyn CommandRunner, https_port: u16) -> Result<Option<String>, String> {
+    let out = runner
+        .capture(&Cmd::new(TAILSCALE).args(["serve", "status", "--json"]))
+        .map_err(|e| format!("cannot read `tailscale serve status`: {e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "`tailscale serve status --json` failed: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    let text = String::from_utf8_lossy(&out.stdout);
+    if text.trim().is_empty() {
+        return Ok(None);
+    }
+    let status: serde_json::Value = serde_json::from_str(&text)
+        .map_err(|e| format!("cannot read `tailscale serve status --json`: {e}"))?;
+    Ok(serving_on(&status, https_port))
+}
+
+fn ours(target: &str) -> bool {
+    target.trim_end_matches('/') == format!("http://127.0.0.1:{LOCAL_PORT}")
+}
+
+/// Points `https_port` on the tailnet at the local server, unless the port
+/// already serves something else (which `--bg` would silently replace).
 fn tailscale_serve(
     runner: &dyn CommandRunner,
     https_port: u16,
     local_port: u16,
 ) -> Result<(), String> {
+    match port_owner(runner, https_port)? {
+        Some(target) if ours(&target) => return Ok(()),
+        Some(target) => {
+            return Err(format!(
+                "port {https_port} on your tailnet already serves {target}, and Forge won't replace it: publish on another port with --port (for example --port 9443)"
+            ))
+        }
+        None => {}
+    }
     // `timeout`: when Serve isn't enabled for the tailnet, tailscale prints a
     // link to enable it and waits.
     let cmd = Cmd::new("timeout").args([
@@ -718,15 +803,26 @@ pub fn publish(
 
 /// `forge publish stop`: stops serving on the tailnet and the local server.
 /// Published files stay.
+/// Leaves a port that serves anything other than Forge's server alone.
 pub fn stop(runner: &dyn CommandRunner, dir: &Path, https_port: u16) -> Result<(), String> {
-    let _ = runner.capture(&Cmd::new(TAILSCALE).args([
-        "serve".to_string(),
-        format!("--https={https_port}"),
-        "off".into(),
-    ]));
+    match port_owner(runner, https_port) {
+        Ok(Some(target)) if ours(&target) => {
+            let _ = runner.capture(&Cmd::new(TAILSCALE).args([
+                "serve".to_string(),
+                format!("--https={https_port}"),
+                "off".into(),
+            ]));
+        }
+        Ok(Some(target)) => println!(
+            "[forge] Left port {https_port} alone: it serves {target}, not Forge (pass the --port you published on)"
+        ),
+        Ok(None) | Err(_) => {}
+    }
     if let Ok(pid) = fs::read_to_string(dir.join(PID_FILE)) {
         let pid = pid.trim();
-        if !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit()) && probe(LOCAL_PORT).is_some()
+        if !pid.is_empty()
+            && pid.chars().all(|c| c.is_ascii_digit())
+            && probe(LOCAL_PORT).as_deref() == Some(folder_token(dir).as_str())
         {
             let _ = runner.capture(&Cmd::new("kill").arg(pid));
         }
@@ -885,10 +981,19 @@ mod tests {
     fn the_server_never_leaves_its_folder() {
         let dir = Path::new("/srv/pub");
         assert_eq!(resolve(dir, "/a/app.ipa?v=3"), Some(dir.join("a/app.ipa")));
+        assert_eq!(
+            resolve(dir, "/a/manifest.plist"),
+            Some(dir.join("a/manifest.plist"))
+        );
+        assert_eq!(resolve(dir, "/"), Some(dir.join("index.html")));
+        assert_eq!(resolve(dir, "/apps.json"), Some(dir.join("apps.json")));
         assert_eq!(resolve(dir, "/../etc/passwd"), None);
         assert_eq!(resolve(dir, "/a/../../x"), None);
+        assert_eq!(resolve(dir, "/../app.ipa"), None);
         assert_eq!(resolve(dir, "/.forge-secret"), None);
-        assert_eq!(resolve(dir, "/server.pid").map(|_| ()), Some(()));
+        assert_eq!(resolve(dir, "/server.pid"), None);
+        assert_eq!(resolve(dir, "/server.log"), None);
+        assert_eq!(resolve(dir, "/a/other.txt"), None);
     }
 
     #[test]
@@ -922,7 +1027,10 @@ mod tests {
         assert!(manifest.contains("Content-Type: text/xml"), "{manifest}");
         assert!(get("/missing").starts_with("HTTP/1.1 404"));
         assert!(get("/../x").starts_with("HTTP/1.1 404"));
-        assert_eq!(probe(port).as_deref(), Some(dir.to_string_lossy().as_ref()));
+        assert!(get("/server.pid").starts_with("HTTP/1.1 404"));
+        let token = probe(port).unwrap();
+        assert_eq!(token, folder_token(&dir));
+        assert!(!token.contains('/'), "the probe must not reveal the folder");
     }
 
     #[test]
@@ -949,6 +1057,64 @@ mod tests {
         assert!(tailscale_base(&mock, 8443)
             .unwrap_err()
             .contains("tailscale up"));
+    }
+
+    const SERVE_STATUS: &str = r#"{
+        "TCP": {"8443": {"HTTPS": true}, "9443": {"HTTPS": true}},
+        "Web": {
+            "create.t.ts.net:8443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:8411"}}},
+            "create.t.ts.net:9443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:47411"}}}
+        },
+        "Foreground": {"abc": {"TCP": {"443": {"HTTPS": true}},
+            "Web": {"create.t.ts.net:443": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:80"}}}}}}
+    }"#;
+
+    #[test]
+    fn reads_what_each_tailnet_port_serves() {
+        let status: serde_json::Value = serde_json::from_str(SERVE_STATUS).unwrap();
+        assert_eq!(
+            serving_on(&status, 8443).as_deref(),
+            Some("http://127.0.0.1:8411")
+        );
+        assert!(ours(&serving_on(&status, 9443).unwrap()));
+        assert_eq!(
+            serving_on(&status, 443).as_deref(),
+            Some("http://127.0.0.1:80")
+        );
+        assert_eq!(serving_on(&status, 10443), None);
+    }
+
+    #[test]
+    fn never_takes_over_a_port_that_serves_something_else() {
+        let mock = crate::runner::MockRunner::default();
+        mock.respond("tailscale serve status", 0, SERVE_STATUS);
+        let err = tailscale_serve(&mock, 8443, LOCAL_PORT).unwrap_err();
+        assert!(err.contains("8411") && err.contains("--port"), "{err}");
+        // Already Forge's: nothing to change.
+        tailscale_serve(&mock, 9443, LOCAL_PORT).unwrap();
+        assert!(!mock.call_lines().iter().any(|l| l.contains("--bg")));
+        // Free: serve it.
+        mock.respond("timeout 60 tailscale serve --bg", 0, "");
+        tailscale_serve(&mock, 10443, LOCAL_PORT).unwrap();
+        assert!(mock
+            .call_lines()
+            .iter()
+            .any(|l| l.contains("--https=10443 http://127.0.0.1:47411")));
+    }
+
+    #[test]
+    fn stop_leaves_other_serves_alone() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mock = crate::runner::MockRunner::default();
+        mock.respond("tailscale serve status", 0, SERVE_STATUS);
+        mock.respond("tailscale serve --https", 0, "");
+        stop(&mock, tmp.path(), 8443).unwrap();
+        assert!(!mock.call_lines().iter().any(|l| l.ends_with("off")));
+        stop(&mock, tmp.path(), 9443).unwrap();
+        assert!(mock
+            .call_lines()
+            .iter()
+            .any(|l| l == "tailscale serve --https=9443 off"));
     }
 
     #[test]

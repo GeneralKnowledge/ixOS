@@ -8,8 +8,8 @@ It works with a free Apple team. On 2026-11-14 a free-team build of Device Lab, 
 
 1. Forge builds the Rust library and runs `xtool dev build --sign --ipa`. xtool signs with your team's development profile, which lists the devices registered on the team, so the phone does not need to be connected.
 2. Forge copies the `.ipa` into its publish folder (`~/.local/share/forge/publish`, or `FORGE_PUBLISH_DIR`) and writes the install manifest iOS reads, `apps.json`, and a page listing every published app, newest first.
-3. A small file server (`forge publish serve`, started in the background) serves that folder on `127.0.0.1:47411` only.
-4. `tailscale serve` puts it on HTTPS at `https://<this computer>.<tailnet>.ts.net:8443/`, with a certificate the iPhone trusts. Only devices on your tailnet can reach it. Forge never uses Tailscale Funnel, which would put it on the public internet.
+3. A small file server (`forge publish serve`, started in the background) serves the page, `apps.json` and each app's manifest and `.ipa` on `127.0.0.1:47411` only, and nothing else in the folder.
+4. Unless that port already serves something else, `tailscale serve` puts it on HTTPS at `https://<this computer>.<tailnet>.ts.net:8443/`, with a certificate the iPhone trusts. Only devices on your tailnet can reach it. Forge never uses Tailscale Funnel, which would put it on the public internet.
 5. The page's **Install** button is an `itms-services://` link to the manifest. iOS downloads the `.ipa` and installs it.
 
 ## One-time setup
@@ -48,7 +48,7 @@ Bookmark the page or add it to the Home Screen. Each publish updates it.
 | `forge publish ios --port 9443` | Use another tailnet port (8443 by default; 443 is often taken by another `tailscale serve`) |
 | `forge publish ios --url https://…` | Serve through your own HTTPS address instead of Tailscale. It must forward to `http://127.0.0.1:47411`, and its certificate must be trusted by the iPhone |
 | `forge publish serve` | Run the file server in the foreground (for a systemd unit, say) |
-| `forge publish stop` | Take the page off the tailnet and stop the server. The builds stay on disk |
+| `forge publish stop` | Take the page off the tailnet and stop the server. The builds stay on disk. Pass the same `--port` you published on; a port that serves something else is left alone |
 
 With `--json`, `data` has `page_url`, `install_url`, `bundle_id`, `version`, `signed_until`, `devices` and `commit`.
 
@@ -66,7 +66,7 @@ Each app keeps its latest build. Publishing an app again replaces it, and other 
 | Problem | Fix |
 |---|---|
 | `Access denied` or `must be root` from `tailscale serve` | `sudo tailscale set --operator=$USER` once |
-| `listener already exists for port …` | Another `tailscale serve` uses that port: `forge publish ios --port 9443` |
+| `port … already serves …, and Forge won't replace it` or `listener already exists for port …` | Another `tailscale serve` uses that port. Forge never takes it over: `forge publish ios --port 9443` (and `forge publish stop --port 9443` later) |
 | `tailscale serve` waits, or says HTTPS isn't enabled | Turn on HTTPS Certificates in the admin console (DNS page) |
 | Safari can't open the page | Tailscale isn't on on the phone, or the laptop is asleep |
 | "Unable to install" | The profile doesn't list this iPhone (`forge publish` prints the devices it does list), or the app's 3-slot limit is full. Build once with `forge run ios` over the cable to register a new phone |
