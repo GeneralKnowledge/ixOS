@@ -30,6 +30,9 @@ Sending holiday.zip (1.2 GB) ...         Receiving holiday.zip ... saved to File
 
 Devices: iPhone app (in Device Lab, and on its own), the `relay` command on
 Linux (and macOS, same code), Android on the emulator once stage 1 works.
+Reuben's own set: the Ubuntu laptop, the iMac, Hetzner and Oracle servers,
+the iPhone, all on Tailscale. The goal is a universal, account-free file
+transfer utility: no sign-up, no Tailscale needed by the other person.
 
 ## What exists to reuse
 
@@ -42,13 +45,56 @@ Linux (and macOS, same code), Android on the emulator once stage 1 works.
 | **LocalSend** | Open LAN protocol v2: UDP multicast discovery, HTTP or HTTPS (self-signed certs), optional PIN | LAN only, PIN or trust-on-first-use instead of a PAKE. Its multicast discovery needs Apple's multicast entitlement (see below). A possible later "send to LocalSend apps" bridge, not the base |
 | **Network.framework / Bonjour** | Apple's discovery and sockets | Already how Relay finds devices on iOS. Keeps doing discovery on Apple; not cross-platform crypto |
 | **Multipeer Connectivity** | Apple peer to peer | Apple only, so no Linux or Android. Not used |
+| **Floe** | Go + TypeScript, MIT. Word code (`olive-tiger-castle`), WebRTC with a signalling server and optional TURN, self-hostable. One wire protocol across browser, desktop and CLI | Its idea worth taking: a **browser receiver**, so a device without the app can still get a file. WebRTC in a Rust core on iOS is heavy; see stage 3 |
+| **wush** (Coder) | Go, CC0. `wush serve` prints an auth key (address, DERP region, public keys); WireGuard via Tailscale's `tsnet` and Tailscale's public DERP relays, no Tailscale account. Files and shells | Shows how far a borrowed relay network goes. Its key is long (pasted, not typed); and it rides Tailscale's free relays, which exist for Tailscale users |
+| **derphole** | CLI (run with `npx`) for one-shot transfers, tunnels and terminal sharing over DERP relays, which never get payload keys; not affiliated with Tailscale | Same lesson as wush. Interesting, young, not something to build on |
+| **Taildrop** | Tailscale's own file sending between devices on one tailnet | Works today on Reuben's devices, but needs everyone on the tailnet. Its useful idea: when both ends are on a tailnet, use the tailnet address directly |
+| **ptransfer** | Short-code transfers through a self-hosted relay | Couldn't find a canonical project under this name; the pattern (self-hosted relay + code) is what stage 2 does with iroh |
 | **Relay today** | TCP + Noise `XXpsk3` (from `forge-devproto`), CBOR frames, QR pairing with a 32-byte one-time secret, Bonjour `_forgerelay._tcp` | Keep the product shape (identity, trusted devices, history, inbox, CLI, AI asks). Replace the hand-built wire with iroh, which also clears friction A16 (Noise living in a frozen tooling crate) |
+
+Other building blocks, in one line each:
+
+- **QUIC:** yes, through iroh (fast, encrypted, many streams on one
+  connection).
+- **STUN/TURN-style NAT traversal and relay fallback:** yes, through iroh's
+  hole punching and relays (the same job, without running coturn).
+- **WebRTC:** only if a browser receiver is wanted (stage 3); iroh's
+  browser build (relay only) is the lighter alternative to compare.
+- **libp2p:** does what iroh does with far more moving parts and a weaker
+  iOS story; not needed.
+- **BitTorrent/WebTorrent, IPFS:** made for one file to many strangers; a
+  two-device transfer gains nothing. iroh-blobs already gives content
+  addressing (BLAKE3) and resume.
+- **Syncthing:** continuous folder sync is a different product. A later
+  "keep this folder in sync with my laptop" mode could borrow its ideas;
+  not in scope.
+
+### Three kinds of network dependency
+
+The real difference between these tools is whose servers they lean on when
+two devices can't reach each other directly.
+
+| Kind | Examples | For Relay |
+|---|---|---|
+| **Someone else's public infrastructure** | croc's and magic-wormhole's public servers, n0's iroh relays, Tailscale's DERP (wush, derphole) | Zero setup, but rate limits, someone else's goodwill, and their uptime. Fine for development, not a foundation |
+| **Infrastructure you already have** | Tailscale (Taildrop, tailnet addresses) | Free win for Reuben's own devices: when both ends are on the tailnet, connect to the tailnet address directly, no relay at all. Not universal (the other person needs the tailnet) |
+| **A server you run** | ptransfer-style self-hosted relay, croc relay, `iroh-relay`, a rendezvous service | The universal answer, and cheap here: Reuben already has Hetzner and Oracle servers. Account-free for users, nothing borrowed |
+
+**Plan: all three, in order of preference.** Direct on the LAN first; then
+the tailnet address if both ends have one; then our own relay and
+rendezvous on Hetzner (with Oracle as a second region later); n0's public
+relays only during development.
 
 ## Recommendation
 
 **Own product flow, borrowed protocols: iroh for transport and files,
 magic-wormhole's code-phrase design on top, Bonjour for discovery on
 iPhone.**
+
+It takes the best idea from each: croc's and fsend's send-and-type-a-code
+flow, magic-wormhole's PAKE word codes, iroh's transport (the same job as
+DERP in wush and derphole, with relays we run), Taildrop's direct tailnet
+path, and later Floe's browser receiver.
 
 1. **Transport: iroh 1.0.** Each device has an iroh endpoint (an Ed25519 key)
    as its identity. On a LAN, connections go direct with no internet. Across
@@ -140,8 +186,8 @@ code (about 1 in 65,000), a wrong guess ends the code, and the sender sees
 |---|---|---|---|
 | **0. Spikes** | iroh 1.0 + iroh-blobs + spake2 in `relay_core`: Linux to Linux offline; iOS build size and first launch; a direct LAN connection from addresses Bonjour found; Wi-Fi throughput on a 1 GB file. Builds go through the laptop's build queue once builds resume | iroh works inside Forge's runtime on iOS and keeps the app reasonably small. If it doesn't: keep today's TCP + Noise for LAN, use magic-wormhole for stage 2 | 2 to 3 days |
 | **1. Local network** | `relay send <paths>` / `relay receive <code>`; app Send (files, photos, folder) and Receive (type or scan); progress, cancel, resume; trusted devices; history; received files in the Files app; AI asks (protocol 2) moved onto an iroh protocol; old TCP wire removed. Hosted in Device Lab. Android emulator screen if time | The croc flow on one Wi-Fi with no internet: phone to laptop, laptop to phone, phone to phone | 1.5 to 2 weeks |
-| **2. Over the internet** | Rendezvous service (Rust, small; where it runs is a decision below); iroh relays (n0's public ones first, then our own `iroh-relay`); trusted devices reachable anywhere by key; clear "direct" or "via relay" in the UI | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
-| **3. Product polish** | Share extension ("Send with Relay" from Photos), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
+| **2. Over the internet** | Rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
+| **3. Product polish** | Share extension ("Send with Relay" from Photos), a browser receiver page for devices without the app (Floe's idea; iroh in the browser or WebRTC, decided by a spike), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
 
 Each stage has one short phone check (about 10 minutes, batched with
 others), built and published over the air before the phone is needed.
@@ -166,10 +212,12 @@ name and App ID make sense at stage 2 or 3.
    or a separate repository today.
 4. **Name:** keep "Relay", or a new product name (Relay also means "relay
    server" in this design, which can confuse).
-5. **Stage 2 servers:** where the rendezvous service and our relay run
-   (the laptop behind Tailscale Funnel to start, or a small VPS), and
-   whether n0's public relays are fine meanwhile.
-6. **Old pairing:** replace Relay's QR pairing with trusted devices
+5. **Stage 2 servers:** run the rendezvous service and relay on Hetzner
+   (recommended; Oracle as a second region later), and whether n0's public
+   relays are fine until then.
+6. **Browser receiver:** wanted in stage 3 (Floe's idea), or CLI and apps
+   only.
+7. **Old pairing:** replace Relay's QR pairing with trusted devices
    (recommended; it's a demo with no users), or keep both for a while.
 
 ## Sources
@@ -180,6 +228,10 @@ name and App ID make sense at stage 2 or 3.
 - iroh 1.0: <https://iroh.computer/blog/v1>; sendme:
   <https://github.com/n0-computer/sendme>
 - LocalSend protocol: <https://github.com/localsend/protocol>
+- Floe: <https://github.com/jannskiee/floe>; wush:
+  <https://github.com/coder/wush>; derphole:
+  <https://shayne.github.io/derphole/>; Taildrop:
+  <https://tailscale.com/docs/features/taildrop>
 - Relay today: [examples/relay/README.md](../examples/relay/README.md),
   friction A16 to A19 and A26 to A27 in
   [research/app-friction-log.md](research/app-friction-log.md)
