@@ -15,12 +15,12 @@ for app in examples/*/; do
   [[ -f "$app/forge.toml" && -f "$app/build.gradle.kts" ]] || continue
   out="$TMP/$(basename "$app")"
   FORGE_APP_DIR="$app" "$ROOT/scripts/generate-bindings.sh" "$out" kotlin >/dev/null
-  for KOTLIN_FILE in uniffi/forge_ffi/forge_ffi.kt org/forgemobile/ffi/ForgeAndroid.kt; do
-    if ! diff -u "$app/Generated/$KOTLIN_FILE" "$out/$KOTLIN_FILE"; then
-      echo "error: $app/Generated/$KOTLIN_FILE is stale; run scripts/generate-bindings.sh $app/Generated kotlin" >&2
-      exit 1
-    fi
-  done
+  # Every generated file: an app linking another crate (Pocket Library's
+  # Android app) gets one Kotlin file per UniFFI namespace.
+  if ! diff -ru "$app/Generated" "$out"; then
+    echo "error: $app/Generated is stale; run scripts/generate-bindings.sh $app/Generated kotlin" >&2
+    exit 1
+  fi
   checked+=("$app")
 done
 

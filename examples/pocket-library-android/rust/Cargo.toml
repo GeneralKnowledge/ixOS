@@ -1,0 +1,27 @@
+# Pocket Library's Android library. The app's logic is Pocket Library's own
+# crate (../../pocket-library/rust), unchanged: this crate only links it into
+# the shared library Android loads (libforge_ffi.so), because that crate has no
+# cdylib of its own (Cargo would then try to link it for iOS too).
+[package]
+name = "pocket-library-android-app"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+# Forge's fixed library name: the build scripts stage libforge_ffi.so.
+name = "forge_ffi"
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+pocket-library-core = { path = "../../pocket-library/rust" }
+# The Android JNI init (ForgeAndroid.nativeInit) that HTTPS needs, shipped with
+# the generated bindings.
+forge-runtime = { path = "../../../crates/forge-runtime" }
+
+# Its own workspace, like every app made with `forge init`.
+[workspace]
+
+[profile.release]
+lto = true
+codegen-units = 1

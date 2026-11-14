@@ -52,6 +52,12 @@ if [[ "$LIB_NAME" != forge_ffi || "$SWIFT_BINDINGS" != ForgeFFI ]]; then
     echo 'cdylib_name = "forge_ffi"'
   } >"$CONFIG"
 fi
+# An app may add its own UniFFI settings for the crates it links
+# (`[crates.<library>.bindings.kotlin]`, ...) in <app>/uniffi.toml: Pocket
+# Library's Android app renames the core's `Library`, which clashes with JNA's.
+if [[ -f "$APP_DIR/uniffi.toml" ]]; then
+  { echo ""; cat "$APP_DIR/uniffi.toml"; } >>"$CONFIG"
+fi
 if [[ ! -f "$LIB" ]]; then
   echo "error: expected host library at $LIB" >&2
   exit 1

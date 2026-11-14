@@ -1,0 +1,13 @@
+# Added to the bindings config by scripts/generate-bindings.sh.
+#
+# The generated Kotlin imports JNA's `Library`, so Pocket Library's `Library`
+# object is `PocketLibrary` on Android. Swift keeps `Library`.
+#
+# UniFFI 0.32 doesn't rename the return type of a secondary constructor, so
+# `Library.open_fresh` (recovery from an unreadable library) is left out of the
+# Kotlin until the app needs it or UniFFI fixes that.
+[crates.pocket_library_core.bindings.kotlin]
+exclude = ["Library.open_fresh"]
+
+[crates.pocket_library_core.bindings.kotlin.rename]
+Library = "PocketLibrary"
