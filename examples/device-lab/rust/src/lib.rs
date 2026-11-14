@@ -33,6 +33,7 @@ use commonplace_core as _;
 use fieldkit_core as _;
 use good_dog_app as _;
 use pocket_library_core as _;
+use sketchbook_core as _;
 use weather_core as _;
 
 // The framework services this app uses. Each optional one brings its own
