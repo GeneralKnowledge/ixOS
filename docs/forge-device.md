@@ -5,7 +5,7 @@
 - **The phone** (M0): details, the system log and crash reports. The app needs no changes: its logs come from the system log, where `forge_runtime::logging` writes ([architecture.md](architecture.md#layers)).
 - **The live connection** (M1): with a development build (`forge run ios --devtools`), pair once and then stream the app's own log and lifecycle, read its status and state probes, and run commands it registers. See [The live connection](#the-live-connection).
 
-Wi-Fi, installing builds with verification, and over-the-air updates come later.
+To install builds without the cable, use `forge publish ios` ([over-the-air.md](over-the-air.md)). The commands here still need USB: iOS 17 and later don't offer the phone's device services over a VPN such as Tailscale.
 
 ## Before you start
 

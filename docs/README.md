@@ -53,6 +53,7 @@ Read these in order the first time.
 | Page | What it's for |
 |---|---|
 | [forge-device.md](forge-device.md) | Your iPhone from Linux: details, live logs, crash reports |
+| [over-the-air.md](over-the-air.md) | Install development builds on your iPhone without the cable, over Tailscale (`forge publish ios`) |
 | [forge-ui-testing.md](forge-ui-testing.md) | UI tests that tap and type on a real iPhone (`forge ui`) |
 | [forge-explore.md](forge-explore.md) | Walking an app's screens without a script to find problems (`forge ui explore`) |
 | [benchmarks/](benchmarks/README.md) | Replication benchmarks: rebuilding a real app (NetNewsWire, as Commonplace) to find what ixOS is missing; gap logs and pattern inventories |

@@ -140,6 +140,22 @@ pub trait IosBuilder: Send + Sync {
     /// Installs an already-built `.ipa` on a device.
     fn install(&self, runner: &dyn CommandRunner, ipa: &Path) -> Result<(), String>;
 
+    /// Builds the Swift app in `project_dir` (Rust library already packaged)
+    /// and signs it into an `.ipa` for the devices the signing team has
+    /// registered, without a phone connected. Returns the `.ipa`.
+    fn build_signed_ipa(
+        &self,
+        _runner: &dyn CommandRunner,
+        _project_dir: &Path,
+        _configuration: IosConfiguration,
+        _product: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        Err(format!(
+            "{} cannot sign an .ipa without installing it",
+            self.name()
+        ))
+    }
+
     /// Command that lists connected iOS devices, if the backend has one.
     fn devices_command(&self) -> Option<Cmd>;
 }
@@ -173,6 +189,11 @@ fn install_finished(tail: &str) -> bool {
 // With Swift 6.2 debug builds need the Darwin SDK from Xcode 26; the iOS 18 SDK
 // from Xcode 16 fails to link with `undefined symbol: swift_coroFrameAlloc`
 // (docs/troubleshooting.md).
+
+/// Where `xtool dev build --sign --ipa` puts the signed `.ipa`.
+pub fn built_ipa(project_dir: &Path, product: &str) -> std::path::PathBuf {
+    project_dir.join("xtool").join(format!("{product}.ipa"))
+}
 
 /// Where `xtool dev build` puts the app it builds (unsigned).
 pub fn built_app(project_dir: &Path, product: &str) -> std::path::PathBuf {
@@ -215,6 +236,33 @@ impl IosBuilder for XtoolBuilder {
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
         run_explained(runner, xtool_dev("build", project_dir, configuration))
+    }
+
+    fn build_signed_ipa(
+        &self,
+        runner: &dyn CommandRunner,
+        project_dir: &Path,
+        configuration: IosConfiguration,
+        product: &str,
+    ) -> Result<std::path::PathBuf, String> {
+        self.ensure_available(runner)?;
+        // Signs with the team's development profile, which lists the
+        // devices registered on the team: no phone needs to be connected.
+        // Only for SwiftPM projects, which every Forge app is.
+        let ipa = built_ipa(project_dir, product);
+        let _ = std::fs::remove_file(&ipa);
+        run_explained(
+            runner,
+            xtool_dev("build", project_dir, configuration).args(["--sign", "--ipa"]),
+        )?;
+        if ipa.is_file() {
+            Ok(ipa)
+        } else {
+            Err(format!(
+                "xtool finished but {} is missing: check xtool's output above",
+                ipa.display()
+            ))
+        }
     }
 
     fn install_build(

@@ -29,6 +29,10 @@ toml = "1.1"
 thiserror = { workspace = true }
 # Evidence bundles record a SHA-256 of each file they list.
 sha2 = "0.10"
+# `forge publish ios`: read the signed .ipa's Info.plist and profile, and
+# write the over-the-air install manifest.
+zip = { version = "9.4", default-features = false, features = ["deflate"] }
+plist = "1"
 
 [target.'cfg(unix)'.dependencies]
 # `--json`: points fd 1 at stderr so only the result reaches stdout.

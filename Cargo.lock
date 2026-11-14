@@ -919,6 +919,7 @@ dependencies = [
  "forge-runtime",
  "forge-uitest",
  "libc",
+ "plist",
  "roxmltree",
  "serde",
  "serde_json",
@@ -926,6 +927,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "toml",
+ "zip",
 ]
 
 [[package]]
