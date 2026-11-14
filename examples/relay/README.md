@@ -3,7 +3,7 @@
 Send notes and files between nearby devices, encrypted, after pairing once
 by QR code. The last of the remaining demo apps
 ([friction log](../../docs/research/app-friction-log.md)); it runs inside
-Device Lab once its SwiftUI app exists. The second device can be a Linux
+Device Lab (Apps, then Relay) and on its own. The second device can be a Linux
 machine running the `relay` command, so one iPhone is enough.
 
 ## Where it is
@@ -11,7 +11,7 @@ machine running the `relay` command, so one iPhone is enough.
 | Step | What | State |
 |---|---|---|
 | R1 | Rust core (`rust/`): identity, QR pairing, the encrypted protocol, sending and receiving notes and files, history; the `relay` command | Done, tested on Linux over localhost |
-| R2 | SwiftUI app: pair by scanning (VisionKit) or showing a QR code, Bonjour with NWListener and NWBrowser, send from the share sheet inside the app, received files in Quick Look; secrets to the Keychain | Next |
+| R2 | SwiftUI app: pair by scanning (VisionKit) or showing a QR code, Bonjour (NetService advertises Rust's port, NWBrowser finds devices), notes and files from the file picker, received files in Quick Look, hosted in Device Lab | Written; not yet built with xtool or run on a phone. Secrets stay in Rust's file (friction A17) |
 | R3 | Resume, background transfers, a share extension (costs an App ID) | Later |
 
 ## How it works
@@ -53,3 +53,20 @@ files are in its `inbox/`.
 ```bash
 cargo test --manifest-path examples/relay/rust/Cargo.toml
 ```
+
+## Swift
+
+| File | What |
+|---|---|
+| `Sources/AppHost/RelayModel.swift` | The screens' model: asks the core, pairs, sends, keeps alerts. Foundation only, tested with two cores over localhost |
+| `Sources/AppHost/RelayNetwork.swift` | Bonjour: advertises Rust's port as `_forgerelay._tcp` named by the device id, browses for paired devices, resolves one to `host:port`; this device's local addresses for a pairing code |
+| `Sources/AppHost/ContentView.swift` | Paired devices (nearby or not) and the history; listens while on screen |
+| `Sources/AppHost/PeerView.swift` | One device: write a note, pick a file, what went between you |
+| `Sources/AppHost/PairingViews.swift` | Show my code (a Core Image QR code) and scan a code (VisionKit), or paste one |
+
+`forge.toml` lists `bonjour_services = ["_forgerelay._tcp"]` (iOS refuses
+any service type not in `NSBonjourServices`), the local network text and the
+camera text for the scanner.
+
+To try it with one iPhone, run `relay listen` on the laptop and scan its code
+from the phone, or show the phone's code and paste it into `relay pair`.

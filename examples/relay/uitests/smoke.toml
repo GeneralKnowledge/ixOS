@@ -1,0 +1,30 @@
+# Smoke test: show this device's pairing code, then close it. Uses a
+# temporary data folder; asks for the local network but needs no second
+# device.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+name = "Smoke: show my pairing code"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+screenshot = "1-empty"
+
+[[step]]
+tap = { id = "devices.showCodeFirst" }
+
+[[step]]
+expect = { id = "code.qr" }
+
+[[step]]
+screenshot = "2-code"
+
+[[step]]
+tap = { id = "code.done" }
+
+[[step]]
+expect = { id = "code.qr", gone = true }

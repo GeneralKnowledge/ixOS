@@ -40,6 +40,7 @@ chat-app = { path = "../../chat/rust" }
 fieldkit-core = { path = "../../fieldkit/rust" }
 sketchbook-core = { path = "../../sketchbook/rust" }
 soundscape-core = { path = "../../soundscape/rust" }
+relay-core = { path = "../../relay/rust" }
 
 [dev-dependencies]
 tempfile = "3.14"

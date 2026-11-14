@@ -171,6 +171,7 @@ impl ForgeConfig {
                 }
                 add(&mut ours.background_modes, theirs.background_modes);
                 add(&mut ours.url_schemes, theirs.url_schemes);
+                add(&mut ours.bonjour_services, theirs.bonjour_services);
                 // A hosted app's background tasks (Commonplace's refresh)
                 // must be permitted by the host's Info.plist.
                 add(&mut ours.background_tasks, theirs.background_tasks);

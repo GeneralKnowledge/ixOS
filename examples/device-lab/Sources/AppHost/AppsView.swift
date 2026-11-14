@@ -11,6 +11,7 @@ import ForgeUIShowcase
 import GoodDogApp
 import GoodDogFFI
 import PocketLibraryApp
+import RelayApp
 import SketchbookApp
 import SoundscapeApp
 import SwiftUI
@@ -60,7 +61,7 @@ struct AppsView: View {
 
 /// The apps the showcase runs, in the order the list shows them.
 enum EmbeddedApp: String, CaseIterable, Identifiable {
-    case weather, checklist, library, goodDog, commonplace, chat, fieldKit, sketchbook, soundscape, forgeUI
+    case weather, checklist, library, goodDog, commonplace, chat, fieldKit, sketchbook, soundscape, relay, forgeUI
 
     /// The UserDefaults key of the app to open at launch.
     static let launchKey = "launchApp"
@@ -78,6 +79,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .fieldKit: "FieldKit"
         case .sketchbook: "Sketchbook"
         case .soundscape: "Soundscape"
+        case .relay: "Relay"
         case .forgeUI: "ForgeUI Showcase"
         }
     }
@@ -93,6 +95,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
         case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
         case .soundscape: "Record loops, layer them, shape each one and mix down to a WAV file."
+        case .relay: "Pair by QR code, then send notes and files straight to a nearby device, encrypted."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }
@@ -108,6 +111,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .fieldKit: "map"
         case .sketchbook: "scribble.variable"
         case .soundscape: "waveform"
+        case .relay: "arrow.left.arrow.right"
         case .forgeUI: "paintpalette"
         }
     }
@@ -124,6 +128,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
         case .sketchbook: SketchbookApp.ContentView(host: EmbeddedApps.sketchbook)
         case .soundscape: SoundscapeApp.ContentView(host: EmbeddedApps.soundscape)
+        case .relay: RelayApp.ContentView(host: EmbeddedApps.relay)
         case .forgeUI: ShowcaseRoot()
         }
     }
@@ -171,7 +176,7 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook and Soundscape run on the application
+    /// Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
     /// the standalone app, so closing the sheet doesn't close the core.
     static let checklist = Checklist.makeHost()
@@ -180,6 +185,7 @@ public enum EmbeddedApps {
     static let fieldKit = FieldKitApp.makeAppHost()
     static let sketchbook = SketchbookApp.makeAppHost()
     static let soundscape = SoundscapeApp.makeAppHost()
+    static let relay = RelayApp.makeAppHost()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
@@ -208,6 +214,7 @@ public enum EmbeddedApps {
             ForgeLifecycle.attach(fieldKit)
             ForgeLifecycle.attach(sketchbook)
             ForgeLifecycle.attach(soundscape)
+            ForgeLifecycle.attach(relay)
         #endif
         library.attachToLifecycle()
     }
