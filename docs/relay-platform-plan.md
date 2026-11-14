@@ -1,6 +1,7 @@
 # Relay platform plan
 
-Status: Reuben's product direction, 2026-11-14. This is the umbrella plan.
+Status: Reuben's product direction, 2026-11-14. **This is the canonical
+Relay roadmap;** the documents below are its supporting specifications.
 It builds on [relay-transfer-plan.md](relay-transfer-plan.md) (transfer,
 messages, rooms, security, iPhone limits, decisions) and
 [research/relay-rooms-protocols.md](research/relay-rooms-protocols.md)

@@ -1,5 +1,9 @@
 # Relay stage 0 spike: iroh and word codes
 
+> **Not production code.** A throwaway Linux experiment. The iOS build and
+> the test on a real iPhone are still outstanding (issue #198), and the
+> limitations below must be fixed before any of it reaches Relay's core.
+
 2026-11-14. Answers the stage 0 questions in
 [relay-transfer-plan.md](../relay-transfer-plan.md) on Linux. The iPhone half
 waits for the laptop, where builds are paused.
@@ -42,6 +46,15 @@ lines, its own workspace, not part of the app.
 | Size (Linux x86-64, stripped, LTO) | 11.1 MB for the spike, against 3.8 MB for today's `relay` command: about +7 MB. iroh default features off except `tls-ring` |
 | Dependencies | 402 crates (today's `relay`: 137). Mostly iroh's QUIC stack and iroh-blobs' redb store |
 | `ring` for iOS | Already built for iOS in ixOS (rustls via forge-net), so no new C toolchain question |
+
+## Known limitations (from review, 2026-11-14)
+
+| Limitation | Risk | Fix in M0 |
+|---|---|---|
+| **Code number collisions.** The number is random from 1 to 99 and the receiver takes the first sender advertising it | Two transfers at once on one network can send the receiver to the wrong sender, which also spends that sender's code | Senders pick a number nobody nearby is using and re-pick if one appears; a receiver that finds two senders with its number stops and asks for a new code rather than guessing (a guess would burn an unrelated code) |
+| **The code is spent before the proof is checked** | Intended (one guess per code), but anyone on the network can burn a code and interrupt a transfer | A time limit on the handshake, one handshake at a time (others are told "busy" without spending the code), the sender is told, and a new code is issued at once |
+| **16 bits in the code** (two PGP words) | SPAKE2 stops offline guessing, but an active attacker's single online guess is 1 in 65,536 | Three words from the EFF short list (about 31 bits) with completion; the QR code stays the easiest way |
+| **Memory stores** on both sides | A large file is held in RAM; nothing resumes | iroh-blobs' file store, bounded streaming, resume after an interruption |
 
 ## Not answered yet (needs the laptop)
 

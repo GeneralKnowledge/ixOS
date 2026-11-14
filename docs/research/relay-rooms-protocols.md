@@ -1,6 +1,8 @@
 # Relay rooms: which existing chat protocol to build on
 
-2026-11-14. Part of [relay-transfer-plan.md](../relay-transfer-plan.md), under the [Relay platform plan](../relay-platform-plan.md) (milestones M4 and M5).
+2026-11-14. A supporting specification under the canonical
+[Relay platform plan](../relay-platform-plan.md) (milestones M4 and M5),
+with [relay-transfer-plan.md](../relay-transfer-plan.md).
 
 ## What Reuben wants
 
