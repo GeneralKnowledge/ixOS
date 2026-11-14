@@ -194,6 +194,37 @@ nearby devices with no server (its fourth backend would be `PeerRepo`), or
 one app that has both. Merging the apps now would tie Relay's quick
 send-a-file flow to Chat's account and server, which Relay doesn't need.
 
+### Rooms that live only while the host keeps them open
+
+Reuben's idea (2026-11-14): a chat room that exists only as long as its
+admin keeps it open. When the host closes it, it's gone.
+
+- **The host is the hub.** `relay room open` (or Open Room in the app)
+  makes the host device the room's server: it shows a code and a QR code,
+  each joiner proves the code with SPAKE2 as in a transfer, and the host
+  passes every message to everyone in the room. No server of ours stores
+  anything; in stage 2 our relay only carries ciphertext between a joiner
+  and the host.
+- **Gone means gone.** The room's messages live in memory on every device,
+  never on disk; when the host closes the room (or its device goes away),
+  joiners see "the room was closed" and their copies are wiped. Nobody can
+  stop a screenshot, so the app says "disappears when closed", not
+  "secret".
+- **The admin** sees who is in, can remove someone (their key is refused
+  from then on), and can lock the room so the code stops working.
+- **The code is reusable while the room is open,** unlike a transfer code,
+  so the host limits guessing: after 3 wrong attempts the code changes and
+  the host shows the new one.
+- **Chat does the work again:** the host runs the room as a `ChatRepo`
+  backend for the joiners (it plays the chat server's part), and Chat's
+  client and conversation screen show it, with an in-memory store.
+- **Hosting from the iPhone** lasts while Relay is on screen, because iOS
+  suspends it in the background. The laptop, the iMac or a Hetzner server
+  running `relay room open` can keep a room up for as long as wanted.
+- **Stage:** after stage 1's messages, as the first part of stage 2. It
+  works on one Wi-Fi with stage 1's code, and across the internet once
+  stage 2's relay is up.
+
 ## Code phrases: words or letters?
 
 | Style | Example | For | Against |
@@ -250,7 +281,7 @@ code (about 1 in 65,000), a wrong guess ends the code, and the sender sees
 |---|---|---|---|
 | **0. Spikes** | iroh 1.0 + iroh-blobs + spake2 in `relay_core`: Linux to Linux offline; iOS build size and first launch; a direct LAN connection from addresses Bonjour found; Wi-Fi throughput on a 1 GB file. Builds go through the laptop's build queue once builds resume | iroh works inside Forge's runtime on iOS and keeps the app reasonably small. If it doesn't: keep today's TCP + Noise for LAN, use magic-wormhole for stage 2 | 2 to 3 days |
 | **1. Local network** | `relay send <paths>` / `relay receive <code>`; app Send (files, photos, folder) and Receive (type or scan); progress, cancel, resume; trusted devices; messages between trusted devices (conversation per device, delivered and read, waiting until the other device is seen) and `relay send --text`; history; received files in the Files app; AI asks (protocol 2) moved onto an iroh protocol; old TCP wire removed. Hosted in Device Lab. Android emulator screen if time | The croc flow on one Wi-Fi with no internet: phone to laptop, laptop to phone, phone to phone | 1.5 to 2 weeks |
-| **2. Over the internet** | Rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices, and their messages, reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
+| **2. Over the internet** | Rooms that live only while the host keeps them open ([above](#rooms-that-live-only-while-the-host-keeps-them-open)), first on one Wi-Fi; rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices, and their messages, reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
 | **3. Product polish** | Share extension ("Send with Relay" from Photos), a browser receiver page for devices without the app (Floe's idea; iroh in the browser or WebRTC, decided by a spike), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
 
 Each stage has one short phone check (about 10 minutes, batched with
