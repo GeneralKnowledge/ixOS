@@ -64,6 +64,32 @@ impl std::fmt::Display for OpenError {
 
 impl std::error::Error for OpenError {}
 
+/// Takes `file`'s exclusive lock without waiting. std's `File::try_lock` is
+/// `flock` on Linux and Apple platforms but returns "not supported" on
+/// Android, so Android calls `flock` itself: the same lock, released when the
+/// file closes.
+#[cfg(not(target_os = "android"))]
+fn try_lock(file: &File) -> Result<(), TryLockError> {
+    file.try_lock()
+}
+
+#[cfg(target_os = "android")]
+fn try_lock(file: &File) -> Result<(), TryLockError> {
+    use std::os::fd::AsRawFd;
+    // SAFETY: `flock` only reads the descriptor, which `file` keeps open for
+    // the duration of the call.
+    let rc = unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX | libc::LOCK_NB) };
+    if rc == 0 {
+        return Ok(());
+    }
+    let err = std::io::Error::last_os_error();
+    if err.kind() == std::io::ErrorKind::WouldBlock {
+        Err(TryLockError::WouldBlock)
+    } else {
+        Err(TryLockError::Error(err))
+    }
+}
+
 impl DataDirectory {
     /// Creates `path` if needed and takes its lock.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, OpenError> {
@@ -78,7 +104,7 @@ impl DataDirectory {
             .write(true)
             .open(path.join(LOCK_FILE))
             .map_err(io)?;
-        match file.try_lock() {
+        match try_lock(&file) {
             Ok(()) => Ok(Self { path, _lock: file }),
             Err(TryLockError::WouldBlock) => Err(OpenError::InUse {
                 path: path.display().to_string(),
