@@ -1130,6 +1130,30 @@ pub fn build_ios(
     Ok(())
 }
 
+/// Builds the app and signs it into an `.ipa` without a phone (for
+/// `forge publish ios`). Never includes the live connection.
+pub fn build_signed_ipa(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    root: &Path,
+    project: &Path,
+    configuration: IosConfiguration,
+) -> Result<PathBuf, String> {
+    let (project_dir, cfg) = ios_project(root, project)?;
+    ios_preflight(runner, builder, Purpose::Build)?;
+    package_ios(runner, root, &project_dir, &cfg, false)?;
+    println!(
+        "[forge] Building and signing the Swift app ({}); no iPhone needed",
+        configuration.name()
+    );
+    builder.build_signed_ipa(
+        runner,
+        &project_dir,
+        configuration,
+        &crate::app_config::xtool_product(&cfg),
+    )
+}
+
 /// Builds and installs on a connected device. xtool does not launch the
 /// app (and `xtool launch` does not work on iOS 17+), so the user opens it.
 #[cfg(test)]

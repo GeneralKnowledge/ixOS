@@ -16,6 +16,7 @@ mod ios_builder;
 mod ios_env;
 mod ledger;
 mod live;
+mod publish;
 mod report;
 mod run_record;
 mod runner;
@@ -29,7 +30,7 @@ mod verify;
 mod watch;
 
 use clap::{Parser, Subcommand};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Parser)]
 #[command(name = "forge", about = "Forge Mobile developer CLI", version)]
@@ -137,6 +138,13 @@ enum Commands {
     Run {
         #[command(subcommand)]
         cmd: RunCommands,
+    },
+    /// Over-the-air installs: build and sign the app without the phone, then
+    /// publish it on your tailnet so the iPhone installs it from a page in
+    /// Safari, wherever it is (docs/over-the-air.md)
+    Publish {
+        #[command(subcommand)]
+        cmd: PublishCommands,
     },
     /// Why isn't my app working? Checks the last `forge run ios`, the iPhone,
     /// whether the app is installed and still signed, its newest crash report,
@@ -1148,6 +1156,47 @@ enum InstallCommands {
 }
 
 #[derive(Subcommand)]
+enum PublishCommands {
+    /// Build and sign the app into an .ipa (no iPhone needed), then publish
+    /// it at https://<this computer>.<tailnet>.ts.net:8443/. On the iPhone,
+    /// with Tailscale on, open that page and tap Install
+    Ios {
+        #[arg(
+            long,
+            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+        )]
+        project: Option<PathBuf>,
+        /// Build the Swift app in the release configuration
+        #[arg(long, conflicts_with = "ipa")]
+        release: bool,
+        /// Publish this signed .ipa instead of building one
+        #[arg(long, value_name = "PATH")]
+        ipa: Option<PathBuf>,
+        /// The tailnet HTTPS port (443 is often taken by another `tailscale serve`)
+        #[arg(long, default_value_t = publish::DEFAULT_HTTPS_PORT)]
+        port: u16,
+        /// Serve through your own HTTPS address instead of Tailscale (it
+        /// must forward to http://127.0.0.1:47411 and have a certificate the
+        /// iPhone trusts)
+        #[arg(long, value_name = "URL")]
+        url: Option<String>,
+    },
+    /// Serve the published builds on 127.0.0.1 in the foreground (`publish
+    /// ios` starts this in the background when it isn't running)
+    Serve {
+        #[arg(long, default_value_t = publish::LOCAL_PORT)]
+        port: u16,
+    },
+    /// Stop publishing: take the page off the tailnet and stop the server.
+    /// The builds stay on disk
+    Stop {
+        /// The tailnet HTTPS port `publish ios` used
+        #[arg(long, default_value_t = publish::DEFAULT_HTTPS_PORT)]
+        port: u16,
+    },
+}
+
+#[derive(Subcommand)]
 enum CheckCommands {
     /// Compile the app's Swift that needs no Apple UI framework (the view
     /// model, the Rust bindings) and run its tests that need none, with plain
@@ -1326,6 +1375,11 @@ fn command_name(command: &Commands) -> String {
         },
         Commands::Install { .. } => "install ios",
         Commands::Run { .. } => "run ios",
+        Commands::Publish { cmd } => match cmd {
+            PublishCommands::Ios { .. } => "publish ios",
+            PublishCommands::Serve { .. } => "publish serve",
+            PublishCommands::Stop { .. } => "publish stop",
+        },
         Commands::Device { cmd } => match cmd {
             DeviceCommands::List => "device list",
             DeviceCommands::Info { .. } => "device info",
@@ -1400,6 +1454,9 @@ fn result_project(command: &Commands) -> Option<PathBuf> {
         | Commands::Run {
             cmd: RunCommands::Ios { project, .. },
         }
+        | Commands::Publish {
+            cmd: PublishCommands::Ios { project, .. },
+        }
         | Commands::Test { project, .. }
         | Commands::Diagnose { project, .. }
         | Commands::Verify { project, .. }
@@ -1431,9 +1488,91 @@ fn logs_to_file(command: &Commands) -> bool {
         command,
         Commands::Build { .. }
             | Commands::Run { .. }
+            | Commands::Publish {
+                cmd: PublishCommands::Ios { .. }
+            }
             | Commands::Test { .. }
             | Commands::Check { what: Some(_), .. }
     )
+}
+
+fn publish_command(
+    runner: &dyn runner::CommandRunner,
+    ios: &dyn ios_builder::IosBuilder,
+    root: &Path,
+    cmd: PublishCommands,
+) -> Result<(), String> {
+    let env = |k: &str| std::env::var_os(k).map(|v| v.to_string_lossy().into_owned());
+    let dir = publish::publish_dir(&env);
+    match cmd {
+        PublishCommands::Serve { port } => publish::serve(&dir, port),
+        PublishCommands::Stop { port } => publish::stop(runner, &dir, port),
+        PublishCommands::Ios {
+            project,
+            release,
+            ipa,
+            port,
+            url,
+        } => {
+            let (ipa, commit) = match ipa {
+                Some(ipa) => (absolute_from_cwd(&ipa), None),
+                None => {
+                    let project = project_or_default(project, "examples/counter");
+                    let ipa = commands::build_signed_ipa(
+                        runner,
+                        ios,
+                        root,
+                        &project,
+                        configuration(release),
+                    )?;
+                    let commit = runner
+                        .capture(
+                            &runner::Cmd::new("git")
+                                .args(["rev-parse", "--short", "HEAD"])
+                                .cwd(ipa.parent().unwrap_or(root)),
+                        )
+                        .ok()
+                        .filter(|o| o.status.success())
+                        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                        .filter(|c| !c.is_empty());
+                    (ipa, commit)
+                }
+            };
+            let done = publish::publish(runner, &dir, &ipa, port, url, commit)?;
+            let e = &done.entry;
+            println!(
+                "[forge] Published {} {} ({}). On the iPhone, with Tailscale on, open\n\n    {}\n\nin Safari and tap Install.",
+                e.name, e.version, e.bundle_id, done.page
+            );
+            if let Some(expires) = e.expires {
+                println!(
+                    "[forge] Signed until {} (the free team signs for 7 days; publish again to renew).",
+                    report::stamp_at(expires).get(..10).unwrap_or("")
+                );
+            }
+            if !done.devices.is_empty() {
+                println!(
+                    "[forge] Installs only on the {} device(s) in the profile: {}",
+                    done.devices.len(),
+                    done.devices.join(", ")
+                );
+            }
+            report::set_data(serde_json::json!({
+                "name": e.name,
+                "bundle_id": e.bundle_id,
+                "version": e.version,
+                "build": e.build,
+                "page_url": done.page,
+                "install_url": done.install,
+                "signed_until": e.expires,
+                "devices": done.devices,
+                "commit": e.commit,
+                "ipa": ipa,
+                "folder": dir,
+            }));
+            Ok(())
+        }
+    }
 }
 
 fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> {
@@ -1623,6 +1762,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
         Commands::Devices => commands::devices(runner, &ios),
+        Commands::Publish { cmd } => publish_command(runner, &ios, &root, cmd),
         Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
         Commands::Inspect { project } => {
             let project = project_or_default(project, "");
