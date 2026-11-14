@@ -44,6 +44,9 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
 | A19 | Relay | `ErrorKind` has no network or refused kind, so connection failures are `Unavailable` and a refused pairing is `Invalid` | Annoyance | Open |
 | A20 | Soundscape | No audio file reading in the framework: the core brings `hound` for WAV, and Chat's audio service is Swift only | Annoyance | Accept for now |
+| A21 | Sketchbook | `forge init` leaves the template's items model, its test and its smoke test behind, to delete by hand | Annoyance | Open |
+| A22 | Sketchbook | The app package also builds for macOS (host tests), so every PencilKit and UIKit file needs `#if os(iOS)` | Annoyance | Accept |
+| A23 | Sketchbook | Rust owns undo, but each `PKCanvasView` brings UIKit's undo manager (tool picker, shake), which would undo behind Rust's back | Limit | Open: document the pattern |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -339,3 +342,44 @@ Linux tests.
 **Framework.** Accept: WAV is the only format Soundscape needs, and
 `hound` is small. Revisit if a second app needs audio in Rust.
 
+## A21. Template leftovers after `forge init`
+
+**What happened.** Sketchbook's Swift app started from `forge init`
+(inside the checkout, so ForgeKit is a path dependency). The hostable
+shape came out right: `SketchbookFFI`, `SketchbookApp`, a library named
+after the app. What also came out was the template's example: an items
+model, its view, its test and a smoke test that taps `items.add`.
+
+**Workaround.** Deleted them and wrote the app's own.
+
+**Framework.** `forge init` could take `--empty`, or the template could keep
+its example in one file that the README says to delete.
+
+## A22. `#if os(iOS)` around every PencilKit file
+
+**What happened.** The app package lists macOS so `swift test` can run the
+model tests on a Mac host. PencilKit's canvas, `UIGraphicsPDFRenderer` and
+`UIImage` are iOS only, so the canvas, renderer and layer panel are wrapped
+in `#if os(iOS)` and the paper pattern uses `CGColor`, not `UIColor`.
+
+**Workaround.** As above; the macOS build shows a line of text where the
+canvas would be.
+
+**Framework.** Accept. It is the price of model tests off the phone, and it
+is the same in any SwiftUI app that tests on a Mac.
+
+## A23. Rust-owned undo next to UIKit's undo manager
+
+**What happened.** Sketchbook keeps one undo history per sketch in Rust,
+across every layer. Each layer is a `PKCanvasView`, and UIKit gives it an
+undo manager: the tool picker's undo button and shake to undo would take
+back a stroke on one layer without Rust knowing.
+
+**Workaround.** The canvas is a subclass whose `undoManager` is `nil`, so
+the only undo is the app's, whose label comes from Rust ("Undo Drawing").
+
+**Framework.** Document it in ios-ui.md next to "Rust owns state": when Rust
+owns undo, turn off UIKit's for the views that would register with it.
+
+**Measure (Sketchbook).** Hosting Sketchbook in Device Lab took 2 lines of Rust, 2 of
+`Package.swift`, 1 of `forge.toml` and 10 of `AppsView.swift`.

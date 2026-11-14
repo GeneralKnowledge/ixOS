@@ -83,7 +83,7 @@ pub(crate) enum GoalEventKind {
 }
 
 impl Stored {
-    fn pathway(&self, id: &str) -> Option<&'static Pathway> {
+    pub(crate) fn pathway(&self, id: &str) -> Option<&'static Pathway> {
         self.pathways.0.iter().find(|p| p.id == id)
     }
 
@@ -461,8 +461,22 @@ impl Stored {
                 goal_id,
                 goal_title: pathway.title.clone(),
                 stage_title: stage.title.clone(),
+                stage_number: pathway.stage_index(&stage.id).map_or(1, |i| i as u32 + 1),
+                stage_count: pathway.stages.len() as u32,
                 why: stage.why_it_matters.clone(),
+                everyday_practice: stage.everyday_practice.clone(),
             })
+    }
+}
+
+/// The pathway that onboarding's "What would help most?" answer starts.
+pub(crate) fn pathway_for(goal: TrainingGoal) -> Option<&'static str> {
+    match goal {
+        TrainingGoal::Recall => Some("path-recall"),
+        TrainingGoal::LooseLead => Some("path-loose-lead"),
+        TrainingGoal::Settle => Some("path-settle"),
+        TrainingGoal::Manners => Some("path-visitors"),
+        TrainingGoal::General | TrainingGoal::PuppyBasics => None,
     }
 }
 

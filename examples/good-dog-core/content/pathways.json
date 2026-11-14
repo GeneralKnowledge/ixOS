@@ -1,1 +1,367 @@
-[]
+[
+  {
+    "id": "path-recall",
+    "title": "Coming back when called",
+    "summary": "From turning to their name to coming back on a long line with mild distractions.",
+    "ownerQuestionCategoryIds": [
+      "oq-recall"
+    ],
+    "behaviourIds": [
+      "beh-name-orientation",
+      "beh-recall-to-handler"
+    ],
+    "matchPhrases": [
+      "come back",
+      "come when called",
+      "comes when called",
+      "recall",
+      "runs off",
+      "run off",
+      "won't come",
+      "ignores me",
+      "off lead",
+      "off-lead"
+    ],
+    "lifeStages": [
+      "older_puppy",
+      "adolescent",
+      "adult",
+      "senior"
+    ],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "recall-name",
+        "title": "Turning to their name",
+        "whatItMeans": "Your dog looks your way when they hear their name, said once.",
+        "whyItMatters": "Every recall starts with your dog turning towards you. A name that always pays off is the first step of coming back.",
+        "exerciseIds": [
+          "ex-name-response"
+        ],
+        "lessonIds": [
+          "lesson-name-attention"
+        ],
+        "everydayPractice": "Say their name once when they are already about to look at you, and reward the look.",
+        "gate": {
+          "summary": "Orients to you within 2 seconds of their name, said once at normal volume, in low distraction.",
+          "metricIds": [
+            "metric-name-latency-2s"
+          ],
+          "ownerCheck": "In a quiet room, does {dog} look at you within a couple of seconds of hearing their name once?"
+        },
+        "ifGateFails": "Shorten the game, go somewhere quieter and use a reward your dog loves. Say the name once, not again and again.",
+        "maintenance": "Reward a few name responses on ordinary days, especially when your dog chooses to look at you."
+      },
+      {
+        "id": "recall-near",
+        "title": "Coming back nearby",
+        "whatItMeans": "One recall word, and your dog comes to you in a quiet, enclosed space or on a long line.",
+        "whyItMatters": "A recall that always pays off at home is the base for every place after it.",
+        "exerciseIds": [
+          "ex-recall-foundation"
+        ],
+        "lessonIds": [
+          "lesson-recall-basics"
+        ],
+        "everydayPractice": "Call once when your dog is already heading your way, and make arriving worth it.",
+        "opensAfter": [
+          "recall-name"
+        ],
+        "gate": {
+          "summary": "Returns to arm's reach on a 5 m long line, to a single cue, in low distraction.",
+          "metricIds": [
+            "metric-recall-long-line-5m"
+          ],
+          "ownerCheck": "On a 5 metre long line somewhere quiet, does {dog} come back to arm's reach when called once?"
+        },
+        "ifGateFails": "Go back to the name game and shorten the distance. Don't repeat the recall word if your dog is unlikely to come; go and get them calmly instead.",
+        "safetyRuleIds": [
+          "safe-002-recall-management",
+          "safe-003-no-punish-return"
+        ],
+        "maintenance": "A few rewarded recalls on ordinary walks each week, and never call only to end the fun."
+      },
+      {
+        "id": "recall-distraction",
+        "title": "Coming back with mild distractions",
+        "whatItMeans": "Your dog comes back on a longer line when there is something mildly interesting around.",
+        "whyItMatters": "Real walks have smells, people and other dogs. Practising with small distractions first builds a recall that holds up outside.",
+        "exerciseIds": [
+          "ex-recall-mild-distract"
+        ],
+        "lessonIds": [
+          "lesson-recall-basics"
+        ],
+        "everydayPractice": "On a long line, call once when the distraction is still far away, and reward generously when your dog comes.",
+        "opensAfter": [
+          "recall-near"
+        ],
+        "gate": {
+          "summary": "Reliable recall on a 10 m long line with mild distraction. This does not unlock off-lead freedom in public.",
+          "metricIds": [
+            "metric-recall-long-line-10m"
+          ],
+          "ownerCheck": "On a 10 metre long line with something mildly interesting nearby, does {dog} come back when called once?"
+        },
+        "ifGateFails": "Make the distraction smaller or further away, or go back to the quiet place for a few days. Keep the long line on.",
+        "safetyRuleIds": [
+          "safe-002-recall-management",
+          "safe-003-no-punish-return"
+        ],
+        "maintenance": "Keep the long line for new places. Off-lead only in secure areas you know, or with a trainer's advice."
+      }
+    ]
+  },
+  {
+    "id": "path-loose-lead",
+    "title": "Walking nicely on the lead",
+    "summary": "From being comfortable on the lead to checking in with you on walks.",
+    "ownerQuestionCategoryIds": [
+      "oq-stay-leave-lead"
+    ],
+    "behaviourIds": [
+      "beh-loose-lead-walk"
+    ],
+    "matchPhrases": [
+      "pulls",
+      "pulling",
+      "pull on the lead",
+      "on the lead",
+      "on lead",
+      "leash",
+      "lead walking",
+      "walks",
+      "drags me"
+    ],
+    "lifeStages": [
+      "older_puppy",
+      "adolescent",
+      "adult",
+      "senior"
+    ],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "lead-comfort",
+        "title": "Comfortable on the lead",
+        "whatItMeans": "Your dog is relaxed while the lead goes on and walks a few steps beside you at home.",
+        "whyItMatters": "A dog who is comfortable wearing the lead can start to learn where the reward is.",
+        "exerciseIds": [
+          "ex-lead-intro"
+        ],
+        "lessonIds": [],
+        "everydayPractice": "Clip the lead on for a moment at home, reward, and take it off again.",
+        "gate": {
+          "summary": "Stays relaxed while the lead is clipped on and walks a few steps beside you indoors.",
+          "metricIds": [],
+          "ownerCheck": "At home, does {dog} stay relaxed while you clip the lead on, and walk a few steps beside you?"
+        },
+        "ifGateFails": "Keep the sessions very short, check the harness fits comfortably, and reward just for the lead going on.",
+        "maintenance": "Make the lead going on a calm, good moment before every walk."
+      },
+      {
+        "id": "lead-loose",
+        "title": "A loose lead",
+        "whatItMeans": "Your dog walks beside you with the lead slack, starting somewhere quiet.",
+        "whyItMatters": "Pulling works when it gets your dog where they want to go. Stopping when the lead goes tight, and rewarding by your side, teaches that a loose lead is what gets them there.",
+        "exerciseIds": [
+          "ex-lead-loose"
+        ],
+        "lessonIds": [
+          "lesson-loose-lead"
+        ],
+        "everydayPractice": "On the first minutes of a walk, stop when the lead goes tight and move on when it's slack again.",
+        "opensAfter": [
+          "lead-comfort"
+        ],
+        "gate": {
+          "summary": "Ten consecutive steps with a slack lead without you stopping.",
+          "metricIds": [
+            "metric-loose-lead-10-steps"
+          ],
+          "ownerCheck": "Somewhere quiet, can {dog} walk ten steps in a row beside you with the lead slack?"
+        },
+        "ifGateFails": "Go back indoors or to the garden, reward more often at your side, and keep walks short and calm while you practise.",
+        "maintenance": "Reward walking at your side now and then on ordinary walks."
+      },
+      {
+        "id": "lead-check-in",
+        "title": "Checking in on walks",
+        "whatItMeans": "On walks, your dog looks back at you from time to time without being asked.",
+        "whyItMatters": "A dog who checks in keeps the lead loose by choice and is easier to call when something comes up.",
+        "exerciseIds": [
+          "ex-name-response",
+          "ex-check-in-walk"
+        ],
+        "lessonIds": [
+          "lesson-name-attention"
+        ],
+        "everydayPractice": "Carry a few treats and reward every time your dog looks back at you on a walk.",
+        "opensAfter": [
+          "lead-loose"
+        ],
+        "gate": {
+          "summary": "Checks in with you without a cue several times on a short, familiar walk.",
+          "metricIds": [],
+          "ownerCheck": "On a familiar walk, does {dog} look back at you a few times without being asked?"
+        },
+        "ifGateFails": "Pick a quieter route, reward any glance your way, and use their name once if you need to.",
+        "maintenance": "Keep rewarding check-ins, especially in new places."
+      }
+    ]
+  },
+  {
+    "id": "path-settle",
+    "title": "Settling calmly at home",
+    "summary": "From relaxing on a mat to settling while ordinary home life goes on.",
+    "ownerQuestionCategoryIds": [
+      "oq-training-basics",
+      "oq-stress-rescue-teen"
+    ],
+    "behaviourIds": [],
+    "matchPhrases": [
+      "settle",
+      "settling",
+      "calm down",
+      "can't relax",
+      "won't relax",
+      "restless",
+      "hyper",
+      "zoomies",
+      "relax",
+      "over excited",
+      "overexcited"
+    ],
+    "lifeStages": [
+      "older_puppy",
+      "adolescent",
+      "adult",
+      "senior"
+    ],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "settle-mat",
+        "title": "Relaxing on a mat",
+        "whatItMeans": "Your dog goes to a mat or bed and relaxes there for a short time while you are nearby.",
+        "whyItMatters": "A place that means rest gives your dog somewhere to switch off, and you a way to help them calm down.",
+        "exerciseIds": [
+          "ex-mat-settle"
+        ],
+        "lessonIds": [
+          "lesson-settle-mat"
+        ],
+        "everydayPractice": "Quietly drop a treat on the mat whenever your dog chooses to lie there.",
+        "gate": {
+          "summary": "Lies down on the mat and stays relaxed for about a minute in a quiet room.",
+          "metricIds": [],
+          "ownerCheck": "In a quiet room, does {dog} lie down on their mat and stay relaxed for about a minute?"
+        },
+        "ifGateFails": "Practise after a walk or play, when your dog is already tired, and reward calm more often.",
+        "maintenance": "Keep the mat a good place: reward calm there now and then."
+      },
+      {
+        "id": "settle-home",
+        "title": "Settling while life goes on",
+        "whatItMeans": "Your dog settles while you do ordinary things at home, like cooking or watching TV.",
+        "whyItMatters": "Most of a dog's day is at home. Being able to rest while the house is busy helps them cope with everything else.",
+        "exerciseIds": [
+          "ex-calm-home"
+        ],
+        "lessonIds": [
+          "lesson-settle-mat"
+        ],
+        "everydayPractice": "While you have a cup of tea, reward your dog for lying quietly nearby.",
+        "opensAfter": [
+          "settle-mat"
+        ],
+        "gate": {
+          "summary": "Settles for a few minutes while you do something ordinary in the same room.",
+          "metricIds": [],
+          "ownerCheck": "While you get on with something ordinary at home, does {dog} settle for a few minutes?"
+        },
+        "ifGateFails": "Pick a quieter moment and a shorter time, and make sure your dog has had enough exercise and sleep. A dog who can't settle at all may be unwell or worried: speak to your vet.",
+        "safetyRuleIds": [
+          "safe-004-scope-referral"
+        ],
+        "maintenance": "Give your dog quiet rest times every day, and protect their sleep."
+      }
+    ]
+  },
+  {
+    "id": "path-visitors",
+    "title": "Greeting visitors calmly",
+    "summary": "From four paws on the floor for a hello to waiting at the door when someone arrives.",
+    "ownerQuestionCategoryIds": [
+      "oq-jumping-mouthing"
+    ],
+    "behaviourIds": [],
+    "matchPhrases": [
+      "visitors",
+      "jumps up",
+      "jumping up",
+      "jumps on people",
+      "the door",
+      "doorbell",
+      "guests",
+      "people come round"
+    ],
+    "lifeStages": [
+      "older_puppy",
+      "adolescent",
+      "adult",
+      "senior"
+    ],
+    "contentVersion": 1,
+    "stages": [
+      {
+        "id": "visitors-greeting",
+        "title": "Four paws on the floor",
+        "whatItMeans": "Your dog keeps all four paws on the floor when someone they know says hello.",
+        "whyItMatters": "Jumping up is how many dogs say hello. Rewarding calm greetings shows them a better way that still gets attention.",
+        "exerciseIds": [
+          "ex-greeting-calm"
+        ],
+        "lessonIds": [
+          "lesson-jumping-up"
+        ],
+        "everydayPractice": "When you come home, greet your dog only once all four paws are on the floor.",
+        "gate": {
+          "summary": "Keeps four paws on the floor while a familiar person says hello.",
+          "metricIds": [],
+          "ownerCheck": "When someone {dog} knows says hello, do all four paws stay on the floor?"
+        },
+        "ifGateFails": "Ask people to greet more calmly and turn away if your dog jumps, and reward four paws on the floor straight away.",
+        "maintenance": "Everyone at home greets only calm paws on the floor."
+      },
+      {
+        "id": "visitors-door",
+        "title": "Waiting at the door",
+        "whatItMeans": "Your dog waits back from the door while it opens and a visitor comes in, until you say they can say hello.",
+        "whyItMatters": "The door is where greetings get exciting. Waiting there keeps everyone safe and gives your dog a calm start to the visit.",
+        "exerciseIds": [
+          "ex-wait-brief",
+          "ex-door-manners"
+        ],
+        "lessonIds": [
+          "lesson-stay-basics"
+        ],
+        "everydayPractice": "Before you open the door for a walk, wait for a calm moment, then open it as the reward.",
+        "opensAfter": [
+          "visitors-greeting"
+        ],
+        "gate": {
+          "summary": "Waits behind the door while it opens and a familiar visitor comes in, until released.",
+          "metricIds": [],
+          "ownerCheck": "When a visitor {dog} knows comes in, does {dog} wait back from the door until you say they can say hello?"
+        },
+        "ifGateFails": "Practise the door with no one there first, or pop your dog behind a baby gate with something to chew while visitors arrive. If your dog seems worried rather than excited, give them space and get advice.",
+        "safetyRuleIds": [
+          "safe-004-scope-referral",
+          "safe-005-growl-not-punish"
+        ],
+        "maintenance": "Keep the door calm: reward waiting, and use a gate on busy days."
+      }
+    ]
+  }
+]

@@ -36,6 +36,8 @@ A cloud session has no Darwin SDK. It pushes its branch and runs the check on th
 cd ~/ixOS && git fetch -q origin && ./scripts/check-ios-xtool.sh --ref <branch> affected origin/main
 ```
 
+It takes the same machine-wide build lock as `forge build ios` ([builds.md](builds.md#one-build-at-a-time)), so when another session is already building on the laptop it prints whose build that is and waits its turn instead of running alongside; set `FORGE_BUILD_LOCK_NOTE=<your thread or PR>` on the command so others can see yours. Don't work around the wait by running Cargo or xtool directly.
+
 Report the results table. If the laptop can't be reached, say the Swift side wasn't compiled; start the macOS workflow only if the person asks.
 
 When the change also needs a phone run, install from the build the check just made: the script ends with one `forge run ios --project …` line per app it built, pointing into the `--ref` worktree. That run uses the same configuration (debug Swift on release Rust), so it recompiles nothing, then looks for the iPhone; with none it stops with the build ready, and the run that installs, once the person has the phone, takes seconds. Building again in another checkout, or with `--release` on one side only, starts from scratch.

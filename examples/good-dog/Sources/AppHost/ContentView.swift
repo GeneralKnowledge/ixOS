@@ -56,5 +56,6 @@ struct MainTabs: View {
                 }
         }
         .termSheet(model: model)
+        .stageCelebration(model: model)
     }
 }

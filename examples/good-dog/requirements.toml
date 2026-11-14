@@ -41,3 +41,15 @@ id = "GD-7"
 statement = "An exercise can be followed as a guided session, one card at a time (get ready, then each step with its number), and recording its outcome at the end records it exactly as the exercise screen does; leaving part way records nothing."
 twin = ["GoodDogModelTests.testAGuidedSessionStepsThroughAndRecordsLikeTheExerciseScreen", "GoodDogModelTests.testLeavingAGuidedSessionPartWayRecordsNothing"]
 device = ["uitests/guided.toml"]
+
+[[requirement]]
+id = "GD-8"
+statement = "Goals: onboarding's answer starts a matching goal, Today leads with its stage and an everyday idea, the goal shows as a path of stages, and the owner's yes to a stage's question moves it on with a celebration; pause, resume, add and set aside keep progress."
+twin = ["GoodDogModelTests.testOnboardingStartsTheChosenGoalAndTodayLeadsWithIt", "GoodDogModelTests.testPassingAStageCelebratesAndPauseKeepsTheGoal"]
+device = ["uitests/goals.toml"]
+
+[[requirement]]
+id = "GD-9"
+statement = "Not Today makes a rest day that can be taken back, and the week counts practice days against a gentle target, so a rest day never breaks a run."
+twin = ["GoodDogModelTests.testNotTodayIsARestDayAndTheWeekCountsDaysNotStreaks"]
+device = ["uitests/goals.toml"]

@@ -26,6 +26,25 @@ Notes:
 - **Android builds are debug APKs**, signed with the SDK's debug key. A release build type, signing from the environment, an `.aab` bundle and R8 rules are on the roadmap.
 - **Emulators.** The Android ABIs in `forge.toml` include `x86_64`, so the APK also runs on an x86_64 emulator. Android HTTPS has only been tested on the JVM and in Rust tests so far ([toolchain-validation.md](toolchain-validation.md#manual-acceptance-android-https-on-a-device)).
 
+## One build at a time
+
+A machine that several people or sessions build on (the laptop the apps are installed from) can't take several iOS builds at once: Cargo, SwiftPM and xtool each use every core, and together they starve everything else, including a Remote Control session and the over-the-air install page. So the heavy part of `forge build ios`, `forge run ios`, `forge publish ios` and [`scripts/check-ios-xtool.sh`](ios-build-check.md) takes a machine-wide lock first. A second build says who holds it and waits its turn:
+
+```text
+[forge] Another build is running on this machine, so this one waits its turn (up to 60 min, FORGE_BUILD_LOCK_TIMEOUT). Running now: pid 4242 since 2026-11-14T15-10-02: forge run ios in /home/red/ixOS/examples/device-lab (branch claude/ota-fix) [PR #189]
+```
+
+- `forge run ios` holds the lock only while it builds; waiting for the iPhone and installing don't hold up the next build. Its status file shows `waiting_for_build_lock` meanwhile.
+- The lock is `flock` on `~/.cache/forge/build.lock` (or `$XDG_CACHE_HOME/forge/build.lock`). The kernel frees it when the holder exits, however it exits, so there are no stale locks to clear. A build that hangs keeps it: the waiter gives up after an hour and names the holder's pid, so you can stop that process.
+- Builds run at nice 10 and the lowest best-effort I/O priority, so interactive work on the same machine comes first.
+
+| Variable | Effect |
+|---|---|
+| `FORGE_BUILD_LOCK_NOTE` | Who is building (a thread, PR or person), shown to whoever waits |
+| `FORGE_BUILD_LOCK_TIMEOUT` | Seconds to wait for the lock (default 3600) |
+| `FORGE_BUILD_LOCK` | Another lock file, or `off` for no lock (a machine only you build on) |
+| `FORGE_BUILD_NICE=0` | Keep normal CPU and disk priority |
+
 ## Which one should I use?
 
 - **On Linux with an iPhone:** use `forge run ios` from the app directory. Run `forge doctor` first: it lists anything missing for "iOS from Linux" and "Run on an iPhone" along with how to fix it. `forge run ios` repeats the quick checks before it builds.

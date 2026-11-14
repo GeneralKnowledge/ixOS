@@ -1,0 +1,89 @@
+# GD-8 and GD-9 on a real iPhone: the sample dog's recall goal leads Today
+# with the week's practice days; Not Today makes a rest day and is taken
+# back; the goal opens as a path; "Yes" to the first stage's question
+# celebrates and moves on; My Dog adds a second goal.
+# Runs on throwaway data with the sample dog (-ForgeUITestData
+# -ForgeUITestSampleDog), whose onboarding answer is "Coming back when
+# called", so the recall goal is already started.
+#   forge ui run examples/good-dog/uitests/goals.toml
+
+name = "GD-8, GD-9: goals, rest days and the week"
+app = "org.forgemobile.gooddog"
+
+[[step]]
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+
+[[step]]
+expect = { id = "today.rhythm" }
+
+[[step]]
+expect = { id = "today.goal" }
+
+[[step]]
+screenshot = "1-today-goal"
+
+[[step]]
+scroll = { id = "today.notToday" }
+
+[[step]]
+tap = { id = "today.notToday" }
+
+[[step]]
+expect = { id = "today.restDay" }
+
+[[step]]
+tap = { id = "today.practiseAfterAll" }
+
+[[step]]
+expect = { id = "today.restDay", gone = true }
+
+[[step]]
+scroll = { id = "today.goal", toward = "up" }
+
+[[step]]
+tap = { id = "today.goal" }
+
+[[step]]
+expect = { id = "goal.stage.0", value = "Working on it now" }
+
+[[step]]
+screenshot = "2-goal-path"
+
+[[step]]
+scroll = { id = "goal.gate.yes" }
+
+[[step]]
+tap = { id = "goal.gate.yes" }
+
+[[step]]
+expect = { id = "celebration.done" }
+
+[[step]]
+screenshot = "3-celebration"
+
+[[step]]
+tap = { id = "celebration.done" }
+
+[[step]]
+scroll = { id = "goal.stage.0", toward = "up" }
+
+[[step]]
+expect = { id = "goal.stage.0", value = "Passed" }
+
+[[step]]
+expect = { id = "goal.stage.1", value = "Working on it now" }
+
+[[step]]
+tap = { id = "tab.dog" }
+
+[[step]]
+tap = { id = "dog.addGoal" }
+
+[[step]]
+tap = { id = "goalPicker.pathway.path-settle" }
+
+[[step]]
+expect = { id = "dog.goal.path-settle" }
+
+[[step]]
+screenshot = "4-my-dog-goals"
