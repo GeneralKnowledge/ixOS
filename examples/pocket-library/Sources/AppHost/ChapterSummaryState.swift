@@ -86,6 +86,7 @@ public final class ChapterSummaryState {
         case .readingPart(let part, let parts): return "Reading part \(part) of \(parts)…"
         case .combining: return "Bringing the parts together…"
         case .writing: return "Writing the summary…"
+        case .revising: return "Putting it in its own words…"
         }
     }
 
@@ -97,6 +98,7 @@ public final class ChapterSummaryState {
         case .readingPart(let part, let parts): return 0.85 * Double(part - 1) / Double(max(parts, 1))
         case .combining: return 0.85
         case .writing: return 0.9
+        case .revising: return 0.95
         }
     }
 

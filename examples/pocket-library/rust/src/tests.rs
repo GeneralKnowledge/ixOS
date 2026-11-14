@@ -946,7 +946,7 @@ fn a_chapter_summary_is_saved_with_the_book() {
     let synopsis =
         block_on(library.summarise_chapter(book.id, 1, model.clone(), None, None)).unwrap();
     assert_eq!(synopsis.chapter, 1);
-    assert_eq!(synopsis.text, "Answer 1.");
+    assert_eq!(synopsis.text, "Answer 2.");
     assert_eq!(synopsis.model_name, "Fake Model");
     // The book's title and the chapter's text went to the model.
     let asked = model.asked.lock().unwrap().clone();

@@ -7,12 +7,19 @@
 //!
 //! 1. The chapter's paragraphs are packed into evenly sized **parts** that
 //!    fit the window with room to spare ([`split_into_parts`]).
-//! 2. The model writes **notes** on each part in turn, with the notes on
-//!    the part before as context, so names and threads carry over.
-//! 3. If the notes together are still too long, consecutive notes are
+//! 2. A **reader** request per part lists its facts in the model's own
+//!    words, with the facts of the part before as context, so names and
+//!    threads carry over. Every chapter goes through this step, however
+//!    short.
+//! 3. If the facts together are still too long, consecutive notes are
 //!    **combined** in groups until they fit.
-//! 4. The model writes the **summary** from the notes (or, for a chapter
-//!    that fits in one part, straight from the text).
+//! 4. A **writer** request turns the facts into the summary. It never sees
+//!    the book's text, so it can't echo the chapter's opening (it did, when
+//!    short chapters were summarised straight from the text: phone run,
+//!    2026-11-14).
+//! 5. Rust checks the summary for runs of seven or more words copied from
+//!    the book ([`copied_phrases`]); if it finds any, an **editor** request
+//!    rewrites it from the facts, naming the copied phrases.
 //!
 //! A part the model can't read (too long after all, or declined by its
 //! guardrails) is split in two and tried again; a passage still declined
@@ -49,10 +56,19 @@ pub const MAX_WORDS: u32 = 60_000;
 /// How many times a part is split in two after the model can't read it.
 const MAX_SPLITS: u32 = 3;
 
-const INSTRUCTIONS: &str = "You summarise chapters of books for a reader who wants to remember what \
-they read. Use only the text you are given. Name the people, places and events that matter, and keep \
-them in order. Do not add opinions, morals, warnings or anything the text does not say. Write plain \
-prose in the language of the text, with no headings, lists or quotation of these instructions.";
+/// The reader: turns a part of the chapter into facts. It sees the book's
+/// text, so it is told to restate, never copy.
+const READER_INSTRUCTIONS: &str = "You take notes on a part of a book for a reader who wants to \
+remember it. Use only the text you are given. Write each note as a short fact in your own words: who \
+does what, what changes, what is revealed. Never copy sentences or phrases from the text. Add no \
+opinions, morals or warnings.";
+
+/// The writer: turns the facts into the summary. It never sees the book's
+/// own text, so it cannot borrow its opening lines.
+const WRITER_INSTRUCTIONS: &str = "You write short chapter summaries for a reader who wants to \
+remember what they read, from notes someone else took. Use only the facts in the notes. Write in \
+your own words, as plain prose in the language of the notes, with no headings or lists. Add no \
+opinions, morals or warnings.";
 
 // MARK: The engine (Swift)
 
@@ -162,6 +178,8 @@ pub enum SummaryStage {
     Combining,
     /// Writing the summary; `draft` is the text so far.
     Writing { draft: String },
+    /// The summary repeated the book word for word; rewriting it.
+    Revising,
 }
 
 /// Told about each stage, on Rust's thread.
@@ -343,6 +361,52 @@ fn sentences(text: &str) -> Vec<&str> {
     out
 }
 
+/// How many words in a row a summary may share with the book before it
+/// counts as copying. Names and stock phrases ("at the end of the day")
+/// stay well under it.
+pub const COPY_RUN_WORDS: usize = 7;
+
+fn plain_words(text: &str) -> Vec<String> {
+    text.split(|c: char| !c.is_alphanumeric() && c != '\'')
+        .filter(|w| !w.is_empty())
+        .map(|w| w.to_lowercase().replace('\u{2019}', "'"))
+        .collect()
+}
+
+/// The phrases of `summary` that appear word for word in the book's text
+/// (runs of at least [`COPY_RUN_WORDS`] words, case and punctuation
+/// ignored), longest first, at most three.
+pub fn copied_phrases(summary: &str, paragraphs: &[String]) -> Vec<String> {
+    let n = COPY_RUN_WORDS;
+    let mut seen = std::collections::HashSet::new();
+    for paragraph in paragraphs {
+        let words = plain_words(paragraph);
+        for window in words.windows(n) {
+            seen.insert(window.join(" "));
+        }
+    }
+    let words = plain_words(summary);
+    let mut runs: Vec<(usize, usize)> = Vec::new();
+    let mut i = 0;
+    while i + n <= words.len() {
+        if seen.contains(&words[i..i + n].join(" ")) {
+            let mut end = i + n;
+            while end < words.len() && seen.contains(&words[end + 1 - n..=end].join(" ")) {
+                end += 1;
+            }
+            runs.push((i, end));
+            i = end;
+        } else {
+            i += 1;
+        }
+    }
+    runs.sort_by_key(|(a, b)| std::cmp::Reverse(b - a));
+    runs.into_iter()
+        .take(3)
+        .map(|(a, b)| words[a..b].join(" "))
+        .collect()
+}
+
 /// Halves a part at a paragraph or sentence boundary near its middle.
 fn halve(part: &str) -> Option<(String, String)> {
     let paragraphs: Vec<String> = part.split("\n\n").map(str::to_string).collect();
@@ -443,14 +507,6 @@ impl Source {
     }
 }
 
-fn whole_chapter_prompt(source: &Source, text: &str) -> String {
-    format!(
-        "{}\n\nThe chapter:\n<<<\n{text}\n>>>\n\nSummarise this chapter in one paragraph of 4 to 6 \
-         sentences: what happens or what it explains, who is involved, and how it ends.",
-        source.header()
-    )
-}
-
 fn part_prompt(
     source: &Source,
     part: usize,
@@ -459,12 +515,18 @@ fn part_prompt(
     earlier: Option<&str>,
 ) -> String {
     let earlier = earlier
-        .map(|n| format!("Notes on the part before:\n{n}\n\n"))
+        .map(|n| format!("Notes on the part before (for names and context only):\n{n}\n\n"))
         .unwrap_or_default();
+    let which = if parts == 1 {
+        "the chapter".to_string()
+    } else {
+        format!("part {part} of {parts} of the chapter")
+    };
     format!(
-        "{}\nThis is part {part} of {parts} of the chapter.\n\n{earlier}The text of part {part}:\n<<<\n\
-         {text}\n>>>\n\nWrite 3 to 5 sentences of notes on part {part} only: what happens or what it \
-         explains, who is involved, and anything revealed. Use the names from the text.",
+        "{}\nThe text is {which}.\n\n{earlier}The text:\n<<<\n{text}\n>>>\n\nList the 4 to 8 \
+         most important things that happen or are explained in this text, in order, one short fact \
+         per line starting with \"- \". Use the characters' names. Restate everything in your own \
+         words; do not copy the text's sentences, and do not start with its opening line.",
         source.header()
     )
 }
@@ -489,17 +551,34 @@ fn combine_prompt(source: &Source, notes: &[String]) -> String {
 
 fn final_prompt(source: &Source, notes: &[String]) -> String {
     format!(
-        "{}\n\nNotes on each part of the chapter, in order:\n\n{}\n\nUsing these notes, summarise the \
+        "{}\n\nNotes on the chapter, in order:\n\n{}\n\nFrom these notes, write a summary of the \
          whole chapter in one paragraph of 4 to 6 sentences: what happens or what it explains, who is \
-         involved, and how it ends. Keep the events in order.",
+         involved, and how it ends. Open with the chapter's main event or turn, not with its setting \
+         or first moment. Keep the events in order after that.",
         source.header(),
         notes_list(notes)
     )
 }
 
-fn request(prompt: String, max_tokens: u32) -> SummaryRequest {
+fn revise_prompt(source: &Source, notes: &[String], draft: &str, copied: &[String]) -> String {
+    let phrases = copied
+        .iter()
+        .map(|p| format!("- \u{201C}{p}\u{201D}"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "{}\n\nNotes on the chapter, in order:\n\n{}\n\nA draft summary:\n{draft}\n\nThe draft \
+         copies these phrases word for word from the book:\n{phrases}\n\nRewrite the summary as one \
+         paragraph of 4 to 6 sentences, keeping its facts but saying everything in your own words. Open \
+         with the chapter's main event or turn.",
+        source.header(),
+        notes_list(notes)
+    )
+}
+
+fn request(instructions: &str, prompt: String, max_tokens: u32) -> SummaryRequest {
     SummaryRequest {
-        instructions: INSTRUCTIONS.to_string(),
+        instructions: instructions.to_string(),
         prompt,
         max_tokens,
         temperature: TEMPERATURE,
@@ -526,45 +605,17 @@ pub struct Summariser<'a> {
 }
 
 impl Summariser<'_> {
+    /// Three layers, each a separate request with its own instructions: a
+    /// reader turns each part into facts, a writer turns the facts into the
+    /// summary without seeing the book's text, and if the summary still
+    /// repeats the book word for word (checked here, in Rust) an editor
+    /// rewrites it from the facts.
     pub fn run(&self, paragraphs: &[String]) -> Result<Written, LibraryError> {
         let parts = split_into_parts(paragraphs, PART_TOKENS);
         if parts.is_empty() {
             return Err(LibraryError::invalid(
                 "this chapter has no text to summarise",
             ));
-        }
-        if parts.len() == 1 {
-            self.report(SummaryStage::Writing {
-                draft: String::new(),
-            });
-            let prompt = whole_chapter_prompt(&self.source, &parts[0]);
-            return match self.ask(request(prompt, SUMMARY_MAX_TOKENS), true) {
-                Ok(text) => Ok(Written {
-                    text,
-                    parts: 1,
-                    skipped_passages: 0,
-                }),
-                // Too long after all, or declined: read it in pieces.
-                Err(
-                    SummaryModelError::ContextTooLong { .. } | SummaryModelError::Refused { .. },
-                ) => self.by_parts(parts),
-                Err(err) => Err(self.error(err)),
-            };
-        }
-        self.by_parts(parts)
-    }
-
-    fn by_parts(&self, mut parts: Vec<String>) -> Result<Written, LibraryError> {
-        if parts.len() == 1 {
-            // A single part the model wouldn't take whole.
-            match halve(&parts[0]) {
-                Some((a, b)) => parts = vec![a, b],
-                None => {
-                    return Err(LibraryError::SummaryRefused {
-                        reason: "the model declined this chapter".into(),
-                    })
-                }
-            }
         }
         let count = parts.len();
         let mut notes: Vec<String> = Vec::new();
@@ -593,12 +644,43 @@ impl Summariser<'_> {
         self.report(SummaryStage::Writing {
             draft: String::new(),
         });
-        let text = self
+        let mut text = self
             .ask(
-                request(final_prompt(&self.source, &notes), SUMMARY_MAX_TOKENS),
+                request(
+                    WRITER_INSTRUCTIONS,
+                    final_prompt(&self.source, &notes),
+                    SUMMARY_MAX_TOKENS,
+                ),
                 true,
             )
             .map_err(|e| self.error(e))?;
+        let copied = copied_phrases(&text, paragraphs);
+        if !copied.is_empty() {
+            self.report(SummaryStage::Revising);
+            let prompt = revise_prompt(&self.source, &notes, &text, &copied);
+            match self.ask(
+                request(WRITER_INSTRUCTIONS, prompt, SUMMARY_MAX_TOKENS),
+                true,
+            ) {
+                // Keep the rewrite only if it copies less.
+                Ok(rewrite)
+                    if !rewrite.is_empty()
+                        && copied_phrases(&rewrite, paragraphs).len() < copied.len() =>
+                {
+                    text = rewrite
+                }
+                Ok(_)
+                | Err(
+                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
+                ) => {
+                    // Show the first draft again.
+                    self.report(SummaryStage::Writing {
+                        draft: text.clone(),
+                    });
+                }
+                Err(err) => return Err(self.error(err)),
+            }
+        }
         Ok(Written {
             text,
             parts: count as u32,
@@ -618,7 +700,7 @@ impl Summariser<'_> {
         splits_left: u32,
     ) -> Result<(Option<String>, u32), LibraryError> {
         let prompt = part_prompt(&self.source, part, parts, text, earlier);
-        match self.ask(request(prompt, NOTE_MAX_TOKENS), false) {
+        match self.ask(request(READER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
             Ok(note) if !note.is_empty() => Ok((Some(note), 0)),
             Ok(_) => Ok((None, 1)),
             Err(SummaryModelError::ContextTooLong { .. } | SummaryModelError::Refused { .. })
@@ -670,7 +752,7 @@ impl Summariser<'_> {
                 continue;
             }
             let prompt = combine_prompt(&self.source, &group);
-            match self.ask(request(prompt, NOTE_MAX_TOKENS), false) {
+            match self.ask(request(WRITER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
                 Ok(text) if !text.is_empty() => out.push(text),
                 // Declined or empty: keep the group's notes, shortened.
                 Ok(_)
@@ -897,18 +979,29 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn a_short_chapter_is_summarised_in_one_request() {
+    fn the_writer_sees_only_the_readers_facts() {
         let model = FakeModel::new();
         let stages = Arc::new(Stages(Mutex::new(Vec::new())));
         let written = run(&model, &paragraphs(5, 100), Some(stages.clone())).unwrap();
-        assert_eq!(written.text, "Answer 1.");
+        assert_eq!(written.text, "Answer 2.");
         assert_eq!((written.parts, written.skipped_passages), (1, 0));
-        let prompts = model.prompts();
-        assert_eq!(prompts.len(), 1);
-        assert!(prompts[0].contains("Book: \u{201C}Night Trains\u{201D} by A. Writer"));
-        assert!(prompts[0].contains("Chapter: The Platform"));
-        assert!(prompts[0].contains("Paragraph0 begins.") && prompts[0].contains("Paragraph4"));
-        assert!(prompts[0].contains("Summarise this chapter"));
+        let asked = model.asked.lock().unwrap().clone();
+        assert_eq!(asked.len(), 2);
+        // The reader gets the text and is told not to copy it.
+        assert_eq!(asked[0].instructions, READER_INSTRUCTIONS);
+        assert!(asked[0]
+            .prompt
+            .contains("Book: \u{201C}Night Trains\u{201D} by A. Writer"));
+        assert!(asked[0].prompt.contains("Chapter: The Platform"));
+        assert!(
+            asked[0].prompt.contains("Paragraph0 begins.")
+                && asked[0].prompt.contains("Paragraph4")
+        );
+        assert!(asked[0].prompt.contains("The text is the chapter."));
+        // The writer gets the facts, never the book's text.
+        assert_eq!(asked[1].instructions, WRITER_INSTRUCTIONS);
+        assert!(asked[1].prompt.contains("Part 1: Answer 1."));
+        assert!(!asked[1].prompt.contains("Paragraph0"));
         // The draft is shown as it is written.
         assert_eq!(
             stages.0.lock().unwrap().last(),
@@ -930,9 +1023,10 @@ pub(crate) mod tests {
         assert_eq!(prompts.len(), parts + 1);
         assert!(prompts[0].contains(&format!("part 1 of {parts}")));
         assert!(!prompts[0].contains("Notes on the part before"));
-        assert!(prompts[1].contains("Notes on the part before:\nAnswer 1."));
+        assert!(prompts[1]
+            .contains("Notes on the part before (for names and context only):\nAnswer 1."));
         let last = prompts.last().unwrap();
-        assert!(last.contains("Part 1: Answer 1.") && last.contains("summarise the whole chapter"));
+        assert!(last.contains("Part 1: Answer 1.") && last.contains("From these notes"));
         assert_eq!(written.text, format!("Answer {}.", parts + 1));
         let stages = stages.0.lock().unwrap();
         assert_eq!(
@@ -1038,6 +1132,72 @@ pub(crate) mod tests {
         );
         assert_eq!(clean("One.\n\n\n\nTwo."), "One.\n\nTwo.");
         assert_eq!(clean("# The Platform\nAnna leaves."), "Anna leaves.");
+    }
+
+    /// A writer that copies the book's opening, then rewrites when asked.
+    struct Copier(Mutex<Vec<String>>);
+
+    #[async_trait::async_trait]
+    impl SummaryModel for Copier {
+        fn describe(&self) -> SummaryModelInfo {
+            FakeModel::new().describe()
+        }
+
+        async fn generate(
+            &self,
+            request: SummaryRequest,
+            _: Arc<SummarySink>,
+        ) -> Result<String, SummaryModelError> {
+            self.0.lock().unwrap().push(request.prompt.clone());
+            Ok(if request.prompt.contains("The text:") {
+                "- Anna waits for the night train.".into()
+            } else if request.prompt.contains("Rewrite the summary") {
+                "Anna waits alone for a train that never comes.".into()
+            } else {
+                "The rain had not stopped for three days when Anna came. She waits.".into()
+            })
+        }
+    }
+
+    #[test]
+    fn a_summary_that_repeats_the_book_is_rewritten() {
+        let text = vec![
+            "The rain had not stopped for three days when Anna came to the station.".to_string(),
+            "word ".repeat(200),
+        ];
+        let model = Copier(Mutex::new(Vec::new()));
+        let stages = Arc::new(Stages(Mutex::new(Vec::new())));
+        let cancel = CancelHandle::new();
+        let written = Summariser {
+            model: &model,
+            cancel: &cancel,
+            progress: Some(stages.clone()),
+            source: source(),
+        }
+        .run(&text)
+        .unwrap();
+        assert_eq!(
+            written.text,
+            "Anna waits alone for a train that never comes."
+        );
+        let prompts = model.0.lock().unwrap().clone();
+        assert_eq!(prompts.len(), 3);
+        assert!(prompts[2]
+            .contains("\u{201C}the rain had not stopped for three days when anna came\u{201D}"));
+        assert!(stages.0.lock().unwrap().contains(&SummaryStage::Revising));
+    }
+
+    #[test]
+    fn copying_is_long_runs_of_the_same_words() {
+        let book = vec!["\u{201C}Go,\u{201D} said Marcus Brutus, and the senators rose from their seats at once.".to_string()];
+        assert!(copied_phrases("Marcus Brutus tells the senators to go.", &book).is_empty());
+        assert_eq!(
+            copied_phrases(
+                "Brutus speaks, and the senators rose from their seats at once.",
+                &book
+            ),
+            vec!["and the senators rose from their seats at once".to_string()]
+        );
     }
 
     fn chapter(index: u32, listed: bool) -> crate::ChapterSummary {

@@ -4568,6 +4568,10 @@ public enum SummaryStage: Equatable, Hashable {
      */
     case writing(draft: String
     )
+    /**
+     * The summary repeated the book word for word; rewriting it.
+     */
+    case revising
 
 
 
@@ -4599,6 +4603,8 @@ public struct FfiConverterTypeSummaryStage: FfiConverterRustBuffer {
         case 4: return .writing(draft: try FfiConverterString.read(from: &buf)
         )
         
+        case 5: return .revising
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4625,6 +4631,10 @@ public struct FfiConverterTypeSummaryStage: FfiConverterRustBuffer {
             writeInt(&buf, Int32(4))
             FfiConverterString.write(draft, into: &buf)
             
+        
+        case .revising:
+            writeInt(&buf, Int32(5))
+        
         }
     }
 }
