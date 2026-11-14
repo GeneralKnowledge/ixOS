@@ -33,6 +33,7 @@ impl Host {
 
 const ANDROID_EXAMPLE: &str = "examples/counter-android";
 const CHAT_ANDROID_EXAMPLE: &str = "examples/chat-android";
+const POCKET_LIBRARY_ANDROID_EXAMPLE: &str = "examples/pocket-library-android";
 
 struct Step {
     name: &'static str,
@@ -61,6 +62,7 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
     };
     let android_dir = root.join(ANDROID_EXAMPLE);
     let chat_android_dir = root.join(CHAT_ANDROID_EXAMPLE);
+    let pocket_library_android_dir = root.join(POCKET_LIBRARY_ANDROID_EXAMPLE);
     vec![
         Step {
             name: "rustfmt",
@@ -139,6 +141,11 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
                     "--manifest-path",
                     "examples/chat-android/rust/Cargo.toml",
                 ]),
+                cargo(&[
+                    "build",
+                    "--manifest-path",
+                    "examples/pocket-library-android/rust/Cargo.toml",
+                ]),
                 cargo(&["build", "-p", "chat-server"]),
                 Cmd::new(android_dir.join("gradlew"))
                     .args([":app:testDebugUnitTest", "--no-daemon"])
@@ -146,6 +153,9 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
                 Cmd::new(chat_android_dir.join("gradlew"))
                     .args([":app:testDebugUnitTest", "--no-daemon"])
                     .cwd(&chat_android_dir),
+                Cmd::new(pocket_library_android_dir.join("gradlew"))
+                    .args([":app:testDebugUnitTest", "--no-daemon"])
+                    .cwd(&pocket_library_android_dir),
             ],
             skip: android_skip,
         },
@@ -256,7 +266,11 @@ mod tests {
     fn ok_runner(root: &Path) -> MockRunner {
         let mock = MockRunner::default();
         mock.respond("cargo", 0, "").respond("bash", 0, "");
-        for example in [ANDROID_EXAMPLE, CHAT_ANDROID_EXAMPLE] {
+        for example in [
+            ANDROID_EXAMPLE,
+            CHAT_ANDROID_EXAMPLE,
+            POCKET_LIBRARY_ANDROID_EXAMPLE,
+        ] {
             mock.respond(&root.join(example).join("gradlew").to_string_lossy(), 0, "");
         }
         mock
@@ -283,9 +297,11 @@ mod tests {
             "test-native-rebuild.sh",
             "examples/counter/rust/Cargo.toml",
             "examples/chat-android/rust/Cargo.toml",
+            "examples/pocket-library-android/rust/Cargo.toml",
             "cargo build -p chat-server",
             "counter-android/gradlew :app:testDebugUnitTest --no-daemon",
             "chat-android/gradlew :app:testDebugUnitTest --no-daemon",
+            "pocket-library-android/gradlew :app:testDebugUnitTest --no-daemon",
             "examples/counter",
             "examples/weather",
             "examples/chat",

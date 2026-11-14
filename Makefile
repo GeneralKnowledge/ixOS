@@ -22,9 +22,11 @@ check:
 test-android-host:
 	cargo build --manifest-path examples/counter/rust/Cargo.toml
 	cargo build --manifest-path examples/chat-android/rust/Cargo.toml
+	cargo build --manifest-path examples/pocket-library-android/rust/Cargo.toml
 	cargo build -p chat-server
 	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
 	cd examples/chat-android && ./gradlew :app:testDebugUnitTest
+	cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest
 
 test-swift-host:
 	./scripts/test-swift-host.sh examples/counter
@@ -49,6 +51,7 @@ bindings:
 bindings-kotlin:
 	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
 	./scripts/generate-bindings.sh examples/chat-android/Generated kotlin
+	./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
 
 check-bindings:
 	./scripts/check-bindings.sh
