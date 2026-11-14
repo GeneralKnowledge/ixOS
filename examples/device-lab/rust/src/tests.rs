@@ -394,3 +394,17 @@ fn test_downloads_use_a_source_that_serves_their_exact_size() {
     assert_eq!(name, "test-100mib");
     assert_eq!(test_source(0).1, 1_000_000);
 }
+
+#[test]
+fn the_foreground_is_the_app_not_the_lab_screen() {
+    let t = lab();
+    assert!(t.lab.lifecycle.phase().is_foreground());
+    // An app opened from Apps covers the lab: the lab stops its sensors but
+    // the app (and its live connection) stays in the foreground.
+    t.lab.set_active(false);
+    assert!(t.lab.lifecycle.phase().is_foreground());
+    t.lab.set_in_foreground(false);
+    assert!(!t.lab.lifecycle.phase().is_foreground());
+    t.lab.set_in_foreground(true);
+    assert!(t.lab.lifecycle.phase().is_foreground());
+}

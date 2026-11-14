@@ -24,6 +24,10 @@ forge-services = { path = "../../../crates/forge-services", features = ["transfe
 # The folder background downloads are delivered into.
 forge-storage = { path = "../../../crates/forge-storage" }
 thiserror = "2"
+# The live connection to `forge device` (pair, connect, status, snapshot, cmd).
+# Only in development builds: `forge run ios --devtools` turns the feature on,
+# so the over-the-air builds contain none of it. See docs/forge-device.md.
+forge-devtools = { path = "../../../crates/forge-devtools", optional = true }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.
@@ -41,6 +45,9 @@ fieldkit-core = { path = "../../fieldkit/rust" }
 sketchbook-core = { path = "../../sketchbook/rust" }
 soundscape-core = { path = "../../soundscape/rust" }
 relay-core = { path = "../../relay/rust" }
+
+[features]
+devtools = ["dep:forge-devtools"]
 
 [dev-dependencies]
 tempfile = "3.14"

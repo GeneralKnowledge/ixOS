@@ -1508,6 +1508,15 @@ public protocol DeviceLabProtocol: AnyObject, Sendable {
     func setActive(active: Bool) 
     
     /**
+     * The host reports whether the app is in the foreground (the scene
+     * phase), separately from `set_active`, which is also false
+     * while an app opened from Apps covers the lab. In development builds
+     * the live connection to `forge device` listens only while this is
+     * true.
+     */
+    func setInForeground(foreground: Bool) 
+    
+    /**
      * Everything on screen, copied from memory. Re-reads storage and memory
      * at most once a second.
      */
@@ -1644,6 +1653,22 @@ open func setActive(active: Bool)  {try! rustCall() {
     uniffi_forge_ffi_fn_method_devicelab_set_active(
             self.uniffiCloneHandle(),
         FfiConverterBool.lower(active),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The host reports whether the app is in the foreground (the scene
+     * phase), separately from `set_active`, which is also false
+     * while an app opened from Apps covers the lab. In development builds
+     * the live connection to `forge device` listens only while this is
+     * true.
+     */
+open func setInForeground(foreground: Bool)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_forge_ffi_fn_method_devicelab_set_in_foreground(
+            self.uniffiCloneHandle(),
+        FfiConverterBool.lower(foreground),uniffiCallStatus
     )
 }
 }
@@ -10136,6 +10161,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_set_active() != 45003) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_forge_ffi_checksum_method_devicelab_set_in_foreground() != 25031) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_forge_ffi_checksum_method_devicelab_snapshot() != 18411) {

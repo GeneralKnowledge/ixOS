@@ -481,6 +481,7 @@ dependencies = [
  "checklist-core",
  "commonplace-core",
  "fieldkit-core",
+ "forge-devtools",
  "forge-runtime",
  "forge-services",
  "forge-storage",
@@ -644,6 +645,14 @@ dependencies = [
  "serde",
  "snow",
  "thiserror",
+]
+
+[[package]]
+name = "forge-devtools"
+version = "0.1.0"
+dependencies = [
+ "forge-devproto",
+ "forge-runtime",
 ]
 
 [[package]]
