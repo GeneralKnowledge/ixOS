@@ -92,8 +92,10 @@ forge build ios           # Rust for iOS, the bindings, then xtool builds the Sw
 ### 8. Sign and install
 
 ```bash
-forge run ios             # builds, signs with your Apple ID and installs on the plugged-in iPhone
+forge run ios             # builds, then signs with your Apple ID and installs on the plugged-in iPhone
 ```
+
+It compiles before it looks for the phone, so you can start it before you fetch the iPhone: with no phone connected it stops with `Built …, ready to install`, and running it again with the phone plugged in rebuilds only what changed and installs ([troubleshooting.md](troubleshooting.md#build-without-the-phone-install-when-its-there)).
 
 The first install needs **Trust** on the phone (Settings > General > VPN & Device Management). A free Apple team allows 3 sideloaded apps and re-signing every 7 days ([ios-signing.md](ios-signing.md)).
 

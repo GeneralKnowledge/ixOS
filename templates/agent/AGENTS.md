@@ -10,7 +10,7 @@ FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust
 4. **Native first.** SwiftUI's own navigation, lists, forms, sheets and SF Symbols. Light and dark mode, and Dynamic Type up to the largest accessibility size.
 5. **Never edit `Generated/`, `Info.plist`, `App.entitlements` or `xtool.yml`.** Bindings come from `forge bindings generate`; the rest from `forge.toml` (`forge config show`).
 6. **Log with `forge_runtime::logging`** in Rust. Never log user content.
-7. **Installing, removing apps and accepting results are the person's.** Ask before `forge run ios` installs an app that isn't on the phone yet (a free Apple team allows 3 sideloaded apps and 10 new App IDs a week; `forge doctor` says which team signs). Never run `forge verify --accept`: only a person records an acceptance.
+7. **Installing, removing apps and accepting results are the person's.** Build without asking: `forge run ios` compiles before it looks for the phone and stops with the build ready if there is none, so start it as soon as there is something to try and ask for the phone only then. Ask before `forge run ios` installs an app that isn't on the phone yet (a free Apple team allows 3 sideloaded apps and 10 new App IDs a week; `forge doctor` says which team signs). Never run `forge verify --accept`: only a person records an acceptance.
 8. **Say what you didn't check.** Without the iOS SDK, SwiftUI is not compiled; a Linux check is not an iPhone result.
 
 ## Commands
@@ -21,7 +21,7 @@ cargo test --manifest-path rust/Cargo.toml   # Rust logic, seconds, no SDK or ph
 forge check swift                            # model and bindings with plain Swift on Linux; not the SwiftUI views
 forge bindings generate                      # after changing what rust/src/lib.rs exports
 forge build ios                              # Rust + Swift for iOS (needs xtool and the Darwin SDK)
-forge run ios                                # build, sign and install on the connected iPhone
+forge run ios                                # build, then sign and install on the connected iPhone (no phone: stops once built)
 forge ui launch                              # open it (after `forge ui setup`); --appearance dark, --largest-text
 forge ui run uitests/smoke.toml              # a UI test; evidence in .forge/runs/
 forge device logs --process FORGE_XTOOL_PRODUCT --for 20s   # the app's log on the phone
