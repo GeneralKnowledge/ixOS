@@ -39,6 +39,7 @@ commonplace-core = { path = "../../commonplace/rust" }
 chat-app = { path = "../../chat/rust" }
 fieldkit-core = { path = "../../fieldkit/rust" }
 sketchbook-core = { path = "../../sketchbook/rust" }
+soundscape-core = { path = "../../soundscape/rust" }
 
 [dev-dependencies]
 tempfile = "3.14"

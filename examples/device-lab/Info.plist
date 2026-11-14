@@ -33,7 +33,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Device Lab shows your position, altitude, speed and true-north heading while it is open, and Weather uses it for the forecast where you are. Nothing else leaves your phone.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Chat records a voice message while you tap the microphone button.</string>
+	<string>Chat records voice messages for you to send, and Soundscape records the loops you layer, which stay on this phone.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Device Lab reads the barometer for air pressure and height changes.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

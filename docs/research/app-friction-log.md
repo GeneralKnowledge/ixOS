@@ -47,6 +47,8 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A21 | Sketchbook | `forge init` leaves the template's items model, its test and its smoke test behind, to delete by hand | Annoyance | Open |
 | A22 | Sketchbook | The app package also builds for macOS (host tests), so every PencilKit and UIKit file needs `#if os(iOS)` | Annoyance | Accept |
 | A23 | Sketchbook | Rust owns undo, but each `PKCanvasView` brings UIKit's undo manager (tool picker, shake), which would undo behind Rust's back | Limit | Open: document the pattern |
+| A24 | Soundscape | Recording in time with playback needs host-time scheduling and latency trimming written by hand; ForgeKit's audio service only records voice notes | Limit | Open |
+| A25 | Soundscape | Two hosted apps want the microphone with different texts; Device Lab has to write one text for both | Annoyance | Accept |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -383,3 +385,35 @@ owns undo, turn off UIKit's for the views that would register with it.
 
 **Measure (Sketchbook).** Hosting Sketchbook in Device Lab took 2 lines of Rust, 2 of
 `Package.swift`, 1 of `forge.toml` and 10 of `AppsView.swift`.
+
+## A24. Recording in time with the loop
+
+**What happened.** Soundscape records a part while the other tracks play,
+and the take must line up with the loop. Forge's audio service records voice
+notes (start, stop, a file), which knows nothing of a playing engine. The
+app schedules every player at one host time, taps the input, and skips what
+arrived before that time plus `inputLatency + outputLatency +
+ioBufferDuration`, then writes exactly one pass of frames.
+
+**Workaround.** `LoopEngine` and its `Recorder`, about 150 lines in the app.
+
+**Framework.** None yet: it is one app's need, and AVAudioEngine is the right
+tool. If a second app records against playback, the recorder (host-time
+start, latency trim, exact length, WAV for Rust) belongs in the audio
+service's Swift adapter. How well the trim lines up needs the phone.
+
+## A25. One microphone text for two hosted apps
+
+**What happened.** Chat and Soundscape both ask for the microphone, each
+with its own reason. A process has one `NSMicrophoneUsageDescription`, so
+Device Lab's merge keeps one of them and the other app's request shows the
+wrong reason.
+
+**Workaround.** Device Lab's `forge.toml` sets one text naming both.
+
+**Framework.** Accept; `forge config sync` could warn when hosted apps'
+texts for one permission differ.
+
+**Measure (Soundscape).** Hosting Soundscape in Device Lab took 2 lines of
+Rust, 2 of `Package.swift`, 2 of `forge.toml` (the host list and the shared
+microphone text) and 9 of `AppsView.swift`.
