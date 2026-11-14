@@ -168,15 +168,19 @@ struct BookSummarySheet: View {
 
     private var failed: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if let error = state.error {
-                Text(ErrorText.title(error)).font(.headline)
-                Text(ErrorText.message(error))
+            if state.pausedInBackground {
+                // Not the app-wide "Nothing was changed": what it read is saved.
+                Text("Paused").font(.headline)
+                Text("iOS paused the reading while Pocket Library was in the background. What it has read so far is saved, and it carries on from there when you come back.")
+            } else {
+                if let error = state.error {
+                    Text(ErrorText.title(error)).font(.headline)
+                    Text(ErrorText.message(error))
+                }
+                Text("What it has read so far is saved, so Carry On picks up from there.")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
-            Text(state.pausedInBackground
-                ? "It stopped while Pocket Library was in the background. It carries on from the last chapter when you come back."
-                : "Progress is saved after every chapter, so trying again carries on from there.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
             if state.info.available {
                 Button("Carry On") { state.start() }
                     .buttonStyle(.borderedProminent)
