@@ -99,9 +99,9 @@ Not built: Forge does not make distribution builds, TestFlight uploads or App St
 
 ```bash
 forge doctor                  # "Run on an iPhone (Apple sign-in, connected device): ready"
-forge run ios                 # build, sign, install (xtool dev run), from the app directory
+forge run ios                 # build, then sign and install once the iPhone is there, from the app directory
 forge build ios               # build only (xtool dev build)
-forge run ios --release       # release configuration (xtool dev run -c release)
+forge run ios --release       # release configuration (xtool dev build -c release)
 forge install ios --ipa App.ipa
 ```
 

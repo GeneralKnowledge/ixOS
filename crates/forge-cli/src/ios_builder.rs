@@ -38,8 +38,14 @@ impl IosConfiguration {
 pub enum Purpose {
     /// Compile the app (`forge build ios`).
     Build,
-    /// Compile, sign and install on an iPhone (`forge run ios`).
+    /// What `forge run ios` needs before it builds: the toolchain and the
+    /// Apple sign-in, but not the iPhone, which is looked for only once the
+    /// app is built ([`Purpose::Install`]).
     Run,
+    /// Install an app that is already built: only the iPhone (usbmuxd
+    /// running, a phone listed). Checked after the build, so a missing
+    /// phone never holds up compiling.
+    Install,
 }
 
 /// Something that would make the build fail, found before it starts.
@@ -121,12 +127,14 @@ pub trait IosBuilder: Send + Sync {
         configuration: IosConfiguration,
     ) -> Result<(), String>;
 
-    /// Builds and installs the app in `project_dir` on a device (not launched).
-    fn run(
+    /// Signs and installs the app that [`IosBuilder::build`] just built in
+    /// `project_dir` (`product` is its `[ios] xtool_product`) on a device,
+    /// without building again. Not launched.
+    fn install_build(
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: IosConfiguration,
+        product: &str,
     ) -> Result<(), String>;
 
     /// Installs an already-built `.ipa` on a device.
@@ -143,13 +151,13 @@ pub struct XtoolBuilder;
 
 const XTOOL: &str = "xtool";
 
-/// How long `xtool dev run` may stay silent after `[Installing] 100%` before
+/// How long an xtool install may stay silent after `[Installing] 100%` before
 /// Forge stops it. A healthy install goes on to print `[Verifying]` progress
 /// (which keeps it alive); on Cati two reinstalls printed nothing more and
 /// never exited, though one of them had installed the app.
 const INSTALL_GRACE: std::time::Duration = std::time::Duration::from_secs(90);
 
-/// Set when the last `run` stopped xtool after `[Installing] 100%` without
+/// Set when the last `install_build` stopped xtool after `[Installing] 100%` without
 /// a verification (reported as `data.verified: false` by `forge run ios`).
 pub static INSTALL_UNVERIFIED: std::sync::atomic::AtomicBool =
     std::sync::atomic::AtomicBool::new(false);
@@ -165,6 +173,11 @@ fn install_finished(tail: &str) -> bool {
 // With Swift 6.2 debug builds need the Darwin SDK from Xcode 26; the iOS 18 SDK
 // from Xcode 16 fails to link with `undefined symbol: swift_coroFrameAlloc`
 // (docs/troubleshooting.md).
+
+/// Where `xtool dev build` puts the app it builds (unsigned).
+pub fn built_app(project_dir: &Path, product: &str) -> std::path::PathBuf {
+    project_dir.join("xtool").join(format!("{product}.app"))
+}
 
 fn xtool_dev(subcommand: &str, project_dir: &Path, configuration: IosConfiguration) -> Cmd {
     let cmd = Cmd::new(XTOOL).args(["dev", subcommand]);
@@ -204,14 +217,24 @@ impl IosBuilder for XtoolBuilder {
         run_explained(runner, xtool_dev("build", project_dir, configuration))
     }
 
-    fn run(
+    fn install_build(
         &self,
         runner: &dyn CommandRunner,
         project_dir: &Path,
-        configuration: IosConfiguration,
+        product: &str,
     ) -> Result<(), String> {
         self.ensure_available(runner)?;
-        let cmd = xtool_dev("run", project_dir, configuration);
+        // `xtool dev build` leaves the unsigned app in xtool/<product>.app;
+        // `xtool install` signs it for the connected phone and installs it,
+        // exactly as `xtool dev run` does after its own build.
+        let app = built_app(project_dir, product);
+        if !app.is_dir() {
+            return Err(format!(
+                "{} is missing: the Swift build did not produce the app (run `forge build ios` and read its output)",
+                app.display()
+            ));
+        }
+        let cmd = Cmd::new(XTOOL).arg("install").arg(&app).cwd(project_dir);
         let (status, tail, cut_short) =
             runner.stream_tail_until(&cmd, &install_finished, INSTALL_GRACE)?;
         if cut_short {
@@ -255,6 +278,10 @@ fn xtool_preflight(
 ) -> Preflight {
     let mut pf = Preflight::default();
 
+    if purpose == Purpose::Install {
+        device_checks(runner, env, &mut pf);
+        return pf;
+    }
     if !which_program(runner, XTOOL) {
         pf.problem(
             Stage::Swift,
@@ -309,47 +336,53 @@ fn xtool_preflight(
         }
     }
 
-    if purpose == Purpose::Run {
-        if ios_env::xtool_auth(runner) == Some(Auth::LoggedOut) {
-            pf.problem(
-                Stage::Signing,
-                "xtool is not signed in to an Apple account, so it cannot sign the app for your iPhone.",
-                "xtool auth login   (any Apple ID works; a paid account can use an API key)",
-            );
-        }
-        // The phone sometimes drops off usbmuxd while still plugged in: when
-        // none is seen, restart usbmuxd once and look again.
-        let mut running = ios_env::usbmuxd_running(runner, env);
-        let mut devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
-        if !matches!(devices, Some(Some(ref d)) if !d.is_empty()) {
-            let mut recovery = ios_env::UsbmuxdRecovery::new(env, std::time::Duration::ZERO);
-            if let Some(note) = recovery.tick(runner, std::time::Duration::ZERO) {
-                println!("[forge] {note}");
-                running = ios_env::usbmuxd_running(runner, env);
-                devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
-            }
-        }
-        if running == Some(false) {
-            pf.problem(
-                Stage::Device,
-                "usbmuxd is not running, so xtool would wait for the iPhone forever without saying so.",
-                "Plug the iPhone in by USB and unlock it (udev usually starts usbmuxd then), or `sudo systemctl start usbmuxd`. `forge devices` should then list it.",
-            );
-            return pf;
-        }
-        match devices.flatten() {
-            Some(devices) if devices.is_empty() => pf.problem(
-                Stage::Device,
-                "No iPhone is connected.",
-                "Connect it by USB, unlock it and tap Trust; `forge devices` should list it. If it does not: `sudo systemctl restart usbmuxd` and replug.",
-            ),
-            Some(_) => {}
-            None => pf.warnings.push(
-                "could not list iOS devices (`xtool devices --no-wait` failed or timed out): usbmuxd may be stuck, and then xtool waits forever without a message. If the install seems to hang: sudo systemctl restart usbmuxd, replug and unlock the iPhone".into(),
-            ),
-        }
+    if purpose == Purpose::Run && ios_env::xtool_auth(runner) == Some(Auth::LoggedOut) {
+        pf.problem(
+            Stage::Signing,
+            "xtool is not signed in to an Apple account, so it cannot sign the app for your iPhone.",
+            "xtool auth login   (any Apple ID works; a paid account can use an API key)",
+        );
     }
     pf
+}
+
+/// Whether an iPhone is there to install on ([`Purpose::Install`]).
+fn device_checks(
+    runner: &dyn CommandRunner,
+    env: &dyn Fn(&str) -> Option<String>,
+    pf: &mut Preflight,
+) {
+    // The phone sometimes drops off usbmuxd while still plugged in: when
+    // none is seen, restart usbmuxd once and look again.
+    let mut running = ios_env::usbmuxd_running(runner, env);
+    let mut devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
+    if !matches!(devices, Some(Some(ref d)) if !d.is_empty()) {
+        let mut recovery = ios_env::UsbmuxdRecovery::new(env, std::time::Duration::ZERO);
+        if let Some(note) = recovery.tick(runner, std::time::Duration::ZERO) {
+            println!("[forge] {note}");
+            running = ios_env::usbmuxd_running(runner, env);
+            devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
+        }
+    }
+    if running == Some(false) {
+        pf.problem(
+            Stage::Device,
+            "usbmuxd is not running, so xtool would wait for the iPhone forever without saying so.",
+            "Plug the iPhone in by USB and unlock it (udev usually starts usbmuxd then), or `sudo systemctl start usbmuxd`. `forge devices` should then list it.",
+        );
+        return;
+    }
+    match devices.flatten() {
+        Some(devices) if devices.is_empty() => pf.problem(
+            Stage::Device,
+            "No iPhone is connected.",
+            "Connect it by USB, unlock it and tap Trust; `forge devices` should list it. If it does not: `sudo systemctl restart usbmuxd` and replug.",
+        ),
+        Some(_) => {}
+        None => pf.warnings.push(
+            "could not list iOS devices (`xtool devices --no-wait` failed or timed out): usbmuxd may be stuck, and then xtool waits forever without a message. If the install seems to hang: sudo systemctl restart usbmuxd, replug and unlock the iPhone".into(),
+        ),
+    }
 }
 
 #[cfg(test)]
@@ -405,11 +438,16 @@ mod tests {
             .respond("xtool devices --no-wait", 0, "\n");
         let pf = xtool_preflight(&mock, Purpose::Run, &|_| None);
         let fixes: Vec<&str> = pf.problems.iter().map(|p| p.fix.as_str()).collect();
-        assert_eq!(fixes.len(), 4, "{fixes:?}");
+        // The iPhone is not one of them: it is looked for after the build.
+        assert_eq!(fixes.len(), 3, "{fixes:?}");
         assert!(fixes[0].contains("rustup target add aarch64-apple-ios"));
         assert!(fixes[1].contains("xtool setup"));
         assert!(fixes[2].contains("xtool auth login"));
-        assert!(fixes[3].contains("forge devices"));
+
+        // Installing needs only the iPhone.
+        let pf = xtool_preflight(&mock, Purpose::Install, &|_| None);
+        assert_eq!(pf.problems.len(), 1, "{pf:?}");
+        assert!(pf.problems[0].fix.contains("forge devices"));
 
         // A build needs neither the sign-in nor the iPhone.
         let pf = xtool_preflight(&mock, Purpose::Build, &|_| None);
@@ -418,10 +456,10 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn run_without_usbmuxd_stops_before_xtool_can_hang() {
+    fn install_without_usbmuxd_stops_before_xtool_can_hang() {
         let mock = ready_host();
         mock.respond("test -S /var/run/usbmuxd", 1, "");
-        let pf = xtool_preflight(&mock, Purpose::Run, &|_| None);
+        let pf = xtool_preflight(&mock, Purpose::Install, &|_| None);
         assert_eq!(pf.problems.len(), 1, "{pf:?}");
         assert!(pf.problems[0].problem.contains("usbmuxd is not running"));
         assert!(
@@ -430,21 +468,23 @@ mod tests {
                 .all(|l| !l.contains("xtool devices")),
             "xtool devices must not run without usbmuxd"
         );
-        // A build does not need the iPhone.
-        assert!(xtool_preflight(&mock, Purpose::Build, &|_| None)
-            .problems
-            .is_empty());
+        // Neither a build nor the checks before `forge run ios` builds need the iPhone.
+        for purpose in [Purpose::Build, Purpose::Run] {
+            assert!(xtool_preflight(&mock, purpose, &|_| None)
+                .problems
+                .is_empty());
+        }
     }
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn run_without_a_phone_restarts_usbmuxd_once_and_looks_again() {
+    fn install_without_a_phone_restarts_usbmuxd_once_and_looks_again() {
         let mock = ready_host();
         mock.respond("xtool devices --no-wait", 0, "\n")
             .respond("sudo -n -l systemctl restart usbmuxd", 0, "")
             .respond("sudo -n systemctl restart usbmuxd", 0, "")
             .respond("sleep", 0, "");
-        let pf = xtool_preflight(&mock, Purpose::Run, &|_| None);
+        let pf = xtool_preflight(&mock, Purpose::Install, &|_| None);
         assert_eq!(pf.problems.len(), 1, "{pf:?}");
         assert!(pf.problems[0].problem.contains("No iPhone"), "{pf:?}");
         let calls = mock.call_lines();
@@ -468,7 +508,7 @@ mod tests {
         // A phone in the first listing: nothing is restarted.
         let mock = ready_host();
         mock.respond("sudo", 0, "");
-        assert!(xtool_preflight(&mock, Purpose::Run, &|_| None)
+        assert!(xtool_preflight(&mock, Purpose::Install, &|_| None)
             .problems
             .is_empty());
         assert!(mock.call_lines().iter().all(|l| !l.contains("sudo")));
@@ -514,17 +554,19 @@ mod tests {
     }
 
     #[test]
-    fn failed_xtool_run_is_explained() {
+    fn failed_xtool_install_is_explained() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(built_app(tmp.path(), "DemoXtool")).unwrap();
         let mock = ready_host();
         mock.respond(
-            "xtool dev run",
+            "xtool install",
             1,
             "Error: The maximum number of apps for free development profiles has been reached.",
         );
         let err = XtoolBuilder
-            .run(&mock, Path::new("/tmp/app"), IosConfiguration::Debug)
+            .install_build(&mock, tmp.path(), "DemoXtool")
             .unwrap_err();
-        assert!(err.contains("`xtool dev run` failed"), "{err}");
+        assert!(err.contains("`xtool install"), "{err}");
         assert!(err.contains("[Signing and provisioning]"), "{err}");
         assert!(err.contains("Remove App"), "{err}");
     }
@@ -545,22 +587,40 @@ mod tests {
     #[test]
     fn release_builds_pass_the_configuration_to_xtool() {
         let dir = Path::new("/apps/Demo");
-        for (configuration, build, run) in [
-            (IosConfiguration::Debug, "xtool dev build", "xtool dev run"),
-            (
-                IosConfiguration::Release,
-                "xtool dev build -c release",
-                "xtool dev run -c release",
-            ),
+        for (configuration, build) in [
+            (IosConfiguration::Debug, "xtool dev build"),
+            (IosConfiguration::Release, "xtool dev build -c release"),
         ] {
             let mock = MockRunner::default();
             mock.respond("xtool", 0, "");
             XtoolBuilder.build(&mock, dir, configuration).unwrap();
-            XtoolBuilder.run(&mock, dir, configuration).unwrap();
             let lines = mock.call_lines();
             assert!(lines.contains(&build.to_string()), "{lines:?}");
-            assert!(lines.contains(&run.to_string()), "{lines:?}");
         }
+    }
+
+    #[test]
+    fn install_build_installs_the_app_the_build_left_without_building_again() {
+        let tmp = tempfile::tempdir().unwrap();
+        let app = built_app(tmp.path(), "DemoXtool");
+        let mock = MockRunner::default();
+        mock.respond("xtool", 0, "");
+        // Nothing built yet: say so rather than let xtool fail on a path.
+        let err = XtoolBuilder
+            .install_build(&mock, tmp.path(), "DemoXtool")
+            .unwrap_err();
+        assert!(err.contains("DemoXtool.app is missing"), "{err}");
+
+        std::fs::create_dir_all(&app).unwrap();
+        XtoolBuilder
+            .install_build(&mock, tmp.path(), "DemoXtool")
+            .unwrap();
+        let lines = mock.call_lines();
+        assert!(
+            lines.contains(&format!("xtool install {}", app.display())),
+            "{lines:?}"
+        );
+        assert!(lines.iter().all(|l| !l.contains("dev")), "{lines:?}");
     }
 
     #[test]

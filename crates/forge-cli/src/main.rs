@@ -133,7 +133,7 @@ enum Commands {
         #[command(subcommand)]
         cmd: InstallCommands,
     },
-    /// Build, sign and install on a connected iPhone (`xtool dev run`); open the app from the home screen
+    /// Build the app, then sign and install it on a connected iPhone; without a phone it stops after the build (run it again to install). Open the app from the home screen
     Run {
         #[command(subcommand)]
         cmd: RunCommands,
@@ -1166,7 +1166,7 @@ enum RunCommands {
             help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
         )]
         project: Option<PathBuf>,
-        /// Build the Swift app in the release configuration (xtool dev run -c release)
+        /// Build the Swift app in the release configuration (xtool dev build -c release)
         #[arg(long)]
         release: bool,
         /// Include the live connection to `forge device` (pair, connect,
@@ -1174,8 +1174,8 @@ enum RunCommands {
         /// release build
         #[arg(long, conflicts_with = "release")]
         devtools: bool,
-        /// Build first (Rust and Swift), then wait up to this many minutes
-        /// for the iPhone: ask for the phone only when the status says
+        /// After the build, wait up to this many minutes for the iPhone
+        /// instead of stopping: ask for the phone only when the status says
         /// waiting_for_device (<app>/.forge/status/run-ios.json)
         #[arg(long, value_name = "MINUTES")]
         wait_for_device: Option<u64>,
