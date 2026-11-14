@@ -946,7 +946,8 @@ fn a_chapter_summary_is_saved_with_the_book() {
     let synopsis =
         block_on(library.summarise_chapter(book.id, 1, model.clone(), None, None)).unwrap();
     assert_eq!(synopsis.chapter, 1);
-    assert_eq!(synopsis.text, "Answer 2.");
+    // Two parts read, then the writer.
+    assert_eq!(synopsis.text, "Answer 3.");
     assert_eq!(synopsis.model_name, "Fake Model");
     // The book's title and the chapter's text went to the model.
     let asked = model.asked.lock().unwrap().clone();
@@ -1022,19 +1023,22 @@ fn a_whole_book_summary_reads_every_chapter_and_reuses_saved_ones() {
     let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
     assert_eq!((synopsis.chapters_read, synopsis.chapters_skipped), (2, 0));
     assert_eq!(synopsis.chapters.len(), 2);
-    // Per chapter: reader, writer, cast keeper; then the overview.
-    assert_eq!(synopsis.model_requests, 7);
+    // Per chapter: two parts read, the writer, the cast keeper; then
+    // the overview's two writers (a two-chapter book has no middle).
+    assert_eq!(synopsis.model_requests, 10);
     let asked = model.asked.lock().unwrap().clone();
+    assert!(asked[8].prompt.contains("the beginning of a book"));
     let last = &asked.last().unwrap().prompt;
-    assert!(last.contains("overview of the whole book") && last.contains("Chapter: Answer"));
-    assert_eq!(synopsis.text, "Answer 7.");
+    assert!(last.contains("the end of a book") && last.contains("Chapter: Answer"));
+    assert!(last.contains("The paragraph before yours"));
+    assert_eq!(synopsis.text, "Answer 9.\n\nAnswer 10.");
 
     // Saved, and a second run reuses the chapter summaries.
     let library = reopen(library, dir.path());
     assert_eq!(library.book_synopsis(book.id), Some(synopsis));
     let again =
         block_on(library.summarise_book(book.id, Arc::new(FakeModel::new()), None, None)).unwrap();
-    assert_eq!(again.model_requests, 3);
+    assert_eq!(again.model_requests, 4);
 }
 
 #[test]
@@ -1044,9 +1048,10 @@ fn a_stopped_whole_book_run_carries_on_where_it_left_off() {
     let library = open(dir.path());
     let book = import_readable(&library, dir.path(), "Paused");
 
-    // The model is throttled after the first chapter (reader, writer, cast).
+    // The model is throttled after the first chapter (two parts, writer,
+    // cast).
     let mut busy = FakeModel::new();
-    busy.busy_after = Some(3);
+    busy.busy_after = Some(4);
     assert_eq!(
         block_on(library.summarise_book(book.id, Arc::new(busy), None, None)),
         Err(LibraryError::Interrupted)
@@ -1054,17 +1059,17 @@ fn a_stopped_whole_book_run_carries_on_where_it_left_off() {
     let run = library.book_run(book.id).unwrap();
     assert_eq!(
         (run.chapters_done, run.chapters, run.model_requests),
-        (1, 2, 3)
+        (1, 2, 4)
     );
 
     // After a relaunch, the next run does only chapter 2 and the overview.
     let library = reopen(library, dir.path());
     let model = Arc::new(FakeModel::new());
     let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
-    assert_eq!(model.asked.lock().unwrap().len(), 4);
-    assert_eq!(synopsis.model_requests, 7);
+    assert_eq!(model.asked.lock().unwrap().len(), 6);
+    assert_eq!(synopsis.model_requests, 10);
     assert_eq!(synopsis.chapters_read, 2);
-    assert!(model.asked.lock().unwrap()[3]
+    assert!(model.asked.lock().unwrap()[4]
         .prompt
         .contains("Chapter: Answer"));
     assert_eq!(library.book_run(book.id), None);

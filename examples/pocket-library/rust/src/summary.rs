@@ -36,17 +36,23 @@ use crate::error::LibraryError;
 /// What the model can read and write in one request (Apple's on-device
 /// model: 4,096 tokens).
 pub const CONTEXT_TOKENS: usize = 4096;
-/// The most text in one part. With the instructions, the notes on the part
-/// before and the answer, a request stays near 2,800 tokens, leaving room
-/// for the token estimate being low (it is only an estimate; the real
-/// tokenizer is Apple's).
-pub const PART_TOKENS: usize = 2000;
+/// The most text in one part: about a scene. A small model reads a short
+/// passage far better than one that fills half its window (the first
+/// whole-book run used 2,000), at the cost of more requests.
+pub const PART_TOKENS: usize = 900;
 /// The most notes combined in one request.
 pub const NOTES_TOKENS: usize = 2400;
 /// Longest answers, in tokens.
 const NOTE_MAX_TOKENS: u32 = 300;
 const SUMMARY_MAX_TOKENS: u32 = 450;
-const OVERVIEW_MAX_TOKENS: u32 = 700;
+/// One paragraph of the overview.
+const PARAGRAPH_MAX_TOKENS: u32 = 350;
+/// An act: at most this many chapters (or smaller acts), and this many
+/// tokens of their summaries, in one request.
+const ACT_CHAPTERS: usize = 5;
+const ACT_TOKENS: usize = 1400;
+/// More acts than this are grouped again before the overview.
+const MAX_ACTS: usize = 9;
 /// Low, so the model sticks to the text.
 const TEMPERATURE: f64 = 0.3;
 /// Shorter than this is a title page or a copyright notice.
@@ -297,12 +303,75 @@ pub fn book_sections(chapters: &[crate::ChapterSummary]) -> Vec<std::ops::Range<
             .iter()
             .map(|c| c.words)
             .sum();
-        if words >= MIN_WORDS {
+        if words >= MIN_WORDS && !is_apparatus(&chapters[range.start as usize].title) {
             out.push(range.clone());
         }
         index = range.end.max(index + 1);
     }
     out
+}
+
+/// Titles of the pages around a book's text rather than in it: the model
+/// has no story to summarise there, so it declines or makes things up
+/// (the first whole-book run "summarised" a chronology with wrong dates).
+const APPARATUS: &[&str] = &[
+    "cover",
+    "title page",
+    "half title",
+    "contents",
+    "table of contents",
+    "copyright",
+    "dedication",
+    "epigraph",
+    "acknowledgements",
+    "acknowledgments",
+    "about the author",
+    "about the authors",
+    "about the publisher",
+    "also by",
+    "by the same author",
+    "other books by",
+    "praise for",
+    "timeline",
+    "chronology",
+    "glossary",
+    "index",
+    "notes",
+    "endnotes",
+    "bibliography",
+    "further reading",
+    "sources",
+    "maps",
+    "map",
+    "list of characters",
+    "cast of characters",
+    "dramatis personae",
+    "family tree",
+    "newsletter",
+];
+
+/// Whether a section's title names front or back matter.
+pub fn is_apparatus(title: &str) -> bool {
+    let title = title
+        .trim()
+        .trim_matches(|c: char| !c.is_alphanumeric())
+        .to_lowercase()
+        .replace('\u{2019}', "'");
+    // "Also by Jane Doe", "Timeline of the war": these start a title.
+    const STARTS: &[&str] = &[
+        "also by",
+        "praise for",
+        "about the author",
+        "other books by",
+        "timeline",
+        "chronology",
+    ];
+    APPARATUS.contains(&title.as_str())
+        || STARTS.iter().any(|a| {
+            title
+                .strip_prefix(a)
+                .is_some_and(|rest| rest.starts_with([' ', ':', '.']))
+        })
 }
 
 /// The cast keeper's list, read back: lines like "- Name: who they are"
@@ -369,25 +438,31 @@ pub fn estimate_tokens(text: &str) -> usize {
 /// longer than `budget` is split at sentence ends (or, failing that, at
 /// spaces).
 pub fn split_into_parts(paragraphs: &[String], budget: usize) -> Vec<String> {
-    let pieces: Vec<String> = paragraphs
+    let paragraphs: Vec<&str> = paragraphs
         .iter()
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
-        .flat_map(|p| split_long(p, budget))
         .collect();
-    let total: usize = pieces.iter().map(|p| estimate_tokens(p) + 1).sum();
+    let total: usize = paragraphs.iter().map(|p| estimate_tokens(p) + 1).sum();
     if total == 0 {
         return Vec::new();
     }
     let count = total.div_ceil(budget);
     let target = total.div_ceil(count);
     let limit = (target + target / 5).min(budget);
+    let pieces: Vec<String> = paragraphs
+        .into_iter()
+        .flat_map(|p| split_long(p, limit))
+        .collect();
     let mut parts = Vec::new();
     let mut current = String::new();
     let mut size = 0;
     for piece in pieces {
         let cost = estimate_tokens(&piece) + 1;
-        if !current.is_empty() && size + cost > limit {
+        // A short start (a heading) stays with what follows if the part
+        // still fits the budget.
+        let full = size + cost > budget || (size + cost > limit && size >= limit / 4);
+        if !current.is_empty() && full {
             parts.push(std::mem::take(&mut current));
             size = 0;
         }
@@ -562,13 +637,28 @@ pub fn clean(text: &str) -> String {
     }
     if let Some(first) = lines.first() {
         let lower = first.trim().to_lowercase();
-        let preamble = lower.ends_with(':')
-            && (lower.starts_with("here")
-                || lower.starts_with("summary")
-                || lower.starts_with("notes")
-                || lower.starts_with("sure"));
+        // "Certainly! Here is a summary of the requested text:" and the
+        // like: a short opening line that only introduces the answer.
+        let preamble = lower.ends_with(':') && lower.chars().count() <= 100;
         if preamble || lower.starts_with('#') {
             lines.remove(0);
+        }
+    }
+    // "Certainly! Anna leaves." keeps "Anna leaves."
+    if let Some(first) = lines.first_mut() {
+        let lower = first.trim_start().to_lowercase();
+        for filler in [
+            "certainly!",
+            "sure!",
+            "of course!",
+            "certainly.",
+            "sure.",
+            "of course.",
+        ] {
+            if lower.starts_with(filler) {
+                *first = first.trim_start()[filler.len()..].trim_start();
+                break;
+            }
         }
     }
     let mut out = String::new();
@@ -601,6 +691,106 @@ pub fn clean(text: &str) -> String {
         out = chars.as_str().trim().to_string();
     }
     out
+}
+
+/// Openings with which a small model declines in words instead of raising
+/// its refusal error ("I'm sorry, but I cannot fulfill that request.").
+const DECLINES: &[&str] = &[
+    "i'm sorry",
+    "i am sorry",
+    "sorry, i",
+    "sorry, but",
+    "i cannot",
+    "i can't",
+    "i can not",
+    "i'm unable",
+    "i am unable",
+    "i'm not able",
+    "i am not able",
+    "unfortunately, i",
+    "as an ai",
+    "i apologize",
+    "i apologise",
+];
+
+/// Whether a paragraph is the model declining or talking about itself
+/// rather than answering.
+pub fn declines(paragraph: &str) -> bool {
+    let lower = paragraph
+        .trim()
+        .trim_start_matches(['"', '\u{201C}', '-', '*', ' '])
+        .to_lowercase()
+        .replace('\u{2019}', "'");
+    DECLINES.iter().any(|d| lower.starts_with(d))
+}
+
+/// The answer without paragraphs in which the model declines. Empty when
+/// it declined altogether.
+pub fn without_declines(text: &str) -> String {
+    text.split("\n\n")
+        .filter(|p| !declines(p))
+        .collect::<Vec<_>>()
+        .join("\n\n")
+        .trim()
+        .to_string()
+}
+
+/// How much of a paragraph repeats the prompt word for word (the share of
+/// its words inside runs of [`COPY_RUN_WORDS`] found in the prompt).
+fn echoed_share(paragraph: &str, prompt: &std::collections::HashSet<String>) -> f64 {
+    let n = COPY_RUN_WORDS;
+    let words = plain_words(paragraph);
+    if words.len() < n {
+        return 0.0;
+    }
+    let mut covered = vec![false; words.len()];
+    for i in 0..=words.len() - n {
+        if prompt.contains(&words[i..i + n].join(" ")) {
+            covered[i..i + n].iter_mut().for_each(|c| *c = true);
+        }
+    }
+    covered.iter().filter(|c| **c).count() as f64 / words.len() as f64
+}
+
+/// The answer without paragraphs that mostly repeat the prompt: a small
+/// model given a long prompt sometimes copies its input or its
+/// instructions back before (or instead of) answering. Empty when every
+/// paragraph is an echo.
+pub fn without_echoes(text: &str, prompt: &str) -> String {
+    let n = COPY_RUN_WORDS;
+    let words = plain_words(prompt);
+    let seen: std::collections::HashSet<String> = words.windows(n).map(|w| w.join(" ")).collect();
+    text.split("\n\n")
+        .filter(|p| echoed_share(p, &seen) < 0.6)
+        .collect::<Vec<_>>()
+        .join("\n\n")
+        .trim()
+        .to_string()
+}
+
+/// Prose cut off by the length cap ends mid-sentence ("The names are
+/// sealed,"): keep it up to its last full sentence, dropping a last
+/// paragraph that has none.
+pub fn whole_sentences(text: &str) -> String {
+    let text = text.trim();
+    let ends = |s: &str| {
+        s.trim_end_matches(['"', '\u{201D}', '\'', '\u{2019}', ')'])
+            .ends_with(['.', '!', '?', '\u{3002}', '\u{FF01}', '\u{FF1F}'])
+    };
+    if text.is_empty() || ends(text) {
+        return text.to_string();
+    }
+    let (before, last) = match text.rfind("\n\n") {
+        Some(i) => (&text[..i], &text[i + 2..]),
+        None => ("", text),
+    };
+    let kept: Vec<&str> = sentences(last).into_iter().filter(|s| ends(s)).collect();
+    let last = kept.join(" ");
+    [before.trim(), last.trim()]
+        .into_iter()
+        .filter(|p| !p.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n")
 }
 
 // MARK: Prompts
@@ -643,7 +833,7 @@ fn part_prompt(
         format!("part {part} of {parts} of the chapter")
     };
     format!(
-        "{}\nThe text is {which}.\n\n{earlier}The text:\n<<<\n{text}\n>>>\n\nList the 4 to 8 \
+        "{}\nThe text is {which}.\n\n{earlier}The text:\n<<<\n{text}\n>>>\n\nList the 3 to 6 \
          most important things that happen or are explained in this text, in order, one short fact \
          per line starting with \"- \". Use the characters' names. Restate everything in your own \
          words; do not copy the text's sentences, and do not start with its opening line.",
@@ -715,25 +905,93 @@ fn cast_prompt(book: &str, cast: &[CastMember], chapter: &str, summary: &str) ->
     )
 }
 
-fn stretch_prompt(book: &str, summaries: &[String]) -> String {
+/// The overview's writers: they see summaries, never the book's text,
+/// and are told not to fill gaps from what they may know of the book.
+const BOOK_INSTRUCTIONS: &str = "You write about a book for a reader who wants to remember it, \
+from short summaries someone else wrote. Use only the facts in the summaries; never add facts, dates \
+or people from your own knowledge. Write in your own words, as plain prose, with no headings or \
+lists. Add no opinions, morals or warnings.";
+
+/// Which third of the book an overview paragraph covers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Third {
+    Beginning,
+    Middle,
+    End,
+    /// A book short enough for one paragraph.
+    Whole,
+}
+
+/// The acts split into the beginning, middle and end (fewer for a short
+/// book).
+fn thirds(acts: &[String]) -> Vec<(Third, Vec<String>)> {
+    match acts.len() {
+        0 => Vec::new(),
+        1 => vec![(Third::Whole, acts.to_vec())],
+        2 => vec![
+            (Third::Beginning, acts[..1].to_vec()),
+            (Third::End, acts[1..].to_vec()),
+        ],
+        n => {
+            let a = n.div_ceil(3);
+            let b = n - (n - a) / 2;
+            vec![
+                (Third::Beginning, acts[..a].to_vec()),
+                (Third::Middle, acts[a..b].to_vec()),
+                (Third::End, acts[b..].to_vec()),
+            ]
+        }
+    }
+}
+
+fn act_prompt(summaries: &[String]) -> String {
     format!(
-        "{book}\n\nSummaries of consecutive chapters, in order:\n\n{}\n\nSummarise this stretch of \
-         the book in one paragraph of 4 to 6 sentences, keeping the events in order and the names.",
+        "Summaries of consecutive chapters of a book, in order:\n<<<\n{}\n>>>\n\nIn 3 to 5 \
+         sentences of your own, say what happens across these chapters as a whole: the main turns, \
+         who drives them, and where things stand at the end. Do not go chapter by chapter, and do \
+         not repeat the summaries' sentences.",
         summaries.join("\n\n")
     )
 }
 
-fn overview_prompt(book: &str, cast: &[CastMember], summaries: &[String]) -> String {
+fn overview_prompt(
+    third: Third,
+    cast: &[CastMember],
+    acts: &[String],
+    before: Option<&str>,
+) -> String {
+    let (which, job) = match third {
+        Third::Beginning => (
+            "the beginning of a book",
+            "how the book begins: who it is about, where and when, and what sets the story or \
+             argument going",
+        ),
+        Third::Middle => (
+            "the middle of a book",
+            "how the story or argument develops: the main turns and conflicts",
+        ),
+        Third::End => (
+            "the end of a book",
+            "how the book ends: the last turns, how things are resolved, and where the people end up",
+        ),
+        Third::Whole => (
+            "a whole book",
+            "what the book is about, how it develops and how it ends",
+        ),
+    };
     let people = if cast.is_empty() {
         String::new()
     } else {
         format!("The people in the book:\n{}\n\n", cast_text(cast))
     };
+    let before = before
+        .map(|p| format!("The paragraph before yours (for context only):\n{p}\n\n"))
+        .unwrap_or_default();
     format!(
-        "{book}\n\n{people}The whole book, in order:\n\n{}\n\nWrite an overview of the whole book \
-         in three short paragraphs: how it begins and who it is about, how the story or argument \
-         develops, and how it ends. Use the names. Write in your own words.",
-        summaries.join("\n\n")
+        "{people}{before}Summaries of {which}, in order:\n<<<\n{}\n>>>\n\nWrite one paragraph of 3 \
+         to 5 sentences on {job}. Use the names. Say it in your own words; do not repeat the \
+         summaries' sentences.",
+        acts.join("\n\n")
     )
 }
 
@@ -816,15 +1074,24 @@ impl Summariser<'_> {
                 ),
                 true,
             )
+            .map(|t| whole_sentences(&t))
             .map_err(|e| self.error(e))?;
+        if text.is_empty() {
+            return Err(LibraryError::SummaryRefused {
+                reason: "the model gave no summary".into(),
+            });
+        }
         let copied = copied_phrases(&text, paragraphs);
         if !copied.is_empty() {
             self.report(SummaryStage::Revising);
             let prompt = revise_prompt(&self.source, &notes, &text, &copied);
-            match self.ask(
-                request(WRITER_INSTRUCTIONS, prompt, SUMMARY_MAX_TOKENS),
-                true,
-            ) {
+            match self
+                .ask(
+                    request(WRITER_INSTRUCTIONS, prompt, SUMMARY_MAX_TOKENS),
+                    true,
+                )
+                .map(|t| whole_sentences(&t))
+            {
                 // Keep the rewrite only if it copies less.
                 Ok(rewrite)
                     if !rewrite.is_empty()
@@ -915,7 +1182,10 @@ impl Summariser<'_> {
                 continue;
             }
             let prompt = combine_prompt(&self.source, &group);
-            match self.ask(request(WRITER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
+            match self
+                .ask(request(WRITER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false)
+                .map(|t| whole_sentences(&t))
+            {
                 Ok(text) if !text.is_empty() => out.push(text),
                 // Declined or empty: keep the group's notes, shortened.
                 Ok(_)
@@ -961,73 +1231,104 @@ impl Summariser<'_> {
     }
 
     /// The book's overview from its chapter summaries ("Chapter title:
-    /// summary", in order): stretches of chapters are summarised until
-    /// they fit one request, then the overview is written from them and
-    /// the cast.
+    /// summary", in order), in two more layers so that no request reads
+    /// much: consecutive chapters are summarised as acts (and acts as
+    /// larger acts, until there are few enough), then three writers each
+    /// take a third of the acts and write one paragraph: how the book
+    /// begins, how it develops, how it ends. None of them sees the chapter
+    /// summaries themselves, so none can copy them.
     pub fn overview(
         &self,
         cast: &[CastMember],
         chapters: &[String],
     ) -> Result<String, LibraryError> {
         self.report(SummaryStage::Overview);
-        let book = self.book_line();
-        let budget = NOTES_TOKENS
-            .saturating_sub(estimate_tokens(&cast_text(cast)) + 200)
-            .max(800);
-        let mut summaries = chapters.to_vec();
-        while summaries.len() > 1 && estimate_tokens(&summaries.join("\n\n")) > budget {
+        let mut acts = chapters.to_vec();
+        if acts.len() > ACT_CHAPTERS {
             self.report(SummaryStage::Combining);
-            let mut groups: Vec<Vec<String>> = vec![Vec::new()];
-            for summary in &summaries {
-                let group = groups.last_mut().expect("never empty");
-                let size = estimate_tokens(&group.join("\n\n")) + estimate_tokens(summary);
-                if !group.is_empty() && size > NOTES_TOKENS {
-                    groups.push(vec![summary.clone()]);
-                } else {
-                    group.push(summary.clone());
-                }
+            acts = self.acts(&acts)?;
+            while acts.len() > MAX_ACTS {
+                acts = self.acts(&acts)?;
             }
-            if groups.len() == summaries.len() {
-                summaries = summaries.iter().map(|s| shorten(s, 2)).collect();
-                continue;
-            }
-            let mut next = Vec::new();
-            for group in groups {
-                if group.len() == 1 {
-                    next.extend(group);
-                    continue;
-                }
-                let prompt = stretch_prompt(&book, &group);
-                match self.ask(request(WRITER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
-                    Ok(text) if !text.is_empty() => next.push(text),
-                    Ok(_)
-                    | Err(
-                        SummaryModelError::Refused { .. }
-                        | SummaryModelError::ContextTooLong { .. },
-                    ) => next.push(
-                        group
-                            .iter()
-                            .map(|s| shorten(s, 1))
-                            .collect::<Vec<_>>()
-                            .join(" "),
-                    ),
-                    Err(err) => return Err(self.error(err)),
-                }
-            }
-            summaries = next;
         }
         self.report(SummaryStage::Writing {
             draft: String::new(),
         });
-        self.ask(
-            request(
-                WRITER_INSTRUCTIONS,
-                overview_prompt(&book, cast, &summaries),
-                OVERVIEW_MAX_TOKENS,
-            ),
-            true,
-        )
-        .map_err(|e| self.error(e))
+        let thirds = thirds(&acts);
+        let mut paragraphs: Vec<String> = Vec::new();
+        for (i, (part, slice)) in thirds.iter().enumerate() {
+            let last = i + 1 == thirds.len();
+            let prompt = overview_prompt(*part, cast, slice, paragraphs.last().map(String::as_str));
+            match self.write(
+                request(BOOK_INSTRUCTIONS, prompt, PARAGRAPH_MAX_TOKENS),
+                last,
+            ) {
+                Ok(text) => paragraphs.push(text.replace("\n\n", " ")),
+                Err(
+                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
+                ) => {
+                    // The acts' own first sentences stand in.
+                    let fallback = slice
+                        .iter()
+                        .map(|a| shorten(a, 1))
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    if !fallback.is_empty() {
+                        paragraphs.push(fallback);
+                    }
+                }
+                Err(err) => return Err(self.error(err)),
+            }
+        }
+        if paragraphs.is_empty() {
+            return Err(LibraryError::SummaryRefused {
+                reason: "the model declined to write an overview".into(),
+            });
+        }
+        Ok(paragraphs.join("\n\n"))
+    }
+
+    /// One layer of acts: consecutive summaries in groups of at most
+    /// [`ACT_CHAPTERS`] that fit [`ACT_TOKENS`], each summarised in a few
+    /// sentences. A group of one is kept as it is.
+    fn acts(&self, summaries: &[String]) -> Result<Vec<String>, LibraryError> {
+        let mut groups: Vec<Vec<String>> = vec![Vec::new()];
+        for summary in summaries {
+            let summary = if estimate_tokens(summary) > ACT_TOKENS / 2 {
+                shorten(summary, 4)
+            } else {
+                summary.clone()
+            };
+            let group = groups.last_mut().expect("never empty");
+            let size = estimate_tokens(&group.join("\n\n")) + estimate_tokens(&summary);
+            if !group.is_empty() && (group.len() >= ACT_CHAPTERS || size > ACT_TOKENS) {
+                groups.push(vec![summary]);
+            } else {
+                group.push(summary);
+            }
+        }
+        let mut out = Vec::new();
+        for group in groups {
+            if group.len() == 1 {
+                out.extend(group);
+                continue;
+            }
+            let prompt = act_prompt(&group);
+            match self.write(request(BOOK_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
+                Ok(text) => out.push(text.replace("\n\n", " ")),
+                Err(
+                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
+                ) => out.push(
+                    group
+                        .iter()
+                        .map(|s| shorten(s, 1))
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ),
+                Err(err) => return Err(self.error(err)),
+            }
+        }
+        Ok(out)
     }
 
     fn book_line(&self) -> String {
@@ -1054,7 +1355,32 @@ impl Summariser<'_> {
         if self.cancel.is_cancelled() {
             return Err(SummaryModelError::Stopped);
         }
-        result.map(|text| clean(&text))
+        // The checker: a small model sometimes declines in words rather
+        // than with its refusal error. Those paragraphs are dropped, and an
+        // answer that was nothing else counts as declined.
+        let text = clean(&result?);
+        let kept = without_declines(&text);
+        if kept.is_empty() && !text.is_empty() {
+            return Err(SummaryModelError::Refused {
+                reason: "declined in words".into(),
+            });
+        }
+        Ok(kept)
+    }
+
+    /// A prose answer (a summary, a stretch, the overview), checked: no
+    /// paragraphs that repeat the prompt, no sentence cut off by the length
+    /// cap. Nothing left counts as declined.
+    fn write(&self, request: SummaryRequest, last: bool) -> Result<String, SummaryModelError> {
+        let prompt = request.prompt.clone();
+        let text = self.ask(request, last)?;
+        let text = whole_sentences(&without_echoes(&text, &prompt));
+        if text.is_empty() {
+            return Err(SummaryModelError::Refused {
+                reason: "no answer of its own".into(),
+            });
+        }
+        Ok(text)
     }
 
     fn report(&self, stage: SummaryStage) {
@@ -1543,5 +1869,148 @@ pub(crate) mod tests {
         // No table of contents: a file at a time.
         let unlisted = vec![chapter(0, false), chapter(1, false)];
         assert_eq!(section(&unlisted, 1), 1..2);
+    }
+
+    #[test]
+    fn the_checker_drops_declines_preambles_echoes_and_cut_off_sentences() {
+        assert_eq!(
+            clean("Certainly! Here is a summary of the requested text:\n\nAnna leaves."),
+            "Anna leaves."
+        );
+        assert_eq!(clean("Certainly! Anna leaves."), "Anna leaves.");
+        assert!(declines(
+            "I\u{2019}m sorry, but I cannot fulfill that request."
+        ));
+        assert!(declines("Sorry, I can't do that."));
+        assert!(!declines("Anna is sorry she left."));
+        assert_eq!(
+            without_declines("I cannot summarize that.\n\nAnna leaves the station."),
+            "Anna leaves the station."
+        );
+        let prompt = "Summaries:\nAnna waits on the platform for the night train to Vienna.\n\n\
+                      Write one paragraph of 3 to 5 sentences on how the book begins.";
+        assert_eq!(
+            without_echoes(
+                "Write one paragraph of 3 to 5 sentences on how the book begins.\n\n\
+                 Anna waits on the platform for the night train to Vienna.\n\n\
+                 The book opens with Anna waiting for a train.",
+                prompt
+            ),
+            "The book opens with Anna waiting for a train."
+        );
+        assert_eq!(
+            whole_sentences("Anna leaves. The names are sealed,"),
+            "Anna leaves."
+        );
+        assert_eq!(whole_sentences("One.\n\nOct"), "One.");
+        assert_eq!(whole_sentences("\"Go,\" she says."), "\"Go,\" she says.");
+    }
+
+    #[test]
+    fn front_and_back_matter_is_left_out_of_the_book() {
+        for title in [
+            "Contents",
+            "Copyright",
+            "Timeline",
+            "Timeline of the War",
+            "Also by Jane Doe",
+            "Notes",
+            "Glossary",
+        ] {
+            assert!(is_apparatus(title), "{title}");
+        }
+        for title in [
+            "Chapter 1",
+            "The Map Room",
+            "Notes from Underground",
+            "Index of Souls",
+            "Rome",
+        ] {
+            assert!(!is_apparatus(title), "{title}");
+        }
+    }
+
+    /// Declines in words, and echoes its prompt, for prompts containing
+    /// `bad`; answers "Answer N." otherwise.
+    struct Wordy {
+        asked: Mutex<Vec<SummaryRequest>>,
+        bad: &'static str,
+    }
+
+    #[async_trait::async_trait]
+    impl SummaryModel for Wordy {
+        fn describe(&self) -> SummaryModelInfo {
+            FakeModel::new().describe()
+        }
+
+        async fn generate(
+            &self,
+            request: SummaryRequest,
+            _: Arc<SummarySink>,
+        ) -> Result<String, SummaryModelError> {
+            let n = {
+                let mut asked = self.asked.lock().unwrap();
+                asked.push(request.clone());
+                asked.len()
+            };
+            Ok(if request.prompt.contains(self.bad) {
+                format!(
+                    "I'm sorry, but I cannot fulfill that request.\n\n{}",
+                    request.prompt
+                )
+            } else {
+                format!("Certainly! Here is the paragraph:\nAnswer {n}. The end is cut")
+            })
+        }
+    }
+
+    #[test]
+    fn a_long_book_is_read_in_acts_then_three_overview_writers() {
+        let model = FakeModel::new();
+        let cancel = CancelHandle::new();
+        let summariser = Summariser {
+            model: &model,
+            cancel: &cancel,
+            progress: None,
+            requests: Default::default(),
+            source: source(),
+        };
+        let chapters: Vec<String> = (1..=12)
+            .map(|i| format!("Chapter {i}: Anna does thing {i}. Then more happens."))
+            .collect();
+        let text = summariser.overview(&[], &chapters).unwrap();
+        let asked = model.asked.lock().unwrap().clone();
+        // 12 chapters → acts of 5, 5 and 2, then beginning, middle, end.
+        assert_eq!(asked.len(), 6);
+        assert!(asked[0].prompt.contains("Chapter 1:") && asked[0].prompt.contains("Chapter 5:"));
+        assert!(!asked[0].prompt.contains("Chapter 6:"));
+        assert!(asked[3].prompt.contains("the beginning of a book"));
+        assert!(asked[4].prompt.contains("the middle of a book"));
+        assert!(asked[5].prompt.contains("the end of a book"));
+        // The overview's writers never see a chapter summary.
+        assert!(asked[3..].iter().all(|r| !r.prompt.contains("Chapter 1:")));
+        assert_eq!(text, "Answer 4.\n\nAnswer 5.\n\nAnswer 6.");
+    }
+
+    #[test]
+    fn an_overview_writer_that_declines_in_words_is_replaced_by_its_acts() {
+        let model = Wordy {
+            asked: Mutex::new(Vec::new()),
+            bad: "the middle of a book",
+        };
+        let cancel = CancelHandle::new();
+        let summariser = Summariser {
+            model: &model,
+            cancel: &cancel,
+            progress: None,
+            requests: Default::default(),
+            source: source(),
+        };
+        let chapters: Vec<String> = ["Anna arrives.", "Ben argues with Anna.", "Anna leaves."]
+            .map(String::from)
+            .to_vec();
+        let text = summariser.overview(&[], &chapters).unwrap();
+        // No refusal, no echoed prompt, no "Certainly!", no cut-off end.
+        assert_eq!(text, "Answer 1.\n\nBen argues with Anna.\n\nAnswer 3.");
     }
 }

@@ -111,9 +111,10 @@ final class BookBackgroundTask {
     private func apply() {
         #if os(iOS) && canImport(BackgroundTasks)
         guard let task else { return }
-        task.progress.totalUnitCount = Int64(progress.total)
-        task.progress.completedUnitCount = Int64(progress.done)
         if #available(iOS 26.0, *), let continued = task as? BGContinuedProcessingTask {
+            // Only the continued-processing task reports progress.
+            continued.progress.totalUnitCount = Int64(progress.total)
+            continued.progress.completedUnitCount = Int64(progress.done)
             continued.updateTitle(continued.title, subtitle: progress.subtitle)
         }
         #endif
