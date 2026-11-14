@@ -27,6 +27,11 @@ Sending holiday.zip (1.2 GB) ...         Receiving holiday.zip ... saved to File
 - **Trusted devices:** after a transfer, "remember this device" (on by
   default for your own devices) lets later sends skip the code: pick
   "MacBook" from a list, as Relay's paired devices work now.
+- **Messages:** text between trusted devices, as a conversation per device
+  ("the build finished", a link, a code snippet), with delivered and read
+  marks. Text can also go with a code (`relay send --text "…"`), for a
+  one-off to a device that isn't trusted. Today's Relay notes become these
+  messages. See [Messages](#messages).
 - Works with no internet on the same Wi-Fi (stage 1). Works across networks
   later (stage 2): phone on 5G, laptop at home.
 
@@ -132,6 +137,30 @@ key-value map and expiry), the Bonjour glue, and the app. Everything that is
 hard (crypto, NAT traversal, relays, verified resumable transfer) is
 borrowed.
 
+## Messages
+
+Messages ride the same iroh connection as files, on their own protocol
+(`forge-relay/msg/1`), so they share identity, trusted devices, encryption
+and (in stage 2) the tailnet and relay paths. Nothing new to borrow.
+
+- **Shape:** each message has an id (random, so a resend isn't a
+  duplicate), the sender's device, a time, and text up to 64 KB. A file sent
+  in a conversation appears in it as a message that points at the transfer.
+  Replies "delivered" when stored and "read" when shown.
+- **Who:** trusted devices only, or one message with a code. A message from
+  an unknown endpoint is refused, as files are.
+- **When the other device is away:** the sender keeps the message as
+  "waiting" and delivers it the next time the two devices see each other
+  (Bonjour on the LAN, iroh's address lookup over the internet). There is no
+  server mailbox: the iPhone can't be woken without push notifications
+  (paid team), and a mailbox would hold people's messages. A store and
+  forward mailbox, encrypted to the recipient's key, is a later option on
+  Hetzner if waiting turns out to annoy.
+- **Storage:** the conversation history lives in the core (SQLite, as the
+  other apps), never logged.
+- **AI asks** (protocol 2 today) become a kind of message too: "ask this
+  device's model" is a message whose answer streams back.
+
 ## Code phrases: words or letters?
 
 | Style | Example | For | Against |
@@ -187,8 +216,8 @@ code (about 1 in 65,000), a wrong guess ends the code, and the sender sees
 | Stage | What | Proves | Size |
 |---|---|---|---|
 | **0. Spikes** | iroh 1.0 + iroh-blobs + spake2 in `relay_core`: Linux to Linux offline; iOS build size and first launch; a direct LAN connection from addresses Bonjour found; Wi-Fi throughput on a 1 GB file. Builds go through the laptop's build queue once builds resume | iroh works inside Forge's runtime on iOS and keeps the app reasonably small. If it doesn't: keep today's TCP + Noise for LAN, use magic-wormhole for stage 2 | 2 to 3 days |
-| **1. Local network** | `relay send <paths>` / `relay receive <code>`; app Send (files, photos, folder) and Receive (type or scan); progress, cancel, resume; trusted devices; history; received files in the Files app; AI asks (protocol 2) moved onto an iroh protocol; old TCP wire removed. Hosted in Device Lab. Android emulator screen if time | The croc flow on one Wi-Fi with no internet: phone to laptop, laptop to phone, phone to phone | 1.5 to 2 weeks |
-| **2. Over the internet** | Rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
+| **1. Local network** | `relay send <paths>` / `relay receive <code>`; app Send (files, photos, folder) and Receive (type or scan); progress, cancel, resume; trusted devices; messages between trusted devices (conversation per device, delivered and read, waiting until the other device is seen) and `relay send --text`; history; received files in the Files app; AI asks (protocol 2) moved onto an iroh protocol; old TCP wire removed. Hosted in Device Lab. Android emulator screen if time | The croc flow on one Wi-Fi with no internet: phone to laptop, laptop to phone, phone to phone | 1.5 to 2 weeks |
+| **2. Over the internet** | Rendezvous service (Rust, small) and our own `iroh-relay`, both on Hetzner (n0's public relays until then); tailnet addresses tried before any relay; trusted devices, and their messages, reachable anywhere by key; clear "direct", "via tailnet" or "via relay" in the UI; `relay send` on the servers too | Phone on 5G to laptop at home; laptop at a café to phone at home | 1 to 1.5 weeks + server setup |
 | **3. Product polish** | Share extension ("Send with Relay" from Photos), a browser receiver page for devices without the app (Floe's idea; iroh in the browser or WebRTC, decided by a spike), drag and drop, clipboard text, Android app beyond the emulator when the phone is back, optional `relay wormhole` and LocalSend bridges | Everyday use | as chosen |
 
 Each stage has one short phone check (about 10 minutes, batched with
