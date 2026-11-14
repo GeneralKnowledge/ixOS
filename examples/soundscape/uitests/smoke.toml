@@ -1,0 +1,35 @@
+# Smoke test: make a project, add a track, turn on echo. Uses a temporary
+# data folder and records nothing, so it needs no microphone answer.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+name = "Smoke: new project, add a track, echo on"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+screenshot = "1-empty"
+
+[[step]]
+tap = { id = "projects.newFirst" }
+
+[[step]]
+expect = { id = "newProject.create", enabled = true }
+
+[[step]]
+tap = { id = "newProject.create" }
+
+[[step]]
+expect = { id = "project.play" }
+
+[[step]]
+tap = { id = "project.addTrack" }
+
+[[step]]
+tap = { id = "track.echo" }
+
+[[step]]
+screenshot = "2-mixer"

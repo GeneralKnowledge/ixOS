@@ -375,6 +375,7 @@ dependencies = [
  "good-dog-app",
  "pocket-library-core",
  "sketchbook-core",
+ "soundscape-core",
  "tempfile",
  "thiserror",
  "uniffi",
@@ -698,6 +699,12 @@ name = "heck"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
+
+[[package]]
+name = "hound"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62adaabb884c94955b19907d60019f4e145d091c75345379e70d1ee696f7854f"
 
 [[package]]
 name = "http"
@@ -1513,6 +1520,19 @@ name = "smawk"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e8e2fb0f499abb4d162f2bedad68f5ef91a1682b5a03596ddb67efd37768d100"
+
+[[package]]
+name = "soundscape-core"
+version = "0.1.0"
+dependencies = [
+ "forge-app",
+ "forge-runtime",
+ "forge-storage",
+ "hound",
+ "serde",
+ "thiserror",
+ "uniffi",
+]
 
 [[package]]
 name = "sqlite-wasm-rs"

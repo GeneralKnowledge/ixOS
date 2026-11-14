@@ -3,14 +3,14 @@
 A small multi-track sound sketchpad: record loops, layer them, shape each
 with tone and echo, and mix down to a WAV file to share. The third of the
 remaining demo apps ([friction log](../../docs/research/app-friction-log.md));
-it runs inside Device Lab once its SwiftUI app exists.
+it runs inside Device Lab (Apps, then Soundscape) and on its own.
 
 ## Where it is
 
 | Step | What | State |
 |---|---|---|
 | SS1 | Rust core (`rust/`): projects, tracks, settings checked and mapped to AVAudioEngine units, waveforms, offline mixdown | Done, tested on Linux |
-| SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Next |
+| SS2 | SwiftUI app: project list, recorder, mixer with Canvas waveforms, AVAudioEngine playback, background audio, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
 | S4 | Spike: one effect in Rust on the real-time audio thread, measured on the phone | Not started; decides whether live effects move to Rust |
 
 ## How the work is split
@@ -37,4 +37,25 @@ it runs inside Device Lab once its SwiftUI app exists.
 
 ```bash
 cargo test --manifest-path examples/soundscape/rust/Cargo.toml
+```
+
+## Swift
+
+| File | What |
+|---|---|
+| `Sources/AppHost/SoundscapeModel.swift` | The screens' model: asks the core, keeps alerts, runs waveforms and mixdowns with cancellation. Foundation only |
+| `Sources/AppHost/ContentView.swift` | The project list, and the new-project sheet (name, tempo, length) |
+| `Sources/AppHost/ProjectView.swift` | One project: the transport (play, stop), tracks, tempo and length, mixdown and sharing |
+| `Sources/AppHost/TrackStrip.swift` | One track: waveform, record, mute, solo, echo, level, pan, tone |
+| `Sources/AppHost/LoopEngine.swift` | AVAudioEngine: one player, EQ and delay per track from `Track.mix`; records one pass while the others play |
+
+Recording starts with the loop and skips the input and output latency
+`AVAudioSession` reports, so a part played along to the loop lines up. It
+writes 16-bit PCM at the microphone's rate, which Rust reads.
+
+Build and install on its own (it uses the free team's sandbox id):
+
+```bash
+forge run ios --project examples/soundscape
+forge ui run examples/soundscape/uitests/smoke.toml   # phone plugged in
 ```
