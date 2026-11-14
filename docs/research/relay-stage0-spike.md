@@ -74,6 +74,8 @@ real machines next):
 | Memory | Peak resident memory during a 4 GB transfer: receiver 24 MB, sender 21 MB (iroh-blobs file store; the sender hashes the file in place) |
 | Speed | 290 to 364 MB/s over loopback with the file store |
 | Stranger | Still refused with the right hash |
+| Malformed first message (test command `garble`) | Counts as a wrong code: the sender issues a new code at once and that code works (file identical). Before the fix a malformed message left the code marked busy forever |
+| Session rules | The sender's code session is a pure state machine (`src/session.rs`) that mirrors `verification/relay/CodeSession.lean`: every admitted attempt ends in exactly one `finish` (proved, wrong code or dropped); busy and gone answers change nothing; a spent or expired code is refused until it is replaced; collision and handshake events carry the code's generation and events about a replaced code are ignored. 11 unit tests, one of them 2,000 random sequences of 60 steps checking the model's invariant after every step |
 
 Not covered yet: two physical machines on a real network (next), and the
 iPhone (M1).

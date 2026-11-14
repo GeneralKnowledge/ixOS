@@ -45,6 +45,9 @@ use sha2::Sha256;
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 use tokio::sync::mpsc;
 
+mod session;
+use session::{Answer, Ending};
+
 const CODE_ALPN: &[u8] = b"forge-relay/code/1";
 const SERVICE: &str = "_forgerelay._udp.local.";
 const APP_ID: &str = "forge-relay/v1";
@@ -267,19 +270,26 @@ struct Offer {
     name: String,
 }
 
+/// The live code and its state machine ([`session::Session`]).
 struct Session {
     code: Code,
     issued: Instant,
-    spent: bool,
-    busy: bool,
+    machine: session::Session,
 }
 
-#[derive(Debug)]
-enum Event {
+#[derive(Debug, PartialEq, Eq)]
+enum Kind {
     Done,
     WrongCode,
     Dropped,
     Collision,
+}
+
+/// Something that happened to code generation `gen`.
+#[derive(Debug)]
+struct Event {
+    gen: u64,
+    kind: Kind,
 }
 
 #[derive(Clone)]
@@ -297,16 +307,10 @@ impl std::fmt::Debug for CodeHandler {
     }
 }
 
-/// Clears `busy` however the handshake ends.
-struct NotBusy(Arc<Mutex<Session>>);
-impl Drop for NotBusy {
-    fn drop(&mut self) {
-        self.0.lock().unwrap().busy = false;
-    }
-}
-
 impl CodeHandler {
     /// `None` when the attempt was turned away without spending the code.
+    /// Once admitted, every way the attempt can end produces an event, so a
+    /// spent code is always replaced.
     async fn run(&self, conn: &Connection) -> Result<Option<Event>> {
         let them = conn.remote_id();
         let (mut send, mut recv) = tokio::time::timeout(STEP, conn.accept_bi())
@@ -315,57 +319,94 @@ impl CodeHandler {
         let their_msg = get_within(&mut recv, STEP).await?;
         let admitted = {
             let mut s = self.session.lock().unwrap();
-            if s.busy {
-                Err(BUSY)
-            } else if s.spent || s.issued.elapsed() > CODE_LIFETIME {
-                Err(GONE)
-            } else {
-                s.busy = true;
-                s.spent = true;
-                Ok(s.code.clone())
+            if s.issued.elapsed() > CODE_LIFETIME {
+                s.machine.expire();
+            }
+            match s.machine.attempt() {
+                (Answer::Go, gen) => Ok((s.code.clone(), gen)),
+                (Answer::Busy, _) => Err(BUSY),
+                (Answer::Gone, _) => Err(GONE),
             }
         };
-        let code = match admitted {
-            Ok(code) => code,
+        let (code, gen) = match admitted {
+            Ok(admitted) => admitted,
             Err(refusal) => {
                 put(&mut send, &[refusal]).await.ok();
                 send.finish().ok();
                 return Ok(None);
             }
         };
-        let _not_busy = NotBusy(self.session.clone());
+        let ending = self
+            .authenticate(&mut send, &mut recv, &code, &their_msg, them)
+            .await;
+        let accepted = {
+            let mut s = self.session.lock().unwrap();
+            s.machine.finish(gen, ending)
+        };
+        let kind = match ending {
+            Ending::WrongCode => Kind::WrongCode,
+            Ending::Dropped => Kind::Dropped,
+            Ending::Proved if !accepted => Kind::Dropped,
+            Ending::Proved => {
+                self.allowed.lock().unwrap().insert(them);
+                self.deliver(&mut send, &mut recv).await
+            }
+        };
+        Ok(Some(Event { gen, kind }))
+    }
+
+    /// SPAKE2 and key confirmation. A malformed or wrong proof, or none in
+    /// time, is a wrong code; failing to send is a dropped connection.
+    async fn authenticate(
+        &self,
+        send: &mut SendStream,
+        recv: &mut RecvStream,
+        code: &Code,
+        their_msg: &[u8],
+        them: EndpointId,
+    ) -> Ending {
         let (state, my_msg) = code.pake();
         let mut first = vec![GO];
         first.extend_from_slice(&my_msg);
-        put(&mut send, &first).await?;
-        let key = state
-            .finish(&their_msg)
-            .map_err(|e| anyhow!("pake: {e:?}"))?;
-        let theirs = match get_within(&mut recv, STEP).await {
-            Ok(t) => t,
-            Err(_) => return Ok(Some(Event::WrongCode)),
-        };
-        if theirs != confirm(&key, "receiver", self.me, them) {
-            return Ok(Some(Event::WrongCode));
+        if put(send, &first).await.is_err() {
+            return Ending::Dropped;
         }
-        put(&mut send, &confirm(&key, "sender", self.me, them)).await?;
-        self.allowed.lock().unwrap().insert(them);
+        let Ok(key) = state.finish(their_msg) else {
+            return Ending::WrongCode;
+        };
+        match get_within(recv, STEP).await {
+            Ok(theirs) if theirs == confirm(&key, "receiver", self.me, them) => {}
+            _ => return Ending::WrongCode,
+        }
+        if put(send, &confirm(&key, "sender", self.me, them))
+            .await
+            .is_err()
+        {
+            return Ending::Dropped;
+        }
+        Ending::Proved
+    }
+
+    /// Names the file and waits until the receiver has it.
+    async fn deliver(&self, send: &mut SendStream, recv: &mut RecvStream) -> Kind {
         let mut offer = Vec::new();
         offer.extend_from_slice(self.offer.hash.as_bytes());
         offer.extend_from_slice(&self.offer.size.to_be_bytes());
         offer.extend_from_slice(self.offer.name.as_bytes());
-        put(&mut send, &offer).await?;
+        if put(send, &offer).await.is_err() {
+            return Kind::Dropped;
+        }
         // While the file moves, the receiver ticks every couple of seconds,
         // then says "done" once it is verified and saved. Silence means it
         // went away (QUIC alone can take minutes to notice).
         loop {
-            match get_within(&mut recv, SILENCE).await {
+            match get_within(recv, SILENCE).await {
                 Ok(m) if m == b"tick" => continue,
-                Ok(m) if m == b"done" => return Ok(Some(Event::Done)),
-                Ok(_) => return Ok(Some(Event::Dropped)),
+                Ok(m) if m == b"done" => return Kind::Done,
+                Ok(_) => return Kind::Dropped,
                 Err(err) => {
                     eprintln!("receiver went quiet: {err}");
-                    return Ok(Some(Event::Dropped));
+                    return Kind::Dropped;
                 }
             }
         }
@@ -422,6 +463,9 @@ fn watch_collisions(me: EndpointId, session: Arc<Mutex<Session>>, events: mpsc::
             return;
         };
         let Ok(rx) = mdns.browse(SERVICE) else { return };
+        // One report per code: mDNS repeats itself, and a report about a
+        // code that was already replaced is ignored by the sender.
+        let mut reported: Option<u64> = None;
         while let Ok(event) = rx.recv() {
             if events.is_closed() {
                 break;
@@ -430,10 +474,18 @@ fn watch_collisions(me: EndpointId, session: Arc<Mutex<Session>>, events: mpsc::
                 let Some((n, id, _)) = read_service(&info) else {
                     continue;
                 };
-                let s = session.lock().unwrap();
-                if id != me && n == s.code.nameplate && !s.spent {
-                    drop(s);
-                    let _ = events.blocking_send(Event::Collision);
+                let gen = {
+                    let s = session.lock().unwrap();
+                    (id != me && n == s.code.nameplate && !s.machine.spent).then_some(s.machine.gen)
+                };
+                if let Some(gen) = gen {
+                    if reported != Some(gen) {
+                        reported = Some(gen);
+                        let _ = events.blocking_send(Event {
+                            gen,
+                            kind: Kind::Collision,
+                        });
+                    }
                 }
             }
         }
@@ -480,8 +532,7 @@ async fn send(path: PathBuf, store_dir: &Path) -> Result<()> {
     let session = Arc::new(Mutex::new(Session {
         code: Code::new(&in_use),
         issued: Instant::now(),
-        spent: false,
-        busy: false,
+        machine: session::Session::new(),
     }));
     let (tx, mut events) = mpsc::channel(8);
     let handler = CodeHandler {
@@ -526,11 +577,15 @@ async fn send(path: PathBuf, store_dir: &Path) -> Result<()> {
             Ok(None) => break Err(anyhow!("stopped")),
             Err(_) => break Err(anyhow!("the code expired")),
         };
-        let why = match event {
-            Event::Done => break Ok(()),
-            Event::WrongCode => "Someone tried a wrong code, so it no longer works.",
-            Event::Dropped => "The transfer stopped before the end. To resume it,",
-            Event::Collision => "Another sender nearby took the same number.",
+        if event.kind != Kind::Done && !session.lock().unwrap().machine.is_current(event.gen) {
+            // About a code that has already been replaced.
+            continue;
+        }
+        let why = match event.kind {
+            Kind::Done => break Ok(()),
+            Kind::WrongCode => "Someone tried a wrong code, so it no longer works.",
+            Kind::Dropped => "The transfer stopped before the end. To resume it,",
+            Kind::Collision => "Another sender nearby took the same number.",
         };
         if codes >= MAX_CODES {
             break Err(anyhow!("{why} Too many new codes; stopping."));
@@ -546,7 +601,7 @@ async fn send(path: PathBuf, store_dir: &Path) -> Result<()> {
             let mut s = session.lock().unwrap();
             s.code = code.clone();
             s.issued = Instant::now();
-            s.spent = false;
+            s.machine.reissue();
         }
         advert.show(code.nameplate)?;
         println!("{why} New code: {}", code.text());
@@ -725,6 +780,28 @@ async fn main() -> Result<()> {
             let addr = flag("--addr").map(|a| a.parse()).transpose()?;
             let id = flag("--id").map(|a| a.parse()).transpose()?;
             receive(&args[1], addr, id, &store_dir).await
+        }
+        // Test only: answer with a malformed SPAKE2 message.
+        Some("garble") => {
+            let addr: SocketAddr = flag("--addr").context("--addr")?.parse()?;
+            let id: EndpointId = flag("--id").context("--id")?.parse()?;
+            let endpoint = local_endpoint().await?;
+            let conn = endpoint
+                .connect(
+                    EndpointAddr::from_parts(id, [TransportAddr::Ip(addr)]),
+                    CODE_ALPN,
+                )
+                .await?;
+            let (mut send, mut recv) = conn.open_bi().await?;
+            put(&mut send, b"not a spake2 message").await?;
+            let first = get_within(&mut recv, STEP).await?;
+            println!(
+                "garble: sender answered {:?}",
+                first.first().map(|b| *b as char)
+            );
+            conn.close(0u32.into(), b"bye");
+            endpoint.close().await;
+            Ok(())
         }
         // Test only: fetch a hash without the code, as a stranger would.
         Some("steal") if args.len() >= 2 => {
