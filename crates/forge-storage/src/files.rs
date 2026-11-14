@@ -494,6 +494,54 @@ impl FileStore {
     /// (64 lowercase hex characters). Importing the same bytes twice keeps one
     /// file. Reads the source once.
     pub fn import_hashed(&self, source: &Path) -> Result<StoredFile, FileStoreError> {
+        self.import_hashed_with_extension(source, None)
+    }
+
+    /// Like [`import_hashed`](Self::import_hashed), but the name keeps the
+    /// source's extension (`<sha256>.m4a`), cleaned as [`safe_file_name`]
+    /// cleans it. Apple's media frameworks and Quick Look use the extension
+    /// to tell a file's type. A source without one gets the bare hash.
+    pub fn import_hashed_keeping_extension(
+        &self,
+        source: &Path,
+    ) -> Result<StoredFile, FileStoreError> {
+        let extension = source
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(safe_name)
+            .filter(|e| !e.is_empty());
+        self.import_hashed_with_extension(source, extension.as_deref())
+    }
+
+    /// Keeps `bytes` named by their SHA-256, with `.extension` if given
+    /// (cleaned as [`safe_name`] cleans it). Writing the same bytes twice
+    /// keeps one file and doesn't write again.
+    pub fn write_hashed(
+        &self,
+        bytes: &[u8],
+        extension: Option<&str>,
+    ) -> Result<StoredFile, FileStoreError> {
+        use sha2::Digest;
+        let name = hashed_name(&hex(&sha2::Sha256::digest(bytes)), extension);
+        match self.get(&name) {
+            Some(path) => Ok(StoredFile {
+                name,
+                path,
+                size: bytes.len() as u64,
+            }),
+            None => self.write(&name, bytes),
+        }
+    }
+
+    /// Like [`import_hashed`](Self::import_hashed), named
+    /// `<sha256>.<extension>` (cleaned as [`safe_name`] cleans it), whatever
+    /// the source is called: for a file the app already checked is, say, a
+    /// WAV recording.
+    pub fn import_hashed_with_extension(
+        &self,
+        source: &Path,
+        extension: Option<&str>,
+    ) -> Result<StoredFile, FileStoreError> {
         use sha2::Digest;
         let mut reader = open(source)?;
         let partial = self.partial_path()?;
@@ -508,7 +556,7 @@ impl FileStore {
             sink.sync_all()
                 .map_err(|err| FileStoreError::io("sync a temporary file", err))?;
             self.check_empty(size)?;
-            let name = hex(&hasher.finalize());
+            let name = hashed_name(&hex(&hasher.finalize()), extension);
             let destination = self.root.join(&name);
             self.place(&partial, &destination)?;
             Ok(StoredFile {
@@ -575,12 +623,35 @@ pub fn is_sha256_hex(s: &str) -> bool {
 }
 
 #[cfg(feature = "hash")]
+fn hashed_name(hash: &str, extension: Option<&str>) -> String {
+    match extension.map(safe_name).filter(|e| !e.is_empty()) {
+        Some(extension) => format!("{hash}.{extension}"),
+        None => hash.to_string(),
+    }
+}
+
+#[cfg(feature = "hash")]
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes.iter().fold(String::new(), |mut out, b| {
         let _ = write!(out, "{b:02x}");
         out
     })
+}
+
+/// Turns a file's name as a person or another device gave it into one valid
+/// name part that keeps its extension: `Holiday photo.JPG` becomes
+/// `Holiday-photo.JPG`, `../../etc/passwd` becomes `passwd`, `.hidden`
+/// becomes `hidden`. Only the last extension is kept as one.
+pub fn safe_file_name(text: &str) -> String {
+    let base = text.rsplit(['/', '\\']).next().unwrap_or("");
+    let base = base.trim_start_matches('.');
+    match base.rsplit_once('.') {
+        Some((stem, extension)) if !stem.is_empty() && !extension.is_empty() => {
+            format!("{}.{}", safe_name(stem), safe_name(extension))
+        }
+        _ => safe_name(base),
+    }
 }
 
 /// Turns any text (a title, a catalogue key, a URL path) into one valid name
@@ -721,6 +792,44 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    #[test]
+    fn safe_file_names_keep_their_extension() {
+        assert_eq!(safe_file_name("Holiday photo.JPG"), "Holiday-photo.JPG");
+        assert_eq!(safe_file_name("../../etc/passwd"), "passwd");
+        assert_eq!(safe_file_name("C:\\Users\\me\\notes.txt"), "notes.txt");
+        assert_eq!(safe_file_name(".hidden"), "hidden");
+        assert_eq!(safe_file_name("archive.tar.gz"), "archive-tar.gz");
+        assert_eq!(safe_file_name(""), "file");
+        let (_dir, store) = store();
+        assert!(store.path(&safe_file_name("../x.y")).is_ok());
+    }
+
+    #[cfg(feature = "hash")]
+    #[test]
+    fn hashed_names_can_keep_an_extension() {
+        let (dir, store) = store();
+        let source = dir.path().join("Take 1.WAV");
+        fs::write(&source, b"riff").unwrap();
+        let bare = store.import_hashed(&source).unwrap();
+        assert!(is_sha256_hex(&bare.name));
+        let kept = store.import_hashed_keeping_extension(&source).unwrap();
+        assert_eq!(kept.name, format!("{}.WAV", bare.name));
+
+        let written = store.write_hashed(b"riff", Some("wav")).unwrap();
+        assert_eq!(written.name, format!("{}.wav", bare.name));
+        assert_eq!(fs::read(&written.path).unwrap(), b"riff");
+        // The same bytes again: same name, nothing rewritten.
+        let again = store.write_hashed(b"riff", Some("wav")).unwrap();
+        assert_eq!(again, written);
+        assert_eq!(store.write_hashed(b"riff", None).unwrap().name, bare.name);
+
+        let plain = dir.path().join("README");
+        fs::write(&plain, b"x").unwrap();
+        assert!(is_sha256_hex(
+            &store.import_hashed_keeping_extension(&plain).unwrap().name
+        ));
     }
 
     #[test]

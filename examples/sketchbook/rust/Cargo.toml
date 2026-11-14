@@ -26,8 +26,6 @@ forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }
-# forge-storage hashes files it imports, not bytes in memory (friction S1).
-sha2 = "0.10"
 thiserror = "2.0"
 
 [dev-dependencies]
