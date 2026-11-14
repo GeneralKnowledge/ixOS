@@ -1,8 +1,8 @@
 /-
   Relay: the sender's code session, as a state machine.
 
-  Models `CodeHandler::run` and the sender loop in
-  `examples/relay/spike/src/main.rs` (M0). One code is live at a time; it
+  Models `Session` in `examples/relay/spike/src/session.rs` (M0), which the
+  sender loop in `main.rs` drives. One code is live at a time; it
   is replaced ("reissued") after a wrong guess, a collision, a dropped
   transfer or expiry. Properties, for every sequence of events:
 
@@ -25,7 +25,8 @@ structure Session where
 
 inductive Event where
   | attempt              -- a receiver sends its first SPAKE2 message
-  | finish (right : Bool) -- the admitted handshake ends: key confirmed or not
+  | finish (g : Nat) (right : Bool) -- the handshake admitted on code `g` ends:
+                                    -- key confirmed or not
   | expire
   | reissue              -- wrong guess, collision, dropped transfer: new code
   deriving Repr
@@ -45,8 +46,8 @@ def step (s : Session) : Event → Session
     match answer s with
     | .go   => { s with busy := true, spent := true, admitted := s.admitted + 1 }
     | _     => s
-  | .finish right =>
-    if s.busy then
+  | .finish g right =>
+    if g = s.gen ∧ s.busy = true then
       { s with busy := false,
                allowedThisGen := if right then s.allowedThisGen + 1 else s.allowedThisGen }
     else s
@@ -60,36 +61,37 @@ def init : Session :=
     admitted := 0, allowedThisGen := 0 }
 
 /-- The invariant: properties 1 and 2, plus what makes them inductive. -/
-def Inv (s : Session) : Prop :=
+def SessionInv (s : Session) : Prop :=
   s.admitted ≤ 1 ∧
   s.allowedThisGen ≤ s.admitted ∧
   (s.admitted = 0 ↔ s.spent = false) ∧
   (s.busy = true → s.spent = true ∧ s.allowedThisGen = 0)
 
-theorem inv_init : Inv init := by
-  simp [Inv, init]
+theorem inv_init : SessionInv init := by
+  simp [SessionInv, init]
 
-theorem inv_step (s : Session) (e : Event) (h : Inv s) : Inv (step s e) := by
+theorem inv_step (s : Session) (e : Event) (h : SessionInv s) : SessionInv (step s e) := by
   obtain ⟨h1, h2, h3, h4⟩ := h
   cases e with
   | attempt =>
     unfold step answer
     cases hb : s.busy <;> cases hs : s.spent <;> cases hx : s.expired <;>
-      simp_all [Inv] <;> omega
-  | finish right =>
+      simp_all [SessionInv] <;> omega
+  | finish g right =>
     unfold step
-    cases hb : s.busy <;> cases right <;> simp_all [Inv] <;> omega
+    by_cases hg : g = s.gen <;>
+      cases hb : s.busy <;> cases right <;> simp_all [SessionInv] <;> omega
   | expire =>
-    simp_all [step, Inv]
+    simp_all [step, SessionInv]
   | reissue =>
-    simp [step, Inv]
+    simp [step, SessionInv]
 
 /-- Reachable states: from `init` by any list of events. -/
 def run (s : Session) : List Event → Session
   | [] => s
   | e :: es => run (step s e) es
 
-theorem inv_run (s : Session) (es : List Event) (h : Inv s) : Inv (run s es) := by
+theorem inv_run (s : Session) (es : List Event) (h : SessionInv s) : SessionInv (run s es) := by
   induction es generalizing s with
   | nil => simpa [run]
   | cons e es ih => exact ih _ (inv_step s e h)
