@@ -1,0 +1,47 @@
+# Smoke test: make a sketch, open its layers, add one, undo it. Uses a
+# temporary data folder, so it leaves no sketches behind.
+# Run with the phone plugged in:  forge ui run uitests/smoke.toml
+name = "Smoke: new sketch, add a layer, undo"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+screenshot = "1-empty"
+
+[[step]]
+tap = { id = "sketches.newFirst" }
+
+[[step]]
+expect = { id = "sketch.canvas" }
+
+[[step]]
+expect = { id = "sketch.undo", enabled = false }
+
+[[step]]
+tap = { id = "sketch.layers" }
+
+[[step]]
+tap = { id = "layers.add" }
+
+[[step]]
+screenshot = "2-two-layers"
+
+[[step]]
+tap = { id = "layers.done" }
+
+[[step]]
+expect = { id = "sketch.undo", enabled = true }
+
+[[step]]
+tap = { id = "sketch.undo" }
+
+[[step]]
+expect = { id = "sketch.undo", enabled = false }
+
+[[step]]
+screenshot = "3-undone"

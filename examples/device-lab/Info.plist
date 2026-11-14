@@ -36,6 +36,8 @@
 	<string>Chat records a voice message while you tap the microphone button.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>Device Lab reads the barometer for air pressure and height changes.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Save exported sketches to Photos.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>

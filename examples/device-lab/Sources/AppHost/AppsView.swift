@@ -11,6 +11,7 @@ import ForgeUIShowcase
 import GoodDogApp
 import GoodDogFFI
 import PocketLibraryApp
+import SketchbookApp
 import SwiftUI
 import WeatherApp
 
@@ -58,7 +59,7 @@ struct AppsView: View {
 
 /// The apps the showcase runs, in the order the list shows them.
 enum EmbeddedApp: String, CaseIterable, Identifiable {
-    case weather, checklist, library, goodDog, commonplace, chat, fieldKit, forgeUI
+    case weather, checklist, library, goodDog, commonplace, chat, fieldKit, sketchbook, forgeUI
 
     /// The UserDefaults key of the app to open at launch.
     static let launchKey = "launchApp"
@@ -74,6 +75,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: "Commonplace"
         case .chat: "Chat"
         case .fieldKit: "FieldKit"
+        case .sketchbook: "Sketchbook"
         case .forgeUI: "ForgeUI Showcase"
         }
     }
@@ -87,6 +89,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: "A feed reader that keeps articles to read offline."
         case .chat: "Messaging through the Forge chat server, with an on-device assistant."
         case .fieldKit: "A field notebook: record a GPS track and take notes along the way."
+        case .sketchbook: "Draw with your finger in layers, with undo, and export to PNG or PDF."
         case .forgeUI: "Every ForgeUI component, with example screens."
         }
     }
@@ -100,6 +103,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: "newspaper"
         case .chat: "bubble.left.and.bubble.right"
         case .fieldKit: "map"
+        case .sketchbook: "scribble.variable"
         case .forgeUI: "paintpalette"
         }
     }
@@ -114,6 +118,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
         case .chat: ChatApp.ContentView()
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
+        case .sketchbook: SketchbookApp.ContentView(host: EmbeddedApps.sketchbook)
         case .forgeUI: ShowcaseRoot()
         }
     }
@@ -161,13 +166,14 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Checklist, Pocket Library, Commonplace and FieldKit run on the application
+    /// Checklist, Pocket Library, Commonplace, FieldKit and Sketchbook run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
     /// the standalone app, so closing the sheet doesn't close the core.
     static let checklist = Checklist.makeHost()
     static let library = LibraryModel()
     static let commonplace = CommonplaceApp.makeAppHost()
     static let fieldKit = FieldKitApp.makeAppHost()
+    static let sketchbook = SketchbookApp.makeAppHost()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
@@ -194,6 +200,7 @@ public enum EmbeddedApps {
             ForgeLifecycle.attach(checklist)
             ForgeLifecycle.attach(commonplace)
             ForgeLifecycle.attach(fieldKit)
+            ForgeLifecycle.attach(sketchbook)
         #endif
         library.attachToLifecycle()
     }

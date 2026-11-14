@@ -1,0 +1,57 @@
+[app]
+name = "Sketchbook"
+# The free team's sandbox id: Sketchbook is meant to run inside Device Lab
+# (one app slot for every demo); on its own it installs in that slot.
+bundle_id = "org.forgemobile.agentlab"
+minimum_ios = "17.0"
+# display_name = "Sketchbook"   # home-screen name (default: name)
+version = "0.1.0"                   # CFBundleShortVersionString
+build_number = "1"                  # CFBundleVersion; raise it for every upload
+
+[rust]
+# This app's own Rust crate: logic, state, persistence, networking.
+path = "rust"
+
+[build]
+ios_device = true
+ios_simulator = false
+
+# The app's Swift module names: its bindings (Generated/ForgeFFI) and its
+# views and models (Sources/AppHost). Named after the app, so another app
+# can host this one (docs/app-crate.md).
+[swift]
+bindings_module = "SketchbookFFI"
+app_module = "SketchbookApp"
+
+# iOS settings. Forge writes Info.plist, App.entitlements and xtool.yml from
+# this section on every `forge build ios` / `forge run ios` (or `forge config
+# sync`), so edit them here, not in those files. All keys: docs/app-config.md.
+[ui_test]
+# Fresh throwaway sketches instead of the person's own.
+test_data_args = ["-ForgeTemporaryData"]
+
+[ios]
+# The SwiftPM product xtool builds (Package.swift). It is the app's executable,
+# so it names the process in `forge device logs --process` and crash reports.
+xtool_product = "SketchbookXtool"
+# icon = "Resources/AppIcon.png"    # 1024x1024 PNG
+orientations = ["portrait"]
+# url_schemes = ["myapp"]           # opens myapp://... links
+# background_modes = ["remote-notification"]
+
+# The text iOS shows when the app asks for a permission.
+[ios.permissions]
+# camera = "Scan barcodes to add items."
+# Quick Look's share sheet offers Save Image for an exported PNG.
+photo_library_add = "Save exported sketches to Photos."
+# location_when_in_use = "Show places near you."
+
+[ios.entitlements]
+# app_groups = ["group.org.forgemobile.agentlab"]
+# associated_domains = ["applinks:example.com"]   # paid team
+# push_notifications = "development"              # paid team
+
+[ios.signing]
+# Built and installed with a free Apple account; no paid-only entitlements.
+team_type = "free"
+# team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
