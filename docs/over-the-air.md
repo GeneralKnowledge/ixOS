@@ -31,6 +31,12 @@ In the [Tailscale admin console](https://login.tailscale.com/admin/dns), turn on
 
 On the iPhone, install **Tailscale** from the App Store and sign in to the same tailnet. The phone must already trust your developer certificate. If you've opened an app from `forge run ios` before, it does. If not, go to Settings > General > VPN & Device Management and trust it once.
 
+## Which build is on the phone
+
+Every build `forge publish ios` makes gets a new, higher build number (CFBundleVersion: the app's `build_number`, then the minute it was built, such as `1.29911107`), so iOS always treats an install as an update. Its Info.plist also records the commit (`+changes` if the checkout had uncommitted changes), the branch and the time (`ForgeBuildCommit`, `ForgeBuildBranch`, `ForgeBuildDate`). The stamp is only for that build: Forge puts the generated Info.plist back afterwards, so the checkout stays clean.
+
+The page shows each build's version and build number. In the app, ForgeKit's `ForgeBuildInfo.current` reads the same keys (`versionLine`, `sourceLine`), so an app can show which build is running. Device Lab shows it under **This Build** on its Apps screen. If the numbers match the page's newest build, the update arrived.
+
 ## Publishing a build
 
 ```bash

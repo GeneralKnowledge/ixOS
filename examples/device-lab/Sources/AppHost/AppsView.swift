@@ -49,6 +49,7 @@ struct AppsView: View {
             } footer: {
                 Text("Device Lab opens straight into this app. Swipe down to get back to Device Lab.")
             }
+            BuildSection(info: .current)
         }
         .groupedList()
         .navigationTitle("Apps")
@@ -114,6 +115,26 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .chat: ChatApp.ContentView()
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
         case .forgeUI: ShowcaseRoot()
+        }
+    }
+}
+
+/// Which build is installed, matching its row on the Install page
+/// (`forge publish ios`), so you can check an update arrived.
+private struct BuildSection: View {
+    let info: ForgeBuildInfo
+
+    var body: some View {
+        Section("This Build") {
+            LabeledContent("Version", value: info.versionLine)
+                .accessibilityIdentifier("apps.build.version")
+            if let source = info.sourceLine {
+                Text(source)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("apps.build.source")
+            }
         }
     }
 }

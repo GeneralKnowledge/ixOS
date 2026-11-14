@@ -1528,14 +1528,6 @@ fn publish_command(
             label,
             keep,
         } => {
-            let git = |dir: &Path, args: &[&str]| {
-                runner
-                    .capture(&runner::Cmd::new("git").args(args).cwd(dir))
-                    .ok()
-                    .filter(|o| o.status.success())
-                    .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-                    .filter(|v| !v.is_empty() && v != "HEAD")
-            };
             let (ipa, source) = match ipa {
                 Some(ipa) => (
                     absolute_from_cwd(&ipa),
@@ -1546,17 +1538,16 @@ fn publish_command(
                 ),
                 None => {
                     let project = project_or_default(project, "examples/counter");
-                    let ipa = commands::build_signed_ipa(
+                    let (ipa, stamp) = commands::build_signed_ipa(
                         runner,
                         ios,
                         root,
                         &project,
                         configuration(release),
                     )?;
-                    let repo = ipa.parent().unwrap_or(root);
                     let source = publish::Source {
-                        commit: git(repo, &["rev-parse", "--short", "HEAD"]),
-                        label: label.or_else(|| git(repo, &["rev-parse", "--abbrev-ref", "HEAD"])),
+                        commit: stamp.commit,
+                        label: label.or(stamp.branch),
                     };
                     (ipa, source)
                 }

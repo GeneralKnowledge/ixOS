@@ -1131,27 +1131,63 @@ pub fn build_ios(
 }
 
 /// Builds the app and signs it into an `.ipa` without a phone (for
-/// `forge publish ios`). Never includes the live connection.
+/// `forge publish ios`). Never includes the live connection. The build is
+/// stamped (a new CFBundleVersion, its commit, branch and time in the
+/// Info.plist) only for this build: the Info.plist is put back afterwards.
 pub fn build_signed_ipa(
     runner: &dyn CommandRunner,
     builder: &dyn IosBuilder,
     root: &Path,
     project: &Path,
     configuration: IosConfiguration,
-) -> Result<PathBuf, String> {
+) -> Result<(PathBuf, crate::publish::Stamp), String> {
     let (project_dir, cfg) = ios_project(root, project)?;
     ios_preflight(runner, builder, Purpose::Build)?;
+    let git = |args: &[&str]| {
+        runner
+            .capture(&Cmd::new("git").args(args).cwd(&project_dir))
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let changes = git(&["status", "--porcelain", "--untracked-files=no", "--", "."])
+        .is_some_and(|s| !s.is_empty());
+    let commit = git(&["rev-parse", "--short", "HEAD"])
+        .filter(|c| !c.is_empty())
+        .map(|c| if changes { format!("{c}+changes") } else { c });
+    let branch =
+        git(&["rev-parse", "--abbrev-ref", "HEAD"]).filter(|b| !b.is_empty() && b != "HEAD");
     package_ios(runner, root, &project_dir, &cfg, false)?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let stamp = crate::publish::Stamp::new(app_config::build_number(&cfg), now, commit, branch);
+    let info_path = project_dir.join("Info.plist");
+    let original =
+        fs::read(&info_path).map_err(|e| format!("cannot read {}: {e}", info_path.display()))?;
+    fs::write(
+        &info_path,
+        crate::publish::stamp_info_plist(&original, &stamp)?,
+    )
+    .map_err(|e| format!("cannot write {}: {e}", info_path.display()))?;
     println!(
-        "[forge] Building and signing the Swift app ({}); no iPhone needed",
-        configuration.name()
+        "[forge] Building and signing the Swift app ({}), build {}; no iPhone needed",
+        configuration.name(),
+        stamp.build
     );
-    builder.build_signed_ipa(
+    let built = builder.build_signed_ipa(
         runner,
         &project_dir,
         configuration,
-        &crate::app_config::xtool_product(&cfg),
-    )
+        &app_config::xtool_product(&cfg),
+    );
+    // Put the generated Info.plist back, so the checkout stays clean.
+    let restored = fs::write(&info_path, &original)
+        .map_err(|e| format!("cannot restore {}: {e}", info_path.display()));
+    let ipa = built?;
+    restored?;
+    Ok((ipa, stamp))
 }
 
 /// Builds and installs on a connected device. xtool does not launch the

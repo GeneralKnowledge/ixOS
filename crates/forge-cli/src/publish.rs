@@ -200,6 +200,77 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 // ---------------------------------------------------------------------------
+// The build stamp
+
+/// What a published build says about itself in its Info.plist, so the app
+/// (and anyone holding the phone) can tell which build is installed. Read on
+/// the phone with ForgeKit's `ForgeBuildInfo`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Stamp {
+    /// CFBundleVersion: the app's build number, then the minute it was built
+    /// (`1.29911107`), so every build has a new, higher number and iOS
+    /// always treats an install as an update.
+    pub build: String,
+    /// `ForgeBuildCommit`: the short commit, with `+changes` when the
+    /// checkout had uncommitted changes.
+    pub commit: Option<String>,
+    /// `ForgeBuildBranch`.
+    pub branch: Option<String>,
+    /// `ForgeBuildDate`: `2026-11-14 14:57 UTC`.
+    pub date: String,
+}
+
+impl Stamp {
+    pub fn new(
+        build_number: &str,
+        now: u64,
+        commit: Option<String>,
+        branch: Option<String>,
+    ) -> Self {
+        let base = build_number
+            .split('.')
+            .next()
+            .filter(|b| !b.is_empty() && b.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or("1");
+        Stamp {
+            build: format!("{base}.{}", now / 60),
+            commit,
+            branch,
+            date: when(now),
+        }
+    }
+}
+
+/// `info` (an Info.plist) with the stamp's keys set.
+pub fn stamp_info_plist(info: &[u8], stamp: &Stamp) -> Result<Vec<u8>, String> {
+    let mut value = plist::Value::from_reader(std::io::Cursor::new(info))
+        .map_err(|e| format!("cannot read Info.plist: {e}"))?;
+    let dict = value
+        .as_dictionary_mut()
+        .ok_or("Info.plist is not a dictionary")?;
+    dict.insert("CFBundleVersion".into(), stamp.build.clone().into());
+    dict.insert("ForgeBuildDate".into(), stamp.date.clone().into());
+    for (key, v) in [
+        ("ForgeBuildCommit", &stamp.commit),
+        ("ForgeBuildBranch", &stamp.branch),
+    ] {
+        match v {
+            Some(v) => {
+                dict.insert(key.into(), v.clone().into());
+            }
+            None => {
+                dict.remove(key);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    value
+        .to_writer_xml(&mut out)
+        .map_err(|e| format!("cannot write Info.plist: {e}"))?;
+    Ok(out)
+}
+
+// ---------------------------------------------------------------------------
 // The published folder
 
 /// A bundle id is safe as a folder and URL path segment.
@@ -1233,6 +1304,36 @@ mod tests {
             5
         )
         .is_err());
+    }
+
+    #[test]
+    fn every_build_gets_a_new_higher_build_number_and_its_source() {
+        let a = Stamp::new(
+            "1",
+            1_794_664_323,
+            Some("cf57f4e".into()),
+            Some("main".into()),
+        );
+        let b = Stamp::new("1", 1_794_664_323 + 60, None, None);
+        assert_eq!(a.build, "1.29911072");
+        assert!(b.build > a.build);
+        assert_eq!(Stamp::new("7.2.1", 60, None, None).build, "7.1");
+        assert_eq!(Stamp::new("x", 60, None, None).build, "1.1");
+
+        let stamped = stamp_info_plist(INFO.as_bytes(), &a).unwrap();
+        let info = parse_ipa(&stamped, None).unwrap();
+        assert_eq!(info.build, "1.29911072");
+        assert_eq!(info.version, "0.3");
+        let text = String::from_utf8(stamped).unwrap();
+        assert!(
+            text.contains("<key>ForgeBuildCommit</key>\n\t<string>cf57f4e</string>"),
+            "{text}"
+        );
+        assert!(text.contains("<key>ForgeBuildBranch</key>\n\t<string>main</string>"));
+        assert!(text.contains("<key>ForgeBuildDate</key>"));
+        // A build without git info drops stale keys.
+        let again = String::from_utf8(stamp_info_plist(text.as_bytes(), &b).unwrap()).unwrap();
+        assert!(!again.contains("ForgeBuildCommit"));
     }
 
     #[test]
