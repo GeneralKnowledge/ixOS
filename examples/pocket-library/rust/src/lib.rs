@@ -821,7 +821,14 @@ impl Library {
         };
         for (n, range) in sections.into_iter().enumerate().skip(done as usize) {
             let title = chapters[range.start as usize].title.clone();
-            let saved = self.data.get().synopsis(id, range.start).cloned();
+            // A summary saved before the checker existed may be the model
+            // declining in words: read that chapter again.
+            let saved = self
+                .data
+                .get()
+                .synopsis(id, range.start)
+                .filter(|s| !s.text.split("\n\n").any(summary::declines))
+                .cloned();
             if let Some(progress) = &progress {
                 progress.changed(SummaryStage::Chapter {
                     chapter: n as u32 + 1,
