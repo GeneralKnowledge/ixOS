@@ -1,8 +1,11 @@
 # Relay as a file transfer app: plan
 
-Status: approved by Reuben on 2026-11-14 (all recommendations below). Stage 0
-on Linux is done ([results](research/relay-stage0-spike.md)); its iPhone half
-waits for the laptop.
+Status: approved by Reuben on 2026-11-14. This is now the transfer,
+messages and rooms part of the wider [Relay platform plan](relay-platform-plan.md),
+whose milestones M0 to M7 replace the stages below (stage 0 is M0, stage 1 is
+M1 and M3, stage 2 is M2, M4 and M5, stage 3 is M7). Stage 0 on Linux is done
+([results](research/relay-stage0-spike.md)); its iPhone half waits for the
+laptop.
 
 Relay today sends notes and files between devices that paired once by QR
 code, on the same network ([examples/relay](../examples/relay/README.md)).
