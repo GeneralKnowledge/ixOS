@@ -1038,8 +1038,11 @@ pub struct SessionFeedback { pub text: String }
             text.starts_with("Read from the source as text, not compiled"),
             "{text}"
         );
+        // Today's line lists its identifiers (they grow with the app), then
+        // why: TodayView presents ExerciseView.
         assert!(
-            text.contains("  today.activity.*, today.progress, today.shorten: TodayView.swift uses ExerciseView"),
+            text.lines().any(|l| l.starts_with("  today.activity.*, ")
+                && l.contains(": TodayView.swift uses ExerciseView")),
             "{text}"
         );
         // The journey test taps record.save.

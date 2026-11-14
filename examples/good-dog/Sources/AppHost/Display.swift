@@ -12,6 +12,9 @@ extension LearnTopic: Identifiable {}
 extension SkillProgress: Identifiable {
     public var id: String { objectiveId }
 }
+extension PathwaySummary: Identifiable {}
+extension GoalSummary: Identifiable {}
+extension GoalStage: Identifiable {}
 extension GlossarySection: Identifiable {
     public var id: String { title }
 }
@@ -161,4 +164,36 @@ extension LinkedText {
 
 extension SessionRecord {
     public var completedAt: Date { Date(timeIntervalSince1970: TimeInterval(completedAtMs) / 1000) }
+}
+
+extension GoalStatus {
+    public var title: String {
+        switch self {
+        case .active: "Working on it"
+        case .paused: "Paused"
+        case .finished: "Done, keeping it up"
+        case .setAside: "Set aside"
+        }
+    }
+}
+
+extension WeeklyRhythm {
+    /// Monday first, for the week's row of days.
+    public static let dayInitials = ["M", "T", "W", "T", "F", "S", "S"]
+    public static let dayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    public var reachedTarget: Bool { daysPractised >= targetDays }
+
+    /// One line for the week, kind about rest days.
+    public var summary: String {
+        if reachedTarget {
+            return weeksInARow > 1 ? "A good week, \(weeksInARow) in a row" : "A good week"
+        }
+        let left = targetDays - daysPractised
+        let lead = weeksInARow > 0 ? "\(weeksInARow) good \(weeksInARow == 1 ? "week" : "weeks") in a row. " : ""
+        return lead + "\(left) more \(left == 1 ? "day" : "days") makes a good week"
+    }
+}
+
+extension GoalEvent {
+    public var at: Date { Date(timeIntervalSince1970: TimeInterval(atMs) / 1000) }
 }

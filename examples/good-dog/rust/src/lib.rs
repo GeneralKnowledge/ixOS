@@ -185,6 +185,23 @@ impl AppCore {
         .await
     }
 
+    /// "Not today": a rest day, with no reminder today. Refused once
+    /// something has been practised today. `false` takes it back.
+    pub async fn set_not_today(
+        &self,
+        not_today: bool,
+        now: LocalTime,
+    ) -> Result<TodayPlan, AppError> {
+        let plan = self
+            .change("not-today", move |stored| {
+                stored.set_not_today(not_today, now)?;
+                Ok(stored.today(now).expect("ensured"))
+            })
+            .await?;
+        self.refresh_reminders(now).await;
+        Ok(plan)
+    }
+
     /// Replaces one of today's activities with something different. At
     /// most twice per activity; `NoAlternative` when nothing else suits.
     pub async fn swap_activity(

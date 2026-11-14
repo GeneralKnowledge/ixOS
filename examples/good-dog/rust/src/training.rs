@@ -15,6 +15,9 @@ use good_dog_core::dog_training::{
 use serde::{Deserialize, Serialize};
 
 use crate::goals::{Pathways, StoredGoal};
+
+/// Practice days a week that make a good week. Three leaves room for rest.
+pub(crate) const RHYTHM_TARGET_DAYS: u32 = 3;
 use crate::model::*;
 use crate::AppError;
 
@@ -264,7 +267,10 @@ impl Stored {
             .collect();
         let done_count = activities.iter().filter(|a| a.result.is_some()).count() as u32;
         let planned: Vec<&str> = activities.iter().map(|a| a.exercise_id.as_str()).collect();
+        let not_today = self.reminder.skipped_day == Some(local_day(now));
         Some(TodayPlan {
+            not_today,
+            can_say_not_today: done_count == 0,
             goal_focus: self.goal_focus(&planned),
             total_minutes: activities.iter().map(|a| a.minutes).sum(),
             done_count,
@@ -446,8 +452,36 @@ impl Stored {
     /// Saves a new or changed profile. A plan nobody has started yet is
     /// dropped, so the next look at Today fits the new details.
     pub fn set_profile(&mut self, profile: DogProfile, now: LocalTime) {
+        let first = self.dog.is_none() && self.goals.is_empty();
+        let goal = profile.goal;
         self.dog = Some(profile);
+        if first {
+            // Onboarding's "What would help most?" starts the matching goal.
+            if let Some(pathway_id) = crate::goals::pathway_for(goal) {
+                if self.pathway(pathway_id).is_some() {
+                    let _ = self.start_goal(pathway_id, None, now);
+                }
+            }
+        }
         self.drop_unstarted_plan(now);
+    }
+
+    /// "Not today" on Today (and on the reminder): a rest day. Saying it
+    /// again with `false` takes it back.
+    pub fn set_not_today(&mut self, not_today: bool, now: LocalTime) -> Result<(), AppError> {
+        let today = local_day(now);
+        if not_today {
+            self.ensure_today(now)?;
+            if self.today(now).is_some_and(|p| p.done_count > 0) {
+                return Err(AppError::InvalidInput {
+                    reason: "you've already practised today".into(),
+                });
+            }
+            self.reminder.skipped_day = Some(today);
+        } else if self.reminder.skipped_day == Some(today) {
+            self.reminder.skipped_day = None;
+        }
+        Ok(())
     }
 
     /// Forgets today's plan if nothing in it has been practised, so the next
@@ -506,10 +540,53 @@ impl Stored {
             .collect();
         skills.sort_by_key(|s| (level_rank(s.level), std::cmp::Reverse(s.sessions)));
         ProgressSummary {
+            rhythm: self.weekly_rhythm(now),
             sessions_total: self.sessions.len() as u32,
             sessions_this_week: week.len() as u32,
             days_practised_this_week: days.len() as u32,
             skills,
+        }
+    }
+
+    /// Practice days by local calendar week (Monday first).
+    fn weekly_rhythm(&self, now: LocalTime) -> WeeklyRhythm {
+        let today = local_day(now);
+        // Local day 0, 1 January 1970, was a Thursday.
+        let weekday = |day: i64| (day + 3).rem_euclid(7);
+        let week_of = |day: i64| (day - weekday(day)).div_euclid(7);
+        let offset = i64::from(now.utc_offset_minutes) * 60_000;
+        let mut practised: BTreeMap<i64, std::collections::BTreeSet<i64>> = BTreeMap::new();
+        for s in &self.sessions {
+            let day = (s.completed_at_ms + offset).div_euclid(DAY_MS);
+            practised.entry(week_of(day)).or_default().insert(day);
+        }
+        let this_week = week_of(today);
+        let monday = today - weekday(today);
+        let days: Vec<bool> = (0..7)
+            .map(|i| {
+                practised
+                    .get(&this_week)
+                    .is_some_and(|d| d.contains(&(monday + i)))
+            })
+            .collect();
+        let days_practised = days.iter().filter(|d| **d).count() as u32;
+        let met = |week: i64| {
+            practised
+                .get(&week)
+                .is_some_and(|d| d.len() as u32 >= RHYTHM_TARGET_DAYS)
+        };
+        let mut weeks_in_a_row = u32::from(met(this_week));
+        let mut week = this_week - 1;
+        while met(week) {
+            weeks_in_a_row += 1;
+            week -= 1;
+        }
+        WeeklyRhythm {
+            target_days: RHYTHM_TARGET_DAYS,
+            days,
+            today_index: weekday(today) as u32,
+            days_practised,
+            weeks_in_a_row,
         }
     }
 

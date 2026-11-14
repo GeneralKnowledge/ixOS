@@ -40,6 +40,14 @@ public final class GoodDogModel {
     public private(set) var reminderMinute: UInt32?
     /// Increases after each recorded session; views use it as a haptic trigger.
     public private(set) var sessionCount = 0
+    /// The owner's goals: active first, then paused, finished, set aside.
+    public private(set) var goals: [GoalSummary] = []
+    /// The goals that suit the dog, to choose from.
+    public private(set) var pathways: [PathwaySummary] = []
+    /// Increases after every reload, so a goal screen knows to read again.
+    public private(set) var revision = 0
+    /// A stage the owner just passed, for the celebration. Views clear it.
+    public var celebration: StageCelebration?
 
     public private(set) var core: AppCore?
     private let storageDirectory: String?
@@ -171,6 +179,9 @@ public final class GoodDogModel {
         history = core.history(limit: 50)
         progress = core.progress(now: clock())
         reminderMinute = core.reminderMinute()
+        goals = core.goals()
+        pathways = core.pathways()
+        revision += 1
         guard dog != nil else {
             today = nil
             todayError = nil
@@ -258,6 +269,69 @@ public final class GoodDogModel {
         return feedback
     }
 
+    // MARK: Goals
+
+    public var activeGoals: [GoalSummary] { goals.filter { $0.status == .active } }
+
+    public func goal(id: UInt64) -> GoalDetail? {
+        try? core?.goal(goalId: id, now: clock())
+    }
+
+    /// Goals matching what the owner typed, best first; empty when nothing
+    /// matches (show the whole list then).
+    public func suggestGoals(_ ownWords: String) -> [PathwaySummary] {
+        guard !ownWords.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        return core?.suggestGoals(ownWords: ownWords) ?? []
+    }
+
+    /// Starts a goal (or picks it up again). Throws Rust's refusal, such as
+    /// already working on three.
+    @discardableResult
+    public func startGoal(pathwayId: String, ownWords: String?) async throws -> GoalDetail {
+        guard let core else { throw AppError.ShutDown }
+        let words = ownWords?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = try await core.startGoal(
+            pathwayId: pathwayId,
+            ownWords: (words?.isEmpty ?? true) ? nil : words,
+            now: clock()
+        )
+        await reload()
+        return detail
+    }
+
+    public func pauseGoal(_ id: UInt64) async {
+        await perform { core, now in _ = try await core.pauseGoal(goalId: id, now: now) }
+    }
+
+    public func resumeGoal(_ id: UInt64) async {
+        await perform { core, now in _ = try await core.resumeGoal(goalId: id, now: now) }
+    }
+
+    public func setGoalAside(_ id: UInt64) async {
+        await perform { core, now in _ = try await core.setGoalAside(goalId: id, now: now) }
+    }
+
+    public func stepBack(_ id: UInt64) async {
+        await perform { core, now in _ = try await core.stepBack(goalId: id, now: now) }
+    }
+
+    /// The owner's answer to the current stage's question. A "yes" that
+    /// moves the goal on sets `celebration`.
+    public func answerGate(_ id: UInt64, met: Bool) async {
+        let before = goal(id: id)
+        await perform { core, now in
+            let after = try await core.answerGate(goalId: id, met: met, now: now)
+            if let before, let celebration = StageCelebration(before: before, after: after) {
+                self.celebration = celebration
+            }
+        }
+    }
+
+    /// "Not today" on Today, or `false` to take it back.
+    public func setNotToday(_ notToday: Bool) async {
+        await perform { core, now in self.today = try await core.setNotToday(notToday: notToday, now: now) }
+    }
+
     /// Turns the daily reminder on at `minute` after midnight, or off with
     /// nil. iOS asks for permission the first time; if the owner declines
     /// it stays off.
@@ -342,6 +416,27 @@ public final class GoodDogModel {
         if testData { try? FileManager.default.removeItem(at: base) }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.path
+    }
+}
+
+/// What to celebrate when a stage is passed.
+public struct StageCelebration: Equatable, Sendable {
+    public let goalTitle: String
+    public let passedStage: String
+    /// The next stage, or nil when the goal is finished.
+    public let nextStage: String?
+    public let stageNumber: UInt32
+    public let stageCount: UInt32
+
+    /// Nil unless `after` is further on than `before`.
+    public init?(before: GoalDetail, after: GoalDetail) {
+        let finished = after.summary.status == .finished && before.summary.status != .finished
+        guard finished || after.summary.stageNumber > before.summary.stageNumber else { return nil }
+        goalTitle = after.summary.title
+        passedStage = before.summary.stageTitle
+        nextStage = finished ? nil : after.summary.stageTitle
+        stageNumber = before.summary.stageNumber
+        stageCount = after.summary.stageCount
     }
 }
 
