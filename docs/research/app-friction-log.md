@@ -27,7 +27,7 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | # | App | Friction | Severity | Status |
 |---|---|---|---|---|
 | A1 | FieldKit | The template on main still names every library `forge_ffi`, so a new app can't start in the hostable shape | Limit | Waits for #167, which changes the template |
-| A2 | FieldKit | `sha256_file` is public in forge-storage but not exported, and `import_hashed` drops the file extension | Limit | Open |
+| A2 | FieldKit | `sha256_file` is public in forge-storage but not exported, and `import_hashed` drops the file extension | Limit | Fixed (with A14) |
 | A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Open |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
@@ -36,8 +36,8 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
 | A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
-| A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Open |
-| A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Open: third app to hit it, fix now |
+| A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Fixed: `write_hashed` |
+| A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Fixed: `import_hashed_keeping_extension`, `import_hashed_with_extension`, `safe_file_name` |
 | A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Open |
 | A16 | Relay | The Noise channel and framing Relay needs live in `forge-devproto`, a frozen tooling crate | Limit | Open: second use, extract after merge |
 | A17 | Relay | Pair secrets sit in the app's JSON file: the Keychain service needs the iOS host, so tests and the Linux command can't use it | Limit | Open |
@@ -233,6 +233,9 @@ own hex, and calls `FileStore::write`.
 **Framework.** `FileStore::write_hashed(bytes)`, the in-memory twin of
 `import_hashed`.
 
+**Fixed (2026-11-14).** `FileStore::write_hashed(bytes, extension)`;
+Sketchbook no longer depends on `sha2`.
+
 ## A14. Content-named files still lose their extension
 
 **What happened.** A2, twice more. Soundscape's recordings must end in
@@ -247,6 +250,15 @@ cleans each half (`link::inbox_name`).
 
 **Framework.** Fix now: `import_hashed` keeps the source's extension (or
 takes one), and `safe_name` keeps one dot before an extension.
+
+**Fixed (Reuben picked fix now, 2026-11-14).** `FileStore` gained
+`import_hashed_keeping_extension` and `import_hashed_with_extension`, and
+`files::safe_file_name` keeps one extension. `import_hashed` and
+`safe_name` are unchanged, since Chat checks that attachment names are bare
+hashes. FieldKit's photos and voice notes now keep `.jpg` and `.m4a`,
+Soundscape imports once as `<hash>.wav`, and Relay dropped its own
+`inbox_name`. Pocket Library still builds `stem.ext` by hand in its store
+and can move to `safe_file_name` when that code is next touched.
 
 ## A15. The same Document boilerplate in every app
 

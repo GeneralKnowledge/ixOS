@@ -259,8 +259,11 @@ impl SoundscapeCore {
                 let source = Path::new(&source_path);
                 state.published.get().get(id)?;
                 let info = dsp::inspect(source)?;
-                let name = format!("{}.wav", forge_storage::files::sha256_file(source)?);
-                state.recordings.import(source, &name)?;
+                // Named by content, with the `.wav` AVAudioFile wants.
+                let name = state
+                    .recordings
+                    .import_hashed_with_extension(source, Some("wav"))?
+                    .name;
                 let clip = SavedClip {
                     file: name.clone(),
                     sample_rate: info.sample_rate,

@@ -31,7 +31,6 @@ use std::sync::Arc;
 use forge_app::{DataDirectory, Document, Published, Runtime};
 use forge_runtime::now_ms;
 use forge_storage::FileStore;
-use sha2::Digest;
 
 use book::{Book, Edit, History, Page};
 pub use model::{
@@ -146,14 +145,6 @@ impl State {
         }
         self.publish();
     }
-
-    /// Keeps drawing bytes as the file `name` (their SHA-256), once.
-    fn keep_drawing(&self, name: &str, data: &[u8]) -> Result<(), SketchbookError> {
-        if self.drawings.get(name).is_none() {
-            self.drawings.write(name, data)?;
-        }
-        Ok(())
-    }
 }
 
 /// The app's core. The Swift app opens one per process and shares it.
@@ -263,7 +254,8 @@ impl SketchbookCore {
         self.rt
             .command("draw", move |state| {
                 let sketch = state.book.value().sketch(sketch_id)?;
-                let name = hex(&sha2::Sha256::digest(&drawing));
+                // Named by its SHA-256: the same drawing is kept once.
+                let name = state.drawings.write_hashed(&drawing, None)?.name;
                 let unchanged = sketch
                     .page
                     .layers
@@ -272,7 +264,6 @@ impl SketchbookCore {
                 if unchanged {
                     return state.detail(sketch_id);
                 }
-                state.keep_drawing(&name, &drawing)?;
                 let result = state.edit(
                     sketch_id,
                     Edit::Draw {
@@ -659,10 +650,6 @@ fn unique_names(titles: &[&str]) -> Vec<String> {
             }
         })
         .collect()
-}
-
-fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 forge_app::export_runtime!(SketchbookCore, rt);
