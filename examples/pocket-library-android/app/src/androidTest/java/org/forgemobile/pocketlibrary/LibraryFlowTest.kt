@@ -12,9 +12,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.printToLog
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -59,9 +57,10 @@ class LibraryFlowTest {
     fun addOpenAndDeleteABook() {
         // The core opens off the main thread; a failure to open shows `open.error`.
         compose.waitUntilAtLeastOneExists(hasTestTag("library.empty") or hasTestTag("open.error"), 20_000)
-        if (compose.onAllNodes(hasTestTag("open.error")).fetchSemanticsNodes().isNotEmpty()) {
-            compose.onRoot().printToLog("LibraryFlowTest")
-            throw AssertionError("The library didn't open; see the open.error text in the log above")
+        val failure = compose.onAllNodes(hasTestTag("open.error")).fetchSemanticsNodes().firstOrNull()
+        if (failure != null) {
+            val text = failure.config.getOrNull(SemanticsProperties.Text)?.joinToString { it.text }
+            throw AssertionError("The library didn't open: $text")
         }
 
         compose.onNodeWithTag("library.add.manual").performClick()
