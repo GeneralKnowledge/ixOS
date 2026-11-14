@@ -23,15 +23,15 @@ public final class ChapterSummaryState {
     public private(set) var synopsis: ChapterSynopsis?
     public private(set) var error: Error?
     /// Whether the model can run, and why not.
-    public let info: SummaryModelInfo
+    public let info: AiModelInfo
 
     private let library: LibraryModel
     private let bookID: UInt64
     private let chapter: UInt32
-    private let model: SummaryModel
+    private let model: AiModel
     @ObservationIgnored private var task: Task<Void, Never>?
 
-    public init(library: LibraryModel, bookID: UInt64, chapter: UInt32, model: SummaryModel) {
+    public init(library: LibraryModel, bookID: UInt64, chapter: UInt32, model: AiModel) {
         self.library = library
         self.bookID = bookID
         self.chapter = chapter

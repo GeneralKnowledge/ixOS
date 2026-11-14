@@ -337,6 +337,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-services"
+version = "0.1.0"
+dependencies = [
+ "forge-net",
+ "forge-runtime",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "forge-storage"
 version = "0.1.0"
 dependencies = [
@@ -608,6 +618,7 @@ dependencies = [
  "forge-app",
  "forge-net",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "quick-xml",
  "serde",

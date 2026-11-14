@@ -7,10 +7,13 @@ use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::path::Path;
-use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use forge_devproto::conn::Conn;
 use forge_devproto::secure::{Purpose as Keyed, Role};
+use forge_services::ai::{AiError, ChatRequest, LanguageModel, TextOut};
 use forge_storage::FileStore;
 
 use crate::model::{RelayError, MAX_FILE_BYTES};
@@ -19,8 +22,11 @@ use crate::wire::{Intro, Msg, Offered, Purpose, CHUNK, MAGIC, PROTOCOL};
 /// How long to wait to connect, for each handshake step and each reply.
 pub const TIMEOUT: Duration = Duration::from_secs(10);
 /// The stream's read timeout: how often a waiting loop can check for
-/// cancellation.
+/// cancellation. Also how often an answer's new text is sent on.
 const POLL: Duration = Duration::from_millis(200);
+/// How long an asker waits for the next piece of an answer: a big model on
+/// a laptop's CPU can take minutes to read a long prompt.
+pub const ANSWER_GAP: Duration = Duration::from_secs(300);
 
 /// Who this device is.
 #[derive(Clone, Debug)]
@@ -179,6 +185,50 @@ impl Link {
         }
     }
 
+    /// Asks the other device's language model. The answer arrives in `out`
+    /// piece by piece; when `out` says stop, the other device is told to
+    /// stop its model. The outer result is the connection's, the inner the
+    /// model's: `Ok` with the name of the model that answered.
+    pub fn ask(
+        &mut self,
+        request: ChatRequest,
+        out: &dyn TextOut,
+    ) -> Result<Result<String, AiError>, RelayError> {
+        self.conn.send(&Msg::Ask { request })?;
+        let mut stopping = false;
+        let mut last = Instant::now();
+        loop {
+            if !stopping && out.is_stopped() {
+                self.conn.send(&Msg::Stop)?;
+                stopping = true;
+            }
+            let Some(msg) = self.conn.recv::<Msg>()? else {
+                if last.elapsed() > ANSWER_GAP {
+                    return Err(RelayError::Connection {
+                        reason: "the other device's model stopped answering".into(),
+                    });
+                }
+                continue;
+            };
+            last = Instant::now();
+            match msg {
+                Msg::Delta { text } => {
+                    if !stopping && !out.push(&text) {
+                        self.conn.send(&Msg::Stop)?;
+                        stopping = true;
+                    }
+                }
+                Msg::Answered { .. } | Msg::Failed { .. } if stopping => {
+                    return Ok(Err(AiError::Stopped))
+                }
+                Msg::Answered { model } => return Ok(Ok(model)),
+                Msg::Failed { error } => return Ok(Err(error)),
+                Msg::Decline { reason } => return Err(RelayError::Declined { reason }),
+                _ => return Err(protocol("expected an answer")),
+            }
+        }
+    }
+
     /// Says goodbye; the other side closes.
     pub fn close(mut self) {
         let _ = self.conn.send(&Msg::Bye);
@@ -215,6 +265,21 @@ pub trait Inbound {
     /// It arrived (`Ok` with the received file's inbox name, if any), or
     /// didn't.
     fn finished(&self, id: u64, result: Result<Option<String>, String>);
+    /// The model that answers paired devices' asks, if this device answers
+    /// any.
+    fn model(&self) -> Option<Arc<dyn LanguageModel>>;
+    /// An ask was answered (or not): for the log, never the text.
+    fn answered(&self, them: &Them, report: &AskReport);
+}
+
+/// How an ask went, without its text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AskReport {
+    pub model: String,
+    pub pieces: u64,
+    pub elapsed: Duration,
+    /// `None` when it was answered, else why not.
+    pub error: Option<String>,
 }
 
 /// Answers one connection: checks the intro, runs the handshake, swaps
@@ -258,6 +323,15 @@ pub fn answer(
         };
         match msg {
             Msg::Bye => return Ok(()),
+            Msg::Ask { request } => match host.model() {
+                Some(model) => {
+                    let report = answer_ask(&mut conn, model, request)?;
+                    host.answered(&them, &report);
+                }
+                None => conn.send(&Msg::Decline {
+                    reason: "this device doesn't answer AI requests".into(),
+                })?,
+            },
             Msg::Offer { item } => {
                 let id = match host.offered(&them, &item) {
                     Ok(id) => id,
@@ -286,6 +360,107 @@ pub fn answer(
             _ => return Err(protocol("unexpected message")),
         }
     }
+}
+
+/// Where the model's pieces go: to the connection's thread, which sends
+/// them on and hears the asker's `Stop`.
+struct Pipe {
+    tx: Mutex<mpsc::Sender<String>>,
+    stop: Arc<AtomicBool>,
+}
+
+impl TextOut for Pipe {
+    fn push(&self, delta: &str) -> bool {
+        if self.is_stopped() {
+            return false;
+        }
+        let sent = forge_runtime::lock(&self.tx)
+            .send(delta.to_string())
+            .is_ok();
+        sent && !self.is_stopped()
+    }
+
+    fn is_stopped(&self) -> bool {
+        self.stop.load(Ordering::SeqCst)
+    }
+}
+
+/// Runs one ask: the model writes on a thread of its own while this
+/// thread sends its text on (at most every [`POLL`]) and listens for the
+/// asker's `Stop`. If the asker hangs up, the model is stopped too.
+fn answer_ask(
+    conn: &mut Conn<TcpStream>,
+    model: Arc<dyn LanguageModel>,
+    request: ChatRequest,
+) -> Result<AskReport, RelayError> {
+    let started = Instant::now();
+    let name = model.describe().id;
+    let stop = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = mpsc::channel::<String>();
+    let pipe = Arc::new(Pipe {
+        tx: Mutex::new(tx),
+        stop: Arc::clone(&stop),
+    });
+    let worker = std::thread::Builder::new()
+        .name("relay-ask".into())
+        .spawn(move || model.generate(request, pipe))
+        .map_err(|err| RelayError::Connection {
+            reason: format!("can't start the model: {err}"),
+        })?;
+    let halt = |worker: std::thread::JoinHandle<Result<(), AiError>>| {
+        stop.store(true, Ordering::SeqCst);
+        let _ = worker.join();
+    };
+    let mut pieces = 0u64;
+    loop {
+        let finished = worker.is_finished();
+        let mut text = String::new();
+        while let Ok(piece) = rx.try_recv() {
+            text.push_str(&piece);
+            pieces += 1;
+        }
+        if !text.is_empty() {
+            if let Err(err) = conn.send(&Msg::Delta { text }) {
+                halt(worker);
+                return Err(err.into());
+            }
+        }
+        if finished {
+            break;
+        }
+        match conn.recv::<Msg>() {
+            Ok(Some(Msg::Stop)) => stop.store(true, Ordering::SeqCst),
+            Ok(Some(_)) => {
+                halt(worker);
+                return Err(protocol("unexpected message during an answer"));
+            }
+            Ok(None) => {}
+            Err(err) => {
+                halt(worker);
+                return Err(err.into());
+            }
+        }
+    }
+    let result = worker.join().unwrap_or_else(|_| {
+        Err(AiError::Engine {
+            reason: "the model crashed".into(),
+        })
+    });
+    let result = match result {
+        Ok(()) if stop.load(Ordering::SeqCst) => Err(AiError::Stopped),
+        other => other,
+    };
+    let report = AskReport {
+        model: name.clone(),
+        pieces,
+        elapsed: started.elapsed(),
+        error: result.as_ref().err().map(|e| e.to_string()),
+    };
+    match result {
+        Ok(()) => conn.send(&Msg::Answered { model: name })?,
+        Err(error) => conn.send(&Msg::Failed { error })?,
+    }
+    Ok(report)
 }
 
 /// Takes a file's chunks into the inbox. It is kept, as

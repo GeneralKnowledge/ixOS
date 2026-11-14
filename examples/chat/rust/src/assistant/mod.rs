@@ -6,16 +6,16 @@
 //!   harness ([`characters`]), the history in `assistant.db` ([`store`]),
 //!   trimming to the model's context, when an answer stops, and what is
 //!   saved.
-//! - **Swift owns the model**: an engine object implementing
-//!   [`LocalModelEngine`] (Apple Foundation Models in L1) turns a
-//!   [`GenerateRequest`] into text and pushes it into a [`TokenSink`].
+//! - **Swift owns the model**: Forge AI's [`AiModel`] (Apple Foundation
+//!   Models through `ForgeAppleModel`) turns the request into text and
+//!   pushes it into a [`TextSink`].
 //! - **One answer at a time.** `send` saves the user's message and an empty
 //!   answer marked `Streaming`, then runs the engine on a thread of its own
 //!   and returns an [`AssistantGeneration`] at once; the screen reads it
 //!   with `next()` and stops it with `cancel()`.
 //!
-//! Everything here moves to a `forge-ai` framework crate once the device
-//! runs have settled the design (milestone L5).
+//! The model interface is Forge AI's (`native_services!(ai)`,
+//! docs/forge-ai-plan.md); the characters, history and rules stay here.
 
 mod characters;
 mod engine;
@@ -32,7 +32,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 pub use characters::AssistantCharacter;
 pub use engine::{
-    AiError, EngineInfo, GenerateRequest, LocalModelEngine, PromptRole, PromptTurn, TokenSink,
+    AiModel, AiModelError, AiModelInfo, AiRequest, GenerateRequest, PromptRole, PromptTurn,
+    TextOut, TextSink,
 };
 pub use generation::{AssistantGeneration, AssistantUpdate};
 
@@ -134,7 +135,7 @@ pub struct AssistantCore {
 
 struct Inner {
     store: Mutex<Store>,
-    engine: RwLock<Option<Arc<dyn LocalModelEngine>>>,
+    engine: RwLock<Option<Arc<dyn AiModel>>>,
     current: Mutex<Option<Arc<AssistantGeneration>>>,
     shut_down: AtomicBool,
 }
@@ -149,13 +150,13 @@ impl AssistantCore {
 
     /// Installs the model engine (the app does this at launch). Replaces
     /// any previous one; an answer being written finishes on the old one.
-    pub fn set_engine(&self, engine: Arc<dyn LocalModelEngine>) {
+    pub fn set_engine(&self, engine: Arc<dyn AiModel>) {
         *self.inner.engine.write().unwrap_or_else(|p| p.into_inner()) = Some(engine);
     }
 
     /// The installed engine and whether it can run now, or `None` before
     /// `set_engine`.
-    pub fn engine_info(&self) -> Option<EngineInfo> {
+    pub fn engine_info(&self) -> Option<AiModelInfo> {
         self.inner.engine().map(|engine| engine.describe())
     }
 
@@ -379,7 +380,7 @@ impl Inner {
         self.current.lock().unwrap_or_else(|p| p.into_inner())
     }
 
-    fn engine(&self) -> Option<Arc<dyn LocalModelEngine>> {
+    fn engine(&self) -> Option<Arc<dyn AiModel>> {
         self.engine
             .read()
             .unwrap_or_else(|p| p.into_inner())
@@ -399,7 +400,7 @@ impl Inner {
     /// generation.
     fn spawn(
         self: &Arc<Self>,
-        engine: Arc<dyn LocalModelEngine>,
+        engine: Arc<dyn AiModel>,
         engine_id: String,
         request: GenerateRequest,
         answer: AssistantMessage,
@@ -414,10 +415,8 @@ impl Inner {
                 let answer = answer.clone();
                 let engine_id = engine_id.clone();
                 move || {
-                    let sink = Arc::new(TokenSink {
-                        shared: Arc::clone(&shared),
-                    });
-                    let result = forge_runtime::block_on(engine.generate(request, sink));
+                    let sink = TextSink::new(Arc::clone(&shared) as Arc<dyn TextOut>);
+                    let result = forge_runtime::block_on(engine.generate(request.into(), sink));
                     inner.finish(&shared, answer, engine_id, result);
                 }
             });
@@ -426,7 +425,7 @@ impl Inner {
                 &shared,
                 answer,
                 engine_id,
-                Err(AiError::Engine {
+                Err(AiModelError::Engine {
                     reason: format!("could not start: {err}"),
                 }),
             );
@@ -438,7 +437,7 @@ impl Inner {
         shared: &Shared,
         mut answer: AssistantMessage,
         engine_id: String,
-        result: Result<(), AiError>,
+        result: Result<(), AiModelError>,
     ) {
         let outcome = shared.outcome();
         let stopped = shared.is_cancelled();
@@ -449,7 +448,7 @@ impl Inner {
             // Cut where the model began writing the user's side: complete.
             _ if shared.turn_ended() => (AssistantMessageState::Done, None),
             Ok(()) => (AssistantMessageState::Done, None),
-            Err(AiError::Refused { reason }) => (AssistantMessageState::Refused, Some(reason)),
+            Err(AiModelError::Refused { reason }) => (AssistantMessageState::Refused, Some(reason)),
             Err(err) => (AssistantMessageState::Failed, Some(err.to_string())),
         };
         answer.text = outcome.text;

@@ -21,7 +21,7 @@ required-features = ["cli"]
 
 [features]
 # The `relay` command for Linux and macOS. Never built for iOS.
-cli = ["dep:qrcode"]
+cli = ["dep:qrcode", "dep:forge-net"]
 
 [dependencies]
 # The application runtime: one core per process, serial commands, revisions,
@@ -37,6 +37,11 @@ forge-devproto = { path = "../../../crates/forge-devproto" }
 forge-storage = { path = "../../../crates/forge-storage", features = ["hash"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
+# Forge AI: the request shape a device asks another device's language model
+# with, and the model interface the asked device answers through.
+forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
+# The `relay serve-ai` command reaches an OpenAI-compatible server over HTTP.
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
 # The `relay` command prints its pairing code as a QR code in the terminal.
@@ -44,6 +49,8 @@ qrcode = { version = "0.14", default-features = false, optional = true }
 
 [dev-dependencies]
 tempfile = "3.14"
+forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+serde_json = "1.0"
 
 # Its own workspace, like every app made with `forge init`.
 [workspace]

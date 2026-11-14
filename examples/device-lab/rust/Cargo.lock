@@ -683,6 +683,7 @@ dependencies = [
  "forge-runtime",
  "forge-storage",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1253,6 +1254,7 @@ dependencies = [
  "forge-app",
  "forge-net",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "quick-xml 0.42.0",
  "serde",
@@ -1367,6 +1369,7 @@ dependencies = [
  "forge-app",
  "forge-devproto",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "serde",
  "thiserror",

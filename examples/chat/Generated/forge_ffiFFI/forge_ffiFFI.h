@@ -243,19 +243,6 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD0
-#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD0
-typedef void (*UniffiCallbackInterfaceLocalModelEngineMethod0)(uint64_t, RustBuffer* _Nonnull, 
-        RustCallStatus *_Nonnull uniffiCallStatus
-    );
-
-#endif
-#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD1
-#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE_METHOD1
-typedef void (*UniffiCallbackInterfaceLocalModelEngineMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
-    );
-
-#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
 typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
@@ -315,6 +302,19 @@ typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, 
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+typedef void (*UniffiCallbackInterfaceAiModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+typedef void (*UniffiCallbackInterfaceAiModelMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AUDIO_FILES_METHOD0
 typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, double* _Nonnull, 
@@ -356,16 +356,6 @@ typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, 
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
-#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_MODEL_ENGINE
-typedef struct UniffiVTableCallbackInterfaceLocalModelEngine {
-    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
-    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
-    UniffiCallbackInterfaceLocalModelEngineMethod0 _Nonnull describe;
-    UniffiCallbackInterfaceLocalModelEngineMethod1 _Nonnull generate;
-} UniffiVTableCallbackInterfaceLocalModelEngine;
-
-#endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 #define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
 typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
@@ -397,6 +387,16 @@ typedef struct UniffiVTableCallbackInterfaceSecureStore {
     UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
     UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
 } UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+typedef struct UniffiVTableCallbackInterfaceAiModel {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAiModelMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceAiModelMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceAiModel;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AUDIO_FILES
@@ -719,51 +719,6 @@ void uniffi_chat_app_fn_method_assistantcore_shutdown(uint64_t ptr, RustCallStat
 RustBuffer uniffi_chat_app_fn_method_assistantcore_start_conversation(uint64_t ptr, RustBuffer character_id, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_LOCALMODELENGINE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_LOCALMODELENGINE
-uint64_t uniffi_chat_app_fn_clone_localmodelengine(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_LOCALMODELENGINE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_LOCALMODELENGINE
-void uniffi_chat_app_fn_free_localmodelengine(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_LOCALMODELENGINE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_LOCALMODELENGINE
-void uniffi_chat_app_fn_init_callback_vtable_localmodelengine(const UniffiVTableCallbackInterfaceLocalModelEngine* _Nonnull vtable
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALMODELENGINE_DESCRIBE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALMODELENGINE_DESCRIBE
-RustBuffer uniffi_chat_app_fn_method_localmodelengine_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALMODELENGINE_GENERATE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_LOCALMODELENGINE_GENERATE
-uint64_t uniffi_chat_app_fn_method_localmodelengine_generate(uint64_t ptr, RustBuffer request, uint64_t sink
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_TOKENSINK
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_TOKENSINK
-uint64_t uniffi_chat_app_fn_clone_tokensink(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_TOKENSINK
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_TOKENSINK
-void uniffi_chat_app_fn_free_tokensink(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TOKENSINK_IS_STOPPED
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TOKENSINK_IS_STOPPED
-int8_t uniffi_chat_app_fn_method_tokensink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TOKENSINK_PUSH
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TOKENSINK_PUSH
-int8_t uniffi_chat_app_fn_method_tokensink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_ASSISTANTGENERATION
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_ASSISTANTGENERATION
 uint64_t uniffi_chat_app_fn_clone_assistantgeneration(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -892,6 +847,51 @@ void uniffi_chat_app_fn_method_securestore_set(uint64_t ptr, RustBuffer key, Rus
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_SECURESTORE_DELETE
 void uniffi_chat_app_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_AIMODEL
+uint64_t uniffi_chat_app_fn_clone_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_AIMODEL
+void uniffi_chat_app_fn_free_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_AIMODEL
+void uniffi_chat_app_fn_init_callback_vtable_aimodel(const UniffiVTableCallbackInterfaceAiModel* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_AIMODEL_DESCRIBE
+RustBuffer uniffi_chat_app_fn_method_aimodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_AIMODEL_GENERATE
+uint64_t uniffi_chat_app_fn_method_aimodel_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_TEXTSINK
+uint64_t uniffi_chat_app_fn_clone_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_TEXTSINK
+void uniffi_chat_app_fn_free_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TEXTSINK_IS_STOPPED
+int8_t uniffi_chat_app_fn_method_textsink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_TEXTSINK_PUSH
+int8_t uniffi_chat_app_fn_method_textsink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_AUDIOFILES
@@ -1041,6 +1041,11 @@ uint32_t uniffi_chat_app_fn_func_native_services_version(RustCallStatus *_Nonnul
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_PARSE_DEEP_LINK
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_PARSE_DEEP_LINK
 RustBuffer uniffi_chat_app_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AI
+void uniffi_chat_app_fn_func_install_native_ai(uint64_t model, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AUDIO
@@ -1383,6 +1388,12 @@ uint16_t uniffi_chat_app_checksum_func_parse_deep_link(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+uint16_t uniffi_chat_app_checksum_func_install_native_ai(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
 uint16_t uniffi_chat_app_checksum_func_install_native_audio(void
@@ -1713,30 +1724,6 @@ uint16_t uniffi_chat_app_checksum_method_assistantcore_start_conversation(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALMODELENGINE_DESCRIBE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALMODELENGINE_DESCRIBE
-uint16_t uniffi_chat_app_checksum_method_localmodelengine_describe(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALMODELENGINE_GENERATE
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_LOCALMODELENGINE_GENERATE
-uint16_t uniffi_chat_app_checksum_method_localmodelengine_generate(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TOKENSINK_IS_STOPPED
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TOKENSINK_IS_STOPPED
-uint16_t uniffi_chat_app_checksum_method_tokensink_is_stopped(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TOKENSINK_PUSH
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TOKENSINK_PUSH
-uint16_t uniffi_chat_app_checksum_method_tokensink_push(void
-    
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_ASSISTANTGENERATION_CANCEL
 uint16_t uniffi_chat_app_checksum_method_assistantgeneration_cancel(void
@@ -1824,6 +1811,30 @@ uint16_t uniffi_chat_app_checksum_method_securestore_set(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_SECURESTORE_DELETE
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_SECURESTORE_DELETE
 uint16_t uniffi_chat_app_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+uint16_t uniffi_chat_app_checksum_method_aimodel_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AIMODEL_GENERATE
+uint16_t uniffi_chat_app_checksum_method_aimodel_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+uint16_t uniffi_chat_app_checksum_method_textsink_is_stopped(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_TEXTSINK_PUSH
+uint16_t uniffi_chat_app_checksum_method_textsink_push(void
     
 );
 #endif

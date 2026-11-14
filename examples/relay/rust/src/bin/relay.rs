@@ -9,7 +9,18 @@
 //! relay send <peer> [--to host:port] (--note TEXT | FILE)
 //! relay history                      what went across, newest first
 //! relay name [NEW]                   this machine's name in Relay
+//! relay serve-ai --upstream URL [--model M] [--port N]
+//!                                    listen, and answer paired devices'
+//!                                    AI requests with an OpenAI-compatible
+//!                                    server (llama.cpp, Ollama, LM Studio)
+//! relay ask <peer> [--to host:port] [--model M] [--system TEXT]
+//!           [--max-tokens N] PROMPT  ask a paired device's model; the
+//!                                    answer streams to the terminal
 //! ```
+//!
+//! `serve-ai` sends a bearer token from `$RELAY_AI_KEY` if it is set. Only
+//! paired devices can ask, and the server's URL is never shared: keep it on
+//! localhost.
 //!
 //! Data lives in `$RELAY_DATA`, else `$XDG_DATA_HOME/forge-relay`, else
 //! `~/.local/share/forge-relay`. Received files are in its `inbox/`.
@@ -19,10 +30,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
 use relay_core::{Direction, Item, RelayCore, TransferStatus};
 
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
-send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW]";
+send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW] | \
+serve-ai --upstream URL [--model M] [--port N] | \
+ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT";
 
 fn main() {
     if let Err(problem) = run(std::env::args().skip(1).collect()) {
@@ -68,6 +82,8 @@ fn run(args: Vec<String>) -> Result<(), String> {
             Ok(())
         }
         "send" => send(&core, rest),
+        "serve-ai" => serve_ai(&core, rest),
+        "ask" => ask(&core, rest),
         "history" => {
             for t in core.transfers() {
                 println!("{}", describe(&t));
@@ -178,6 +194,104 @@ fn send(core: &RelayCore, args: &[String]) -> Result<(), String> {
     .map_err(|e| e.to_string())?;
     println!("{}", describe(&transfer));
     Ok(())
+}
+
+/// The value after `flag`, taken out of `args`.
+fn take_flag(args: &mut Vec<String>, flag: &str) -> Result<Option<String>, String> {
+    let Some(i) = args.iter().position(|a| a == flag) else {
+        return Ok(None);
+    };
+    if i + 1 >= args.len() {
+        return Err(format!("{flag} needs a value"));
+    }
+    let value = args.remove(i + 1);
+    args.remove(i);
+    Ok(Some(value))
+}
+
+fn serve_ai(core: &RelayCore, args: &[String]) -> Result<(), String> {
+    let mut args = args.to_vec();
+    let upstream = take_flag(&mut args, "--upstream")?
+        .ok_or("serve-ai needs --upstream, the server's OpenAI address (http://127.0.0.1:11434/v1 for Ollama)")?;
+    let model = take_flag(&mut args, "--model")?;
+    let client = Arc::new(forge_net::UreqClient::with_user_agent(concat!(
+        "relay/",
+        env!("CARGO_PKG_VERSION")
+    )));
+    let mut server = forge_services::ai::openai::OpenAiServer::new(client, &upstream);
+    if let Ok(key) = std::env::var("RELAY_AI_KEY") {
+        server = server.api_key(key);
+    }
+    let model = match model {
+        Some(model) => model,
+        None => {
+            let models = server.models().map_err(|e| e.to_string())?;
+            models
+                .into_iter()
+                .next()
+                .ok_or("the server lists no models; load one, or name it with --model")?
+        }
+    };
+    let server = server.model(&model);
+    println!("Answering AI requests from paired devices with {model} at {upstream}.");
+    core.answer_asks(Some(Arc::new(server) as Arc<dyn LanguageModel>));
+    listen(core, &args)
+}
+
+fn ask(core: &RelayCore, args: &[String]) -> Result<(), String> {
+    let mut args = args.to_vec();
+    let address = take_flag(&mut args, "--to")?;
+    let model = take_flag(&mut args, "--model")?;
+    let system = take_flag(&mut args, "--system")?;
+    let max_tokens = match take_flag(&mut args, "--max-tokens")? {
+        Some(n) => n.parse().map_err(|_| "--max-tokens takes a number")?,
+        None => 512,
+    };
+    let [who, prompt] = args.as_slice() else {
+        return Err(USAGE.into());
+    };
+    let peer = core
+        .peers()
+        .into_iter()
+        .find(|p| &p.device_id == who || p.name.eq_ignore_ascii_case(who))
+        .ok_or_else(|| format!("not paired with {who}; `relay peers` lists them"))?;
+    let mut messages = Vec::new();
+    if let Some(system) = system {
+        messages.push(ChatMessage::system(system));
+    }
+    messages.push(ChatMessage::user(prompt.clone()));
+    let request = ChatRequest {
+        model,
+        messages,
+        max_tokens,
+        temperature: 0.7,
+    };
+    let out = Collect::new().listen({
+        let printed = std::sync::Mutex::new(0usize);
+        move |so_far| {
+            use std::io::Write;
+            let mut printed = printed.lock().unwrap_or_else(|p| p.into_inner());
+            print!("{}", &so_far[*printed..]);
+            let _ = std::io::stdout().flush();
+            *printed = so_far.len();
+        }
+    });
+    let answer = core
+        .ask(
+            &peer.device_id,
+            request,
+            address.into_iter().collect(),
+            &out,
+        )
+        .map_err(|e| e.to_string())?;
+    println!();
+    match answer {
+        Ok(model) => {
+            eprintln!("(answered by {model} on {})", peer.name);
+            Ok(())
+        }
+        Err(err) => Err(format!("{}'s model gave no answer: {err}", peer.name)),
+    }
 }
 
 fn describe(t: &relay_core::Transfer) -> String {

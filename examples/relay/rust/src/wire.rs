@@ -3,17 +3,23 @@
 //! A connection goes: the dialer sends an [`Intro`] in clear (who it says it
 //! is, and whether it is pairing), both run the Noise `XXpsk3` handshake
 //! from `forge_devproto` keyed by the pair's secret, they swap [`Msg::Hello`]
-//! and then the dialer offers items one at a time. A wrong secret fails the
-//! handshake, so nothing after the intro is readable without it.
+//! and then the dialer offers items one at a time, or asks the other
+//! device's language model ([`Msg::Ask`], protocol 2). A wrong secret fails
+//! the handshake, so nothing after the intro is readable without it.
 
+use forge_services::ai::{AiError, ChatRequest};
 use serde::{Deserialize, Serialize};
 
 use crate::model::RelayError;
 
 /// Identifies the intro, so reaching some other service says so.
 pub const MAGIC: &str = "forge-relay";
-/// Bump on any change an older peer would misread.
-pub const PROTOCOL: u16 = 1;
+/// Bump on any change an older peer would misread. 2: asks (`Ask`,
+/// `Delta`, `Answered`, `Failed`, `Stop`).
+pub const PROTOCOL: u16 = 2;
+/// The pairing code's version, separate from the protocol's: the code
+/// itself has not changed since version 1.
+pub const CODE_VERSION: u16 = 1;
 /// Bytes of a file in one chunk: well inside a Noise message.
 pub const CHUNK: usize = 32 * 1024;
 /// The pairing code's scheme. Also the QR code's text.
@@ -49,7 +55,7 @@ pub enum Offered {
 }
 
 /// Everything after the handshake, encrypted.
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub enum Msg {
     Hello {
         device_id: String,
@@ -74,6 +80,26 @@ pub enum Msg {
         reason: Option<String>,
     },
     Bye,
+    /// Asks the other device's language model (Forge AI's request, OpenAI
+    /// chat-completions shaped). It answers with `Delta`s, then `Answered`
+    /// or `Failed`; or `Decline` when it answers no asks.
+    Ask {
+        request: ChatRequest,
+    },
+    /// More of the answer.
+    Delta {
+        text: String,
+    },
+    /// The answer is complete; `model` is the model that wrote it.
+    Answered {
+        model: String,
+    },
+    /// The model gave no answer.
+    Failed {
+        error: AiError,
+    },
+    /// The asker wants no more of the answer: stop the model.
+    Stop,
 }
 
 /// CBOR byte strings rather than arrays of numbers for chunks.
@@ -126,7 +152,7 @@ impl Code {
     /// `forgerelay://pair?v=1&id=…&name=…&key=…&at=…`
     pub fn encode(&self) -> String {
         format!(
-            "{SCHEME}?v={PROTOCOL}&id={}&name={}&key={}&at={}",
+            "{SCHEME}?v={CODE_VERSION}&id={}&name={}&key={}&at={}",
             self.device_id,
             percent_encode(&self.name),
             hex(&self.secret),
@@ -154,7 +180,7 @@ impl Code {
                 _ => {} // Added by a later version; ignored.
             }
         }
-        if version != Some(PROTOCOL) {
+        if version != Some(CODE_VERSION) {
             return Err(RelayError::BadCode);
         }
         let device_id = id

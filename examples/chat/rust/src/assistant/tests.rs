@@ -13,7 +13,7 @@ struct FakeEngine {
     context_tokens: u32,
     pieces: Vec<String>,
     delay: Duration,
-    result: Result<(), AiError>,
+    result: Result<(), AiModelError>,
     /// Keeps pushing after `push` returned false (a broken engine).
     ignore_stop: bool,
     requests: Mutex<Vec<GenerateRequest>>,
@@ -46,9 +46,9 @@ impl FakeEngine {
 }
 
 #[async_trait::async_trait]
-impl LocalModelEngine for FakeEngine {
-    fn describe(&self) -> EngineInfo {
-        EngineInfo {
+impl AiModel for FakeEngine {
+    fn describe(&self) -> AiModelInfo {
+        AiModelInfo {
             id: "fake".into(),
             name: "Fake".into(),
             available: self.available,
@@ -57,12 +57,8 @@ impl LocalModelEngine for FakeEngine {
         }
     }
 
-    async fn generate(
-        &self,
-        request: GenerateRequest,
-        sink: Arc<TokenSink>,
-    ) -> Result<(), AiError> {
-        self.requests.lock().unwrap().push(request);
+    async fn generate(&self, request: AiRequest, sink: Arc<TextSink>) -> Result<(), AiModelError> {
+        self.requests.lock().unwrap().push(request.into());
         let mut stopped = false;
         for piece in &self.pieces {
             std::thread::sleep(self.delay);
@@ -72,7 +68,7 @@ impl LocalModelEngine for FakeEngine {
             if !sink.push(piece.clone()) {
                 stopped = true;
                 if !self.ignore_stop {
-                    return Err(AiError::Engine {
+                    return Err(AiModelError::Engine {
                         reason: "cancelled".into(),
                     });
                 }
@@ -372,7 +368,7 @@ fn no_engine_and_bad_input_are_refused() {
 #[test]
 fn refusals_and_failures_are_kept_apart_and_left_out_of_the_history() {
     let mut engine = FakeEngine::new(&[]);
-    engine.result = Err(AiError::Refused {
+    engine.result = Err(AiModelError::Refused {
         reason: "guardrail".into(),
     });
     let (core, _) = core_with(engine);
@@ -383,7 +379,7 @@ fn refusals_and_failures_are_kept_apart_and_left_out_of_the_history() {
     assert!(prompt_turn(refused, &[]).is_none());
 
     let mut engine = FakeEngine::new(&["half"]);
-    engine.result = Err(AiError::Engine {
+    engine.result = Err(AiModelError::Engine {
         reason: "boom".into(),
     });
     core.set_engine(Arc::new(engine));
@@ -468,11 +464,11 @@ fn shutdown_stops_the_answer_and_refuses_new_ones() {
 fn the_engine_runs_off_the_calling_thread() {
     struct ThreadEngine(Mutex<Option<mpsc::Sender<std::thread::ThreadId>>>);
     #[async_trait::async_trait]
-    impl LocalModelEngine for ThreadEngine {
-        fn describe(&self) -> EngineInfo {
+    impl AiModel for ThreadEngine {
+        fn describe(&self) -> AiModelInfo {
             FakeEngine::new(&[]).describe()
         }
-        async fn generate(&self, _: GenerateRequest, _: Arc<TokenSink>) -> Result<(), AiError> {
+        async fn generate(&self, _: AiRequest, _: Arc<TextSink>) -> Result<(), AiModelError> {
             if let Some(tx) = self.0.lock().unwrap().take() {
                 tx.send(std::thread::current().id()).unwrap();
             }

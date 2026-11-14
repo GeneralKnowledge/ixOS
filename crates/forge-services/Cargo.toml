@@ -21,11 +21,16 @@ transfers = ["dep:forge-storage", "forge-storage/hash", "dep:serde", "dep:forge-
 # Ordinary HTTP requests through the host's stack (`native_services!(http)`):
 # a `forge_net::HttpClient` over URLSession on iOS. Logic in `http`.
 http = ["dep:forge-net"]
+# Forge AI (`native_services!(ai)`): one request shape for every language
+# model, Apple's on-device model through the host, OpenAI-compatible
+# servers, the answer checks. Logic in `ai`.
+ai = ["dep:serde", "dep:serde_json", "dep:forge-net", "dep:forge-runtime"]
 
 [dependencies]
 forge-storage = { workspace = true, optional = true }
 forge-net = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 forge-runtime = { workspace = true, optional = true }
 
 [dev-dependencies]
@@ -41,3 +46,7 @@ required-features = ["transfers"]
 [[test]]
 name = "http"
 required-features = ["http"]
+
+[[test]]
+name = "ai"
+required-features = ["ai"]

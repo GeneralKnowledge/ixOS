@@ -119,7 +119,7 @@ with `swift run --package-path examples/chat Chat` (after
 | Screens | `Sources/AppHost/ContentView.swift`, `SignUpView.swift`, `ConversationListView.swift`, `ChatView.swift`, `SettingsView.swift` |
 | Picking, shrinking, thumbnails and previews of attachments | `Sources/AppHost/Attachments.swift` |
 | The on-device assistant: conversations, characters, prompt, `assistant.db`, the engine interface | `rust/src/assistant/` |
-| The assistant's Swift side: Foundation Models adapter, model, screens | `Sources/AppHost/FoundationModelsEngine.swift`, `AssistantModel.swift`, `AssistantViews.swift` |
+| The assistant's Swift side: model and screens | `AssistantModel.swift` (the model is Forge AI's `ForgeAppleModel`, from `native_services!(ai)`), `AssistantViews.swift` |
 | Swift tests, against the real chat server | `Tests/AppHostTests/` (`scripts/test-swift-host.sh examples/chat`, macOS) |
 | App settings (bundle id, permissions) | `forge.toml` (Forge writes Info.plist, App.entitlements and xtool.yml from it) |
 

@@ -243,16 +243,75 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureRes
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_MODEL_METHOD0
-#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_MODEL_METHOD0
-typedef void (*UniffiCallbackInterfaceSummaryModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD0
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD1
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_MODEL_METHOD1
-#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_MODEL_METHOD1
-typedef void (*UniffiCallbackInterfaceSummaryModelMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD2
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod2)(uint64_t, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_LOCAL_NOTIFIER_METHOD3
+typedef void (*UniffiCallbackInterfaceLocalNotifierMethod3)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD0
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod0)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_PERMISSION_PROVIDER_METHOD1
+typedef void (*UniffiCallbackInterfacePermissionProviderMethod1)(uint64_t, RustBuffer, UniffiForeignFutureCompleteRustBuffer _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD0
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD1
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod1)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SECURE_STORE_METHOD2
+typedef void (*UniffiCallbackInterfaceSecureStoreMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD0
+typedef void (*UniffiCallbackInterfaceAiModelMethod0)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_AI_MODEL_METHOD1
+typedef void (*UniffiCallbackInterfaceAiModelMethod1)(uint64_t, RustBuffer, uint64_t, UniffiForeignFutureCompleteVoid _Nonnull, uint64_t, UniffiForeignFutureDroppedCallbackStruct* _Nonnull
     );
 
 #endif
@@ -263,14 +322,47 @@ typedef void (*UniffiCallbackInterfaceSummaryProgressMethod0)(uint64_t, RustBuff
     );
 
 #endif
-#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SUMMARY_MODEL
-#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SUMMARY_MODEL
-typedef struct UniffiVTableCallbackInterfaceSummaryModel {
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_LOCAL_NOTIFIER
+typedef struct UniffiVTableCallbackInterfaceLocalNotifier {
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
     UniffiCallbackInterfaceClone _Nonnull uniffiClone;
-    UniffiCallbackInterfaceSummaryModelMethod0 _Nonnull describe;
-    UniffiCallbackInterfaceSummaryModelMethod1 _Nonnull generate;
-} UniffiVTableCallbackInterfaceSummaryModel;
+    UniffiCallbackInterfaceLocalNotifierMethod0 _Nonnull schedule;
+    UniffiCallbackInterfaceLocalNotifierMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceLocalNotifierMethod2 _Nonnull pending;
+    UniffiCallbackInterfaceLocalNotifierMethod3 _Nonnull setCategories;
+} UniffiVTableCallbackInterfaceLocalNotifier;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_PERMISSION_PROVIDER
+typedef struct UniffiVTableCallbackInterfacePermissionProvider {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfacePermissionProviderMethod0 _Nonnull status;
+    UniffiCallbackInterfacePermissionProviderMethod1 _Nonnull request;
+} UniffiVTableCallbackInterfacePermissionProvider;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SECURE_STORE
+typedef struct UniffiVTableCallbackInterfaceSecureStore {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceSecureStoreMethod0 _Nonnull get;
+    UniffiCallbackInterfaceSecureStoreMethod1 _Nonnull set;
+    UniffiCallbackInterfaceSecureStoreMethod2 _Nonnull delete;
+} UniffiVTableCallbackInterfaceSecureStore;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_AI_MODEL
+typedef struct UniffiVTableCallbackInterfaceAiModel {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceAiModelMethod0 _Nonnull describe;
+    UniffiCallbackInterfaceAiModelMethod1 _Nonnull generate;
+} UniffiVTableCallbackInterfaceAiModel;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SUMMARY_PROGRESS
@@ -482,29 +574,139 @@ uint64_t uniffi_pocket_library_core_fn_method_library_update_progress(uint64_t p
 uint64_t uniffi_pocket_library_core_fn_method_library_update_settings(uint64_t ptr, RustBuffer settings
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYMODEL
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYMODEL
-uint64_t uniffi_pocket_library_core_fn_clone_summarymodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_LOCALNOTIFIER
+uint64_t uniffi_pocket_library_core_fn_clone_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SUMMARYMODEL
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SUMMARYMODEL
-void uniffi_pocket_library_core_fn_free_summarymodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_LOCALNOTIFIER
+void uniffi_pocket_library_core_fn_free_localnotifier(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_SUMMARYMODEL
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_SUMMARYMODEL
-void uniffi_pocket_library_core_fn_init_callback_vtable_summarymodel(const UniffiVTableCallbackInterfaceSummaryModel* _Nonnull vtable
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_LOCALNOTIFIER
+void uniffi_pocket_library_core_fn_init_callback_vtable_localnotifier(const UniffiVTableCallbackInterfaceLocalNotifier* _Nonnull vtable
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYMODEL_DESCRIBE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYMODEL_DESCRIBE
-RustBuffer uniffi_pocket_library_core_fn_method_summarymodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_SCHEDULE
+uint64_t uniffi_pocket_library_core_fn_method_localnotifier_schedule(uint64_t ptr, RustBuffer notification
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYMODEL_GENERATE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYMODEL_GENERATE
-uint64_t uniffi_pocket_library_core_fn_method_summarymodel_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_CANCEL
+void uniffi_pocket_library_core_fn_method_localnotifier_cancel(uint64_t ptr, RustBuffer id, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_PENDING
+uint64_t uniffi_pocket_library_core_fn_method_localnotifier_pending(uint64_t ptr
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+void uniffi_pocket_library_core_fn_method_localnotifier_set_categories(uint64_t ptr, RustBuffer categories, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_PERMISSIONPROVIDER
+uint64_t uniffi_pocket_library_core_fn_clone_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_PERMISSIONPROVIDER
+void uniffi_pocket_library_core_fn_free_permissionprovider(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_PERMISSIONPROVIDER
+void uniffi_pocket_library_core_fn_init_callback_vtable_permissionprovider(const UniffiVTableCallbackInterfacePermissionProvider* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_PERMISSIONPROVIDER_STATUS
+uint64_t uniffi_pocket_library_core_fn_method_permissionprovider_status(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_PERMISSIONPROVIDER_REQUEST
+uint64_t uniffi_pocket_library_core_fn_method_permissionprovider_request(uint64_t ptr, RustBuffer permission
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SECURESTORE
+uint64_t uniffi_pocket_library_core_fn_clone_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SECURESTORE
+void uniffi_pocket_library_core_fn_free_securestore(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_SECURESTORE
+void uniffi_pocket_library_core_fn_init_callback_vtable_securestore(const UniffiVTableCallbackInterfaceSecureStore* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_GET
+RustBuffer uniffi_pocket_library_core_fn_method_securestore_get(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_SET
+void uniffi_pocket_library_core_fn_method_securestore_set(uint64_t ptr, RustBuffer key, RustBuffer value, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SECURESTORE_DELETE
+void uniffi_pocket_library_core_fn_method_securestore_delete(uint64_t ptr, RustBuffer key, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_AIMODEL
+uint64_t uniffi_pocket_library_core_fn_clone_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_AIMODEL
+void uniffi_pocket_library_core_fn_free_aimodel(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_AIMODEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_AIMODEL
+void uniffi_pocket_library_core_fn_init_callback_vtable_aimodel(const UniffiVTableCallbackInterfaceAiModel* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_AIMODEL_DESCRIBE
+RustBuffer uniffi_pocket_library_core_fn_method_aimodel_describe(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_AIMODEL_GENERATE
+uint64_t uniffi_pocket_library_core_fn_method_aimodel_generate(uint64_t ptr, RustBuffer request, uint64_t sink
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_TEXTSINK
+uint64_t uniffi_pocket_library_core_fn_clone_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_TEXTSINK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_TEXTSINK
+void uniffi_pocket_library_core_fn_free_textsink(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_TEXTSINK_IS_STOPPED
+int8_t uniffi_pocket_library_core_fn_method_textsink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_TEXTSINK_PUSH
+int8_t uniffi_pocket_library_core_fn_method_textsink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYPROGRESS
@@ -527,26 +729,6 @@ void uniffi_pocket_library_core_fn_init_callback_vtable_summaryprogress(const Un
 void uniffi_pocket_library_core_fn_method_summaryprogress_changed(uint64_t ptr, RustBuffer stage, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYSINK
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYSINK
-uint64_t uniffi_pocket_library_core_fn_clone_summarysink(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SUMMARYSINK
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_SUMMARYSINK
-void uniffi_pocket_library_core_fn_free_summarysink(uint64_t handle, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYSINK_IS_STOPPED
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYSINK_IS_STOPPED
-int8_t uniffi_pocket_library_core_fn_method_summarysink_is_stopped(uint64_t ptr, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYSINK_UPDATE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_SUMMARYSINK_UPDATE
-int8_t uniffi_pocket_library_core_fn_method_summarysink_update(uint64_t ptr, RustBuffer text_so_far, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DEFAULT_QUERY
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DEFAULT_QUERY
 RustBuffer uniffi_pocket_library_core_fn_func_default_query(RustBuffer settings, RustCallStatus *_Nonnull out_status
@@ -561,6 +743,38 @@ uint32_t uniffi_pocket_library_core_fn_func_epub_words_per_page(RustCallStatus *
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_LIBRARY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_LIBRARY_ERROR_KIND
 RustBuffer uniffi_pocket_library_core_fn_func_library_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
+void uniffi_pocket_library_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_SERVICES
+void uniffi_pocket_library_core_fn_func_install_native_services(RustBuffer directories, uint64_t secure_store, uint64_t notifier, uint64_t permissions, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_NATIVE_SERVICES_INSTALLED
+int8_t uniffi_pocket_library_core_fn_func_native_services_installed(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_NATIVE_SERVICES_VERSION
+uint32_t uniffi_pocket_library_core_fn_func_native_services_version(RustCallStatus *_Nonnull out_status
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_PARSE_DEEP_LINK
+RustBuffer uniffi_pocket_library_core_fn_func_parse_deep_link(RustBuffer url, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_AI
+void uniffi_pocket_library_core_fn_func_install_native_ai(uint64_t model, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_POCKET_LIBRARY_CORE_RUSTBUFFER_ALLOC
@@ -841,6 +1055,42 @@ uint16_t uniffi_pocket_library_core_checksum_func_library_error_kind(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
+uint16_t uniffi_pocket_library_core_checksum_func_deliver_notification_response(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_SERVICES
+uint16_t uniffi_pocket_library_core_checksum_func_install_native_services(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_INSTALLED
+uint16_t uniffi_pocket_library_core_checksum_func_native_services_installed(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_NATIVE_SERVICES_VERSION
+uint16_t uniffi_pocket_library_core_checksum_func_native_services_version(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_PARSE_DEEP_LINK
+uint16_t uniffi_pocket_library_core_checksum_func_parse_deep_link(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
+uint16_t uniffi_pocket_library_core_checksum_func_install_native_ai(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_ADD_BOOK
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_ADD_BOOK
 uint16_t uniffi_pocket_library_core_checksum_method_library_add_book(void
@@ -1057,33 +1307,87 @@ uint16_t uniffi_pocket_library_core_checksum_method_library_update_settings(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYMODEL_DESCRIBE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYMODEL_DESCRIBE
-uint16_t uniffi_pocket_library_core_checksum_method_summarymodel_describe(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SCHEDULE
+uint16_t uniffi_pocket_library_core_checksum_method_localnotifier_schedule(void
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYMODEL_GENERATE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYMODEL_GENERATE
-uint16_t uniffi_pocket_library_core_checksum_method_summarymodel_generate(void
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_CANCEL
+uint16_t uniffi_pocket_library_core_checksum_method_localnotifier_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_PENDING
+uint16_t uniffi_pocket_library_core_checksum_method_localnotifier_pending(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LOCALNOTIFIER_SET_CATEGORIES
+uint16_t uniffi_pocket_library_core_checksum_method_localnotifier_set_categories(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_STATUS
+uint16_t uniffi_pocket_library_core_checksum_method_permissionprovider_status(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_PERMISSIONPROVIDER_REQUEST
+uint16_t uniffi_pocket_library_core_checksum_method_permissionprovider_request(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_GET
+uint16_t uniffi_pocket_library_core_checksum_method_securestore_get(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_SET
+uint16_t uniffi_pocket_library_core_checksum_method_securestore_set(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SECURESTORE_DELETE
+uint16_t uniffi_pocket_library_core_checksum_method_securestore_delete(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_AIMODEL_DESCRIBE
+uint16_t uniffi_pocket_library_core_checksum_method_aimodel_describe(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_AIMODEL_GENERATE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_AIMODEL_GENERATE
+uint16_t uniffi_pocket_library_core_checksum_method_aimodel_generate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_IS_STOPPED
+uint16_t uniffi_pocket_library_core_checksum_method_textsink_is_stopped(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
+uint16_t uniffi_pocket_library_core_checksum_method_textsink_push(void
     
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYPROGRESS_CHANGED
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYPROGRESS_CHANGED
 uint16_t uniffi_pocket_library_core_checksum_method_summaryprogress_changed(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYSINK_IS_STOPPED
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYSINK_IS_STOPPED
-uint16_t uniffi_pocket_library_core_checksum_method_summarysink_is_stopped(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYSINK_UPDATE
-#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_SUMMARYSINK_UPDATE
-uint16_t uniffi_pocket_library_core_checksum_method_summarysink_update(void
     
 );
 #endif

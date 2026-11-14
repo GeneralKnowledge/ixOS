@@ -640,6 +640,289 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
 
 
 /**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+public protocol AiModel: AnyObject, Sendable {
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */
+    func describe()  -> AiModelInfo
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+    func generate(request: AiRequest, sink: TextSink) async throws 
+    
+}
+/**
+ * A model on the device, implemented by the host (iOS:
+ * `ForgeAppleModel`). Rust calls `generate` from a thread of
+ * its own, one request at a time.
+ */
+open class AiModelImpl: AiModel, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_chat_app_fn_clone_aimodel(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_chat_app_fn_free_aimodel(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * Which model this is and whether it can answer now. Cheap.
+     */
+open func describe() -> AiModelInfo  {
+    return try!  FfiConverterTypeAiModelInfo_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_method_aimodel_describe(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Writes the answer to `request` into `sink`, piece by
+     * piece, and returns when it is complete, or as soon as
+     * `sink.push` returns false.
+     */
+open func generate(request: AiRequest, sink: TextSink)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_chat_app_fn_method_aimodel_generate(
+                        self.uniffiCloneHandle(),FfiConverterTypeAiRequest_lower(request),FfiConverterTypeTextSink_lower(sink)
+                )
+            },
+            pollFunc: ffi_chat_app_rust_future_poll_void,
+            completeFunc: ffi_chat_app_rust_future_complete_void,
+            freeFunc: ffi_chat_app_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAiModelError_lift
+        )
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceAiModel {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceAiModel = UniffiVTableCallbackInterfaceAiModel(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeAiModel.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface AiModel: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeAiModel.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface AiModel: handle missing in uniffiClone")
+            }
+        },
+        describe: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> AiModelInfo in
+                guard let uniffiObj = try? FfiConverterTypeAiModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.describe(
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeAiModelInfo_lower($0) }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        },
+        generate: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            sink: UInt64,
+            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
+            uniffiCallbackData: UInt64,
+            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
+        ) in
+            let makeCall = {
+                () async throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeAiModel.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try await uniffiObj.generate(
+                     request: try FfiConverterTypeAiRequest_lift(request),
+                     sink: try FfiConverterTypeTextSink_lift(sink)
+                )
+            }
+
+            let uniffiHandleSuccess = { (returnValue: ()) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus()
+                    )
+                )
+            }
+            let uniffiHandleError = { (statusCode, errorBuf) in
+                uniffiFutureCallback(
+                    uniffiCallbackData,
+                    UniffiForeignFutureResultVoid(
+                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
+                    )
+                )
+            }
+            uniffiTraitInterfaceCallAsyncWithError(
+                makeCall: makeCall,
+                handleSuccess: uniffiHandleSuccess,
+                handleError: uniffiHandleError,
+                lowerError: FfiConverterTypeAiModelError_lower,
+                droppedCallback: uniffiOutDroppedCallback
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceAiModel> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceAiModel>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitAiModel() {
+    uniffi_chat_app_fn_init_callback_vtable_aimodel(UniffiCallbackInterfaceAiModel.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModel: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<AiModel>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = AiModel
+
+    public static func lift(_ handle: UInt64) throws -> AiModel {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return AiModelImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: AiModel) -> UInt64 {
+         if let rustImpl = value as? AiModelImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModel {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: AiModel, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lift(_ handle: UInt64) throws -> AiModel {
+    return try FfiConverterTypeAiModel.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModel_lower(_ value: AiModel) -> UInt64 {
+    return FfiConverterTypeAiModel.lower(value)
+}
+
+
+
+
+
+
+/**
  * The assistant. `ChatCore::assistant()` hands out the app's one instance.
  */
 public protocol AssistantCoreProtocol: AnyObject, Sendable {
@@ -671,7 +954,7 @@ public protocol AssistantCoreProtocol: AnyObject, Sendable {
      * The installed engine and whether it can run now, or `None` before
      * `set_engine`.
      */
-    func engineInfo()  -> EngineInfo?
+    func engineInfo()  -> AiModelInfo?
     
     /**
      * A conversation's messages, oldest first. An answer being written is
@@ -693,7 +976,7 @@ public protocol AssistantCoreProtocol: AnyObject, Sendable {
      * Installs the model engine (the app does this at launch). Replaces
      * any previous one; an answer being written finishes on the old one.
      */
-    func setEngine(engine: LocalModelEngine) 
+    func setEngine(engine: AiModel) 
     
     /**
      * Stops any answer and refuses further sends. Called by
@@ -819,8 +1102,8 @@ open func deleteConversation(conversationId: String)throws   {try rustCallWithEr
      * The installed engine and whether it can run now, or `None` before
      * `set_engine`.
      */
-open func engineInfo() -> EngineInfo?  {
-    return try!  FfiConverterOptionTypeEngineInfo.lift(try! rustCall() {
+open func engineInfo() -> AiModelInfo?  {
+    return try!  FfiConverterOptionTypeAiModelInfo.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_chat_app_fn_method_assistantcore_engine_info(
             self.uniffiCloneHandle(),uniffiCallStatus
@@ -865,11 +1148,11 @@ open func send(conversationId: String, text: String)throws  -> AssistantGenerati
      * Installs the model engine (the app does this at launch). Replaces
      * any previous one; an answer being written finishes on the old one.
      */
-open func setEngine(engine: LocalModelEngine)  {try! rustCall() {
+open func setEngine(engine: AiModel)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_chat_app_fn_method_assistantcore_set_engine(
             self.uniffiCloneHandle(),
-        FfiConverterTypeLocalModelEngine_lower(engine),uniffiCallStatus
+        FfiConverterTypeAiModel_lower(engine),uniffiCallStatus
     )
 }
 }
@@ -3265,291 +3548,6 @@ public func FfiConverterTypeHttpTransport_lower(_ value: HttpTransport) -> UInt6
 
 
 /**
- * A model engine, implemented in Swift. Rust calls `generate` on a thread
- * of its own, never on the main thread.
- */
-public protocol LocalModelEngine: AnyObject, Sendable {
-    
-    /**
-     * Which engine this is and whether it can run now. Cheap; called
-     * before each answer and whenever the Assistant screen appears.
-     */
-    func describe()  -> EngineInfo
-    
-    /**
-     * Writes the answer to `request` into `sink`, piece by piece, and
-     * returns when the answer is complete, or as soon as `sink.push`
-     * returns false (the user pressed Stop): the engine must then stop
-     * computing, not only stop pushing.
-     */
-    func generate(request: GenerateRequest, sink: TokenSink) async throws 
-    
-}
-/**
- * A model engine, implemented in Swift. Rust calls `generate` on a thread
- * of its own, never on the main thread.
- */
-open class LocalModelEngineImpl: LocalModelEngine, @unchecked Sendable {
-    fileprivate let handle: UInt64
-
-    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public struct NoHandle {
-        public init() {}
-    }
-
-    // TODO: We'd like this to be `private` but for Swifty reasons,
-    // we can't implement `FfiConverter` without making this `required` and we can't
-    // make it `required` without making it `public`.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    required public init(unsafeFromHandle handle: UInt64) {
-        self.handle = handle
-    }
-
-    // This constructor can be used to instantiate a fake object.
-    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
-    //
-    // - Warning:
-    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public init(noHandle: NoHandle) {
-        self.handle = 0
-    }
-
-#if swift(>=5.8)
-    @_documentation(visibility: private)
-#endif
-    public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_chat_app_fn_clone_localmodelengine(self.handle, $0) }
-    }
-    // No primary constructor declared for this class.
-
-    deinit {
-        if handle == 0 {
-            // Mock objects have handle=0 don't try to free them
-            return
-        }
-
-        try! rustCall { uniffi_chat_app_fn_free_localmodelengine(handle, $0) }
-    }
-
-    
-
-    
-    /**
-     * Which engine this is and whether it can run now. Cheap; called
-     * before each answer and whenever the Assistant screen appears.
-     */
-open func describe() -> EngineInfo  {
-    return try!  FfiConverterTypeEngineInfo_lift(try! rustCall() {
-        uniffiCallStatus in
-    uniffi_chat_app_fn_method_localmodelengine_describe(
-            self.uniffiCloneHandle(),uniffiCallStatus
-    )
-})
-}
-    
-    /**
-     * Writes the answer to `request` into `sink`, piece by piece, and
-     * returns when the answer is complete, or as soon as `sink.push`
-     * returns false (the user pressed Stop): the engine must then stop
-     * computing, not only stop pushing.
-     */
-open func generate(request: GenerateRequest, sink: TokenSink)async throws   {
-    return
-        try  await uniffiRustCallAsync(
-            rustFutureFunc: {
-                uniffi_chat_app_fn_method_localmodelengine_generate(
-                        self.uniffiCloneHandle(),FfiConverterTypeGenerateRequest_lower(request),FfiConverterTypeTokenSink_lower(sink)
-                )
-            },
-            pollFunc: ffi_chat_app_rust_future_poll_void,
-            completeFunc: ffi_chat_app_rust_future_complete_void,
-            freeFunc: ffi_chat_app_rust_future_free_void,
-            liftFunc: { $0 },
-            errorHandler: FfiConverterTypeAiError_lift
-        )
-}
-    
-
-    
-}
-
-
-
-// Put the implementation in a struct so we don't pollute the top-level namespace
-fileprivate struct UniffiCallbackInterfaceLocalModelEngine {
-
-    // Create the VTable using a series of closures.
-    // Swift automatically converts these into C callback functions.
-    //
-    // Store the vtable directly.
-    static let vtable: UniffiVTableCallbackInterfaceLocalModelEngine = UniffiVTableCallbackInterfaceLocalModelEngine(
-        uniffiFree: { (uniffiHandle: UInt64) -> () in
-            do {
-                try FfiConverterTypeLocalModelEngine.handleMap.remove(handle: uniffiHandle)
-            } catch {
-                print("Uniffi callback interface LocalModelEngine: handle missing in uniffiFree")
-            }
-        },
-        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
-            do {
-                return try FfiConverterTypeLocalModelEngine.handleMap.clone(handle: uniffiHandle)
-            } catch {
-                fatalError("Uniffi callback interface LocalModelEngine: handle missing in uniffiClone")
-            }
-        },
-        describe: { (
-            uniffiHandle: UInt64,
-            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
-            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
-        ) in
-            let makeCall = {
-                () throws -> EngineInfo in
-                guard let uniffiObj = try? FfiConverterTypeLocalModelEngine.handleMap.get(handle: uniffiHandle) else {
-                    throw UniffiInternalError.unexpectedStaleHandle
-                }
-                return uniffiObj.describe(
-                )
-            }
-
-            
-            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeEngineInfo_lower($0) }
-            uniffiTraitInterfaceCall(
-                callStatus: uniffiCallStatus,
-                makeCall: makeCall,
-                writeReturn: writeReturn
-            )
-        },
-        generate: { (
-            uniffiHandle: UInt64,
-            request: RustBuffer,
-            sink: UInt64,
-            uniffiFutureCallback: @escaping UniffiForeignFutureCompleteVoid,
-            uniffiCallbackData: UInt64,
-            uniffiOutDroppedCallback: UnsafeMutablePointer<UniffiForeignFutureDroppedCallbackStruct>
-        ) in
-            let makeCall = {
-                () async throws -> () in
-                guard let uniffiObj = try? FfiConverterTypeLocalModelEngine.handleMap.get(handle: uniffiHandle) else {
-                    throw UniffiInternalError.unexpectedStaleHandle
-                }
-                return try await uniffiObj.generate(
-                     request: try FfiConverterTypeGenerateRequest_lift(request),
-                     sink: try FfiConverterTypeTokenSink_lift(sink)
-                )
-            }
-
-            let uniffiHandleSuccess = { (returnValue: ()) in
-                uniffiFutureCallback(
-                    uniffiCallbackData,
-                    UniffiForeignFutureResultVoid(
-                        callStatus: RustCallStatus()
-                    )
-                )
-            }
-            let uniffiHandleError = { (statusCode, errorBuf) in
-                uniffiFutureCallback(
-                    uniffiCallbackData,
-                    UniffiForeignFutureResultVoid(
-                        callStatus: RustCallStatus(code: statusCode, errorBuf: errorBuf)
-                    )
-                )
-            }
-            uniffiTraitInterfaceCallAsyncWithError(
-                makeCall: makeCall,
-                handleSuccess: uniffiHandleSuccess,
-                handleError: uniffiHandleError,
-                lowerError: FfiConverterTypeAiError_lower,
-                droppedCallback: uniffiOutDroppedCallback
-            )
-        }
-    )
-
-    // Rust stores this pointer for future callback invocations, so it must live
-    // for the process lifetime (not just for the init function call).
-    //
-    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
-    // This is safe because the pointee is initialized once during static init
-    // and never mutated by either side of the FFI.  Its fields are C function pointers.
-    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceLocalModelEngine> = {
-        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceLocalModelEngine>.allocate(capacity: 1)
-        ptr.initialize(to: vtable)
-        return UnsafePointer(ptr)
-    }()
-}
-
-private func uniffiCallbackInitLocalModelEngine() {
-    uniffi_chat_app_fn_init_callback_vtable_localmodelengine(UniffiCallbackInterfaceLocalModelEngine.vtablePtr)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeLocalModelEngine: FfiConverter {
-    fileprivate static let handleMap = UniffiHandleMap<LocalModelEngine>()
-
-    typealias FfiType = UInt64
-    typealias SwiftType = LocalModelEngine
-
-    public static func lift(_ handle: UInt64) throws -> LocalModelEngine {
-        if ((handle & 1) == 0) {
-            // Rust-generated handle, construct a new class that uses the handle to implement the
-            // interface
-            return LocalModelEngineImpl(unsafeFromHandle: handle)
-        } else {
-            // Swift-generated handle, get the object from the handle map
-            return try handleMap.remove(handle: handle)
-        }
-    }
-
-    public static func lower(_ value: LocalModelEngine) -> UInt64 {
-         if let rustImpl = value as? LocalModelEngineImpl {
-             // Rust-implemented object.  Clone the handle and return it
-            return rustImpl.uniffiCloneHandle()
-         } else {
-            // Swift object, generate a new vtable handle and return that.
-            return handleMap.insert(obj: value)
-         }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LocalModelEngine {
-        let handle: UInt64 = try readInt(&buf)
-        return try lift(handle)
-    }
-
-    public static func write(_ value: LocalModelEngine, into buf: inout [UInt8]) {
-        writeInt(&buf, lower(value))
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLocalModelEngine_lift(_ handle: UInt64) throws -> LocalModelEngine {
-    return try FfiConverterTypeLocalModelEngine.lift(handle)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeLocalModelEngine_lower(_ value: LocalModelEngine) -> UInt64 {
-    return FfiConverterTypeLocalModelEngine.lower(value)
-}
-
-
-
-
-
-
-/**
  * Local notifications (no push server involved).
  */
 public protocol LocalNotifier: AnyObject, Sendable {
@@ -4547,30 +4545,30 @@ public func FfiConverterTypeSecureStore_lower(_ value: SecureStore) -> UInt64 {
 
 
 /**
- * Where an engine pushes the answer. Rust keeps the text and the timings
- * and hands it on to the screen at most about 20 times a second.
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
  */
-public protocol TokenSinkProtocol: AnyObject, Sendable {
+public protocol TextSinkProtocol: AnyObject, Sendable {
     
     /**
-     * Whether the generation was stopped. For engines that can check
-     * between steps without pushing (during a long prompt read).
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
      */
     func isStopped()  -> Bool
     
     /**
-     * Adds `text` to the answer. Returns false once the generation was
-     * stopped: the engine must end its loop and stop the model. Cheap
-     * (about a microsecond), so push every piece as it comes.
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
      */
     func push(text: String)  -> Bool
     
 }
 /**
- * Where an engine pushes the answer. Rust keeps the text and the timings
- * and hands it on to the screen at most about 20 times a second.
+ * Where the model writes its answer. Rust decides what each
+ * piece does (show it, keep it, stop the model).
  */
-open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
+open class TextSink: TextSinkProtocol, @unchecked Sendable {
     fileprivate let handle: UInt64
 
     /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
@@ -4607,7 +4605,7 @@ open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
     @_documentation(visibility: private)
 #endif
     public func uniffiCloneHandle() -> UInt64 {
-        return try! rustCall { uniffi_chat_app_fn_clone_tokensink(self.handle, $0) }
+        return try! rustCall { uniffi_chat_app_fn_clone_textsink(self.handle, $0) }
     }
     // No primary constructor declared for this class.
 
@@ -4617,34 +4615,34 @@ open class TokenSink: TokenSinkProtocol, @unchecked Sendable {
             return
         }
 
-        try! rustCall { uniffi_chat_app_fn_free_tokensink(handle, $0) }
+        try! rustCall { uniffi_chat_app_fn_free_textsink(handle, $0) }
     }
 
     
 
     
     /**
-     * Whether the generation was stopped. For engines that can check
-     * between steps without pushing (during a long prompt read).
+     * Whether the answer was stopped, for a model that can
+     * check between steps without pushing.
      */
 open func isStopped() -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_chat_app_fn_method_tokensink_is_stopped(
+    uniffi_chat_app_fn_method_textsink_is_stopped(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
 }
     
     /**
-     * Adds `text` to the answer. Returns false once the generation was
-     * stopped: the engine must end its loop and stop the model. Cheap
-     * (about a microsecond), so push every piece as it comes.
+     * Adds the next piece of the answer (only the new text).
+     * Returns false once the answer was stopped: the model must
+     * stop computing. Cheap; push every piece as it comes.
      */
 open func push(text: String) -> Bool  {
     return try!  FfiConverterBool.lift(try! rustCall() {
         uniffiCallStatus in
-    uniffi_chat_app_fn_method_tokensink_push(
+    uniffi_chat_app_fn_method_textsink_push(
             self.uniffiCloneHandle(),
         FfiConverterString.lower(text),uniffiCallStatus
     )
@@ -4659,24 +4657,24 @@ open func push(text: String) -> Bool  {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeTokenSink: FfiConverter {
+public struct FfiConverterTypeTextSink: FfiConverter {
     typealias FfiType = UInt64
-    typealias SwiftType = TokenSink
+    typealias SwiftType = TextSink
 
-    public static func lift(_ handle: UInt64) throws -> TokenSink {
-        return TokenSink(unsafeFromHandle: handle)
+    public static func lift(_ handle: UInt64) throws -> TextSink {
+        return TextSink(unsafeFromHandle: handle)
     }
 
-    public static func lower(_ value: TokenSink) -> UInt64 {
+    public static func lower(_ value: TextSink) -> UInt64 {
         return value.uniffiCloneHandle()
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TokenSink {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextSink {
         let handle: UInt64 = try readInt(&buf)
         return try lift(handle)
     }
 
-    public static func write(_ value: TokenSink, into buf: inout [UInt8]) {
+    public static func write(_ value: TextSink, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
     }
 }
@@ -4685,18 +4683,245 @@ public struct FfiConverterTypeTokenSink: FfiConverter {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTokenSink_lift(_ handle: UInt64) throws -> TokenSink {
-    return try FfiConverterTypeTokenSink.lift(handle)
+public func FfiConverterTypeTextSink_lift(_ handle: UInt64) throws -> TextSink {
+    return try FfiConverterTypeTextSink.lift(handle)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeTokenSink_lower(_ value: TokenSink) -> UInt64 {
-    return FfiConverterTypeTokenSink.lower(value)
+public func FfiConverterTypeTextSink_lower(_ value: TextSink) -> UInt64 {
+    return FfiConverterTypeTextSink.lower(value)
 }
 
 
+
+
+public struct AiMessage: Equatable, Hashable {
+    public var role: AiRole
+    public var content: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(role: AiRole, content: String) {
+        self.role = role
+        self.content = content
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiMessage: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiMessage: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiMessage {
+        return
+            try AiMessage(
+                role: FfiConverterTypeAiRole.read(from: &buf), 
+                content: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiMessage, into buf: inout [UInt8]) {
+        FfiConverterTypeAiRole.write(value.role, into: &buf)
+        FfiConverterString.write(value.content, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiMessage_lift(_ buf: RustBuffer) throws -> AiMessage {
+    return try FfiConverterTypeAiMessage.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiMessage_lower(_ value: AiMessage) -> RustBuffer {
+    return FfiConverterTypeAiMessage.lower(value)
+}
+
+
+/**
+ * What a model is and whether it can answer now.
+ */
+public struct AiModelInfo: Equatable, Hashable {
+    /**
+     * Stable id, recorded with each answer
+     * ("apple-foundation-models").
+     */
+    public var id: String
+    /**
+     * The name the app shows ("Apple Intelligence").
+     */
+    public var name: String
+    public var available: Bool
+    /**
+     * Why not, in words the user can act on.
+     */
+    public var unavailableReason: String?
+    /**
+     * Tokens one request can read and write together.
+     */
+    public var contextTokens: UInt32
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Stable id, recorded with each answer
+         * ("apple-foundation-models").
+         */id: String, 
+        /**
+         * The name the app shows ("Apple Intelligence").
+         */name: String, available: Bool, 
+        /**
+         * Why not, in words the user can act on.
+         */unavailableReason: String?, 
+        /**
+         * Tokens one request can read and write together.
+         */contextTokens: UInt32) {
+        self.id = id
+        self.name = name
+        self.available = available
+        self.unavailableReason = unavailableReason
+        self.contextTokens = contextTokens
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiModelInfo: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiModelInfo: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModelInfo {
+        return
+            try AiModelInfo(
+                id: FfiConverterString.read(from: &buf), 
+                name: FfiConverterString.read(from: &buf), 
+                available: FfiConverterBool.read(from: &buf), 
+                unavailableReason: FfiConverterOptionString.read(from: &buf), 
+                contextTokens: FfiConverterUInt32.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiModelInfo, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterBool.write(value.available, into: &buf)
+        FfiConverterOptionString.write(value.unavailableReason, into: &buf)
+        FfiConverterUInt32.write(value.contextTokens, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelInfo_lift(_ buf: RustBuffer) throws -> AiModelInfo {
+    return try FfiConverterTypeAiModelInfo.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiModelInfo_lower(_ value: AiModelInfo) -> RustBuffer {
+    return FfiConverterTypeAiModelInfo.lower(value)
+}
+
+
+/**
+ * One request: OpenAI's chat completions, text only. System
+ * messages come first; the last message is the one to answer.
+ */
+public struct AiRequest: Equatable, Hashable {
+    public var model: String?
+    public var messages: [AiMessage]
+    /**
+     * The longest answer, in tokens.
+     */
+    public var maxTokens: UInt32
+    /**
+     * Sampling temperature, 0 to 1.5.
+     */
+    public var temperature: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(model: String?, messages: [AiMessage], 
+        /**
+         * The longest answer, in tokens.
+         */maxTokens: UInt32, 
+        /**
+         * Sampling temperature, 0 to 1.5.
+         */temperature: Double) {
+        self.model = model
+        self.messages = messages
+        self.maxTokens = maxTokens
+        self.temperature = temperature
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AiRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiRequest {
+        return
+            try AiRequest(
+                model: FfiConverterOptionString.read(from: &buf), 
+                messages: FfiConverterSequenceTypeAiMessage.read(from: &buf), 
+                maxTokens: FfiConverterUInt32.read(from: &buf), 
+                temperature: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AiRequest, into buf: inout [UInt8]) {
+        FfiConverterOptionString.write(value.model, into: &buf)
+        FfiConverterSequenceTypeAiMessage.write(value.messages, into: &buf)
+        FfiConverterUInt32.write(value.maxTokens, into: &buf)
+        FfiConverterDouble.write(value.temperature, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRequest_lift(_ buf: RustBuffer) throws -> AiRequest {
+    return try FfiConverterTypeAiRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRequest_lower(_ value: AiRequest) -> RustBuffer {
+    return FfiConverterTypeAiRequest.lower(value)
+}
 
 
 /**
@@ -5945,201 +6170,6 @@ public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
 }
 
 
-/**
- * What an engine is and whether it can run now.
- */
-public struct EngineInfo: Equatable, Hashable {
-    /**
-     * Stable id, recorded with each answer ("apple-foundation-models").
-     */
-    public var id: String
-    /**
-     * The name the app shows ("Apple Intelligence").
-     */
-    public var name: String
-    /**
-     * Whether `generate` can work right now.
-     */
-    public var available: Bool
-    /**
-     * Why not, in words the user can act on ("Turn on Apple Intelligence
-     * in Settings"), when `available` is false.
-     */
-    public var unavailableReason: String?
-    /**
-     * How many tokens the model can read and write in one request. Rust
-     * trims the oldest history to fit.
-     */
-    public var contextTokens: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * Stable id, recorded with each answer ("apple-foundation-models").
-         */id: String, 
-        /**
-         * The name the app shows ("Apple Intelligence").
-         */name: String, 
-        /**
-         * Whether `generate` can work right now.
-         */available: Bool, 
-        /**
-         * Why not, in words the user can act on ("Turn on Apple Intelligence
-         * in Settings"), when `available` is false.
-         */unavailableReason: String?, 
-        /**
-         * How many tokens the model can read and write in one request. Rust
-         * trims the oldest history to fit.
-         */contextTokens: UInt32) {
-        self.id = id
-        self.name = name
-        self.available = available
-        self.unavailableReason = unavailableReason
-        self.contextTokens = contextTokens
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension EngineInfo: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeEngineInfo: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> EngineInfo {
-        return
-            try EngineInfo(
-                id: FfiConverterString.read(from: &buf), 
-                name: FfiConverterString.read(from: &buf), 
-                available: FfiConverterBool.read(from: &buf), 
-                unavailableReason: FfiConverterOptionString.read(from: &buf), 
-                contextTokens: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: EngineInfo, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.id, into: &buf)
-        FfiConverterString.write(value.name, into: &buf)
-        FfiConverterBool.write(value.available, into: &buf)
-        FfiConverterOptionString.write(value.unavailableReason, into: &buf)
-        FfiConverterUInt32.write(value.contextTokens, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeEngineInfo_lift(_ buf: RustBuffer) throws -> EngineInfo {
-    return try FfiConverterTypeEngineInfo.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeEngineInfo_lower(_ value: EngineInfo) -> RustBuffer {
-    return FfiConverterTypeEngineInfo.lower(value)
-}
-
-
-/**
- * Everything an engine needs for one answer. Rust has already chosen and
- * trimmed the history; the engine renders it in the model's own format.
- */
-public struct GenerateRequest: Equatable, Hashable {
-    /**
-     * The system instructions: the character and the house rules. Never
-     * trimmed.
-     */
-    public var instructions: String
-    /**
-     * Oldest first; the last turn is the user's new message.
-     */
-    public var turns: [PromptTurn]
-    /**
-     * Sampling temperature, 0 to 1.5.
-     */
-    public var temperature: Double
-    /**
-     * The longest answer, in tokens.
-     */
-    public var maxTokens: UInt32
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(
-        /**
-         * The system instructions: the character and the house rules. Never
-         * trimmed.
-         */instructions: String, 
-        /**
-         * Oldest first; the last turn is the user's new message.
-         */turns: [PromptTurn], 
-        /**
-         * Sampling temperature, 0 to 1.5.
-         */temperature: Double, 
-        /**
-         * The longest answer, in tokens.
-         */maxTokens: UInt32) {
-        self.instructions = instructions
-        self.turns = turns
-        self.temperature = temperature
-        self.maxTokens = maxTokens
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension GenerateRequest: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeGenerateRequest: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GenerateRequest {
-        return
-            try GenerateRequest(
-                instructions: FfiConverterString.read(from: &buf), 
-                turns: FfiConverterSequenceTypePromptTurn.read(from: &buf), 
-                temperature: FfiConverterDouble.read(from: &buf), 
-                maxTokens: FfiConverterUInt32.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: GenerateRequest, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.instructions, into: &buf)
-        FfiConverterSequenceTypePromptTurn.write(value.turns, into: &buf)
-        FfiConverterDouble.write(value.temperature, into: &buf)
-        FfiConverterUInt32.write(value.maxTokens, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeGenerateRequest_lift(_ buf: RustBuffer) throws -> GenerateRequest {
-    return try FfiConverterTypeGenerateRequest.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeGenerateRequest_lower(_ value: GenerateRequest) -> RustBuffer {
-    return FfiConverterTypeGenerateRequest.lower(value)
-}
-
-
 public struct HttpHeader: Equatable, Hashable {
     public var name: String
     public var value: String
@@ -6742,63 +6772,6 @@ public func FfiConverterTypeNotificationResponse_lower(_ value: NotificationResp
 
 
 /**
- * One earlier message, or the new one (always last, from the user).
- */
-public struct PromptTurn: Equatable, Hashable {
-    public var role: PromptRole
-    public var text: String
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(role: PromptRole, text: String) {
-        self.role = role
-        self.text = text
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension PromptTurn: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePromptTurn: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PromptTurn {
-        return
-            try PromptTurn(
-                role: FfiConverterTypePromptRole.read(from: &buf), 
-                text: FfiConverterString.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: PromptTurn, into buf: inout [UInt8]) {
-        FfiConverterTypePromptRole.write(value.role, into: &buf)
-        FfiConverterString.write(value.text, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePromptTurn_lift(_ buf: RustBuffer) throws -> PromptTurn {
-    return try FfiConverterTypePromptTurn.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePromptTurn_lower(_ value: PromptTurn) -> RustBuffer {
-    return FfiConverterTypePromptTurn.lower(value)
-}
-
-
-/**
  * One `name=value` pair of a URL query, decoded.
  */
 public struct QueryItem: Equatable, Hashable {
@@ -6856,33 +6829,39 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 
 
 /**
- * Why an engine's generation ended without an answer.
+ * Why the model gave no answer.
  */
 public 
-enum AiError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+enum AiModelError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 
     
     
     /**
-     * The model cannot run now (Apple Intelligence off, its model still
-     * downloading, an unsupported iPhone).
+     * Apple Intelligence off or still downloading, an iPhone
+     * that doesn't support it.
      */
     case Unavailable(reason: String
     )
     /**
-     * The model's own safety rules declined the request (Foundation
-     * Models' guardrails). Shown as a refusal, not as a failure.
+     * The model's safety rules declined the request.
      */
     case Refused(reason: String
     )
     /**
-     * The prompt does not fit the model's context window.
+     * The request doesn't fit the model's context window.
      */
     case ContextTooLong(reason: String
     )
     /**
-     * Anything else the engine reports.
+     * Throttled for now (Apple's model limits apps in the
+     * background).
      */
+    case Busy(reason: String
+    )
+    /**
+     * Stopped through the sink.
+     */
+    case Stopped
     case Engine(reason: String
     )
 
@@ -6898,16 +6877,16 @@ enum AiError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
 }
 
 #if compiler(>=6)
-extension AiError: Sendable {}
+extension AiModelError: Sendable {}
 #endif
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public struct FfiConverterTypeAiError: FfiConverterRustBuffer {
-    typealias SwiftType = AiError
+public struct FfiConverterTypeAiModelError: FfiConverterRustBuffer {
+    typealias SwiftType = AiModelError
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiError {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiModelError {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
@@ -6923,7 +6902,11 @@ public struct FfiConverterTypeAiError: FfiConverterRustBuffer {
         case 3: return .ContextTooLong(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 4: return .Engine(
+        case 4: return .Busy(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 5: return .Stopped
+        case 6: return .Engine(
             reason: try FfiConverterString.read(from: &buf)
             )
 
@@ -6931,7 +6914,7 @@ public struct FfiConverterTypeAiError: FfiConverterRustBuffer {
         }
     }
 
-    public static func write(_ value: AiError, into buf: inout [UInt8]) {
+    public static func write(_ value: AiModelError, into buf: inout [UInt8]) {
         switch value {
 
         
@@ -6953,8 +6936,17 @@ public struct FfiConverterTypeAiError: FfiConverterRustBuffer {
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Engine(reason):
+        case let .Busy(reason):
             writeInt(&buf, Int32(4))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Stopped:
+            writeInt(&buf, Int32(5))
+        
+        
+        case let .Engine(reason):
+            writeInt(&buf, Int32(6))
             FfiConverterString.write(reason, into: &buf)
             
         }
@@ -6965,16 +6957,92 @@ public struct FfiConverterTypeAiError: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeAiError_lift(_ buf: RustBuffer) throws -> AiError {
-    return try FfiConverterTypeAiError.lift(buf)
+public func FfiConverterTypeAiModelError_lift(_ buf: RustBuffer) throws -> AiModelError {
+    return try FfiConverterTypeAiModelError.lift(buf)
 }
 
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-public func FfiConverterTypeAiError_lower(_ value: AiError) -> RustBuffer {
-    return FfiConverterTypeAiError.lower(value)
+public func FfiConverterTypeAiModelError_lower(_ value: AiModelError) -> RustBuffer {
+    return FfiConverterTypeAiModelError.lower(value)
 }
+
+
+/**
+ * Who wrote a message.
+ */
+
+public enum AiRole: Equatable, Hashable {
+    
+    case system
+    case user
+    case assistant
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension AiRole: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAiRole: FfiConverterRustBuffer {
+    typealias SwiftType = AiRole
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AiRole {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .system
+        
+        case 2: return .user
+        
+        case 3: return .assistant
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: AiRole, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .system:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .user:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .assistant:
+            writeInt(&buf, Int32(3))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRole_lift(_ buf: RustBuffer) throws -> AiRole {
+    return try FfiConverterTypeAiRole.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAiRole_lower(_ value: AiRole) -> RustBuffer {
+    return FfiConverterTypeAiRole.lower(value)
+}
+
 
 
 /**
@@ -9019,72 +9087,6 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 
-
-public enum PromptRole: Equatable, Hashable {
-    
-    case user
-    case assistant
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension PromptRole: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypePromptRole: FfiConverterRustBuffer {
-    typealias SwiftType = PromptRole
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> PromptRole {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .user
-        
-        case 2: return .assistant
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: PromptRole, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case .user:
-            writeInt(&buf, Int32(1))
-        
-        
-        case .assistant:
-            writeInt(&buf, Int32(2))
-        
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePromptRole_lift(_ buf: RustBuffer) throws -> PromptRole {
-    return try FfiConverterTypePromptRole.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypePromptRole_lower(_ value: PromptRole) -> RustBuffer {
-    return FfiConverterTypePromptRole.lower(value)
-}
-
-
-
 /**
  * Something the user can share through the system share sheet.
  * The host presents it (on iOS `ForgeShareLink`).
@@ -9297,6 +9299,30 @@ fileprivate struct FfiConverterOptionTypeAssistantGeneration: FfiConverterRustBu
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeAiModelInfo: FfiConverterRustBuffer {
+    typealias SwiftType = AiModelInfo?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeAiModelInfo.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeAiModelInfo.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeAssistantMessage: FfiConverterRustBuffer {
     typealias SwiftType = AssistantMessage?
 
@@ -9417,30 +9443,6 @@ fileprivate struct FfiConverterOptionTypeChatMessage: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionTypeEngineInfo: FfiConverterRustBuffer {
-    typealias SwiftType = EngineInfo?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterTypeEngineInfo.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterTypeEngineInfo.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionTypeAssistantUpdate: FfiConverterRustBuffer {
     typealias SwiftType = AssistantUpdate?
 
@@ -9506,6 +9508,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterString.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeAiMessage: FfiConverterRustBuffer {
+    typealias SwiftType = [AiMessage]
+
+    public static func write(_ value: [AiMessage], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeAiMessage.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [AiMessage] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [AiMessage]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeAiMessage.read(from: &buf))
         }
         return seq
     }
@@ -9789,31 +9816,6 @@ fileprivate struct FfiConverterSequenceTypeNotificationCategory: FfiConverterRus
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypePromptTurn: FfiConverterRustBuffer {
-    typealias SwiftType = [PromptTurn]
-
-    public static func write(_ value: [PromptTurn], into buf: inout [UInt8]) {
-        let len = Int32(value.count)
-        writeInt(&buf, len)
-        for item in value {
-            FfiConverterTypePromptTurn.write(item, into: &buf)
-        }
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [PromptTurn] {
-        let len: Int32 = try readInt(&buf)
-        var seq = [PromptTurn]()
-        seq.reserveCapacity(Int(len))
-        for _ in 0 ..< len {
-            seq.append(try FfiConverterTypePromptTurn.read(from: &buf))
-        }
-        return seq
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
     typealias SwiftType = [QueryItem]
 
@@ -10079,6 +10081,17 @@ public func parseDeepLink(url: String)throws  -> DeepLink  {
     )
 })
 }
+/**
+ * Called by the host at launch (`ForgeServices.install()`):
+ * makes `model` the device's model.
+ */
+public func installNativeAi(model: AiModel)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_chat_app_fn_func_install_native_ai(
+        FfiConverterTypeAiModel_lower(model),uniffiCallStatus
+    )
+}
+}
 public func installNativeAudio(files: AudioFiles)  {try! rustCall() {
         uniffiCallStatus in
     uniffi_chat_app_fn_func_install_native_audio(
@@ -10169,6 +10182,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_func_parse_deep_link() != 4280) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_func_install_native_ai() != 23151) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_func_install_native_audio() != 19805) {
@@ -10318,7 +10334,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_assistantcore_delete_conversation() != 37698) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_assistantcore_engine_info() != 43597) {
+    if (uniffi_chat_app_checksum_method_assistantcore_engine_info() != 52812) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_assistantcore_messages() != 5026) {
@@ -10327,25 +10343,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_assistantcore_send() != 20907) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_chat_app_checksum_method_assistantcore_set_engine() != 63300) {
+    if (uniffi_chat_app_checksum_method_assistantcore_set_engine() != 62470) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_assistantcore_shutdown() != 56181) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_assistantcore_start_conversation() != 13272) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_chat_app_checksum_method_localmodelengine_describe() != 34666) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_chat_app_checksum_method_localmodelengine_generate() != 41940) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_chat_app_checksum_method_tokensink_is_stopped() != 1405) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_chat_app_checksum_method_tokensink_push() != 61463) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_chat_app_checksum_method_assistantgeneration_cancel() != 3186) {
@@ -10393,6 +10397,18 @@ private let initializationResult: InitializationResult = {
     if (uniffi_chat_app_checksum_method_securestore_delete() != 9262) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_chat_app_checksum_method_aimodel_describe() != 19091) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_aimodel_generate() != 14436) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_textsink_is_stopped() != 36997) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_chat_app_checksum_method_textsink_push() != 59603) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_chat_app_checksum_method_audiofiles_duration() != 5070) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -10427,10 +10443,10 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
 
+    uniffiCallbackInitAiModel()
     uniffiCallbackInitAudioFiles()
     uniffiCallbackInitBiometricAuthenticator()
     uniffiCallbackInitHttpTransport()
-    uniffiCallbackInitLocalModelEngine()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()
     uniffiCallbackInitSecureStore()

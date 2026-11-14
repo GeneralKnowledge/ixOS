@@ -9,7 +9,7 @@ public struct ContentView: View {
     public init() {
         _model = State(
             initialValue: ChatModel(
-                notifier: LocalChatNotifier.shared, assistantEngine: FoundationModelsEngine()))
+                notifier: LocalChatNotifier.shared, assistantEngine: ForgeAppleModel()))
     }
 
     public var body: some View {

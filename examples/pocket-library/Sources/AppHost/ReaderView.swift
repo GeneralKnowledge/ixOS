@@ -74,7 +74,7 @@ struct ReaderView: View {
                     chapterTitle: chapter.title,
                     state: ChapterSummaryState(
                         library: model, bookID: bookID, chapter: chapter.index,
-                        model: AppleIntelligenceSummarizer())
+                        model: ForgeAppleModel(permissiveContentTransformations: true))
                 )
                 .presentationDetents([.medium, .large])
             }
@@ -84,7 +84,7 @@ struct ReaderView: View {
                 bookTitle: contents?.title ?? "",
                 state: BookSummaryState(
                     library: model, bookID: bookID, bookTitle: contents?.title ?? "",
-                    model: AppleIntelligenceSummarizer())
+                    model: ForgeAppleModel(permissiveContentTransformations: true))
             )
         }
         .forgeAlert($error)

@@ -38,6 +38,8 @@ quick-xml = "0.42"
 # Chapter summaries: the on-device model is a Swift object with an async
 # method (UniFFI foreign trait).
 async-trait = "0.1"
+# Forge AI: the on-device model, its request shape and the answer checks.
+forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
 
 [dev-dependencies]
 tempfile = "3.14"

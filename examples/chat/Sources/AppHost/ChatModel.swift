@@ -71,7 +71,7 @@ public final class ChatModel {
     private let storageDirectory: String?
     private let useKeychain: Bool?
     @ObservationIgnored private let notifier: ChatNotifier?
-    @ObservationIgnored private let assistantEngine: LocalModelEngine?
+    @ObservationIgnored private let assistantEngine: AiModel?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: ChatEvents?
 
@@ -83,10 +83,10 @@ public final class ChatModel {
     ///   - useKeychain: keep the account in the Keychain (the default when
     ///     `ForgeServices.install()` has run) or only in memory (tests).
     ///   - assistantEngine: the on-device model for the assistant (the app
-    ///     passes `FoundationModelsEngine()`; tests a fake or nothing).
+    ///     passes `ForgeAppleModel()`; tests a fake or nothing).
     public init(
         storageDirectory: String? = nil, notifier: ChatNotifier? = nil, useKeychain: Bool? = nil,
-        assistantEngine: LocalModelEngine? = nil
+        assistantEngine: AiModel? = nil
     ) {
         self.storageDirectory = storageDirectory
         self.notifier = notifier

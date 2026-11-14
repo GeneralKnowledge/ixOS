@@ -4,7 +4,7 @@ import XCTest
 
 /// A scripted Swift engine: pushes `pieces` with a pause between them, and
 /// stops when Rust's sink says so, as a real engine must.
-final class ScriptedEngine: LocalModelEngine, Sendable {
+final class ScriptedEngine: AiModel, Sendable {
     let pieces: [String]
     let pause: Duration
 
@@ -13,13 +13,13 @@ final class ScriptedEngine: LocalModelEngine, Sendable {
         self.pause = pause
     }
 
-    func describe() -> EngineInfo {
-        EngineInfo(
+    func describe() -> AiModelInfo {
+        AiModelInfo(
             id: "scripted", name: "Scripted", available: true, unavailableReason: nil,
             contextTokens: 4096)
     }
 
-    func generate(request: GenerateRequest, sink: TokenSink) async throws {
+    func generate(request: AiRequest, sink: TextSink) async throws {
         for piece in pieces {
             try? await Task.sleep(for: pause)
             if !sink.push(text: piece) { return }
@@ -30,7 +30,7 @@ final class ScriptedEngine: LocalModelEngine, Sendable {
 /// The assistant through the model and the real Rust core, no account.
 @MainActor
 final class AssistantModelTests: XCTestCase {
-    private func open(engine: LocalModelEngine?) async throws -> ChatModel {
+    private func open(engine: AiModel?) async throws -> ChatModel {
         let model = ChatModel(
             storageDirectory: try temporaryDirectory(self), useKeychain: false,
             assistantEngine: engine)

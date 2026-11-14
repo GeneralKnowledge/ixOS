@@ -1,6 +1,6 @@
 # Forge AI: the on-device AI module and AI over Relay
 
-Status: **proposal, waiting for Reuben's approval** (2026-11-14). No code until then.
+Status: **approved by Reuben** (2026-11-14: start A0 and A1 with the recommended answers to the open questions). A0 and A1 are built; see the milestones.
 
 Reuben (2026-11-14): "We might have to split out the AI into its own thing to fully develop it", "a cool experiment could have the AI communicate via relay", "it could combine AI power over more powerful AIs. We could use OpenAI style input / output for compatibility."
 
@@ -53,7 +53,6 @@ pub struct ChatRequest {            // POST /v1/chat/completions, the subset
     pub messages: Vec<ChatMessage>, // role: System | User | Assistant, content: String
     pub max_tokens: u32,
     pub temperature: f64,
-    pub stop: Vec<String>,
 }
 pub struct ChatAnswer {
     pub text: String,
@@ -132,8 +131,8 @@ Each is one PR, small enough to review, with the phone part short and batched in
 
 | Step | What | Done when | iPhone? |
 |---|---|---|---|
-| **A0 Forge AI contract** (smallest first step) | `forge-services` `ai` feature: records, `LanguageModel`, `TextSink`, fake model, the checker; one Swift adapter merging both; Chat and Pocket Library switch to it with no change in behaviour. Ledger row updated | Both apps' Rust tests pass unchanged on Linux; the laptop build check compiles Swift; fewer lines than today | 3 min: one Mia message, one chapter summary in Device Lab |
-| **A1 Relay asks, Linux only** | Protocol v2 (`Ask`/`Delta`/`Answered`/`Stop`), `relay serve-ai`, `relay ask` | Two terminals on the laptop: `relay ask` streams an answer from Ollama or llama.cpp, Stop stops the upstream | No |
+| **A0 Forge AI contract** (smallest first step). **Built**: `forge_services::ai` and `native_services!(ai)`, `ForgeAppleModel`; Swift not yet compiled | `forge-services` `ai` feature: records, `LanguageModel`, `TextSink`, fake model, the checker; one Swift adapter merging both; Chat and Pocket Library switch to it with no change in behaviour. Ledger row updated | Both apps' Rust tests pass unchanged on Linux; the laptop build check compiles Swift; fewer lines than today | 3 min: one Mia message, one chapter summary in Device Lab |
+| **A1 Relay asks, Linux only**. **Built**: tested on Linux with scripted models and a fake OpenAI server; not yet run against a real Ollama or llama.cpp | Protocol v2 (`Ask`/`Delta`/`Answered`/`Stop`), `relay serve-ai`, `relay ask` | Two terminals on the laptop: `relay ask` streams an answer from Ollama or llama.cpp, Stop stops the upstream | No |
 | **A2 AI Lab and phone → laptop** | AI Lab in Device Lab; `RelayModel`; Relay app shows asks in its history | On the phone, AI Lab answers from the laptop's model and from Apple's, with timings | ~5 min |
 | **A3 Router and the bigger book** | Router with the rules above; Pocket Library parts sized from the model's window; "answered by" in its summary footer | A whole book summarised on the laptop's model from the phone, and the same book falling back to the phone mid-run | ~10 min |
 | **A4 The phone as a peer** | Relay app serves asks with Apple's model; `relay serve-ai --openai-listen` | An OpenAI client on the laptop gets an answer from the phone | ~5 min |

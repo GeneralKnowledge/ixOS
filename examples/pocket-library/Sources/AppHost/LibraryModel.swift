@@ -326,7 +326,7 @@ public final class LibraryModel {
     /// Writes and saves a summary of that chapter with `model`. Cancelling
     /// the calling task stops it, and nothing is saved.
     public func summariseChapter(
-        _ id: UInt64, index: UInt32, model: SummaryModel, progress: SummaryProgress?
+        _ id: UInt64, index: UInt32, model: AiModel, progress: SummaryProgress?
     ) async throws -> ChapterSynopsis {
         try await run { library in
             try await withRustCancellation {
@@ -349,7 +349,7 @@ public final class LibraryModel {
     /// Reads the whole book with `model` (minutes) and saves its summary.
     /// Chapter summaries are saved as it goes, so a stopped run resumes.
     public func summariseBook(
-        _ id: UInt64, model: SummaryModel, progress: SummaryProgress?
+        _ id: UInt64, model: AiModel, progress: SummaryProgress?
     ) async throws -> BookSynopsis {
         try await run { library in
             try await withRustCancellation {

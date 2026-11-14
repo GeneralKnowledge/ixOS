@@ -24,8 +24,8 @@
 //! A part the model can't read (too long after all, or declined by its
 //! guardrails) is split in two and tried again; a passage still declined
 //! is left out and counted, so the reader is told the summary has a gap.
-//! No inference happens in Rust: the Swift engine implements
-//! [`SummaryModel`].
+//! No inference happens in Rust: the model is Forge AI's [`AiModel`]
+//! (Apple's on-device model through `ForgeAppleModel` in Swift).
 
 use std::sync::Arc;
 
@@ -77,10 +77,14 @@ remember what they read, from notes someone else took. Use only the facts in the
 your own words, as plain prose in the language of the notes, with no headings or lists. Add no \
 opinions, morals or warnings.";
 
-// MARK: The engine (Swift)
+// MARK: The model (Forge AI)
 
-/// One request to the model.
-#[derive(uniffi::Record, Clone, Debug, PartialEq)]
+use crate::native::ai::{AiMessage, AiRole};
+pub use crate::native::ai::{AiModel, AiModelError, AiModelInfo, AiRequest, TextOut, TextSink};
+
+/// One request to the model: instructions and a prompt. Sent as Forge AI's
+/// chat request (a system message and a user message).
+#[derive(Clone, Debug, PartialEq)]
 pub struct SummaryRequest {
     /// The system instructions.
     pub instructions: String,
@@ -92,87 +96,77 @@ pub struct SummaryRequest {
     pub temperature: f64,
 }
 
-/// What the engine says about itself.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct SummaryModelInfo {
-    /// The name shown under a summary ("Apple Intelligence").
-    pub name: String,
-    pub available: bool,
-    /// Why not, in words the reader can act on, when `available` is false.
-    pub unavailable_reason: Option<String>,
-}
-
-/// Why the engine gave no answer.
-#[derive(uniffi::Error, thiserror::Error, Clone, Debug, PartialEq, Eq)]
-pub enum SummaryModelError {
-    /// The model can't run now (Apple Intelligence off, still downloading,
-    /// an iPhone that doesn't support it).
-    #[error("unavailable: {reason}")]
-    Unavailable { reason: String },
-    /// The model's safety rules declined the text.
-    #[error("refused: {reason}")]
-    Refused { reason: String },
-    /// The request did not fit the model's context window.
-    #[error("too long: {reason}")]
-    ContextTooLong { reason: String },
-    /// Stopped through the sink.
-    #[error("stopped")]
-    Stopped,
-    /// The model is throttled for now (Foundation Models limits apps in
-    /// the background). Nothing is lost: the run pauses and carries on
-    /// when the app is back on screen.
-    #[error("busy: {reason}")]
-    Busy { reason: String },
-    #[error("{reason}")]
-    Engine { reason: String },
-}
-
-impl From<uniffi::UnexpectedUniFFICallbackError> for SummaryModelError {
-    fn from(err: uniffi::UnexpectedUniFFICallbackError) -> Self {
-        Self::Engine { reason: err.reason }
+impl From<SummaryRequest> for AiRequest {
+    fn from(request: SummaryRequest) -> Self {
+        Self {
+            model: None,
+            messages: vec![
+                AiMessage {
+                    role: AiRole::System,
+                    content: request.instructions,
+                },
+                AiMessage {
+                    role: AiRole::User,
+                    content: request.prompt,
+                },
+            ],
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+        }
     }
 }
 
-/// A language model, implemented in Swift. Rust calls it from a thread of
-/// its own, one request at a time.
-#[uniffi::export(with_foreign)]
-#[async_trait::async_trait]
-pub trait SummaryModel: Send + Sync {
-    /// Whether the model can run now. Cheap.
-    fn describe(&self) -> SummaryModelInfo;
-
-    /// Answers `request`. While it writes, it passes the answer so far to
-    /// `sink.update`, and stops (returning `Stopped`) as soon as that
-    /// returns false.
-    async fn generate(
-        &self,
-        request: SummaryRequest,
-        sink: Arc<SummarySink>,
-    ) -> Result<String, SummaryModelError>;
+impl From<AiRequest> for SummaryRequest {
+    fn from(request: AiRequest) -> Self {
+        let text = |role: AiRole| {
+            request
+                .messages
+                .iter()
+                .filter(|m| m.role == role)
+                .map(|m| m.content.as_str())
+                .collect::<Vec<_>>()
+                .join("\n\n")
+        };
+        Self {
+            instructions: text(AiRole::System),
+            prompt: text(AiRole::User),
+            max_tokens: request.max_tokens,
+            temperature: request.temperature,
+        }
+    }
 }
 
-/// Where the engine reports the answer so far, and learns it should stop.
-#[derive(uniffi::Object)]
-pub struct SummarySink {
+/// Where the model writes an answer: keeps it, shows the final summary as
+/// it is written, and stops the model when the summary is stopped.
+struct Answer {
+    text: std::sync::Mutex<String>,
     cancel: CancelHandle,
     /// Hears the final summary as it is written.
     draft: Option<Arc<dyn SummaryProgress>>,
 }
 
-#[uniffi::export]
-impl SummarySink {
-    /// The whole answer so far. Returns false once the summary was
-    /// stopped: the engine must end the generation.
-    pub fn update(&self, text_so_far: String) -> bool {
+impl Answer {
+    fn text(&self) -> String {
+        forge_runtime::lock(&self.text).clone()
+    }
+}
+
+impl TextOut for Answer {
+    fn push(&self, delta: &str) -> bool {
+        let so_far = {
+            let mut text = forge_runtime::lock(&self.text);
+            text.push_str(delta);
+            text.clone()
+        };
         if let Some(progress) = &self.draft {
             progress.changed(SummaryStage::Writing {
-                draft: clean(&text_so_far),
+                draft: clean(&so_far),
             });
         }
         !self.cancel.is_cancelled()
     }
 
-    pub fn is_stopped(&self) -> bool {
+    fn is_stopped(&self) -> bool {
         self.cancel.is_cancelled()
     }
 }
@@ -419,379 +413,13 @@ fn cast_text(cast: &[CastMember]) -> String {
 
 // MARK: Planning
 
-/// A rough token count that errs high: about four characters a token for
-/// ASCII text, and a token for every other character (accented letters,
-/// other scripts), whose real cost is between a third and two.
-pub fn estimate_tokens(text: &str) -> usize {
-    let (ascii, other) = text.chars().fold((0usize, 0usize), |(a, o), c| {
-        if c.is_ascii() {
-            (a + 1, o)
-        } else {
-            (a, o + 1)
-        }
-    });
-    ascii.div_ceil(4) + other
-}
-
-/// Packs paragraphs into parts of at most `budget` estimated tokens, in
-/// order and evenly sized, so the last part is not a scrap. A paragraph
-/// longer than `budget` is split at sentence ends (or, failing that, at
-/// spaces).
-pub fn split_into_parts(paragraphs: &[String], budget: usize) -> Vec<String> {
-    let paragraphs: Vec<&str> = paragraphs
-        .iter()
-        .map(|p| p.trim())
-        .filter(|p| !p.is_empty())
-        .collect();
-    let total: usize = paragraphs.iter().map(|p| estimate_tokens(p) + 1).sum();
-    if total == 0 {
-        return Vec::new();
-    }
-    let count = total.div_ceil(budget);
-    let target = total.div_ceil(count);
-    let limit = (target + target / 5).min(budget);
-    let pieces: Vec<String> = paragraphs
-        .into_iter()
-        .flat_map(|p| split_long(p, limit))
-        .collect();
-    let mut parts = Vec::new();
-    let mut current = String::new();
-    let mut size = 0;
-    for piece in pieces {
-        let cost = estimate_tokens(&piece) + 1;
-        // A short start (a heading) stays with what follows if the part
-        // still fits the budget.
-        let full = size + cost > budget || (size + cost > limit && size >= limit / 4);
-        if !current.is_empty() && full {
-            parts.push(std::mem::take(&mut current));
-            size = 0;
-        }
-        if !current.is_empty() {
-            current.push_str("\n\n");
-        }
-        current.push_str(&piece);
-        size += cost;
-    }
-    if !current.is_empty() {
-        parts.push(current);
-    }
-    parts
-}
-
-/// A paragraph in pieces of at most `budget` tokens.
-fn split_long(text: &str, budget: usize) -> Vec<String> {
-    if estimate_tokens(text) <= budget {
-        return vec![text.to_string()];
-    }
-    let mut pieces = Vec::new();
-    let mut current = String::new();
-    for sentence in sentences(text) {
-        let candidate = if current.is_empty() {
-            sentence.to_string()
-        } else {
-            format!("{current} {sentence}")
-        };
-        if estimate_tokens(&candidate) <= budget {
-            current = candidate;
-            continue;
-        }
-        if !current.is_empty() {
-            pieces.push(std::mem::take(&mut current));
-        }
-        if estimate_tokens(sentence) <= budget {
-            current = sentence.to_string();
-        } else {
-            // One enormous "sentence": cut at spaces, or anywhere.
-            for word in sentence.split_whitespace() {
-                let candidate = if current.is_empty() {
-                    word.to_string()
-                } else {
-                    format!("{current} {word}")
-                };
-                if estimate_tokens(&candidate) <= budget {
-                    current = candidate;
-                } else {
-                    if !current.is_empty() {
-                        pieces.push(std::mem::take(&mut current));
-                    }
-                    let mut chunk = String::new();
-                    for c in word.chars() {
-                        chunk.push(c);
-                        if estimate_tokens(&chunk) >= budget {
-                            pieces.push(std::mem::take(&mut chunk));
-                        }
-                    }
-                    current = chunk;
-                }
-            }
-        }
-    }
-    if !current.is_empty() {
-        pieces.push(current);
-    }
-    pieces
-}
-
-/// Sentences, each with its closing punctuation.
-fn sentences(text: &str) -> Vec<&str> {
-    let mut out = Vec::new();
-    let mut start = 0;
-    let mut chars = text.char_indices().peekable();
-    while let Some((i, c)) = chars.next() {
-        let ends = matches!(c, '.' | '!' | '?' | '。' | '！' | '？' | '\n');
-        let next_is_space = chars.peek().is_none_or(|(_, n)| n.is_whitespace());
-        if ends && next_is_space {
-            let end = i + c.len_utf8();
-            let s = text[start..end].trim();
-            if !s.is_empty() {
-                out.push(s);
-            }
-            start = end;
-        }
-    }
-    let rest = text[start..].trim();
-    if !rest.is_empty() {
-        out.push(rest);
-    }
-    out
-}
-
-/// How many words in a row a summary may share with the book before it
-/// counts as copying. Names and stock phrases ("at the end of the day")
-/// stay well under it.
-pub const COPY_RUN_WORDS: usize = 7;
-
-fn plain_words(text: &str) -> Vec<String> {
-    text.split(|c: char| !c.is_alphanumeric() && c != '\'')
-        .filter(|w| !w.is_empty())
-        .map(|w| w.to_lowercase().replace('\u{2019}', "'"))
-        .collect()
-}
-
-/// The phrases of `summary` that appear word for word in the book's text
-/// (runs of at least [`COPY_RUN_WORDS`] words, case and punctuation
-/// ignored), longest first, at most three.
-pub fn copied_phrases(summary: &str, paragraphs: &[String]) -> Vec<String> {
-    let n = COPY_RUN_WORDS;
-    let mut seen = std::collections::HashSet::new();
-    for paragraph in paragraphs {
-        let words = plain_words(paragraph);
-        for window in words.windows(n) {
-            seen.insert(window.join(" "));
-        }
-    }
-    let words = plain_words(summary);
-    let mut runs: Vec<(usize, usize)> = Vec::new();
-    let mut i = 0;
-    while i + n <= words.len() {
-        if seen.contains(&words[i..i + n].join(" ")) {
-            let mut end = i + n;
-            while end < words.len() && seen.contains(&words[end + 1 - n..=end].join(" ")) {
-                end += 1;
-            }
-            runs.push((i, end));
-            i = end;
-        } else {
-            i += 1;
-        }
-    }
-    runs.sort_by_key(|(a, b)| std::cmp::Reverse(b - a));
-    runs.into_iter()
-        .take(3)
-        .map(|(a, b)| words[a..b].join(" "))
-        .collect()
-}
-
-/// Halves a part at a paragraph or sentence boundary near its middle.
-fn halve(part: &str) -> Option<(String, String)> {
-    let paragraphs: Vec<String> = part.split("\n\n").map(str::to_string).collect();
-    let pieces = if paragraphs.len() >= 2 {
-        paragraphs
-    } else {
-        sentences(part).into_iter().map(str::to_string).collect()
-    };
-    if pieces.len() < 2 {
-        return None;
-    }
-    let total: usize = pieces.iter().map(|p| estimate_tokens(p)).sum();
-    let mut size = 0;
-    let mut cut = 1;
-    for (i, piece) in pieces.iter().enumerate() {
-        size += estimate_tokens(piece);
-        if size * 2 >= total {
-            cut = (i + 1).clamp(1, pieces.len() - 1);
-            break;
-        }
-    }
-    let join = |p: &[String]| p.join("\n\n");
-    Some((join(&pieces[..cut]), join(&pieces[cut..])))
-}
-
-/// The model's answer without the things small models add: a "Here is a
-/// summary:" line, Markdown emphasis, surrounding quotes, extra blank
-/// lines.
-pub fn clean(text: &str) -> String {
-    let mut lines: Vec<&str> = text.lines().map(str::trim_end).collect();
-    while lines.first().is_some_and(|l| l.trim().is_empty()) {
-        lines.remove(0);
-    }
-    if let Some(first) = lines.first() {
-        let lower = first.trim().to_lowercase();
-        // "Certainly! Here is a summary of the requested text:" and the
-        // like: a short opening line that only introduces the answer.
-        let preamble = lower.ends_with(':') && lower.chars().count() <= 100;
-        if preamble || lower.starts_with('#') {
-            lines.remove(0);
-        }
-    }
-    // "Certainly! Anna leaves." keeps "Anna leaves."
-    if let Some(first) = lines.first_mut() {
-        let lower = first.trim_start().to_lowercase();
-        for filler in [
-            "certainly!",
-            "sure!",
-            "of course!",
-            "certainly.",
-            "sure.",
-            "of course.",
-        ] {
-            if lower.starts_with(filler) {
-                *first = first.trim_start()[filler.len()..].trim_start();
-                break;
-            }
-        }
-    }
-    let mut out = String::new();
-    let mut blank = false;
-    for line in lines {
-        let line = line.trim();
-        if line.is_empty() {
-            blank = true;
-            continue;
-        }
-        if !out.is_empty() {
-            out.push_str(if blank { "\n\n" } else { "\n" });
-        }
-        blank = false;
-        out.push_str(line);
-    }
-    let mut out = out.replace("**", "").replace("__", "");
-    for prefix in ["Summary:", "Notes:", "summary:"] {
-        if let Some(rest) = out.strip_prefix(prefix) {
-            out = rest.trim_start().to_string();
-        }
-    }
-    let quoted = out.len() >= 2
-        && ((out.starts_with('"') && out.ends_with('"'))
-            || (out.starts_with('\u{201C}') && out.ends_with('\u{201D}')));
-    if quoted && out.matches(['"', '\u{201C}', '\u{201D}']).count() == 2 {
-        let mut chars = out.chars();
-        chars.next();
-        chars.next_back();
-        out = chars.as_str().trim().to_string();
-    }
-    out
-}
-
-/// Openings with which a small model declines in words instead of raising
-/// its refusal error ("I'm sorry, but I cannot fulfill that request.").
-const DECLINES: &[&str] = &[
-    "i'm sorry",
-    "i am sorry",
-    "sorry, i",
-    "sorry, but",
-    "i cannot",
-    "i can't",
-    "i can not",
-    "i'm unable",
-    "i am unable",
-    "i'm not able",
-    "i am not able",
-    "unfortunately, i",
-    "as an ai",
-    "i apologize",
-    "i apologise",
-];
-
-/// Whether a paragraph is the model declining or talking about itself
-/// rather than answering.
-pub fn declines(paragraph: &str) -> bool {
-    let lower = paragraph
-        .trim()
-        .trim_start_matches(['"', '\u{201C}', '-', '*', ' '])
-        .to_lowercase()
-        .replace('\u{2019}', "'");
-    DECLINES.iter().any(|d| lower.starts_with(d))
-}
-
-/// The answer without paragraphs in which the model declines. Empty when
-/// it declined altogether.
-pub fn without_declines(text: &str) -> String {
-    text.split("\n\n")
-        .filter(|p| !declines(p))
-        .collect::<Vec<_>>()
-        .join("\n\n")
-        .trim()
-        .to_string()
-}
-
-/// How much of a paragraph repeats the prompt word for word (the share of
-/// its words inside runs of [`COPY_RUN_WORDS`] found in the prompt).
-fn echoed_share(paragraph: &str, prompt: &std::collections::HashSet<String>) -> f64 {
-    let n = COPY_RUN_WORDS;
-    let words = plain_words(paragraph);
-    if words.len() < n {
-        return 0.0;
-    }
-    let mut covered = vec![false; words.len()];
-    for i in 0..=words.len() - n {
-        if prompt.contains(&words[i..i + n].join(" ")) {
-            covered[i..i + n].iter_mut().for_each(|c| *c = true);
-        }
-    }
-    covered.iter().filter(|c| **c).count() as f64 / words.len() as f64
-}
-
-/// The answer without paragraphs that mostly repeat the prompt: a small
-/// model given a long prompt sometimes copies its input or its
-/// instructions back before (or instead of) answering. Empty when every
-/// paragraph is an echo.
-pub fn without_echoes(text: &str, prompt: &str) -> String {
-    let n = COPY_RUN_WORDS;
-    let words = plain_words(prompt);
-    let seen: std::collections::HashSet<String> = words.windows(n).map(|w| w.join(" ")).collect();
-    text.split("\n\n")
-        .filter(|p| echoed_share(p, &seen) < 0.6)
-        .collect::<Vec<_>>()
-        .join("\n\n")
-        .trim()
-        .to_string()
-}
-
-/// Prose cut off by the length cap ends mid-sentence ("The names are
-/// sealed,"): keep it up to its last full sentence, dropping a last
-/// paragraph that has none.
-pub fn whole_sentences(text: &str) -> String {
-    let text = text.trim();
-    let ends = |s: &str| {
-        s.trim_end_matches(['"', '\u{201D}', '\'', '\u{2019}', ')'])
-            .ends_with(['.', '!', '?', '\u{3002}', '\u{FF01}', '\u{FF1F}'])
-    };
-    if text.is_empty() || ends(text) {
-        return text.to_string();
-    }
-    let (before, last) = match text.rfind("\n\n") {
-        Some(i) => (&text[..i], &text[i + 2..]),
-        None => ("", text),
-    };
-    let kept: Vec<&str> = sentences(last).into_iter().filter(|s| ends(s)).collect();
-    let last = kept.join(" ");
-    [before.trim(), last.trim()]
-        .into_iter()
-        .filter(|p| !p.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n\n")
-}
+// The text helpers (token estimates, splitting into parts, and the answer
+// checker) are Forge AI's, shared with every app that uses a small model.
+pub use forge_services::ai::text::{
+    clean, copied_phrases, declines, estimate_tokens, split_into_parts, whole_sentences,
+    without_declines, without_echoes, COPY_RUN_WORDS,
+};
+use forge_services::ai::text::{halve, sentences};
 
 // MARK: Prompts
 
@@ -1032,7 +660,7 @@ pub struct ReadSoFar {
 /// Runs the plan above on a Rust thread. `cancel` stops it between and
 /// during requests.
 pub struct Summariser<'a> {
-    pub model: &'a dyn SummaryModel,
+    pub model: &'a dyn AiModel,
     pub cancel: &'a CancelHandle,
     pub progress: Option<Arc<dyn SummaryProgress>>,
     /// How many requests the model has answered (or declined).
@@ -1138,10 +766,7 @@ impl Summariser<'_> {
                 {
                     text = rewrite
                 }
-                Ok(_)
-                | Err(
-                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
-                ) => {
+                Ok(_) | Err(AiModelError::Refused { .. } | AiModelError::ContextTooLong { .. }) => {
                     // Show the first draft again.
                     self.report(SummaryStage::Writing {
                         draft: text.clone(),
@@ -1172,7 +797,7 @@ impl Summariser<'_> {
         match self.ask(request(READER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
             Ok(note) if !note.is_empty() => Ok((Some(note), 0)),
             Ok(_) => Ok((None, 1)),
-            Err(SummaryModelError::ContextTooLong { .. } | SummaryModelError::Refused { .. })
+            Err(AiModelError::ContextTooLong { .. } | AiModelError::Refused { .. })
                 if splits_left > 0 =>
             {
                 let Some((a, b)) = halve(text) else {
@@ -1189,7 +814,7 @@ impl Summariser<'_> {
                     .join(" ");
                 Ok(((!joined.is_empty()).then_some(joined), missed_a + missed_b))
             }
-            Err(SummaryModelError::ContextTooLong { .. } | SummaryModelError::Refused { .. }) => {
+            Err(AiModelError::ContextTooLong { .. } | AiModelError::Refused { .. }) => {
                 Ok((None, 1))
             }
             Err(err) => Err(self.error(err)),
@@ -1227,16 +852,15 @@ impl Summariser<'_> {
             {
                 Ok(text) if !text.is_empty() => out.push(text),
                 // Declined or empty: keep the group's notes, shortened.
-                Ok(_)
-                | Err(
-                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
-                ) => out.push(
-                    group
-                        .iter()
-                        .map(|n| shorten(n, 1))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                ),
+                Ok(_) | Err(AiModelError::Refused { .. } | AiModelError::ContextTooLong { .. }) => {
+                    out.push(
+                        group
+                            .iter()
+                            .map(|n| shorten(n, 1))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                }
                 Err(err) => return Err(self.error(err)),
             }
         }
@@ -1262,7 +886,7 @@ impl Summariser<'_> {
                     updated
                 })
             }
-            Err(SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. }) => {
+            Err(AiModelError::Refused { .. } | AiModelError::ContextTooLong { .. }) => {
                 Ok(cast.to_vec())
             }
             Err(err) => Err(self.error(err)),
@@ -1303,9 +927,7 @@ impl Summariser<'_> {
                 last,
             ) {
                 Ok(text) => paragraphs.push(text.replace("\n\n", " ")),
-                Err(
-                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
-                ) => {
+                Err(AiModelError::Refused { .. } | AiModelError::ContextTooLong { .. }) => {
                     // The acts' own first sentences stand in.
                     let fallback = slice
                         .iter()
@@ -1355,15 +977,14 @@ impl Summariser<'_> {
             let prompt = act_prompt(&group);
             match self.write(request(BOOK_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
                 Ok(text) => out.push(text.replace("\n\n", " ")),
-                Err(
-                    SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. },
-                ) => out.push(
-                    group
-                        .iter()
-                        .map(|s| shorten(s, 1))
-                        .collect::<Vec<_>>()
-                        .join(" "),
-                ),
+                Err(AiModelError::Refused { .. } | AiModelError::ContextTooLong { .. }) => out
+                    .push(
+                        group
+                            .iter()
+                            .map(|s| shorten(s, 1))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
                 Err(err) => return Err(self.error(err)),
             }
         }
@@ -1379,20 +1000,23 @@ impl Summariser<'_> {
             .to_string()
     }
 
-    fn ask(&self, request: SummaryRequest, last: bool) -> Result<String, SummaryModelError> {
+    fn ask(&self, request: SummaryRequest, last: bool) -> Result<String, AiModelError> {
         if self.cancel.is_cancelled() {
-            return Err(SummaryModelError::Stopped);
+            return Err(AiModelError::Stopped);
         }
         self.requests.set(self.requests.get() + 1);
         // Only the final summary is shown as it is written.
         let draft = if last { self.progress.clone() } else { None };
-        let sink = Arc::new(SummarySink {
+        let answer = Arc::new(Answer {
+            text: std::sync::Mutex::new(String::new()),
             cancel: self.cancel.clone(),
             draft,
         });
-        let result = forge_runtime::block_on(self.model.generate(request, sink));
+        let sink = TextSink::new(Arc::clone(&answer) as Arc<dyn TextOut>);
+        let result = forge_runtime::block_on(self.model.generate(request.into(), sink))
+            .map(|()| answer.text());
         if self.cancel.is_cancelled() {
-            return Err(SummaryModelError::Stopped);
+            return Err(AiModelError::Stopped);
         }
         // The checker: a small model sometimes declines in words rather
         // than with its refusal error. Those paragraphs are dropped, and an
@@ -1400,7 +1024,7 @@ impl Summariser<'_> {
         let text = clean(&result?);
         let kept = without_declines(&text);
         if kept.is_empty() && !text.is_empty() {
-            return Err(SummaryModelError::Refused {
+            return Err(AiModelError::Refused {
                 reason: "declined in words".into(),
             });
         }
@@ -1410,12 +1034,12 @@ impl Summariser<'_> {
     /// A prose answer (a summary, a stretch, the overview), checked: no
     /// paragraphs that repeat the prompt, no sentence cut off by the length
     /// cap. Nothing left counts as declined.
-    fn write(&self, request: SummaryRequest, last: bool) -> Result<String, SummaryModelError> {
+    fn write(&self, request: SummaryRequest, last: bool) -> Result<String, AiModelError> {
         let prompt = request.prompt.clone();
         let text = self.ask(request, last)?;
         let text = whole_sentences(&without_echoes(&text, &prompt));
         if text.is_empty() {
-            return Err(SummaryModelError::Refused {
+            return Err(AiModelError::Refused {
                 reason: "no answer of its own".into(),
             });
         }
@@ -1428,16 +1052,14 @@ impl Summariser<'_> {
         }
     }
 
-    fn error(&self, err: SummaryModelError) -> LibraryError {
+    fn error(&self, err: AiModelError) -> LibraryError {
         match err {
-            SummaryModelError::Stopped => LibraryError::Cancelled,
+            AiModelError::Stopped => LibraryError::Cancelled,
             _ if self.cancel.is_cancelled() => LibraryError::Cancelled,
-            SummaryModelError::Unavailable { reason } => {
-                LibraryError::SummaryUnavailable { reason }
-            }
-            SummaryModelError::Refused { reason } => LibraryError::SummaryRefused { reason },
-            SummaryModelError::Busy { .. } => LibraryError::Interrupted,
-            SummaryModelError::ContextTooLong { reason } | SummaryModelError::Engine { reason } => {
+            AiModelError::Unavailable { reason } => LibraryError::SummaryUnavailable { reason },
+            AiModelError::Refused { reason } => LibraryError::SummaryRefused { reason },
+            AiModelError::Busy { .. } => LibraryError::Interrupted,
+            AiModelError::ContextTooLong { reason } | AiModelError::Engine { reason } => {
                 LibraryError::SummaryFailed { reason }
             }
         }
@@ -1492,32 +1114,35 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl SummaryModel for FakeModel {
-        fn describe(&self) -> SummaryModelInfo {
-            SummaryModelInfo {
+    impl AiModel for FakeModel {
+        fn describe(&self) -> AiModelInfo {
+            AiModelInfo {
+                id: "fake".into(),
                 name: "Fake Model".into(),
                 available: self.available,
                 unavailable_reason: (!self.available).then(|| "Turn it on.".into()),
+                context_tokens: CONTEXT_TOKENS as u32,
             }
         }
 
         async fn generate(
             &self,
-            request: SummaryRequest,
-            sink: Arc<SummarySink>,
-        ) -> Result<String, SummaryModelError> {
+            request: AiRequest,
+            sink: Arc<TextSink>,
+        ) -> Result<(), AiModelError> {
+            let request = SummaryRequest::from(request);
             let n = {
                 let mut asked = self.asked.lock().unwrap();
                 asked.push(request.clone());
                 asked.len()
             };
             if self.busy_after.is_some_and(|limit| n > limit) {
-                return Err(SummaryModelError::Busy {
+                return Err(AiModelError::Busy {
                     reason: "rate limited".into(),
                 });
             }
             if self.refuse.is_some_and(|r| request.prompt.contains(r)) {
-                return Err(SummaryModelError::Refused {
+                return Err(AiModelError::Refused {
                     reason: "no".into(),
                 });
             }
@@ -1525,15 +1150,14 @@ pub(crate) mod tests {
                 + estimate_tokens(&request.prompt)
                 + request.max_tokens as usize;
             if size > self.window {
-                return Err(SummaryModelError::ContextTooLong {
+                return Err(AiModelError::ContextTooLong {
                     reason: format!("{size} tokens"),
                 });
             }
-            let answer = format!("Here is a summary:\n**Answer {n}.**");
-            if !sink.update("Answer".into()) {
-                return Err(SummaryModelError::Stopped);
+            if !sink.push(format!("Here is a summary:\n**Answer {n}.**")) {
+                return Err(AiModelError::Stopped);
             }
-            Ok(answer)
+            Ok(())
         }
     }
 
@@ -1649,7 +1273,7 @@ pub(crate) mod tests {
         assert_eq!(
             stages.0.lock().unwrap().last(),
             Some(&SummaryStage::Writing {
-                draft: "Answer".into()
+                draft: "Answer 2.".into()
             })
         );
     }
@@ -1783,24 +1407,32 @@ pub(crate) mod tests {
     struct Copier(Mutex<Vec<String>>);
 
     #[async_trait::async_trait]
-    impl SummaryModel for Copier {
-        fn describe(&self) -> SummaryModelInfo {
+    impl AiModel for Copier {
+        fn describe(&self) -> AiModelInfo {
             FakeModel::new().describe()
         }
 
         async fn generate(
             &self,
-            request: SummaryRequest,
-            _: Arc<SummarySink>,
-        ) -> Result<String, SummaryModelError> {
+            request: AiRequest,
+            sink: Arc<TextSink>,
+        ) -> Result<(), AiModelError> {
+            let request = SummaryRequest::from(request);
+            sink.push(self.answer(request));
+            Ok(())
+        }
+    }
+
+    impl Copier {
+        fn answer(&self, request: SummaryRequest) -> String {
             self.0.lock().unwrap().push(request.prompt.clone());
-            Ok(if request.prompt.contains("The text:") {
+            if request.prompt.contains("The text:") {
                 "- Anna waits for the night train.".into()
             } else if request.prompt.contains("Rewrite the summary") {
                 "Anna waits alone for a train that never comes.".into()
             } else {
                 "The rain had not stopped for three days when Anna came. She waits.".into()
-            })
+            }
         }
     }
 
@@ -1977,29 +1609,37 @@ pub(crate) mod tests {
     }
 
     #[async_trait::async_trait]
-    impl SummaryModel for Wordy {
-        fn describe(&self) -> SummaryModelInfo {
+    impl AiModel for Wordy {
+        fn describe(&self) -> AiModelInfo {
             FakeModel::new().describe()
         }
 
         async fn generate(
             &self,
-            request: SummaryRequest,
-            _: Arc<SummarySink>,
-        ) -> Result<String, SummaryModelError> {
+            request: AiRequest,
+            sink: Arc<TextSink>,
+        ) -> Result<(), AiModelError> {
+            let request = SummaryRequest::from(request);
+            sink.push(self.answer(request));
+            Ok(())
+        }
+    }
+
+    impl Wordy {
+        fn answer(&self, request: SummaryRequest) -> String {
             let n = {
                 let mut asked = self.asked.lock().unwrap();
                 asked.push(request.clone());
                 asked.len()
             };
-            Ok(if request.prompt.contains(self.bad) {
+            if request.prompt.contains(self.bad) {
                 format!(
                     "I'm sorry, but I cannot fulfill that request.\n\n{}",
                     request.prompt
                 )
             } else {
                 format!("Certainly! Here is the paragraph:\nAnswer {n}. The end is cut")
-            })
+            }
         }
     }
 

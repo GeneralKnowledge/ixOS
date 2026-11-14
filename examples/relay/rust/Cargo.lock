@@ -422,6 +422,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-services"
+version = "0.1.0"
+dependencies = [
+ "forge-net",
+ "forge-runtime",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "forge-storage"
 version = "0.1.0"
 dependencies = [
@@ -749,10 +759,13 @@ version = "0.1.0"
 dependencies = [
  "forge-app",
  "forge-devproto",
+ "forge-net",
  "forge-runtime",
+ "forge-services",
  "forge-storage",
  "qrcode",
  "serde",
+ "serde_json",
  "tempfile",
  "thiserror",
  "uniffi",

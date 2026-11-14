@@ -16,7 +16,7 @@ public final class AssistantModel {
     /// The conversation whose answer is being written, if any.
     public private(set) var writingConversationId: String?
     /// The engine and whether it can run now.
-    public private(set) var engine: EngineInfo?
+    public private(set) var engine: AiModelInfo?
     /// A failed action, for an alert. The view clears it when dismissed.
     public var actionError: String?
 
@@ -26,8 +26,8 @@ public final class AssistantModel {
     @ObservationIgnored private var followTask: Task<Void, Never>?
 
     /// - Parameter engine: the model engine; the app passes
-    ///   `FoundationModelsEngine()`, tests a fake. `nil` keeps what Rust has.
-    public init(core: AssistantCore, engine: LocalModelEngine?) {
+    ///   `ForgeAppleModel()`, tests a fake. `nil` keeps what Rust has.
+    public init(core: AssistantCore, engine: AiModel?) {
         self.core = core
         if let engine { core.setEngine(engine: engine) }
         characters = core.characters()
