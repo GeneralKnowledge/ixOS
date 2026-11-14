@@ -42,15 +42,15 @@ use forge_net::UreqClient;
 use forge_runtime::{lock, now_ms};
 
 pub use catalogue::{BookCatalogue, CatalogueHit, OpenLibrary};
-use domain::{fold, validate, LibraryData, StoredSynopsis};
+use domain::{fold, validate, LibraryData, StoredBookSynopsis, StoredSynopsis};
 pub use error::LibraryError;
 use forge_storage::Staged;
 pub use model::*;
 use reader::EpubText;
 use store::Store;
 pub use summary::{
-    ChapterSynopsis, SummaryModel, SummaryModelError, SummaryModelInfo, SummaryProgress,
-    SummaryRequest, SummarySink, SummaryStage,
+    BookSynopsis, CastMember, ChapterSynopsis, SummaryModel, SummaryModelError, SummaryModelInfo,
+    SummaryProgress, SummaryRequest, SummarySink, SummaryStage,
 };
 
 // No namespace argument: UniFFI takes the library's name (pocket_library_core), so this
@@ -677,6 +677,7 @@ impl Library {
                     model: model.as_ref(),
                     cancel,
                     progress,
+                    requests: Default::default(),
                     source: summary::Source {
                         book_title,
                         author,
@@ -701,6 +702,217 @@ impl Library {
                 let out = synopsis.to_synopsis();
                 state.commit(|data, _, _| data.save_synopsis(id, synopsis))?;
                 Ok(out)
+            })
+            .await
+    }
+
+    /// The saved whole-book summary, with every saved chapter summary.
+    pub fn book_synopsis(&self, id: u64) -> Option<BookSynopsis> {
+        self.data.get().book_synopsis(id)
+    }
+
+    /// The whole-book "swarm": every chapter is read (summaries already
+    /// saved are reused, and each new one is saved as soon as it is done,
+    /// so a stopped run resumes where it left off), a cast keeper updates
+    /// the list of people after each chapter, and the overview is written
+    /// from the chapter summaries and the cast. A chapter the model
+    /// declines is skipped and counted. Takes minutes; on-screen work, like
+    /// `summarise_chapter`.
+    pub async fn summarise_book(
+        &self,
+        id: u64,
+        model: Arc<dyn SummaryModel>,
+        progress: Option<Arc<dyn SummaryProgress>>,
+        cancellation: Option<Arc<Cancellation>>,
+    ) -> Result<BookSynopsis, LibraryError> {
+        let info = model.describe();
+        if !info.available {
+            return Err(LibraryError::SummaryUnavailable {
+                reason: info
+                    .unavailable_reason
+                    .unwrap_or_else(|| format!("{} is not available", info.name)),
+            });
+        }
+        let started = std::time::Instant::now();
+        let (book_title, author, epub_file) = {
+            let data = self.data.get();
+            let book = data.book(id)?;
+            let epub = book
+                .epub_file
+                .clone()
+                .ok_or_else(|| LibraryError::NotReadable {
+                    reason: "there is no EPUB for this book; import its EPUB file to summarise it"
+                        .into(),
+                })?;
+            (book.title.clone(), book.author.clone(), epub)
+        };
+        let store = Arc::clone(&self.store);
+        let path = store
+            .book_file(&epub_file)
+            .ok_or_else(|| LibraryError::NotReadable {
+                reason: "the saved EPUB's name is not valid".into(),
+            })?;
+        let text = self
+            .rt
+            .run(
+                "open-book-text",
+                self.rt.foreground(cancellation.as_deref()),
+                move |_| EpubText::open_file(&path).map(|t| Arc::new(Mutex::new(t))),
+            )
+            .await?;
+        let chapters = lock(&text).chapters().to_vec();
+        let sections = summary::book_sections(&chapters);
+        if sections.is_empty() {
+            return Err(LibraryError::invalid(
+                "this book has no chapters to summarise",
+            ));
+        }
+        let total = sections.len() as u32;
+        let source = |chapter_title: &str| summary::Source {
+            book_title: book_title.clone(),
+            author: author.clone(),
+            chapter_title: chapter_title.to_string(),
+        };
+        let mut cast: Vec<CastMember> = Vec::new();
+        let mut summaries: Vec<String> = Vec::new();
+        let (mut requests, mut skipped) = (0u32, 0u32);
+        for (n, range) in sections.into_iter().enumerate() {
+            let title = chapters[range.start as usize].title.clone();
+            let saved = self.data.get().synopsis(id, range.start).cloned();
+            if let Some(progress) = &progress {
+                progress.changed(SummaryStage::Chapter {
+                    chapter: n as u32 + 1,
+                    chapters: total,
+                    title: title.clone(),
+                    saved: saved.is_some(),
+                });
+            }
+            let chapter_text = match saved {
+                Some(saved) => saved.text,
+                None => {
+                    let (model, progress, text) =
+                        (Arc::clone(&model), progress.clone(), Arc::clone(&text));
+                    let (source, range2) = (source(&title), range.clone());
+                    let work = self.rt.foreground(cancellation.as_deref());
+                    let result = self
+                        .rt
+                        .run("summarise-book-chapter", work, move |cancel| {
+                            let mut paragraphs = Vec::new();
+                            {
+                                let mut text = lock(&text);
+                                for i in range2 {
+                                    paragraphs.extend(text.chapter_text(i)?);
+                                }
+                            }
+                            let summariser = summary::Summariser {
+                                model: model.as_ref(),
+                                cancel,
+                                progress,
+                                requests: Default::default(),
+                                source,
+                            };
+                            let written = summariser.run(&paragraphs);
+                            Ok::<_, LibraryError>((written, summariser.requests.get()))
+                        })
+                        .await?;
+                    requests += result.1;
+                    match result.0 {
+                        Ok(written) => {
+                            let synopsis = StoredSynopsis {
+                                chapter: range.start,
+                                title: title.clone(),
+                                epub_file: epub_file.clone(),
+                                text: written.text.clone(),
+                                parts: written.parts,
+                                skipped_passages: written.skipped_passages,
+                                model_name: info.name.clone(),
+                                created_at_ms: now_ms(),
+                            };
+                            self.rt
+                                .command("save-summary", move |state| {
+                                    state.commit(|data, _, _| data.save_synopsis(id, synopsis))
+                                })
+                                .await?;
+                            written.text
+                        }
+                        Err(
+                            LibraryError::SummaryRefused { .. } | LibraryError::InvalidInput { .. },
+                        ) => {
+                            skipped += 1;
+                            continue;
+                        }
+                        Err(err) => return Err(err),
+                    }
+                }
+            };
+            // The cast keeper's turn.
+            let (model, progress, current) = (Arc::clone(&model), progress.clone(), cast.clone());
+            let (source2, title2, text2) = (source(&title), title.clone(), chapter_text.clone());
+            let work = self.rt.foreground(cancellation.as_deref());
+            let (updated, used) = self
+                .rt
+                .run("update-cast", work, move |cancel| {
+                    let summariser = summary::Summariser {
+                        model: model.as_ref(),
+                        cancel,
+                        progress,
+                        requests: Default::default(),
+                        source: source2,
+                    };
+                    let cast = summariser.update_cast(&current, &title2, &text2)?;
+                    Ok::<_, LibraryError>((cast, summariser.requests.get()))
+                })
+                .await?;
+            cast = updated;
+            requests += used;
+            summaries.push(format!("{title}: {chapter_text}"));
+        }
+        if summaries.is_empty() {
+            return Err(LibraryError::SummaryRefused {
+                reason: "the model declined every chapter of this book".into(),
+            });
+        }
+        let (model2, progress2, cast2, summaries2) = (
+            Arc::clone(&model),
+            progress.clone(),
+            cast.clone(),
+            summaries.clone(),
+        );
+        let source2 = source("");
+        let work = self.rt.foreground(cancellation.as_deref());
+        let (overview, used) = self
+            .rt
+            .run("book-overview", work, move |cancel| {
+                let summariser = summary::Summariser {
+                    model: model2.as_ref(),
+                    cancel,
+                    progress: progress2,
+                    requests: Default::default(),
+                    source: source2,
+                };
+                let text = summariser.overview(&cast2, &summaries2)?;
+                Ok::<_, LibraryError>((text, summariser.requests.get()))
+            })
+            .await?;
+        requests += used;
+        let stored = StoredBookSynopsis {
+            epub_file,
+            text: overview,
+            cast,
+            chapters_read: summaries.len() as u32,
+            chapters_skipped: skipped,
+            model_requests: requests,
+            seconds: started.elapsed().as_secs().min(u64::from(u32::MAX)) as u32,
+            model_name: info.name,
+            created_at_ms: now_ms(),
+        };
+        self.rt
+            .command("save-book-summary", move |state| {
+                state.commit(|data, _, _| data.save_book_synopsis(id, stored))?;
+                state
+                    .data
+                    .book_synopsis(id)
+                    .ok_or_else(|| LibraryError::invalid("the summary was not saved"))
             })
             .await
     }

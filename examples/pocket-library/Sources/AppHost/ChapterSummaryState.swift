@@ -87,6 +87,9 @@ public final class ChapterSummaryState {
         case .combining: return "Bringing the parts together…"
         case .writing: return "Writing the summary…"
         case .revising: return "Putting it in its own words…"
+        case .chapter(let chapter, let chapters, let title, _): return "Chapter \(chapter) of \(chapters): \(title)"
+        case .updatingCast: return "Updating who's who…"
+        case .overview: return "Writing the overview…"
         }
     }
 
@@ -99,6 +102,7 @@ public final class ChapterSummaryState {
         case .combining: return 0.85
         case .writing: return 0.9
         case .revising: return 0.95
+        case .chapter, .updatingCast, .overview: return 0
         }
     }
 

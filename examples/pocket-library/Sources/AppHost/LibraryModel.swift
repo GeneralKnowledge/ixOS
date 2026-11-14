@@ -336,6 +336,23 @@ public final class LibraryModel {
         }
     }
 
+    /// The saved whole-book summary, if any.
+    public func bookSynopsis(_ id: UInt64) -> BookSynopsis? {
+        library?.bookSynopsis(id: id)
+    }
+
+    /// Reads the whole book with `model` (minutes) and saves its summary.
+    /// Chapter summaries are saved as it goes, so a stopped run resumes.
+    public func summariseBook(
+        _ id: UInt64, model: SummaryModel, progress: SummaryProgress?
+    ) async throws -> BookSynopsis {
+        try await run { library in
+            try await withRustCancellation {
+                try await library.summariseBook(id: id, model: model, progress: progress, cancellation: $0)
+            }
+        }
+    }
+
     public func updateSettings(_ settings: LibrarySettings) async throws {
         self.settings = try await run { try await $0.updateSettings(settings: settings) }
     }

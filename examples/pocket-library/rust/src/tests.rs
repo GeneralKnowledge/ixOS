@@ -1009,3 +1009,30 @@ fn summaries_need_an_available_model_and_an_open_book() {
     );
     assert!(model.asked.lock().unwrap().is_empty());
 }
+
+#[test]
+fn a_whole_book_summary_reads_every_chapter_and_reuses_saved_ones() {
+    use crate::summary::tests::FakeModel;
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Whole");
+    assert_eq!(library.book_synopsis(book.id), None);
+
+    let model = Arc::new(FakeModel::new());
+    let synopsis = block_on(library.summarise_book(book.id, model.clone(), None, None)).unwrap();
+    assert_eq!((synopsis.chapters_read, synopsis.chapters_skipped), (2, 0));
+    assert_eq!(synopsis.chapters.len(), 2);
+    // Per chapter: reader, writer, cast keeper; then the overview.
+    assert_eq!(synopsis.model_requests, 7);
+    let asked = model.asked.lock().unwrap().clone();
+    let last = &asked.last().unwrap().prompt;
+    assert!(last.contains("overview of the whole book") && last.contains("Chapter: Answer"));
+    assert_eq!(synopsis.text, "Answer 7.");
+
+    // Saved, and a second run reuses the chapter summaries.
+    let library = reopen(library, dir.path());
+    assert_eq!(library.book_synopsis(book.id), Some(synopsis));
+    let again =
+        block_on(library.summarise_book(book.id, Arc::new(FakeModel::new()), None, None)).unwrap();
+    assert_eq!(again.model_requests, 3);
+}

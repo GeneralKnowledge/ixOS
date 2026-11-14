@@ -9,7 +9,7 @@ use crate::model::{
     ActivityEntry, ActivityKind, Book, BookInput, BookSource, LibraryQuery, LibrarySettings,
     LibrarySort, LibraryStats, ReadingPosition, ReadingStatus,
 };
-use crate::summary::ChapterSynopsis;
+use crate::summary::{BookSynopsis, CastMember, ChapterSynopsis};
 
 pub const MAX_TITLE_CHARS: usize = 300;
 pub const MAX_AUTHOR_CHARS: usize = 200;
@@ -54,6 +54,26 @@ pub struct StoredBook {
     /// Chapter summaries written on this phone, for the saved EPUB.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub synopses: Vec<StoredSynopsis>,
+    /// The whole-book summary, for the saved EPUB.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub book_synopsis: Option<StoredBookSynopsis>,
+}
+
+/// A whole-book summary as saved; its chapters are the book's saved
+/// chapter summaries.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct StoredBookSynopsis {
+    pub epub_file: String,
+    pub text: String,
+    #[serde(default)]
+    pub cast: Vec<CastMember>,
+    pub chapters_read: u32,
+    #[serde(default)]
+    pub chapters_skipped: u32,
+    pub model_requests: u32,
+    pub seconds: u32,
+    pub model_name: String,
+    pub created_at_ms: i64,
 }
 
 /// A chapter summary as saved. `epub_file` is the EPUB it was written
@@ -365,6 +385,7 @@ impl LibraryData {
             epub_file: None,
             reading_position: None,
             synopses: Vec::new(),
+            book_synopsis: None,
         });
         let title = self.book(id)?.title.clone();
         self.record(id, &title, now, ActivityKind::Added);
@@ -443,6 +464,7 @@ impl LibraryData {
         book.epub_file = epub_file;
         book.reading_position = None;
         book.synopses.clear();
+        book.book_synopsis = None;
         Ok(())
     }
 
@@ -454,6 +476,50 @@ impl LibraryData {
         book.synopses
             .iter()
             .find(|s| s.chapter == chapter && s.epub_file == epub)
+    }
+
+    /// The saved whole-book summary, with every saved chapter summary, if
+    /// it was written from the book's current EPUB.
+    pub fn book_synopsis(&self, id: u64) -> Option<BookSynopsis> {
+        let book = self.book(id).ok()?;
+        let epub = book.epub_file.as_deref()?;
+        let saved = book
+            .book_synopsis
+            .as_ref()
+            .filter(|s| s.epub_file == epub)?;
+        Some(BookSynopsis {
+            text: saved.text.clone(),
+            cast: saved.cast.clone(),
+            chapters: book
+                .synopses
+                .iter()
+                .filter(|s| s.epub_file == epub)
+                .map(StoredSynopsis::to_synopsis)
+                .collect(),
+            chapters_read: saved.chapters_read,
+            chapters_skipped: saved.chapters_skipped,
+            model_requests: saved.model_requests,
+            seconds: saved.seconds,
+            model_name: saved.model_name.clone(),
+            created_at_ms: saved.created_at_ms,
+        })
+    }
+
+    /// Saves a whole-book summary in place of the last one. Refused if the
+    /// book's EPUB changed meanwhile.
+    pub fn save_book_synopsis(
+        &mut self,
+        id: u64,
+        synopsis: StoredBookSynopsis,
+    ) -> Result<(), LibraryError> {
+        let book = self.book_mut(id)?;
+        if book.epub_file.as_deref() != Some(synopsis.epub_file.as_str()) {
+            return Err(LibraryError::NotReadable {
+                reason: "the book's EPUB changed while the summary was written".into(),
+            });
+        }
+        book.book_synopsis = Some(synopsis);
+        Ok(())
     }
 
     /// Saves a chapter summary, replacing an earlier one of that chapter.

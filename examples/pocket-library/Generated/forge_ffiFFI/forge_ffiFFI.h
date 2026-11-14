@@ -327,6 +327,11 @@ uint64_t uniffi_pocket_library_core_fn_method_library_backup_library(uint64_t pt
 RustBuffer uniffi_pocket_library_core_fn_method_library_book(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_SYNOPSIS
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOK_SYNOPSIS
+RustBuffer uniffi_pocket_library_core_fn_method_library_book_synopsis(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOKS
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_BOOKS
 RustBuffer uniffi_pocket_library_core_fn_method_library_books(uint64_t ptr, RustBuffer query, RustCallStatus *_Nonnull out_status
@@ -445,6 +450,11 @@ RustBuffer uniffi_pocket_library_core_fn_method_library_stats(uint64_t ptr, int6
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_STORAGE_INFO
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_STORAGE_INFO
 RustBuffer uniffi_pocket_library_core_fn_method_library_storage_info(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SUMMARISE_BOOK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SUMMARISE_BOOK
+uint64_t uniffi_pocket_library_core_fn_method_library_summarise_book(uint64_t ptr, uint64_t id, uint64_t model, RustBuffer progress, RustBuffer cancellation
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SUMMARISE_CHAPTER
@@ -856,6 +866,12 @@ uint16_t uniffi_pocket_library_core_checksum_method_library_book(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK_SYNOPSIS
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOK_SYNOPSIS
+uint16_t uniffi_pocket_library_core_checksum_method_library_book_synopsis(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOKS
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_BOOKS
 uint16_t uniffi_pocket_library_core_checksum_method_library_books(void
@@ -997,6 +1013,12 @@ uint16_t uniffi_pocket_library_core_checksum_method_library_stats(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_STORAGE_INFO
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_STORAGE_INFO
 uint16_t uniffi_pocket_library_core_checksum_method_library_storage_info(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_SUMMARISE_BOOK
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_LIBRARY_SUMMARISE_BOOK
+uint16_t uniffi_pocket_library_core_checksum_method_library_summarise_book(void
     
 );
 #endif

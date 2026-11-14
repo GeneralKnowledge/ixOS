@@ -669,6 +669,11 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func book(id: UInt64) throws  -> Book
     
     /**
+     * The saved whole-book summary, with every saved chapter summary.
+     */
+    func bookSynopsis(id: UInt64)  -> BookSynopsis?
+    
+    /**
      * The books matching `query`, in its order.
      */
     func books(query: LibraryQuery)  -> [Book]
@@ -818,6 +823,17 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func stats(yearStartMs: Int64)  -> LibraryStats
     
     func storageInfo()  -> StorageInfo
+    
+    /**
+     * The whole-book "swarm": every chapter is read (summaries already
+     * saved are reused, and each new one is saved as soon as it is done,
+     * so a stopped run resumes where it left off), a cast keeper updates
+     * the list of people after each chapter, and the overview is written
+     * from the chapter summaries and the cast. A chapter the model
+     * declines is skipped and counted. Takes minutes; on-screen work, like
+     * `summarise_chapter`.
+     */
+    func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?) async throws  -> BookSynopsis
     
     /**
      * Writes a summary of the chapter that reader chapter `index` is part
@@ -997,6 +1013,19 @@ open func book(id: UInt64)throws  -> Book  {
     return try  FfiConverterTypeBook_lift(try rustCallWithError(FfiConverterTypeLibraryError_lift) {
         uniffiCallStatus in
     uniffi_pocket_library_core_fn_method_library_book(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The saved whole-book summary, with every saved chapter summary.
+     */
+open func bookSynopsis(id: UInt64) -> BookSynopsis?  {
+    return try!  FfiConverterOptionTypeBookSynopsis.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_library_book_synopsis(
             self.uniffiCloneHandle(),
         FfiConverterUInt64.lower(id),uniffiCallStatus
     )
@@ -1414,6 +1443,31 @@ open func storageInfo() -> StorageInfo  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * The whole-book "swarm": every chapter is read (summaries already
+     * saved are reused, and each new one is saved as soon as it is done,
+     * so a stopped run resumes where it left off), a cast keeper updates
+     * the list of people after each chapter, and the overview is written
+     * from the chapter summaries and the cast. A chapter the model
+     * declines is skipped and counted. Takes minutes; on-screen work, like
+     * `summarise_chapter`.
+     */
+open func summariseBook(id: UInt64, model: SummaryModel, progress: SummaryProgress?, cancellation: Cancellation?)async throws  -> BookSynopsis  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_pocket_library_core_fn_method_library_summarise_book(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeSummaryModel_lower(model),FfiConverterOptionTypeSummaryProgress.lower(progress),FfiConverterOptionTypeCancellation.lower(cancellation)
+                )
+            },
+            pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_pocket_library_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_pocket_library_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeBookSynopsis_lift,
+            errorHandler: FfiConverterTypeLibraryError_lift
+        )
 }
     
     /**
@@ -2516,6 +2570,169 @@ public func FfiConverterTypeBookInput_lift(_ buf: RustBuffer) throws -> BookInpu
 #endif
 public func FfiConverterTypeBookInput_lower(_ value: BookInput) -> RustBuffer {
     return FfiConverterTypeBookInput.lower(value)
+}
+
+
+/**
+ * A summary of a whole book: an overview, the people in it, and every
+ * chapter's summary.
+ */
+public struct BookSynopsis: Equatable, Hashable {
+    public var text: String
+    public var cast: [CastMember]
+    /**
+     * Every chapter summary saved for the book, in order (the whole-book
+     * run writes the missing ones).
+     */
+    public var chapters: [ChapterSynopsis]
+    /**
+     * Chapters the model read, and chapters it declined or failed.
+     */
+    public var chaptersRead: UInt32
+    public var chaptersSkipped: UInt32
+    /**
+     * How hard the phone worked: model requests, and wall-clock seconds.
+     */
+    public var modelRequests: UInt32
+    public var seconds: UInt32
+    public var modelName: String
+    public var createdAtMs: Int64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, cast: [CastMember], 
+        /**
+         * Every chapter summary saved for the book, in order (the whole-book
+         * run writes the missing ones).
+         */chapters: [ChapterSynopsis], 
+        /**
+         * Chapters the model read, and chapters it declined or failed.
+         */chaptersRead: UInt32, chaptersSkipped: UInt32, 
+        /**
+         * How hard the phone worked: model requests, and wall-clock seconds.
+         */modelRequests: UInt32, seconds: UInt32, modelName: String, createdAtMs: Int64) {
+        self.text = text
+        self.cast = cast
+        self.chapters = chapters
+        self.chaptersRead = chaptersRead
+        self.chaptersSkipped = chaptersSkipped
+        self.modelRequests = modelRequests
+        self.seconds = seconds
+        self.modelName = modelName
+        self.createdAtMs = createdAtMs
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension BookSynopsis: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeBookSynopsis: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> BookSynopsis {
+        return
+            try BookSynopsis(
+                text: FfiConverterString.read(from: &buf), 
+                cast: FfiConverterSequenceTypeCastMember.read(from: &buf), 
+                chapters: FfiConverterSequenceTypeChapterSynopsis.read(from: &buf), 
+                chaptersRead: FfiConverterUInt32.read(from: &buf), 
+                chaptersSkipped: FfiConverterUInt32.read(from: &buf), 
+                modelRequests: FfiConverterUInt32.read(from: &buf), 
+                seconds: FfiConverterUInt32.read(from: &buf), 
+                modelName: FfiConverterString.read(from: &buf), 
+                createdAtMs: FfiConverterInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: BookSynopsis, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterSequenceTypeCastMember.write(value.cast, into: &buf)
+        FfiConverterSequenceTypeChapterSynopsis.write(value.chapters, into: &buf)
+        FfiConverterUInt32.write(value.chaptersRead, into: &buf)
+        FfiConverterUInt32.write(value.chaptersSkipped, into: &buf)
+        FfiConverterUInt32.write(value.modelRequests, into: &buf)
+        FfiConverterUInt32.write(value.seconds, into: &buf)
+        FfiConverterString.write(value.modelName, into: &buf)
+        FfiConverterInt64.write(value.createdAtMs, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookSynopsis_lift(_ buf: RustBuffer) throws -> BookSynopsis {
+    return try FfiConverterTypeBookSynopsis.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeBookSynopsis_lower(_ value: BookSynopsis) -> RustBuffer {
+    return FfiConverterTypeBookSynopsis.lower(value)
+}
+
+
+/**
+ * One person in a book, as the cast keeper describes them.
+ */
+public struct CastMember: Equatable, Hashable {
+    public var name: String
+    public var role: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, role: String) {
+        self.name = name
+        self.role = role
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CastMember: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCastMember: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CastMember {
+        return
+            try CastMember(
+                name: FfiConverterString.read(from: &buf), 
+                role: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CastMember, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.role, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCastMember_lift(_ buf: RustBuffer) throws -> CastMember {
+    return try FfiConverterTypeCastMember.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCastMember_lower(_ value: CastMember) -> RustBuffer {
+    return FfiConverterTypeCastMember.lower(value)
 }
 
 
@@ -4572,6 +4789,21 @@ public enum SummaryStage: Equatable, Hashable {
      * The summary repeated the book word for word; rewriting it.
      */
     case revising
+    /**
+     * Whole book: starting chapter `chapter` (1-based) of `chapters`. The
+     * chapter's own stages follow; `saved` means its summary was already
+     * there and is reused.
+     */
+    case chapter(chapter: UInt32, chapters: UInt32, title: String, saved: Bool
+    )
+    /**
+     * Whole book: updating the list of people after a chapter.
+     */
+    case updatingCast
+    /**
+     * Whole book: writing the overview. `Combining` and `Writing` follow.
+     */
+    case overview
 
 
 
@@ -4605,6 +4837,13 @@ public struct FfiConverterTypeSummaryStage: FfiConverterRustBuffer {
         
         case 5: return .revising
         
+        case 6: return .chapter(chapter: try FfiConverterUInt32.read(from: &buf), chapters: try FfiConverterUInt32.read(from: &buf), title: try FfiConverterString.read(from: &buf), saved: try FfiConverterBool.read(from: &buf)
+        )
+        
+        case 7: return .updatingCast
+        
+        case 8: return .overview
+        
         default: throw UniffiInternalError.unexpectedEnumCase
         }
     }
@@ -4634,6 +4873,22 @@ public struct FfiConverterTypeSummaryStage: FfiConverterRustBuffer {
         
         case .revising:
             writeInt(&buf, Int32(5))
+        
+        
+        case let .chapter(chapter,chapters,title,saved):
+            writeInt(&buf, Int32(6))
+            FfiConverterUInt32.write(chapter, into: &buf)
+            FfiConverterUInt32.write(chapters, into: &buf)
+            FfiConverterString.write(title, into: &buf)
+            FfiConverterBool.write(saved, into: &buf)
+            
+        
+        case .updatingCast:
+            writeInt(&buf, Int32(7))
+        
+        
+        case .overview:
+            writeInt(&buf, Int32(8))
         
         }
     }
@@ -5030,6 +5285,30 @@ fileprivate struct FfiConverterOptionTypeSummaryProgress: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeBookSynopsis: FfiConverterRustBuffer {
+    typealias SwiftType = BookSynopsis?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeBookSynopsis.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeBookSynopsis.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeChapterSynopsis: FfiConverterRustBuffer {
     typealias SwiftType = ChapterSynopsis?
 
@@ -5202,6 +5481,31 @@ fileprivate struct FfiConverterSequenceTypeBook: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeCastMember: FfiConverterRustBuffer {
+    typealias SwiftType = [CastMember]
+
+    public static func write(_ value: [CastMember], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeCastMember.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [CastMember] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [CastMember]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeCastMember.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeCatalogueBook: FfiConverterRustBuffer {
     typealias SwiftType = [CatalogueBook]
 
@@ -5244,6 +5548,31 @@ fileprivate struct FfiConverterSequenceTypeChapterSummary: FfiConverterRustBuffe
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeChapterSummary.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeChapterSynopsis: FfiConverterRustBuffer {
+    typealias SwiftType = [ChapterSynopsis]
+
+    public static func write(_ value: [ChapterSynopsis], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeChapterSynopsis.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ChapterSynopsis] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ChapterSynopsis]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeChapterSynopsis.read(from: &buf))
         }
         return seq
     }
@@ -5511,6 +5840,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_book() != 54190) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_library_book_synopsis() != 3612) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_library_books() != 23157) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -5581,6 +5913,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_storage_info() != 16703) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_library_summarise_book() != 5864) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_summarise_chapter() != 16118) {

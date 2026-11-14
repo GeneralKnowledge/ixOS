@@ -46,6 +46,7 @@ pub const NOTES_TOKENS: usize = 2400;
 /// Longest answers, in tokens.
 const NOTE_MAX_TOKENS: u32 = 300;
 const SUMMARY_MAX_TOKENS: u32 = 450;
+const OVERVIEW_MAX_TOKENS: u32 = 700;
 /// Low, so the model sticks to the text.
 const TEMPERATURE: f64 = 0.3;
 /// Shorter than this is a title page or a copyright notice.
@@ -180,6 +181,19 @@ pub enum SummaryStage {
     Writing { draft: String },
     /// The summary repeated the book word for word; rewriting it.
     Revising,
+    /// Whole book: starting chapter `chapter` (1-based) of `chapters`. The
+    /// chapter's own stages follow; `saved` means its summary was already
+    /// there and is reused.
+    Chapter {
+        chapter: u32,
+        chapters: u32,
+        title: String,
+        saved: bool,
+    },
+    /// Whole book: updating the list of people after a chapter.
+    UpdatingCast,
+    /// Whole book: writing the overview. `Combining` and `Writing` follow.
+    Overview,
 }
 
 /// Told about each stage, on Rust's thread.
@@ -226,6 +240,95 @@ pub fn section(chapters: &[crate::ChapterSummary], index: u32) -> std::ops::Rang
         .position(|c| c.in_contents)
         .map_or(chapters.len() as u32, |i| index + 1 + i as u32);
     start..end
+}
+
+/// One person in a book, as the cast keeper describes them.
+#[derive(uniffi::Record, serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq)]
+pub struct CastMember {
+    pub name: String,
+    pub role: String,
+}
+
+/// A summary of a whole book: an overview, the people in it, and every
+/// chapter's summary.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct BookSynopsis {
+    pub text: String,
+    pub cast: Vec<CastMember>,
+    /// Every chapter summary saved for the book, in order (the whole-book
+    /// run writes the missing ones).
+    pub chapters: Vec<ChapterSynopsis>,
+    /// Chapters the model read, and chapters it declined or failed.
+    pub chapters_read: u32,
+    pub chapters_skipped: u32,
+    /// How hard the phone worked: model requests, and wall-clock seconds.
+    pub model_requests: u32,
+    pub seconds: u32,
+    pub model_name: String,
+    pub created_at_ms: i64,
+}
+
+/// The sections a whole-book summary reads: one per chapter (see
+/// [`section`]), leaving out title pages, copyright notices and other
+/// sections under [`MIN_WORDS`].
+pub fn book_sections(chapters: &[crate::ChapterSummary]) -> Vec<std::ops::Range<u32>> {
+    let mut out: Vec<std::ops::Range<u32>> = Vec::new();
+    let mut index = 0;
+    while (index as usize) < chapters.len() {
+        let range = section(chapters, index);
+        let words: u32 = chapters[range.start as usize..range.end as usize]
+            .iter()
+            .map(|c| c.words)
+            .sum();
+        if words >= MIN_WORDS {
+            out.push(range.clone());
+        }
+        index = range.end.max(index + 1);
+    }
+    out
+}
+
+/// The cast keeper's list, read back: lines like "- Name: who they are"
+/// (or "Name — who"), at most [`MAX_CAST`].
+pub fn parse_cast(text: &str) -> Vec<CastMember> {
+    let mut cast: Vec<CastMember> = Vec::new();
+    for line in text.lines() {
+        let line = line
+            .trim()
+            .trim_start_matches(['-', '*', '\u{2022}'])
+            .trim();
+        let split = line
+            .split_once(':')
+            .or_else(|| line.split_once(" \u{2014} "))
+            .or_else(|| line.split_once(" - "));
+        let Some((name, role)) = split else { continue };
+        let name = name.trim().trim_matches('*').trim();
+        let role = role.trim();
+        if name.is_empty() || role.is_empty() || name.split_whitespace().count() > 6 {
+            continue;
+        }
+        if cast.iter().any(|c| c.name.eq_ignore_ascii_case(name)) {
+            continue;
+        }
+        cast.push(CastMember {
+            name: name.to_string(),
+            role: role.to_string(),
+        });
+        if cast.len() == MAX_CAST {
+            break;
+        }
+    }
+    cast
+}
+
+/// The most people the cast keeper tracks.
+pub const MAX_CAST: usize = 20;
+
+fn cast_text(cast: &[CastMember]) -> String {
+    cast.iter()
+        .map(|c| format!("- {}: {}", c.name, c.role))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // MARK: Planning
@@ -576,6 +679,47 @@ fn revise_prompt(source: &Source, notes: &[String], draft: &str, copied: &[Strin
     )
 }
 
+/// The cast keeper: follows who is who across the book.
+const CAST_INSTRUCTIONS: &str = "You keep a list of the people in a book for a reader, chapter \
+by chapter. Use only what the summaries say. Write only the list, one person per line.";
+
+fn cast_prompt(book: &str, cast: &[CastMember], chapter: &str, summary: &str) -> String {
+    let current = if cast.is_empty() {
+        "(nobody yet)".to_string()
+    } else {
+        cast_text(cast)
+    };
+    format!(
+        "{book}\n\nThe people so far:\n{current}\n\nThe next chapter, \u{201C}{chapter}\u{201D}:\n\
+         {summary}\n\nUpdate the list: keep everyone on it, add anyone new who matters, and update \
+         what we know about them from this chapter. One line per person, as \"- Name: who they are \
+         and what they have done\", under 20 words each, most important first, at most {MAX_CAST} \
+         people."
+    )
+}
+
+fn stretch_prompt(book: &str, summaries: &[String]) -> String {
+    format!(
+        "{book}\n\nSummaries of consecutive chapters, in order:\n\n{}\n\nSummarise this stretch of \
+         the book in one paragraph of 4 to 6 sentences, keeping the events in order and the names.",
+        summaries.join("\n\n")
+    )
+}
+
+fn overview_prompt(book: &str, cast: &[CastMember], summaries: &[String]) -> String {
+    let people = if cast.is_empty() {
+        String::new()
+    } else {
+        format!("The people in the book:\n{}\n\n", cast_text(cast))
+    };
+    format!(
+        "{book}\n\n{people}The whole book, in order:\n\n{}\n\nWrite an overview of the whole book \
+         in three short paragraphs: how it begins and who it is about, how the story or argument \
+         develops, and how it ends. Use the names. Write in your own words.",
+        summaries.join("\n\n")
+    )
+}
+
 fn request(instructions: &str, prompt: String, max_tokens: u32) -> SummaryRequest {
     SummaryRequest {
         instructions: instructions.to_string(),
@@ -601,6 +745,8 @@ pub struct Summariser<'a> {
     pub model: &'a dyn SummaryModel,
     pub cancel: &'a CancelHandle,
     pub progress: Option<Arc<dyn SummaryProgress>>,
+    /// How many requests the model has answered (or declined).
+    pub requests: std::cell::Cell<u32>,
     pub source: Source,
 }
 
@@ -771,11 +917,116 @@ impl Summariser<'_> {
         Ok(out)
     }
 
+    /// The cast keeper's turn after a chapter: the updated list, or the
+    /// old one if the model declines or answers with no list.
+    pub fn update_cast(
+        &self,
+        cast: &[CastMember],
+        chapter: &str,
+        summary: &str,
+    ) -> Result<Vec<CastMember>, LibraryError> {
+        self.report(SummaryStage::UpdatingCast);
+        let prompt = cast_prompt(&self.book_line(), cast, chapter, summary);
+        match self.ask(request(CAST_INSTRUCTIONS, prompt, 600), false) {
+            Ok(text) => {
+                let updated = parse_cast(&text);
+                Ok(if updated.is_empty() {
+                    cast.to_vec()
+                } else {
+                    updated
+                })
+            }
+            Err(SummaryModelError::Refused { .. } | SummaryModelError::ContextTooLong { .. }) => {
+                Ok(cast.to_vec())
+            }
+            Err(err) => Err(self.error(err)),
+        }
+    }
+
+    /// The book's overview from its chapter summaries ("Chapter title:
+    /// summary", in order): stretches of chapters are summarised until
+    /// they fit one request, then the overview is written from them and
+    /// the cast.
+    pub fn overview(
+        &self,
+        cast: &[CastMember],
+        chapters: &[String],
+    ) -> Result<String, LibraryError> {
+        self.report(SummaryStage::Overview);
+        let book = self.book_line();
+        let budget = NOTES_TOKENS
+            .saturating_sub(estimate_tokens(&cast_text(cast)) + 200)
+            .max(800);
+        let mut summaries = chapters.to_vec();
+        while summaries.len() > 1 && estimate_tokens(&summaries.join("\n\n")) > budget {
+            self.report(SummaryStage::Combining);
+            let mut groups: Vec<Vec<String>> = vec![Vec::new()];
+            for summary in &summaries {
+                let group = groups.last_mut().expect("never empty");
+                let size = estimate_tokens(&group.join("\n\n")) + estimate_tokens(summary);
+                if !group.is_empty() && size > NOTES_TOKENS {
+                    groups.push(vec![summary.clone()]);
+                } else {
+                    group.push(summary.clone());
+                }
+            }
+            if groups.len() == summaries.len() {
+                summaries = summaries.iter().map(|s| shorten(s, 2)).collect();
+                continue;
+            }
+            let mut next = Vec::new();
+            for group in groups {
+                if group.len() == 1 {
+                    next.extend(group);
+                    continue;
+                }
+                let prompt = stretch_prompt(&book, &group);
+                match self.ask(request(WRITER_INSTRUCTIONS, prompt, NOTE_MAX_TOKENS), false) {
+                    Ok(text) if !text.is_empty() => next.push(text),
+                    Ok(_)
+                    | Err(
+                        SummaryModelError::Refused { .. }
+                        | SummaryModelError::ContextTooLong { .. },
+                    ) => next.push(
+                        group
+                            .iter()
+                            .map(|s| shorten(s, 1))
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    ),
+                    Err(err) => return Err(self.error(err)),
+                }
+            }
+            summaries = next;
+        }
+        self.report(SummaryStage::Writing {
+            draft: String::new(),
+        });
+        self.ask(
+            request(
+                WRITER_INSTRUCTIONS,
+                overview_prompt(&book, cast, &summaries),
+                OVERVIEW_MAX_TOKENS,
+            ),
+            true,
+        )
+        .map_err(|e| self.error(e))
+    }
+
+    fn book_line(&self) -> String {
+        self.source
+            .header()
+            .lines()
+            .next()
+            .unwrap_or_default()
+            .to_string()
+    }
+
     fn ask(&self, request: SummaryRequest, last: bool) -> Result<String, SummaryModelError> {
         if self.cancel.is_cancelled() {
             return Err(SummaryModelError::Stopped);
         }
-        // The final summary is shown as it is written.
+        self.requests.set(self.requests.get() + 1);
         // Only the final summary is shown as it is written.
         let draft = if last { self.progress.clone() } else { None };
         let sink = Arc::new(SummarySink {
@@ -935,6 +1186,7 @@ pub(crate) mod tests {
             model,
             cancel: &cancel,
             progress,
+            requests: Default::default(),
             source: source(),
         }
         .run(text)
@@ -1095,6 +1347,7 @@ pub(crate) mod tests {
             model: &model,
             cancel: &cancel,
             progress: None,
+            requests: Default::default(),
             source: source(),
         };
         let combined = summariser.combine(&notes).unwrap();
@@ -1111,6 +1364,7 @@ pub(crate) mod tests {
             model: &model,
             cancel: &cancel,
             progress: None,
+            requests: Default::default(),
             source: source(),
         }
         .run(&paragraphs(40, 100));
@@ -1172,6 +1426,7 @@ pub(crate) mod tests {
             model: &model,
             cancel: &cancel,
             progress: Some(stages.clone()),
+            requests: Default::default(),
             source: source(),
         }
         .run(&text)
@@ -1198,6 +1453,42 @@ pub(crate) mod tests {
             ),
             vec!["and the senators rose from their seats at once".to_string()]
         );
+    }
+
+    #[test]
+    fn the_cast_list_is_read_back_from_the_models_lines() {
+        let cast = parse_cast(
+            "Here is the list:\n- Anna: a teacher who misses her train\n* **Marcus** \u{2014} her brother\n\
+             - Anna: again\nNo list here\n- : nobody",
+        );
+        assert_eq!(
+            cast,
+            vec![
+                CastMember {
+                    name: "Anna".into(),
+                    role: "a teacher who misses her train".into()
+                },
+                CastMember {
+                    name: "Marcus".into(),
+                    role: "her brother".into()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_book_leaves_out_title_pages() {
+        let mut chapters = vec![
+            chapter(0, false),
+            chapter(1, true),
+            chapter(2, false),
+            chapter(3, true),
+        ];
+        for c in &mut chapters {
+            c.words = 500;
+        }
+        chapters[0].words = 20;
+        assert_eq!(book_sections(&chapters), vec![1..3, 3..4]);
     }
 
     fn chapter(index: u32, listed: bool) -> crate::ChapterSummary {
