@@ -60,6 +60,8 @@ Forge recognises this failure and prints the same fix.
 
 xtool talks to the iPhone through usbmuxd. When usbmuxd is not running, xtool waits for a device forever without printing anything. On Linux, `forge run ios` and `forge doctor` check for usbmuxd's socket (`/var/run/usbmuxd`) first. On many distributions udev starts usbmuxd when an iPhone is plugged in, so plug it in and unlock it, or run `sudo systemctl start usbmuxd`.
 
+If the phone is plugged in and unlocked but not listed, usbmuxd has usually lost it: `sudo systemctl restart usbmuxd`. Forge does this itself when the machine allows it ([linux-setup.md](linux-setup.md#let-forge-restart-usbmuxd-optional)).
+
 ## `forge run ios` finished but the app did not open
 
 That is expected: `xtool dev run` installs the app but does not launch it, and `xtool launch` does not work on iOS 17 and later (upstream xtool issue #44). Tap the app's icon on the home screen. The first time, trust your developer profile first (Settings > General > VPN & Device Management).

@@ -317,7 +317,19 @@ fn xtool_preflight(
                 "xtool auth login   (any Apple ID works; a paid account can use an API key)",
             );
         }
-        if ios_env::usbmuxd_running(runner, env) == Some(false) {
+        // The phone sometimes drops off usbmuxd while still plugged in: when
+        // none is seen, restart usbmuxd once and look again.
+        let mut running = ios_env::usbmuxd_running(runner, env);
+        let mut devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
+        if !matches!(devices, Some(Some(ref d)) if !d.is_empty()) {
+            let mut recovery = ios_env::UsbmuxdRecovery::new(env, std::time::Duration::ZERO);
+            if let Some(note) = recovery.tick(runner, std::time::Duration::ZERO) {
+                println!("[forge] {note}");
+                running = ios_env::usbmuxd_running(runner, env);
+                devices = (running != Some(false)).then(|| ios_env::ios_devices(runner));
+            }
+        }
+        if running == Some(false) {
             pf.problem(
                 Stage::Device,
                 "usbmuxd is not running, so xtool would wait for the iPhone forever without saying so.",
@@ -325,7 +337,7 @@ fn xtool_preflight(
             );
             return pf;
         }
-        match ios_env::ios_devices(runner) {
+        match devices.flatten() {
             Some(devices) if devices.is_empty() => pf.problem(
                 Stage::Device,
                 "No iPhone is connected.",
@@ -422,6 +434,44 @@ mod tests {
         assert!(xtool_preflight(&mock, Purpose::Build, &|_| None)
             .problems
             .is_empty());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn run_without_a_phone_restarts_usbmuxd_once_and_looks_again() {
+        let mock = ready_host();
+        mock.respond("xtool devices --no-wait", 0, "\n")
+            .respond("sudo -n -l systemctl restart usbmuxd", 0, "")
+            .respond("sudo -n systemctl restart usbmuxd", 0, "")
+            .respond("sleep", 0, "");
+        let pf = xtool_preflight(&mock, Purpose::Run, &|_| None);
+        assert_eq!(pf.problems.len(), 1, "{pf:?}");
+        assert!(pf.problems[0].problem.contains("No iPhone"), "{pf:?}");
+        let calls = mock.call_lines();
+        let restart = calls
+            .iter()
+            .position(|l| l == "sudo -n systemctl restart usbmuxd")
+            .expect("restarted");
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|l| l.contains("restart usbmuxd") && !l.contains("-l"))
+                .count(),
+            1,
+            "{calls:?}"
+        );
+        assert!(
+            calls[restart..].iter().any(|l| l.contains("xtool devices")),
+            "looked again: {calls:?}"
+        );
+
+        // A phone in the first listing: nothing is restarted.
+        let mock = ready_host();
+        mock.respond("sudo", 0, "");
+        assert!(xtool_preflight(&mock, Purpose::Run, &|_| None)
+            .problems
+            .is_empty());
+        assert!(mock.call_lines().iter().all(|l| !l.contains("sudo")));
     }
 
     #[test]
