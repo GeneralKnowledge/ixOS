@@ -459,6 +459,10 @@ struct Limits {
 fn default_limits(mem_total: u64, cores: u32) -> Limits {
     let keep = (mem_total / 4).max(2 * GIB);
     let memory = mem_total.saturating_sub(keep).max(GIB);
+    limits_for(memory, cores)
+}
+
+fn limits_for(memory: u64, cores: u32) -> Limits {
     let spare = cores.saturating_sub(1).max(1);
     Limits {
         memory_max: Some(memory),
@@ -497,8 +501,24 @@ fn read_host_config(env: Env) -> Result<Option<HostConfig>, String> {
     }
 }
 
-fn limits(env: Env, host: Option<&HostConfig>, mem_total: u64, cores: u32) -> Limits {
-    let mut l = default_limits(mem_total, cores);
+/// The most a build may take without squeezing what is already running
+/// (another build that bypassed the queue, an ML job on the GPU): what is
+/// free now, less an eighth of the machine (at least 1 GiB) for those jobs
+/// to grow, and never under 1 GiB.
+fn room_now(mem: Memory) -> u64 {
+    mem.available
+        .saturating_sub((mem.total / 8).max(GIB))
+        .max(GIB)
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Memory {
+    total: u64,
+    available: u64,
+}
+
+fn limits(env: Env, host: Option<&HostConfig>, mem: Memory, cores: u32) -> Limits {
+    let mut l = default_limits(mem.total, cores);
     if let Some(h) = host {
         if let Some(gib) = h.memory_max_gib {
             l.memory_max = Some((gib * GIB as f64) as u64);
@@ -520,19 +540,38 @@ fn limits(env: Env, host: Option<&HostConfig>, mem_total: u64, cores: u32) -> Li
     if let Some(j) = env("FORGE_BUILD_JOBS").and_then(|v| v.trim().parse::<u32>().ok()) {
         l.jobs = j.max(1);
     }
+    // Whatever the defaults or overrides say, a build never takes memory
+    // that something already running needs.
+    if let Some(m) = l.memory_max {
+        let capped = m.min(room_now(mem));
+        if capped < m {
+            l = Limits {
+                memory_max: Some(capped),
+                ..limits_for(capped, cores)
+            };
+            if let Some(j) = env("FORGE_BUILD_JOBS").and_then(|v| v.trim().parse::<u32>().ok()) {
+                l.jobs = j.max(1);
+            }
+        }
+    }
     l
 }
 
-fn mem_total() -> u64 {
-    std::fs::read_to_string("/proc/meminfo")
-        .ok()
-        .and_then(|s| {
-            s.lines()
-                .find_map(|l| l.strip_prefix("MemTotal:"))
-                .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
-        })
-        .map(|kb| kb * 1024)
-        .unwrap_or(8 * GIB)
+fn meminfo(key: &str) -> Option<u64> {
+    std::fs::read_to_string("/proc/meminfo").ok().and_then(|s| {
+        s.lines()
+            .find_map(|l| l.strip_prefix(key))
+            .and_then(|v| v.trim().trim_end_matches("kB").trim().parse::<u64>().ok())
+            .map(|kb| kb * 1024)
+    })
+}
+
+fn memory() -> Memory {
+    let total = meminfo("MemTotal:").unwrap_or(8 * GIB);
+    Memory {
+        total,
+        available: meminfo("MemAvailable:").unwrap_or(total),
+    }
 }
 
 fn cores() -> u32 {
@@ -618,7 +657,20 @@ pub fn confine(cmd: Cmd) -> Result<Cmd, String> {
         return Ok(cmd);
     }
     let host = read_host_config(&real_env)?;
-    let l = limits(&real_env, host.as_ref(), mem_total(), cores());
+    let mem = memory();
+    let l = limits(&real_env, host.as_ref(), mem, cores());
+    if let Some(m) = l.memory_max {
+        if m < default_limits(mem.total, cores()).memory_max.unwrap_or(0) && m == room_now(mem) {
+            static NOTED: OnceLock<()> = OnceLock::new();
+            NOTED.get_or_init(|| {
+                eprintln!(
+                    "[forge] Only {:.1} GiB of memory is free (something else is using it), so this build is capped at {:.1} GiB and may be stopped if it needs more",
+                    mem.available as f64 / GIB as f64,
+                    m as f64 / GIB as f64
+                );
+            });
+        }
+    }
     let mut cmd = cmd;
     if real_env("CARGO_BUILD_JOBS").is_none()
         && !cmd.env.iter().any(|(k, _)| k == "CARGO_BUILD_JOBS")
@@ -920,11 +972,42 @@ mod tests {
         );
     }
 
+    fn idle(gib: u64) -> Memory {
+        Memory {
+            total: gib * GIB,
+            available: gib * GIB,
+        }
+    }
+
+    #[test]
+    fn builds_leave_running_jobs_their_memory() {
+        // 16 GiB laptop with an ML job holding 9 GiB: 7 GiB free, 2 GiB kept
+        // for that job to grow, so the build gets 5 GiB (not the usual 12)
+        // and 2 Cargo jobs.
+        let busy = Memory {
+            total: 16 * GIB,
+            available: 7 * GIB,
+        };
+        let l = limits(&env_of(&[]), None, busy, 8);
+        assert_eq!((l.memory_max, l.jobs), (Some(5 * GIB), 2));
+        // Even an explicit cap can't take what is in use.
+        let host: HostConfig = toml::from_str("memory_max_gib = 12").unwrap();
+        let l = limits(&env_of(&[]), Some(&host), busy, 8);
+        assert_eq!(l.memory_max, Some(5 * GIB));
+        // Nearly nothing free: 1 GiB, one job, and the build may be stopped.
+        let full = Memory {
+            total: 16 * GIB,
+            available: GIB / 2,
+        };
+        let l = limits(&env_of(&[]), None, full, 8);
+        assert_eq!((l.memory_max, l.jobs), (Some(GIB), 1));
+    }
+
     #[test]
     fn host_file_and_environment_override_the_caps() {
         let host: HostConfig =
             toml::from_str("memory_max_gib = 5\ncpu_quota_percent = 200\njobs = 2\n").unwrap();
-        let l = limits(&env_of(&[]), Some(&host), 16 * GIB, 8);
+        let l = limits(&env_of(&[]), Some(&host), idle(16), 8);
         assert_eq!(
             l,
             Limits {
@@ -936,7 +1019,7 @@ mod tests {
         let l = limits(
             &env_of(&[("FORGE_BUILD_MEMORY_MAX", "off"), ("FORGE_BUILD_JOBS", "1")]),
             Some(&host),
-            16 * GIB,
+            idle(16),
             8,
         );
         assert_eq!((l.memory_max, l.jobs), (None, 1));

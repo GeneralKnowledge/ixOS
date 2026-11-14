@@ -4,16 +4,22 @@
 # docs/builds.md#the-build-queue.
 #
 # Usage:
-#   scripts/setup-build-host.sh           set up (asks for your sudo password)
-#   scripts/setup-build-host.sh --check   only report; changes nothing
+#   scripts/setup-build-host.sh                  set up (asks for your sudo password)
+#   scripts/setup-build-host.sh --check          only report; changes nothing
+#   scripts/setup-build-host.sh --protect NAME   also never let earlyoom stop
+#                                                processes named NAME (repeatable;
+#                                                remembered for later runs)
 #
 # What it sets up:
 #   1. Memory caps for builds: lingering for your user and the memory
 #      controller delegated to your user's systemd, so `forge` can run each
 #      build in a `systemd-run --user --scope` with MemoryMax (sudo).
 #   2. A safety net for anything that bypasses the queue: earlyoom, which
-#      kills the biggest compiler before the machine runs out of memory and
-#      never picks sshd, tailscaled, usbmuxd or Claude (sudo, apt).
+#      stops the biggest compiler before the machine runs out of memory. It
+#      never stops a protected process: anything using a GPU when the script
+#      runs, common ML runtimes (python, ollama, llama.cpp, jupyter), the
+#      names in ~/.config/forge/protected-processes (one per line; --protect
+#      adds to it), and sshd, tailscaled, usbmuxd and Claude (sudo, apt).
 #   3. The current forge in ~/.cargo/bin, and a list of other forge copies
 #      that are too old to queue.
 #   4. ~/.config/forge/build-host.toml, which marks this machine as a shared
@@ -24,7 +30,17 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHECK_ONLY=0
-[[ "${1:-}" == "--check" ]] && CHECK_ONLY=1
+ADD_PROTECT=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --check) CHECK_ONLY=1 ;;
+    --protect) ADD_PROTECT+=("${2:?--protect needs a process name}"); shift ;;
+    -h | --help) sed -n '2,27p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "error: unknown argument $1 (see --help)" >&2; exit 2 ;;
+  esac
+  shift
+done
+PROTECT_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/forge/protected-processes"
 
 UID_NUM="$(id -u)"
 USER_NAME="$(id -un)"
@@ -95,22 +111,69 @@ fi
 
 # 2. Safety net ---------------------------------------------------------------
 say "2. Out-of-memory safety net (earlyoom)"
+# earlyoom matches the process name (/proc/<pid>/comm, at most 15
+# characters). Protected names go in --ignore: never stopped, whatever
+# happens. Compilers go in --prefer: stopped first.
+if [[ ${#ADD_PROTECT[@]} -gt 0 && $CHECK_ONLY -eq 0 ]]; then
+  mkdir -p "$(dirname "$PROTECT_FILE")"
+  printf '%s\n' "${ADD_PROTECT[@]}" >>"$PROTECT_FILE"
+fi
+gpu_users() {
+  # Every process with a GPU device open (NVIDIA, AMD/Intel render nodes,
+  # ROCm), and what nvidia-smi lists as compute jobs.
+  local dev pid
+  for dev in /dev/nvidia[0-9]* /dev/dri/renderD* /dev/kfd; do
+    [[ -e $dev ]] || continue
+    for pid in $(fuser "$dev" 2>/dev/null; sudo -n fuser "$dev" 2>/dev/null); do
+      cat "/proc/${pid//[^0-9]/}/comm" 2>/dev/null
+    done
+  done
+  if command -v nvidia-smi >/dev/null; then
+    nvidia-smi --query-compute-apps=process_name --format=csv,noheader 2>/dev/null |
+      while IFS= read -r name; do basename "$name" | cut -c1-15; done
+  fi
+}
+mapfile -t PROTECTED < <( {
+  printf '%s\n' sshd systemd tailscaled usbmuxd claude node dbus-daemon init \
+    python python3 ollama llama-server llama-cli jupyter-lab torchrun
+  gpu_users
+  [[ -f $PROTECT_FILE ]] && grep -v '^\s*\(#\|$\)' "$PROTECT_FILE"
+  printf '%s\n' "${ADD_PROTECT[@]}"
+} | sed 's/[^A-Za-z0-9_.+-]//g' | cut -c1-15 | grep -v '^$' | sort -u)
+GPU_NOW="$(gpu_users | sort -u | tr '\n' ' ')"
+[[ -n $GPU_NOW ]] && say "  using a GPU now, so protected: $GPU_NOW"
+say "  protected (never stopped): ${PROTECTED[*]}"
+# Prefix matches, no "$": a name cut to 15 characters still matches.
+ignore="^($(IFS='|'; echo "${PROTECTED[*]}" | sed 's/\./\\./g; s/+/\\+/g'))"
 # No quotes or spaces in the regexes: the service passes $EARLYOOM_ARGS split
 # on whitespace.
-EARLYOOM_ARGS="-m 6 -s 10 -r 3600 --prefer ^(swift-frontend|swift-build|swift-driver|swiftc|rustc|cargo|clang|ld|lld|xtool|cc1) --avoid ^(sshd|systemd|tailscaled|usbmuxd|claude|node|dbus-daemon|init)"
-if systemctl is-active --quiet earlyoom; then
-  ok "earlyoom is running"
-else
-  if [[ $CHECK_ONLY -eq 1 ]]; then
+EARLYOOM_ARGS="-m 6 -s 10 -r 3600 --prefer ^(swift-frontend|swift-build|swift-driver|swiftc|rustc|cargo|clang|ld|lld|xtool|cc1) --ignore $ignore"
+if [[ $CHECK_ONLY -eq 1 ]]; then
+  if ! systemctl is-active --quiet earlyoom; then
     todo "install and start earlyoom"
+  elif [[ "$(cat /etc/default/earlyoom 2>/dev/null)" != *"--ignore $ignore"* ]]; then
+    todo "earlyoom runs, but without today's protected list"
   else
-    sudo apt-get install -y earlyoom
+    ok "earlyoom is running and protects them"
+  fi
+else
+  command -v earlyoom >/dev/null || sudo apt-get install -y earlyoom
+  if ! earlyoom -h 2>&1 | grep -q -- '--ignore'; then
+    todo "this earlyoom ($(earlyoom -v 2>&1 | head -1)) has no --ignore, so it can't promise to spare protected processes; leaving it off"
+    sudo systemctl disable --now earlyoom 2>/dev/null
+  else
     echo "EARLYOOM_ARGS=\"$EARLYOOM_ARGS\"" | sudo tee /etc/default/earlyoom >/dev/null
-    sudo systemctl enable --now earlyoom
+    sudo systemctl enable earlyoom >/dev/null 2>&1
     sudo systemctl restart earlyoom
-    systemctl is-active --quiet earlyoom && ok "earlyoom is running" || todo "earlyoom didn't start: \`systemctl status earlyoom\`"
+    if systemctl is-active --quiet earlyoom; then
+      ok "earlyoom is running: it stops compilers first and never a protected process"
+    else
+      todo "earlyoom didn't start: \`systemctl status earlyoom\`"
+    fi
   fi
 fi
+say "  A job started later with a name not in the list: add it with --protect <name>,"
+say "  or protect that one process from any out-of-memory kill: sudo choom -n -1000 -p <pid>"
 
 # 3. forge --------------------------------------------------------------------
 say "3. forge"

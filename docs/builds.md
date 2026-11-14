@@ -38,7 +38,7 @@ A machine that several people or sessions build on (the laptop the apps are inst
 
 - **`forge queue status`** (`--json` too) shows the build running now and everyone waiting.
 - **`forge queue run -- <command>`** puts any other heavy command in the queue: a raw `cargo build`, `swift build`, `xtool dev build`, or a script. It exits with the command's exit code. Use it for anything heavy that isn't one of the commands above.
-- **Caps.** On Linux with systemd, each heavy step runs in a `systemd-run --user --scope` with `MemoryMax` (no swap) and `CPUQuota`, and Cargo gets fewer jobs (`CARGO_BUILD_JOBS`). By default a build may use all but a quarter of the memory (at least 2 GiB stays free), every core but one, and one Cargo job per 2 GiB. A build that outgrows its cap is killed by the kernel and fails with a message saying so, instead of freezing the machine. Builds also run at nice 10 and the lowest best-effort I/O priority, so Remote Control, SSH and the over-the-air install page come first.
+- **Caps.** On Linux with systemd, each heavy step runs in a `systemd-run --user --scope` with `MemoryMax` (no swap) and `CPUQuota`, and Cargo gets fewer jobs (`CARGO_BUILD_JOBS`). By default a build may use all but a quarter of the memory (at least 2 GiB stays free), every core but one, and one Cargo job per 2 GiB. It never takes memory that something already running needs: if another job (an ML model on the GPU, say) holds memory when the build starts, the cap shrinks to what is free less room for that job to grow (an eighth of the machine, at least 1 GiB). The build is then slower or may be stopped, and the other job is not touched. A capped build is the only thing the cap can stop: the kernel kills inside the build's own scope, never outside it. A build that outgrows its cap is killed by the kernel and fails with a message saying so, instead of freezing the machine. Builds also run at nice 10 and the lowest best-effort I/O priority, so Remote Control, SSH and the over-the-air install page come first.
 - **Nothing stale.** `forge run ios` leaves the queue as soon as its build is done, so waiting for the phone or installing holds up no one. The lock (`flock` on `~/.cache/forge/build.lock`) frees itself when its process exits, however it exits, and places in line (`~/.cache/forge/build-queue/`) of processes that are gone are skipped. A build that hangs keeps its turn: waiters give up after an hour and name its pid, so you can stop it.
 
 ### Setting up a shared build host
@@ -49,7 +49,18 @@ Run this once on the machine (it asks for your sudo password), and again after a
 cd ~/ixOS && git pull && scripts/setup-build-host.sh     # --check only reports
 ```
 
-It turns on lingering for your user and delegates the memory controller to your user's systemd (so `systemd-run --user` caps work, also from Remote Control); installs `earlyoom`, which kills the biggest compiler before the machine runs out of memory even if something bypassed the queue, and never picks sshd, tailscaled, usbmuxd or Claude; installs the current `forge` into `~/.cargo/bin` and lists older copies that don't queue; and, once a test proves the cap stops a process at its limit, writes `~/.config/forge/build-host.toml`. With that file, forge refuses to build without the cap instead of risking the machine. The file can also set the caps (`memory_max_gib`, `cpu_quota_percent`, `jobs`).
+It turns on lingering for your user and delegates the memory controller to your user's systemd (so `systemd-run --user` caps work, also from Remote Control); installs `earlyoom`, which stops the biggest compiler first before the machine runs out of memory, even if something bypassed the queue, and never stops a protected process (below); installs the current `forge` into `~/.cargo/bin` and lists older copies that don't queue; and, once a test proves the cap stops a process at its limit, writes `~/.config/forge/build-host.toml`. With that file, forge refuses to build without the cap instead of risking the machine. The file can also set the caps (`memory_max_gib`, `cpu_quota_percent`, `jobs`).
+
+### Protecting your own jobs
+
+earlyoom never stops a protected process. The setup script protects:
+
+- every process using a GPU when it runs (NVIDIA, AMD and Intel GPUs, and what `nvidia-smi` lists)
+- common ML runtimes: `python`, `ollama`, `llama-server`, `llama-cli`, `jupyter-lab`, `torchrun`
+- sshd, tailscaled, usbmuxd, Claude (`claude`, `node`) and systemd
+- any name in `~/.config/forge/protected-processes`, one per line
+
+To add a job, run `scripts/setup-build-host.sh --protect <process name>`. It is remembered for later runs. Run the script again after starting a new GPU job, so the job is picked up automatically. To protect a single running process from any out-of-memory kill, kernel or earlyoom, run `sudo choom -n -1000 -p <pid>`.
 
 Elsewhere (a machine only you build on, macOS) the queue still works and a missing cap is only a note.
 
