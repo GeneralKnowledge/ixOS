@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 105 capabilities, 14 work on an iPhone, 14 partly work, 58 are built but haven't been run on an iPhone, and 19 aren't built yet.**
+**Of 106 capabilities, 15 work on an iPhone, 14 partly work, 58 are built but haven't been run on an iPhone, and 19 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -23,6 +23,7 @@ A person ran an app that uses it on a physical iPhone and recorded the result.
 | Forge Device | Live system log, filtered by app (`forge device logs`) | iPhone, iOS 26.3.1, 2026-11-07 (`--grep`, `--process`, `--limit`) |
 | Forge Device | Crash reports (`forge device crashes`) | iPhone, iOS 26.3.1, 2026-11-07 (listed 161, pulled 4) |
 | Forge Device | Symbolicated crash reports (`forge crash`, `forge device crashes --pull`, `forge_read_crashes`) | Cati, iOS 26.3.1, 2026-11-08: Device Lab debug build, crashes tapped by Reuben; Swift crash to LabModel.swift:61 and Rust panic to crash_test.rs:24, build matched by UUID, Swift demangled. Real reports of other apps parsed too |
+| Forge Device | Over-the-air installs of development builds over Tailscale (`forge publish ios`) | 2026-11-14, a free-team Device Lab build signed with no phone connected installed on Cati (iOS 26.3.1) from the Install page over Tailscale, with the experiment script; `forge publish ios` itself not yet run on the phone |
 | Forge UI Testing | Mount the Developer Disk Image and start the WebDriverAgent runner from Linux (`forge ui setup`) | iPhone16,2, iOS 26.3.1, WDA 16.15.2, 2026-11-07 (M0 run watched by Reuben) |
 | Forge UI Testing | Launch an app, find elements by accessibility identifier, tap, type, read the UI tree (`forge ui run`, `tree`) | M0 passed 11/11 in 10 s, iPhone16,2, iOS 26.3.1, 2026-11-07 (watched by Reuben) |
 | Forge UI Testing | Act in apps Forge didn't build, under a per-app policy (`forge ui --any-app`, `~/.config/forge/device-control.toml`) | iPhone16,2, iOS 26.3.1, 2026-11-08 (Reuben present): Pocket Library m0 11/11 without --any-app; Claude app typed, then Send stopped at the [y/N] prompt and was refused on n (journal: refused, presses_return false); refused with no terminal; refused without --any-app before any action. ax_probe Ctrl-C exited cleanly, but before the walk started, so cleanup mid-walk is unproven |

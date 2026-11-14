@@ -1112,6 +1112,8 @@ pub fn build_ios(
     if !package_only {
         ios_preflight(runner, builder, Purpose::Build)?;
     }
+    // One heavy build at a time on this machine (build_lock.rs).
+    let _lock = crate::build_lock::acquire("forge build ios", &project_dir)?;
     package_ios(runner, root, &project_dir, &cfg, devtools)?;
     if package_only {
         println!(
@@ -1128,6 +1130,31 @@ pub fn build_ios(
         project_dir.display()
     );
     Ok(())
+}
+
+/// Builds the app and signs it into an `.ipa` without a phone (for
+/// `forge publish ios`). Never includes the live connection.
+pub fn build_signed_ipa(
+    runner: &dyn CommandRunner,
+    builder: &dyn IosBuilder,
+    root: &Path,
+    project: &Path,
+    configuration: IosConfiguration,
+) -> Result<PathBuf, String> {
+    let (project_dir, cfg) = ios_project(root, project)?;
+    ios_preflight(runner, builder, Purpose::Build)?;
+    let _lock = crate::build_lock::acquire("forge publish ios", &project_dir)?;
+    package_ios(runner, root, &project_dir, &cfg, false)?;
+    println!(
+        "[forge] Building and signing the Swift app ({}); no iPhone needed",
+        configuration.name()
+    );
+    builder.build_signed_ipa(
+        runner,
+        &project_dir,
+        configuration,
+        &crate::app_config::xtool_product(&cfg),
+    )
 }
 
 /// Builds and installs on a connected device. xtool does not launch the
@@ -1221,6 +1248,10 @@ fn run_ios_steps(
     } else {
         None
     };
+    // Held for the build only: waiting for the phone and installing don't
+    // keep another build on this machine waiting.
+    status.phase("waiting_for_build_lock");
+    let lock = crate::build_lock::acquire("forge run ios", &project_dir)?;
     status.phase("building");
     package_ios(runner, root, &project_dir, cfg, devtools)?;
     println!(
@@ -1228,6 +1259,7 @@ fn run_ios_steps(
         configuration.name()
     );
     builder.build(runner, &project_dir, configuration)?;
+    drop(lock);
     let product = crate::app_config::xtool_product(cfg);
     status.phase("waiting_for_device");
     if let Some(problem) = phone_missing(runner, builder) {

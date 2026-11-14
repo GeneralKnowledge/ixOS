@@ -99,6 +99,8 @@ It compiles before it looks for the phone, so you can start it before you fetch 
 
 The first install needs **Trust** on the phone (Settings > General > VPN & Device Management). A free Apple team allows 3 sideloaded apps and re-signing every 7 days ([ios-signing.md](ios-signing.md)).
 
+Away from the cable, `forge publish ios` builds and signs without the phone and puts an Install page on your tailnet: open it in Safari on the iPhone and tap Install ([over-the-air.md](over-the-air.md)).
+
 ### 9. Launch and inspect the app
 
 ```bash
