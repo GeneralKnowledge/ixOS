@@ -1,4 +1,4 @@
-# Rust build output and staged native libraries
+# Rust build output (the app crate and the stage 0 spike) and staged native libraries
 /rust/target/
 /build/
 # SwiftPM / xtool
@@ -7,3 +7,4 @@
 # Logs of `forge ... --json` runs
 /.forge/
 *.xcuserstate
+/spike/target/

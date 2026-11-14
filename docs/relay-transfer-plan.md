@@ -1,7 +1,8 @@
 # Relay as a file transfer app: plan
 
 Status: approved by Reuben on 2026-11-14 (all recommendations below). Stage 0
-spikes are next.
+on Linux is done ([results](research/relay-stage0-spike.md)); its iPhone half
+waits for the laptop.
 
 Relay today sends notes and files between devices that paired once by QR
 code, on the same network ([examples/relay](../examples/relay/README.md)).
