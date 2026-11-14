@@ -55,6 +55,10 @@ pub struct IosSection {
     /// Custom URL schemes the app opens (`myapp://...`).
     #[serde(default)]
     pub url_schemes: Vec<String>,
+    /// Bonjour service types the app advertises or browses ("_myapp._tcp"),
+    /// written to NSBonjourServices; iOS refuses any type not listed.
+    #[serde(default)]
+    pub bonjour_services: Vec<String>,
     /// UIBackgroundModes values, e.g. "remote-notification", "fetch".
     #[serde(default)]
     pub background_modes: Vec<String>,
@@ -209,6 +213,21 @@ const PAID_ONLY_ENTITLEMENTS: &[(&str, &str)] = &[
     ("com.apple.developer.siri", "SiriKit"),
     ("com.apple.developer.wifi-aware", "Wi-Fi Aware"),
 ];
+
+/// "_name._tcp" or "_name._udp": a name of 1 to 15 letters, digits and
+/// hyphens (RFC 6335), then the protocol.
+fn is_bonjour_service(service: &str) -> bool {
+    let Some(rest) = service.strip_prefix('_') else {
+        return false;
+    };
+    let Some((name, protocol)) = rest.split_once("._") else {
+        return false;
+    };
+    matches!(protocol, "tcp" | "udp")
+        && (1..=15).contains(&name.len())
+        && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+        && name.chars().any(|c| c.is_ascii_alphabetic())
+}
 
 /// Info.plist keys that xtool or Xcode derive from other settings; setting
 /// them in `[ios.info]` would silently disagree with those.
@@ -412,6 +431,12 @@ pub fn info_plist(cfg: &ForgeConfig) -> Result<BTreeMap<String, Plist>, String> 
         map.insert(
             "CFBundleURLTypes".into(),
             Plist::Array(vec![Plist::Dict(url_type)]),
+        );
+    }
+    if !ios.bonjour_services.is_empty() {
+        map.insert(
+            "NSBonjourServices".into(),
+            Plist::strings(ios.bonjour_services.iter().cloned()),
         );
     }
     let mut modes = ios.background_modes.clone();
@@ -772,6 +797,16 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
                 "[ios] url_schemes: \"{scheme}\" belongs to the system; use your own scheme, or [ios.entitlements] associated_domains for https links"
             ));
         }
+    }
+    for service in &ios.bonjour_services {
+        if !is_bonjour_service(service) {
+            return Err(format!(
+                "[ios] bonjour_services: \"{service}\" is not a Bonjour service type; use \"_name._tcp\" or \"_name._udp\""
+            ));
+        }
+    }
+    if !ios.bonjour_services.is_empty() && ios.info.contains_key("NSBonjourServices") {
+        return Err("set Bonjour services in [ios] bonjour_services or in [ios.info] NSBonjourServices, not both".into());
     }
     for task in &ios.background_tasks {
         if task.is_empty() || task.contains(char::is_whitespace) {
@@ -1558,6 +1593,7 @@ ios_device = true
 icon = "Resources/AppIcon.png"
 orientations = ["portrait", "landscape_left"]
 url_schemes = ["demo"]
+bonjour_services = ["_demo._tcp"]
 background_modes = ["remote-notification"]
 [ios.permissions]
 camera = "Scan book barcodes."
@@ -1588,6 +1624,8 @@ LSApplicationQueriesSchemes = ["maps"]
             "<key>CFBundleURLSchemes</key>\n\t\t\t<array>\n\t\t\t\t<string>demo</string>"
         ));
         assert!(info.contains("<key>ITSAppUsesNonExemptEncryption</key>\n\t<false/>"));
+        assert!(info
+            .contains("<key>NSBonjourServices</key>\n\t<array>\n\t\t<string>_demo._tcp</string>"));
         assert!(info.contains("<string>UIInterfaceOrientationLandscapeLeft</string>"));
         let ent = &rendered.files[1].1;
         assert!(ent.contains("<key>aps-environment</key>\n\t<string>development</string>"));
@@ -1611,6 +1649,8 @@ LSApplicationQueriesSchemes = ["maps"]
             ("[ios.permissions]\nlocation_always = \"x\"", "location_when_in_use"),
             ("[ios]\nurl_schemes = [\"demo://\"]", "URL scheme"),
             ("[ios]\nurl_schemes = [\"https\"]", "associated_domains"),
+            ("[ios]\nbonjour_services = [\"forgerelay\"]", "Bonjour service type"),
+            ("[ios]\nbonjour_services = [\"_forgerelay._http\"]", "Bonjour service type"),
             ("[ios]\norientations = [\"sideways\"]", "landscape_left"),
             ("[ios]\nbackground_modes = [\"always\"]", "remote-notification"),
             ("[ios]\nicon = \"../icon.png\"", "inside the app"),

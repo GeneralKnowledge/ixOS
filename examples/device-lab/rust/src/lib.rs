@@ -33,6 +33,7 @@ use commonplace_core as _;
 use fieldkit_core as _;
 use good_dog_app as _;
 use pocket_library_core as _;
+use relay_core as _;
 use sketchbook_core as _;
 use soundscape_core as _;
 use weather_core as _;

@@ -49,6 +49,8 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A23 | Sketchbook | Rust owns undo, but each `PKCanvasView` brings UIKit's undo manager (tool picker, shake), which would undo behind Rust's back | Limit | Open: document the pattern |
 | A24 | Soundscape | Recording in time with playback needs host-time scheduling and latency trimming written by hand; ForgeKit's audio service only records voice notes | Limit | Open |
 | A25 | Soundscape | Two hosted apps want the microphone with different texts; Device Lab has to write one text for both | Annoyance | Accept |
+| A26 | Relay | `forge.toml` had no way to list Bonjour service types (`NSBonjourServices`), without which iOS refuses to browse or advertise | Limit | Fixed here: `[ios] bonjour_services`, merged by hosts |
+| A27 | Relay | Advertising a port Rust opened needs the deprecated `NetService`, and resolving a found service to `host:port` without connecting needs it too; the app connects and drops instead | Annoyance | Open |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -417,3 +419,34 @@ texts for one permission differ.
 **Measure (Soundscape).** Hosting Soundscape in Device Lab took 2 lines of
 Rust, 2 of `Package.swift`, 2 of `forge.toml` (the host list and the shared
 microphone text) and 9 of `AppsView.swift`.
+
+## A26. No Bonjour services in `forge.toml`
+
+**What happened.** iOS 14 and later refuse to browse for or advertise a
+Bonjour service type that isn't in the app's `NSBonjourServices`. Forge's
+`forge.toml` had no key for it, and `[ios.info]` keys aren't merged by a
+host, so Device Lab couldn't have carried Relay's.
+
+**Fix (in this PR).** `[ios] bonjour_services = ["_forgerelay._tcp"]`,
+checked (`_name._tcp` or `_name._udp`), written to `NSBonjourServices`, and
+merged from hosted apps like URL schemes. Documented in app-config.md.
+
+## A27. Bonjour for a port Rust owns
+
+**What happened.** Relay's port is opened by Rust, so `NWListener` (which
+owns its socket) can't advertise it; `NetService`, deprecated, can.
+Finding the address of a browsed service without connecting is also only in
+`NetService`; with `NWBrowser` the app opens a connection, reads where it
+went, and closes it, which Relay's listener sees as a caller that said
+nothing.
+
+**Workaround.** `RelayNetwork` does both, about 150 lines.
+
+**Framework.** If a second app advertises a Rust-owned port, a small
+`ForgeBonjour` adapter (advertise a port, browse a type, resolve to
+`host:port`) in the services' Swift side would save it; or Rust could hand
+its socket to `NWListener`. Not before a second use.
+
+**Measure (Relay).** Hosting Relay in Device Lab took 2 lines of Rust, 2 of
+`Package.swift`, 3 of `forge.toml` (the host list and the shared camera and
+local network texts) and 9 of `AppsView.swift`.

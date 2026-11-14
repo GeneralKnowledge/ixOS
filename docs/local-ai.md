@@ -2,6 +2,8 @@
 
 Status: **approved by Reuben, 2026-11-07** (all recommendations in section 6 accepted). L0 finished on 2026-11-07 (results below); Reuben skipped the remaining checks, which are recorded as skipped, not passed. L1 (the Assistant in Chat on Foundation Models) is built; its phone run is in [Chat's ACCEPTANCE.md](../examples/chat/ACCEPTANCE.md#l1-on-device-assistant).
 
+Next: [forge-ai-plan.md](forge-ai-plan.md) proposes moving the engine interface into a shared Forge AI module and adding AI over Relay (2026-11-14, awaiting approval).
+
 Goal: a private, offline AI assistant inside the Chat app on the iPhone. It downloads its own model, runs it on the phone and keeps working in airplane mode. It is the flagship's first feature that needs no server. For ixOS it proves a reusable **local model capability**: a native Swift inference adapter behind a stable interface that Rust app code drives, with storage, streaming, cancellation and resource limits handled by the framework.
 
 The architectural rule, from Reuben's proposal, and kept: **no inference in Rust.** Inference engines are native Swift adapters. Rust owns the conversation, the prompt, the history, the settings, the model library's state and the policy (what may load, when to stop). The adapter owns tokens, weights and the hardware.
