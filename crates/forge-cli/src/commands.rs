@@ -2578,14 +2578,12 @@ ios_device = true
         assert!(files.len() > 3, "{files:?}");
         for path in files {
             let text = fs::read_to_string(&path).unwrap();
-            for module in ["ForgeAppKit"] {
-                assert!(
-                    !text.lines().any(|l| l.trim_start().starts_with("import")
-                        && l.split_whitespace().any(|w| w == module)),
-                    "{} imports {module}",
-                    path.display()
-                );
-            }
+            assert!(
+                !text.lines().any(|l| l.trim_start().starts_with("import")
+                    && l.split_whitespace().any(|w| w == "ForgeAppKit")),
+                "{} imports ForgeAppKit",
+                path.display()
+            );
         }
     }
 
