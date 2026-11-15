@@ -1,0 +1,47 @@
+# CL-1 and CL-2 on a real iPhone, in Device Lab (the app on the phone):
+# add an item, tick it off, then relaunch and find it still ticked.
+# Starts on throwaway data and keeps it for the relaunch, so the person's
+# own checklist is never used.
+#   forge ui run examples/checklist/uitests/add-and-tick.toml
+
+name = "CL-1, CL-2: add an item, tick it, find it after a relaunch"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "checklist"] }
+
+[[step]]
+expect = { id = "checklist.add", enabled = false }
+
+[[step]]
+type = { id = "checklist.newTitle", text = "Buy milk" }
+
+[[step]]
+tap = { id = "checklist.add" }
+
+[[step]]
+expect = { label = "Buy milk", value = "Not done" }
+
+[[step]]
+tap = { label = "Buy milk" }
+
+[[step]]
+expect = { label = "Buy milk", value = "Done" }
+
+[[step]]
+expect = { id = "checklist.summary", has_label = "1 of 1 done" }
+
+[[step]]
+screenshot = "1-ticked"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-ForgeKeepTestData", "-launchApp", "checklist"] }
+
+[[step]]
+expect = { label = "Buy milk", value = "Done" }

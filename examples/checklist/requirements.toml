@@ -1,0 +1,21 @@
+# What Checklist must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone.
+
+[[requirement]]
+id = "CL-1"
+statement = "An item typed in is added with its spaces tidied, every committed change reaches the screen, and an empty item is refused in plain words with nothing saved."
+twin = ["ChecklistTests.testTheHostOwnsTheCoreAndHearsEveryCommit"]
+device = ["uitests/add-and-tick.toml"]
+
+[[requirement]]
+id = "CL-2"
+statement = "Items survive closing the app: what was saved before shutdown is there at the next launch, nothing runs after shutdown, and only one copy of the core opens a checklist at a time."
+twin = ["ChecklistTests.testShutdownKeepsCommittedWorkAndRefusesMore", "ChecklistTests.testOneCorePerDataDirectory"]
+device = ["uitests/add-and-tick.toml"]
+
+[[requirement]]
+id = "CL-3"
+statement = "In the background, on-screen work such as search stops while an export still finishes, holding background time only until it is done; back on screen the list is read again, and leaving a search stops it in Rust."
+twin = ["ChecklistTests.testTheBackgroundInterruptsOnScreenWorkOnly", "ChecklistTests.testFinishingWorkHoldsBackgroundTimeUntilItIsDone", "ChecklistTests.testCancellingTheSwiftTaskCancelsTheRustWork"]

@@ -3,7 +3,7 @@
 // on Linux and macOS with `swift test`; nothing is mocked.
 import ChecklistApp
 import ChecklistFFI
-import ForgeKit
+@preconcurrency import ForgeKit  // ForgeKit builds in Swift 5 mode; `forge check swift` builds tests in 6
 import Foundation
 import XCTest
 
