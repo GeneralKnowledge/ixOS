@@ -22,6 +22,27 @@ How it is used:
 Severity: **blocker** (had to stop), **limit** (had to work around),
 **annoyance** (cost time, nothing more).
 
+## Where the ranked list stands after the 15 November merges
+
+All open work merged into main on 2026-11-15 (#216, #218 to #225, combined
+in #226). Against the ranked list below:
+
+- **Done:** rank 2 (launch appearance is ForgeUI's `ForgeLaunchAppearance`,
+  #225), rank 3 (`allowsUse` ships once, in ForgeKit's ForgeNative, #225),
+  rank 4 (`ErrorKind` gained `Network` and `Refused`, contract 3, #223; a
+  ForgeKit 0.6 release has to carry it).
+- **Smaller:** rank 1 is now Chat, Good Dog, Weather and Device Lab (plus
+  Counter by decision); Pocket Library is on ForgeHost and ForgeAppKit
+  destinations (#220). The Weather move is on branch
+  `claude/project-thread-yz7ms9-weather`, not merged.
+- **A second use:** rank 6 (A5). Commonplace's search reads on its own
+  read-only connection so it doesn't bump the revision (#222), alongside
+  FieldKit. That is the second use extraction waits for.
+- **New:** none of the Swift merged on 15 November had been compiled for
+  iPhone when it merged. The combined Device Lab build is the check.
+- The rest (ranks 5, 7 to 15) is unchanged. `docs/app-parity.md` lists the
+  19 remaining app lags by wave.
+
 ## Overnight pass, 2026-11-15: what is left, ranked
 
 Every crate, example and app crate was built, linted and tested on Linux
