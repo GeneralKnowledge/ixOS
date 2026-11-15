@@ -1,7 +1,8 @@
 #if os(iOS)
 @preconcurrency import RelayFFI
-import ForgeUI
+import Foundation
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 /// Send a file with a word code to anyone on this Wi-Fi (Relay M1). The
@@ -64,6 +65,7 @@ struct SendCodeSheet: View {
             }
             .onAppear {
                 model.resetCodeSend()
+                let model = model
                 network.watchCodeSenders { senders in
                     model.codeSendersNearby(senders)
                 }

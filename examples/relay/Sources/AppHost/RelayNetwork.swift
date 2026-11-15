@@ -1,4 +1,5 @@
 #if os(iOS)
+@preconcurrency import RelayFFI
 import Foundation
 import Network
 import Observation
@@ -144,23 +145,23 @@ final class RelayNetwork {
             "n": Data(String(advert.number).utf8),
             "id": Data(advert.endpointID.utf8),
         ]
-        service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        _ = service.setTXTRecord(NetService.data(fromTXTRecord: txt))
         service.publish()
         codeAdvertiser = service
     }
 
     /// Reports every code sender advertising nearby (this device's own
     /// included; Rust leaves its own id out) until `stopWatchingCodeSenders`.
-    func watchCodeSenders(_ report: @escaping @MainActor ([NearbySender]) -> Void) {
+    func watchCodeSenders(_ report: @escaping @MainActor @Sendable ([NearbySender]) -> Void) {
         guard codeWatcher == nil else { return }
         let browser = NWBrowser(
             for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
             using: .udp
         )
         browser.browseResultsChangedHandler = { results, _ in
-            let senders: [NearbySender] = results.compactMap { result in
+            let senders: [NearbySender] = results.compactMap { result -> NearbySender? in
                 guard case .bonjour(let txt) = result.metadata,
-                      let n = txt["n"].flatMap(UInt8.init),
+                      let n = txt["n"].flatMap({ UInt8($0) }),
                       let id = txt["id"], !id.isEmpty
                 else { return nil }
                 return NearbySender(number: n, endpointId: id)
