@@ -49,7 +49,14 @@ thiserror = "2.0"
 # iroh-blobs for verified, resumable files, SPAKE2 for the code. The same
 # versions as the M0 spike (examples/relay/spike), whose sender it talks to.
 iroh = { version = "1", default-features = false, features = ["tls-ring"] }
-iroh-blobs = "0.105"
+iroh-blobs = "=0.104.1"
+# Held at 0.2.189: libc 0.2.190 made the routing and IPv6 interface types
+# that iroh's netwatch and netdev use on iOS macOS-only, so newer libc does
+# not build for the iPhone. iroh-blobs 0.105 and mio 1.2.5 require 0.2.190,
+# hence 0.104.1 above (same protocol; tested against the spike's 0.105
+# sender). Lift both when netwatch and netdev ship their iOS fixes
+# (n0-computer/net-tools#267, shellrow/netdev#195).
+libc = "=0.2.189"
 spake2 = "0.4"
 sha2 = "0.10"
 hmac = "0.12"

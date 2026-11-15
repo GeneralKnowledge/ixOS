@@ -914,7 +914,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e35d6e78f4cebb90e51d543db8fe41528851d6deeef6ef21ebd4bfdc1e784776"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1742,9 +1742,9 @@ dependencies = [
 
 [[package]]
 name = "iroh-blobs"
-version = "0.105.0"
+version = "0.104.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b9ef502f80b48a0d87bc6b4212a9140ecc2915e2683cb3f2606b9241fec4349a"
+checksum = "4f0c0f527363afa91564f82080fc5d31dd463e1831df0b546ff9594bbfa3cb60"
 dependencies = [
  "bao-tree",
  "bytes",
@@ -1763,7 +1763,6 @@ dependencies = [
  "iroh-tickets",
  "iroh-util",
  "irpc",
- "libc",
  "n0-error",
  "n0-future",
  "nested_enum_utils",
@@ -1779,7 +1778,6 @@ dependencies = [
  "smallvec",
  "tokio",
  "tracing",
- "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1920,11 +1918,10 @@ dependencies = [
 
 [[package]]
 name = "irpc"
-version = "1.0.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fecfcc2a6db86a2a0c1d8138fd58cd83e882e9923cb9e4faf5962ffa2b5a6f7e"
+checksum = "3623d6ff582b415904b29bbe6ebcb4a4f9a262ccdee05a45fdd003ef0950c386"
 dependencies = [
- "derive_more",
  "futures-buffered",
  "futures-util",
  "irpc-derive",
@@ -1943,13 +1940,13 @@ dependencies = [
 
 [[package]]
 name = "irpc-derive"
-version = "1.0.0"
+version = "0.17.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9c29e19b1a86c662125cdaa33860723dc966c4f50cad207d21ea64b4a14b51aa"
+checksum = "35c254013736de16472140d26904e6ac98e8f3887284dcf4af40f88c77411b56"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 3.0.10",
+ "syn 2.0.119",
 ]
 
 [[package]]
@@ -2051,9 +2048,9 @@ checksum = "20870f649af7073d53e38067b2a84312175d56ea15217e1b15bc83506ec50afb"
 
 [[package]]
 name = "libc"
-version = "0.2.191"
+version = "0.2.189"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "65cd87c9a6d60536580b316ad985726104730a5151c99845f2490428ef91240a"
+checksum = "3eaf3ede3fee6db1a4c2ee091bf8a8b4dccdc6d17f656fb07896ee72867612f2"
 
 [[package]]
 name = "libm"
@@ -2155,9 +2152,9 @@ dependencies = [
 
 [[package]]
 name = "mio"
-version = "1.2.5"
+version = "1.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "20521a903f02b0a573cd6840e9d0a5a0cc043d361fe924092cd70f8556cc9c4a"
+checksum = "1788edb87fdc09c7e26304471e2f5be8cdefb1b6930d6e3985fc02ff53bf86ee"
 dependencies = [
  "libc",
  "wasi",
@@ -3098,6 +3095,7 @@ dependencies = [
  "hmac",
  "iroh",
  "iroh-blobs",
+ "libc",
  "log",
  "qrcode",
  "serde",
@@ -3195,7 +3193,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3253,7 +3251,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -3810,7 +3808,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -4587,7 +4585,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
