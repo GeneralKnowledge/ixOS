@@ -83,7 +83,7 @@ const MINIMAL_REMOVES: &[&str] = &[
 ///
 /// A relative path is taken from the current directory when an app is there
 /// (`cd ~/projects && forge build ios --project MyApp`), otherwise from the
-/// workspace root (`--project examples/counter` from anywhere in the checkout).
+/// workspace root (`--project examples/pocket-library` from anywhere in the checkout).
 pub fn resolve_project_dir(root: &Path, project: &Path) -> PathBuf {
     if project.is_absolute() {
         return project.to_path_buf();
@@ -1793,10 +1793,10 @@ ios_device = true
     }
 
     #[test]
-    fn generated_dir_for_counter_example() {
+    fn generated_dir_for_an_example() {
         let root = workspace_root();
-        let gen = generated_dir_for_project(&root, Path::new("examples/counter"));
-        assert_eq!(gen, root.join("examples/counter/Generated"));
+        let gen = generated_dir_for_project(&root, Path::new("examples/pocket-library"));
+        assert_eq!(gen, root.join("examples/pocket-library/Generated"));
     }
 
     #[test]
@@ -2675,12 +2675,12 @@ ios_device = true
     #[test]
     fn init_fails_when_destination_exists() {
         let root = workspace_root();
-        let dest = root.join("examples").join("counter");
+        let dest = root.join("examples").join("checklist");
         let err = init(
             &MockRunner::default(),
             &root,
-            "counter",
-            "org.example.counter",
+            "checklist",
+            "org.example.checklist",
             "ios",
             None,
         )

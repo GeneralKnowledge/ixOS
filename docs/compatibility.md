@@ -62,4 +62,4 @@ Android is **work in progress** ([roadmap](roadmap.md#android--work-in-progress)
 
 ## Reporting a version that works (or does not)
 
-Open an issue with the output of `./scripts/validate-toolchain.sh` (or `forge doctor`), the commands you ran, and the result. A version moves from "Installed only" or "Not verified" to tested once the manual checklist in [toolchain-validation.md](toolchain-validation.md#manual-acceptance-counter-on-device) passes with it.
+Open an issue with the output of `./scripts/validate-toolchain.sh` (or `forge doctor`), the commands you ran, and the result. A version moves from "Installed only" or "Not verified" to tested once the manual checklist in [toolchain-validation.md](toolchain-validation.md#manual-acceptance-an-example-on-device) passes with it.

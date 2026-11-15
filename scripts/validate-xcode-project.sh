@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PROJECT="${1:-$ROOT/examples/counter/Xcode/Counter.xcodeproj/project.pbxproj}"
+PROJECT="${1:-$ROOT/examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj}"
 
 if [[ ! -f "$PROJECT" ]]; then
   echo "error: missing Xcode project at $PROJECT" >&2

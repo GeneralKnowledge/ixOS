@@ -103,7 +103,7 @@ Ensure the static library exists:
 
 ```bash
 ls build/ios-device/lib/libforge_ffi.a
-./scripts/package-ios-library.sh examples/counter/Generated
+./scripts/package-ios-library.sh examples/pocket-library/Generated
 ```
 
 Packaging scripts call `scripts/native-lib-needs-rebuild.sh` so changing Rust sources or iOS/Android build settings triggers a rebuild instead of reusing a stale `.a` / `.so`. Delete `build/ios-device/lib/libforge_ffi.a` (and its `.forge-build-meta` sidecar) to force a full iOS relink.
@@ -149,13 +149,9 @@ See [ios-xcode.md](ios-xcode.md). Use `forge build ios --package-only` before op
 
 If SwiftPM rejects `-L` flags, see [docs/adr/001-ios-static-linking.md](adr/001-ios-static-linking.md) for the artifact-bundle fallback.
 
-## Decrement shows error at zero
+## An app says it couldn't save
 
-Expected — Rust returns `ForgeAppError.WouldUnderflow`; the UI should show a message without crashing.
-
-## Persistence shows “Could not save counter state”
-
-Rust returned `ForgeAppError.PersistenceFailed` after a failed JSON write (permissions or disk). **In-memory state is not committed** on a failed save—the counter stays at the last successfully persisted value. Refresh the UI from `snapshot()` if needed, then check Application Support directory permissions.
+The Rust command's save failed (permissions or a full disk) and it returned a `Storage` error. **Nothing is committed** on a failed save: the app's state stays at the last saved version, and Try Again sends the same command. Check free space on the phone and the Application Support directory's permissions.
 
 ## A build says it is queued, or was killed at the memory cap
 

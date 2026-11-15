@@ -59,7 +59,7 @@ public final class NotesModel {
 - Use `@ObservationIgnored` for bookkeeping that no view displays, such as tasks, subscriptions and cancellation handles.
 - Hold the model in `@State` on the root view, then pass it down. A child that needs bindings declares `@Bindable var model: NotesModel`; one that only reads it declares `let model: NotesModel`. SwiftUI re-renders a view only when a property it actually read changes.
 
-Don't use `ObservableObject` and `@Published` in new code. The older examples (Counter, Weather, Chat) still do, and they keep working.
+Don't use `ObservableObject` and `@Published` in new code. The older examples (Weather, Chat) still do, and they keep working.
 
 ### Opening Rust and the loading state
 

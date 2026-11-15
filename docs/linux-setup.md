@@ -92,17 +92,17 @@ cargo test --workspace
 ./scripts/generate-bindings.sh
 ```
 
-## Build Counter example
+## Build an example
 
 ```bash
-cargo run -p forge-cli -- build ios --project examples/counter
+cargo run -p forge-cli -- build ios --project examples/pocket-library
 ```
 
 Or step by step:
 
 ```bash
-./scripts/package-ios-library.sh examples/counter/Generated
-cd examples/counter && xtool dev run
+./scripts/package-ios-library.sh examples/pocket-library/Generated
+cd examples/pocket-library && xtool dev run
 ```
 
 ## CI note

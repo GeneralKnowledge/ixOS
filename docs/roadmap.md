@@ -1,6 +1,6 @@
 # Roadmap
 
-Forge Mobile is an **integration reference**: a working Counter app on iOS (and on Android, which is work in progress), a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
+Forge Mobile is a **native app framework** with working example apps on iOS (and Pocket Library on Android, which is work in progress), a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
@@ -9,6 +9,56 @@ Last reviewed: 2026-11-15. Which apps still lag behind the framework, and which 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
 What the demos have built that should move into the framework, and in what order, is in the [framework extraction audit](framework-extraction-audit.md).
+
+## Apps first: prove, complete, then extract
+
+Decided 2026-11-15 (Reuben): **prove the apps before expanding them. Complete the apps before expanding the framework. Extract only what real applications have independently demonstrated they need.** No new example apps, no app catalogue and no new modules for now; the apps in `examples/` are the work. Plan: [Apps first: catch-up and completeness plan](https://claude.ai/artifact/LPStN1ZT8Uk63b4Jdea7KH).
+
+**The order.** Each step is a gate: the next starts when the one before meets its criteria.
+
+| Step | Work | Done when |
+|---|---|---|
+| 1. Prove what is merged | One combined Device Lab build from main and one phone sitting | Every app in the baseline of [device-validation.md](device-validation.md) has Compiles, Installs, Launches and Main interactions recorded by a person, with its problems listed. Sketchbook, Soundscape and Relay R2 matter most: they have never run on an iPhone |
+| 2. Catch up (wave 3) | Weather, then Good Dog, then Chat onto ForgeHost (Good Dog and Chat also onto `forgeAlert`); requirements for Sketchbook and Soundscape and the missing device scenarios | [app-parity.md](app-parity.md) lists no wave 3 lag, and each moved app has its own row in device-validation.md |
+| 3. Complete the apps (wave 4 on) | One user-facing feature at a time, per app, with the loop below | Per feature, the completeness criteria below |
+
+Device Lab's own state model is **not applicable**, not lag: its state is lab services, not an app core. Relay's error conversions stay deferred until its iroh rework. Sketchbook gets no new features until its first device validation.
+
+**Acceptance criteria for each wave 3 PR.** Each app moves in its own PR, and the next app starts only when the one before is proven:
+
+1. One app per PR. A mechanical cleanup shared by several apps is its own PR, after the moves it depends on.
+2. The app's own lifecycle and alert copies are deleted, not kept beside the framework ones, and `scripts/check-app-parity.sh` loses that app's wave 3 lines.
+3. Behaviour is unchanged unless the PR says what changed and why. Its requirements and UI scenarios still pass (`cargo test`, the headless twin), and new ones cover what the move touched (load failure and Try Again, at least).
+4. It compiles for an iPhone (`scripts/check-ios-xtool.sh affected`), recorded in the PR.
+5. A person runs it from Device Lab on the iPhone, and the result is a row in [device-validation.md](device-validation.md): launches, main interactions, relaunch after backgrounding, and the failure screen if it can be forced.
+6. Friction met during the move goes into the [app friction log](research/app-friction-log.md).
+
+**The completeness loop (wave 4 on).** No fixed feature list. For each app, repeatedly:
+
+1. Pick the most noticeable thing a user of the app would miss.
+2. Build it in the app.
+3. Compile it for an iPhone.
+4. Test it on the iPhone and record it in device-validation.md.
+5. Record friction and framework opportunities in the friction log.
+6. Only then choose the app's next feature.
+
+The current first picks: Good Dog reminders and progress over time (training history, sessions done, progress per exercise; streaks optional and never the main measure); FieldKit elevation and pace charts, then background recording, then photo and voice notes; Pocket Library full-text search inside books and notes (matching passages, jumping to the place in the book, filters for books and notes); Commonplace folders and OPML; Relay Send with a Code; Soundscape mixdown sharing after its first device run; Weather an hourly chart after its move. Chat and Sketchbook get no new features until their next device validation.
+
+**A feature is complete** when it works for real data and its unhappy paths, not when it first renders:
+
+- Empty, loading and error states, with a way to recover from the error.
+- Real-world data sizes (a long book, a long track, months of history), not just fixtures.
+- The permissions it needs: asked at the moment of use, and a useful screen when they are refused.
+- Changes and cancellation: what happens when the user edits, undoes or turns it off (a changed reminder schedule replaces the old one; a cancelled search stops).
+- Requirements in `requirements.toml` with tests, a UI scenario, accessibility identifiers and labels, and a device-validation row.
+
+**Extraction gates.** The framework earns each abstraction through use:
+
+1. **The first implementation stays in the app,** in the simplest maintainable form.
+2. **A second app establishes the need.** When a second app needs the same capability, compare both implementations and name what is truly common.
+3. **Extract only the common part,** after the second app's feature has merged and been validated on an iPhone. Don't force the apps into the same product behaviour because they share plumbing: two apps can share chart styling without sharing chart data or presentation.
+
+Expected from the first picks: full-text search (Commonplace, then Pocket Library) into forge-storage; a chart style (Good Dog and FieldKit, then Weather) into ForgeUI; the photo picker (Chat, then FieldKit) into ForgeNative.
 
 ## Product direction: a native application framework
 
