@@ -700,6 +700,26 @@ fn the_gate_moves_on_finishes_and_steps_back() {
     assert_eq!(second.summary.stage_number, 2);
     assert_eq!(second.stages[0].state, StageState::Passed);
 
+    // The second stage names the recall-management safety rule: the owner
+    // confirms how they practise before it can move on.
+    let safety = second.gate.unwrap().safety;
+    assert_eq!(safety.len(), 1);
+    assert_eq!(
+        (safety[0].kind, safety[0].met),
+        (SafetyKind::Confirm, false)
+    );
+    assert!(safety[0].action.contains("Moss"));
+    assert!(matches!(
+        block_on(app.answer_gate(id, true, at(NINE_AM))),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let confirmed = block_on(app.note_safety(id, safety[0].rule_id.clone(), at(NINE_AM))).unwrap();
+    assert!(confirmed.gate.unwrap().safety[0].met);
+    assert!(matches!(
+        block_on(app.note_safety(id, "safe-004-scope-referral".into(), at(NINE_AM))),
+        Err(AppError::InvalidInput { .. })
+    ));
+
     let done = block_on(app.answer_gate(id, true, at(NINE_AM))).unwrap();
     assert_eq!(done.summary.status, GoalStatus::Finished);
     assert!(done.gate.is_none());
@@ -1194,4 +1214,65 @@ fn a_stages_lessons_unlock_one_by_one_and_practice_and_checks_finish_their_own()
         block_on(app.answer_lesson(goal, check.id.clone(), 1, now)),
         Err(AppError::InvalidInput { .. })
     ));
+}
+
+#[test]
+fn a_worry_noted_in_a_session_holds_a_stage_until_the_owner_has_had_advice() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let now = at(NINE_AM);
+    let goal = block_on(app.start_goal("path-settle".into(), None, now))
+        .unwrap()
+        .summary
+        .id;
+    // On to "Settling while life goes on", which names the referral rule.
+    let home = block_on(app.answer_gate(goal, true, now)).unwrap();
+    assert_eq!(home.summary.stage_number, 2);
+    assert!(
+        home.gate.unwrap().safety.is_empty(),
+        "no worry, nothing to show"
+    );
+
+    block_on(app.record_session(
+        "ex-calm-home".into(),
+        None,
+        SessionResult::TooDifficult,
+        true,
+        now,
+    ))
+    .unwrap();
+    // Long after the welfare rest is over, the worry still holds the stage.
+    let later = at(NINE_AM + 20 * DAY_MS);
+    let gate = app.goal(goal, later).unwrap().gate.unwrap();
+    assert!(gate.held);
+    assert_eq!(gate.safety.len(), 1);
+    let check = &gate.safety[0];
+    assert_eq!(check.kind, SafetyKind::Referral);
+    assert!(check.referral.as_ref().unwrap().contains("vet"));
+    assert_eq!(gate.note, check.detail);
+    assert!(matches!(
+        block_on(app.answer_gate(goal, true, later)),
+        Err(AppError::InvalidInput { .. })
+    ));
+
+    // "We've had advice" lifts it; a new worry holds it again.
+    let cleared = block_on(app.note_safety(goal, check.rule_id.clone(), later)).unwrap();
+    let gate = cleared.gate.unwrap();
+    assert!(gate.safety.is_empty());
+    assert!(
+        !gate.note.contains("worry"),
+        "only the training hold is left: {}",
+        gate.note
+    );
+    assert_eq!(cleared.history[0].text, "Got advice after a worry");
+    let next_day = at(NINE_AM + 21 * DAY_MS);
+    block_on(app.record_session(
+        "ex-calm-home".into(),
+        None,
+        SessionResult::GettingThere,
+        true,
+        next_day,
+    ))
+    .unwrap();
+    assert!(app.goal(goal, next_day).unwrap().gate.unwrap().held);
 }

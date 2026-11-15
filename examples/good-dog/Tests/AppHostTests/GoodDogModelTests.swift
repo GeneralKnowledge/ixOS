@@ -352,4 +352,26 @@ final class GoodDogModelTests: XCTestCase {
         let early = await model.answerLesson(goal.id, lessonId: check.id, choice: 1)
         XCTAssertNil(early, "the check is locked until the lessons before it are done")
     }
+
+    @MainActor
+    func testASafetyRuleIsConfirmedBeforeTheStageCanMoveOn() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        let goal = try XCTUnwrap(model.activeGoals.first)
+        await model.answerGate(goal.id, met: true)
+        model.celebration = nil
+        let gate = try XCTUnwrap(model.goal(id: goal.id)?.gate)
+        let check = try XCTUnwrap(gate.safety.first, "coming back on a long line names the recall safety rule")
+        XCTAssertEqual(check.kind, .confirm)
+        XCTAssertFalse(check.met)
+
+        await model.answerGate(goal.id, met: true)
+        XCTAssertNotNil(model.actionError, "moving on waits for the confirmation")
+        XCTAssertNil(model.celebration)
+        model.actionError = nil
+
+        await model.noteSafety(goal.id, ruleId: check.ruleId)
+        XCTAssertNil(model.actionError)
+        XCTAssertEqual(model.goal(id: goal.id)?.gate?.safety.first?.met, true)
+    }
 }

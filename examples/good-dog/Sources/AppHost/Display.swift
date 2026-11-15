@@ -16,6 +16,9 @@ extension PathwaySummary: Identifiable {}
 extension GoalSummary: Identifiable {}
 extension GoalStage: Identifiable {}
 extension GoalLesson: Identifiable {}
+extension SafetyCheck: Identifiable {
+    public var id: String { ruleId }
+}
 
 extension LessonKind {
     public var title: String {

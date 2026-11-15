@@ -20,6 +20,8 @@ written in [GeneralKnowledge/DogResearch](https://github.com/GeneralKnowledge/Do
 first (Reuben, 2026-11-08) and exported here. The current file is the `pathways` array of
 DogResearch's `dist/good-dog-pathways.json` (`npm run export:good-dog`) from DogResearch PR #9
 (branch `claude/goal-pathways`, commit `ad15376`, 2026-11-15): recall, loose lead, settling and
-visitors, each stage with its lesson plan (`lessons`). Re-export once that PR merges or its wording changes. `tests/fixtures/pathways-sample.json` is a
+visitors, each stage with its lesson plan (`lessons`). `safety-rules.json` is the `safetyRules` array of the same export: the DogResearch safety rules that goal
+stages name, each with `appEnforcement` (how the app applies it), from DogResearch PR #10 (branch
+`claude/goal-safety-rules`). Re-export both when the wording changes. `tests/fixtures/pathways-sample.json` is a
 test-only sample in the same format. `tests/pathways.rs` checks every shipped pathway
 against the exercises.

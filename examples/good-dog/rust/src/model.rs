@@ -272,6 +272,34 @@ pub struct GateStatus {
     pub question: String,
     /// Rust's plain-English note on where things stand.
     pub note: String,
+    /// The stage's safety rules the owner acts on. Moving on is refused
+    /// while one isn't met.
+    pub safety: Vec<SafetyCheck>,
+}
+
+/// What a safety rule asks of the owner on this stage.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SafetyKind {
+    /// The owner confirms how they practise ("on a long line outside").
+    Confirm,
+    /// A worry noted in a session holds the stage until the owner has
+    /// asked a vet or behaviourist.
+    Referral,
+}
+
+/// One safety rule on a goal stage, worded with the dog's name.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct SafetyCheck {
+    pub rule_id: String,
+    pub kind: SafetyKind,
+    pub met: bool,
+    /// Confirm: why it matters. Referral: why the stage is held.
+    pub detail: String,
+    /// Referral: who can help.
+    pub referral: Option<String>,
+    /// What the owner taps to meet it: the statement they confirm, or that
+    /// they've had advice.
+    pub action: String,
 }
 
 /// Something that happened to a goal, worded by Rust.

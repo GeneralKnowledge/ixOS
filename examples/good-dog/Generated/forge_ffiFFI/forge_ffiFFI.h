@@ -415,6 +415,11 @@ RustBuffer uniffi_good_dog_app_fn_method_appcore_learn_topics(uint64_t ptr, Rust
 uint32_t uniffi_good_dog_app_fn_method_appcore_max_name_length(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_NOTE_SAFETY
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_NOTE_SAFETY
+uint64_t uniffi_good_dog_app_fn_method_appcore_note_safety(uint64_t ptr, uint64_t goal_id, RustBuffer rule_id, RustBuffer now
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_PATHWAYS
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_PATHWAYS
 RustBuffer uniffi_good_dog_app_fn_method_appcore_pathways(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1130,6 +1135,12 @@ uint16_t uniffi_good_dog_app_checksum_method_appcore_learn_topics(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_MAX_NAME_LENGTH
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_MAX_NAME_LENGTH
 uint16_t uniffi_good_dog_app_checksum_method_appcore_max_name_length(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_NOTE_SAFETY
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_NOTE_SAFETY
+uint16_t uniffi_good_dog_app_checksum_method_appcore_note_safety(void
     
 );
 #endif

@@ -371,6 +371,22 @@ impl AppCore {
         .await
     }
 
+    /// Meets one of the current stage's safety rules: the owner confirms
+    /// how they practise, or says they've had advice after a worry. A rule
+    /// that doesn't apply to the stage is refused.
+    pub async fn note_safety(
+        &self,
+        goal_id: u64,
+        rule_id: String,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("note-safety", move |stored| {
+            stored.note_safety(goal_id, &rule_id, now)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
     /// Goes back one stage. Normal, not a failure.
     pub async fn step_back(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
         self.change("step-back", move |stored| {

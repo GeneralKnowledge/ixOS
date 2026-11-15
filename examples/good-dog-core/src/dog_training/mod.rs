@@ -15,8 +15,9 @@ pub use content::{
 };
 pub use markup::{parse_term_links, plain_text, TextRun};
 pub use pathways::{
-    bundled_pathways, check_pathways, match_pathways, parse_pathways, stage_readiness, LessonKind,
-    Pathway, PathwayStage, StageBlocker, StageGate, StageLesson, StageReadiness,
+    bundled_pathways, bundled_safety_rules, check_pathways, check_safety_rules, match_pathways,
+    parse_pathways, parse_safety_rules, stage_readiness, AppEnforcement, LessonKind, Pathway,
+    PathwayStage, SafetyRule, StageBlocker, StageGate, StageLesson, StageReadiness,
     GATE_PRACTICE_DAYS,
 };
 pub use policy::{DogTrainingPolicy, GoalFocusPolicy, GOAL_FOCUS_BOOST};
