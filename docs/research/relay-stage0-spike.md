@@ -113,10 +113,11 @@ same home Wi-Fi.
 | Bonjour finds the Rust sender | Yes: `_forgerelay._udp` from the code's number, no address typed |
 | Laptop to iPhone, 200 MB | Received at the first try with code `88-gem-oil-union`; the sender prints "Sent." only after the receiver has verified every chunk (BLAKE3) and saved the file |
 | Wi-Fi speed | 15.9 MB/s shown on the phone (200 MB in about 12.6 s) |
-| iPhone to Linux | Not yet: the app has no send with a code |
-| Phone memory during a transfer | Not measured yet |
+| Laptop to iPhone, 1 GB | 105.2 s, 9.5 MB/s, intact, first code (OTA Device Lab build after #232) |
+| iPhone to Linux | Passed: "Send with a Code" (#214, fixes #232 and #235) sent a 9,711-byte file; `relay-spike receive` got code `22-flyer-step-dig` at the first try, 2.75 s for the whole flow, BLAKE3-verified, sha256 matched |
+| Phone memory during a transfer | The sheets show a `phys_footprint` readout; a reading from the phone is not recorded yet |
 
-Next (on the same branch): the sender moved into relay-core
+Then (#214, #232, #235): the sender moved into relay-core
 (`relay_core::code_send`, with the session state machine as
 `code_session`), "Send with a Code" in the app (Swift advertises the code
 with Bonjour and reports other senders, so Rust avoids their numbers), a
@@ -124,6 +125,12 @@ peak-memory readout on both sheets, and `relay send-code FILE` on Linux.
 "yo-yo" is dropped from the word list on both sides, since a dash separates
 a code's words. A loopback test covers a wrong code, the new code, and the
 file arriving byte for byte.
+
+Two fixes came from the phone. The sheet now shows "Getting ready" as soon
+as a file is picked, since Rust marks the send as preparing before it starts
+(#232). iOS suspends an app's Bonjour registration while it is in the
+background, so the app publishes the code again when it becomes active, and
+the sheet asks the sender to keep Relay open (#235).
 
 ## What changes for stage 1
 
