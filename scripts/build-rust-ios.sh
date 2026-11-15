@@ -54,15 +54,22 @@ elif command -v swift >/dev/null 2>&1; then
       export CC="${TOOLCHAIN}/usr/bin/clang"
       export CXX="${TOOLCHAIN}/usr/bin/clang++"
       export AR="${TOOLCHAIN}/usr/bin/ar"
-      # No Linux linker can link an iOS dylib; the static library needs
-      # none, so dependency cdylibs get an empty file (see the script).
-      export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${CARGO_TARGET_AARCH64_APPLE_IOS_LINKER:-$(cd "$(dirname "$0")" && pwd)/ios-no-dylib-linker.sh}"
+      export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${TOOLCHAIN}/usr/bin/clang"
     fi
   else
     echo "[forge] warning: Darwin Swift SDK not installed (run: xtool setup)" >&2
   fi
 else
   echo "[forge] warning: swift not found; set SDKROOT manually for iOS Rust builds" >&2
+fi
+
+# On Linux no linker can link an iOS dylib (ld64.lld refuses the platform,
+# cc doesn't know -framework). The static library needs none, but Cargo
+# links the cdylibs that dependencies such as iroh declare, so those get an
+# empty file instead (see the script). Xcode's clang (xcrun) is a real iOS
+# linker and stays.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${FORGE_IOS_LINKER:-$(cd "$(dirname "$0")" && pwd)/ios-no-dylib-linker.sh}"
 fi
 
 if [[ -z "${SDKROOT:-}" ]]; then
