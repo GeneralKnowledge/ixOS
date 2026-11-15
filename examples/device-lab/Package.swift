@@ -86,6 +86,8 @@ let package = Package(
             dependencies: [
                 "ForgeFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
+                // Good Dog's native services (the shared forge-native crate).
+                .product(name: "ForgeNative", package: "forgekit"),
                 .product(name: "ForgeUIShowcase", package: "forgeui-showcase"),
                 .product(name: "WeatherApp", package: "weather"),
                 .product(name: "ChecklistApp", package: "checklist"),
@@ -97,6 +99,7 @@ let package = Package(
                 .product(name: "SketchbookApp", package: "sketchbook"),
                 .product(name: "SoundscapeApp", package: "soundscape"),
                 .product(name: "RelayApp", package: "relay"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Sources/AppHost",
             swiftSettings: hostSettings

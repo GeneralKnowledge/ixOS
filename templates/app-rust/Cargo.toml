@@ -28,13 +28,12 @@ forge-runtime = { path = "FORGE_WORKSPACE/crates/forge-runtime" }
 forge-storage = { path = "FORGE_WORKSPACE/crates/forge-storage" }
 forge-net = { path = "FORGE_WORKSPACE/crates/forge-net", features = ["ureq"] }
 # Native services (Keychain, directories, notifications, permissions, deep
-# links): `forge_services::native_services!()` in src/lib.rs. To drop them,
-# remove that line, this dependency and async-trait. See docs/native-services.md.
-forge-services = { path = "FORGE_WORKSPACE/crates/forge-services" }
+# links): `pub use forge_native as native;` in src/lib.rs, with their Swift in
+# ForgeKit's ForgeNative. To drop them, remove that line, this dependency and
+# the ForgeNative product in Package.swift. See docs/native-services.md.
+forge-native = { path = "FORGE_WORKSPACE/crates/forge-native" }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
-# UniFFI's generated code for async host interfaces names it directly.
-async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

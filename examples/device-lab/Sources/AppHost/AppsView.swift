@@ -7,6 +7,7 @@ import FieldKitApp
 import FieldKitFFI
 import ForgeFFI
 import ForgeKit
+import ForgeNative
 import ForgeUIShowcase
 import GoodDogApp
 import GoodDogFFI
@@ -207,7 +208,9 @@ public enum EmbeddedApps {
         // service name; everything else (notifications, deep links) is the
         // process's, and the last app to install wins.
         let bundle = Bundle.main.bundleIdentifier ?? "org.forgemobile.devicelab"
-        GoodDogFFI.ForgeServices.install(keychainService: "\(bundle).gooddog")
+        // Good Dog's services are the shared forge-native crate's, whose
+        // adapters are ForgeKit's ForgeNative module.
+        ForgeNative.ForgeServices.install(keychainService: "\(bundle).gooddog")
         CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
         ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         FieldKitFFI.ForgeServices.install(keychainService: "\(bundle).fieldkit")

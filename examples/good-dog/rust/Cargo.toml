@@ -23,13 +23,11 @@ forge-storage = { path = "../../../crates/forge-storage" }
 # The plan engine, dog-training rules and bundled content (GD0).
 good-dog-core = { path = "../../good-dog-core" }
 # Native services (Keychain, directories, notifications, permissions, deep
-# links): `forge_services::native_services!()` in src/lib.rs. To drop them,
-# remove that line, this dependency and async-trait. See docs/native-services.md.
-forge-services = { path = "../../../crates/forge-services" }
+# links): `pub use forge_native as native;` in src/lib.rs, with their Swift in
+# ForgeKit's ForgeNative. See docs/native-services.md.
+forge-native = { path = "../../../crates/forge-native" }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
-# UniFFI's generated code for async host interfaces names it directly.
-async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"

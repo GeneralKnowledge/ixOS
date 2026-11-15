@@ -1,5 +1,6 @@
 import RelayApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

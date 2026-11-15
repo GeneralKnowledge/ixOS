@@ -1,5 +1,6 @@
 import FieldKitApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

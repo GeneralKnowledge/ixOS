@@ -1,5 +1,6 @@
 import FORGE_MODULE_NAMEApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

@@ -42,6 +42,9 @@ const PORTABLE_MODULES: &[&str] = &[
     // The ixOS runtime's Swift package (forgekit/); it builds on Linux.
     "ForgeKit",
     "ForgeApp",
+    // The native services' bindings; their Apple-only adapters are behind
+    // `#if canImport(Darwin)`.
+    "ForgeNative",
     // Its design system and application patterns: their model values
     // import only Foundation and Observation, and their SwiftUI is behind
     // `#if canImport(SwiftUI)`.
@@ -256,10 +259,16 @@ pub fn forgekit_dependency(app: &Path) -> Option<ForgeKit> {
 /// bindings its Rust library doesn't implement.
 pub fn forgekit_products(app: &Path) -> Vec<&'static str> {
     let manifest = fs::read_to_string(app.join("Package.swift")).unwrap_or_default();
-    ["ForgeApp", "ForgeKit", "ForgeUI", "ForgeAppKit"]
-        .into_iter()
-        .filter(|p| manifest.contains(&format!("\"{p}\"")))
-        .collect()
+    [
+        "ForgeApp",
+        "ForgeNative",
+        "ForgeKit",
+        "ForgeUI",
+        "ForgeAppKit",
+    ]
+    .into_iter()
+    .filter(|p| manifest.contains(&format!("\"{p}\"")))
+    .collect()
 }
 
 /// The staging package's manifest.
@@ -274,13 +283,14 @@ fn manifest(
     let product = |name: &str| format!(r#", .product(name: "{name}", package: "forgekit")"#);
     let (deps, ffi_dep, kit_dep) = match forgekit {
         Some(kit) => {
-            // The bindings use the runtime's contract types (ForgeApp); the
-            // app's own code uses the rest.
-            let ffi_dep = if products.contains(&"ForgeApp") {
-                product("ForgeApp")
-            } else {
-                String::new()
-            };
+            // The bindings use the runtime's contract types (ForgeApp) and
+            // the native services' types (ForgeNative); the app's own code
+            // uses the rest.
+            let ffi_dep: String = ["ForgeApp", "ForgeNative"]
+                .into_iter()
+                .filter(|p| products.contains(p))
+                .map(product)
+                .collect();
             let kit_dep: String = products
                 .iter()
                 .filter(|p| **p != "ForgeApp")

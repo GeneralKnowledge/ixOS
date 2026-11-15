@@ -23,6 +23,13 @@ let package = Package(
         // lifecycle, runs the event loop, forwards cancellation, presents
         // errors by kind.
         .library(name: "ForgeKit", targets: ["ForgeKit"]),
+        // The native services (docs/native-services.md): the forge-native
+        // crate's UniFFI bindings (SecureStore, LocalNotifier, DeepLink, ...)
+        // and Forge's iOS adapters for them (Keychain, UserNotifications,
+        // files, sharing, deep links). An app whose crate re-exports
+        // forge-native imports this; its symbols are in the app's own Rust
+        // library. On Linux only the bindings build.
+        .library(name: "ForgeNative", targets: ["ForgeNative"]),
         // The design system (docs/forgeui.md): tokens, a theme, and styles
         // and components on SwiftUI's own controls. No dependency on the
         // Rust side: an app that imports only ForgeUI links no Rust.
@@ -40,6 +47,13 @@ let package = Package(
             dependencies: ["forge_appFFI"],
             path: "Sources/ForgeApp",
             // Generated UniFFI code is built in Swift 5 mode, as in apps.
+            swiftSettings: [.swiftLanguageMode(.v5)]
+        ),
+        .systemLibrary(name: "forge_nativeFFI", path: "Sources/forge_nativeFFI"),
+        .target(
+            name: "ForgeNative",
+            dependencies: ["forge_nativeFFI"],
+            path: "Sources/ForgeNative",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .target(

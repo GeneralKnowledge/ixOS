@@ -1,4 +1,6 @@
-// Forge native services: deep links. Source of truth: crates/forge-services/swift/.
+// Forge native services: deep links. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import SwiftUI
@@ -91,3 +93,5 @@ extension View {
         modifier(ForgeDeepLinkHandler(perform: perform))
     }
 }
+
+#endif

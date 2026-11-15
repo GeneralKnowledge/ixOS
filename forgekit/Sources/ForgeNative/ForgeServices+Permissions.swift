@@ -1,4 +1,6 @@
-// Forge native services: permissions. Source of truth: crates/forge-services/swift/.
+// Forge native services: permissions. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import UserNotifications
@@ -6,6 +8,12 @@ import UserNotifications
 #if canImport(UIKit)
     import UIKit
 #endif
+
+extension PermissionStatus {
+    /// True when the capability may be used now: granted, or provisional
+    /// (quiet notifications). Rust's `PermissionStatus::allows_use`.
+    public var allowsUse: Bool { self == .granted || self == .provisional }
+}
 
 /// One permission's status and request. Implement it to add a permission
 /// (camera, photos, location, ...) and register it with
@@ -92,3 +100,5 @@ struct NotificationPermissionAdapter: ForgePermissionAdapter {
         }
     }
 }
+
+#endif

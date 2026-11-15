@@ -4,11 +4,11 @@
 #if canImport(Security)
 import FORGE_MODULE_NAMEApp
 @preconcurrency import FORGE_MODULE_NAMEFFI
+@preconcurrency import ForgeNative
 import Foundation
 import XCTest
 
-/// The native services' Swift adapters (copied into FORGE_MODULE_NAMEFFI by
-/// `forge build`) against the app's real Rust core. Runs under `swift test`,
+/// The native services' Swift adapters (ForgeKit's ForgeNative) against the app's real Rust core. Runs under `swift test`,
 /// which is not an app bundle, so the notification centre is absent and
 /// those services report `Unavailable` / `.unsupported`; the device runbook
 /// covers them on an iPhone.

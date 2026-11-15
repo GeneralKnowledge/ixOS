@@ -1,4 +1,6 @@
-// Forge native services: local notifications. Source of truth: crates/forge-services/swift/.
+// Forge native services: local notifications. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import UserNotifications
@@ -263,3 +265,5 @@ public final class UnavailableNotifier: LocalNotifier, @unchecked Sendable {
 
     public func setCategories(categories: [NotificationCategory]) {}
 }
+
+#endif

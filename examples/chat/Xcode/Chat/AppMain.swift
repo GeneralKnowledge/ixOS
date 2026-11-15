@@ -1,5 +1,6 @@
 import ChatApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ChatApplication: App {
