@@ -341,7 +341,7 @@ A test acts only on its own app. Before every tap, typing, expectation and tree 
 
 WebDriverAgent drives any installed app, so a test file can name an App Store app (G0 typed and sent a message in the Claude app on Cati this way, 2026-11-08). Forge doesn't let that happen by accident. The design is in [general-device-control.md](research/general-device-control.md#safety); the code is `forge-uitest`'s `policy` module, which `forge ui` uses and the MCP server reaches through it.
 
-**Your own apps are unchanged.** An app is yours when its installed id has xtool's `XTL-` prefix (free team), or the `forge.toml` in the current folder or in the app folder holding the test file names it, or your policy file marks it `full`. Everything works as before for these.
+**Your own apps are unchanged.** An app is yours when its installed id has xtool's `XTL-` prefix (free team), or the `forge.toml` in the current folder, in the app folder holding the test file, or in an app of this checkout's `examples/` names it (Pocket Library's tests drive Device Lab, which hosts it on the phone), or your policy file marks it `full`. Everything works as before for these.
 
 **Every other app needs `--any-app`.** Without it, `forge ui run` refuses a test file that names one, and `ui tree` and `ui screenshot` refuse to read the screen while one is in front (the home screen is fine). The MCP server never passes `--any-app`, so an agent can't reach another app through it.
 

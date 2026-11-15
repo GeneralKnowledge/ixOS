@@ -329,6 +329,16 @@ fn own_apps(dirs: &[&Path]) -> Vec<String> {
         .collect()
 }
 
+/// The app in this checkout's `examples/` whose forge.toml has `bundle_id`.
+fn checkout_app_dir(bundle_id: &str) -> Option<PathBuf> {
+    let examples = crate::commands::workspace_root().join("examples");
+    std::fs::read_dir(examples)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .find(|d| own_apps(&[d.as_path()]).iter().any(|b| b == bundle_id))
+}
+
 /// `forge ui tree`: the accessibility tree of the screen, plus an audit.
 /// What `forge ui tree --find/--visible/--limit` keeps.
 #[derive(Default)]
@@ -831,24 +841,20 @@ pub fn run(
         // in this checkout's examples, so its log is watched and the run
         // is its evidence. Seen on Cati: a soak ran unwatched for this.
         let here = std::env::current_dir().ok()?;
-        let examples = crate::commands::workspace_root().join("examples");
         here.ancestors()
+            .find(|d| own_apps(&[d]).contains(&script.app))
             .map(Path::to_path_buf)
-            .chain(
-                std::fs::read_dir(&examples)
-                    .into_iter()
-                    .flatten()
-                    .flatten()
-                    .map(|e| e.path()),
-            )
-            .find(|d| own_apps(&[d.as_path()]).contains(&script.app))
+            .or_else(|| checkout_app_dir(&script.app))
     });
+    // A test kept with one app may drive the app that hosts it on the phone
+    // (Pocket Library's tests run in Device Lab): that host is in this
+    // checkout too, so it is the developer's own app.
+    let host_dir = checkout_app_dir(&script.app);
     let id = report::timestamp();
     let own = {
         let mut dirs: Vec<&Path> = vec![Path::new(".")];
-        if let Some(dir) = app_dir.as_deref() {
-            dirs.push(dir);
-        }
+        dirs.extend(app_dir.as_deref());
+        dirs.extend(host_dir.as_deref());
         own_apps(&dirs)
     };
     let scope = Scope {

@@ -2753,14 +2753,31 @@ mod tests {
 
 #[cfg(test)]
 mod example_files {
-    /// The test files in the repository must parse.
+    /// The test files in the repository must parse. Pocket Library's run in
+    /// Device Lab, which hosts it on the phone.
     #[test]
-    fn pocket_library_m0_parses() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/pocket-library/uitests/m0.toml");
-        let script = super::Script::load(&path).unwrap();
-        assert_eq!(script.app, "org.forgemobile.pocketlibrary");
-        assert_eq!(script.steps.len(), 12);
+    fn pocket_library_tests_parse() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/pocket-library/uitests");
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "toml"))
+            .collect();
+        files.sort();
+        assert_eq!(files.len(), 7, "{files:?}");
+        for path in files {
+            let script = super::Script::load(&path).unwrap();
+            assert_eq!(
+                script.app,
+                "org.forgemobile.devicelab",
+                "{}",
+                path.display()
+            );
+        }
+        let m0 = super::Script::load(&dir.join("m0.toml")).unwrap();
+        assert_eq!(m0.steps.len(), 12);
     }
 
     /// Good Dog's journey (GD1) and guided session (GD-7) tests.

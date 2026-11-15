@@ -48,6 +48,9 @@ public struct ContentView: View {
                 }
             }
         }
+        // The reader covers the tabs, as a book app's reader does; Done
+        // closes it. One reader for the app, whichever tab opened it.
+        .readerCover($model.fullScreen)
         .environment(model)
         // ForgeUI's theme for the whole app: tokens in the environment, and
         // its accent on plain SwiftUI controls.
@@ -105,5 +108,39 @@ private struct OpenFailedView: View {
             }
         }
         .forgeAlert($alert) { _ in Task { await model.startFresh() } }
+    }
+}
+
+extension View {
+    /// The reader in a full-screen cover on iOS (a sheet on macOS, which has
+    /// no covers), with its own navigation bar and a Done button.
+    fileprivate func readerCover(_ destination: Binding<LibraryModel.FullScreenDestination?>) -> some View {
+        #if os(iOS)
+        forgeFullScreenCover(destination, \.reader) { route in
+            ReaderScreen(route: route, close: { destination.wrappedValue = nil })
+        }
+        #else
+        forgeSheet(destination, \.reader) { route in
+            ReaderScreen(route: route, close: { destination.wrappedValue = nil })
+        }
+        #endif
+    }
+}
+
+/// The reader with the navigation bar its toolbar and title need.
+private struct ReaderScreen: View {
+    let route: LibraryModel.ReaderRoute
+    let close: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            ReaderView(bookID: route.bookID)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Done", action: close)
+                            .accessibilityIdentifier("reader.close")
+                    }
+                }
+        }
     }
 }

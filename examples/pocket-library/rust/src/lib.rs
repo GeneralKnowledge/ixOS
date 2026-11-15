@@ -31,6 +31,7 @@ pub mod epub;
 mod error;
 mod model;
 pub mod reader;
+mod sample;
 pub mod store;
 pub mod summary;
 
@@ -59,8 +60,9 @@ pub use summary::{
 uniffi::setup_scaffolding!();
 
 // Forge AI (docs/forge-ai-plan.md): the on-device model the summaries ask,
-// `native::ai::AiModel` (Swift: `ForgeAppleModel`).
-forge_services::native_services!(ai);
+// `native::ai::AiModel` (Swift: `ForgeAppleModel`). `http`: catalogue
+// requests go through URLSession on iOS (docs/native-services.md).
+forge_services::native_services!(ai, http);
 use native::ai::AiModel;
 
 /// Sent with every catalogue request. Open Library asks clients to identify
@@ -1305,6 +1307,16 @@ pub fn default_query(settings: LibrarySettings) -> LibraryQuery {
     }
 }
 
+/// Writes a short sample EPUB to `path`, for the host to import: UI tests
+/// launched on empty test data (`-PocketLibrarySampleBook`) use it to have a
+/// book to read.
+#[uniffi::export]
+pub fn write_sample_epub(path: String) -> Result<(), LibraryError> {
+    let bytes = sample::sample_epub()?;
+    std::fs::write(&path, bytes)
+        .map_err(|e| LibraryError::invalid(format!("could not write the sample book: {e}")))
+}
+
 /// Words per page used for EPUB page estimates, for the import screen's
 /// explanation.
 #[uniffi::export]
@@ -1312,10 +1324,18 @@ pub fn epub_words_per_page() -> u32 {
     epub::WORDS_PER_PAGE
 }
 
+/// The largest catalogue response read (covers are capped lower).
+const MAX_RESPONSE_BYTES: u64 = 8 * 1024 * 1024;
+
+/// Open Library through URLSession once the host has installed its services
+/// (`ForgeServices.install`), so requests follow the system's proxy, VPN,
+/// Low Data Mode and trust store; ureq before that, and in Linux tests.
 fn default_catalogue() -> Arc<dyn BookCatalogue> {
-    Arc::new(OpenLibrary::new(
-        UreqClient::with_user_agent(USER_AGENT).max_body_bytes(8 * 1024 * 1024),
-    ))
+    let http = native::http::HttpService::prefer_installed(
+        Arc::new(UreqClient::with_user_agent(USER_AGENT).max_body_bytes(MAX_RESPONSE_BYTES)),
+        |client| client.max_body_bytes(MAX_RESPONSE_BYTES),
+    );
+    Arc::new(OpenLibrary::new(http))
 }
 
 fn non_empty(dir: &str) -> Result<&str, LibraryError> {

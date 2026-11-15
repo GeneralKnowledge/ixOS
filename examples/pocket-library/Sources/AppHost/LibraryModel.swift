@@ -79,11 +79,39 @@ public final class LibraryModel {
 
     // MARK: The Library screen's presentation (ForgeAppKit)
 
-    /// Where the Library screen is going: one sheet or picker at a time.
+    /// Where the Library screen is going: one sheet, picker or pushed book
+    /// at a time.
     public enum LibraryDestination: Equatable {
         case addBook
         case catalogue
         case importEpub
+        /// The book's detail screen, pushed onto the Library tab.
+        case book(UInt64)
+
+        public var book: UInt64? { if case .book(let id) = self { id } else { nil } }
+    }
+
+    /// Where the Activity screen is going.
+    public enum ActivityDestination: Equatable {
+        /// The book's detail screen, pushed onto the Activity tab.
+        case book(UInt64)
+
+        public var book: UInt64? { if case .book(let id) = self { id } else { nil } }
+    }
+
+    /// What covers the whole app, over the tabs.
+    public enum FullScreenDestination: Equatable {
+        /// The book open in the reader.
+        case reader(ReaderRoute)
+
+        public var reader: ReaderRoute? { if case .reader(let route) = self { route } else { nil } }
+    }
+
+    /// A book open in the reader.
+    public struct ReaderRoute: Hashable, Identifiable, Sendable {
+        public let bookID: UInt64
+        public var id: UInt64 { bookID }
+        public init(bookID: UInt64) { self.bookID = bookID }
     }
 
     /// What the Library screen's alerts can ask the model to do.
@@ -92,6 +120,20 @@ public final class LibraryModel {
     }
 
     public var libraryDestination: LibraryDestination?
+    public var activityDestination: ActivityDestination?
+    /// The reader, full screen; nil when closed.
+    public var fullScreen: FullScreenDestination?
+
+    /// Pushes the book's detail screen onto the Library tab, closing any
+    /// sheet there (a book just added or imported opens this way).
+    public func showBook(_ id: UInt64) {
+        libraryDestination = .book(id)
+    }
+
+    /// Opens the book in the reader, over the whole app.
+    public func showReader(_ id: UInt64) {
+        fullScreen = .reader(ReaderRoute(bookID: id))
+    }
     /// The Library screen's alert: a delete confirmation or an error.
     public var libraryAlert: ForgeAlert<LibraryAction>?
 
@@ -175,6 +217,7 @@ public final class LibraryModel {
         case .ready:
             reload()
             sort = settings.defaultSort
+            await addSampleBookForUITests()
             phase = .open
         case .failed(let text):
             guard let error = request.takeError() else {
@@ -417,22 +460,49 @@ public final class LibraryModel {
     public static let testDataArgument = "-ForgeUITestData"
 
     /// Whether this launch uses throwaway test data; it is emptied once per
-    /// launch. ForgeKit's `-ForgeTemporaryData` does the same, so one
-    /// argument starts every app on test data (Device Lab's Apps screen).
+    /// launch unless `-ForgeKeepTestData` is passed too (a relaunch that
+    /// checks something was saved). ForgeKit's `-ForgeTemporaryData` does
+    /// the same, so one argument starts every app on test data (Device Lab's
+    /// Apps screen).
     static let usesTestData = ProcessInfo.processInfo.arguments.contains(testDataArgument)
-        || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
+        || ProcessInfo.processInfo.arguments.contains(ForgeEnvironment.temporaryDataArgument)
+    static let keepsTestData = ProcessInfo.processInfo.arguments.contains(ForgeEnvironment.keepTestDataArgument)
     private static var testDataCleared = false
+
+    /// With test data, `-PocketLibrarySampleBook` starts the library with a
+    /// short sample EPUB in it, so a UI test can open the reader.
+    static let sampleBookArgument = "-PocketLibrarySampleBook"
+    static let unreadableTestDataArgument = "-PocketLibraryUnreadableTestData"
+
+    private func addSampleBookForUITests() async {
+        guard Self.usesTestData, totalBooks == 0,
+              ProcessInfo.processInfo.arguments.contains(Self.sampleBookArgument) else { return }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("Sample Book.epub")
+        do {
+            try writeSampleEpub(path: file.path)
+            _ = try await importEpub(at: file)
+        } catch {
+            print("[pocket-library] sample book not added: \(error)")
+        }
+        try? FileManager.default.removeItem(at: file)
+    }
 
     private static func defaultDirectory() throws -> String {
         let name = usesTestData ? "PocketLibrary-UITest" : "PocketLibrary"
         let base = try FileManager.default
             .url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
             .appendingPathComponent(name, isDirectory: true)
-        if usesTestData && !testDataCleared {
+        if usesTestData && !keepsTestData && !testDataCleared {
             testDataCleared = true
             try? FileManager.default.removeItem(at: base)
         }
         try FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        // `-PocketLibraryUnreadableTestData`: the test library starts as a
+        // file that isn't a library, so a UI test reaches "Start Fresh".
+        if usesTestData && !keepsTestData
+            && ProcessInfo.processInfo.arguments.contains(unreadableTestDataArgument) {
+            try Data("not a library".utf8).write(to: base.appendingPathComponent("library.json"))
+        }
         return base.path
     }
 }

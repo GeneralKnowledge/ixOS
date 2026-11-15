@@ -95,3 +95,27 @@ enum Dates {
         date(ms).formatted(.relative(presentation: .named))
     }
 }
+
+/// A list row that opens another screen: a button with the system's
+/// disclosure chevron, for pushes the model owns (ForgeAppKit's
+/// `forgeNavigationDestination`) rather than a `NavigationLink(value:)`.
+struct NavigationRow<Label: View>: View {
+    let action: () -> Void
+    @ViewBuilder let label: () -> Label
+
+    var body: some View {
+        Button(action: action) {
+            HStack {
+                label()
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        // Row text keeps its own colours instead of the accent.
+        .foregroundStyle(.primary)
+    }
+}

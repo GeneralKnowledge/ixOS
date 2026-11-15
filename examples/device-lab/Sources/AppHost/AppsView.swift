@@ -11,6 +11,7 @@ import ForgeUIShowcase
 import GoodDogApp
 import GoodDogFFI
 import PocketLibraryApp
+import PocketLibraryFFI
 import RelayApp
 import SketchbookApp
 import SoundscapeApp
@@ -204,6 +205,7 @@ public enum EmbeddedApps {
         // service name; everything else (notifications, deep links) is the
         // process's, and the last app to install wins.
         let bundle = Bundle.main.bundleIdentifier ?? "org.forgemobile.devicelab"
+        PocketLibraryFFI.ForgeServices.install(keychainService: "\(bundle).pocketlibrary")
         GoodDogFFI.ForgeServices.install(keychainService: "\(bundle).gooddog")
         CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
         ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
