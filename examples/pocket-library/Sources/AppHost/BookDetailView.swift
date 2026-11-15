@@ -171,7 +171,7 @@ struct BookDetailView: View {
     private func readSection(_ book: Book) -> some View {
         if book.canRead {
             Section {
-                Button { model.openReader(book.id) } label: {
+                Button { model.showReader(book.id) } label: {
                     Label(book.readingPosition == nil ? "Read" : "Continue Reading", systemImage: "book")
                         .font(.headline)
                 }

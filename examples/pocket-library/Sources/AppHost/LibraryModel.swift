@@ -131,7 +131,7 @@ public final class LibraryModel {
     }
 
     /// Opens the book in the reader, over the whole app.
-    public func openReader(_ id: UInt64) {
+    public func showReader(_ id: UInt64) {
         fullScreen = .reader(ReaderRoute(bookID: id))
     }
     /// The Library screen's alert: a delete confirmation or an error.

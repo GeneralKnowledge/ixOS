@@ -189,7 +189,7 @@ struct LibraryView: View {
         let id = UserDefaults.standard.integer(forKey: "openReader")
         guard id > 0, model.libraryDestination == nil, model.book(id: UInt64(id))?.canRead == true else { return }
         model.showBook(UInt64(id))
-        model.openReader(UInt64(id))
+        model.showReader(UInt64(id))
     }
 
     private func importEpub(_ url: URL) {

@@ -187,7 +187,7 @@ final class LibraryModelTests: XCTestCase {
         XCTAssertEqual(model.libraryDestination?.book, book.id)
         // The reader covers the app over whichever tab opened it, and
         // leaves that tab's pushed book where it was.
-        model.openReader(book.id)
+        model.showReader(book.id)
         XCTAssertEqual(model.fullScreen?.reader?.bookID, book.id)
         XCTAssertEqual(model.libraryDestination, .book(book.id))
         model.fullScreen = nil
