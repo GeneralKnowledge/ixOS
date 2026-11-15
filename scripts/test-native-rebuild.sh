@@ -62,8 +62,8 @@ esac
 STUB
 cat >"$STUBS/cargo" <<'STUB'
 #!/usr/bin/env bash
-mkdir -p "$STUB_TARGET/aarch64-apple-ios/release"
-echo stub >"$STUB_TARGET/aarch64-apple-ios/release/libforge_ffi.a"
+mkdir -p "$STUB_TARGET/aarch64-apple-ios/forge-dev"
+echo stub >"$STUB_TARGET/aarch64-apple-ios/forge-dev/libforge_ffi.a"
 STUB
 chmod +x "$STUBS"/*
 (

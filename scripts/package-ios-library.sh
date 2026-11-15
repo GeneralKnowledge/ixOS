@@ -7,11 +7,14 @@ cd "$ROOT"
 source "$ROOT/scripts/forge-crate.sh"
 
 GENERATED="${1:-${FORGE_GENERATED_DIR:-$APP_DIR/Generated}}"
-"$ROOT/scripts/generate-bindings.sh" "$GENERATED"
 
 IOS_LIB="$NATIVE_OUT/ios-device/lib/libforge_ffi.a"
 if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$IOS_LIB" ios; then
   "$ROOT/scripts/build-rust-ios.sh"
 fi
+# The bindings come from the iOS library just built: no second, host build of
+# the crate and its dependencies. Files whose contents didn't change keep their
+# modification time, so SwiftPM doesn't recompile them.
+FORGE_BINDINGS_LIBRARY="$IOS_LIB" "$ROOT/scripts/generate-bindings.sh" "$GENERATED"
 
 echo "[forge] iOS static library ready under ${NATIVE_OUT}/ios-device; Swift bindings in ${GENERATED}."
