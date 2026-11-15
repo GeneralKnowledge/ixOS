@@ -198,7 +198,7 @@ struct LibraryView: View {
             defer { importing = false }
             do {
                 let book = try await model.importEpub(at: url)
-                path.append(book.id)
+                model.showBook(book.id)
             } catch {
                 model.libraryAlert = .failure(error)
             }
