@@ -575,11 +575,32 @@ async fn send(path: PathBuf, store_dir: &Path) -> Result<()> {
 
     let mut codes = 1;
     let result = loop {
-        let left = CODE_LIFETIME.saturating_sub(session.lock().unwrap().issued.elapsed());
-        let event = match tokio::time::timeout(left, events.recv()).await {
+        // The lifetime limits how long an unused code can be redeemed. Once a
+        // receiver is in, the transfer may take as long as it needs: it ends
+        // with Done, or with Dropped after SILENCE without a tick.
+        let left = {
+            let s = session.lock().unwrap();
+            if s.machine.spent {
+                None
+            } else {
+                Some(CODE_LIFETIME.saturating_sub(s.issued.elapsed()))
+            }
+        };
+        let next = match left {
+            Some(left) => tokio::time::timeout(left, events.recv()).await,
+            None => Ok(events.recv().await),
+        };
+        let event = match next {
             Ok(Some(e)) => e,
             Ok(None) => break Err(anyhow!("stopped")),
-            Err(_) => break Err(anyhow!("the code expired")),
+            Err(_) => {
+                // A receiver may have been admitted just as time ran out:
+                // only an unused code lapses.
+                if session.lock().unwrap().machine.lapse() {
+                    break Err(anyhow!("the code expired"));
+                }
+                continue;
+            }
         };
         let stale = {
             let mut s = session.lock().unwrap();

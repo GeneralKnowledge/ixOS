@@ -108,6 +108,18 @@ impl Session {
         self.expired = true;
     }
 
+    /// The code's lifetime ran out. Only an unused code lapses: a code that
+    /// was redeemed belongs to its transfer, which may run for as long as it
+    /// needs. Returns whether the code is now dead. In the Lean model this
+    /// is `expire`, taken only when the code is unspent.
+    pub fn lapse(&mut self) -> bool {
+        if self.spent {
+            return false;
+        }
+        self.expired = true;
+        true
+    }
+
     /// Another sender took this code's number. Only an unused, live code is
     /// given up: the code is expired at once, under the same lock as the
     /// check, so no receiver can be admitted on it between the check and
@@ -304,6 +316,33 @@ mod tests {
         assert_eq!(s.answer(), Answer::Go);
     }
 
+    #[test]
+    fn an_unused_code_lapses() {
+        let mut s = Session::new();
+        assert!(s.lapse());
+        assert_eq!(s.attempt().0, Answer::Gone);
+    }
+
+    #[test]
+    fn a_long_transfer_outlives_the_code_lifetime() {
+        let mut s = Session::new();
+        let (_, gen) = s.attempt();
+        assert!(s.finish(gen, Ending::Proved));
+        // Ten minutes pass while the file is still moving.
+        let before = s.clone();
+        assert!(!s.lapse(), "a redeemed code must not end its transfer");
+        assert_eq!(s, before);
+    }
+
+    #[test]
+    fn a_handshake_admitted_as_time_runs_out_is_not_cut_off() {
+        let mut s = Session::new();
+        let (_, gen) = s.attempt();
+        assert!(!s.lapse());
+        assert!(s.finish(gen, Ending::Proved));
+        assert_eq!(s.allowed, 1);
+    }
+
     /// Every sequence of steps keeps the invariant, refusals change nothing,
     /// and a spent or expired code never answers `Go` before a reissue.
     /// A small deterministic generator, so no extra dependency.
@@ -322,7 +361,7 @@ mod tests {
             for _ in 0..60 {
                 let was_unusable = s.spent || s.expired;
                 let gen_before = s.gen;
-                match next(6) {
+                match next(7) {
                     0 => {
                         let before = s.clone();
                         let (answer, gen) = s.attempt();
@@ -346,6 +385,16 @@ mod tests {
                         }
                     }
                     2 => s.expire(),
+                    6 => {
+                        let was_spent = s.spent;
+                        let before = s.clone();
+                        if s.lapse() {
+                            assert!(!was_spent, "a redeemed code lapsed");
+                            assert_eq!(s.answer(), Answer::Gone);
+                        } else {
+                            assert_eq!(s, before, "a lapse on a used code changed the session");
+                        }
+                    }
                     5 => {
                         // A collision report, possibly queued long ago.
                         let gen = s.gen.saturating_sub(next(2));

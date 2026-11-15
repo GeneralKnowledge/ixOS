@@ -75,10 +75,30 @@ real machines next):
 | Speed | 290 to 364 MB/s over loopback with the file store |
 | Stranger | Still refused with the right hash |
 | Malformed first message (test command `garble`) | Counts as a wrong code: the sender issues a new code at once and that code works (file identical). Before the fix a malformed message left the code marked busy forever |
-| Session rules | The sender's code session is a pure state machine (`src/session.rs`) that mirrors `verification/relay/CodeSession.lean`: every admitted attempt ends in exactly one `finish` (proved, wrong code or dropped); busy and gone answers change nothing; a spent or expired code is refused until it is replaced; collision and handshake events carry the code's generation and events about a replaced code are ignored; a collision only replaces a code that is still unused, and expires it under the same lock so no receiver slips in before the new code (a collision queued before a receiver was admitted no longer cuts that handshake off). 15 unit tests, one of them 2,000 random sequences of 60 steps checking the model's invariant after every step |
+| Session rules | The sender's code session is a pure state machine (`src/session.rs`) that mirrors `verification/relay/CodeSession.lean`: every admitted attempt ends in exactly one `finish` (proved, wrong code or dropped); busy and gone answers change nothing; a spent or expired code is refused until it is replaced; collision and handshake events carry the code's generation and events about a replaced code are ignored; a collision only replaces a code that is still unused, and expires it under the same lock so no receiver slips in before the new code (a collision queued before a receiver was admitted no longer cuts that handshake off). 18 unit tests, one of them 2,000 random sequences of 60 steps checking the model's invariant after every step |
 
-Not covered yet: two physical machines on a real network (next), and the
-iPhone (M1).
+## Two machines (2026-11-15)
+
+The laptop (home line) and a Hetzner server, over Tailscale (direct over
+IPv6, not through a DERP relay; ping 49 to 103 ms, 55 ms average), both
+running 0ab5e7e, the receiver using the `--addr`/`--id` form because mDNS
+does not cross the tailnet. The home line sets the speed.
+
+| Check | Result |
+|---|---|
+| 1 GB Hetzner to laptop | Identical (sha256), 4.4 MB/s, 228 s |
+| Wrong code | Refused; the old code was then refused too; a new code within 2 s |
+| Malformed first message (`garble`) | A new code within 5 s; that code then received a 20 MB file, identical |
+| 4 GB resume | Receiver killed at 502 MB; the sender issued a new code 32 s later (the 30 s silence window); the receiver resumed from "524091392 of 4000000000 bytes already here" |
+| 1 GB laptop to Hetzner, and finishing the 4 GB resume | **Failed, then fixed:** both were cut off at exactly 600 s. The sender counted the code's ten-minute lifetime even after a receiver had redeemed it, so a transfer longer than ten minutes was ended mid-file. Now the lifetime only limits how long an unused code can be redeemed (`Session::lapse`); a running transfer ends with done, or after 30 s of silence. Rerun pending |
+| Plain mDNS between the two | Not possible here: they are not on one network |
+
+An earlier attempt (before the silence window was raised from 8 s to 30 s,
+while another build was loading the laptop and ping rose to about 1.1 s)
+stalled after 6.4 MB; the next code resumed from the 6,586,368 bytes
+already there.
+
+Not covered yet: the iPhone (M1).
 
 ## Not answered yet (needs the laptop)
 
