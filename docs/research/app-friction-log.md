@@ -22,6 +22,38 @@ How it is used:
 Severity: **blocker** (had to stop), **limit** (had to work around),
 **annoyance** (cost time, nothing more).
 
+## Overnight pass, 2026-11-15: what is left, ranked
+
+Every crate, example and app crate was built, linted and tested on Linux
+(all green before and after the fixes above); the Swift was not compiled.
+These are the open items from this log, the
+[showcase log](showcase-friction-log.md) and the
+[Good Dog log](../good-dog-pain-points.md), plus what reading all the apps
+side by side showed, most useful first. Each says why it waited.
+
+| Rank | What | Seen in | Why not tonight |
+|---|---|---|---|
+| 1 | Five apps still keep their own state model instead of ForgeHost (showcase F7). It is the root of most Swift copies: `AppLifecycle.swift` (Chat, Good Dog), `ErrorAlert.swift` (Chat, Good Dog, while ForgeAppKit has `forgeAlert`), and the test-data flags in two models | Chat, Good Dog, Pocket Library, Weather, Device Lab | Swift, and a phone check per app |
+| 2 | `LaunchAppearance.swift` is the same 25 lines in 11 apps and both iOS templates. It belongs in ForgeUI | All iOS apps | Every launcher and xtool target needs ForgeUI, and Chat, Weather and Counter don't use the ForgeKit package yet; needs a compile |
+| 3 | `PermissionStatus.allowsUse` in Swift (A8): written and ready, held back | Device Lab, FieldKit | Changes generated Swift in six apps; wants `check-ios-xtool.sh affected` first |
+| 4 | `ErrorKind` has no `Network` or `Refused` (A19) | Relay, Weather, Chat, Commonplace | Changes the shared contract, so a ForgeKit release and every Swift `switch` on it |
+| 5 | Background location (A10) | FieldKit F3 | A feature, not a refactor; needs the phone |
+| 6 | A read on the command thread that doesn't raise the revision, or a reader connection from `Database` (A5) | FieldKit | One use so far |
+| 7 | A "service loop" that stops on background and shutdown and feeds commands (A18, with A9) | Relay, FieldKit | Relay stage 1 (iroh) will reshape Relay's listener; design it from that |
+| 8 | A file-backed Keychain stand-in for Linux and tests (A17) | Relay | One use; Relay stage 1 decides where secrets live |
+| 9 | The Noise channel out of `forge-devproto` (A16) | Relay | Relay is moving to iroh, which may make it moot |
+| 10 | UniFFI enums without data aren't `CaseIterable`, so pickers keep hand lists (Good Dog 6) | Good Dog | Bindings post-processing; Swift |
+| 11 | `forge init` names: `--library`, and folders and test target still called `AppHost` (A7) | FieldKit, every new app | CLI and template change; small, next pass |
+| 12 | Ids are `i64` in SQLite apps and `u64` in file apps (A3) | FieldKit, Commonplace, Checklist | Docs and template; touches the starter's API |
+| 13 | `Document`-backed `start_fresh` in the template (rest of A15) | Sketchbook, Soundscape, Relay | Template change |
+| 14 | Commonplace maps every `StorageError` to `Storage`, so corrupt data shows as an internal error with no recovery offer; the other apps say `Corrupt` | Commonplace | App behaviour, wants Reuben's eye |
+| 15 | Relay keeps its own error conversions | Relay | Its stage 1 work is in flight |
+
+Also seen: `forge-services`' `ai` feature (Forge AI, #196) was never linted
+or tested on its own in CI or `make test`; it is now. And the check scripts
+ran `target/debug/forge` even when `CARGO_TARGET_DIR` put it elsewhere; they
+follow it now.
+
 ## Summary
 
 | # | App | Friction | Severity | Status |
