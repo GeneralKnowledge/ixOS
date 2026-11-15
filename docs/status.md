@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 101 capabilities, 15 work on an iPhone, 13 partly work, 56 are built but haven't been run on an iPhone, and 17 aren't built yet.**
+**Of 101 capabilities, 15 work on an iPhone, 14 partly work, 55 are built but haven't been run on an iPhone, and 17 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -42,6 +42,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 | Foundation | `forge.toml` app config (Info.plist, entitlements, xtool.yml) | builds only |
 | Data and files | Background transfers | Device Lab on iPhone 15 Pro Max, iOS 26.3.1 (2026-11-11, 494faf1, reported by a person): downloads delivered after the app was ended (tests 1 and 3) and after leaving it running (test 2, completion callback not seen in the log), force quit marked Interrupted (test 6), once only on the second launch; Retry (then only a swipe action) was not found, so retry after force quit not yet seen |
 | Networking | Requests through URLSession (system proxy, VPN, HTTP/3, Low Data Mode) | Commonplace refresh through URLSession, and airplane mode reported as offline, iPhone 15 Pro Max, iOS 26.3.1, 2026-11-11; Chat's stream through URLSession not yet run on a phone |
+| Networking | Peer-to-peer transfer with resume | Relay in Device Lab on Cati (iOS 26.3.1), 2026-11-15, reported by Reuben: a 200 MB file sent from Linux with a word code arrived at the first try, every chunk checked (BLAKE3), 15.9 MB/s over Wi-Fi (research/relay-stage0-spike.md). iPhone to Linux, resume and the QR-paired path not yet run on a phone |
 | Media, sensors and rendering | Audio session handling | playback heard on an iPhone (Pocket Library read-aloud with a Premium voice, reported by a person, 2026-11-08); recording not yet run |
 | Media, sensors and rendering | Location fix | Weather's own provider, 2026-11-06; the service is not yet run on an iPhone |
 | Extensions and restricted frameworks | Apple Foundation Models (on-device text generation) | Chat L1 on iPhone 15 Pro Max, iOS 26.3.1, free team (2026-11-08, ada3d23): streaming (first words 0.6-1.4 s), Stop, interrupted answers and airplane mode passed; characters wrote both sides and then refused (fixed in #104, rechecked on ba45825: in character, no refusals); characters now write requested content in their own voice (#113, rechecked on 90905a0) |
@@ -57,7 +58,7 @@ The code exists and is tested on Linux, but nobody has recorded it working on a 
 - **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust; Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch; Localize an app (String Catalogs built from Linux)
 - **Data and files:** Relational store with queries (SQLite); Full-text search; Backup and restore archive; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress; CSV import and export
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
-- **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Bonjour advertise and browse; Peer-to-peer transfer with resume; Device identity and encrypted channel
+- **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Bonjour advertise and browse; Device identity and encrypted channel
 - **Native services and permissions:** Keychain secrets; Local notifications; Notification actions and grouping; Deep links (custom URL schemes); Web pages inside the app (WebKit web view, Safari view, HTML the app has, bundled help pages); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Photos picker; Barcode and QR scanning; Face ID app lock; Background refresh and processing tasks; Haptics
 - **Media, sensors and rendering:** Record and play audio files; Waveform summaries; Background audio; Continuous location and tracks; Background location; Heading, altitude, motion; Device status (battery, Low Power Mode, thermal state, storage, memory, model); Bluetooth on or off; Forms with Rust validation; Apple Pencil (PencilKit)
 - **Extensions and restricted frameworks:** HealthKit
@@ -95,4 +96,4 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Documents | Planned | Partial: Pocket Library (#53) |
 | Audio | Experimental | Partial: compiled and tested in CI (macOS), not yet run on an iPhone |
 | ForgeUI | Experimental | Yes: showcase built with xtool on Linux and run on an iPhone (light and dark, both themes), 2026-11-10 |
-| ForgeAppKit | Experimental | Partial: compiled in CI (macOS), not yet built with xtool or run on an iPhone |
+| ForgeAppKit | Experimental | Partial: built with xtool on Linux inside Device Lab (Pocket Library, Commonplace, FieldKit, Relay, Sketchbook, Soundscape); not yet recorded on an iPhone |

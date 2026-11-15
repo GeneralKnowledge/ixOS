@@ -36,6 +36,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 9. **A capability lives in the CLI.** Build it as a `forge` command (with `--json`, [json-output.md](docs/json-output.md)) or in a library the CLI uses; tools built on top (forge-lab's MCP server) run that command. A default app needs no agent files, and safety rules (installing, `forge verify --accept`) are the same whoever calls. `scripts/check-human-workflow.sh` must keep passing.
 10. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
 11. **Agent tooling lives in [forge-lab](https://github.com/GeneralKnowledge/forge-lab), not here** (the MCP server, `explore`, `focus`, run records, the live dev connection). Don't add it back to ixOS. Device and UI-test tooling here (`forge ui`, `forge device`) gets bug fixes and interaction completeness only (basic gestures, keys and device navigation) ([roadmap](docs/roadmap.md#tooling-freeze-and-reuse-rules)). Before building something, check for an existing tool or Apple framework that does it.
+12. **No app is left behind.** A framework change that replaces something apps do themselves (their own lifecycle, alerts, networking, location, appearance) adds a rule to `scripts/check-app-parity.sh` and moves every app in the same PR, or lists the apps it didn't move in `docs/app-parity.toml` with the reason and the wave that will. The check fails on unlisted lag and on listed lag that has been fixed, so the list only shrinks; regenerate the table with `scripts/check-app-parity.sh --write` ([app-parity.md](docs/app-parity.md)).
 
 ## Checking your work
 
@@ -45,7 +46,7 @@ Rust and everything that runs on Linux:
 cargo test --workspace
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
-make validate        # the above plus binding drift and template sync
+make validate        # the above plus binding drift, template sync and app parity
 ```
 
 After changing an app crate's exported API: `forge bindings generate --project examples/<app>`, then `./scripts/check-app-crates.sh` and `./scripts/check-bindings.sh`.
