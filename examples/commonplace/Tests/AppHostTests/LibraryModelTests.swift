@@ -77,15 +77,19 @@ final class LibraryModelTests: XCTestCase {
     @MainActor
     func testSettingsAreRustsAndKeptAcrossLaunches() async throws {
         let dir = try makeDirectory()
-        var (host, model) = try await open(dir)
-        XCTAssertEqual(
-            model.settings,
-            AppSettings(oldestFirst: false, hideRead: false, showSummaries: true, openLinksInApp: true))
-        await model.update { $0.hideRead = true }
-        XCTAssertTrue(model.settings.hideRead)
-        XCTAssertNil(model.alert)
-        host.close()
-        (host, model) = try await open(dir)
+        // The first launch's model and core go out of scope before the
+        // relaunch: the core holds the library's lock until it is released.
+        do {
+            let (host, model) = try await open(dir)
+            XCTAssertEqual(
+                model.settings,
+                AppSettings(oldestFirst: false, hideRead: false, showSummaries: true, openLinksInApp: true))
+            await model.update { $0.hideRead = true }
+            XCTAssertTrue(model.settings.hideRead)
+            XCTAssertNil(model.alert)
+            host.close()
+        }
+        let (host, model) = try await open(dir)
         XCTAssertTrue(model.settings.hideRead)
         host.close()
     }
