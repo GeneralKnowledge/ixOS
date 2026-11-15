@@ -914,13 +914,17 @@ fn handle(mut stream: TcpStream, dir: &Path) {
     if reader.read_line(&mut line).is_err() {
         return;
     }
-    // Keep only Range: iOS can resume a large .ipa download with it.
+    // Keep only Range (iOS can resume a large .ipa download with it) and
+    // User-Agent (for the log: Safari or iOS's installer).
     let mut range = None;
+    let mut agent = String::new();
     let mut header = String::new();
     while reader.read_line(&mut header).is_ok_and(|n| n > 2) {
         if let Some((name, value)) = header.split_once(':') {
             if name.trim().eq_ignore_ascii_case("range") {
                 range = Some(value.trim().to_string());
+            } else if name.trim().eq_ignore_ascii_case("user-agent") {
+                agent = value.trim().chars().take(80).collect();
             }
         }
         header.clear();
@@ -982,12 +986,33 @@ fn handle(mut stream: TcpStream, dir: &Path) {
         "HTTP/1.1 {status}\r\nContent-Type: {kind}\r\nContent-Length: {}\r\n{content_range}Accept-Ranges: bytes\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
         end - start
     );
+    let mut sent = Ok(0);
     if !head {
         use std::io::Seek;
-        if file.seek(std::io::SeekFrom::Start(start)).is_ok() {
-            let _ = std::io::copy(&mut (&mut file).take(end - start), &mut stream);
-        }
+        sent = file
+            .seek(std::io::SeekFrom::Start(start))
+            .and_then(|_| std::io::copy(&mut (&mut file).take(end - start), &mut stream));
     }
+    // One line per file served, so a failed install can be traced: what
+    // the phone asked for, and whether all of it went out.
+    let outcome = match sent {
+        Ok(n) if head || n == end - start => "complete".to_string(),
+        Ok(n) => format!("cut off after {n} bytes"),
+        Err(e) => format!("failed: {e}"),
+    };
+    eprintln!(
+        "{} {method} {path} {status} bytes {start}-{end}/{len} {outcome} [{agent}]",
+        crate::report::stamp_at(now_secs()),
+        path = target.split(['?', '#']).next().unwrap_or(""),
+        status = &status[..3],
+    );
+}
+
+fn now_secs() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
 }
 
 /// `bytes=N-`, `bytes=N-M` or `bytes=-N` as `[start, end)` within `len`
