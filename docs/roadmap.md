@@ -4,7 +4,7 @@ Forge Mobile is an **integration reference**: a working Counter app on iOS (and 
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 
-Last reviewed: 2026-11-09.
+Last reviewed: 2026-11-15. Which apps still lag behind the framework, and which wave catches them up, is in [app-parity.md](app-parity.md).
 
 What each capability has actually proven, from "has an API" to "recorded working on an iPhone", is tracked in the [capability ledger](capability-ledger.md).
 
@@ -18,8 +18,8 @@ Decided 2026-11-09 (Reuben): ixOS is a native application framework with a Rust 
 |---|---|---|
 | P0 | Existing runtime and native integration stability | Maintain |
 | P1 | **ForgeUI 0.1**: tokens, themes, core components, a showcase app ([proposal](research/forgeui-proposal.md), [ADR 002](adr/002-forgeui-in-forgekit.md), [guide](forgeui.md)) | **0.1 done: run on an iPhone 2026-11-10** |
-| P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built, tested on Linux, not yet on an iPhone** |
-| P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **In progress: document and validation in `forge-app`** |
+| P2 | **ForgeAppKit 0.1**: alerts and confirmations as model values, destinations, load and submission state, form errors ([guide](forgeappkit.md)) | **In progress: 0.1 built and used by Pocket Library, Commonplace, FieldKit, Relay, Sketchbook and Soundscape; not yet recorded on an iPhone** |
+| P3 | Rust application foundations: saved documents and validation ([guide](app-foundations.md)); repositories and query later (modules in existing crates first) | **Built: persistence guarantees (#159) and Pocket Library on the runtime (#176); iPhone check open** |
 | P4 | A complete reference app (personal library) built only on the above | Required proof |
 | P5 | Developer experience: `forge init` on ForgeUI, component docs, feature templates | After the foundation |
 | P6 | Autonomous-agent tooling expansion (M6, general device control) | **Moved out** to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project (2026-11-15). Device, build and diagnostics stay here as supporting infrastructure |
@@ -61,16 +61,16 @@ Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-a
 3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
 4. **Evidence bundles also write JUnit XML** (`junit.xml`, [evidence.md](evidence.md#the-evidence-bundle)), so any CI system or test viewer can read the results. No new report features.
 5. **The build queue is finished** (decided 2026-11-15, from the [complexity audit](https://claude.ai/artifact/8yMF8C6NBhtazEYJd4ngyP)): `forge queue` keeps one build at a time, in order, under a memory and CPU cap ([builds.md](builds.md#the-build-queue)). Bug fixes only; no new scheduling, priorities, dashboards or remote features.
-6. **Joining Device Lab is optional** (decided 2026-11-15). A new app is published and tested on its own (`forge publish ios --project <app>`) and is not added to Device Lab's Apps screen by default. Add one only for a combined phone sitting or when the person asks; the apps already hosted stay.
+6. **Every app is reachable from Device Lab** (decided 2026-11-15, replacing the same day's "joining is optional"). Over-the-air installs only update an app already on the phone, and a free team allows three installed apps, so Device Lab is the one app on the phone that gets tested and hosts every example app on its Apps screen ([AGENTS.md](../AGENTS.md#device-tools)). `scripts/check-app-parity.sh` checks it. An app is published on its own only when the person asks.
 
 The freeze ends when all four of these exit criteria are met, each checked on a physical iPhone and reported by a person:
 
-| | Done when | Status (2026-11-11) |
+| | Done when | Status (2026-11-15) |
 |---|---|---|
 | P1 ForgeUI 0.1 | The showcase's settings, list and create/edit form screens use no custom styling and run on an iPhone in light, dark and the largest text size | **Met** 2026-11-10 |
-| P2 ForgeAppKit 0.1 | Pocket Library uses its alerts, destinations, load and submission state and form errors, and its UI tests that cover them pass on an iPhone | Not met: built and tested on Linux only |
-| P3 Rust foundations | Persistence guarantees ([#159](https://github.com/GeneralKnowledge/ixOS/pull/159)) are merged, Pocket Library runs on the `forge-app` `Runtime`, and its saved-version fixtures open in CI | Not met: #159 open, Pocket Library uses only validation |
-| P4 Reference app | Every requirement in Pocket Library's `requirements.toml` passes on an iPhone in one `forge ui run` sitting, with no app-local copies of framework code | Not met |
+| P2 ForgeAppKit 0.1 | Pocket Library uses its alerts, destinations, load and submission state and form errors, and its UI tests that cover them pass on an iPhone | Not met: used by Pocket Library (alerts, sheets, load and submission state, field errors) but not recorded on an iPhone; push destinations (`forgeNavigationDestination`) and full-screen covers are used by no app yet |
+| P3 Rust foundations | Persistence guarantees ([#159](https://github.com/GeneralKnowledge/ixOS/pull/159)) are merged, Pocket Library runs on the `forge-app` `Runtime`, and its saved-version fixtures open in CI | Met on Linux: #159 merged 2026-11-11, Pocket Library on the `Runtime` since #176 (2026-11-13), and `store.rs` opens every `fixtures/library-v<N>.json` in the app crate tests. Not met on an iPhone: Pocket Library on the runtime not yet recorded in a sitting |
+| P4 Reference app | Every requirement in Pocket Library's `requirements.toml` passes on an iPhone in one `forge ui run` sitting, with no app-local copies of framework code | Not met: only PL-10 of PL-1 to PL-10 has a device scenario (`uitests/m0.toml`); the rest have Linux twin tests only |
 
 Whatever happens, the freeze is reviewed on 2026-12-15, so it can't drift into an indefinite one. At the review, it either ends, or gets a new date and the reason it still holds.
 
@@ -83,9 +83,9 @@ Frozen on 2026-11-11 ([above](#tooling-freeze-and-reuse-rules)): bug fixes only 
 
 An agent takes a real task on an existing app, changes it, checks it on the iPhone, finds and fixes a real problem, and leaves one record of what ran and what didn't. Most of the pieces exist; M6 wires them together, aims exploration at what changed, correlates failures with logs and crashes, and demonstrates the loop on Good Dog. Plan: [forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md).
 
-### iPhone acceptance of the integrated framework — In progress
+### iPhone acceptance of the integrated framework — Partly done
 
-The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. So far the starter, the services check and Pocket Library have been built with a patched xtool on Linux (iOS SDK 26.0 recorded); none has been recorded running on an iPhone yet.
+The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. Pocket Library has run on an iPhone (UI test m0, 11/11, 2026-11-07) and now runs inside Device Lab, installed over the air ([status](status.md)). A fresh app from the current starter and the services check app have not been recorded on an iPhone; the services check's capabilities are the largest part of the "built, not yet run on an iPhone" list.
 
 ### Native iOS UI — Done, device check open
 

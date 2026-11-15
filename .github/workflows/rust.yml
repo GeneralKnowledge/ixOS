@@ -61,6 +61,8 @@ jobs:
         run: ./scripts/test-native-rebuild.sh
       # Apps made with forge init (examples/pocket-library) have their own
       # Cargo workspace, so the steps above do not reach them.
+      - name: Every app keeps up with the framework (docs/app-parity.md)
+        run: ./scripts/check-app-parity.sh
       - name: App-owned crates (fmt, clippy, tests, binding drift)
         run: ./scripts/check-app-crates.sh
       - name: ForgeKit's contract bindings and version match forge-app
