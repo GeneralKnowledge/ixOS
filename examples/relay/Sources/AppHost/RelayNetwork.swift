@@ -150,6 +150,15 @@ final class RelayNetwork {
         codeAdvertiser = service
     }
 
+    /// Publishes the code advert again. iOS drops an app's Bonjour
+    /// registrations while it is suspended (for example while the person
+    /// switches app to pass the code on), and `advertiseCode` alone would
+    /// think it is still published, so the sheet calls this on return.
+    func readvertiseCode(_ advert: RelayModel.CodeAdvert?) {
+        codeAdvertised = nil
+        advertiseCode(advert)
+    }
+
     /// Reports every code sender advertising nearby (this device's own
     /// included; Rust leaves its own id out) until `stopWatchingCodeSenders`.
     func watchCodeSenders(_ report: @escaping @MainActor @Sendable ([NearbySender]) -> Void) {
