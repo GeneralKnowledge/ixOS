@@ -31,6 +31,9 @@ let rustLibrary: [LinkerSetting] = [
     // them here.
     .linkedFramework("Security"),
     .linkedFramework("CoreFoundation"),
+    // iroh (word-code transfers) reads network interfaces and DNS settings
+    // through SystemConfiguration.
+    .linkedFramework("SystemConfiguration"),
     .unsafeFlags(["-L", iosLibSearch], .when(platforms: [.iOS])),
     .unsafeFlags(["-L", macosLibSearch], .when(platforms: [.macOS])),
 ]

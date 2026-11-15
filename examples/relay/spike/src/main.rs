@@ -69,12 +69,13 @@ const MAX_CODES: usize = 6;
 
 // ---------------------------------------------------------------- the code
 
-/// The EFF short word list 1: 1296 words of 3 to 5 letters, so three words
+/// The EFF short word list 1: 1295 words (of 1296) of 3 to 5 letters, so three words
 /// carry about 31 bits and are still short to type.
 static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     include_str!("eff_short_wordlist_1.txt")
         .lines()
-        .filter(|l| !l.starts_with('#') && !l.is_empty())
+        // "yo-yo" is left out: a dash separates a code's words.
+        .filter(|l| !l.starts_with('#') && !l.is_empty() && !l.contains('-'))
         .collect()
 });
 

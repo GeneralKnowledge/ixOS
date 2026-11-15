@@ -205,6 +205,164 @@ public final class RelayModel {
         }
     }
 
+    // MARK: Receiving with a word code (Relay M1)
+
+    /// Where a code receive is: the screen shows this.
+    public enum CodeReceive: Equatable, Sendable {
+        case idle
+        /// Looking for the sender on this Wi-Fi.
+        case finding
+        /// Connected; `size` once the sender has named the file.
+        case receiving(size: CodeSize?, since: Date)
+        case received(CodeReceipt)
+        case failed(String)
+    }
+
+    /// What Bonjour found for a code's number (`RelayNetwork` looks).
+    public enum CodeSender: Equatable, Sendable {
+        case found(addresses: [String], endpointID: String)
+        case none
+        /// More than one sender uses the number: guessing would spend a
+        /// stranger's code, so stop.
+        case several
+    }
+
+    public private(set) var codeReceive: CodeReceive = .idle
+
+    public var isReceivingCode: Bool {
+        switch codeReceive {
+        case .finding, .receiving: true
+        default: false
+        }
+    }
+
+    /// Finds the sender of `code` with `find` (Bonjour, by the code's
+    /// number), then receives its file.
+    public func receive(code: String, find: (UInt8) async -> CodeSender) async {
+        let number: UInt8
+        do {
+            number = try wordCodeNumber(code: code)
+        } catch {
+            codeReceive = .failed(Self.message(error))
+            return
+        }
+        codeReceive = .finding
+        switch await find(number) {
+        case .none:
+            codeReceive = .failed("No sender with code number \(number) on this Wi-Fi. Check the sender is still waiting, on the same network.")
+        case .several:
+            codeReceive = .failed("Two senders nearby use number \(number). Ask the sender for a new code.")
+        case .found(let addresses, let endpointID):
+            codeReceive = .receiving(size: nil, since: Date())
+            do {
+                let receipt = try await core.receiveWithCode(code: code, addresses: addresses, endpointId: endpointID)
+                codeReceive = .received(receipt)
+                saveCount += 1
+            } catch {
+                log.warn("code receive failed: \(error)")
+                codeReceive = .failed(Self.message(error))
+            }
+        }
+    }
+
+    /// Re-reads the size of the file on its way.
+    public func refreshCodeReceive() {
+        if case .receiving(_, let since) = codeReceive {
+            codeReceive = .receiving(size: core.codeReceiveSize(), since: since)
+        }
+    }
+
+    public func cancelCodeReceive() {
+        core.cancelCodeReceive()
+    }
+
+    public func resetCodeReceive() {
+        if !isReceivingCode { codeReceive = .idle }
+    }
+
+    // MARK: Sending with a word code (Relay M1)
+
+    /// Where a send with a code is; Rust's `CodeSend`, re-read while it runs.
+    public private(set) var codeSend: CodeSend = .idle
+
+    public var isSendingCode: Bool {
+        switch codeSend {
+        case .preparing, .waiting, .sending: true
+        default: false
+        }
+    }
+
+    /// What to advertise with Bonjour while there is a code: its number,
+    /// Rust's port and endpoint id.
+    public struct CodeAdvert: Equatable, Sendable {
+        public let number: UInt8
+        public let port: UInt16
+        public let endpointID: String
+    }
+
+    public var codeAdvert: CodeAdvert? {
+        switch codeSend {
+        case .waiting(_, let number, let port, let endpointID, _, _, _),
+             .sending(_, let number, let port, let endpointID, _, _):
+            CodeAdvert(number: number, port: port, endpointID: endpointID)
+        default:
+            nil
+        }
+    }
+
+    /// Starts sending the file at `path` with a new code.
+    public func send(fileAt path: String) {
+        do {
+            try core.sendWithCode(path: path)
+            codeSend = core.codeSendStatus()
+        } catch {
+            log.warn("code send failed to start: \(error)")
+            codeSend = .failed(reason: Self.message(error))
+        }
+    }
+
+    /// Shows that a picked file is being made ready (copied in) before Rust
+    /// has it.
+    public func preparing(name: String) {
+        codeSend = .preparing(name: name, size: 0)
+    }
+
+    public func failSend(_ reason: String) {
+        codeSend = .failed(reason: reason)
+    }
+
+    public func refreshCodeSend() {
+        let now = core.codeSendStatus()
+        // Still copying the picked file in: Rust hasn't been asked yet.
+        if case .idle = now, case .preparing = codeSend { return }
+        codeSend = now
+    }
+
+    /// Other code senders Bonjour sees, so Rust avoids their numbers.
+    public func codeSendersNearby(_ senders: [NearbySender]) {
+        core.codeSendNearby(senders: senders)
+    }
+
+    public func cancelCodeSend() {
+        core.cancelCodeSend()
+    }
+
+    public func resetCodeSend() {
+        if !isSendingCode { codeSend = .idle }
+    }
+
+    nonisolated private static func message(_ error: Error) -> String {
+        if let relay = error as? RelayError {
+            switch relay {
+            case .Declined(let reason), .Unreachable(let reason), .Connection(let reason), .File(let reason):
+                return reason.prefix(1).uppercased() + reason.dropFirst() + "."
+            default:
+                return describe(relay)
+            }
+        }
+        return "\(error)"
+    }
+
     // MARK: Words for the screen
 
     nonisolated public static func describe(_ error: RelayError) -> String {
@@ -216,6 +374,7 @@ public final class RelayModel {
         case .FileTooLarge: return "Files can be up to 2 GB."
         case .BadCode: return "That isn't a Relay pairing code."
         case .CodeExpired: return "That pairing code has expired. Make a new one on the other device."
+        case .WordCode(let reason): return reason.prefix(1).uppercased() + reason.dropFirst() + "."
         case .UnknownPeer: return "This device isn't paired with that one any more."
         case .NotFound: return "That's no longer in the history."
         case .Unreachable: return "Can't reach the other device. Check that it has Relay open, on the same Wi-Fi."
@@ -236,6 +395,7 @@ public final class RelayModel {
         switch error {
         case .EmptyName, .NameTooLong, .EmptyNote, .NoteTooLong, .FileTooLarge: return "Check the Details"
         case .BadCode, .CodeExpired, .Refused: return "Couldn't Pair"
+        case .WordCode: return "Check the Code"
         case .UnknownPeer, .NotFound: return "Not Found"
         case .Unreachable, .Connection, .Declined: return "Not Sent"
         case .File: return "File Problem"

@@ -83,7 +83,7 @@ An **AI Lab** entry under Device Lab's Apps: pick where it runs (this iPhone, a 
 
 ## 3. AI over Relay
 
-Relay (#182, #192) already pairs devices by QR code, discovers them with Bonjour and talks over a Noise channel with CBOR messages. Its SwiftUI app has not yet run on an iPhone.
+Relay (#182, #192) already pairs devices by QR code, discovers them with Bonjour and talks over a Noise channel with CBOR messages. Its SwiftUI app runs in Device Lab; receiving a file with a word code passed on an iPhone on 2026-11-15.
 
 ### The protocol
 

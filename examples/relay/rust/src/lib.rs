@@ -26,6 +26,9 @@
 //! - The `relay` command (`--features cli`) is the same code on Linux, so
 //!   one iPhone and a laptop are enough to try it.
 
+mod code;
+mod code_send;
+mod code_session;
 pub mod link;
 mod model;
 mod record;
@@ -42,6 +45,11 @@ use forge_app::{Cancellation, DataDirectory, Document, Published, Runtime};
 use forge_runtime::{lock, now_ms};
 use forge_services::ai::{AiError, ChatRequest, LanguageModel, ModelInfo, TextOut};
 use forge_storage::FileStore;
+
+use code::CodeProgress;
+pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
+use code_send::CodeSendShared;
+pub use code_send::{CodeSend, NearbySender};
 
 pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
@@ -101,6 +109,13 @@ pub struct RelayCore {
     listening: Mutex<Option<Listening>>,
     /// The model this device answers paired devices' asks with.
     answers_with: Mutex<Option<Arc<dyn LanguageModel>>>,
+    /// Receiving with a word code (`code`): where blobs and files go, how
+    /// far it has got, and the stop switch.
+    code_dir: PathBuf,
+    code_progress: Arc<CodeProgress>,
+    code_stop: Mutex<Arc<AtomicBool>>,
+    /// Sending with a word code (`code_send`).
+    code_send: Arc<CodeSendShared>,
     me: Weak<RelayCore>,
 }
 
@@ -139,6 +154,7 @@ impl RelayCore {
         inbox.sweep_temporaries();
         let published = Arc::new(Published::new(record.value().clone()));
         let inbox_root = inbox.root().to_path_buf();
+        let code_dir = directory.path().join("codes");
         let state = State {
             record,
             inbox,
@@ -152,8 +168,106 @@ impl RelayCore {
             progress: Mutex::new(HashMap::new()),
             listening: Mutex::new(None),
             answers_with: Mutex::new(None),
+            code_dir,
+            code_progress: Arc::new(CodeProgress::default()),
+            code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
+            code_send: Arc::new(CodeSendShared::default()),
             me: me.clone(),
         }))
+    }
+
+    /// Receives the file a sender offers with a word code such as
+    /// `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
+    /// computer for now). `addresses` and `endpoint_id` come from the
+    /// sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
+    /// code's number, `id` = the endpoint id). The file is verified chunk by
+    /// chunk and saved in Relay's `codes/received` folder; a dropped receive
+    /// resumes with the sender's next code. One at a time.
+    pub async fn receive_with_code(
+        &self,
+        code: String,
+        addresses: Vec<String>,
+        endpoint_id: String,
+    ) -> Result<CodeReceipt, RelayError> {
+        if self.code_progress.active.swap(true, Ordering::SeqCst) {
+            return Err(RelayError::Declined {
+                reason: "already receiving".into(),
+            });
+        }
+        let stop = Arc::new(AtomicBool::new(false));
+        *lock(&self.code_stop) = Arc::clone(&stop);
+        code::receive(
+            &code,
+            &addresses,
+            &endpoint_id,
+            &self.code_dir.join("store"),
+            &self.code_dir.join("received"),
+            Arc::clone(&self.code_progress),
+            stop,
+        )
+        .await
+    }
+
+    /// Stops the receive in progress, if any; it ends with an error, and
+    /// what arrived stays for a resume.
+    pub fn cancel_code_receive(&self) {
+        lock(&self.code_stop).store(true, Ordering::SeqCst);
+    }
+
+    /// The size of the file being received with a code, and how much of it
+    /// was already here from an earlier try; `None` when none is running or
+    /// the sender hasn't named the file yet.
+    pub fn code_receive_size(&self) -> Option<CodeSize> {
+        if !self.code_progress.active.load(Ordering::SeqCst) {
+            return None;
+        }
+        let total = self.code_progress.total.load(Ordering::SeqCst);
+        (total > 0).then(|| CodeSize {
+            total,
+            already: self.code_progress.already.load(Ordering::SeqCst),
+        })
+    }
+
+    /// Starts sending the file at `path` with a new word code, in the
+    /// background (Relay M1). Follow it with `code_send_status`: while it
+    /// has a code, the app advertises it with Bonjour and reports other
+    /// senders it sees with `code_send_nearby`. The receiver is another
+    /// Relay or `relay-spike receive <code>` on a computer. One at a time.
+    pub fn send_with_code(&self, path: String) -> Result<(), RelayError> {
+        let path = PathBuf::from(path);
+        if !path.is_file() {
+            return Err(RelayError::File {
+                reason: "there is no file there".into(),
+            });
+        }
+        if self.code_send.running() {
+            return Err(RelayError::Declined {
+                reason: "already sending".into(),
+            });
+        }
+        code_send::start(
+            path,
+            self.code_dir.join("send-store"),
+            Arc::clone(&self.code_send),
+        );
+        Ok(())
+    }
+
+    /// Where the send with a code has got.
+    pub fn code_send_status(&self) -> CodeSend {
+        self.code_send.status()
+    }
+
+    /// The other senders the app sees advertising nearby, replacing the last
+    /// list. A new code avoids their numbers, and if one takes this code's
+    /// number before it is used, the code is replaced.
+    pub fn code_send_nearby(&self, senders: Vec<NearbySender>) {
+        *lock(&self.code_send.nearby) = senders.into_iter().collect();
+    }
+
+    /// Stops the send in progress, if any.
+    pub fn cancel_code_send(&self) {
+        self.code_send.stop.store(true, Ordering::SeqCst);
     }
 
     /// This device, as others see it.
@@ -424,6 +538,20 @@ impl RelayCore {
         )
         .await
     }
+}
+
+/// The file a code receive is fetching.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, uniffi::Record)]
+pub struct CodeSize {
+    pub total: u64,
+    pub already: u64,
+}
+
+/// The number a word code starts with (what the sender advertises), or why
+/// the code can't be right as typed. The app uses it to find the sender.
+#[uniffi::export]
+pub fn word_code_number(code: String) -> Result<u8, RelayError> {
+    code::WordCode::parse(&code).map(|c| c.number)
 }
 
 /// What `send` carries, owned for the work thread.

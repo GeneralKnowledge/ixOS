@@ -816,6 +816,7 @@ footer p {{ margin: 0 0 8px; }}
 <footer>
 <p>Tap Install, then Install again when the phone asks. The app downloads on the Home Screen.</p>
 <p>A new build replaces the app and keeps its data. To go back, install an earlier build the same way.</p>
+<p>The page updates apps already on the phone. Each app's first install goes over the cable.</p>
 <p>Free signing lasts 7 days: publishing again renews it.</p>
 </footer>
 </div>

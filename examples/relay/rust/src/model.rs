@@ -100,6 +100,9 @@ pub enum RelayError {
     BadCode,
     #[error("that pairing code has expired; make a new one")]
     CodeExpired,
+    /// A transfer code (`7-acid-tidy-rug`) that can't be right as typed.
+    #[error("{reason}")]
+    WordCode { reason: String },
     #[error("not paired with {id}")]
     UnknownPeer { id: String },
     #[error("nothing with id {id}")]
@@ -141,6 +144,7 @@ pub fn relay_error_kind(error: RelayError) -> ErrorKind {
         | RelayError::FileTooLarge
         | RelayError::BadCode
         | RelayError::CodeExpired
+        | RelayError::WordCode { .. }
         | RelayError::File { .. }
         | RelayError::AlreadyListening
         | RelayError::Refused

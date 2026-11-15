@@ -33,6 +33,7 @@
 	<key>NSBonjourServices</key>
 	<array>
 		<string>_forgerelay._tcp</string>
+		<string>_forgerelay._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Relay scans another device's pairing code.</string>

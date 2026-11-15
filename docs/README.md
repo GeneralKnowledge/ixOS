@@ -74,6 +74,7 @@ Nothing on the pages above needs an agent. Agents use the same commands, and `fo
 |---|---|
 | [status.md](status.md) | What works today, in one page (generated) |
 | [capability-ledger.md](capability-ledger.md) | Every capability with its evidence, column by column (generated) |
+| [app-parity.md](app-parity.md) | Which example apps keep up with the framework, and when the rest catch up (generated) |
 | [roadmap.md](roadmap.md) | What comes next, and what isn't planned |
 
 ## Background

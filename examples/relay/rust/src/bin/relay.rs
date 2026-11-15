@@ -31,12 +31,13 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use forge_services::ai::{ChatMessage, ChatRequest, Collect, LanguageModel};
-use relay_core::{Direction, Item, RelayCore, TransferStatus};
+use relay_core::{CodeSend, Direction, Item, RelayCore, TransferStatus};
 
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
 send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
-ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT";
+ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
+receive-code <code> <host:port> <endpoint-id> | send-code FILE";
 
 fn main() {
     if let Err(problem) = run(std::env::args().skip(1).collect()) {
@@ -84,6 +85,69 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "send" => send(&core, rest),
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
+        // The receiver the app uses for word codes, against `relay-spike send`.
+        "receive-code" => {
+            let [code, address, id] = rest else {
+                return Err(USAGE.into());
+            };
+            let got =
+                block_on(core.receive_with_code(code.clone(), vec![address.clone()], id.clone()))
+                    .map_err(|e| e.to_string())?;
+            println!(
+                "Received {} ({} bytes, {} already here) in {:.1}s at {:.1} MB/s: {}",
+                got.name,
+                got.size,
+                got.resumed_from,
+                got.seconds,
+                got.megabytes_per_second,
+                got.path
+            );
+            Ok(())
+        }
+        // The sender the app uses for word codes. No Bonjour here: the
+        // receiver gives the printed address (`relay-spike receive <code>
+        // --addr .. --id ..`, or `relay receive-code`).
+        "send-code" => {
+            let file = rest.first().ok_or(USAGE)?;
+            core.send_with_code(file.clone())
+                .map_err(|e| e.to_string())?;
+            let mut last = CodeSend::Idle;
+            loop {
+                let now = core.code_send_status();
+                if now != last {
+                    match &now {
+                        CodeSend::Waiting {
+                            code,
+                            port,
+                            endpoint_id,
+                            note,
+                            ..
+                        } => {
+                            if let Some(note) = note {
+                                println!("{note}");
+                            }
+                            println!("Code: {code}  (port {port}, id {endpoint_id})");
+                        }
+                        CodeSend::Sending { .. } => println!("Sending..."),
+                        CodeSend::Sent {
+                            size,
+                            seconds,
+                            megabytes_per_second,
+                            ..
+                        } => {
+                            println!(
+                                "Sent {size} bytes in {seconds:.1}s at {megabytes_per_second:.1} MB/s."
+                            );
+                            return Ok(());
+                        }
+                        CodeSend::Failed { reason } => return Err(reason.clone()),
+                        CodeSend::Idle | CodeSend::Preparing { .. } => {}
+                    }
+                    last = now;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+        }
         "history" => {
             for t in core.transfers() {
                 println!("{}", describe(&t));

@@ -1,4 +1,5 @@
 #if os(iOS)
+@preconcurrency import RelayFFI
 import Foundation
 import Network
 import Observation
@@ -83,6 +84,126 @@ final class RelayNetwork {
         return resolved.map { [$0] } ?? []
     }
 
+    /// Looks for a code sender (`_forgerelay._udp`) whose TXT record says
+    /// code number `number`, for up to 10 s, then 1.5 s more for a second
+    /// one. Each sender is resolved to an IPv4 "host:port" (Rust can't use a
+    /// link-local IPv6 scope).
+    func findCodeSender(number: UInt8) async -> RelayModel.CodeSender {
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        let matches = CodeMatches()
+        browser.browseResultsChangedHandler = { results, _ in
+            for result in results {
+                guard case .bonjour(let txt) = result.metadata,
+                      txt["n"] == String(number),
+                      let id = txt["id"], !id.isEmpty
+                else { continue }
+                matches.add(id: id, endpoint: result.endpoint)
+            }
+        }
+        browser.start(queue: .main)
+        var waited = 0
+        var firstSeenAt: Int?
+        while waited < 100 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
+            if matches.count > 0, firstSeenAt == nil { firstSeenAt = waited }
+            if let first = firstSeenAt, waited - first >= 15 { break }
+        }
+        browser.cancel()
+        let found = matches.all
+        if found.count > 1 { return .several }
+        guard let (id, endpoint) = found.first else { return .none }
+        var addresses: [String] = []
+        if let v4 = await Self.resolve(endpoint, ipv4Only: true) { addresses.append(v4) }
+        if addresses.isEmpty, let any = await Self.resolve(endpoint, ipv4Only: false) { addresses.append(any) }
+        if addresses.isEmpty { return .none }
+        return .found(addresses: addresses, endpointID: id)
+    }
+
+    static let codeServiceType = "_forgerelay._udp"
+
+    @ObservationIgnored private var codeAdvertiser: NetService?
+    @ObservationIgnored private var codeAdvertised: RelayModel.CodeAdvert?
+    @ObservationIgnored private var codeWatcher: NWBrowser?
+
+    /// Advertises a code sender (`_forgerelay._udp`, TXT `v`, `n`, `id`, as
+    /// the M0 spike does) on Rust's port, replacing the last advert; `nil`
+    /// withdraws it.
+    func advertiseCode(_ advert: RelayModel.CodeAdvert?) {
+        guard advert != codeAdvertised else { return }
+        codeAdvertiser?.stop()
+        codeAdvertiser = nil
+        codeAdvertised = advert
+        guard let advert else { return }
+        let name = "relay-\(advert.endpointID.prefix(8))-\(advert.number)"
+        let service = NetService(domain: "local.", type: Self.codeServiceType + ".", name: name, port: Int32(advert.port))
+        let txt: [String: Data] = [
+            "v": Data("1".utf8),
+            "n": Data(String(advert.number).utf8),
+            "id": Data(advert.endpointID.utf8),
+        ]
+        _ = service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        service.publish()
+        codeAdvertiser = service
+    }
+
+    /// Reports every code sender advertising nearby (this device's own
+    /// included; Rust leaves its own id out) until `stopWatchingCodeSenders`.
+    func watchCodeSenders(_ report: @escaping @MainActor @Sendable ([NearbySender]) -> Void) {
+        guard codeWatcher == nil else { return }
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        browser.browseResultsChangedHandler = { results, _ in
+            let senders: [NearbySender] = results.compactMap { result -> NearbySender? in
+                guard case .bonjour(let txt) = result.metadata,
+                      let n = txt["n"].flatMap({ UInt8($0) }),
+                      let id = txt["id"], !id.isEmpty
+                else { return nil }
+                return NearbySender(number: n, endpointId: id)
+            }
+            Task { @MainActor in report(senders) }
+        }
+        browser.start(queue: .main)
+        codeWatcher = browser
+    }
+
+    func stopWatchingCodeSenders() {
+        codeWatcher?.cancel()
+        codeWatcher = nil
+    }
+
+    /// A Bonjour UDP service's "host:port": a UDP connection is ready once
+    /// the name resolves, and sends nothing.
+    private static func resolve(_ endpoint: NWEndpoint, ipv4Only: Bool) async -> String? {
+        let parameters = NWParameters.udp
+        if ipv4Only, let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+            ip.version = .v4
+        }
+        let connection = NWConnection(to: endpoint, using: parameters)
+        let resolved: String? = await withCheckedContinuation { continuation in
+            let once = Once(continuation)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    once.resume(Self.hostPort(connection.currentPath?.remoteEndpoint))
+                case .failed, .cancelled:
+                    once.resume(nil)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { once.resume(nil) }
+        }
+        connection.cancel()
+        return resolved
+    }
+
     nonisolated private static func hostPort(_ endpoint: NWEndpoint?) -> String? {
         guard case .hostPort(let host, let port) = endpoint else { return nil }
         let name: String
@@ -126,6 +247,30 @@ final class RelayNetwork {
             }
         }
         return v4 + v6
+    }
+}
+
+/// Code senders seen so far, by endpoint id (Bonjour may report one twice).
+private final class CodeMatches: @unchecked Sendable {
+    private let lock = NSLock()
+    private var found: [String: NWEndpoint] = [:]
+
+    func add(id: String, endpoint: NWEndpoint) {
+        lock.lock()
+        found[id] = endpoint
+        lock.unlock()
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return found.count
+    }
+
+    var all: [(String, NWEndpoint)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return found.map { ($0.key, $0.value) }
     }
 }
 

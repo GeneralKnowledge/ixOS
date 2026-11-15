@@ -23,11 +23,11 @@ The name stays Relay.
 
 | State | What |
 |---|---|
-| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../examples/relay/README.md)): QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, Bonjour on iPhone, the `relay` command. AI asks over Relay (protocol 2, `relay serve-ai` / `relay ask`). Chat with its `ChatRepo` backends, SQLite store, outbox and SwiftUI conversation screens. Swift for Relay has not yet been compiled or run on a phone |
-| **Validated, experimental** (Linux spike, [results](research/relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB |
+| **Implemented** (on main) | Relay R1/R2 ([examples/relay](../examples/relay/README.md)): QR pairing, TCP + Noise from `forge-devproto`, notes and files between paired devices on one network, Bonjour on iPhone, the `relay` command. AI asks over Relay (protocol 2, `relay serve-ai` / `relay ask`). Chat with its `ChatRepo` backends, SQLite store, outbox and SwiftUI conversation screens. Relay's Swift compiles with xtool and runs in Device Lab; receiving with a word code passed on an iPhone on 2026-11-15 |
+| **Validated, experimental** (Linux spike, [results](research/relay-stage0-spike.md)) | iroh endpoints with relays off; 1 GB offline transfer with iroh-blobs; mDNS discovery by code number; SPAKE2 word codes with key confirmation over both endpoint ids; one wrong guess ends a code; blobs only for the endpoint that proved the code; size about +7 MB. M0 (#199): three EFF short words, no number collisions, busy and wrong-code handling, disk store and resume, the code session as a state machine checked by Lean, and transfers both ways between two Linux machines over Tailscale |
 | **Approved, not built** | iroh for every connection; iroh-blobs for files; word codes `7-orbit-velvet` with a QR code; trusted devices replacing QR pairing; messages through a `PeerRepo` backend for `chat-core`; temporary rooms that collapse with the host; Relaxed, Standard and Strict room levels; rooms on Nostr (Marmot, NIP-29, NIP-11); our rendezvous and iroh relay on Hetzner; a browser receiver later; stays in ixOS |
 | **Proposed** (this plan) | The four pillars and three screens; the connection resolver and three network modes; person and device identities; capability-based permissions; capability services and their declarations; device capabilities (clipboard, files, terminal, tasks, AI); the extension model; the eventual crate layout |
-| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, any dependency on our servers for local use, a repository restructure, a separate repository, a new name |
+| **Deferred** | Our own federation protocol, our own group encryption, a full sync engine, unrestricted remote access, an extension marketplace, agents over Relay (below), any dependency on our servers for local use, a repository restructure, a separate repository, a new name |
 
 ## The four pillars
 
@@ -244,6 +244,33 @@ relay service invoke my-service process-document
 
 The extension protocol comes before any marketplace.
 
+### Agents over Relay (deferred)
+
+Reuben's idea (2026-11-15): AI agents on different machines talk to each
+other over Relay, whatever model, framework or host each one uses. Relay
+does not need to understand AI; it gives agents what it gives devices:
+encrypted direct connections with no public endpoint, identity,
+permissions, discovery and delivery.
+
+- **Reuse the existing agent protocols.** Carry
+  [A2A](https://a2a-protocol.org) messages (agent cards for discovery,
+  tasks, results, files) over Relay, and MCP for tools, rather than
+  inventing a `relay.agent` format. Relay adds the transport, identity and
+  revocable permissions those protocols leave to the deployment.
+- **Messages, tasks and capabilities stay separate.** A message never
+  grants permission to act on its contents. Running a task needs a
+  capability the person granted to that agent's key, with rate limits, and
+  can be revoked.
+- **Each agent has its own key,** like a device, signed by the person who
+  runs it.
+- **Starting point:** `relay serve-ai` / `relay ask` (protocol 2) already
+  send OpenAI-style requests to a model on another machine; they move onto
+  iroh with the rest of Relay.
+- **When:** after M2 (messaging and capability permissions), as part of the
+  Extend pillar. **First test:** two independent agents exchange signed
+  messages, one asks the other for a task, gets the result and an
+  attachment back, and a revoked grant is refused.
+
 ## Security
 
 | Threat | Protection |
@@ -275,7 +302,7 @@ estimates are for planning, not promises.
 | Milestone | Contents | Was | Estimate |
 |---|---|---|---|
 | **M0 Foundation validation** (Linux to Linux) | Done on one Linux machine: iroh, SPAKE2 codes of three EFF words, no number collisions, busy and wrong-code handling with new codes, disk store, a 4 GB transfer resumed after the receiver was killed, 24 MB peak memory. Left: two real machines on a real network (the laptop, the iMac or Hetzner over Tailscale) and the Lean model of the code session | Stage 0 | 1 to 2 days |
-| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0 (iOS build and size, Bonjour to the Rust endpoint, iPhone to Linux both ways, Wi-Fi speed, memory); then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
+| **M1 Relay Transfer** | Starts with the iPhone feasibility check moved from M0. Passed on 2026-11-15 for receiving: the iOS build, Bonjour to the Rust endpoint, and 200 MB Linux to iPhone at 15.9 MB/s over Wi-Fi ([results](research/relay-stage0-spike.md#iphone-start-of-m1-2026-11-15)). Left: iPhone to Linux and memory. Then production core, iPhone and CLI send and receive, folders and several files, resumable disk store, trusted devices, history, cancellation and errors | Stage 1 (files) | 1 to 2 weeks |
 | **M2 Personal device network** | Persistent identities (person and device), discovery and status, the resolver, Tailscale routes, direct internet, our rendezvous and relay, diagnostics | Stage 2 (servers) | 1 to 2 weeks |
 | **M3 Direct communications** | `PeerRepo`, messages between devices, outbox, delivered and read, attachments, history, AI asks as messages | Stage 1 (messages) | 1 to 2 weeks |
 | **M4 Temporary rooms** | Host and join, codes, members, permissions, memory only, closing, Relaxed / Standard / Strict | Stage 2 (rooms) | 1 to 2 weeks |
@@ -334,6 +361,7 @@ drift apart.
 | A full sync engine | One-way transfers first |
 | Unrestricted remote access | Capability permissions |
 | An extension marketplace | The extension protocol first |
+| Our own agent protocol | A2A and MCP carried over Relay |
 | Needing our servers | Local first, always |
 
 **Risks to watch:** the iOS lifecycle (reconnect and resume, never fight
