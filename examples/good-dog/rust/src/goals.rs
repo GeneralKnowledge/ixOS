@@ -468,7 +468,11 @@ impl Stored {
             })
             .max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))
             .map(|(_, goal_id, pathway, stage)| {
-                let goal = self.goals.iter().find(|g| g.id == goal_id).expect("found above");
+                let goal = self
+                    .goals
+                    .iter()
+                    .find(|g| g.id == goal_id)
+                    .expect("found above");
                 (goal, pathway, stage)
             })
             .map(|(goal, pathway, stage)| {
@@ -484,8 +488,10 @@ impl Stored {
                 stage_count: pathway.stages.len() as u32,
                 why: stage.why_it_matters.clone(),
                 everyday_practice: stage.everyday_practice.clone(),
-                lessons_done: lessons.iter().filter(|l| l.state == LessonState::Done).count()
-                    as u32,
+                lessons_done: lessons
+                    .iter()
+                    .filter(|l| l.state == LessonState::Done)
+                    .count() as u32,
                 lesson_count: lessons.len() as u32,
                 next_lesson: lessons.into_iter().find(|l| l.state == LessonState::Next),
             })
@@ -593,7 +599,11 @@ impl Stored {
     /// lesson for it in an active goal's current stage.
     pub(crate) fn practised(&mut self, exercise_id: &str) {
         let pathways = self.pathways;
-        for goal in self.goals.iter_mut().filter(|g| g.status == GoalStatus::Active) {
+        for goal in self
+            .goals
+            .iter_mut()
+            .filter(|g| g.status == GoalStatus::Active)
+        {
             let Some(stage) = pathways
                 .0
                 .iter()
@@ -630,7 +640,12 @@ fn with_name(text: &str, name: &str) -> String {
 
 /// A stage's lessons for the owner. In the current stage they unlock one
 /// by one; a passed stage's are all open; an upcoming stage's are locked.
-fn lessons(goal: &StoredGoal, stage: &PathwayStage, state: StageState, name: &str) -> Vec<GoalLesson> {
+fn lessons(
+    goal: &StoredGoal,
+    stage: &PathwayStage,
+    state: StageState,
+    name: &str,
+) -> Vec<GoalLesson> {
     let mut next_given = false;
     stage
         .lessons

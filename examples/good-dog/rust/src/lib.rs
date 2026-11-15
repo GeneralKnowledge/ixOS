@@ -373,7 +373,7 @@ impl AppCore {
         .await
     }
 
-        /// Goes back one stage. Normal, not a failure.
+    /// Goes back one stage. Normal, not a failure.
     pub async fn step_back(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
         self.change("step-back", move |stored| {
             stored.step_back(goal_id, now)?;
