@@ -89,7 +89,7 @@ final class LoopEngine {
         for strip in strips.values {
             guard let buffer = strip.buffer else { continue }
             strip.player.stop()
-            strip.player.scheduleBuffer(buffer, at: nil, options: .loops)
+            strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
         }
         isPlaying = true
@@ -130,7 +130,7 @@ final class LoopEngine {
         input.installTap(onBus: 0, bufferSize: 4096, format: format, block: Self.tap(recorder))
         for strip in strips.values {
             guard let buffer = strip.buffer else { continue }
-            strip.player.scheduleBuffer(buffer, at: nil, options: .loops)
+            strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
         }
         isPlaying = true
