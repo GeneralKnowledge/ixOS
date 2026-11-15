@@ -5,7 +5,7 @@
 # logs and crash reports. Every step runs a documented `forge --json` command
 # and is recorded as PASS, FAIL or SKIP with its raw result.
 #
-#   scripts/iphone-acceptance.sh [--app examples/pocket-library] [--out DIR] [--with-ax-probe] [--with-mcp]
+#   scripts/iphone-acceptance.sh [--app examples/pocket-library] [--out DIR] [--with-ax-probe]
 #
 # Before: the iPhone is plugged in, unlocked and trusts this computer;
 # `forge ui setup` has been run since the phone last restarted (or set
@@ -22,13 +22,11 @@ FORGE="${FORGE:-forge}"
 APP="examples/pocket-library"
 OUT=""
 WITH_AX=0
-WITH_MCP=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --app) APP="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
     --with-ax-probe) WITH_AX=1; shift ;;
-    --with-mcp) WITH_MCP=1; shift ;;
     -h|--help) sed -n '2,17p' "$0"; exit 0 ;;
     *) echo "unknown argument $1" >&2; exit 2 ;;
   esac
@@ -272,20 +270,6 @@ if [[ $WITH_AX -eq 1 ]]; then
   fi
 else
   skip X1 optional "Apple accessibility service probe (pass --with-ax-probe)"
-fi
-if [[ $WITH_MCP -eq 1 ]]; then
-  printf '%s\n' \
-    '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"acceptance","version":"1"}}}' \
-    '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
-    '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"forge_device_status","arguments":{}}}' \
-    | (cd "$APP" && timeout 120 "$FORGE" mcp) > "$OUT/steps/X2.jsonl" 2> "$OUT/steps/X2.stderr"
-  if grep -q '"id":2' "$OUT/steps/X2.jsonl" && grep '"id":2' "$OUT/steps/X2.jsonl" | grep -q '"isError":false'; then
-    record X2 optional PASS "forge mcp answered forge_device_status from the phone (steps/X2.jsonl)"
-  else
-    record X2 optional FAIL "forge mcp: no successful forge_device_status (steps/X2.jsonl)"
-  fi
-else
-  skip X2 optional "forge mcp smoke test (pass --with-mcp)"
 fi
 
 # --- Report ----------------------------------------------------------------------

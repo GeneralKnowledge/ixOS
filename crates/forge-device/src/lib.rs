@@ -10,17 +10,20 @@
 //! - [`pick_device`]: choose the phone to talk to.
 //! - [`LogFilter`]: keep only one app's lines from the system log.
 //! - [`app_crash_reports`]: crash reports written for one app.
-//! - [`live`]: the live connection to a development build (M1): pairing,
-//!   status, probes, commands and the app's own log stream.
+//! - [`DeviceBackend::connect_port`]: a stream to a port on the phone. The
+//!   live connection to development builds that used it now lives in the
+//!   forge-lab side project (GeneralKnowledge/forge-lab).
 //!
 //! The phone side needs nothing from the app: logs come from the system log
 //! (where `forge_runtime::logging` writes), crash reports from the phone's
 //! crash reporter.
 
-pub mod live;
 mod usb;
 
-pub use live::{LiveStream, PairingStore};
+/// A byte stream to a TCP port on the phone, through usbmuxd
+/// ([`DeviceBackend::connect_port`]).
+pub trait LiveStream: std::io::Read + std::io::Write + Send {}
+impl<T: std::io::Read + std::io::Write + Send> LiveStream for T {}
 pub use usb::UsbBackend;
 
 /// How a phone is connected to this computer.
@@ -90,14 +93,10 @@ pub enum DeviceError {
     #[error("the phone refused or dropped the request: {0}")]
     Service(String),
     #[error(
-        "no development build is listening on the phone. Open the app (it must be on \
-         screen) and check it was installed with `forge run ios --devtools`"
+        "nothing on the phone is listening on that port. Open the app (it must be on \
+         screen) and check it was built to listen"
     )]
     AppNotListening,
-    #[error(transparent)]
-    Live(#[from] forge_devproto::client::ClientError),
-    #[error("{0}")]
-    Pairings(String),
 }
 
 pub type Result<T> = std::result::Result<T, DeviceError>;

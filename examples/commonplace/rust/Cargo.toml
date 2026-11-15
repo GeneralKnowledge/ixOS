@@ -33,10 +33,6 @@ forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
 # `forge_services::native_services!(http)` in src/lib.rs. To drop them,
 # remove that line, this dependency and async-trait. See docs/native-services.md.
 forge-services = { path = "../../../crates/forge-services", features = ["http"] }
-# The live connection to `forge device` (pair, connect, status, snapshot, cmd).
-# Only in development builds: `forge run ios --devtools` turns the feature on,
-# so release builds contain none of it. See docs/forge-device.md.
-forge-devtools = { path = "../../../crates/forge-devtools", optional = true }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 # UniFFI's generated code for async host interfaces names it directly.
@@ -46,9 +42,6 @@ serde_json = "1.0"
 thiserror = "2.0"
 # RSS, Atom and JSON Feed parsing. Pure Rust, so it cross-compiles for iOS.
 feed-rs = "2"
-
-[features]
-devtools = ["dep:forge-devtools"]
 
 [dev-dependencies]
 tempfile = "3.14"

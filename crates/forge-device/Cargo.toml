@@ -27,7 +27,6 @@ ns-keyed-archive = { version = "0.1.5", optional = true }
 rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"], optional = true }
 tokio-rustls = { version = "0.26", default-features = false, features = ["ring"], optional = true }
 thiserror = { workspace = true }
-forge-devproto = { path = "../forge-devproto" }
 
 [features]
 # Spike: probe Apple's accessibility audit service (docs/research/ax-audit.md).
@@ -40,6 +39,5 @@ required-features = ["ax-probe"]
 [dev-dependencies]
 # The ax_probe spike's --json report.
 serde_json = { workspace = true }
-forge-devtools = { path = "../forge-devtools" }
 forge-runtime = { workspace = true }
 tempfile = "3.14"

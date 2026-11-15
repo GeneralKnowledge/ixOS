@@ -7,7 +7,7 @@ The goal is a new measure of success for ixOS: **someone builds an app with ixOS
 This plan doesn't repeat two pieces of work happening alongside it:
 
 - **The foundation review** covers lifecycle, storage recovery and migrations, security and resource limits. The release depends on its storage and migration findings, because an App Store update has to carry users' data forward.
-- **Forge M6** ([forge-m6.md](forge-m6.md)) covers the evidence-driven dev loop, run records, and a person's acceptance through `forge verify --accept`. `forge release check` reads M6's records and doesn't rerun them.
+- **Forge M6** ([forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md)) covers the evidence-driven dev loop, run records, and a person's acceptance through `forge verify --accept`. `forge release check` reads M6's records and doesn't rerun them.
 
 ## The short answer
 

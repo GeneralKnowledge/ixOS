@@ -197,9 +197,6 @@ pub struct AppCore {
     rt: Runtime<State>,
     notes: Arc<Published<Vec<Note>>>,
     http: UreqClient,
-    /// The live connection to `forge device`, in development builds only.
-    #[cfg(feature = "devtools")]
-    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -231,8 +228,6 @@ impl AppCore {
         };
         let rt = Runtime::with_directory("app-core", directory, state);
         Ok(Arc::new(Self {
-            #[cfg(feature = "devtools")]
-            _devtools: devtools::start(&storage_directory, &notes, &rt),
             rt,
             notes,
             http: UreqClient::new(),
@@ -351,44 +346,6 @@ fn newest_first(notes: &[Note]) -> Vec<Note> {
     let mut notes = notes.to_vec();
     notes.sort_by_key(|note| std::cmp::Reverse(note.id));
     notes
-}
-
-/// What this app shows `forge device` in development builds: probes for
-/// `forge device snapshot` and commands for `forge device cmd`. Add your own;
-/// never expose secrets or user content (note text, tokens).
-#[cfg(feature = "devtools")]
-mod devtools {
-    use super::*;
-    use forge_devtools::{Config, DevTools};
-
-    pub(crate) fn start(
-        storage_directory: &std::path::Path,
-        notes: &Arc<Published<Vec<Note>>>,
-        rt: &Runtime<State>,
-    ) -> Option<DevTools> {
-        // `forge run ios` passes the bundle ID; the pairing lives with the
-        // app's data, so deleting the app forgets it.
-        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
-        let config = Config::new(
-            app,
-            env!("CARGO_PKG_VERSION"),
-            storage_directory.join(".forge-devtools-pairing"),
-        );
-        let tools = match DevTools::start(config, rt.lifecycle().clone()) {
-            Ok(tools) => tools,
-            Err(e) => {
-                forge_runtime::logging::warn!("devtools did not start: {e}");
-                return None;
-            }
-        };
-        let notes = Arc::clone(notes);
-        tools.probe("notes", move || notes.get().len().to_string());
-        tools.command("log", "Writes its arguments to the app's log", |args| {
-            forge_runtime::logging::info!(target: "devtools", "{}", args.join(" "));
-            Ok(String::new())
-        });
-        Some(tools)
-    }
 }
 
 #[cfg(test)]

@@ -4,9 +4,7 @@
 //! installed and still signed, its newest crash report, and what it logs
 //! while the person opens it. It ends with one next step.
 //!
-//! The agent-facing twin is MCP's `forge_diagnose` (crates/forge-mcp,
-//! correlate.rs), which explains the last failed tool call in a session.
-//! This one needs no session: it starts from the app folder.
+//! It needs no session: it starts from the app folder.
 //!
 //! It only reports what it saw. A check it couldn't make (no phone, the
 //! profiles unreadable) says so, and is never counted as passing.

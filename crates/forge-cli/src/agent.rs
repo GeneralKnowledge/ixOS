@@ -6,9 +6,10 @@
 //!   commands (templates/agent/AGENTS.md). Short on purpose: it points at
 //!   Forge's docs instead of repeating them.
 //! - `CLAUDE.md`: `@AGENTS.md`, for clients that read that name.
-//! - `.mcp.json`: starts `forge mcp`, an optional layer over the same
-//!   commands. `--apple-docs` adds the hosted sosumi server, which serves
-//!   developer.apple.com pages as text (a third-party service).
+//! - `.mcp.json`, only with `--apple-docs`: the hosted sosumi server, which
+//!   serves developer.apple.com pages as text (a third-party service). The
+//!   Forge MCP server is in the forge-lab side project
+//!   (GeneralKnowledge/forge-lab), which says how to add it.
 //!
 //! An existing file is never overwritten: the person may have added notes.
 
@@ -19,10 +20,15 @@ use crate::config::ForgeConfig;
 const TEMPLATE: &str = "templates/agent";
 
 /// sosumi.ai: Apple's developer documentation as text, over MCP.
-const APPLE_DOCS: &str = r#"    "sosumi": {
+const APPLE_DOCS: &str = r#"{
+  "mcpServers": {
+    "sosumi": {
       "type": "http",
       "url": "https://sosumi.ai/mcp"
-    }"#;
+    }
+  }
+}
+"#;
 
 /// What [`setup`] did with each file.
 #[derive(Debug, PartialEq, Eq)]
@@ -48,19 +54,11 @@ pub fn setup(root: &Path, app: &Path, apple_docs: bool) -> Result<Outcome, Strin
             "FORGE_XTOOL_PRODUCT",
             &crate::app_config::xtool_product(&cfg),
         );
-    let mut mcp = read("mcp.json")?;
+    let mut files: Vec<(&'static str, String)> =
+        vec![("AGENTS.md", agents), ("CLAUDE.md", read("CLAUDE.md")?)];
     if apple_docs {
-        mcp = mcp.replacen(
-            "    }\n  }\n}",
-            &format!("    }},\n{APPLE_DOCS}\n  }}\n}}"),
-            1,
-        );
+        files.push((".mcp.json", APPLE_DOCS.to_string()));
     }
-    let files: [(&'static str, String); 3] = [
-        ("AGENTS.md", agents),
-        ("CLAUDE.md", read("CLAUDE.md")?),
-        (".mcp.json", mcp),
-    ];
     let mut outcome = Outcome {
         written: Vec::new(),
         kept: Vec::new(),
@@ -119,7 +117,7 @@ mod tests {
         let tmp = app();
         std::fs::write(tmp.path().join("CLAUDE.md"), "mine").unwrap();
         let out = setup(&root(), tmp.path(), false).unwrap();
-        assert_eq!(out.written, vec!["AGENTS.md", ".mcp.json"]);
+        assert_eq!(out.written, vec!["AGENTS.md"]);
         assert_eq!(out.kept, vec!["CLAUDE.md"]);
         let agents = std::fs::read_to_string(tmp.path().join("AGENTS.md")).unwrap();
         assert!(agents.contains("Tipster is a native iOS app"), "{agents}");
@@ -129,12 +127,8 @@ mod tests {
             std::fs::read_to_string(tmp.path().join("CLAUDE.md")).unwrap(),
             "mine"
         );
-        let mcp: serde_json::Value =
-            serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
-                .unwrap();
-        assert_eq!(mcp["mcpServers"]["forge"]["args"][0], "mcp");
         // No hosted service unless asked for.
-        assert!(mcp["mcpServers"].get("sosumi").is_none());
+        assert!(!tmp.path().join(".mcp.json").exists());
         // Running it again changes nothing.
         let again = setup(&root(), tmp.path(), false).unwrap();
         assert!(again.written.is_empty());
@@ -148,6 +142,5 @@ mod tests {
             serde_json::from_str(&std::fs::read_to_string(tmp.path().join(".mcp.json")).unwrap())
                 .unwrap();
         assert_eq!(mcp["mcpServers"]["sosumi"]["url"], "https://sosumi.ai/mcp");
-        assert_eq!(mcp["mcpServers"]["forge"]["command"], "forge");
     }
 }

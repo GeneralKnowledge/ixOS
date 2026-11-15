@@ -1331,7 +1331,7 @@ fn scroll(driver: &mut dyn Driver, scroll: &Scroll, timeout: Duration) -> Result
     }
     let list = match &scroll.within {
         Some(t) => t.locator().map_err(UiError::Device)?,
-        None => match crate::explore::scroll_target(&driver.tree()?) {
+        None => match scroll_target(&driver.tree()?) {
             Some(list) => list,
             // Nothing to page through: wait for the target as before.
             None => return to_visible(driver),
@@ -1672,6 +1672,46 @@ fn file_name(name: &str) -> String {
 
 fn indent(text: &str) -> String {
     text.lines().map(|l| format!("        {l}\n")).collect()
+}
+
+const SCROLLABLE: &[&str] = &["Table", "CollectionView", "ScrollView"];
+
+/// The list or scroll view to scroll for controls below the fold: the
+/// first visible one, by identifier when it has one, else by kind and its
+/// place among elements of that kind (never by coordinates).
+pub fn scroll_target(tree: &UiNode) -> Option<Locator> {
+    // WDA doesn't always call a list visible (NetNewsWire's on Cati,
+    // 2026-11-10), so a list with a size on screen will do when none is.
+    scroll_target_where(tree, |n| n.visible).or_else(|| {
+        scroll_target_where(tree, |n| {
+            n.frame
+                .is_some_and(|f| f.width > 0.0 && f.height > 0.0 && f.y >= 0.0)
+        })
+    })
+}
+
+fn scroll_target_where(tree: &UiNode, usable: impl Fn(&UiNode) -> bool) -> Option<Locator> {
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for node in tree.walk() {
+        if !SCROLLABLE.contains(&node.kind.as_str()) {
+            continue;
+        }
+        let index = seen.entry(node.kind.as_str()).or_default();
+        let this = *index;
+        *index += 1;
+        if !usable(node) {
+            continue;
+        }
+        return Some(match &node.identifier {
+            Some(id) => Locator::Id(id.clone()),
+            None => Locator::Kind {
+                kind: node.kind.clone(),
+                label: None,
+                index: Some(this),
+            },
+        });
+    }
+    None
 }
 
 #[cfg(test)]

@@ -59,7 +59,7 @@ pub enum ProtoError {
     NotForge(String),
     #[error(
         "the app speaks devtools protocol {app} and this forge speaks {host}; \
-         rebuild the app with this forge checkout (forge run ios --devtools)"
+         rebuild the app with this forge checkout (forge-lab: forge run ios --devtools)"
     )]
     Version { app: u16, host: u16 },
     #[error("could not decode a message: {0}")]

@@ -1,9 +1,0 @@
-order = 60
-capability = "Status, state probes and app commands (`forge device status`, `snapshot`, `cmd`)"
-framework = "Yes: forge-devtools, forge-device"
-rust_api = "Yes: `DevTools::probe`, `DevTools::command`"
-ios_native = "n/a"
-in_app = "Yes: starter app (`notes` probe, `log` command), Device Lab (`active`, `permissions`, `connectivity`, `log`)"
-iphone = "No"
-documented = "Yes: forge-device.md"
-limits = "Chat registers none yet; no built-in reset or test-notification commands"

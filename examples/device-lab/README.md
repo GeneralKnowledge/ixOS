@@ -104,21 +104,6 @@ A free Apple account allows three sideloaded apps at a time, so you may need to 
 
 `cargo test --manifest-path rust/Cargo.toml` runs the Rust tests anywhere. On a Mac, `forge test --project .` also runs the XCTest suite, where connectivity and device status are real and the iOS-only sensors report that they are unavailable.
 
-### The live connection (development builds)
-
-`forge run ios --devtools` builds Device Lab with the live connection to `forge device` ([docs/forge-device.md](../../docs/forge-device.md#the-live-connection)), over the cable. Every app on the Apps screen logs through the same Rust logger, so `forge device connect` streams theirs too. Device Lab registers the `active`, `permissions` and `connectivity` probes and a `log` command:
-
-```bash
-forge run ios --devtools --project examples/device-lab
-forge device pair     # once, within two minutes of opening the app
-forge device status
-forge device snapshot
-forge device cmd log hello
-forge device connect  # press Home and come back: the stream picks up where it left off
-```
-
-The over-the-air build (`forge publish ios`) never includes it.
-
 ## Checking it on an iPhone
 
 Not yet run on a device. When it is, check:

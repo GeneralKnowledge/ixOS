@@ -91,8 +91,6 @@ pub struct AppCore {
     storage_directory: PathBuf,
     /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
     transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
-    #[cfg(feature = "devtools")]
-    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -558,8 +556,6 @@ impl AppCore {
         };
         let rt = Runtime::with_directory("commonplace", directory, state);
         Ok(Arc::new(Self {
-            #[cfg(feature = "devtools")]
-            _devtools: devtools::start(&storage_directory, &published, &rt),
             rt,
             snapshot: published,
             http,
@@ -646,47 +642,6 @@ fn fetch(
         etag: response.header("ETag").map(str::to_owned),
         last_modified: response.header("Last-Modified").map(str::to_owned),
     })
-}
-
-/// What this app shows `forge device` in development builds. Never feed
-/// addresses or article text.
-#[cfg(feature = "devtools")]
-mod devtools {
-    use super::*;
-    use forge_devtools::{Config, DevTools};
-
-    pub(crate) fn start(
-        storage_directory: &std::path::Path,
-        snapshot: &Arc<Published<Snapshot>>,
-        rt: &Runtime<State>,
-    ) -> Option<DevTools> {
-        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
-        let config = Config::new(
-            app,
-            env!("CARGO_PKG_VERSION"),
-            storage_directory.join(".forge-devtools-pairing"),
-        );
-        let tools = match DevTools::start(config, rt.lifecycle().clone()) {
-            Ok(tools) => tools,
-            Err(e) => {
-                forge_runtime::logging::warn!("devtools did not start: {e}");
-                return None;
-            }
-        };
-        let feeds = Arc::clone(snapshot);
-        tools.probe("feeds", move || feeds.get().feeds.len().to_string());
-        let unread = Arc::clone(snapshot);
-        tools.probe("unread", move || {
-            unread
-                .get()
-                .articles
-                .iter()
-                .filter(|a| !a.read)
-                .count()
-                .to_string()
-        });
-        Some(tools)
-    }
 }
 
 #[cfg(test)]

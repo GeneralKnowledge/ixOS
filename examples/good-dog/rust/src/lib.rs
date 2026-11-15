@@ -114,8 +114,6 @@ pub struct AppCore {
     events: EventHub<AppEvent>,
     shut_down: Arc<AtomicBool>,
     lifecycle: Lifecycle,
-    #[cfg(feature = "devtools")]
-    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -767,8 +765,6 @@ impl AppCore {
         let state = Arc::new(Mutex::new(stored));
         let lifecycle = Lifecycle::new();
         Ok(Arc::new(Self {
-            #[cfg(feature = "devtools")]
-            _devtools: devtools::start(&storage_directory, &state, &lifecycle),
             state,
             file: Arc::new(file),
             events: EventHub::new(),
@@ -803,37 +799,4 @@ fn term_matches(t: &GlossaryTerm, matches: &impl Fn(&str) -> bool) -> bool {
     matches(&t.preferred_term)
         || t.alternative_terms.iter().any(|a| matches(a))
         || t.search_phrases.iter().any(|p| matches(p))
-}
-
-/// What Good Dog shows `forge device` in development builds. Never expose
-/// the dog's name or anything the owner typed.
-#[cfg(feature = "devtools")]
-mod devtools {
-    use super::*;
-    use forge_devtools::{Config, DevTools};
-
-    pub(crate) fn start(
-        storage_directory: &std::path::Path,
-        state: &Arc<Mutex<Stored>>,
-        lifecycle: &Lifecycle,
-    ) -> Option<DevTools> {
-        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
-        let config = Config::new(
-            app,
-            env!("CARGO_PKG_VERSION"),
-            storage_directory.join(".forge-devtools-pairing"),
-        );
-        let tools = match DevTools::start(config, lifecycle.clone()) {
-            Ok(tools) => tools,
-            Err(e) => {
-                forge_runtime::logging::warn!("devtools did not start: {e}");
-                return None;
-            }
-        };
-        let s = state.clone();
-        tools.probe("sessions", move || lock(&s).sessions.len().to_string());
-        let s = state.clone();
-        tools.probe("profile", move || lock(&s).dog.is_some().to_string());
-        Some(tools)
-    }
 }

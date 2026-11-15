@@ -31,17 +31,17 @@ Everything runs from the laptop with the phone on USB (Linux, no Mac).
    "com.ranchero.NetNewsWire-iOS" = "operate"   # taps on real data (marks articles read); "full" only if it holds test feeds alone
    ```
 
-   Confirm the bundle id with `forge device apps` first. Then walk it:
+   Confirm the bundle id with `forge device apps` first. Then walk it with the explorer from the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project:
 
    ```bash
-   forge ui explore --app com.ranchero.NetNewsWire-iOS --any-app --real-data --actions 40 --seed 1
+   forge-lab explore --app com.ranchero.NetNewsWire-iOS --any-app --real-data --actions 40 --seed 1
    ```
 
    The screens, `graph.json` and the policy journal go to `~/.cache/forge/any-app/`, never into the repository: they are screenshots of an app on the person's phone. Typed text is recorded as its length only, but the saved trees and screenshots show whatever was on screen.
 3. **Our app.** `forge run ios --project examples/commonplace`, then the same walk on test data, and the flows:
 
    ```bash
-   forge ui explore --project examples/commonplace --actions 40 --seed 1 --text addFeed.url=http://<laptop>:8765/rss.xml
+   forge-lab explore --project examples/commonplace --actions 40 --seed 1 --text addFeed.url=http://<laptop>:8765/rss.xml
    forge ui run examples/commonplace/uitests/subscribe-and-read.toml
    ```
 

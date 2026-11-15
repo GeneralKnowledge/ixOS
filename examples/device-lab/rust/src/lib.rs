@@ -404,8 +404,6 @@ pub struct DeviceLab {
     /// Whether the app itself is on screen (not whether the lab's own
     /// screen is: an app opened from Apps keeps the app in the foreground).
     lifecycle: Lifecycle,
-    #[cfg(feature = "devtools")]
-    _devtools: Option<forge_devtools::DevTools>,
 }
 
 #[uniffi::export]
@@ -414,12 +412,7 @@ impl DeviceLab {
     #[uniffi::constructor]
     pub fn new() -> Arc<Self> {
         forge_runtime::logging::init();
-        #[allow(unused_mut)]
-        let mut lab = Self::with_services(LabServices::installed());
-        #[cfg(feature = "devtools")]
-        {
-            lab._devtools = devtools::start(&lab);
-        }
+        let lab = Self::with_services(LabServices::installed());
         Arc::new(lab)
     }
 
@@ -608,8 +601,6 @@ impl DeviceLab {
             info,
             availability,
             lifecycle: Lifecycle::new(),
-            #[cfg(feature = "devtools")]
-            _devtools: None,
         }
     }
 
@@ -700,51 +691,3 @@ impl DeviceLab {
 
 #[cfg(test)]
 mod tests;
-
-/// What Device Lab shows `forge device` in development builds: which sensors
-/// run and what the permissions are. Never positions, headings or anything
-/// an app opened from Apps keeps for its user.
-#[cfg(feature = "devtools")]
-mod devtools {
-    use super::*;
-    use forge_devtools::{Config, DevTools};
-
-    pub(crate) fn start(lab: &DeviceLab) -> Option<DevTools> {
-        let Some(native) = &lab.services.native else {
-            forge_runtime::logging::warn!("devtools did not start: no native services");
-            return None;
-        };
-        let app = option_env!("FORGE_APP_ID").unwrap_or(env!("CARGO_PKG_NAME"));
-        let config = Config::new(
-            app,
-            env!("CARGO_PKG_VERSION"),
-            std::path::Path::new(&native.directories.application_support)
-                .join(".forge-devtools-pairing"),
-        );
-        let tools = match DevTools::start(config, lab.lifecycle.clone()) {
-            Ok(tools) => tools,
-            Err(e) => {
-                forge_runtime::logging::warn!("devtools did not start: {e}");
-                return None;
-            }
-        };
-        let s = lab.state.clone();
-        tools.probe("active", move || lock(&s).active.to_string());
-        let s = lab.state.clone();
-        tools.probe("permissions", move || {
-            let p = lock(&s).permissions;
-            format!(
-                "location={:?} motion={:?} bluetooth={:?}",
-                p.location, p.motion, p.bluetooth
-            )
-        });
-        let s = lab.state.clone();
-        tools.probe("connectivity", move || {
-            format!(
-                "{:?}",
-                lock(&s).connectivity.as_ref().map(|c| c.reachability)
-            )
-        });
-        Some(tools)
-    }
-}

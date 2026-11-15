@@ -42,8 +42,8 @@ orientations = ["portrait"]
 # team_id = "ABCDE12345"            # for the Xcode project (macOS, optional)
 
 # UI automation. This launch argument starts the app on a fresh, throwaway
-# folder (Application Support/GoodDog-UITest), so tests and `forge ui explore`
-# never touch the owner's real dog. docs/forge-explore.md
+# folder (Application Support/GoodDog-UITest), so UI tests never touch the owner's
+# real dog.
 [ui_test]
 test_data_args = ["-ForgeUITestData"]
 

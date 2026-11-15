@@ -55,20 +55,19 @@ Read these in order the first time.
 | [forge-device.md](forge-device.md) | Your iPhone from Linux: details, live logs, crash reports |
 | [over-the-air.md](over-the-air.md) | Install development builds on your iPhone without the cable, over Tailscale (`forge publish ios`) |
 | [forge-ui-testing.md](forge-ui-testing.md) | UI tests that tap and type on a real iPhone (`forge ui`) |
-| [forge-explore.md](forge-explore.md) | Walking an app's screens without a script to find problems (`forge ui explore`) |
 | [benchmarks/](benchmarks/README.md) | Replication benchmarks: rebuilding a real app (NetNewsWire, as Commonplace) to find what ixOS is missing; gap logs and pattern inventories |
 | [visual-regression.md](visual-regression.md) | Noticing when a change made a screen look worse |
 | [evidence.md](evidence.md) | Recording what a run proved, so a feature is shown to work rather than said to |
 
 ## For coding agents (optional)
 
-Nothing on the pages above needs an agent. Agents use the same commands; these pages add the optional integration (`forge agent setup`, `forge mcp`).
+Nothing on the pages above needs an agent. Agents use the same commands, and `forge agent setup` adds the rules files to an app.
 
 | Page | What it's for |
 |---|---|
 | [AGENTS.md](../AGENTS.md) | The rules an agent follows in this repository |
-| [forge-mcp.md](forge-mcp.md) | `forge mcp`: Forge as tools an AI agent can call |
-| [dev-loop.md](dev-loop.md) | Each step of the edit, build, install, test and fix loop, and how far it is proven |
+| [json-output.md](json-output.md) | `--json`: the one result object every command prints, and its exit codes |
+| [forge-lab](https://github.com/GeneralKnowledge/forge-lab) | Side project: the MCP server, the explorer, run records and the live dev connection, built on ixOS |
 
 ## Status and plans
 
@@ -83,7 +82,7 @@ Nothing on the pages above needs an agent. Agents use the same commands; these p
 These pages are for people working on Forge itself. They are plans, reviews and records of past work, and their status notes describe the day they were written. Check [status.md](status.md) for where things stand now.
 
 - Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) (proposal: shared AI module and AI over Relay), [relay-platform-plan.md](relay-platform-plan.md) (Relay as a platform connecting devices, people and services; milestones M0 to M7) and [relay-transfer-plan.md](relay-transfer-plan.md) (its transfer, messages and rooms detail), [bevy-game-trial.md](bevy-game-trial.md)
-- Milestone plans and reports: [forge-m6.md](forge-m6.md), [m65-run-report.md](m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
+- Milestone plans and reports: [forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md), [m65-run-report.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
 - Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/reinvention-audit.md](research/reinvention-audit.md) (where ixOS reinvents existing tools), [research/](research/)
 - Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [integration/](integration/), [testing/](testing/), [toolchain-validation.md](toolchain-validation.md)
 - Decisions and history: [adr/](adr/), [ideal-design.md](ideal-design.md) (historical), [release-process.md](release-process.md) (releasing Forge itself, not your app)

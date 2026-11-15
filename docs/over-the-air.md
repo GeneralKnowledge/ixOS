@@ -71,7 +71,7 @@ With `--json`, `data` has `page_url`, `install_url` (this build's), `build_id`, 
 ## Limits
 
 - **Same signing rules as a cable install.** The build installs only on the devices in its profile, a free team's signature lasts 7 days (the page says when, and says when it has run out), and the 3-app limit still applies. Publishing again renews the 7 days.
-- **Install only.** Logs, crash reports, `forge ui` tests and the live connection to a `--devtools` build still use the cable. iOS 17 and later don't offer the phone's device services over a VPN, so `forge device` can't reach a phone over Tailscale.
+- **Install only.** Logs, crash reports and `forge ui` tests still use the cable. iOS 17 and later don't offer the phone's device services over a VPN, so `forge device` can't reach a phone over Tailscale.
 - **The laptop must be on**, with the server running: `forge publish enable` starts it with the computer, and `forge publish ios` starts it if it isn't running.
 - **Each build is signed when it is published,** so an older build on the page expires 7 days after its own publish (the page marks it).
 - The page and the builds are visible to every device on your tailnet. Don't share the tailnet with people who shouldn't have your development builds.
