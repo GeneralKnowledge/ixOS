@@ -647,6 +647,65 @@ fn scope_support() -> &'static Result<(), String> {
     })
 }
 
+/// SwiftPM sizes its parallel jobs from the machine's core count and
+/// ignores CPU affinity and cgroup CPU quotas, so a capped build could still
+/// start a hundred Swift compilers at once (2026-11-14). xtool runs
+/// `swift build` through PATH on Linux, so put a folder first on PATH whose
+/// `swift` adds the job limit to `swift build` (`-j` for SwiftPM,
+/// `-Xswiftc -j` for each compiler) and passes everything else through to
+/// the real one. Returns the new PATH; `None` (no change) when Swift isn't
+/// on PATH.
+fn swift_jobs_path(env: Env, jobs: u32) -> Option<String> {
+    if !cfg!(target_os = "linux") {
+        return None;
+    }
+    let path = env("PATH")?;
+    let dir = forge_cache(env)?.join(format!("swift-jobs-{jobs}"));
+    let real = std::env::split_paths(&path)
+        .filter(|d| !is_jobs_shim_dir(d))
+        .map(|d| d.join("swift"))
+        // Not canonicalized: `swift` is a symlink to `swift-frontend`, which
+        // acts as the driver only when called by the name `swift`.
+        .find(|p| p.is_absolute() && p.is_file())?;
+    write_swift_jobs_shim(&dir, &real, jobs).ok()?;
+    let rest = std::env::split_paths(&path).filter(|d| !is_jobs_shim_dir(d));
+    std::env::join_paths(std::iter::once(dir).chain(rest))
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
+}
+
+fn is_jobs_shim_dir(dir: &Path) -> bool {
+    dir.file_name()
+        .is_some_and(|n| n.to_string_lossy().starts_with("swift-jobs-"))
+        && dir
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "forge")
+}
+
+fn write_swift_jobs_shim(dir: &Path, real_swift: &Path, jobs: u32) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    let real = real_swift.display().to_string().replace('\'', "'\\''");
+    let script = format!(
+        "#!/bin/sh\n\
+         # Written by forge (build_lock.rs): `swift build` with at most {jobs} jobs.\n\
+         if [ \"$1\" = build ]; then shift; exec '{real}' build -j {jobs} -Xswiftc -j{jobs} \"$@\"; fi\n\
+         exec '{real}' \"$@\"\n"
+    );
+    let target = dir.join("swift");
+    if std::fs::read_to_string(&target).ok().as_deref() != Some(script.as_str()) {
+        let tmp = dir.join(".swift.tmp");
+        std::fs::write(&tmp, &script)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+        }
+        std::fs::rename(&tmp, &target)?;
+    }
+    Ok(())
+}
+
 /// The command as a capped heavy build: in a systemd scope with the
 /// machine's memory and CPU caps, and with fewer Cargo jobs. Unchanged in
 /// unit tests, inside an already capped build, or with
@@ -676,6 +735,11 @@ pub fn confine(cmd: Cmd) -> Result<Cmd, String> {
         && !cmd.env.iter().any(|(k, _)| k == "CARGO_BUILD_JOBS")
     {
         cmd = cmd.env("CARGO_BUILD_JOBS", l.jobs.to_string());
+    }
+    if !cmd.env.iter().any(|(k, _)| k == "PATH") {
+        if let Some(path) = swift_jobs_path(&real_env, l.jobs) {
+            cmd = cmd.env("PATH", path);
+        }
     }
     if real_env("FORGE_BUILD_SCOPE").is_some() {
         return Ok(cmd); // already inside a capped scope
@@ -772,6 +836,7 @@ fn lower_priority(env: Env) {
 mod tests {
     use super::*;
     use std::collections::HashMap;
+    use std::fs;
 
     fn env_of(pairs: &[(&str, &str)]) -> impl Fn(&str) -> Option<String> {
         let map: HashMap<String, String> = pairs
@@ -783,6 +848,30 @@ mod tests {
 
     fn all_alive(_: u32) -> bool {
         true
+    }
+
+    #[test]
+    fn swift_jobs_shim_limits_swift_build_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let real = tmp.path().join("toolchain/usr/bin/swift");
+        let shim = tmp.path().join("forge/swift-jobs-3");
+        write_swift_jobs_shim(&shim, &real, 3).unwrap();
+        let script = fs::read_to_string(shim.join("swift")).unwrap();
+        assert!(
+            script.contains(&format!(
+                "exec '{}' build -j 3 -Xswiftc -j3 \"$@\"",
+                real.display()
+            )),
+            "{script}"
+        );
+        assert!(
+            script.ends_with(&format!("exec '{}' \"$@\"\n", real.display())),
+            "{script}"
+        );
+        assert!(is_jobs_shim_dir(&shim));
+        assert!(!is_jobs_shim_dir(real.parent().unwrap()));
+        // Writing it again changes nothing and doesn't fail.
+        write_swift_jobs_shim(&shim, &real, 3).unwrap();
     }
 
     #[test]
