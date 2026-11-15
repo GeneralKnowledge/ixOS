@@ -27,9 +27,9 @@ plist = "1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = "1.1"
-base64 = "0.22"
+base64 = "0.23"
 # Visual regression: decode screenshots and write diff images (pure Rust).
-png = "0.17"
+png = "0.18"
 thiserror = { workspace = true }
 # `FORGE_UI_DEBUG=1`: idevice's own debug log on stderr (testmanagerd replies).
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "std", "registry"] }
