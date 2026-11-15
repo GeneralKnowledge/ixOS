@@ -1,4 +1,5 @@
 @preconcurrency import PocketLibraryFFI
+import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
@@ -7,6 +8,8 @@ import SwiftUI
 struct ActivityView: View {
     @Environment(LibraryModel.self) private var model
 
+    private var bindable: Bindable<LibraryModel> { Bindable(model) }
+
     var body: some View {
         NavigationStack {
             List {
@@ -14,9 +17,10 @@ struct ActivityView: View {
                 if !reading.isEmpty {
                     Section("Reading Now") {
                         ForEach(reading, id: \.id) { book in
-                            NavigationLink(value: book.id) {
+                            NavigationRow { model.activityDestination = .book(book.id) } label: {
                                 BookRow(book: book)
                             }
+                            .accessibilityIdentifier("activity.book.\(book.id)")
                         }
                     }
                 }
@@ -52,7 +56,7 @@ struct ActivityView: View {
             }
             .groupedList()
             .navigationTitle("Activity")
-            .navigationDestination(for: UInt64.self) { id in
+            .forgeNavigationDestination(bindable.activityDestination, \.book) { id in
                 BookDetailView(bookID: id)
             }
         }

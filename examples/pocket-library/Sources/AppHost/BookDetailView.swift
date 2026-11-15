@@ -39,9 +39,6 @@ struct BookDetailView: View {
         }
         .navigationTitle(book?.title ?? "")
         .inlineNavigationTitle()
-        .navigationDestination(for: ReaderRoute.self) { route in
-            ReaderView(bookID: route.bookID)
-        }
         .forgeAlert($alert) { action in
             switch action {
             case .delete: deleteBook()
@@ -174,7 +171,7 @@ struct BookDetailView: View {
     private func readSection(_ book: Book) -> some View {
         if book.canRead {
             Section {
-                NavigationLink(value: ReaderRoute(bookID: book.id)) {
+                Button { model.openReader(book.id) } label: {
                     Label(book.readingPosition == nil ? "Read" : "Continue Reading", systemImage: "book")
                         .font(.headline)
                 }

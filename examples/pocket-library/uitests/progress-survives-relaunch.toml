@@ -1,0 +1,68 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/progress-survives-relaunch.toml
+#
+# PL-1 and PL-2: add a book, record a page, see it marked Reading, quit,
+# relaunch on the same test data, and find the page still there. Also the
+# push from the Library list (ForgeAppKit forgeNavigationDestination).
+
+name = "PL-1, PL-2: progress survives a relaunch"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.empty.add" }
+
+[[step]]
+tap = { id = "library.add.manual" }
+
+[[step]]
+type = { id = "bookForm.title", text = "Dune" }
+
+[[step]]
+type = { id = "bookForm.totalPages", text = "400" }
+
+[[step]]
+tap = { id = "bookForm.save" }
+
+# Saving opens the new book.
+[[step]]
+type = { id = "bookDetail.page", text = "100", clear = true }
+
+# The number pad's Done saves the page.
+[[step]]
+tap = { kind = "Button", label = "Done" }
+
+# PL-2: a page on an unread book starts it.
+[[step]]
+expect = { id = "bookDetail.status", value = "Reading" }
+
+[[step]]
+screenshot = "1-reading"
+
+[[step]]
+back = {}
+
+[[step]]
+expect = { id = "library.book.1" }
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-ForgeKeepTestData", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.book.1" }
+
+[[step]]
+expect = { id = "bookDetail.page", value = "100" }
+
+[[step]]
+screenshot = "2-after-relaunch"

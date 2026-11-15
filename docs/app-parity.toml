@@ -156,21 +156,9 @@ reason = "ForgeUI has no launch appearance helper yet; it moves there with the F
 
 [[lag]]
 app = "pocket-library"
-rule = "device-checks"
-wave = 2
-reason = "Only PL-10 has a device scenario; P4 needs all of them"
-
-[[lag]]
-app = "pocket-library"
 rule = "forgeui-appearance"
 wave = 1
 reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "pocket-library"
-rule = "urlsession"
-wave = 2
-reason = "Open Library catalogue requests still go through ureq on iOS"
 
 [[lag]]
 app = "relay"

@@ -4,11 +4,6 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-/// Pushed from a book's detail screen to open it in the reader.
-struct ReaderRoute: Hashable {
-    let bookID: UInt64
-}
-
 /// Reads a book's EPUB: one chapter at a time, scrolling, with the book's
 /// text laid out natively (so it follows Dynamic Type, dark mode and the
 /// reader's own text settings). Rust parses the EPUB and decides what the

@@ -39,7 +39,8 @@ quick-xml = "0.42"
 # method (UniFFI foreign trait).
 async-trait = "0.1"
 # Forge AI: the on-device model, its request shape and the answer checks.
-forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
+# `http`: catalogue requests through URLSession on iOS.
+forge-services = { path = "../../../crates/forge-services", features = ["ai", "http"] }
 
 [dev-dependencies]
 tempfile = "3.14"

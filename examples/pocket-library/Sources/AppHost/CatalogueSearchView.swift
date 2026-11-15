@@ -113,6 +113,7 @@ struct CatalogueSearchView: View {
                 }
             }
             .listStyle(.plain)
+            .accessibilityIdentifier("catalogue.results")
             // Keeps the results on screen while it searches again: swapping
             // them for a spinner would remove the list that owns this
             // refresh, cancel it, and leave "Searching…" for good.

@@ -1,10 +1,12 @@
 # Forge UI Testing M0: the five basics on a real iPhone.
-# Run from Linux with the phone plugged in:  forge ui run examples/pocket-library/uitests/m0.toml
+# It runs in Device Lab, which hosts Pocket Library on the phone, on
+# throwaway test data. Run from examples/device-lab with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/m0.toml
 # It opens the New Book form, types a title, checks the form reacted, takes
 # screenshots and cancels, so it leaves the library unchanged.
 
 name = "M0: launch, find by identifier, tap, type, read state, screenshot"
-app = "org.forgemobile.pocketlibrary"
+app = "org.forgemobile.devicelab"
 
 # 1. Start the installed app fresh. `launch` alone only brings a running app
 # to the front, on whatever screen it was left (a New Book form from an
@@ -13,7 +15,7 @@ app = "org.forgemobile.pocketlibrary"
 terminate = {}
 
 [[step]]
-launch = {}
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library"] }
 
 [[step]]
 screenshot = "1-library"

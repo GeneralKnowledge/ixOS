@@ -8,6 +8,8 @@ struct ForgeAppXtool: App {
     @State private var model = LibraryModel()
 
     init() {
+        // URLSession for catalogue requests (docs/native-services.md).
+        AppServices.install()
         model.attachToLifecycle()
     }
 

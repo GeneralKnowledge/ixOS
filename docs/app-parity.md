@@ -31,7 +31,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
 | forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | No (wave 3) | Yes |
 | good-dog | Yes | No (wave 3) | No (wave 3) | No (wave 1) | n/a | n/a | Yes | No (wave 4) | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | No (wave 1) | No (wave 2) | n/a | Yes | No (wave 2) | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | No (wave 1) | Yes | n/a | Yes | Yes | Yes | Yes |
 | relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
 | soundscape | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
@@ -57,8 +57,6 @@ When the framework gains a better way to do something, every app moves to it, or
 | sketchbook | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
 | soundscape | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
 | weather | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| pocket-library | `device-checks` | Only PL-10 has a device scenario; P4 needs all of them | 2 |
-| pocket-library | `urlsession` | Open Library catalogue requests still go through ureq on iOS | 2 |
 | chat | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | chat | `forgekit` | Predates the ForgeKit package; moves with its ForgeHost migration | 3 |
