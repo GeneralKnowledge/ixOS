@@ -34,7 +34,7 @@ Native capabilities (web view, documents, media, background tasks, identity, sys
 
 Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progress:
 
-- The Android code stays: `examples/counter-android`, `examples/chat-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
+- The Android code stays: `examples/pocket-library-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
 - It keeps building. The Android CI job runs when Android or shared Rust code changes, so shared changes that break it are still caught.
 - It gets no new features. New capabilities (native services, Chat milestones, the demo sequence) are built and proven on iOS only, and the [capability ledger](capability-ledger.md) tracks iOS only.
 - It has not been validated on a physical Android phone, and none of the `forge-services` interfaces has an Android implementation.
@@ -109,7 +109,7 @@ Open: asset-catalog icons and launch screens (xtool cannot compile asset catalog
 
 Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). Paused while Android is work in progress. A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
 
-1. Migrate `examples/counter-android` and `templates/android-app` together, in one PR, with the Android CI job green.
+1. Migrate `examples/pocket-library-android` and `templates/android-app` together, in one PR, with the Android CI job green.
 2. Keep the example and template plugin versions identical (they are the same contract).
 3. Update the compatibility matrix in the same PR.
 

@@ -1,4 +1,4 @@
-# The Counter example's own Rust library: the counter rules (domain/), its versioned snapshot store, and the UniFFI API (ForgeCounterApp) the iOS and Android hosts call. counter-android builds from this crate too.
+# The Counter example's own Rust library: the counter rules (domain/), its versioned snapshot store, and the UniFFI API (ForgeCounterApp) the iOS app calls.
 [package]
 name = "counter-app"
 version = "0.1.0"

@@ -121,4 +121,4 @@ Add crates to `rust/Cargo.toml` as usual. They are compiled for the device targe
 
 ## Older apps
 
-Every app owns its crate, the bundled examples included. Two host apps can share one: `examples/counter-android` sets `[rust] path = "../counter/rust"` and builds the iOS Counter's crate. The old `core_crate` / `ffi_crate` settings named a shared `forge-ffi` crate that no longer exists, and `forge` now rejects them with a pointer here.
+Every app owns its crate, the bundled examples included. Two host apps can share one by pointing `[rust] path` at the same folder, or one can depend on the other's crate, as `examples/pocket-library-android/rust` does with Pocket Library's. The old `core_crate` / `ffi_crate` settings named a shared `forge-ffi` crate that no longer exists, and `forge` now rejects them with a pointer here.

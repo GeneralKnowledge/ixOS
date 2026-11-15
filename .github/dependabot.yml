@@ -16,7 +16,7 @@ updates:
         patterns: ["*"]
   - package-ecosystem: gradle
     directories:
-      - /examples/counter-android
+      - /examples/pocket-library-android
       - /templates/android-app
     schedule:
       interval: monthly

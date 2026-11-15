@@ -29,7 +29,7 @@ full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat,
 FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
 Swipe down to get back to Device Lab. One app on the phone holds all of them.
-(Counter isn't hosted: its Rust crate is shared with the frozen Android app.)
+(Counter isn't hosted.)
 
 Each app stays in its own folder and is updated there; Device Lab uses it as
 it is:

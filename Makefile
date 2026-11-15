@@ -20,12 +20,7 @@ check:
 	cargo run -q -p forge-cli -- check
 
 test-android-host:
-	cargo build --manifest-path examples/counter/rust/Cargo.toml
-	cargo build --manifest-path examples/chat-android/rust/Cargo.toml
 	cargo build --manifest-path examples/pocket-library-android/rust/Cargo.toml
-	cargo build -p chat-server
-	cd examples/counter-android && ./gradlew :app:testDebugUnitTest
-	cd examples/chat-android && ./gradlew :app:testDebugUnitTest
 	cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest
 
 test-swift-host:
@@ -49,8 +44,6 @@ bindings:
 	./scripts/generate-bindings.sh examples/pocket-library/Generated
 
 bindings-kotlin:
-	./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
-	./scripts/generate-bindings.sh examples/chat-android/Generated kotlin
 	./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
 
 check-bindings:
@@ -75,6 +68,6 @@ package-ios:
 	./scripts/package-ios-library.sh $(or $(APP),examples/counter)/Generated
 
 package-android:
-	./scripts/package-android-library.sh $(or $(APP),examples/counter-android)/Generated
+	./scripts/package-android-library.sh $(or $(APP),examples/pocket-library-android)/Generated
 
 validate: fmt clippy test check-bindings check-template

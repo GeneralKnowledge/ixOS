@@ -2,7 +2,7 @@
 
 > **Work in progress.** ixOS is focusing on iOS for now. Android keeps building in CI but gets no new features, has not been validated on a physical phone, and has none of the `forge-services` native services. See the [roadmap](roadmap.md#android--work-in-progress).
 
-Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the app's own Rust crate (`rust/`, or a crate shared with the iOS app, as `examples/counter-android` does).
+Forge Mobile Android apps use **Rust `cdylib` + UniFFI Kotlin + Jetpack Compose**, built from the app's own Rust crate (`rust/`, or a thin crate that links the iOS app's core, as `examples/pocket-library-android` does).
 
 ## Prerequisites
 
@@ -36,8 +36,8 @@ forge doctor     # "Android (Gradle, debug APK; work in progress): ready", or a 
 From the repo root:
 
 ```bash
-./scripts/package-android-library.sh examples/counter-android/Generated
-cd examples/counter-android
+./scripts/package-android-library.sh examples/pocket-library-android/Generated
+cd examples/pocket-library-android
 ./gradlew :app:assembleDebug
 ```
 
@@ -45,13 +45,13 @@ Or use the CLI:
 
 ```bash
 cargo build -p forge-cli
-forge build android --project examples/counter-android
+forge build android --project examples/pocket-library-android
 ```
 
 Install on a running emulator or device:
 
 ```bash
-forge build android --project examples/counter-android --install
+forge build android --project examples/pocket-library-android --install
 ```
 
 ## Emulator (Linux + KVM)
@@ -97,7 +97,7 @@ The Kotlin host passes an app-private directory string into `ForgeCounterApp` (t
 | `ForgeAndroidInitException: ...CertificateVerifier is not in the app` | The `org.rustls:rustls-platform-verifier` dependency (or its Maven repository in `settings.gradle.kts`) is missing, or R8 stripped it |
 | `https://` fails with "TLS is not initialised on this host" | `ForgeAndroid.init(applicationContext)` was not called before the Rust app object was created |
 | `https://` fails with "certificate rejected" | The server's certificate is expired, for another host, or not issued by a CA Android trusts |
-| Bindings compile errors | Regenerate: `forge bindings generate --project examples/counter-android` |
+| Bindings compile errors | Regenerate: `forge bindings generate --project examples/pocket-library-android` |
 | Play 16 KB page warning | Use NDK r28+; run alignment probe in `validate-android-toolchain.sh` |
 
 See also [toolchain-validation.md](toolchain-validation.md) and [ffi-policy.md](ffi-policy.md).
