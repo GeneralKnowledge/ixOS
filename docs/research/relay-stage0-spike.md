@@ -116,6 +116,15 @@ same home Wi-Fi.
 | iPhone to Linux | Not yet: the app has no send with a code |
 | Phone memory during a transfer | Not measured yet |
 
+Next (on the same branch): the sender moved into relay-core
+(`relay_core::code_send`, with the session state machine as
+`code_session`), "Send with a Code" in the app (Swift advertises the code
+with Bonjour and reports other senders, so Rust avoids their numbers), a
+peak-memory readout on both sheets, and `relay send-code FILE` on Linux.
+"yo-yo" is dropped from the word list on both sides, since a dash separates
+a code's words. A loopback test covers a wrong code, the new code, and the
+file arriving byte for byte.
+
 ## What changes for stage 1
 
 - Use iroh-blobs' file store (`FsStore`), not memory: the spike's receiver

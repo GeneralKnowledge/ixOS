@@ -280,6 +280,77 @@ public final class RelayModel {
         if !isReceivingCode { codeReceive = .idle }
     }
 
+    // MARK: Sending with a word code (Relay M1)
+
+    /// Where a send with a code is; Rust's `CodeSend`, re-read while it runs.
+    public private(set) var codeSend: CodeSend = .idle
+
+    public var isSendingCode: Bool {
+        switch codeSend {
+        case .preparing, .waiting, .sending: true
+        default: false
+        }
+    }
+
+    /// What to advertise with Bonjour while there is a code: its number,
+    /// Rust's port and endpoint id.
+    public struct CodeAdvert: Equatable, Sendable {
+        public let number: UInt8
+        public let port: UInt16
+        public let endpointID: String
+    }
+
+    public var codeAdvert: CodeAdvert? {
+        switch codeSend {
+        case .waiting(_, let number, let port, let endpointID, _, _, _),
+             .sending(_, let number, let port, let endpointID, _, _):
+            CodeAdvert(number: number, port: port, endpointID: endpointID)
+        default:
+            nil
+        }
+    }
+
+    /// Starts sending the file at `path` with a new code.
+    public func send(fileAt path: String) {
+        do {
+            try core.sendWithCode(path: path)
+            codeSend = core.codeSendStatus()
+        } catch {
+            log.warn("code send failed to start: \(error)")
+            codeSend = .failed(reason: Self.message(error))
+        }
+    }
+
+    /// Shows that a picked file is being made ready (copied in) before Rust
+    /// has it.
+    public func preparing(name: String) {
+        codeSend = .preparing(name: name, size: 0)
+    }
+
+    public func failSend(_ reason: String) {
+        codeSend = .failed(reason: reason)
+    }
+
+    public func refreshCodeSend() {
+        let now = core.codeSendStatus()
+        // Still copying the picked file in: Rust hasn't been asked yet.
+        if case .idle = now, case .preparing = codeSend { return }
+        codeSend = now
+    }
+
+    /// Other code senders Bonjour sees, so Rust avoids their numbers.
+    public func codeSendersNearby(_ senders: [NearbySender]) {
+        core.codeSendNearby(senders: senders)
+    }
+
+    public func cancelCodeSend() {
+        core.cancelCodeSend()
+    }
+
+    public func resetCodeSend() {
+        if !isSendingCode { codeSend = .idle }
+    }
+
     nonisolated private static func message(_ error: Error) -> String {
         if let relay = error as? RelayError {
             switch relay {

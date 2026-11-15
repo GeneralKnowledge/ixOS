@@ -655,6 +655,11 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func cancelCodeReceive() 
     
     /**
+     * Stops the send in progress, if any.
+     */
+    func cancelCodeSend() 
+    
+    /**
      * Withdraws the open pairing code.
      */
     func cancelInvitation() 
@@ -665,6 +670,18 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * the sender hasn't named the file yet.
      */
     func codeReceiveSize()  -> CodeSize?
+    
+    /**
+     * The other senders the app sees advertising nearby, replacing the last
+     * list. A new code avoids their numbers, and if one takes this code's
+     * number before it is used, the code is replaced.
+     */
+    func codeSendNearby(senders: [NearbySender]) 
+    
+    /**
+     * Where the send with a code has got.
+     */
+    func codeSendStatus()  -> CodeSend
     
     /**
      * A pairing code for the other device to scan, valid once for five
@@ -752,6 +769,15 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * Bonjour), or where it was last reached when there are none.
      */
     func sendNote(deviceId: String, text: String, addresses: [String], cancellation: Cancellation?) async throws  -> Transfer
+    
+    /**
+     * Starts sending the file at `path` with a new word code, in the
+     * background (Relay M1). Follow it with `code_send_status`: while it
+     * has a code, the app advertises it with Bonjour and reports other
+     * senders it sees with `code_send_nearby`. The receiver is another
+     * Relay or `relay-spike receive <code>` on a computer. One at a time.
+     */
+    func sendWithCode(path: String) throws 
     
     /**
      * The host reports the application lifecycle phase.
@@ -893,6 +919,17 @@ open func cancelCodeReceive()  {try! rustCall() {
 }
     
     /**
+     * Stops the send in progress, if any.
+     */
+open func cancelCodeSend()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_cancel_code_send(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Withdraws the open pairing code.
      */
 open func cancelInvitation()  {try! rustCall() {
@@ -912,6 +949,32 @@ open func codeReceiveSize() -> CodeSize?  {
     return try!  FfiConverterOptionTypeCodeSize.lift(try! rustCall() {
         uniffiCallStatus in
     uniffi_relay_core_fn_method_relaycore_code_receive_size(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * The other senders the app sees advertising nearby, replacing the last
+     * list. A new code avoids their numbers, and if one takes this code's
+     * number before it is used, the code is replaced.
+     */
+open func codeSendNearby(senders: [NearbySender])  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_code_send_nearby(
+            self.uniffiCloneHandle(),
+        FfiConverterSequenceTypeNearbySender.lower(senders),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * Where the send with a code has got.
+     */
+open func codeSendStatus() -> CodeSend  {
+    return try!  FfiConverterTypeCodeSend_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_code_send_status(
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
@@ -1157,6 +1220,22 @@ open func sendNote(deviceId: String, text: String, addresses: [String], cancella
             liftFunc: FfiConverterTypeTransfer_lift,
             errorHandler: FfiConverterTypeRelayError_lift
         )
+}
+    
+    /**
+     * Starts sending the file at `path` with a new word code, in the
+     * background (Relay M1). Follow it with `code_send_status`: while it
+     * has a code, the app advertises it with Bonjour and reports other
+     * senders it sees with `code_send_nearby`. The receiver is another
+     * Relay or `relay-spike receive <code>` on a computer. One at a time.
+     */
+open func sendWithCode(path: String)throws   {try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_send_with_code(
+            self.uniffiCloneHandle(),
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+}
 }
     
     /**
@@ -1529,6 +1608,63 @@ public func FfiConverterTypeInvitation_lower(_ value: Invitation) -> RustBuffer 
 
 
 /**
+ * Another sender the app sees advertising nearby.
+ */
+public struct NearbySender: Equatable, Hashable {
+    public var number: UInt8
+    public var endpointId: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(number: UInt8, endpointId: String) {
+        self.number = number
+        self.endpointId = endpointId
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension NearbySender: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNearbySender: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NearbySender {
+        return
+            try NearbySender(
+                number: FfiConverterUInt8.read(from: &buf), 
+                endpointId: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NearbySender, into buf: inout [UInt8]) {
+        FfiConverterUInt8.write(value.number, into: &buf)
+        FfiConverterString.write(value.endpointId, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNearbySender_lift(_ buf: RustBuffer) throws -> NearbySender {
+    return try FfiConverterTypeNearbySender.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNearbySender_lower(_ value: NearbySender) -> RustBuffer {
+    return FfiConverterTypeNearbySender.lower(value)
+}
+
+
+/**
  * A device this one is paired with.
  */
 public struct Peer: Equatable, Hashable {
@@ -1674,6 +1810,148 @@ public func FfiConverterTypeTransfer_lift(_ buf: RustBuffer) throws -> Transfer 
 public func FfiConverterTypeTransfer_lower(_ value: Transfer) -> RustBuffer {
     return FfiConverterTypeTransfer.lower(value)
 }
+
+
+/**
+ * Where a send with a code has got. The app shows it and, while there is a
+ * code, advertises `number`, `port` and `endpoint_id` with Bonjour
+ * (`CODE_SERVICE_TYPE`, TXT `v=1`, `n` = number, `id` = endpoint id).
+ */
+
+public enum CodeSend: Equatable, Hashable {
+    
+    case idle
+    /**
+     * Hashing the file.
+     */
+    case preparing(name: String, size: UInt64
+    )
+    /**
+     * The code is ready for the receiver. `note` says why the code changed,
+     * when it did.
+     */
+    case waiting(code: String, number: UInt8, port: UInt16, endpointId: String, name: String, size: UInt64, note: String?
+    )
+    /**
+     * A receiver proved the code and is fetching the file.
+     */
+    case sending(code: String, number: UInt8, port: UInt16, endpointId: String, name: String, size: UInt64
+    )
+    /**
+     * The receiver has the file, verified and saved.
+     */
+    case sent(name: String, size: UInt64, seconds: Double, megabytesPerSecond: Double
+    )
+    case failed(reason: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension CodeSend: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodeSend: FfiConverterRustBuffer {
+    typealias SwiftType = CodeSend
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodeSend {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .idle
+        
+        case 2: return .preparing(name: try FfiConverterString.read(from: &buf), size: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 3: return .waiting(code: try FfiConverterString.read(from: &buf), number: try FfiConverterUInt8.read(from: &buf), port: try FfiConverterUInt16.read(from: &buf), endpointId: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf), size: try FfiConverterUInt64.read(from: &buf), note: try FfiConverterOptionString.read(from: &buf)
+        )
+        
+        case 4: return .sending(code: try FfiConverterString.read(from: &buf), number: try FfiConverterUInt8.read(from: &buf), port: try FfiConverterUInt16.read(from: &buf), endpointId: try FfiConverterString.read(from: &buf), name: try FfiConverterString.read(from: &buf), size: try FfiConverterUInt64.read(from: &buf)
+        )
+        
+        case 5: return .sent(name: try FfiConverterString.read(from: &buf), size: try FfiConverterUInt64.read(from: &buf), seconds: try FfiConverterDouble.read(from: &buf), megabytesPerSecond: try FfiConverterDouble.read(from: &buf)
+        )
+        
+        case 6: return .failed(reason: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: CodeSend, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .idle:
+            writeInt(&buf, Int32(1))
+        
+        
+        case let .preparing(name,size):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterUInt64.write(size, into: &buf)
+            
+        
+        case let .waiting(code,number,port,endpointId,name,size,note):
+            writeInt(&buf, Int32(3))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterUInt8.write(number, into: &buf)
+            FfiConverterUInt16.write(port, into: &buf)
+            FfiConverterString.write(endpointId, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterUInt64.write(size, into: &buf)
+            FfiConverterOptionString.write(note, into: &buf)
+            
+        
+        case let .sending(code,number,port,endpointId,name,size):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(code, into: &buf)
+            FfiConverterUInt8.write(number, into: &buf)
+            FfiConverterUInt16.write(port, into: &buf)
+            FfiConverterString.write(endpointId, into: &buf)
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterUInt64.write(size, into: &buf)
+            
+        
+        case let .sent(name,size,seconds,megabytesPerSecond):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(name, into: &buf)
+            FfiConverterUInt64.write(size, into: &buf)
+            FfiConverterDouble.write(seconds, into: &buf)
+            FfiConverterDouble.write(megabytesPerSecond, into: &buf)
+            
+        
+        case let .failed(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeSend_lift(_ buf: RustBuffer) throws -> CodeSend {
+    return try FfiConverterTypeCodeSend.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeSend_lower(_ value: CodeSend) -> RustBuffer {
+    return FfiConverterTypeCodeSend.lower(value)
+}
+
 
 
 
@@ -2392,6 +2670,31 @@ fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeNearbySender: FfiConverterRustBuffer {
+    typealias SwiftType = [NearbySender]
+
+    public static func write(_ value: [NearbySender], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeNearbySender.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [NearbySender] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [NearbySender]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeNearbySender.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypePeer: FfiConverterRustBuffer {
     typealias SwiftType = [Peer]
 
@@ -2571,10 +2874,19 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_cancel_code_receive() != 10020) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_code_send() != 14930) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_cancel_invitation() != 53288) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_code_send_nearby() != 21272) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_code_send_status() != 42563) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_create_invitation() != 11711) {
@@ -2620,6 +2932,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_send_note() != 59564) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_send_with_code() != 55172) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_set_phase() != 45256) {

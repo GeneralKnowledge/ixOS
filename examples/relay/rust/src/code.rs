@@ -13,8 +13,8 @@
 //! - Then iroh-blobs fetches the file, verifying every chunk, into a store
 //!   on disk, so receiving again with the sender's next code resumes.
 //!
-//! The wire protocol matches the spike's exactly; when the spike's sender
-//! moves into this crate, both sides will share this module.
+//! The wire protocol matches the spike's exactly. The sending side, which
+//! the iPhone uses too, is `code_send`.
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -34,26 +34,27 @@ use crate::model::RelayError;
 
 /// The Bonjour service a sender advertises.
 pub const CODE_SERVICE_TYPE: &str = "_forgerelay._udp";
-const CODE_ALPN: &[u8] = b"forge-relay/code/1";
+pub(crate) const CODE_ALPN: &[u8] = b"forge-relay/code/1";
 const APP_ID: &str = "forge-relay/v1";
 /// Time allowed for each step of the code handshake.
-const STEP: Duration = Duration::from_secs(10);
+pub(crate) const STEP: Duration = Duration::from_secs(10);
 /// How often the receiver tells the sender it is still there.
 const TICK: Duration = Duration::from_secs(2);
-const GO: u8 = b'K';
-const BUSY: u8 = b'B';
-const GONE: u8 = b'G';
+pub(crate) const GO: u8 = b'K';
+pub(crate) const BUSY: u8 = b'B';
+pub(crate) const GONE: u8 = b'G';
 
 /// The EFF short word list 1 (CC BY 3.0 US), as the sender uses.
 static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
     include_str!("eff_short_wordlist_1.txt")
         .lines()
-        .filter(|l| !l.starts_with('#') && !l.is_empty())
+        // "yo-yo" is left out: a dash separates a code's words.
+        .filter(|l| !l.starts_with('#') && !l.is_empty() && !l.contains('-'))
         .collect()
 });
 
 /// One tokio runtime for iroh, started on first use.
-static TOKIO: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+pub(crate) static TOKIO: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("relay-code")
@@ -70,6 +71,29 @@ pub struct WordCode {
 }
 
 impl WordCode {
+    /// A new code whose number nobody nearby is using (`in_use`), when one
+    /// is free, and three random list words.
+    pub fn new(in_use: &[u8]) -> Self {
+        let random = forge_devproto::new_secret();
+        let pick = |i: usize| {
+            let n = u16::from_be_bytes([random[i], random[i + 1]]) as usize;
+            n % WORDS.len()
+        };
+        let free: Vec<u8> = (1..=99).filter(|n| !in_use.contains(n)).collect();
+        let number = if free.is_empty() {
+            1 + (random[0] % 99)
+        } else {
+            free[pick(1) % free.len()]
+        };
+        let words = [3, 5, 7].map(|i| WORDS[pick(i)].to_string());
+        Self { number, words }
+    }
+
+    /// `7-acid-tidy-rug`.
+    pub fn text(&self) -> String {
+        format!("{}-{}", self.number, self.words.join("-"))
+    }
+
     pub fn parse(text: &str) -> Result<Self, RelayError> {
         let bad = |reason: &str| RelayError::WordCode {
             reason: reason.to_string(),
@@ -104,7 +128,7 @@ impl WordCode {
         })
     }
 
-    fn pake(&self) -> (Spake2<Ed25519Group>, Vec<u8>) {
+    pub(crate) fn pake(&self) -> (Spake2<Ed25519Group>, Vec<u8>) {
         Spake2::<Ed25519Group>::start_symmetric(
             &Password::new(self.words.join("-").as_bytes()),
             &Identity::new(format!("{APP_ID}/{}", self.number).as_bytes()),
@@ -112,7 +136,7 @@ impl WordCode {
     }
 }
 
-fn confirm(key: &[u8], role: &str, sender: EndpointId, receiver: EndpointId) -> Vec<u8> {
+pub(crate) fn confirm(key: &[u8], role: &str, sender: EndpointId, receiver: EndpointId) -> Vec<u8> {
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("any key length");
     mac.update(role.as_bytes());
     mac.update(sender.as_bytes());
@@ -140,20 +164,23 @@ pub struct CodeReceipt {
     pub megabytes_per_second: f64,
 }
 
-fn connection(reason: impl std::fmt::Display) -> RelayError {
+pub(crate) fn connection(reason: impl std::fmt::Display) -> RelayError {
     RelayError::Connection {
         reason: reason.to_string(),
     }
 }
 
-async fn put(send: &mut SendStream, bytes: &[u8]) -> Result<(), RelayError> {
+pub(crate) async fn put(send: &mut SendStream, bytes: &[u8]) -> Result<(), RelayError> {
     send.write_all(&(bytes.len() as u32).to_be_bytes())
         .await
         .map_err(connection)?;
     send.write_all(bytes).await.map_err(connection)
 }
 
-async fn get_within(recv: &mut RecvStream, limit: Duration) -> Result<Vec<u8>, RelayError> {
+pub(crate) async fn get_within(
+    recv: &mut RecvStream,
+    limit: Duration,
+) -> Result<Vec<u8>, RelayError> {
     let read = async {
         let mut len = [0u8; 4];
         recv.read_exact(&mut len).await.map_err(connection)?;
@@ -406,6 +433,18 @@ mod tests {
         let (sa, ma) = a.pake();
         let (sb, mb) = b.pake();
         assert_eq!(sa.finish(&mb).unwrap(), sb.finish(&ma).unwrap());
+    }
+
+    #[test]
+    fn a_new_code_parses_and_avoids_numbers_in_use() {
+        let in_use: Vec<u8> = (1..=98).collect();
+        for _ in 0..20 {
+            let code = WordCode::new(&in_use);
+            assert_eq!(code.number, 99);
+            assert_eq!(WordCode::parse(&code.text()).unwrap(), code);
+        }
+        let all: Vec<u8> = (1..=99).collect();
+        assert!((1..=99).contains(&WordCode::new(&all).number));
     }
 
     #[test]
