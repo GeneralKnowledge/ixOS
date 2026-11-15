@@ -286,10 +286,7 @@ public final class RelayModel {
     public private(set) var codeSend: CodeSend = .idle
 
     public var isSendingCode: Bool {
-        switch codeSend {
-        case .preparing, .waiting, .sending: true
-        default: false
-        }
+        Self.isRunning(codeSend)
     }
 
     /// What to advertise with Bonjour while there is a code: its number,
@@ -347,8 +344,22 @@ public final class RelayModel {
         core.cancelCodeSend()
     }
 
+    /// When the sheet opens: picks up a send still running in Rust (its code
+    /// is still good), otherwise starts clean.
     public func resetCodeSend() {
-        if !isSendingCode { codeSend = .idle }
+        let now = core.codeSendStatus()
+        if Self.isRunning(now) {
+            codeSend = now
+        } else if !isSendingCode {
+            codeSend = .idle
+        }
+    }
+
+    nonisolated private static func isRunning(_ send: CodeSend) -> Bool {
+        switch send {
+        case .preparing, .waiting, .sending: true
+        default: false
+        }
     }
 
     nonisolated private static func message(_ error: Error) -> String {

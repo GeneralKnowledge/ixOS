@@ -1,5 +1,6 @@
 #if os(iOS)
 @preconcurrency import RelayFFI
+import Darwin
 import Foundation
 import SwiftUI
 import UIKit
@@ -164,39 +165,38 @@ struct SendCodeSheet: View {
     }
 }
 
-/// This app's peak memory (the most it has used since launch) and what it
-/// was when the sheet opened, so a transfer's cost shows. From `getrusage`:
-/// resident memory, which counts shared pages too, so it is an upper bound.
+/// This app's memory footprint now and its peak since the sheet opened:
+/// `phys_footprint`, the number iOS holds against the app's memory limit.
 struct MemoryReadout: View {
-    @State private var atOpen: UInt64?
+    @State private var now: UInt64 = 0
     @State private var peak: UInt64 = 0
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Peak: \(RelayFormat.size(peak))")
-                .font(.callout.monospacedDigit())
-            if let atOpen {
-                Text("Peak before this sheet: \(RelayFormat.size(atOpen))")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
+        Text("Memory \(RelayFormat.size(now)), peak \(RelayFormat.size(peak))")
+            .font(.callout.monospacedDigit())
+            .accessibilityIdentifier("memory.peak")
+            .task {
+                while !Task.isCancelled {
+                    if let footprint = Self.footprint() {
+                        now = footprint
+                        peak = max(peak, footprint)
+                    }
+                    try? await Task.sleep(for: .milliseconds(500))
+                }
             }
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("memory.peak")
-        .task {
-            atOpen = Self.peakBytes()
-            peak = Self.peakBytes()
-            while (try? await Task.sleep(for: .milliseconds(500))) != nil {
-                peak = Self.peakBytes()
-            }
-        }
     }
 
-    /// `ru_maxrss` is in bytes on Apple platforms.
-    static func peakBytes() -> UInt64 {
-        var usage = rusage()
-        guard getrusage(RUSAGE_SELF, &usage) == 0 else { return 0 }
-        return UInt64(max(usage.ru_maxrss, 0))
+    static func footprint() -> UInt64? {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(
+            MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size
+        )
+        let result = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return result == KERN_SUCCESS ? info.phys_footprint : nil
     }
 }
 #endif

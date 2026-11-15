@@ -143,8 +143,20 @@ fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 /// file need not hash it again.
 pub fn start(path: PathBuf, store: PathBuf, shared: Arc<CodeSendShared>) {
     shared.stop.store(false, Ordering::SeqCst);
+    // Set before returning, so the app's first read already sees the send
+    // running: it stops polling once the status is no longer running.
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    let name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
+    shared.set(CodeSend::Preparing {
+        name: name.clone(),
+        size,
+    });
     TOKIO.spawn(async move {
-        if let Err(err) = send(&path, &store, &shared).await {
+        if let Err(err) = send(&path, name, &store, &shared).await {
             log::info!("code send ended: {err}");
             shared.set(CodeSend::Failed {
                 reason: err.to_string(),
@@ -363,19 +375,11 @@ fn file_error(e: impl std::fmt::Display) -> RelayError {
 
 async fn send(
     path: &Path,
+    name: String,
     store_dir: &Path,
     shared: &Arc<CodeSendShared>,
 ) -> Result<(), RelayError> {
     let size = std::fs::metadata(path).map_err(file_error)?.len();
-    let name = path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("file")
-        .to_string();
-    shared.set(CodeSend::Preparing {
-        name: name.clone(),
-        size,
-    });
     let store = FsStore::load(store_dir).await.map_err(file_error)?;
     let outcome = serve(path, &store, name, size, shared).await;
     store.shutdown().await.ok();
@@ -636,6 +640,20 @@ mod tests {
                 }
             ));
         });
+    }
+
+    /// The app reads the status right after starting and stops polling if
+    /// the send isn't running, so it must never read Idle there.
+    #[test]
+    fn a_send_is_running_as_soon_as_it_starts() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("a.txt");
+        std::fs::write(&file, b"hello").unwrap();
+        let shared = Arc::new(CodeSendShared::default());
+        start(file, dir.path().join("store"), Arc::clone(&shared));
+        assert!(shared.running(), "{:?}", shared.status());
+        shared.stop.store(true, Ordering::SeqCst);
+        TOKIO.block_on(wait_for(&shared, |s| matches!(s, CodeSend::Failed { .. })));
     }
 
     #[test]
