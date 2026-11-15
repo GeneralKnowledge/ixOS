@@ -83,6 +83,7 @@ follow it now.
 | A25 | Soundscape | Two hosted apps want the microphone with different texts; Device Lab has to write one text for both | Annoyance | Accept |
 | A26 | Relay | `forge.toml` had no way to list Bonjour service types (`NSBonjourServices`), without which iOS refuses to browse or advertise | Limit | Fixed here: `[ios] bonjour_services`, merged by hosts |
 | A27 | Relay | Advertising a port Rust opened needs the deprecated `NetService`, and resolving a found service to `host:port` without connecting needs it too; the app connects and drops instead | Annoyance | Open |
+| A28 | Soundscape, Relay | Swift written without a compiler: two errors only the iOS SDK shows (an AVFoundation async overload, a `Vision` member hidden by MemberImportVisibility) | Annoyance | Accept: build before merging |
 
 ## A1. A new app can't start in the hostable shape yet
 
@@ -496,3 +497,23 @@ its socket to `NWListener`. Not before a second use.
 **Measure (Relay).** Hosting Relay in Device Lab took 2 lines of Rust, 2 of
 `Package.swift`, 3 of `forge.toml` (the host list and the shared camera and
 local network texts) and 9 of `AppsView.swift`.
+
+## A28. Errors only the iOS SDK shows
+
+**What happened.** Sketchbook, Soundscape and Relay's Swift was written in
+the cloud, which has no Darwin SDK, and merged before a laptop build. The
+first combined Device Lab build found two mistakes; Sketchbook compiled
+cleanly.
+
+- `AVAudioPlayerNode.scheduleBuffer(_:at:options:)` with no completion
+  handler resolves to the `async` overload inside an `async` function, so it
+  needs `completionHandler: nil` (Soundscape's `LoopEngine`).
+- `.barcode(symbologies: [.qr])` uses `VNBarcodeSymbology.qr` from
+  `Vision`; with `MemberImportVisibility` on, importing `VisionKit` alone
+  doesn't make it visible (Relay's `PairingViews`).
+
+Both were fixed in the build thread's PRs (#200, #202).
+
+**Framework.** Accept. The rule is already in AGENTS.md: say Swift wasn't
+compiled, and build it with `scripts/check-ios-xtool.sh` before merging. The
+two traps are worth a line each in ios-ui.md if they come up again.
