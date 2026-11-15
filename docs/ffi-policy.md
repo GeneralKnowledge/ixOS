@@ -30,7 +30,7 @@ The Android JNI init (`ForgeAndroid.init(context)`) is the only hand-written ent
 
 ## Generated artifacts
 
-- iOS output: each app's own `Generated/` folder (for example `examples/counter/Generated/`), built from that app's Rust crate (`[rust] path` in its `forge.toml`), so it holds only that app's API — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
+- iOS output: each app's own `Generated/` folder (for example `examples/pocket-library/Generated/`), built from that app's Rust crate (`[rust] path` in its `forge.toml`), so it holds only that app's API — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
 - Android output: `examples/pocket-library-android/Generated/uniffi/forge_ffi/forge_ffi.kt` (from `examples/pocket-library-android/rust`, which links Pocket Library's core). Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
 - **Do not hand-edit** generated files.
 - Regenerate with `forge bindings generate [app-dir]` (Swift for an iOS app, Kotlin for an Android one) or `FORGE_APP_DIR=<app> ./scripts/generate-bindings.sh [out] [swift|kotlin]`.
@@ -55,7 +55,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 
 ```bash
 # 1. Regenerate both languages
-./scripts/generate-bindings.sh examples/counter/Generated             # Swift
+./scripts/generate-bindings.sh examples/pocket-library/Generated      # Swift
 ./scripts/generate-bindings.sh examples/weather/Generated
 ./scripts/generate-bindings.sh examples/chat/Generated
 ./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
@@ -65,7 +65,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 ./scripts/check-bindings.sh
 
 # 3. Update the hand-written code that wraps the bindings
-#    - Swift bridge: examples/counter/Sources/CounterBridge/
+#    - the app's Swift models that call the changed API
 #    - Android host and its error mapping (messageFor)
 
 # 4. Commit the Generated/ changes in the same commit as the Rust change
@@ -83,47 +83,47 @@ Review the generated diff before committing: it should only contain the API you 
 ## Types across the boundary
 
 - Use records/enums/errors supported by UniFFI.
-- Domain errors map to an FFI error enum in the app crate (Counter: `ForgeAppError`); do not expose internal `thiserror` types directly unless converted.
+- Domain errors map to an FFI error enum in the app crate (the starter: `AppError`); do not expose internal `thiserror` types directly unless converted.
 - Avoid passing large nested structures; prefer snapshots and explicit actions.
 
 ## Interaction model: commands, queries, events
 
-| Kind | Rust export | Swift (`CounterBridge`) | Blocks? |
-|------|-------------|-------------------------|---------|
-| Open | `async open_counter_app(dir, mode)` | `try await CounterClient.open(storageDirectory:recoverCorruptData:)` | No: loads on the command thread |
-| Command | `async apply_action(action)` | `try await client.apply(.increment)` | No |
-| Long command | `start_bulk_add(amount, step_delay_ms)` → `CounterOperation` (`async result()`, `cancel()`, `status()`) | `try await client.bulkAdd(100)` | No |
-| Query | `snapshot()`, `startup_kind()`, `active_operation()` | `client.currentState()`, `client.startupKind`, `client.activeOperation` | No: reads the last committed state, never disk |
-| Events | `subscribe()` → `CounterEventSubscription` (`async next()`, `cancel()`) | `for await event in try client.events()` | No |
-| Lifecycle | `async shutdown()`, `is_shut_down()` | `await client.shutdown()` | No |
+Every app core is built on the ixOS application runtime, `forge_app::Runtime` ([app-crate.md](app-crate.md), [app-model-review.md](app-model-review.md)). The starter app (`templates/app-rust/src/lib.rs`) shows each kind; Pocket Library (`examples/pocket-library/rust`) is the full-size reference.
 
-The sync `ForgeCounterApp(storageDirectory:)`, `apply(action:)` and `recoverCounterApp` stay for existing callers (the Android host, JVM tests). They go through the same command thread and block the caller; do not call them from the main thread in new code.
+| Kind | Rust | Swift | Blocks? |
+|------|------|-------|---------|
+| Open | `#[uniffi::constructor] fn new(storage_directory)`, holding the folder with `DataDirectory` | `ForgeHost` opens it once per process, off the main thread | No |
+| Command | `async fn add_note(...)` → `rt.command("add-note", \|state\| ...)` | `try await core.addNote(text:)` | No: runs on the command thread, saves, then publishes |
+| Query | `fn notes()`, reading a `Published` snapshot | `core.notes()` | No: never waits for a command |
+| Other work | `async fn check_url(url, cancellation)` → `rt.run("check-url", rt.foreground(...), ...)` | `try await core.checkUrl(url:cancellation:)` inside `withTaskCancellationHandler` | No |
+| Events | `events()` → `RuntimeEvent`s (`Changed { revision }`, `PhaseChanged`, `EventsDropped`, `BackgroundWork`) | `ForgeHost`'s event loop; screens follow `host.changes` | No |
+| Lifecycle | `set_phase(phase)`, `phase()`, `revision()`, `shutdown()` from `forge_app::export_runtime!(AppCore, rt)` | `ForgeLifecycle.attach(host)` | No |
 
-Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `OperationProgress { operation_id, completed, total }`, `OperationFinished { operation_id, outcome }` (exactly one per operation; `Completed`, `Cancelled` or `Failed { error }`), and `EventsDropped { count }`. There is no generic event bus.
+There is no generic event bus. An event says that something changed, not what: the host re-reads the queries it shows.
 
 ## Concurrency contract
 
-**Async calls.** UniFFI 0.32.2's built-in async support is used as is: no tokio feature, no custom executor. Each Rust instance runs its commands on its own serial command thread; an async export sends the command and returns a future that resolves when the thread answers. The foreign side polls that future, so a Swift `await` suspends without holding a thread, and the generated async functions are `nonisolated`, so nothing Rust does runs on the main actor. See [architecture.md](architecture.md#concurrency-and-persistence) for ordering and persistence.
+**Async calls.** UniFFI 0.32.2's built-in async support is used as is: no tokio feature, no custom executor. Each core's runtime runs commands one at a time, in the order they were sent, on its own command thread; an async export sends the command and returns a future that resolves when it has saved. The foreign side polls that future, so a Swift `await` suspends without holding a thread, and the generated async functions are `nonisolated`, so nothing Rust does runs on the main actor.
 
-**Events are pulled, not pushed.** UniFFI callback interfaces were considered and not used for events (native services are the one foreign-trait exception, above): they would run Swift code on Rust threads, make Rust hold Swift observers (leaks if never removed), and give no backpressure. Instead each subscription owns a bounded queue (`QUEUE_CAPACITY` = 64). `next()` resolves with the next event or `None` when the subscription has ended. On overflow the oldest events are dropped and the next call returns `EventsDropped { count }` first; the consumer should then re-read `snapshot()`. On the Swift side `CounterEvents` is an `AsyncSequence` whose `next()` awaits Rust directly, so that backpressure is kept (an `AsyncStream` fed by a pump task would buffer without limit or drop silently).
+**A command is all or nothing.** It changes a copy of the state, saves it, and only then keeps it and publishes it (the starter's `State::change`). A failed command leaves the state, the revision and the events exactly as they were. Only after a successful save does the runtime raise the revision and send `Changed`.
 
-**Subscription lifetime.** A subscription belongs to whoever called `subscribe()`. It ends when the consumer cancels it (Swift: cancelling the iterating task), when it is released, or when the instance shuts down (queued events are delivered first, then the loop ends). Each subscription supports one consumer at a time. To avoid duplicates, subscribe once per owner: the view model's `open()` is idempotent, so a reappearing view does not subscribe again. `subscription_count()` exposes the number of live subscriptions for tests.
+**Queries never wait.** They read the last published snapshot (`Published::get`), so a slow save never blocks a screen.
 
-**Cancellation.** In UniFFI 0.32.2 (and 0.28.3 before it), cancelling a Swift `Task` does **not** cancel or drop the Rust future (the generated `uniffiRustCallAsync` has no cancellation handler; Kotlin's does drop the future). The bridge therefore forwards cancellation explicitly:
+**Events are pulled, not pushed.** UniFFI callback interfaces were considered and not used for events (native services are the one foreign-trait exception, above): they would run Swift code on Rust threads, make Rust hold Swift observers (leaks if never removed), and give no backpressure. Instead each subscription owns a bounded queue. `next()` resolves with the next event or `None` when the stream has ended. On overflow the oldest events are dropped and the next call returns `EventsDropped { count }` first; the consumer should then re-read everything. `ForgeHost` does this for every app.
 
-- `bulkAdd` uses `withTaskCancellationHandler` to call `CounterOperation.cancel()`. Before the commit point the operation stops (promptly, even mid-step), nothing is changed, Rust returns `Cancelled`, and Swift throws `CancellationError`. After the commit point a cancel does nothing and the committed state is returned.
-- Short commands (`apply`) are not cancellable once sent: they always complete and are saved. If the task is already cancelled, the bridge sends nothing and throws `CancellationError`.
-- Event iteration: cancelling the iterating task cancels the subscription, which ends the pending `next()`.
-- Dropping a Rust future (Kotlin cancellation) only abandons the result; the command still runs or the operation still finishes. Correctness never depends on futures being polled to the end.
-- Apps from `forge init` can opt a command into real cancellation with `forge_runtime::background_cancellable`. Dropping the future (Kotlin) or an explicit `Cancellation` (Swift, from `withTaskCancellationHandler`) then stops the work, and an HTTP request is interrupted in flight with `HttpClient::send_cancellable` ([app-crate.md](app-crate.md#lifecycle)). Use it only for work with no side effects to undo, such as reads and fetches, never for saves.
+**Cancellation.** In UniFFI 0.32.2, cancelling a Swift `Task` does **not** cancel or drop the Rust future (the generated `uniffiRustCallAsync` has no cancellation handler; Kotlin's does drop the future). So:
 
-**Late completion.** An operation started from a view keeps running in Rust when the view or view model goes away. It commits (or not) as normal, its outcome is delivered to any live subscriber as `OperationFinished`, and the next open sees the saved state. The view model captures itself weakly, so a late result is simply dropped. A host that wants cancel-on-disappear calls `cancelBulkAdd()` from `.onDisappear`.
+- Work that should stop when the user gives up takes a `Cancellation`, which the Swift side cancels from `withTaskCancellationHandler` (the starter's `NotesModel.checkURL`). Run it in a work scope: `rt.foreground` (stopped by the background, the host's `Cancellation` or shutdown), `rt.finishing` (should finish if the person leaves) or `rt.lifetime` ([app-crate.md](app-crate.md#lifecycle)). An HTTP request is interrupted in flight with `HttpClient::send_cancellable`.
+- Commands are not cancellable once sent: they always complete and are saved. Use cancellation only for work with no side effects to undo, such as reads and fetches, never for saves.
+- Dropping a Rust future (Kotlin cancellation) only abandons the result; the command still runs. Correctness never depends on futures being polled to the end.
+
+**Late completion.** A command started from a view keeps running when the view goes away. It commits as normal, the host hears `Changed`, and every screen re-reads.
 
 ## Long-lived event streams (Chat)
 
 Chat's `ChatCore` (`examples/chat/rust/src/lib.rs`) is the reference for a stream that outlives any single command. Its contract, which the Swift host relies on (it started as `ForgeChatApp`, shared with the Android example removed on 2026-11-15, so some names below are that API's):
 
-- **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like Counter's: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room, and `watch` / `unwatch` keep it live in the background (for `Notify`); the room's server connection runs while it is either. Ending an event stream never ends a connection, or the other way round.
+- **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like the runtime's `events()`: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room, and `watch` / `unwatch` keep it live in the background (for `Notify`); the room's server connection runs while it is either. Ending an event stream never ends a connection, or the other way round.
 - **Room connections are explicit commands, not tied to a future's lifetime**, because Swift does not cancel Rust futures (above) and Kotlin does. Both return at once. When the last of `unsubscribe` / `unwatch` returns, `StreamDisconnected { will_retry: false }` is queued and nothing more from that room's connection ever is. The Rust thread behind it ends promptly: ending the stream closes that room's connection, so it does not wait for a server heartbeat. `live_streams()` reports it, and the Rust tests assert it reaches 0.
 - **One event stream for every room.** Hosts filter by `conversation_id`, which every event except `EventsDropped` carries. Events are totally ordered and each is queued after the store change it describes, so re-reading `cached_messages` after any event (and after `EventsDropped` in particular) is always consistent.
 - **Async commands are not cancellable from the host.** Leaving a room must not cancel a send already on the wire; dropping the future only ignores the answer, the store and the event stream still get the outcome.
@@ -133,109 +133,108 @@ The design and the reasons are in [chat-demo.md](chat-demo.md).
 
 ## Lifecycle and ownership
 
-- `ForgeCounterApp` is a UniFFI object (Rust `Arc`). The Swift `CounterClient` owns it; share the client, not the generated object.
+- The app core is a UniFFI object (Rust `Arc`). ForgeKit's `ForgeHost` owns it for the life of the process; models are given the core, not their own copy.
 - Every async call holds its own reference to the Rust object for as long as it runs, so releasing the Swift object mid-call is safe: nothing can touch a freed instance.
-- Create one instance per storage directory. Opening two at once on the same directory is not supported.
-- `shutdown()`: refuses new commands (`ShutDown`), cancels the running operation, finishes the commands already accepted, waits for the operation, ends every subscription, stops the thread. Idempotent. Queries keep answering with the last committed state. Releasing the last reference does the same without waiting.
-- App suspension and termination need no special handling: a command reports success only after its save, so everything reported is on disk. An operation killed with the process never committed, so nothing half-done is saved.
-- Apps from `forge init` report the OS lifecycle to Rust with one synchronous call, `set_phase(phase)` (`Launching`, `Active`, `Inactive`, `Background`, `Terminated`), from SwiftUI's `scenePhase` or the activity's callbacks. Rust owns the response through `forge_runtime::Lifecycle`: on-screen work is cancelled in the background and `PhaseChanged { resumed: true }` arrives on the event stream on the way back ([app-crate.md](app-crate.md#lifecycle)). The call does no I/O, because it runs on the UI thread.
+- One core per storage directory: `DataDirectory` holds the folder, and a second core on it fails with `InUse`.
+- `shutdown()`: refuses new commands (`ShutDown`), stops running work, finishes the commands already accepted, and ends every event stream. Idempotent. Queries keep answering with the last published state.
+- App suspension and termination need no special handling: a command reports success only after its save, so everything reported is on disk.
+- The host reports the OS lifecycle with one synchronous call, `set_phase(phase)` (`Launching`, `Active`, `Inactive`, `Background`, `Terminated`). Rust owns the response: foreground work is stopped in the background, and `PhaseChanged { resumed: true }` arrives on the way back ([app-crate.md](app-crate.md#lifecycle)). The call does no I/O, because it runs on the UI thread.
 - No process-global mutable state: everything belongs to an instance.
 
 ## Panics
 
 - Domain code must not panic on expected validation failures (use `Result`).
-- No `.expect()` on locks. The example crates' locks recover the guarded value on poisoning, which is sound because each critical section is a single assignment that a panic cannot leave half-done.
+- No `.expect()` on locks. Use `forge_runtime::lock`, which recovers the guarded value on poisoning, which is sound because each critical section is a single assignment that a panic cannot leave half-done.
 - Unexpected panics may still become fatal Swift errors from UniFFI scaffolding — treat as bugs.
 
 ## Error categories
 
-| Category | `ForgeAppError` | Swift `CounterError` | Swift handling |
-|----------|-----------------|----------------------|----------------|
-| Domain | `WouldUnderflow`, `WouldOverflow`, `InvalidInput { reason }` | `.belowMinimum`, `.aboveMaximum`, `.invalidInput` | Inline message; state unchanged |
-| Persistence | `PersistenceFailed`, `PersistenceReadFailed` (both carry the I/O error in `reason`), `StorageDirectoryUnavailable` | `.saveFailed`, `.readFailed`, `.storageUnavailable` | Message; blocked startup or save failure |
-| Corruption | `CorruptPersistence` | `.corruptData` | Blocked UI; open again with `recoverCorruptData: true` (`recoverFromCorruption()` in the view model) |
-| Newer data | `UnsupportedSchemaVersion` | `.newerDataVersion` | Blocked UI asking the user to update the app. **Never offer a reset**: the data is valid, and recovery refuses to overwrite it anyway |
-| Cancelled | `Cancelled` | `CancellationError` (not a `CounterError`) | Not an error: no message |
-| Lifecycle / resource | `ShutDown`, `OperationInProgress` | `.closed`, `.busy` | Reopen / wait |
-| Internal | `InternalFailure { reason }` | `.internalFailure` | Message; retry |
-| Platform (Swift only) | — | `.platform` | E.g. Application Support could not be created |
+Each app has its own error enum, and maps every case to a framework `ErrorKind` (the starter's `app_error_kind`), so ForgeKit presents any app's errors the same way (`ForgeErrors.describe`, ForgeAppKit's `forgeAlert`):
 
-`CounterError.userMessage` is the text to show; `debugDescription` adds the diagnostic `reason`. Expected errors never panic and never turn into success.
+| `ErrorKind` | Meaning | How ForgeKit presents it |
+|-------------|---------|--------------------------|
+| `Invalid` | The input was refused | The app's message, inline; nothing changed |
+| `NotFound` | The thing no longer exists | Message; re-read |
+| `Unavailable` | Something needed is down or switched off | Message; Try Again later |
+| `Network` | A server or device couldn't be reached | Message with Try Again |
+| `Refused` | The other side said no | Message; the person has to change something first |
+| `Interrupted` | Stopped because the app left the screen | Safe to retry on return |
+| `Cancelled` | Cancelled by the user or the host | Not an error: no message |
+| `NeedsUser` | Needs a permission or a sign-in | Explain and offer the way to fix it |
+| `Corrupt` | Saved data could not be read | Blocked screen offering recovery |
+| `NewerData` | Saved data is from a newer app version | Blocked screen asking to update. **Never offer a reset** |
+| `ShutDown` | The core has shut down | Reopen |
+| `Internal` | A bug or an unexpected failure | Message; Try Again |
+
+`forge_app::app_error_conversions!` writes the runtime and storage conversions for the usual cases ([app-crate.md](app-crate.md#rules-that-keep-it-working)). Expected errors never panic and never turn into success.
 
 ## Exposing a new operation
 
-Using Counter (`examples/counter/rust`) as the example:
+Using the starter (`templates/app-rust`, which every `forge init` app begins from) as the example. [feature-recipe.md](feature-recipe.md) walks a whole Pocket Library feature through every layer.
 
-1. Add the rule to the domain module (`src/domain/`, and a test).
-2. Add a method to `AppCore` (`app.rs`) that sends a job to the command thread, then an `async` export on `ForgeCounterApp` (`api.rs`):
+1. Add the rule (and a test). Validate the input before the command, so a refused input never reaches the command thread.
+2. Add an `async` export that runs the change as a command. The starter's own `update_note`:
 
    ```rust
-   // app.rs
-   pub(crate) async fn rename(&self, name: String) -> Result<CounterSnapshot, ForgeAppError> {
-       let (responder, reply) = Responder::new();
-       self.send(Box::new(move |worker: &mut Worker| {
-           responder.respond(worker.apply(CounterAction::Rename(name)));
-       }))?;
-       reply.wait().await
-   }
-
-   // api.rs, inside #[uniffi::export] impl ForgeCounterApp
-   pub async fn rename(&self, name: String) -> Result<CounterStateSnapshot, ForgeAppError> {
-       self.core.rename(name).await.map(|s| app::to_ffi(&s))
+   // inside #[uniffi::export] impl AppCore
+   pub async fn update_note(&self, id: u64, text: String) -> Result<Note, AppError> {
+       let text = note_text(text)?;
+       self.rt
+           .command("update-note", move |state| {
+               state.change(|stored| {
+                   let note = stored
+                       .notes
+                       .iter_mut()
+                       .find(|n| n.id == id)
+                       .ok_or(AppError::NotFound { id })?;
+                   note.text = text;
+                   Ok(note.clone())
+               })
+           })
+           .await
    }
    ```
 
-   A query that needs no disk reads `self.shared` directly and stays sync. Map new error cases in `errors.rs`, and add them to both `CounterError.init` (Swift) and the Android `messageFor`.
-3. Regenerate bindings (`./scripts/generate-bindings.sh` and the Kotlin variant) and commit them.
-4. Wrap it in `CounterClient`, translating errors:
+   A query that needs no disk reads the `Published` snapshot and stays sync. Give any new error case its `ErrorKind` in `app_error_kind`.
+3. Regenerate the bindings (`forge bindings generate`) and commit `Generated/`.
+4. Call it from the model, which only presents (`perform` shows a failure as an alert with Try Again):
 
    ```swift
-   public func rename(_ name: String) async throws -> CounterState {
-       try Task.checkCancellation()
-       return CounterState(try await bridgedAsync { try await app.rename(name: name) })
+   private func update(id: UInt64, text: String) async -> Bool {
+       await perform(retry: .update(id, text)) { core in
+           _ = try await core.updateNote(id: id, text: text)
+       }
    }
    ```
-5. Copy the bridge change to `templates/ios-app/Sources/CounterBridge/` (CI checks they match).
 
 ## Consuming it from SwiftUI
 
+The `App` makes the host once (`makeAppHost()` in `AppHost.swift`), attaches the lifecycle, and shows the screens once the core is open. Models hold the core and re-read when the host's `changes` moves:
+
 ```swift
-@MainActor final class CounterViewModel: ObservableObject {
-    @Published private(set) var count: Int64 = 0
-    private var client: CounterClient?
+@Observable @MainActor
+public final class NotesModel {
+    public private(set) var notes: [Note] = []
+    public var alert: ForgeAlert<Action>?
+    public let core: AppCore
 
-    func open() async {
-        guard client == nil else { return }
-        do {
-            let client = try await CounterClient.open(storageDirectory: directory)
-            let events = try client.events()          // subscribe first…
-            count = try client.currentState().count   // …then read, so nothing is missed
-            self.client = client
-            Task { [weak self] in
-                for await event in events {
-                    guard let self else { return }
-                    if case let .stateChanged(state) = event { self.count = state.count }
-                }
-            }
-        } catch { /* show (error as? CounterError)?.userMessage */ }
+    public init(core: AppCore) {
+        self.core = core
+        notes = core.notes()
     }
 
-    func increment() async {
-        do { count = try await client?.apply(.increment).count ?? count }
-        catch is CancellationError {}
-        catch { /* inline message */ }
-    }
+    public func reload() { notes = core.notes() }
 }
 
 // In the view:
-//   .task { await model.open() }
-//   Button("Increment") { Task { await model.increment() } }
+//   .onChange(of: changes) { model.reload() }   // changes = host.changes
+//   .forgeAlert($model.alert) { action in Task { await model.handle(action) } }
 ```
 
 ## Testing the integration
 
-- Rust: `cargo test --manifest-path examples/counter/rust/Cargo.toml` covers async commands, concurrent commands, read-during-write, save failures (no commit, no event), event ordering, overflow, cancellation, shutdown with work in flight, and reopen. Tests use an in-memory store that can fail or pause saves.
-- Swift: `./scripts/test-swift-host.sh` (macOS) runs `CounterClientTests` (the bridge) and `CounterViewModelTests` against the real Rust library and generated bindings; no Rust mocks. CI runs it for the example and for an app freshly generated outside the checkout.
+- Rust: each app crate's tests (`cargo test --manifest-path <app>/rust/Cargo.toml`) cover commands, failed saves (no change, no event), event order, cancellation, shutdown with work in flight, and reopening. The runtime itself is tested in `crates/forge-app`, and model-based in `crates/forge-runtime/tests/foundation.rs`.
+- Swift: each app's `Tests/AppHostTests` drive the model and the host against the real Rust library and generated bindings, with no Rust mocks. `forge check swift` runs them on Linux; `./scripts/test-swift-host.sh` runs the ones that need Apple frameworks on macOS.
 - `./scripts/check-fresh-app.sh` creates iOS and Android apps outside the checkout and checks their own Rust crates and bindings ([project-generation.md](project-generation.md#checked-in-ci)).
 - `./scripts/check-template-sync.sh` checks that the starter crate pins the workspace's UniFFI version and that every Android host uses the verifier version in `Cargo.lock`.
 

@@ -29,7 +29,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 | chat | Yes | No (wave 3) | No (wave 3) | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 | checklist | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | commonplace | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| counter | Yes | No (decision) | Yes | Yes | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) | Yes |
 | device-lab | Yes | Not applicable | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
 | fieldkit | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
@@ -44,10 +43,6 @@ A rule an app doesn't meet is one of: **No** (missing: the app should use the fr
 
 | App | Rule | Status | Why | Wave |
 |---|---|---|---|---|
-| counter | `device-lab` | missing | Proposed for removal; decision pending | decision |
-| counter | `forge-host` | missing | Proposed for removal; decision pending | decision |
-| counter | `requirements` | missing | Proposed for removal; decision pending | decision |
-| counter | `ui-test` | missing | Proposed for removal; decision pending | decision |
 | chat | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | good-dog | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |

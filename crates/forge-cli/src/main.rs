@@ -918,7 +918,7 @@ enum BuildCommands {
     Ios {
         #[arg(
             long,
-            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+            help = "App directory (default: the current directory if it has forge.toml, else examples/pocket-library)"
         )]
         project: Option<PathBuf>,
         #[arg(
@@ -985,7 +985,7 @@ enum PublishCommands {
     Ios {
         #[arg(
             long,
-            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+            help = "App directory (default: the current directory if it has forge.toml, else examples/pocket-library)"
         )]
         project: Option<PathBuf>,
         /// Build the Swift app in the release configuration, and the Rust
@@ -1045,7 +1045,7 @@ enum RunCommands {
     Ios {
         #[arg(
             long,
-            help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
+            help = "App directory (default: the current directory if it has forge.toml, else examples/pocket-library)"
         )]
         project: Option<PathBuf>,
         /// Build the Swift app in the release configuration (xtool dev build -c release), and the Rust library with its release profile (link-time optimisation)
@@ -1341,7 +1341,7 @@ fn publish_command(
                     },
                 ),
                 None => {
-                    let project = project_or_default(project, "examples/counter");
+                    let project = project_or_default(project, "examples/pocket-library");
                     let (ipa, stamp) = commands::build_signed_ipa(
                         runner,
                         ios,
@@ -1566,7 +1566,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 release,
                 devtools,
             } => {
-                let project = project_or_default(project, "examples/counter");
+                let project = project_or_default(project, "examples/pocket-library");
                 commands::build_ios(
                     runner,
                     &ios,
@@ -1868,7 +1868,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 devtools,
                 wait_for_device,
             } => {
-                let project = project_or_default(project, "examples/counter");
+                let project = project_or_default(project, "examples/pocket-library");
                 commands::run_ios_with(
                     runner,
                     &ios,

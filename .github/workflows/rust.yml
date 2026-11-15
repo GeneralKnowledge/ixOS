@@ -34,7 +34,6 @@ jobs:
             . -> target
             examples/chat/rust -> target
             examples/checklist/rust -> target
-            examples/counter/rust -> target
             examples/device-lab/rust -> target
             examples/good-dog/rust -> target
             examples/pocket-library/rust -> target
@@ -73,7 +72,6 @@ jobs:
         run: ./scripts/check-template-sync.sh
       - name: validate Xcode project layout
         run: |
-          ./scripts/validate-xcode-project.sh
           ./scripts/validate-xcode-project.sh examples/weather/Xcode/Weather.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/chat/Xcode/Chat.xcodeproj/project.pbxproj
           ./scripts/validate-xcode-project.sh examples/pocket-library/Xcode/PocketLibrary.xcodeproj/project.pbxproj

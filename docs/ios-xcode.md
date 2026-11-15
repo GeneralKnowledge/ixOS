@@ -11,25 +11,25 @@ Forge Mobile keeps **one Rust core** and **one SwiftPM package** per app. Linux 
 | Rust | Same as repo `rust-toolchain.toml` |
 | Rust target | `aarch64-apple-ios` (`rustup target add aarch64-apple-ios`) |
 
-Signing credentials and provisioning profiles stay **outside** the repository. Set **Development Team** in Xcode for the `Counter` (or generated app) target.
+Signing credentials and provisioning profiles stay **outside** the repository. Set **Development Team** in Xcode for the app's target.
 
-## Counter example
+## Pocket Library example
 
 1. From the repository root on macOS, package Rust + bindings (uses Xcode SDK via `xcrun` when available):
 
    ```bash
-   cargo run -p forge-cli -- build ios --project examples/counter --package-only
+   cargo run -p forge-cli -- build ios --project examples/pocket-library --package-only
    ```
 
 2. Open the application host:
 
    ```bash
-   open examples/counter/Xcode/Counter.xcodeproj
+   open examples/pocket-library/Xcode/PocketLibrary.xcodeproj
    ```
 
 3. Select a **physical iPhone** run destination (see simulator note below).
 
-4. Pick the shared **App** scheme (not the `Counter` scheme Xcode generates for the Swift package's executable product), then build and run (⌘R). Increment/decrement, force an invalid decrement at zero, then terminate and relaunch to confirm persistence under Application Support.
+4. Pick the shared **App** scheme (not the scheme Xcode generates for the Swift package's executable product), then build and run (⌘R). Add a book, try to save one with no title to see the field error, then terminate and relaunch to confirm it was saved under Application Support.
 
 The **Build Rust FFI** run script phase calls `scripts/package-ios-library.sh` so Xcode rebuilds the static library when Rust sources or build metadata change.
 
@@ -56,7 +56,7 @@ From the repo root:
 
 ```bash
 forge bindings generate --project ~/projects/MyApp                 # an app from forge init
-cargo run -p forge-cli -- bindings generate --project examples/counter   # a bundled example
+cargo run -p forge-cli -- bindings generate --project examples/pocket-library   # a bundled example
 ```
 
 Do not edit files under `Generated/`. Rebuild in Xcode afterward.

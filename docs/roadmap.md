@@ -1,6 +1,6 @@
 # Roadmap
 
-Forge Mobile is an **integration reference**: a working Counter app on iOS (and on Android, which is work in progress), a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
+Forge Mobile is a **native app framework** with working example apps on iOS (and Pocket Library on Android, which is work in progress), a CLI, templates, and the docs that explain each piece. It is actively maintained. This page says what comes next, in rough priority order, so you can tell what is planned and where help is welcome.
 
 Status labels: **In progress** (someone is on it), **Planned** (agreed, not started), **Open** (direction agreed, contributions welcome), **Not planned** (out of scope for now, with the reason).
 

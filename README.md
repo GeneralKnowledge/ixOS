@@ -7,9 +7,9 @@ Linux-first, Rust-first framework for building native mobile apps with **Rust** 
 
 > **Platform focus: iOS.** Android is **work in progress** and paused while the project concentrates on iOS. The Android code, examples and template stay in the repository and keep building in CI, but they get no new features, Android has not been validated on a physical phone, and new capabilities land on iOS only. See [the roadmap](docs/roadmap.md#android--work-in-progress).
 
-This repository (`ixOS` on GitHub) ships a working **Counter** example, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [docs/chat-demo.md](docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
+This repository (`ixOS` on GitHub) ships **Checklist**, the smallest app on the ixOS runtime, a networked **Weather** example (iOS), a **Chat** demo (iOS, with a frozen Android twin; live event stream, room subscriptions, offline retry; see [docs/chat-demo.md](docs/chat-demo.md)), **Pocket Library**, a multi-screen reading tracker made with `forge init` that owns its Rust crate ([examples/pocket-library](examples/pocket-library/README.md)), a developer CLI, scripts, and documentation. It is an integration reference, not a full mobile platform yet; see [docs/roadmap.md](docs/roadmap.md) for what comes next and where help is welcome.
 
-The Rust-to-Swift bridge is asynchronous: SwiftUI talks to a thin Swift layer (`CounterBridge`) that exposes Rust commands and queries as `async` calls and Rust events as an `AsyncSequence`, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
+The Rust-to-Swift boundary is asynchronous: each app's Rust core runs on the ixOS runtime (`forge-app`), whose commands are `async` calls that save before they return, whose queries never wait, and whose events tell the SwiftUI host (ForgeKit's `ForgeHost`) when to re-read, with explicit cancellation and typed errors. See [docs/architecture.md](docs/architecture.md) and [docs/ffi-policy.md](docs/ffi-policy.md).
 
 <p>
   <img src="docs/images/chat-ios-list.png" width="270" alt="Chat example on an iPhone: the conversation list">
@@ -69,7 +69,6 @@ crates/forge-devproto  # an encrypted channel over a byte stream: frames, Noise 
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-cli       # `forge` CLI
 examples/checklist        # The first app on the runtime and ForgeKit
-examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
@@ -95,16 +94,16 @@ cargo run -p forge-cli -- test   # workspace tests + rustfmt check
 cargo run -p forge-cli -- test --project examples/pocket-library-android  # ...plus that app's host tests
 cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an app's own crate -> its Generated/
 cargo run -p forge-cli -- bindings generate --project examples/pocket-library-android   # Kotlin, for an Android app
-cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
-cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
-cargo run -p forge-cli -- diagnose --project examples/counter        # the app is installed but doesn't work: checks it and says what to do next
-cargo run -p forge-cli -- run ios --project examples/counter --release  # same, Swift release configuration
-cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
+cargo run -p forge-cli -- build ios --project examples/pocket-library  # xtool dev build
+cargo run -p forge-cli -- run ios --project examples/pocket-library    # build and install (xtool dev run); open it on the phone
+cargo run -p forge-cli -- diagnose --project examples/pocket-library   # the app is installed but doesn't work: checks it and says what to do next
+cargo run -p forge-cli -- run ios --project examples/pocket-library --release  # same, Swift release configuration
+cargo run -p forge-cli -- build ios --project examples/pocket-library --package-only  # Rust + bindings only (Xcode on macOS)
 cargo run -p forge-cli -- build android --project examples/pocket-library-android
 cargo run -p forge-cli -- devices
 cargo run -p forge-cli -- check swift --project examples/pocket-library   # model + bindings with plain Swift on Linux (not the SwiftUI views)
-cargo run -p forge-cli -- --json run ios --project examples/counter        # one forge.result/1 object on stdout, exit code per stage
-cargo run -p forge-cli -- device logs --process CounterXtool --for 20s    # the app's log on a USB iPhone (docs/forge-device.md)
+cargo run -p forge-cli -- --json run ios --project examples/pocket-library   # one forge.result/1 object on stdout, exit code per stage
+cargo run -p forge-cli -- device logs --process PocketLibraryXtool --for 20s    # the app's log on a USB iPhone (docs/forge-device.md)
 ```
 
 ## Without an agent, and with one
@@ -130,7 +129,7 @@ Install the binary: `cargo install --path crates/forge-cli --locked` (optional).
 
 ## Configuration
 
-Example apps include `forge.toml` — see [examples/counter/forge.toml](examples/counter/forge.toml).
+Example apps include `forge.toml` — see [examples/pocket-library/forge.toml](examples/pocket-library/forge.toml).
 
 New apps: `forge init MyApp --bundle-id org.example.myapp --platform ios|android --path ~/projects/MyApp`. Each app owns its Rust logic in its own crate (`rust/`), so you never edit Forge's crates to build one. See [docs/project-generation.md](docs/project-generation.md) and [docs/app-crate.md](docs/app-crate.md).
 

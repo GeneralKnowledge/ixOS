@@ -2,7 +2,7 @@
 
 This runbook checks the native services ([native-services.md](native-services.md)) on a real iPhone, from Linux with xtool. It takes about ten minutes. It uses a throwaway `forge init` app whose screen calls each service through the real Rust → Swift path.
 
-**You need** the Linux iOS setup that already builds Counter, Weather and Chat: xtool, the Xcode 26 SDK, usbmuxd, and an iPhone plugged in and unlocked. `forge doctor` confirms it.
+**You need** the Linux iOS setup that already builds Pocket Library, Weather and Chat: xtool, the Xcode 26 SDK, usbmuxd, and an iPhone plugged in and unlocked. `forge doctor` confirms it.
 
 ## 1. Create and install the check app
 

@@ -76,7 +76,6 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         Step {
             name: "Xcode project layout",
             cmds: vec![
-                script(root, "validate-xcode-project.sh"),
                 script(root, "validate-xcode-project.sh")
                     .arg(root.join("examples/weather/Xcode/Weather.xcodeproj/project.pbxproj")),
                 script(root, "validate-xcode-project.sh")
@@ -143,7 +142,6 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         Step {
             name: "Swift host tests (XCTest)",
             cmds: vec![
-                script(root, "test-swift-host.sh").arg(root.join("examples/counter")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/weather")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/chat")),
                 script(root, "test-swift-host.sh").arg(root.join("examples/pocket-library")),
@@ -267,7 +265,6 @@ mod tests {
         let expected = [
             "cargo fmt --all -- --check",
             "check-template-sync.sh",
-            "validate-xcode-project.sh",
             "Weather.xcodeproj/project.pbxproj",
             "Chat.xcodeproj/project.pbxproj",
             "PocketLibrary.xcodeproj/project.pbxproj",
@@ -279,7 +276,6 @@ mod tests {
             "test-native-rebuild.sh",
             "examples/pocket-library-android/rust/Cargo.toml",
             "pocket-library-android/gradlew :app:testDebugUnitTest --no-daemon",
-            "examples/counter",
             "examples/weather",
             "examples/chat",
             "examples/pocket-library",

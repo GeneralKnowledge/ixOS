@@ -19,5 +19,5 @@ log = { version = "0.4", features = ["std"] }
 jni = { version = "0.22", default-features = false }
 
 [dev-dependencies]
-# Same pin as the Counter crate's model tests.
+# Same pin the app crates use in their model tests.
 proptest = "=1.12.0"

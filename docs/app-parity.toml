@@ -21,30 +21,6 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "counter"
-rule = "device-lab"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forge-host"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "requirements"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "ui-test"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
 app = "device-lab"
 rule = "forge-host"
 status = "not-applicable"
