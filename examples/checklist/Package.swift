@@ -56,7 +56,7 @@ let package = Package(
         .target(
             name: "ChecklistApp",
             dependencies: ["ChecklistFFI", .product(name: "ForgeKit", package: "forgekit")],
-            path: "Sources/ChecklistApp",
+            path: "Sources/AppHost",
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
         .target(
@@ -76,7 +76,7 @@ let package = Package(
         .testTarget(
             name: "ChecklistTests",
             dependencies: ["ChecklistApp", "ChecklistFFI", .product(name: "ForgeKit", package: "forgekit")],
-            path: "Tests/ChecklistTests",
+            path: "Tests/AppHostTests",
             swiftSettings: [.swiftLanguageMode(.v5)],
             linkerSettings: rustLibrary
         ),

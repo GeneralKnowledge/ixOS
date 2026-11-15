@@ -1719,6 +1719,31 @@ mod tests {
     use super::*;
     use crate::fake::FakeDriver;
 
+    /// Every scenario the example apps ship parses, so a typo in one fails
+    /// here on Linux instead of at the start of a phone sitting.
+    #[test]
+    fn every_example_scenario_parses() {
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let mut checked = 0;
+        for app in std::fs::read_dir(&examples).unwrap().flatten() {
+            let Ok(files) = std::fs::read_dir(app.path().join("uitests")) else {
+                continue;
+            };
+            for file in files.flatten() {
+                let path = file.path();
+                if path.extension().is_some_and(|e| e == "toml") {
+                    Script::load(&path).unwrap_or_else(|e| panic!("{e}"));
+                    checked += 1;
+                }
+            }
+        }
+        assert!(
+            checked > 0,
+            "no scenarios found under {}",
+            examples.display()
+        );
+    }
+
     fn node(kind: &str, id: &str, label: &str) -> UiNode {
         UiNode {
             kind: kind.into(),

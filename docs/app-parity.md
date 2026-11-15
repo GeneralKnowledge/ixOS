@@ -24,15 +24,15 @@ When the framework gains a better way to do something, every app moves to it, or
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` |
 |---|---|---|---|---|---|---|---|---|---|---|
 | chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes |
-| checklist | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 3) | n/a | No (wave 3) | Yes |
-| commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | No (wave 3) | n/a | Yes | Yes |
+| checklist | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes |
+| commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | Yes | No (wave 4) | Yes | Yes |
 | counter | No (decision) | No (decision) | Yes | No (wave 1) | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) |
 | device-lab | Yes | No (wave 3) | Yes | No (wave 1) | n/a | n/a | n/a | n/a | n/a | n/a |
-| fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | No (wave 3) | Yes |
+| fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | Yes | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes |
 | good-dog | Yes | No (wave 3) | No (wave 3) | No (wave 1) | n/a | n/a | Yes | No (wave 4) | Yes | Yes |
 | pocket-library | Yes | Yes | Yes | No (wave 1) | No (wave 2) | n/a | Yes | No (wave 2) | Yes | Yes |
-| relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
+| relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | Yes | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
 | soundscape | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
 | weather | No (wave 3) | No (wave 3) | Yes | No (wave 1) | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes |
@@ -62,15 +62,9 @@ When the framework gains a better way to do something, every app moves to it, or
 | chat | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | chat | `forgekit` | Predates the ForgeKit package; moves with its ForgeHost migration | 3 |
-| checklist | `requirements` | No requirements written yet | 3 |
-| checklist | `ui-test` | No UI scenario yet | 3 |
-| commonplace | `requirements` | No requirements written yet | 3 |
 | device-lab | `forge-host` | LabModel keeps its own state; Device Lab's Rust is lab services, not an app core | 3 |
-| fieldkit | `requirements` | No requirements written yet | 3 |
-| forgeui-showcase | `ui-test` | No UI scenario yet; P1 was checked by hand | 3 |
 | good-dog | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | good-dog | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| relay | `requirements` | No requirements written yet | 3 |
 | weather | `forge-host` | Rust core predates the forge-app runtime | 3 |
 | weather | `forgekit` | The oldest demo; predates the ForgeKit package | 3 |
 | weather | `location` | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
@@ -79,6 +73,8 @@ When the framework gains a better way to do something, every app moves to it, or
 | weather | `urlsession` | Open-Meteo requests still go through ureq | 3 |
 | chat | `requirements` | Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6 | 4 |
 | chat | `ui-test` | Needs the chat server reachable from the phone; comes with M6 | 4 |
+| checklist | `device-checks` | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
+| commonplace | `device-checks` | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
 | good-dog | `device-checks` | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
 | sketchbook | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |

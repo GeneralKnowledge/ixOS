@@ -217,8 +217,14 @@ extension PermissionStatus {
 public enum TripFormat {
     /// "1.2 km" or "850 m" in the person's units.
     public static func distance(_ metres: Double) -> String {
-        let measurement = Measurement(value: metres, unit: UnitLength.meters)
-        return measurement.formatted(.measurement(width: .abbreviated, usage: .road))
+        #if canImport(Darwin)
+            let measurement = Measurement(value: metres, unit: UnitLength.meters)
+            return measurement.formatted(.measurement(width: .abbreviated, usage: .road))
+        #else
+            // Linux's Foundation has no measurement formatting: plain metric,
+            // so the model still builds and tests there.
+            return metres < 1000 ? "\(Int(metres.rounded())) m" : String(format: "%.1f km", metres / 1000)
+        #endif
     }
 
     /// "1:05:12" or "12:04".
