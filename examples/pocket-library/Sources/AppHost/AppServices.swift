@@ -1,5 +1,7 @@
 @preconcurrency import PocketLibraryFFI
-import Foundation
+// The adapters need Apple's frameworks, so the Linux twin leaves this file
+// out (as it does every file that imports SwiftUI).
+import SwiftUI
 
 /// The native services the Rust library uses through `crate::native` (see
 /// `rust/src/lib.rs` and docs/native-services.md): above all `http`, so
