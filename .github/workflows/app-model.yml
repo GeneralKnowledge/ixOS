@@ -68,6 +68,9 @@ jobs:
       - name: Host library for Swift
         run: |
           case "$RUNNER_OS" in macOS) dir=macos-host ;; *) dir=linux-host ;; esac
+          # cargo test builds the library for its tests only; the static
+          # library Swift links comes from cargo build.
+          cargo build --manifest-path examples/checklist/rust/Cargo.toml
           mkdir -p "examples/checklist/build/$dir/lib"
           # Checklist names its library checklist_core (another app can link
           # it); Package.swift links it under Forge's fixed name.
