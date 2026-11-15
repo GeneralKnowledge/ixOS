@@ -446,6 +446,7 @@ impl Stored {
             now.ms,
         );
         self.progress.insert(objective.clone(), next);
+        self.practised(exercise_id);
         Ok(objective)
     }
 

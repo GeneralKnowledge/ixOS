@@ -15,6 +15,27 @@ extension SkillProgress: Identifiable {
 extension PathwaySummary: Identifiable {}
 extension GoalSummary: Identifiable {}
 extension GoalStage: Identifiable {}
+extension GoalLesson: Identifiable {}
+
+extension LessonKind {
+    public var title: String {
+        switch self {
+        case .learn: "Learn"
+        case .practise: "Practise"
+        case .everyday: "Everyday"
+        case .check: "Quick check"
+        }
+    }
+
+    public var systemImage: String {
+        switch self {
+        case .learn: "book.fill"
+        case .practise: "figure.walk"
+        case .everyday: "house.fill"
+        case .check: "questionmark.bubble.fill"
+        }
+    }
+}
 extension GlossarySection: Identifiable {
     public var id: String { title }
 }

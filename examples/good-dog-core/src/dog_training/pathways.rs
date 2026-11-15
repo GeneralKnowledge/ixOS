@@ -71,6 +71,52 @@ pub struct PathwayStage {
     pub safety_rule_ids: Vec<String>,
     /// How to keep the skill once the stage is passed.
     pub maintenance: String,
+    /// The stage's short lesson plan, in order: the app unlocks them one by
+    /// one. Empty for a stage that has none yet.
+    #[serde(default)]
+    pub lessons: Vec<StageLesson>,
+}
+
+/// What a stage lesson asks of the owner.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LessonKind {
+    /// A few sentences of teaching (`body`), resting on `claim_ids`.
+    Learn,
+    /// One of the stage's exercises (`exercise_id`), with an `aim`.
+    Practise,
+    /// One try in ordinary life today (`body`).
+    Everyday,
+    /// A multiple-choice question (`question`, `options`, `correct_index`,
+    /// `explanation`).
+    Check,
+}
+
+/// One short step of a stage's lesson plan. Text uses `{dog}` for the dog's
+/// name. Which fields are set depends on `kind`; [`check_pathways`] checks.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StageLesson {
+    pub id: String,
+    pub kind: LessonKind,
+    pub title: String,
+    #[serde(default)]
+    pub body: Option<String>,
+    #[serde(default)]
+    pub exercise_id: Option<String>,
+    #[serde(default)]
+    pub aim: Option<String>,
+    #[serde(default)]
+    pub question: Option<String>,
+    #[serde(default)]
+    pub options: Vec<String>,
+    #[serde(default)]
+    pub correct_index: Option<u32>,
+    #[serde(default)]
+    pub explanation: Option<String>,
+    /// DogResearch claims the teaching rests on.
+    #[serde(default)]
+    pub claim_ids: Vec<String>,
 }
 
 /// What shows a stage is learned.
@@ -121,6 +167,7 @@ pub fn check_pathways(pathways: &[Pathway], exercises: &[ExerciseContent]) -> Ve
         exercises.iter().map(|e| (e.core.id.as_str(), e)).collect();
     let mut problems = Vec::new();
     let mut pathway_ids = HashSet::new();
+    let mut lesson_ids: HashSet<&str> = HashSet::new();
     for pathway in pathways {
         let p = &pathway.id;
         if !pathway_ids.insert(p.as_str()) {
@@ -176,7 +223,55 @@ pub fn check_pathways(pathways: &[Pathway], exercises: &[ExerciseContent]) -> Ve
                     problems.push(format!("{p}/{s}: {field} is empty"));
                 }
             }
+            problems.extend(check_lessons(p, stage, &mut lesson_ids));
             earlier.insert(s);
+        }
+    }
+    problems
+}
+
+fn check_lessons<'a>(p: &str, stage: &'a PathwayStage, seen: &mut HashSet<&'a str>) -> Vec<String> {
+    let mut problems = Vec::new();
+    let s = &stage.id;
+    let blank = |t: &Option<String>| t.as_deref().is_none_or(|t| t.trim().is_empty());
+    for lesson in &stage.lessons {
+        let at = format!("{p}/{s}/{}", lesson.id);
+        if !seen.insert(lesson.id.as_str()) {
+            problems.push(format!("{at}: lesson id used twice"));
+        }
+        if lesson.title.trim().is_empty() {
+            problems.push(format!("{at}: title is empty"));
+        }
+        match lesson.kind {
+            LessonKind::Learn | LessonKind::Everyday => {
+                if blank(&lesson.body) {
+                    problems.push(format!("{at}: body is empty"));
+                }
+            }
+            LessonKind::Practise => {
+                let uses_stage_exercise = lesson
+                    .exercise_id
+                    .as_ref()
+                    .is_some_and(|id| stage.exercise_ids.contains(id));
+                if !uses_stage_exercise {
+                    problems.push(format!("{at}: practise needs one of the stage's exercises"));
+                }
+                if blank(&lesson.aim) {
+                    problems.push(format!("{at}: aim is empty"));
+                }
+            }
+            LessonKind::Check => {
+                let n = lesson.options.len();
+                if !(2..=4).contains(&n) {
+                    problems.push(format!("{at}: a check needs 2 to 4 options"));
+                }
+                if lesson.correct_index.is_none_or(|i| i as usize >= n) {
+                    problems.push(format!("{at}: correctIndex is not one of the options"));
+                }
+                if blank(&lesson.question) || blank(&lesson.explanation) {
+                    problems.push(format!("{at}: a check needs a question and an explanation"));
+                }
+            }
         }
     }
     problems

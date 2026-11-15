@@ -218,10 +218,19 @@ private struct GoalFocusRow: View {
             Label(focus.everydayPractice, systemImage: "house")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if let lesson = focus.nextLesson {
+                Label("Next lesson: \(lesson.title)", systemImage: lesson.kind.systemImage)
+                    .font(.subheadline.weight(.semibold))
+                    .forgeForeground(.accent)
+            } else if focus.lessonCount > 0 {
+                Label("Every lesson in this stage done", systemImage: "checkmark.seal.fill")
+                    .font(.subheadline)
+                    .forgeForeground(.success)
+            }
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Your goal: \(focus.goalTitle). Stage \(focus.stageNumber) of \(focus.stageCount), \(focus.stageTitle)")
+        .accessibilityLabel("Your goal: \(focus.goalTitle). Stage \(focus.stageNumber) of \(focus.stageCount), \(focus.stageTitle). Lessons: \(focus.lessonsDone) of \(focus.lessonCount) done")
         .accessibilityHint("Shows the whole path")
     }
 }

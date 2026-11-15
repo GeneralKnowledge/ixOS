@@ -1112,3 +1112,86 @@ fn rescheduling_replaces_the_week_and_cancels_what_is_no_longer_wanted() {
     assert_eq!(buttons[0].id, reminders::START);
     assert_eq!(buttons[1].id, reminders::NOT_TODAY);
 }
+
+#[test]
+fn a_stages_lessons_unlock_one_by_one_and_practice_and_checks_finish_their_own() {
+    let dir = tempfile::tempdir().unwrap();
+    let app = onboarded(dir.path());
+    let goal = app.goals()[0].id;
+    let now = at(NINE_AM);
+    let lessons = |app: &AppCore| app.goal(goal, now).unwrap().stages[0].lessons.clone();
+    let states = |app: &AppCore| lessons(app).iter().map(|l| l.state).collect::<Vec<_>>();
+
+    let first = lessons(&app);
+    let kinds: Vec<LessonKind> = first.iter().map(|l| l.kind).collect();
+    assert_eq!(
+        kinds,
+        [
+            LessonKind::Learn,
+            LessonKind::Practise,
+            LessonKind::Learn,
+            LessonKind::Everyday,
+            LessonKind::Check
+        ]
+    );
+    assert_eq!(states(&app)[..2], [LessonState::Next, LessonState::Locked]);
+    assert!(
+        first[2].body.as_ref().unwrap().contains("Moss"),
+        "{{dog}} becomes the dog's name"
+    );
+    let focus = block_on(app.today(now)).unwrap().goal_focus.unwrap();
+    assert_eq!((focus.lessons_done, focus.lesson_count), (0, 5));
+    assert_eq!(focus.next_lesson.unwrap().id, first[0].id);
+
+    // A locked lesson waits; a practise lesson is finished by practising.
+    assert!(matches!(
+        block_on(app.complete_lesson(goal, first[2].id.clone(), now)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    block_on(app.complete_lesson(goal, first[0].id.clone(), now)).unwrap();
+    assert!(matches!(
+        block_on(app.complete_lesson(goal, first[1].id.clone(), now)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let exercise = first[1].exercise.clone().unwrap().id;
+    block_on(app.record_session(exercise, None, SessionResult::GettingThere, false, now)).unwrap();
+    block_on(app.complete_lesson(goal, first[2].id.clone(), now)).unwrap();
+    block_on(app.complete_lesson(goal, first[3].id.clone(), now)).unwrap();
+
+    // A wrong answer explains and changes nothing; the right one finishes.
+    let check = &first[4];
+    assert_eq!(check.options.len(), 3);
+    let wrong = block_on(app.answer_lesson(goal, check.id.clone(), 0, now)).unwrap();
+    assert!(!wrong.correct && !wrong.explanation.is_empty());
+    assert_eq!(states(&app)[4], LessonState::Next);
+    assert!(matches!(
+        block_on(app.answer_lesson(goal, check.id.clone(), 7, now)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    let right = block_on(app.answer_lesson(goal, check.id.clone(), 1, now)).unwrap();
+    assert!(right.correct);
+    assert!(states(&app).iter().all(|s| *s == LessonState::Done));
+    let focus = block_on(app.today(now)).unwrap().goal_focus.unwrap();
+    assert_eq!((focus.lessons_done, focus.lesson_count), (5, 5));
+    assert!(focus.next_lesson.is_none());
+
+    // The next stage's lessons are locked until the goal gets there, and
+    // what's done survives a relaunch.
+    let stage_two = &app.goal(goal, now).unwrap().stages[1].lessons;
+    assert!(stage_two.iter().all(|l| l.state == LessonState::Locked));
+    assert!(matches!(
+        block_on(app.complete_lesson(goal, stage_two[0].id.clone(), now)),
+        Err(AppError::InvalidInput { .. })
+    ));
+    drop(app);
+    let app = open(dir.path());
+    assert!(states(&app).iter().all(|s| *s == LessonState::Done));
+
+    // A paused goal's lessons wait for it to be resumed.
+    block_on(app.pause_goal(goal, now)).unwrap();
+    block_on(app.answer_gate(goal, true, now)).unwrap_err();
+    assert!(matches!(
+        block_on(app.answer_lesson(goal, check.id.clone(), 1, now)),
+        Err(AppError::InvalidInput { .. })
+    ));
+}

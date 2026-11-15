@@ -636,6 +636,20 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func answerGate(goalId: UInt64, met: Bool, now: LocalTime) async throws  -> GoalDetail
     
     /**
+     * Answers a check lesson with the option at `choice`. A right answer
+     * finishes the lesson; a wrong one changes nothing and can be tried
+     * again. The explanation comes back either way.
+     */
+    func answerLesson(goalId: UInt64, lessonId: String, choice: UInt32, now: LocalTime) async throws  -> LessonAnswer
+    
+    /**
+     * Marks a learn or everyday lesson of the goal's current stage done.
+     * Lessons unlock one by one: a locked one is refused, as are practise
+     * lessons (recording a session finishes them) and checks (answer them).
+     */
+    func completeLesson(goalId: UInt64, lessonId: String, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
      * The dog's profile, or `None` before onboarding.
      */
     func dog()  -> DogProfile?
@@ -905,6 +919,48 @@ open func answerGate(goalId: UInt64, met: Bool, now: LocalTime)async throws  -> 
             rustFutureFunc: {
                 uniffi_good_dog_app_fn_method_appcore_answer_gate(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterBool.lower(met),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Answers a check lesson with the option at `choice`. A right answer
+     * finishes the lesson; a wrong one changes nothing and can be tried
+     * again. The explanation comes back either way.
+     */
+open func answerLesson(goalId: UInt64, lessonId: String, choice: UInt32, now: LocalTime)async throws  -> LessonAnswer  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_answer_lesson(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterString.lower(lessonId),FfiConverterUInt32.lower(choice),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeLessonAnswer_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * Marks a learn or everyday lesson of the goal's current stage done.
+     * Lessons unlock one by one: a locked one is refused, as are practise
+     * lessons (recording a session finishes them) and checks (answer them).
+     */
+open func completeLesson(goalId: UInt64, lessonId: String, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_complete_lesson(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterString.lower(lessonId),FfiConverterTypeLocalTime_lower(now)
                 )
             },
             pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
@@ -3802,6 +3858,12 @@ public struct GoalFocus: Equatable, Hashable {
      * One way to practise in ordinary life today, outside a session.
      */
     public var everydayPractice: String
+    /**
+     * The stage's next lesson, when one is left.
+     */
+    public var nextLesson: GoalLesson?
+    public var lessonsDone: UInt32
+    public var lessonCount: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3814,7 +3876,10 @@ public struct GoalFocus: Equatable, Hashable {
          */why: String, 
         /**
          * One way to practise in ordinary life today, outside a session.
-         */everydayPractice: String) {
+         */everydayPractice: String, 
+        /**
+         * The stage's next lesson, when one is left.
+         */nextLesson: GoalLesson?, lessonsDone: UInt32, lessonCount: UInt32) {
         self.goalId = goalId
         self.goalTitle = goalTitle
         self.stageTitle = stageTitle
@@ -3822,6 +3887,9 @@ public struct GoalFocus: Equatable, Hashable {
         self.stageCount = stageCount
         self.why = why
         self.everydayPractice = everydayPractice
+        self.nextLesson = nextLesson
+        self.lessonsDone = lessonsDone
+        self.lessonCount = lessonCount
     }
 
     
@@ -3846,7 +3914,10 @@ public struct FfiConverterTypeGoalFocus: FfiConverterRustBuffer {
                 stageNumber: FfiConverterUInt32.read(from: &buf), 
                 stageCount: FfiConverterUInt32.read(from: &buf), 
                 why: FfiConverterString.read(from: &buf), 
-                everydayPractice: FfiConverterString.read(from: &buf)
+                everydayPractice: FfiConverterString.read(from: &buf), 
+                nextLesson: FfiConverterOptionTypeGoalLesson.read(from: &buf), 
+                lessonsDone: FfiConverterUInt32.read(from: &buf), 
+                lessonCount: FfiConverterUInt32.read(from: &buf)
         )
     }
 
@@ -3858,6 +3929,9 @@ public struct FfiConverterTypeGoalFocus: FfiConverterRustBuffer {
         FfiConverterUInt32.write(value.stageCount, into: &buf)
         FfiConverterString.write(value.why, into: &buf)
         FfiConverterString.write(value.everydayPractice, into: &buf)
+        FfiConverterOptionTypeGoalLesson.write(value.nextLesson, into: &buf)
+        FfiConverterUInt32.write(value.lessonsDone, into: &buf)
+        FfiConverterUInt32.write(value.lessonCount, into: &buf)
     }
 }
 
@@ -3874,6 +3948,109 @@ public func FfiConverterTypeGoalFocus_lift(_ buf: RustBuffer) throws -> GoalFocu
 #endif
 public func FfiConverterTypeGoalFocus_lower(_ value: GoalFocus) -> RustBuffer {
     return FfiConverterTypeGoalFocus.lower(value)
+}
+
+
+/**
+ * One short lesson of a stage, worded with the dog's name.
+ */
+public struct GoalLesson: Equatable, Hashable {
+    public var id: String
+    public var kind: LessonKind
+    public var title: String
+    public var state: LessonState
+    /**
+     * Learn and everyday lessons.
+     */
+    public var body: String?
+    /**
+     * Practise lessons: the exercise, and what to aim for.
+     */
+    public var exercise: ExerciseSummary?
+    public var aim: String?
+    /**
+     * Check lessons: the question and its options. Rust keeps the answer.
+     */
+    public var question: String?
+    public var options: [String]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, kind: LessonKind, title: String, state: LessonState, 
+        /**
+         * Learn and everyday lessons.
+         */body: String?, 
+        /**
+         * Practise lessons: the exercise, and what to aim for.
+         */exercise: ExerciseSummary?, aim: String?, 
+        /**
+         * Check lessons: the question and its options. Rust keeps the answer.
+         */question: String?, options: [String]) {
+        self.id = id
+        self.kind = kind
+        self.title = title
+        self.state = state
+        self.body = body
+        self.exercise = exercise
+        self.aim = aim
+        self.question = question
+        self.options = options
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension GoalLesson: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeGoalLesson: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> GoalLesson {
+        return
+            try GoalLesson(
+                id: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeLessonKind.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                state: FfiConverterTypeLessonState.read(from: &buf), 
+                body: FfiConverterOptionString.read(from: &buf), 
+                exercise: FfiConverterOptionTypeExerciseSummary.read(from: &buf), 
+                aim: FfiConverterOptionString.read(from: &buf), 
+                question: FfiConverterOptionString.read(from: &buf), 
+                options: FfiConverterSequenceString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: GoalLesson, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterTypeLessonKind.write(value.kind, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterTypeLessonState.write(value.state, into: &buf)
+        FfiConverterOptionString.write(value.body, into: &buf)
+        FfiConverterOptionTypeExerciseSummary.write(value.exercise, into: &buf)
+        FfiConverterOptionString.write(value.aim, into: &buf)
+        FfiConverterOptionString.write(value.question, into: &buf)
+        FfiConverterSequenceString.write(value.options, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalLesson_lift(_ buf: RustBuffer) throws -> GoalLesson {
+    return try FfiConverterTypeGoalLesson.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeGoalLesson_lower(_ value: GoalLesson) -> RustBuffer {
+    return FfiConverterTypeGoalLesson.lower(value)
 }
 
 
@@ -3897,6 +4074,10 @@ public struct GoalStage: Equatable, Hashable {
      * For passed stages: how to keep the skill.
      */
     public var maintenance: String
+    /**
+     * The stage's lesson plan, in order.
+     */
+    public var lessons: [GoalLesson]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3906,7 +4087,10 @@ public struct GoalStage: Equatable, Hashable {
          */readyWhen: String, ifItIsHard: String, 
         /**
          * For passed stages: how to keep the skill.
-         */maintenance: String) {
+         */maintenance: String, 
+        /**
+         * The stage's lesson plan, in order.
+         */lessons: [GoalLesson]) {
         self.id = id
         self.title = title
         self.state = state
@@ -3917,6 +4101,7 @@ public struct GoalStage: Equatable, Hashable {
         self.readyWhen = readyWhen
         self.ifItIsHard = ifItIsHard
         self.maintenance = maintenance
+        self.lessons = lessons
     }
 
     
@@ -3944,7 +4129,8 @@ public struct FfiConverterTypeGoalStage: FfiConverterRustBuffer {
                 everydayPractice: FfiConverterString.read(from: &buf), 
                 readyWhen: FfiConverterString.read(from: &buf), 
                 ifItIsHard: FfiConverterString.read(from: &buf), 
-                maintenance: FfiConverterString.read(from: &buf)
+                maintenance: FfiConverterString.read(from: &buf), 
+                lessons: FfiConverterSequenceTypeGoalLesson.read(from: &buf)
         )
     }
 
@@ -3959,6 +4145,7 @@ public struct FfiConverterTypeGoalStage: FfiConverterRustBuffer {
         FfiConverterString.write(value.readyWhen, into: &buf)
         FfiConverterString.write(value.ifItIsHard, into: &buf)
         FfiConverterString.write(value.maintenance, into: &buf)
+        FfiConverterSequenceTypeGoalLesson.write(value.lessons, into: &buf)
     }
 }
 
@@ -4309,6 +4496,73 @@ public func FfiConverterTypeLearnTopic_lift(_ buf: RustBuffer) throws -> LearnTo
 #endif
 public func FfiConverterTypeLearnTopic_lower(_ value: LearnTopic) -> RustBuffer {
     return FfiConverterTypeLearnTopic.lower(value)
+}
+
+
+/**
+ * The result of answering a check lesson.
+ */
+public struct LessonAnswer: Equatable, Hashable {
+    public var correct: Bool
+    /**
+     * Why, in a sentence or two: shown whether right or not.
+     */
+    public var explanation: String
+    public var goal: GoalDetail
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(correct: Bool, 
+        /**
+         * Why, in a sentence or two: shown whether right or not.
+         */explanation: String, goal: GoalDetail) {
+        self.correct = correct
+        self.explanation = explanation
+        self.goal = goal
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension LessonAnswer: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLessonAnswer: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LessonAnswer {
+        return
+            try LessonAnswer(
+                correct: FfiConverterBool.read(from: &buf), 
+                explanation: FfiConverterString.read(from: &buf), 
+                goal: FfiConverterTypeGoalDetail.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: LessonAnswer, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.correct, into: &buf)
+        FfiConverterString.write(value.explanation, into: &buf)
+        FfiConverterTypeGoalDetail.write(value.goal, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonAnswer_lift(_ buf: RustBuffer) throws -> LessonAnswer {
+    return try FfiConverterTypeLessonAnswer.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonAnswer_lower(_ value: LessonAnswer) -> RustBuffer {
+    return FfiConverterTypeLessonAnswer.lower(value)
 }
 
 
@@ -6528,6 +6782,194 @@ public func FfiConverterTypeGuidedCardKind_lower(_ value: GuidedCardKind) -> Rus
 
 
 /**
+ * What a lesson asks of the owner.
+ */
+
+public enum LessonKind: Equatable, Hashable {
+    
+    /**
+     * A few sentences of teaching.
+     */
+    case learn
+    /**
+     * One of the stage's exercises; recording a session of it finishes the
+     * lesson.
+     */
+    case practise
+    /**
+     * One try in ordinary life.
+     */
+    case everyday
+    /**
+     * A quick multiple-choice question.
+     */
+    case check
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LessonKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLessonKind: FfiConverterRustBuffer {
+    typealias SwiftType = LessonKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LessonKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .learn
+        
+        case 2: return .practise
+        
+        case 3: return .everyday
+        
+        case 4: return .check
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LessonKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .learn:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .practise:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .everyday:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .check:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonKind_lift(_ buf: RustBuffer) throws -> LessonKind {
+    return try FfiConverterTypeLessonKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonKind_lower(_ value: LessonKind) -> RustBuffer {
+    return FfiConverterTypeLessonKind.lower(value)
+}
+
+
+
+/**
+ * Where a lesson is on the owner's route.
+ */
+
+public enum LessonState: Equatable, Hashable {
+    
+    case done
+    /**
+     * The current stage's next lesson.
+     */
+    case next
+    /**
+     * Not done, but open: a stage the owner has already moved past.
+     */
+    case `open`
+    /**
+     * Unlocks once the lessons before it are done.
+     */
+    case locked
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension LessonState: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeLessonState: FfiConverterRustBuffer {
+    typealias SwiftType = LessonState
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> LessonState {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .done
+        
+        case 2: return .next
+        
+        case 3: return .`open`
+        
+        case 4: return .locked
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: LessonState, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .done:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .next:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .`open`:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .locked:
+            writeInt(&buf, Int32(4))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonState_lift(_ buf: RustBuffer) throws -> LessonState {
+    return try FfiConverterTypeLessonState.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeLessonState_lower(_ value: LessonState) -> RustBuffer {
+    return FfiConverterTypeLessonState.lower(value)
+}
+
+
+
+/**
  * A permission the app can ask the user for. More cases (camera,
  * photos, microphone) are added as their adapters are; see
  * docs/native-services.md. A permission whose service the app
@@ -7790,6 +8232,30 @@ fileprivate struct FfiConverterOptionTypeDogProfile: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeExerciseSummary: FfiConverterRustBuffer {
+    typealias SwiftType = ExerciseSummary?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeExerciseSummary.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeExerciseSummary.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeGateStatus: FfiConverterRustBuffer {
     typealias SwiftType = GateStatus?
 
@@ -7830,6 +8296,30 @@ fileprivate struct FfiConverterOptionTypeGoalFocus: FfiConverterRustBuffer {
         switch try readInt(&buf) as Int8 {
         case 0: return nil
         case 1: return try FfiConverterTypeGoalFocus.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterOptionTypeGoalLesson: FfiConverterRustBuffer {
+    typealias SwiftType = GoalLesson?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeGoalLesson.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeGoalLesson.read(from: &buf)
         default: throw UniffiInternalError.unexpectedOptionalTag
         }
     }
@@ -8075,6 +8565,31 @@ fileprivate struct FfiConverterSequenceTypeGoalEvent: FfiConverterRustBuffer {
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
             seq.append(try FfiConverterTypeGoalEvent.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeGoalLesson: FfiConverterRustBuffer {
+    typealias SwiftType = [GoalLesson]
+
+    public static func write(_ value: [GoalLesson], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeGoalLesson.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [GoalLesson] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [GoalLesson]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeGoalLesson.read(from: &buf))
         }
         return seq
     }
@@ -8665,6 +9180,12 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_answer_gate() != 49815) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_answer_lesson() != 56843) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_complete_lesson() != 46091) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_dog() != 32662) {

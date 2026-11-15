@@ -13,7 +13,7 @@ use good_dog_core::coaching::{
 };
 use good_dog_core::dog_training::{
     bundled_exercises, bundled_pathways, check_pathways, match_pathways, parse_pathways,
-    stage_readiness, GoalFocusPolicy, Pathway, StageBlocker,
+    stage_readiness, GoalFocusPolicy, LessonKind, Pathway, StageBlocker,
 };
 
 fn sample() -> Vec<Pathway> {
@@ -24,6 +24,59 @@ fn sample() -> Vec<Pathway> {
 fn shipped_pathways_parse_and_pass_every_check() {
     let problems = check_pathways(bundled_pathways(), bundled_exercises());
     assert!(problems.is_empty(), "{problems:#?}");
+}
+
+#[test]
+fn every_shipped_stage_has_a_lesson_plan_that_teaches_practises_and_checks() {
+    for pathway in bundled_pathways() {
+        for stage in &pathway.stages {
+            let kinds: Vec<LessonKind> = stage.lessons.iter().map(|l| l.kind).collect();
+            for kind in [LessonKind::Learn, LessonKind::Practise, LessonKind::Check] {
+                assert!(
+                    kinds.contains(&kind),
+                    "{}/{}: no {kind:?}",
+                    pathway.id,
+                    stage.id
+                );
+            }
+            assert!(
+                (3..=7).contains(&kinds.len()),
+                "{}/{}: {} lessons",
+                pathway.id,
+                stage.id,
+                kinds.len()
+            );
+        }
+    }
+}
+
+#[test]
+fn checks_catch_broken_lessons() {
+    let mut pathways: Vec<Pathway> = bundled_pathways().to_vec();
+    let lessons = &mut pathways[0].stages[0].lessons;
+    let practise = lessons
+        .iter()
+        .position(|l| l.kind == LessonKind::Practise)
+        .unwrap();
+    lessons[practise].exercise_id = Some("ex-recall-long-line".into());
+    let check = lessons
+        .iter()
+        .position(|l| l.kind == LessonKind::Check)
+        .unwrap();
+    lessons[check].correct_index = Some(9);
+    let copy = lessons[0].clone();
+    lessons.push(copy);
+    let problems = check_pathways(&pathways, bundled_exercises());
+    let has = |text: &str| problems.iter().any(|p| p.contains(text));
+    assert!(
+        has("practise needs one of the stage's exercises"),
+        "{problems:#?}"
+    );
+    assert!(
+        has("correctIndex is not one of the options"),
+        "{problems:#?}"
+    );
+    assert!(has("lesson id used twice"), "{problems:#?}");
 }
 
 #[test]

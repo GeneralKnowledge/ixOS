@@ -336,7 +336,44 @@ impl AppCore {
         .await
     }
 
-    /// Goes back one stage. Normal, not a failure.
+    /// Marks a learn or everyday lesson of the goal's current stage done.
+    /// Lessons unlock one by one: a locked one is refused, as are practise
+    /// lessons (recording a session finishes them) and checks (answer them).
+    pub async fn complete_lesson(
+        &self,
+        goal_id: u64,
+        lesson_id: String,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("complete-lesson", move |stored| {
+            stored.complete_lesson(goal_id, &lesson_id)?;
+            stored.goal_detail(goal_id, now)
+        })
+        .await
+    }
+
+    /// Answers a check lesson with the option at `choice`. A right answer
+    /// finishes the lesson; a wrong one changes nothing and can be tried
+    /// again. The explanation comes back either way.
+    pub async fn answer_lesson(
+        &self,
+        goal_id: u64,
+        lesson_id: String,
+        choice: u32,
+        now: LocalTime,
+    ) -> Result<LessonAnswer, AppError> {
+        self.change("answer-lesson", move |stored| {
+            let (correct, explanation) = stored.answer_lesson(goal_id, &lesson_id, choice)?;
+            Ok(LessonAnswer {
+                correct,
+                explanation,
+                goal: stored.goal_detail(goal_id, now)?,
+            })
+        })
+        .await
+    }
+
+        /// Goes back one stage. Normal, not a failure.
     pub async fn step_back(&self, goal_id: u64, now: LocalTime) -> Result<GoalDetail, AppError> {
         self.change("step-back", move |stored| {
             stored.step_back(goal_id, now)?;

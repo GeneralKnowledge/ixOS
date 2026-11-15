@@ -53,3 +53,9 @@ id = "GD-9"
 statement = "Not Today makes a rest day that can be taken back, and the week counts practice days against a gentle target, so a rest day never breaks a run."
 twin = ["GoodDogModelTests.testNotTodayIsARestDayAndTheWeekCountsDaysNotStreaks"]
 device = ["uitests/goals.toml"]
+
+[[requirement]]
+id = "GD-10"
+statement = "Each goal stage has a short lesson plan (learn, practise, everyday, quick check) that unlocks one lesson at a time; recording a session finishes a practise lesson, and a quick check explains its answer whether right or wrong."
+twin = ["GoodDogModelTests.testLessonsUnlockOneByOneAndAQuickCheckExplainsEitherWay"]
+device = ["uitests/lessons.toml"]
