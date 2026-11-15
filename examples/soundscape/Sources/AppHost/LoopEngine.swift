@@ -22,11 +22,13 @@ final class LoopEngine {
     enum Failure: LocalizedError {
         case noMicrophone
         case noInput
+        case noSound
 
         var errorDescription: String? {
             switch self {
             case .noMicrophone: "Soundscape can't use the microphone. Allow it in Settings, then try again."
             case .noInput: "There's no microphone to record from."
+            case .noSound: "No sound came from the microphone, so nothing was kept. Try again."
             }
         }
     }
@@ -144,12 +146,16 @@ final class LoopEngine {
     func record(frames: (Double) -> Int?) async throws -> URL {
         guard await AVAudioApplication.requestRecordPermission() else { throw Failure.noMicrophone }
         try ForgeAudioSession.activate(.record)
+        stop()
+        // The microphone joins the graph only when the engine starts with
+        // it: an engine already running for playback (Play, then Record)
+        // never feeds the tap, and the recording would wait forever.
+        if engine.isRunning { engine.stop() }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0, let length = frames(format.sampleRate) else {
             throw Failure.noInput
         }
-        stop()
         try startEngine()
         let session = AVAudioSession.sharedInstance()
         let latency = session.inputLatency + session.outputLatency + session.ioBufferDuration
@@ -188,12 +194,25 @@ final class LoopEngine {
         }
         isPlaying = true
         isRecording = true
+        // If the microphone stops feeding the tap (the audio route changed,
+        // a call came in), give up rather than wait forever.
+        let deadline = (countIn == nil ? 0 : barSeconds) + loopSeconds + Self.lead + latency + 3
+        let watchdog = Task { [recorder] in
+            guard (try? await Task.sleep(for: .seconds(deadline))) != nil else { return }
+            recorder.fail(Failure.noSound)
+        }
         defer {
+            watchdog.cancel()
             input.removeTap(onBus: 0)
             isRecording = false
             stop()
         }
         return try await recorder.finished()
+    }
+
+    /// Ends the recording now, keeping what was recorded so far.
+    func finishRecording() {
+        recorder?.keep()
     }
 
     /// Made outside the main actor: the engine calls it on its own thread.
@@ -341,8 +360,16 @@ private final class Recorder: @unchecked Sendable {
     /// frames still wanted.
     func take(_ buffer: AVAudioPCMBuffer, at when: AVAudioTime) {
         lock.lock()
-        defer { lock.unlock() }
-        guard let file, result == nil else { return }
+        let done = takeLocked(buffer, at: when)
+        lock.unlock()
+        // After the lock, and after `takeLocked` let go of the file, so the
+        // WAV file is closed (its header written) before anyone reads it.
+        done?()
+    }
+
+    /// Called with the lock held; returns the finishing step to run after.
+    private func takeLocked(_ buffer: AVAudioPCMBuffer, at when: AVAudioTime) -> (() -> Void)? {
+        guard let file, result == nil else { return nil }
         let rate = buffer.format.sampleRate
         var skip = 0
         if when.isHostTimeValid {
@@ -352,22 +379,37 @@ private final class Recorder: @unchecked Sendable {
             }
         }
         let available = Int(buffer.frameLength)
-        guard skip < available else { return }
+        guard skip < available else { return nil }
         let count = min(available - skip, frames - written)
-        guard count > 0, let part = Self.slice(buffer, from: skip, count: count) else { return }
+        guard count > 0, let part = Self.slice(buffer, from: skip, count: count) else { return nil }
         do {
             try file.write(from: part)
             written += count
-            if written >= frames { finish(.success(url)) }
+            if written >= frames { return finish(.success(url)) }
         } catch {
-            finish(.failure(error))
+            return finish(.failure(error))
         }
+        return nil
     }
 
     func cancel() {
+        fail(CancellationError())
+    }
+
+    /// Stops early and keeps what was recorded (the loop plays silence
+    /// after it), or cancels if nothing was yet.
+    func keep() {
         lock.lock()
-        defer { lock.unlock() }
-        finish(.failure(CancellationError()))
+        let done = finish(written > 0 ? .success(url) : .failure(CancellationError()))
+        lock.unlock()
+        done?()
+    }
+
+    func fail(_ error: Error) {
+        lock.lock()
+        let done = finish(.failure(error))
+        lock.unlock()
+        done?()
     }
 
     func finished() async throws -> URL {
@@ -387,15 +429,20 @@ private final class Recorder: @unchecked Sendable {
         }
     }
 
-    /// Called with the lock held.
-    private func finish(_ outcome: Result<URL, Error>) {
-        guard result == nil else { return }
-        // Releasing the file closes it, so it is complete on disk.
+    /// Called with the lock held. Drops the file (the last reference once
+    /// the caller's is gone, which closes it) and returns the step that
+    /// resumes the waiting caller, to run once the lock is released.
+    private func finish(_ outcome: Result<URL, Error>) -> (() -> Void)? {
+        guard result == nil else { return nil }
         file = nil
-        if case .failure = outcome { try? FileManager.default.removeItem(at: url) }
         result = outcome
-        continuation?.resume(with: outcome)
-        continuation = nil
+        let continuation = self.continuation
+        self.continuation = nil
+        let url = self.url
+        return {
+            if case .failure = outcome { try? FileManager.default.removeItem(at: url) }
+            continuation?.resume(with: outcome)
+        }
     }
 
     private static func slice(_ buffer: AVAudioPCMBuffer, from start: Int, count: Int) -> AVAudioPCMBuffer? {

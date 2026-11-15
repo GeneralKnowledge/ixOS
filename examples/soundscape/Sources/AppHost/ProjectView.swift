@@ -139,7 +139,10 @@ struct ProjectView: View {
     private var transport: some View {
         HStack(spacing: 16) {
             Button {
-                if engine.isPlaying {
+                if recording != nil {
+                    // Keeps the take so far; the loop pads it with silence.
+                    engine.finishRecording()
+                } else if engine.isPlaying {
                     engine.stop()
                 } else {
                     do { try engine.play() } catch { model.report(error) }
@@ -175,7 +178,7 @@ struct ProjectView: View {
                 } else if engine.isCountingIn {
                     Text("Get ready: one bar…").foregroundStyle(.orange)
                 } else if recording != nil {
-                    Text("Recording one pass…").foregroundStyle(.red)
+                    Text("Recording one pass. Stop keeps it.").foregroundStyle(.red)
                 } else if let summary = detail?.summary, let detail {
                     Text(SoundFormat.timing(tempo: summary.tempoBpm, bars: summary.bars))
                     Text(SoundFormat.duration(ms: Int64(detail.loopSeconds * 1000)) + " loop")
