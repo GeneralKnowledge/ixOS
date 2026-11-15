@@ -78,6 +78,9 @@ pub struct Entry {
     /// The branch or `--label`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub label: Option<String>,
+    /// Whether `<bundle>/<id>/icon.png` exists.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub icon: bool,
     pub size: u64,
 }
 
@@ -137,6 +140,39 @@ pub fn read_ipa(path: &Path) -> Result<IpaInfo, String> {
         None => None,
     };
     parse_ipa(&info, profile.as_deref())
+}
+
+/// The app's icon from the `.ipa`, for the page and the install prompt: the
+/// largest `AppIcon*.png` at the top of the app. `None` when the app has no
+/// icon, or only Xcode's crushed PNGs (CgBI), which browsers can't show.
+pub fn ipa_icon(path: &Path) -> Option<Vec<u8>> {
+    let file = fs::File::open(path).ok()?;
+    let mut zip = zip::ZipArchive::new(file).ok()?;
+    let mut best: Option<(u64, usize)> = None;
+    for i in 0..zip.len() {
+        let Ok(f) = zip.by_index(i) else { continue };
+        let Some(name) = f.name().ok().map(|n| n.into_owned()) else {
+            continue;
+        };
+        let parts: Vec<&str> = name.split('/').collect();
+        let is_icon = parts.len() == 3
+            && parts[0] == "Payload"
+            && parts[1].ends_with(".app")
+            && parts[2].starts_with("AppIcon")
+            && parts[2].ends_with(".png");
+        if is_icon && best.is_none_or(|(size, _)| f.size() > size) {
+            best = Some((f.size(), i));
+        }
+    }
+    let (size, index) = best?;
+    if size > 4 * 1024 * 1024 {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    zip.by_index(index).ok()?.read_to_end(&mut bytes).ok()?;
+    let png = bytes.starts_with(b"\x89PNG\r\n\x1a\n");
+    let crushed = bytes.get(12..16) == Some(b"CgBI");
+    (png && !crushed).then_some(bytes)
 }
 
 fn parse_ipa(info: &[u8], profile: Option<&[u8]>) -> Result<IpaInfo, String> {
@@ -362,16 +398,33 @@ pub fn manifest(base: &str, entry: &Entry) -> Result<Vec<u8>, String> {
         )
         .into(),
     );
+    let mut assets = vec![Value::Dictionary(asset)];
+    if entry.icon {
+        // Shown on the Home Screen while the app downloads.
+        for kind in ["display-image", "full-size-image"] {
+            let mut image = Dictionary::new();
+            image.insert("kind".into(), kind.into());
+            image.insert("needs-shine".into(), false.into());
+            image.insert(
+                "url".into(),
+                format!(
+                    "{}/{}/{}/icon.png",
+                    base.trim_end_matches('/'),
+                    entry.bundle_id,
+                    entry.id
+                )
+                .into(),
+            );
+            assets.push(Value::Dictionary(image));
+        }
+    }
     let mut metadata = Dictionary::new();
     metadata.insert("bundle-identifier".into(), entry.bundle_id.clone().into());
     metadata.insert("bundle-version".into(), entry.version.clone().into());
     metadata.insert("kind".into(), "software".into());
     metadata.insert("title".into(), entry.name.clone().into());
     let mut item = Dictionary::new();
-    item.insert(
-        "assets".into(),
-        Value::Array(vec![Value::Dictionary(asset)]),
-    );
+    item.insert("assets".into(), Value::Array(assets));
     item.insert("metadata".into(), Value::Dictionary(metadata));
     let mut root = Dictionary::new();
     root.insert("items".into(), Value::Array(vec![Value::Dictionary(item)]));
@@ -434,6 +487,7 @@ pub fn stage(
     let size = fs::copy(ipa, &tmp).map_err(|e| format!("cannot copy {}: {e}", ipa.display()))?;
     fs::rename(&tmp, build_dir.join("app.ipa"))
         .map_err(|e| format!("cannot publish the .ipa: {e}"))?;
+    let icon = ipa_icon(ipa).is_some_and(|png| fs::write(build_dir.join("icon.png"), png).is_ok());
     let entry = Entry {
         id,
         name: info.name.clone(),
@@ -445,6 +499,7 @@ pub fn stage(
         commit: source.commit,
         label: source.label,
         size,
+        icon,
     };
     entries.insert(0, entry.clone());
     entries.sort_by_key(|e| std::cmp::Reverse(e.published));
@@ -507,45 +562,159 @@ fn esc(s: &str) -> String {
         .replace('"', "&quot;")
 }
 
-/// One build on the page.
-fn build_html(base: &str, e: &Entry, newest: bool) -> String {
-    let title = e
-        .label
-        .as_deref()
-        .map(esc)
-        .unwrap_or_else(|| esc(e.commit.as_deref().unwrap_or("Build")));
-    let mut details = format!("{} ({})", esc(&e.version), esc(&e.build));
-    if let (Some(c), Some(_)) = (&e.commit, &e.label) {
-        details.push_str(&format!(" · {}", esc(c)));
+/// `52.5 MB`.
+fn size_text(bytes: u64) -> String {
+    if bytes == 0 {
+        String::new()
+    } else if bytes < 1024 * 1024 {
+        format!("{} KB", bytes.div_ceil(1024))
+    } else {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     }
-    details.push_str(&format!(" · published {}", when(e.published)));
-    let expiry = e
-        .expires
+}
+
+/// A colour for an app without an icon, the same for the same app every time.
+fn app_hue(bundle_id: &str) -> u32 {
+    bundle_id
+        .bytes()
+        .fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(u32::from(b)))
+        % 360
+}
+
+/// The app's icon, or its initial on a coloured tile.
+fn icon_html(base: &str, e: &Entry, class: &str) -> String {
+    if e.icon {
+        format!(
+            r#"<img class="{class}" src="{}/{}/{}/icon.png" alt="">"#,
+            esc(base.trim_end_matches('/')),
+            esc(&e.bundle_id),
+            esc(&e.id)
+        )
+    } else {
+        let hue = app_hue(&e.bundle_id);
+        let initial: String = e
+            .name
+            .chars()
+            .find(|c| c.is_alphanumeric())
+            .into_iter()
+            .collect();
+        format!(
+            r#"<div class="{class} mono" style="--h:{hue}" aria-hidden="true">{}</div>"#,
+            esc(&initial.to_uppercase())
+        )
+    }
+}
+
+/// Where a build came from: its label (branch, PR) and commit.
+fn source_chips(e: &Entry) -> String {
+    let mut chips = String::new();
+    if let Some(label) = &e.label {
+        chips.push_str(&format!(
+            r#"<span class="chip label">{}</span>"#,
+            esc(label)
+        ));
+    }
+    if let Some(commit) = &e.commit {
+        chips.push_str(&format!(
+            r#"<span class="chip commit">{}</span>"#,
+            esc(commit)
+        ));
+    }
+    if chips.is_empty() {
+        chips.push_str(r#"<span class="chip label">Build</span>"#);
+    }
+    chips
+}
+
+/// When it was published (made relative on the phone) and its size.
+fn facts(e: &Entry) -> String {
+    let mut out = format!(
+        r#"<time data-ago="{}">{}</time>"#,
+        e.published,
+        when(e.published)
+    );
+    let size = size_text(e.size);
+    if !size.is_empty() {
+        out.push_str(&format!(" · {size}"));
+    }
+    out
+}
+
+fn expiry_html(e: &Entry) -> String {
+    e.expires
         .map(|x| {
             format!(
                 r#"<p class="expires" data-expires="{x}">Signed until {}</p>"#,
                 when(x)
             )
         })
-        .unwrap_or_default();
-    let badge = if newest {
-        r#" <span class="badge">Newest</span>"#
-    } else {
-        ""
-    };
+        .unwrap_or_default()
+}
+
+fn install_link(base: &str, e: &Entry, class: &str, what: &str) -> String {
+    let title = e
+        .label
+        .as_deref()
+        .or(e.commit.as_deref())
+        .unwrap_or("build");
     format!(
-        r#"<div class="build{class}">
-<h3>{title}{badge}</h3>
-<p>{details}</p>
-{expiry}<a class="install" href="{href}" data-testid="install.{bundle}.{id}" aria-label="Install {name}, {title}">Install</a>
-</div>
-"#,
-        class = if newest { " newest" } else { "" },
-        href = esc(&install_url(base, e)),
-        bundle = esc(&e.bundle_id),
-        id = esc(&e.id),
-        name = esc(&e.name),
+        r#"<a class="{class}" href="{}" data-testid="install.{}.{}" aria-label="Install {} {what}, {}">Install</a>"#,
+        esc(&install_url(base, e)),
+        esc(&e.bundle_id),
+        esc(&e.id),
+        esc(&e.name),
+        esc(title),
     )
+}
+
+/// One app: its newest build up front, earlier ones folded away.
+fn app_html(base: &str, builds: &[&Entry]) -> String {
+    let e = builds[0];
+    let mut out = format!(
+        r#"<article class="app" data-name="{name_lower}">
+<div class="head">
+{icon}
+<div class="title">
+<h2>{name}</h2>
+<p class="version">Version {version} ({build})</p>
+</div>
+{install}
+</div>
+<div class="chips">{chips}</div>
+<p class="facts">{facts}</p>
+{expiry}"#,
+        name_lower = esc(&e.name.to_lowercase()),
+        icon = icon_html(base, e, "icon"),
+        name = esc(&e.name),
+        version = esc(&e.version),
+        build = esc(&e.build),
+        install = install_link(base, e, "get", "newest build"),
+        chips = source_chips(e),
+        facts = facts(e),
+        expiry = expiry_html(e),
+    );
+    if builds.len() > 1 {
+        out.push_str(&format!(
+            "<details><summary>{} earlier build{}</summary>\n<ul>\n",
+            builds.len() - 1,
+            if builds.len() == 2 { "" } else { "s" }
+        ));
+        for b in &builds[1..] {
+            out.push_str(&format!(
+                r#"<li><div><div class="chips">{}</div><p class="facts">Version {} ({}) · {}</p>{}</div>{}</li>
+"#,
+                source_chips(b),
+                esc(&b.version),
+                esc(&b.build),
+                facts(b),
+                expiry_html(b),
+                install_link(base, b, "again", "earlier build")
+            ));
+        }
+        out.push_str("</ul>\n</details>\n");
+    }
+    out.push_str("</article>\n");
+    out
 }
 
 /// The page the phone opens: each app (the most recently published first)
@@ -560,59 +729,124 @@ pub fn index_html(base: &str, entries: &[Entry]) -> String {
     }
     let mut cards = String::new();
     for (_, builds) in &apps {
-        cards.push_str(&format!("<section>\n<h2>{}</h2>\n", esc(&builds[0].name)));
-        cards.push_str(&build_html(base, builds[0], true));
-        if builds.len() > 1 {
-            cards.push_str(&format!(
-                "<details><summary>{} earlier build{}</summary>\n",
-                builds.len() - 1,
-                if builds.len() == 2 { "" } else { "s" }
-            ));
-            for b in &builds[1..] {
-                cards.push_str(&build_html(base, b, false));
-            }
-            cards.push_str("</details>\n");
-        }
-        cards.push_str("</section>\n");
+        cards.push_str(&app_html(base, builds));
     }
+    let summary = match (apps.len(), entries.first()) {
+        (0, _) | (_, None) => String::new(),
+        (n, Some(latest)) => format!(
+            r#"{n} app{} · last published <time data-ago="{}">{}</time>"#,
+            if n == 1 { "" } else { "s" },
+            latest.published,
+            when(latest.published)
+        ),
+    };
     if cards.is_empty() {
         cards.push_str(
-            "<p>Nothing published yet. On the laptop: <code>forge publish ios</code></p>",
+            r#"<div class="empty"><p>Nothing published yet.</p><p>On the laptop: <code>forge publish ios --project &lt;app&gt;</code></p></div>"#,
         );
     }
+    let search = if apps.len() > 4 {
+        r#"<input id="filter" type="search" placeholder="Find an app" aria-label="Find an app" data-testid="install.filter" autocomplete="off">"#
+    } else {
+        ""
+    };
     format!(
         r#"<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Forge builds</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-title" content="Forge">
+<title>Forge · Install</title>
 <style>
-:root {{ color-scheme: light dark; --bg: #f2f2f7; --card: #fff; --text: #1c1c1e; --muted: #6c6c70; --accent: #007aff; --warn: #c93400; --line: #e5e5ea; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --warn: #ff9f0a; --line: #38383a; }} }}
-body {{ margin: 0; padding: 16px; background: var(--bg); color: var(--text); font: 17px/1.4 -apple-system, system-ui, sans-serif; }}
-h1 {{ font-size: 28px; margin: 8px 0 4px; }}
-.hint {{ color: var(--muted); margin: 0 0 16px; }}
-section {{ background: var(--card); border-radius: 12px; padding: 16px; margin: 0 0 12px; }}
-h2 {{ margin: 0 0 8px; font-size: 22px; }}
-h3 {{ margin: 0; font-size: 17px; overflow-wrap: anywhere; }}
-p {{ margin: 2px 0; color: var(--muted); font-size: 15px; }}
-.build {{ padding: 12px 0; border-top: 1px solid var(--line); }}
-.build.newest {{ border-top: none; padding-top: 0; }}
-.badge {{ font-size: 12px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 6px; vertical-align: middle; }}
-.expired {{ color: var(--warn); font-weight: 600; }}
-.install {{ display: block; margin-top: 10px; padding: 12px; border-radius: 10px; background: var(--accent); color: #fff; text-align: center; font-weight: 600; text-decoration: none; }}
-.build:not(.newest) .install {{ background: transparent; color: var(--accent); border: 1px solid var(--accent); padding: 8px; }}
-summary {{ color: var(--accent); padding: 8px 0; cursor: pointer; }}
+:root {{ color-scheme: light dark; --bg: #f2f2f7; --card: #fff; --text: #1c1c1e; --muted: #6c6c70; --accent: #007aff; --chip: #eef0f4; --warn: #c93400; --bad: #d70015; --line: #e5e5ea; --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 16px rgba(0,0,0,.05); }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg: #000; --card: #1c1c1e; --text: #f2f2f7; --muted: #98989f; --accent: #0a84ff; --chip: #2c2c2e; --warn: #ff9f0a; --bad: #ff453a; --line: #38383a; --shadow: none; }} }}
+* {{ box-sizing: border-box; }}
+body {{ margin: 0; background: var(--bg); color: var(--text); font: 17px/1.4 -apple-system, system-ui, sans-serif; -webkit-text-size-adjust: 100%; }}
+.wrap {{ max-width: 640px; margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom)); }}
+header {{ margin: 12px 4px 20px; }}
+.brand {{ font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin: 0; }}
+h1 {{ font-size: 34px; line-height: 1.1; margin: 2px 0 4px; letter-spacing: -.01em; }}
+.sub {{ color: var(--muted); margin: 0; font-size: 15px; }}
+#filter {{ width: 100%; margin-top: 14px; padding: 10px 14px; border: 0; border-radius: 10px; background: var(--chip); color: var(--text); font: inherit; }}
+.app {{ background: var(--card); border-radius: 18px; padding: 16px; margin: 0 0 14px; box-shadow: var(--shadow); }}
+.head {{ display: flex; align-items: center; gap: 14px; }}
+.icon {{ width: 64px; height: 64px; border-radius: 15px; flex: none; object-fit: cover; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.12); }}
+.mono {{ display: grid; place-items: center; color: #fff; font-size: 30px; font-weight: 700; background: linear-gradient(145deg, hsl(var(--h) 75% 58%), hsl(calc(var(--h) + 40) 70% 42%)); }}
+.title {{ flex: 1; min-width: 0; }}
+h2 {{ margin: 0; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }}
+.version {{ margin: 2px 0 0; color: var(--muted); font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }}
+.get {{ flex: none; padding: 7px 20px; border-radius: 999px; background: var(--accent); color: #fff; font-weight: 700; font-size: 15px; text-decoration: none; }}
+.get:active, .again:active {{ opacity: .6; }}
+.chips {{ display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }}
+.chip {{ font-size: 13px; padding: 2px 9px; border-radius: 999px; background: var(--chip); color: var(--text); max-width: 100%; overflow-wrap: anywhere; }}
+.chip.commit {{ font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--muted); }}
+.facts {{ margin: 8px 0 0; color: var(--muted); font-size: 14px; }}
+.expires {{ margin: 4px 0 0; color: var(--muted); font-size: 14px; }}
+.expires.soon {{ color: var(--warn); font-weight: 600; }}
+.expires.gone {{ color: var(--bad); font-weight: 600; }}
+details {{ margin-top: 12px; border-top: 1px solid var(--line); }}
+summary {{ color: var(--accent); padding: 12px 0 2px; cursor: pointer; font-size: 15px; list-style: none; }}
+summary::-webkit-details-marker {{ display: none; }}
+summary::after {{ content: ""; display: inline-block; width: 7px; height: 7px; margin: 0 0 3px 8px; border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); transition: transform .2s; }}
+details[open] summary::after {{ transform: rotate(-135deg); margin-bottom: -1px; }}
+ul {{ list-style: none; margin: 0; padding: 0; }}
+li {{ display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }}
+li:last-child {{ border-bottom: none; padding-bottom: 0; }}
+li > div {{ flex: 1; min-width: 0; }}
+li .chips {{ margin: 0; }}
+li .facts {{ margin-top: 4px; }}
+.again {{ flex: none; padding: 5px 14px; border-radius: 999px; border: 1.5px solid var(--accent); color: var(--accent); font-weight: 600; font-size: 14px; text-decoration: none; }}
+.empty {{ background: var(--card); border-radius: 18px; padding: 24px 16px; text-align: center; color: var(--muted); }}
+code {{ font-family: ui-monospace, Menlo, monospace; font-size: 14px; }}
+footer {{ margin: 24px 4px 0; color: var(--muted); font-size: 13px; }}
+footer p {{ margin: 0 0 8px; }}
 </style>
 </head>
 <body>
-<h1>Forge builds</h1>
-<p class="hint">Tap Install, then Install again. A build replaces the app on the phone and keeps its data, so you can go back to an earlier one the same way.</p>
-{cards}<script>
-for (const p of document.querySelectorAll("[data-expires]")) {{
-  if (Number(p.dataset.expires) * 1000 < Date.now()) {{ p.textContent = "Signature expired: publish it again"; p.className = "expired"; }}
-}}
+<div class="wrap">
+<header>
+<p class="brand">Forge</p>
+<h1>Install</h1>
+<p class="sub">{summary}</p>
+{search}
+</header>
+<main>
+{cards}</main>
+<footer>
+<p>Tap Install, then Install again when the phone asks. The app downloads on the Home Screen.</p>
+<p>A new build replaces the app and keeps its data. To go back, install an earlier build the same way.</p>
+<p>Free signing lasts 7 days: publishing again renews it.</p>
+</footer>
+</div>
+<script>
+(() => {{
+  const now = Date.now() / 1000;
+  const day = 86400;
+  const ago = s => {{
+    const d = now - s;
+    if (d < 60) return "just now";
+    if (d < 3600) return Math.floor(d / 60) + " min ago";
+    if (d < day) return Math.floor(d / 3600) + " h ago";
+    if (d < 2 * day) return "yesterday";
+    return Math.floor(d / day) + " days ago";
+  }};
+  for (const t of document.querySelectorAll("time[data-ago]")) {{
+    t.title = t.textContent;
+    t.textContent = ago(Number(t.dataset.ago));
+  }}
+  for (const p of document.querySelectorAll("[data-expires]")) {{
+    const left = Number(p.dataset.expires) - now;
+    if (left <= 0) {{ p.textContent = "Signature expired: publish it again"; p.classList.add("gone"); }}
+    else if (left < day) {{ p.textContent = "Expires in " + Math.max(1, Math.round(left / 3600)) + " h"; p.classList.add("soon"); }}
+    else {{ const n = Math.floor(left / day); p.textContent = "Expires in " + n + " day" + (n === 1 ? "" : "s"); if (n < 2) p.classList.add("soon"); }}
+  }}
+  const f = document.getElementById("filter");
+  if (f) f.addEventListener("input", () => {{
+    const q = f.value.trim().toLowerCase();
+    for (const a of document.querySelectorAll(".app")) a.hidden = !!q && !a.dataset.name.includes(q);
+  }});
+}})();
 </script>
 </body>
 </html>
@@ -629,6 +863,7 @@ fn content_type(path: &Path) -> &'static str {
         Some("plist") => "text/xml",
         Some("json") => "application/json",
         Some("ipa") => "application/octet-stream",
+        Some("png") => "image/png",
         _ => "application/octet-stream",
     }
 }
@@ -641,7 +876,7 @@ fn resolve(dir: &Path, url_path: &str) -> Option<PathBuf> {
     match parts.as_slice() {
         [""] | [INDEX_HTML] => Some(dir.join(INDEX_HTML)),
         [APPS_JSON] => Some(dir.join(APPS_JSON)),
-        [id, build, file @ ("manifest.plist" | "app.ipa")]
+        [id, build, file @ ("manifest.plist" | "app.ipa" | "icon.png")]
             if safe_id(id).is_ok() && safe_build(build) =>
         {
             Some(dir.join(id).join(build).join(file))
@@ -1217,6 +1452,63 @@ mod tests {
     }
 
     #[test]
+    fn the_icon_reaches_the_page_and_the_install_prompt() {
+        let tmp = tempfile::tempdir().unwrap();
+        let ipa = tmp.path().join("App.ipa");
+        let png = b"\x89PNG\r\n\x1a\n\0\0\0\rIHDRbig";
+        {
+            let mut zip = zip::ZipWriter::new(fs::File::create(&ipa).unwrap());
+            let opts = zip::write::SimpleFileOptions::default();
+            zip.start_file("Payload/AppHost.app/Info.plist", opts)
+                .unwrap();
+            zip.write_all(INFO.as_bytes()).unwrap();
+            zip.start_file("Payload/AppHost.app/AppIcon60x60@2x.png", opts)
+                .unwrap();
+            zip.write_all(&png[..12]).unwrap();
+            zip.start_file("Payload/AppHost.app/AppIcon76x76@2x~ipad.png", opts)
+                .unwrap();
+            zip.write_all(png).unwrap();
+            zip.start_file("Payload/AppHost.app/Frameworks/AppIconX.png", opts)
+                .unwrap();
+            zip.write_all(&[png.as_slice(), &[0; 64]].concat()).unwrap();
+            zip.finish().unwrap();
+        }
+        assert_eq!(
+            ipa_icon(&ipa).as_deref(),
+            Some(png.as_slice()),
+            "the largest top-level AppIcon"
+        );
+
+        let dir = tmp.path().join("pub");
+        let info = read_ipa(&ipa).unwrap();
+        let e = stage(&dir, &ipa, &info, "https://h", Source::default(), 1, 5).unwrap();
+        assert!(e.icon);
+        assert!(
+            resolve(&dir, &format!("/{}/{}/icon.png", e.bundle_id, e.id))
+                .unwrap()
+                .is_file()
+        );
+        let manifest =
+            fs::read_to_string(dir.join(&e.bundle_id).join(&e.id).join("manifest.plist")).unwrap();
+        assert!(
+            manifest.contains("display-image") && manifest.contains("/icon.png"),
+            "{manifest}"
+        );
+        let page = fs::read_to_string(dir.join("index.html")).unwrap();
+        assert!(
+            page.contains(r#"<img class="icon" src="https://h/"#),
+            "{page}"
+        );
+
+        // No icon: a coloured initial instead, and no image in the manifest.
+        write_ipa(&ipa);
+        assert!(ipa_icon(&ipa).is_none());
+        let e = stage(&dir, &ipa, &info, "https://h", Source::default(), 2, 5).unwrap();
+        assert!(!e.icon);
+        assert!(index_html("https://h", &[e]).contains(r#"class="icon mono""#));
+    }
+
+    #[test]
     fn reads_the_app_and_its_profile_from_an_ipa() {
         let tmp = tempfile::tempdir().unwrap();
         let ipa = tmp.path().join("App.ipa");
@@ -1249,6 +1541,7 @@ mod tests {
             commit: Some("abc1234".into()),
             label: None,
             size: 1,
+            icon: false,
         };
         let xml =
             String::from_utf8(manifest("https://create.t.ts.net:8443/", &entry).unwrap()).unwrap();

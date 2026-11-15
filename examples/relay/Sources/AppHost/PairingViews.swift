@@ -4,6 +4,7 @@ import CoreImage.CIFilterBuiltins
 import ForgeAppKit
 import SwiftUI
 import UIKit
+import Vision
 import VisionKit
 
 /// Shows this device's pairing code as a QR code for the other device to
