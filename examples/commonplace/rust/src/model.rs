@@ -237,12 +237,12 @@ pub fn app_error_kind(error: AppError) -> ErrorKind {
         AppError::NotFound => ErrorKind::NotFound,
         AppError::AlreadySubscribed { .. } => ErrorKind::Invalid,
         AppError::Storage { .. } => ErrorKind::Internal,
-        AppError::InUse
-        | AppError::Http { .. }
-        | AppError::Offline { .. }
+        // The site answered with an error, or the library is open elsewhere.
+        AppError::InUse | AppError::Http { .. } => ErrorKind::Unavailable,
+        AppError::Offline { .. }
         | AppError::Certificate { .. }
         | AppError::Timeout
-        | AppError::Network { .. } => ErrorKind::Unavailable,
+        | AppError::Network { .. } => ErrorKind::Network,
         AppError::Cancelled => ErrorKind::Cancelled,
         AppError::Interrupted => ErrorKind::Interrupted,
         AppError::ShutDown => ErrorKind::ShutDown,

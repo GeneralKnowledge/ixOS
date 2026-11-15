@@ -28,7 +28,7 @@ import uniffi.forge_app.RuntimeEvents
 import uniffi.forge_app.forgeAppContractVersion
 
 /** The version of the forge-app contract this host was written against. */
-const val FORGE_HOST_CONTRACT_VERSION: UInt = 2u
+const val FORGE_HOST_CONTRACT_VERSION: UInt = 3u
 
 /**
  * What the host needs from an app's Rust core: the runtime contract every forge-app core

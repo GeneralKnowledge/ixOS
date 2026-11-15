@@ -149,11 +149,11 @@ pub fn app_error_kind(error: AppError) -> ErrorKind {
         AppError::InvalidInput { .. } => ErrorKind::Invalid,
         AppError::NotFound { .. } => ErrorKind::NotFound,
         AppError::Storage { .. } => ErrorKind::Internal,
-        AppError::InUse
-        | AppError::Offline { .. }
+        AppError::InUse => ErrorKind::Unavailable,
+        AppError::Offline { .. }
         | AppError::Certificate { .. }
         | AppError::Timeout
-        | AppError::Network { .. } => ErrorKind::Unavailable,
+        | AppError::Network { .. } => ErrorKind::Network,
         AppError::Cancelled => ErrorKind::Cancelled,
         AppError::Interrupted => ErrorKind::Interrupted,
         AppError::ShutDown => ErrorKind::ShutDown,

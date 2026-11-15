@@ -146,14 +146,13 @@ pub fn relay_error_kind(error: RelayError) -> ErrorKind {
         | RelayError::CodeExpired
         | RelayError::WordCode { .. }
         | RelayError::File { .. }
-        | RelayError::AlreadyListening
-        | RelayError::Refused
-        | RelayError::Declined { .. } => ErrorKind::Invalid,
+        | RelayError::AlreadyListening => ErrorKind::Invalid,
+        // The other device said no: pairing again (or asking its owner)
+        // is the way on, not trying again.
+        RelayError::Refused | RelayError::Declined { .. } => ErrorKind::Refused,
         RelayError::UnknownPeer { .. } | RelayError::NotFound { .. } => ErrorKind::NotFound,
-        // The framework has no network kind (friction R3): "try again".
-        RelayError::Unreachable { .. } | RelayError::Connection { .. } | RelayError::InUse => {
-            ErrorKind::Unavailable
-        }
+        RelayError::Unreachable { .. } | RelayError::Connection { .. } => ErrorKind::Network,
+        RelayError::InUse => ErrorKind::Unavailable,
         RelayError::Corrupt { .. } => ErrorKind::Corrupt,
         RelayError::NewerData => ErrorKind::NewerData,
         RelayError::Storage { .. } => ErrorKind::Internal,
@@ -241,4 +240,27 @@ pub fn clean_note(text: &str) -> Result<String, RelayError> {
         });
     }
     Ok(text.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_failures_and_refusals_have_their_own_kinds() {
+        let reason = String::new;
+        assert_eq!(
+            relay_error_kind(RelayError::Unreachable { reason: reason() }),
+            ErrorKind::Network
+        );
+        assert_eq!(
+            relay_error_kind(RelayError::Connection { reason: reason() }),
+            ErrorKind::Network
+        );
+        assert_eq!(relay_error_kind(RelayError::Refused), ErrorKind::Refused);
+        assert_eq!(
+            relay_error_kind(RelayError::Declined { reason: reason() }),
+            ErrorKind::Refused
+        );
+    }
 }

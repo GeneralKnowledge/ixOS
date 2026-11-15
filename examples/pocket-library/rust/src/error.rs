@@ -105,10 +105,10 @@ impl LibraryError {
             Self::CatalogueDisabled => ErrorKind::NeedsUser,
             Self::Offline { .. }
             | Self::Timeout
-            | Self::CatalogueUnavailable { .. }
-            | Self::BadResponse { .. }
             | Self::Certificate { .. }
-            | Self::Network { .. }
+            | Self::Network { .. } => ErrorKind::Network,
+            Self::CatalogueUnavailable { .. }
+            | Self::BadResponse { .. }
             | Self::InUse { .. }
             | Self::SummaryUnavailable { .. }
             | Self::SummaryFailed { .. } => ErrorKind::Unavailable,

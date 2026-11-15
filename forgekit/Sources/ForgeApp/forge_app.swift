@@ -1093,9 +1093,22 @@ public enum ErrorKind: Equatable, Hashable {
      */
     case notFound
     /**
-     * Offline or a service is down. Try again later.
+     * Something the app needs is down or switched off right now (a
+     * service answered that it is unavailable, a feature is turned off).
+     * Try again later.
      */
     case unavailable
+    /**
+     * A server or another device couldn't be reached, or the connection
+     * broke part way. Try again, perhaps on another network.
+     */
+    case network
+    /**
+     * The other side (a server, a paired device) understood and said no.
+     * Trying the same thing again won't help; the person has to change
+     * something first (sign in again, pair again, ask the owner).
+     */
+    case refused
     /**
      * Stopped because the app left the screen. Safe to retry on return.
      */
@@ -1151,19 +1164,23 @@ public struct FfiConverterTypeErrorKind: FfiConverterRustBuffer {
         
         case 3: return .unavailable
         
-        case 4: return .interrupted
+        case 4: return .network
         
-        case 5: return .cancelled
+        case 5: return .refused
         
-        case 6: return .needsUser
+        case 6: return .interrupted
         
-        case 7: return .corrupt
+        case 7: return .cancelled
         
-        case 8: return .newerData
+        case 8: return .needsUser
         
-        case 9: return .shutDown
+        case 9: return .corrupt
         
-        case 10: return .`internal`
+        case 10: return .newerData
+        
+        case 11: return .shutDown
+        
+        case 12: return .`internal`
         
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1185,32 +1202,40 @@ public struct FfiConverterTypeErrorKind: FfiConverterRustBuffer {
             writeInt(&buf, Int32(3))
         
         
-        case .interrupted:
+        case .network:
             writeInt(&buf, Int32(4))
         
         
-        case .cancelled:
+        case .refused:
             writeInt(&buf, Int32(5))
         
         
-        case .needsUser:
+        case .interrupted:
             writeInt(&buf, Int32(6))
         
         
-        case .corrupt:
+        case .cancelled:
             writeInt(&buf, Int32(7))
         
         
-        case .newerData:
+        case .needsUser:
             writeInt(&buf, Int32(8))
         
         
-        case .shutDown:
+        case .corrupt:
             writeInt(&buf, Int32(9))
         
         
-        case .`internal`:
+        case .newerData:
             writeInt(&buf, Int32(10))
+        
+        
+        case .shutDown:
+            writeInt(&buf, Int32(11))
+        
+        
+        case .`internal`:
+            writeInt(&buf, Int32(12))
         
         }
     }

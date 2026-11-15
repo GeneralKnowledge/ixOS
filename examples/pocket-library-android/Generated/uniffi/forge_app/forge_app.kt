@@ -1918,9 +1918,22 @@ enum class ErrorKind {
      */
     NOT_FOUND,
     /**
-     * Offline or a service is down. Try again later.
+     * Something the app needs is down or switched off right now (a
+     * service answered that it is unavailable, a feature is turned off).
+     * Try again later.
      */
     UNAVAILABLE,
+    /**
+     * A server or another device couldn't be reached, or the connection
+     * broke part way. Try again, perhaps on another network.
+     */
+    NETWORK,
+    /**
+     * The other side (a server, a paired device) understood and said no.
+     * Trying the same thing again won't help; the person has to change
+     * something first (sign in again, pair again, ask the owner).
+     */
+    REFUSED,
     /**
      * Stopped because the app left the screen. Safe to retry on return.
      */
