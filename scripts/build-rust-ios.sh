@@ -54,7 +54,9 @@ elif command -v swift >/dev/null 2>&1; then
       export CC="${TOOLCHAIN}/usr/bin/clang"
       export CXX="${TOOLCHAIN}/usr/bin/clang++"
       export AR="${TOOLCHAIN}/usr/bin/ar"
-      export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${TOOLCHAIN}/usr/bin/clang"
+      # No Linux linker can link an iOS dylib; the static library needs
+      # none, so dependency cdylibs get an empty file (see the script).
+      export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${CARGO_TARGET_AARCH64_APPLE_IOS_LINKER:-$(cd "$(dirname "$0")" && pwd)/ios-no-dylib-linker.sh}"
     fi
   else
     echo "[forge] warning: Darwin Swift SDK not installed (run: xtool setup)" >&2
