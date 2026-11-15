@@ -227,7 +227,7 @@ done
 echo "[ios-check] Logs: $LOGS"
 # The builds above are what `forge publish ios` (over the air) and `forge run
 # ios` (by cable) install: in this checkout they rebuild only what changed
-# (same configuration: debug Swift, release Rust), then sign. Nothing here
+# (same configuration: debug Swift, forge-dev Rust), then sign. Nothing here
 # needs the phone.
 for app in "${APPS[@]}"; do
   if [[ "${RESULT[$app]}" == ok && -f "examples/$app/forge.toml" ]]; then
