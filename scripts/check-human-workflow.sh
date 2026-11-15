@@ -36,7 +36,7 @@ unset FORGE_MCP_CHILD ANTHROPIC_API_KEY OPENAI_API_KEY || true
 
 step "1. Install: build the forge CLI from the checkout"
 cargo build -q --manifest-path "$ROOT/Cargo.toml" -p forge-cli
-FORGE="$ROOT/target/debug/forge"
+FORGE="${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge"
 export FORGE_WORKSPACE="$ROOT"
 "$FORGE" --version
 "$FORGE" doctor || true   # readiness report; a Linux box without xtool is fine here

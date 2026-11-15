@@ -28,7 +28,7 @@ fail() { echo "[fresh-app] FAIL: $*" >&2; exit 1; }
 
 step "Building the forge CLI"
 cargo build -q --manifest-path "$ROOT/Cargo.toml" -p forge-cli
-FORGE="$ROOT/target/debug/forge"
+FORGE="${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge"
 export FORGE_WORKSPACE="$ROOT"
 before="$(git -C "$ROOT" status --porcelain)"
 

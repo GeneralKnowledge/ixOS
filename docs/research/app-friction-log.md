@@ -22,6 +22,38 @@ How it is used:
 Severity: **blocker** (had to stop), **limit** (had to work around),
 **annoyance** (cost time, nothing more).
 
+## Overnight pass, 2026-11-15: what is left, ranked
+
+Every crate, example and app crate was built, linted and tested on Linux
+(all green before and after the fixes above); the Swift was not compiled.
+These are the open items from this log, the
+[showcase log](showcase-friction-log.md) and the
+[Good Dog log](../good-dog-pain-points.md), plus what reading all the apps
+side by side showed, most useful first. Each says why it waited.
+
+| Rank | What | Seen in | Why not tonight |
+|---|---|---|---|
+| 1 | Five apps still keep their own state model instead of ForgeHost (showcase F7). It is the root of most Swift copies: `AppLifecycle.swift` (Chat, Good Dog), `ErrorAlert.swift` (Chat, Good Dog, while ForgeAppKit has `forgeAlert`), and the test-data flags in two models | Chat, Good Dog, Pocket Library, Weather, Device Lab | Swift, and a phone check per app |
+| 2 | `LaunchAppearance.swift` is the same 25 lines in 11 apps and both iOS templates. It belongs in ForgeUI | All iOS apps | Every launcher and xtool target needs ForgeUI, and Chat, Weather and Counter don't use the ForgeKit package yet; needs a compile |
+| 3 | `PermissionStatus.allowsUse` in Swift (A8): written and ready, held back | Device Lab, FieldKit | Changes generated Swift in six apps; wants `check-ios-xtool.sh affected` first |
+| 4 | `ErrorKind` has no `Network` or `Refused` (A19) | Relay, Weather, Chat, Commonplace | Changes the shared contract, so a ForgeKit release and every Swift `switch` on it |
+| 5 | Background location (A10) | FieldKit F3 | A feature, not a refactor; needs the phone |
+| 6 | A read on the command thread that doesn't raise the revision, or a reader connection from `Database` (A5) | FieldKit | One use so far |
+| 7 | A "service loop" that stops on background and shutdown and feeds commands (A18, with A9) | Relay, FieldKit | Relay stage 1 (iroh) will reshape Relay's listener; design it from that |
+| 8 | A file-backed Keychain stand-in for Linux and tests (A17) | Relay | One use; Relay stage 1 decides where secrets live |
+| 9 | The Noise channel out of `forge-devproto` (A16) | Relay | Relay is moving to iroh, which may make it moot |
+| 10 | UniFFI enums without data aren't `CaseIterable`, so pickers keep hand lists (Good Dog 6) | Good Dog | Bindings post-processing; Swift |
+| 11 | `forge init` names: `--library`, and folders and test target still called `AppHost` (A7) | FieldKit, every new app | CLI and template change; small, next pass |
+| 12 | Ids are `i64` in SQLite apps and `u64` in file apps (A3) | FieldKit, Commonplace, Checklist | Docs and template; touches the starter's API |
+| 13 | `Document`-backed `start_fresh` in the template (rest of A15) | Sketchbook, Soundscape, Relay | Template change |
+| 14 | Commonplace maps every `StorageError` to `Storage`, so corrupt data shows as an internal error with no recovery offer; the other apps say `Corrupt` | Commonplace | App behaviour, wants Reuben's eye |
+| 15 | Relay keeps its own error conversions | Relay | Its stage 1 work is in flight |
+
+Also seen: `forge-services`' `ai` feature (Forge AI, #196) was never linted
+or tested on its own in CI or `make test`; it is now. And the check scripts
+ran `target/debug/forge` even when `CARGO_TARGET_DIR` put it elsewhere; they
+follow it now.
+
 ## Summary
 
 | # | App | Friction | Severity | Status |
@@ -31,14 +63,14 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Open |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
-| A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Open |
+| A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
 | A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Open |
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
-| A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
+| A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Documented on `Runtime::command` and pinned by a test (2026-11-15); `rt.post` waits for a second use |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
 | A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Fixed: `write_hashed` |
 | A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Fixed: `import_hashed_keeping_extension`, `import_hashed_with_extension`, `safe_file_name` |
-| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Open |
+| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Conversions fixed: `forge_app::app_error_conversions!`; title file names fixed: `files::title_file_name(s)` (2026-11-15); `start_fresh` open |
 | A16 | Relay | The Noise channel and framing Relay needs live in `forge-devproto`, a frozen tooling crate | Limit | Open: second use, extract after merge |
 | A17 | Relay | Pair secrets sit in the app's JSON file: the Keychain service needs the iOS host, so tests and the Linux command can't use it | Limit | Open |
 | A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
@@ -141,6 +173,11 @@ way to query data too large to publish.
 **Framework.** Accept for now. If a second app needs dates in Rust, add a
 small `forge_runtime::time` with ISO 8601 in and out, or allow the `time`
 crate in app crates.
+
+**Fixed (2026-11-15, overnight pass).** Weather had its own copy of the
+same date algorithm, so that is the second use. `forge_runtime::time` has
+`civil_from_days` and `utc_iso8601`; FieldKit's exports and Weather's local
+times use them. Parsing stays out until an app needs it.
 
 ## A7. Template names
 
@@ -282,6 +319,15 @@ from a title.
 conversions (or a documented `#[derive]`), `Document`-backed `start_fresh`
 in the template, and `forge_storage::files::title_file_name` with
 numbering for repeats.
+
+**Fixed in part (2026-11-15, overnight pass).** `forge_app::app_error_conversions!(MyError)`
+writes `From<Stopped>`, `From<OpenError>` and `From<DocumentError>` (and
+`From<StorageError>` when listed) for an error with the standard cases.
+Checklist, FieldKit, Sketchbook and Soundscape use it; Relay keeps its own
+until its stage 1 work settles. File names from titles, which FieldKit,
+Sketchbook and Soundscape each wrote, are
+`forge_storage::files::title_file_name(title, fallback)` and
+`title_file_names` (numbering repeats). `start_fresh` is still open.
 
 ## A16. The encrypted channel lives in a tooling crate
 

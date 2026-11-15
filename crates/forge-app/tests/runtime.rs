@@ -73,6 +73,17 @@ fn commands_run_in_arrival_order_and_publish_after_commit() {
 }
 
 #[test]
+fn a_command_whose_future_is_dropped_still_runs() {
+    // A listener that can't await queues a command and drops the future.
+    let (rt, view) = runtime();
+    drop(add(&rt, "from a listener"));
+    // Commands run in order, so once this one answers, the dropped one ran.
+    assert_eq!(block_on(add(&rt, "next")), Ok(2));
+    assert_eq!(*view.get(), ["from a listener", "next"]);
+    assert_eq!(rt.revision(), 2);
+}
+
+#[test]
 fn a_failed_command_changes_no_revision() {
     let (rt, _) = runtime();
     let events = rt.events().unwrap();

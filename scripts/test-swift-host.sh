@@ -37,7 +37,7 @@ cp "$CARGO_TARGET/debug/lib${LIB_NAME}.a" "$LIB_DIR/libforge_ffi.a"
 if [[ "$(basename "$PACKAGE")" == "chat" ]]; then
   echo "[forge] Building the chat server for the Chat tests..."
   (cd "$ROOT" && cargo build -p chat-server)
-  export CHAT_SERVER="$ROOT/target/debug/chat-server"
+  export CHAT_SERVER="${CARGO_TARGET_DIR:-$ROOT/target}/debug/chat-server"
 fi
 
 echo "[forge] Running swift test in $PACKAGE..."

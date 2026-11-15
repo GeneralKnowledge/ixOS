@@ -1,6 +1,6 @@
 //! The types Sketchbook's API speaks in, and its errors.
 
-use forge_app::{DocumentError, ErrorKind, OpenError, Stopped};
+use forge_app::ErrorKind;
 use forge_storage::FileStoreError;
 use serde::{Deserialize, Serialize};
 
@@ -167,21 +167,7 @@ pub fn sketchbook_error_kind(error: SketchbookError) -> ErrorKind {
     }
 }
 
-impl From<Stopped> for SketchbookError {
-    fn from(stopped: Stopped) -> Self {
-        Self::Stopped { kind: stopped.kind }
-    }
-}
-
-impl From<DocumentError> for SketchbookError {
-    fn from(err: DocumentError) -> Self {
-        match err {
-            DocumentError::Unreadable { reason } => Self::Corrupt { reason },
-            DocumentError::Newer { .. } => Self::NewerData,
-            DocumentError::Io { reason } => Self::Storage { reason },
-        }
-    }
-}
+forge_app::app_error_conversions!(SketchbookError);
 
 impl From<FileStoreError> for SketchbookError {
     fn from(err: FileStoreError) -> Self {
@@ -190,17 +176,6 @@ impl From<FileStoreError> for SketchbookError {
                 reason: err.to_string(),
             },
             other => Self::Drawing {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
-
-impl From<OpenError> for SketchbookError {
-    fn from(err: OpenError) -> Self {
-        match err {
-            OpenError::InUse { .. } => Self::InUse,
-            other => Self::Storage {
                 reason: other.to_string(),
             },
         }

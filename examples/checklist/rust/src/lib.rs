@@ -23,11 +23,7 @@ mod checklist;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use forge_app::{
-    Cancellation, DataDirectory, Document, DocumentError, ErrorKind, OpenError, Published, Runtime,
-    Stopped,
-};
-use forge_storage::StorageError;
+use forge_app::{Cancellation, DataDirectory, Document, ErrorKind, Published, Runtime};
 
 use checklist::Checklist;
 pub use checklist::{Item, Summary, MAX_TITLE_CHARS};
@@ -84,44 +80,7 @@ pub enum ChecklistError {
     Stopped { kind: ErrorKind },
 }
 
-impl From<Stopped> for ChecklistError {
-    fn from(stopped: Stopped) -> Self {
-        Self::Stopped { kind: stopped.kind }
-    }
-}
-
-impl From<StorageError> for ChecklistError {
-    fn from(err: StorageError) -> Self {
-        match err {
-            StorageError::CorruptData { reason } => Self::Corrupt { reason },
-            StorageError::UnsupportedSchemaVersion { .. } => Self::NewerData,
-            other => Self::Storage {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
-
-impl From<DocumentError> for ChecklistError {
-    fn from(err: DocumentError) -> Self {
-        match err {
-            DocumentError::Unreadable { reason } => Self::Corrupt { reason },
-            DocumentError::Newer { .. } => Self::NewerData,
-            DocumentError::Io { reason } => Self::Storage { reason },
-        }
-    }
-}
-
-impl From<OpenError> for ChecklistError {
-    fn from(err: OpenError) -> Self {
-        match err {
-            OpenError::InUse { .. } => Self::InUse,
-            other => Self::Storage {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
+forge_app::app_error_conversions!(ChecklistError: Stopped, OpenError, DocumentError, StorageError);
 
 /// The framework kind of a Checklist error.
 #[uniffi::export]
