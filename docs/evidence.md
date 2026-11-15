@@ -2,7 +2,7 @@
 
 Status: format version 1, 2026-11-08. The Linux half (the headless twin) is built and runs in CI for Pocket Library. `forge ui run` writes device bundles and `forge verify` reads both kinds; both are tested on Linux, and the first device bundle was written on an iPhone on 2026-11-08 (Pocket Library PL-10, `uitests/m0.toml`, 11 of 11 steps on iOS 26).
 
-"The build passed" says the code compiles. It does not say the app works. This page defines how a run of Forge records what it proved, so that an agent can show that a feature works instead of saying so, and a person can check the claim in a minute. It is the capability ledger's rule ("an API is not proof") applied to apps, from discoveries D4 and D5 in the [agent capability audit](research/forge-agent-capability-audit.md).
+"The build passed" says the code compiles. It does not say the app works. This page defines how a run of Forge records what it proved, so that an agent can show that a feature works instead of saying so, and a person can check the claim in a minute. It is the capability ledger's rule ("an API is not proof") applied to apps, from discoveries D4 and D5 in the [agent capability audit](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md).
 
 ## Three kinds of proof
 
@@ -70,17 +70,14 @@ Every run that executes tests writes a directory:
   visual/<name>.diff.png  device runs: where a screenshot differs from its baseline
   device.log           device runs: the app's own log lines during the run (`+<ms>` from its start)
   watch.json           a device run that broke off: what the watch collected before it
-  focus.json           an aimed walk (M6.2): the change's identifiers and links, the routes from the previous walk
-  compare.json         an aimed walk with a previous one: issues gone, still there, new, not rechecked
   crashes/             device runs: the app's crash reports written during the run, symbolicated (`<report>.ips.txt`)
-  explore.json, screens/, repro/   `forge ui explore`: the walk, each screen, a replay file per issue
 ```
 
 `<id>` is the UTC start time (`2026-11-07T18-48-25`), the same stamp as `.forge/logs/`. `.forge/` is git-ignored; CI runs the twin of every app with a `requirements.toml` and keeps the bundles as the `twin-evidence` artifact on every run of the Rust workflow.
 
-`junit.xml` has one test case per XCTest case for `forge check swift`, and one per scenario for `forge ui run`. A failed XCTest case carries its diagnostic: the failure's `message` is the assertion (`XCTAssertEqual failed: …`), and its text is every error line the case printed, with file and line. A failed scenario carries the failed step's number and error, any screenshot that differs from its baseline, and what was on screen. The raw log stays in the bundle for everything else. Requirements, verdicts and file hashes have no place in JUnit, so `evidence.json` stays the record. `forge ui explore` writes none: a walk has no tests.
+`junit.xml` has one test case per XCTest case for `forge check swift`, and one per scenario for `forge ui run`. A failed XCTest case carries its diagnostic: the failure's `message` is the assertion (`XCTAssertEqual failed: …`), and its text is every error line the case printed, with file and line. A failed scenario carries the failed step's number and error, any screenshot that differs from its baseline, and what was on screen. The raw log stays in the bundle for everything else. Requirements, verdicts and file hashes have no place in JUnit, so `evidence.json` stays the record. Tools built on forge (forge-lab's explorer) may write bundles of their own kinds next to these.
 
-The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the-result-contract)) stays the short answer and points at the bundle: `data.evidence` is the path of `evidence.json`, `data.requirements` lists each id with its verdict, and `data.results` counts the tests. An agent reads the result; a person, or `forge verify`, reads the bundle.
+The command's `--json` result (`forge.result/1`, [json-output.md](json-output.md)) stays the short answer and points at the bundle: `data.evidence` is the path of `evidence.json`, `data.requirements` lists each id with its verdict, and `data.results` counts the tests. An agent reads the result; a person, or `forge verify`, reads the bundle.
 
 ### `evidence.json`, version 1
 
@@ -115,7 +112,7 @@ The command's `--json` result (`forge.result/1`, [forge-mcp.md](forge-mcp.md#the
 
 | Field | Means |
 |---|---|
-| `kind` | `linux-twin`, `device`, `fixture` (an explore walk on a model of the app, `--fixture`: it shows how Forge explored, never how the app behaves, and sets no verdict), `run` (a run record, below; sets no verdict) or `human` (a person's acceptance, below). Decides which verdict a bundle may set |
+| `kind` | `linux-twin`, `device`, `human` (a person's acceptance, below), or `fixture` and `run`, which forge-lab writes (a walk on a model of the app and a run record) and which set no verdict. Decides which verdict a bundle may set |
 | `ok` | No test failed and no requirement is `failed` or `missing` |
 | `where.device` | `null` on Linux. On a device run: `{ "udid", "name", "ios" }` |
 | `build.commit`, `build.dirty` | The commit the run was built from, and whether the app folder had uncommitted changes |
@@ -145,8 +142,6 @@ When the scenario file is inside an app (a folder above it has `forge.toml`), `f
    - A run that broke off (WebDriverAgent or the phone stopped answering) still stops the watch, writes `device.log`, `crashes/` and `watch.json` into the run folder, and says so in the error.
 5. Compares each screenshot with the scenario's baseline (`uitests/baselines/<test>/`) and records the result under `visual`. A changed screen, or one with a new accessibility finding, fails the run and its requirements like a failed step, with a note naming the screen ([visual-regression.md](visual-regression.md)). `--visual off` skips this.
 
-`forge_run_ui_test` in `forge mcp` writes to the same place, so an agent's UI tests count as evidence. `forge_ui_act`'s one-step files don't: they live in `.forge/mcp/` and no requirement names them.
-
 The scenario TOML is unchanged. The link between a requirement and a scenario lives only in `requirements.toml`, so neither format has to change when the other does.
 
 ## `forge verify`
@@ -158,24 +153,21 @@ forge verify --project examples/pocket-library --twin-only # a session without t
 
 It runs nothing. It reads `requirements.toml` and every bundle in `<app>/.forge/runs/`, and prints one row per requirement: the newest twin verdict (from the newest `linux-twin` bundle that judged it), the newest device verdict (from the newest `device` bundle that lists it), and `proven` or `open`. A verdict recorded for different files than the app has now (another `build.tree`) is shown as `passed (stale)` and doesn't count; `?` means it can't be told (not a git checkout, or a bundle from before `tree` was recorded).
 
-A requirement is `proven` when every proof it names passed for the current files. With `--twin-only` the device column is shown but not required, and a requirement nothing on Linux can prove (only a device scenario, or a twin test that is `not_run` because it needs Apple's frameworks, like Pocket Library's PL-9) is `not here` rather than open. The command fails (stage `test`, exit 14) while any requirement is open; `not here` doesn't fail it but is listed. Its `--json` `data.requirements` has each row with its `status`. It is the agent's stop condition ("every requirement has current evidence") and the page a person reviews; in `forge mcp` it is `forge_verify`.
+A requirement is `proven` when every proof it names passed for the current files. With `--twin-only` the device column is shown but not required, and a requirement nothing on Linux can prove (only a device scenario, or a twin test that is `not_run` because it needs Apple's frameworks, like Pocket Library's PL-9) is `not here` rather than open. The command fails (stage `test`, exit 14) while any requirement is open; `not here` doesn't fail it but is listed. Its `--json` `data.requirements` has each row with its `status`. It is the agent's stop condition ("every requirement has current evidence") and the page a person reviews.
 
-## Run records and acceptance (`forge verify --run`, `--accept`)
+## A person's acceptance (`forge verify --accept`)
 
 ```
-forge verify --project examples/good-dog --run 2026-11-08T10-00-00   # what happened since then
 forge verify --project examples/good-dog --accept GD-3 --note "Recorded two sessions on Cati; history shows both"
 ```
 
-`--run` writes one bundle of `kind = "run"` to `<app>/.forge/runs/<id>-run/` with `report.md` beside it, the page a person reads. It holds `since`, `repository`, `head`, `commits`, `dirty_at_end`, `builds` (from the `forge mcp` journal and the app's command history, `.forge/history.jsonl`, which every `forge` command run on the app at a terminal appends to, so a person's own `forge build ios` and `forge run ios` count too), `checks` (twin runs, UI runs, device walks and, apart from them, fixture walks), `device`, `screenshots`, `new_accessibility_findings`, `crashes`, `failures` (each with its `repairs`), `requirements` (the three columns for this run), `not_run` (requirement, check and reason), `not_accepted`, and a `verdict` of `complete` or `incomplete`. It runs nothing and sets no verdict. How each part is worked out is in [forge-m6.md](forge-m6.md#m64-the-run-record).
+`--accept` writes a bundle of `kind = "human"` whose requirement entry has `person: { verdict: "accepted", by, note }` and the usual `build`, so it goes stale when the files change. It needs a terminal, asks for the id to be typed back, and is refused under an MCP server (`FORGE_MCP_CHILD`). `forge verify` then shows it in the Person column. A requirement can be `proven` without a person.
 
-`--accept` writes a bundle of `kind = "human"` whose requirement entry has `person: { verdict: "accepted", by, note }` and the usual `build`, so it goes stale when the files change. It needs a terminal, asks for the id to be typed back, and is refused inside `forge mcp`. `forge verify` then shows it in the Person column. A requirement can be `proven` without a person; the run record's verdict can't be `complete` without one.
+Run records (`report.md` for everything an agent run did since a start time) moved to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project on 2026-11-15. They read these bundles and the app's command history, `.forge/history.jsonl`, which every `forge` command run on the app at a terminal appends to.
 
 ## Next steps (not built)
 
 - **Linux repro** (audit A8): pull the app's data from the phone (`house_arrest`) into a twin test, so a bug seen on the device is reproduced on Linux in seconds.
-- **MCP resource**: a `forge://runs/{id}` resource returning a bundle's files as they are ([forge-mcp.md](forge-mcp.md)).
 - **More apps**: neither of the other two apps with model tests builds its twin on Linux yet (checked 2026-11-07 with `forge check swift`). Device Lab's `Format.swift` uses `Measurement.formatted`, which Linux Foundation lacks. Chat's `LocalChatNotifier.swift` imports only Foundation but uses `ChatRoute` and the notification adapters, which live in Apple-only files. Each is a small move like Pocket Library's, then a `requirements.toml`.
-- **A richer report**: the run record's `report.md` lists screenshots by path. An HTML export with them inline is worth building once people review device runs regularly.
 
 Where the code lives: requirement parsing, XCTest parsing, provenance and bundle writing are in `crates/forge-cli/src/evidence.rs`, called by `forge check swift` and `forge ui run` (both in forge-cli, so nothing needed extracting). `forge verify` is `crates/forge-cli/src/verify.rs`.

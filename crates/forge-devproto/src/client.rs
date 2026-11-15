@@ -26,19 +26,19 @@ pub enum ClientError {
     #[error(transparent)]
     Conn(#[from] ConnError),
     #[error(
-        "{app} is not paired with this computer. Run `forge device pair` with the phone \
+        "{app} is not paired with this computer. Run `forge-lab device pair` with the phone \
          plugged in and the app open"
     )]
     NotPaired { app: String },
     #[error(
         "{app} is already paired with another computer (or with this one before its key \
-         was deleted). To pair again, close the app, open it, and run `forge device pair` \
+         was deleted). To pair again, close the app, open it, and run `forge-lab device pair` \
          within two minutes"
     )]
     PairingClosed { app: String },
     #[error(
         "{app} refused this computer's pairing key (it was paired again, or unpaired). \
-         Run `forge device pair` with the app open"
+         Run `forge-lab device pair` with the app open"
     )]
     KeyRejected { app: String },
     #[error("the app answered: {0}")]

@@ -63,13 +63,11 @@ forgekit/              # ForgeKit, its Swift half: hosts the Rust core, reports 
 crates/forge-storage   # Atomic file writes, versioned JSON documents, SQLite (feature `sqlite`)
 crates/forge-net       # HttpClient trait, test doubles, ureq HTTPS client (feature `ureq`)
 crates/forge-runtime   # What an app's own Rust crate builds on: background work, event streams, lifecycle, app_shell!, logging, Android HTTPS init
-crates/forge-device    # `forge device`: a connected iPhone's details, logs and crash reports from Linux, and the live connection to development builds (docs/forge-device.md)
+crates/forge-device    # `forge device`: a connected iPhone's details, logs and crash reports from Linux (docs/forge-device.md)
 crates/forge-uitest    # `forge ui`: drive an app on a connected iPhone from Linux by accessibility identifier, through XCTest and WebDriverAgent (docs/forge-ui-testing.md)
-crates/forge-devproto  # the live connection's wire protocol: frames, Noise handshake, messages, replay buffer
-crates/forge-devtools  # the live connection's server inside a development build (`forge run ios --devtools`)
+crates/forge-devproto  # an encrypted channel over a byte stream: frames, Noise handshake, messages (Relay uses it)
 crates/forge-services  # Native services for apps: Keychain, files, notifications, permissions, sharing, deep links (docs/native-services.md)
 crates/forge-cli       # `forge` CLI
-crates/forge-mcp       # `forge mcp`: Forge as a local MCP server for coding agents (docs/forge-mcp.md)
 examples/checklist        # The first app on the runtime and ForgeKit
 examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
@@ -123,12 +121,12 @@ Where each of these stands on a real iPhone is kept current in [docs/status.md](
 |---|---|
 | `--json` on every command (`forge.result/1`: stage, compiler diagnostics with file and line, hints, log file) | Built |
 | `forge check swift`: the view model and bindings compiled and tested with plain Swift on Linux | Built. SwiftUI views still need the Darwin SDK: `scripts/check-ios-xtool.sh` with xtool |
-| `forge mcp`: a local stdio MCP server (check, build, install, logs, crashes, diagnose, and UI tools through `forge ui`), docs and the ledger as resources, installing only when the person allows it | Built; an agent has used it to build, install and test an app on a real iPhone ([docs/forge-mcp.md](docs/forge-mcp.md)) |
+| An MCP server over these commands, an explorer that walks an app's screens, run records and a live connection to development builds | Moved to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project, which depends on ixOS |
 | Which Apple team signs, free or paid, in `forge doctor` and `forge run ios` | Built; not yet run with a paid team ([docs/ios-signing.md](docs/ios-signing.md#which-team-is-xtool-using)) |
 | UI tests by accessibility identifier on a real iPhone (WebDriverAgent, `forge ui`) | Built. On an iPhone: setup, launch, finding by identifier, tapping, typing, the tree and screenshots work (a UI test passed 11 of 11 steps). Needs Settings > Developer > Enable UI Automation on the phone ([docs/forge-ui-testing.md](docs/forge-ui-testing.md)) |
 | Apple's accessibility service from Linux (no runner or disk image) | Experimental probe: reading identifiers and labels and pressing by identifier work on an iPhone; no typing, and Apple's audit doesn't answer yet ([docs/research/ax-audit.md](docs/research/ax-audit.md)) |
 
-New apps from `forge init` have no agent files. `forge agent setup` (or `forge init --agent`) adds `AGENTS.md` (the rules), `CLAUDE.md` and `.mcp.json` (starts `forge mcp`). [docs/dev-loop.md](docs/dev-loop.md#where-the-loop-stands) tracks each step of the loop.
+New apps from `forge init` have no agent files. `forge agent setup` (or `forge init --agent`) adds `AGENTS.md` (the rules) and `CLAUDE.md`.
 
 Install the binary: `cargo install --path crates/forge-cli --locked` (optional). The installed `forge` finds the workspace from the current directory (any folder inside the Forge checkout), or from `FORGE_WORKSPACE` if set. `forge init` creates the app in `./<NAME>`, or under the workspace's `examples/` when run inside the checkout, unless you pass `--path <dir>`; an iOS app created outside the checkout pins the Forge crates and ForgeKit to the release in `forge-release.toml` (or, while the checkout has unreleased framework changes, points at the checkout by absolute path; see docs/project-generation.md).
 

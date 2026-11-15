@@ -69,9 +69,6 @@ for app in FreshIos FreshMini FreshDroid; do
   manifest="$dir/rust/Cargo.toml"
   cargo test -q --manifest-path "$manifest"
   cargo clippy -q --manifest-path "$manifest" --all-targets -- -D warnings
-  # Development builds (forge run ios --devtools) add the live connection.
-  cargo test -q --manifest-path "$manifest" --features devtools
-  cargo clippy -q --manifest-path "$manifest" --all-targets --features devtools -- -D warnings
   cargo fmt --manifest-path "$manifest" --check
 done
 

@@ -1,3 +1,4 @@
+mod accept;
 mod agent;
 mod app_config;
 mod app_diagnose;
@@ -10,16 +11,13 @@ mod device;
 mod diagnose;
 mod doctor;
 mod evidence;
-mod focus;
 mod history;
 mod inspect;
 mod ios_builder;
 mod ios_env;
 mod ledger;
-mod live;
 mod publish;
 mod report;
-mod run_record;
 mod runner;
 mod setup;
 mod status;
@@ -37,7 +35,7 @@ use std::path::{Path, PathBuf};
 #[command(name = "forge", about = "Forge Mobile developer CLI", version)]
 struct Cli {
     /// Print one JSON result object on stdout (`forge.result/1`, see
-    /// docs/forge-mcp.md); progress goes to stderr and a log file. The exit
+    /// docs/json-output.md); progress goes to stderr and a log file. The exit
     /// code names the failed stage: 10 Rust, 11 Swift, 12 signing, 13 device,
     /// 14 tests. `forge doctor --json` keeps its own report format
     #[arg(long, global = true)]
@@ -87,7 +85,7 @@ enum Commands {
         #[arg(long)]
         minimal: bool,
         /// Also write the optional AI coding agent files (AGENTS.md,
-        /// CLAUDE.md, .mcp.json), as `forge agent setup` does
+        /// CLAUDE.md), as `forge agent setup` does
         #[arg(long)]
         agent: bool,
     },
@@ -177,30 +175,6 @@ enum Commands {
         #[command(subcommand)]
         cmd: DeviceCommands,
     },
-    /// Serve Forge to a coding agent over MCP (stdio): check, build, install,
-    /// launch, inspect, test and diagnose tools, plus Forge's docs as
-    /// resources (docs/forge-mcp.md). Started by the agent's MCP client
-    Mcp {
-        /// Tools only work inside this folder (default: the current directory)
-        #[arg(long, value_name = "DIR")]
-        root: Option<PathBuf>,
-        /// Let the agent do something that spends a phone resource: `install`
-        /// lets forge_install_device install apps (an app slot and an App ID
-        /// on a free team)
-        #[arg(long, value_name = "WHAT", value_parser = ["install"])]
-        allow: Vec<String>,
-        /// Only these bundle ids may be installed (repeatable), e.g.
-        /// org.forgemobile.agentlab, the agent sandbox id
-        #[arg(long = "bundle-id", value_name = "ID")]
-        bundle_ids: Vec<String>,
-        /// The only phone device tools may touch
-        #[arg(long)]
-        udid: Option<String>,
-        /// Leave out every tool that touches a phone (install, launch,
-        /// screenshots, logs, UI tests), even if one is plugged in
-        #[arg(long, conflicts_with_all = ["allow", "udid"])]
-        no_device: bool,
-    },
     /// What an app folder holds, from its files: Swift files and their
     /// imports, accessibility identifiers written as literals, UI tests,
     /// generated files, the Rust crate, convention warnings. Changes nothing
@@ -225,18 +199,9 @@ enum Commands {
         /// iPhone results are still shown
         #[arg(long)]
         twin_only: bool,
-        /// Write the run record for an agent run that started at this run id
-        /// (`2026-11-08T10-00-00`, UTC): commits, builds, checks, failures and
-        /// repairs, and what was not run, as `<app>/.forge/runs/<id>-run/`
-        #[arg(long, value_name = "START", conflicts_with_all = ["accept", "twin_only"])]
-        run: Option<String>,
-        /// The `forge mcp` journal to read with --run (default: every
-        /// journal started since START, in the app's and the repository's runs)
-        #[arg(long, value_name = "PATH", requires = "run")]
-        journal: Option<PathBuf>,
         /// Record that you, a person, checked this requirement on the phone.
         /// Needs a terminal and asks you to type the id back; refused inside
-        /// `forge mcp` and from scripts
+        /// an MCP server and from scripts
         #[arg(
             long,
             value_name = "ID",
@@ -703,120 +668,6 @@ enum UiCommands {
         #[arg(long, value_name = "NAME")]
         only: Vec<String>,
     },
-    /// Explore an app without a script: visit its screens, try each safe
-    /// control once, and report crashes, error alerts, dead ends and
-    /// accessibility problems, each with a `forge ui run` file that replays
-    /// it (docs/forge-explore.md)
-    Explore {
-        #[arg(long)]
-        udid: Option<String>,
-        /// The app to explore: its folder with forge.toml
-        #[arg(long, default_value = ".")]
-        project: PathBuf,
-        /// Explore an installed app Forge didn't build, by bundle id (a
-        /// reference app for a replication benchmark). Needs --any-app and a
-        /// line for the app in ~/.config/forge/device-control.toml:
-        /// `operate` looks only (with --real-data), `full` may change its data
-        #[arg(long, value_name = "BUNDLE_ID", conflicts_with = "project")]
-        app: Option<String>,
-        /// Allow --app to name an app Forge didn't build, as far as the
-        /// person's device-control policy allows
-        #[arg(long)]
-        any_app: bool,
-        /// Stop after this many actions
-        #[arg(long, default_value_t = 60)]
-        actions: usize,
-        /// Stop after this many minutes, whatever is left
-        #[arg(long, default_value_t = 10.0)]
-        minutes: f64,
-        /// Fixes the order controls are tried in (default: from the clock;
-        /// printed, so a walk can be repeated)
-        #[arg(long)]
-        seed: Option<u64>,
-        /// Text for a field, as IDENTIFIER=TEXT (repeatable); other fields
-        /// get "Forge"
-        #[arg(long = "text", value_name = "ID=TEXT")]
-        texts: Vec<String>,
-        /// Never touch this identifier or label (repeatable)
-        #[arg(long, value_name = "ID_OR_LABEL")]
-        skip: Vec<String>,
-        /// Also tap delete, remove, reset, sign out and the like (test data
-        /// only). Send, pay, share and the like are never tapped
-        #[arg(long)]
-        allow_destructive: bool,
-        /// Explore the app on the data already on the phone, only looking:
-        /// nothing that saves, edits, rates, types or changes a setting is
-        /// touched. Without it the app needs `[ui_test] test_data_args`
-        #[arg(long)]
-        real_data: bool,
-        /// Launch with the largest accessibility text size
-        #[arg(long)]
-        largest_text: bool,
-        /// Launch in dark or light mode (`-ForgeAppearance`, which Forge
-        /// apps honour; without it the app follows the phone)
-        #[arg(long, value_parser = ["dark", "light"])]
-        appearance: Option<String>,
-        /// One of the app's own launch arguments, added after Forge's;
-        /// repeat for more (for example `--launch-arg=-GoodDogSampleDog`, so
-        /// the walk starts past onboarding)
-        #[arg(long = "launch-arg", value_name = "ARG", allow_hyphen_values = true)]
-        launch_arg: Vec<String>,
-        /// At most this many controls tried per screen
-        #[arg(long, default_value_t = 15)]
-        per_screen: usize,
-        /// Don't save a screenshot of every new screen
-        #[arg(long)]
-        no_screenshots: bool,
-        /// Where explore.json, screens and replay files go (default:
-        /// <app>/.forge/runs/<UTC>-ui-explore/)
-        #[arg(long, value_name = "DIR")]
-        out: Option<PathBuf>,
-        /// Aim the walk at what changed since this commit (`HEAD`: the
-        /// uncommitted work): the controls the changed files declare, and
-        /// the ways into them, go first (see `forge ui focus`)
-        #[arg(long, value_name = "REV")]
-        since: Option<String>,
-        /// Aim the walk at these changed files instead of git's list
-        /// (repeatable)
-        #[arg(long, value_name = "FILE")]
-        changed: Vec<String>,
-        /// Also aim at this identifier, or a prefix ending in `.*`
-        /// (repeatable)
-        #[arg(long, value_name = "ID")]
-        focus: Vec<String>,
-        /// The earlier walk to learn from (its explore.json): routes to the
-        /// focus, and its issues to check again. Default: the app's latest
-        /// walk under .forge/runs, when the walk has a focus
-        #[arg(long, value_name = "EXPLORE_JSON")]
-        previous: Option<PathBuf>,
-        /// Don't use an earlier walk
-        #[arg(long)]
-        no_previous: bool,
-        /// After the walk, replay up to this many issues once more to see
-        /// whether they come back (not counted in --actions)
-        #[arg(long, default_value_t = 3)]
-        verify: usize,
-        /// Walk a model of the app (a screen graph of recorded trees,
-        /// docs/forge-m6.md) instead of the phone. Proves how Forge
-        /// explores, never how the app behaves
-        #[arg(long, value_name = "MODEL_JSON")]
-        fixture: Option<PathBuf>,
-    },
-    /// Which screens and controls a change touches, from the source: the
-    /// identifiers the changed files declare, the ways into them, the UI
-    /// tests that use them, and the files with no link (and why). Needs no
-    /// phone
-    Focus {
-        /// The app: its folder with forge.toml
-        #[arg(long, default_value = ".")]
-        project: PathBuf,
-        /// Changes since this commit (default `HEAD`: the uncommitted work)
-        #[arg(long, value_name = "REV")]
-        since: Option<String>,
-        /// These files instead of git's list (repeatable)
-        #[arg(long, value_name = "FILE")]
-        changed: Vec<String>,
-    },
     /// Keep one WebDriverAgent runner running in the background, so later
     /// `forge ui` commands skip starting it (about 2 s each). Stops on
     /// `forge ui stop` or after --idle-minutes without a command
@@ -916,51 +767,6 @@ enum DeviceCommands {
         )]
         project: Option<PathBuf>,
     },
-    /// Pair this computer with the development build on screen (once per app
-    /// and phone; the app must be built with `forge run ios --devtools`)
-    Pair {
-        #[command(flatten)]
-        live: LiveArgs,
-    },
-    /// Forget the pairing on the phone and on this computer
-    Unpair {
-        #[command(flatten)]
-        live: LiveArgs,
-    },
-    /// The paired app's phase, uptime, probes and commands
-    Status {
-        #[command(flatten)]
-        live: LiveArgs,
-    },
-    /// The values of the state probes the app registered
-    Snapshot {
-        #[command(flatten)]
-        live: LiveArgs,
-    },
-    /// Run one of the app's own commands; with no name, list them
-    Cmd {
-        #[command(flatten)]
-        live: LiveArgs,
-        /// The command's name
-        name: Option<String>,
-        /// Its arguments
-        args: Vec<String>,
-    },
-    /// The app's own log and lifecycle, live; carries on when the app comes
-    /// back from the background. Ctrl-C stops
-    Connect {
-        #[command(flatten)]
-        live: LiveArgs,
-        /// Show this many buffered records from before connecting
-        #[arg(long, value_name = "N", default_value_t = 50)]
-        tail: u32,
-        /// Stop after this many records
-        #[arg(long, value_name = "N")]
-        limit: Option<usize>,
-        /// Stop when the app goes to the background instead of waiting
-        #[arg(long)]
-        no_follow: bool,
-    },
 }
 
 /// Which element a one-step `forge ui` command acts on: exactly one of
@@ -1033,28 +839,18 @@ struct UiOn {
     timeout: f64,
 }
 
-#[derive(clap::Args)]
-struct LiveArgs {
-    /// Which phone, when several are connected
-    #[arg(long)]
-    udid: Option<String>,
-    /// The port the development build listens on
-    #[arg(long, default_value_t = forge_devproto::DEFAULT_PORT, hide = true)]
-    port: u16,
-}
-
 #[derive(Subcommand)]
 enum AgentCommands {
-    /// Write AGENTS.md (the app's rules and commands), CLAUDE.md and
-    /// .mcp.json (starts `forge mcp`) into the app. Existing files are kept
+    /// Write AGENTS.md (the app's rules and commands) and CLAUDE.md into the
+    /// app. Existing files are kept
     Setup {
         #[arg(
             long,
             help = "App directory (default: the current directory if it has forge.toml)"
         )]
         project: Option<PathBuf>,
-        /// Also add the hosted sosumi.ai MCP server (Apple's developer
-        /// documentation as text) to .mcp.json
+        /// Also write .mcp.json with the hosted sosumi.ai MCP server (Apple's
+        /// developer documentation as text)
         #[arg(long)]
         apple_docs: bool,
     },
@@ -1133,9 +929,10 @@ enum BuildCommands {
         /// Build the Swift app in the release configuration (xtool dev build -c release)
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
-        /// Include the live connection to `forge device` (pair, connect,
-        /// status, snapshot, cmd). For development only, so never in a
-        /// release build
+        /// Build the app crate with its own `devtools` feature, for code it
+        /// wants only in development builds (the app must define the
+        /// feature; forge-lab's live connection uses it). Never in a release
+        /// build
         #[arg(long, conflicts_with = "release")]
         devtools: bool,
     },
@@ -1253,9 +1050,10 @@ enum RunCommands {
         /// Build the Swift app in the release configuration (xtool dev build -c release)
         #[arg(long)]
         release: bool,
-        /// Include the live connection to `forge device` (pair, connect,
-        /// status, snapshot, cmd). For development only, so never in a
-        /// release build
+        /// Build the app crate with its own `devtools` feature, for code it
+        /// wants only in development builds (the app must define the
+        /// feature; forge-lab's live connection uses it). Never in a release
+        /// build
         #[arg(long, conflicts_with = "release")]
         devtools: bool,
         /// After the build, wait up to this many minutes for the iPhone
@@ -1276,21 +1074,6 @@ fn configuration(release: bool) -> ios_builder::IosConfiguration {
 
 fn main() {
     let cli = Cli::parse();
-    // stdout is the MCP transport: nothing else may print there.
-    if let Commands::Mcp {
-        root,
-        allow,
-        bundle_ids,
-        udid,
-        no_device,
-    } = cli.command
-    {
-        if let Err(err) = serve_mcp(root, allow, bundle_ids, udid, no_device, cli.json) {
-            eprintln!("error: {err}");
-            std::process::exit(1);
-        }
-        return;
-    }
     let runner = runner::RealRunner;
     // doctor --json has its own report shape (it predates the result contract).
     if !cli.json || matches!(cli.command, Commands::Doctor) {
@@ -1363,10 +1146,10 @@ fn fallback_stage(command: &Commands) -> &'static str {
         // usbmuxd missing, no phone, not paired, the app not listening.
         Commands::Device { .. } | Commands::Devices | Commands::Diagnose { .. } => "device",
         Commands::Ui {
-            cmd: UiCommands::Run { .. } | UiCommands::Explore { .. },
+            cmd: UiCommands::Run { .. },
         } => "test",
         Commands::Ui {
-            cmd: UiCommands::Accept { .. } | UiCommands::Focus { .. },
+            cmd: UiCommands::Accept { .. },
         } => "forge",
         // No DDI, no runner, WebDriverAgent not answering.
         Commands::Ui { .. } => "device",
@@ -1386,7 +1169,6 @@ fn command_name(command: &Commands) -> String {
         Commands::Check { .. } => return "check".into(),
         Commands::Init { .. } => return "init".into(),
         Commands::Test { .. } => return "test".into(),
-        Commands::Mcp { .. } => return "mcp".into(),
         Commands::Verify { .. } => return "verify".into(),
         Commands::Inspect { .. } => return "inspect".into(),
         Commands::Agent { .. } => return "agent setup".into(),
@@ -1426,12 +1208,6 @@ fn command_name(command: &Commands) -> String {
             DeviceCommands::Apps { .. } => "device apps",
             DeviceCommands::Logs { .. } => "device logs",
             DeviceCommands::Crashes { .. } => "device crashes",
-            DeviceCommands::Pair { .. } => "device pair",
-            DeviceCommands::Unpair { .. } => "device unpair",
-            DeviceCommands::Status { .. } => "device status",
-            DeviceCommands::Snapshot { .. } => "device snapshot",
-            DeviceCommands::Cmd { .. } => "device cmd",
-            DeviceCommands::Connect { .. } => "device connect",
         },
         Commands::Ui { cmd } => match cmd {
             UiCommands::Setup { .. } => "ui setup",
@@ -1440,8 +1216,6 @@ fn command_name(command: &Commands) -> String {
             UiCommands::Screenshot { .. } => "ui screenshot",
             UiCommands::Launch { .. } => "ui launch",
             UiCommands::Run { .. } => "ui run",
-            UiCommands::Explore { .. } => "ui explore",
-            UiCommands::Focus { .. } => "ui focus",
             UiCommands::Start { .. } => "ui start",
             UiCommands::Stop { .. } => "ui stop",
             UiCommands::Status { .. } => "ui status",
@@ -1667,18 +1441,13 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
         Commands::Verify {
             project,
             twin_only,
-            run,
-            journal,
             accept,
             note,
         } => match project.map(|p| absolute_from_cwd(&p)).or_else(app_in_cwd) {
             Some(app) => {
                 let mut out = std::io::stdout();
-                if let Some(start) = run {
-                    let journal = journal.map(|p| absolute_from_cwd(&p));
-                    run_record::record(runner, &app, &start, journal.as_deref(), &mut out)
-                } else if let Some(id) = accept {
-                    run_record::accept(
+                if let Some(id) = accept {
+                    accept::accept(
                         runner,
                         &app,
                         &id,
@@ -1827,7 +1596,6 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 Ok(())
             }
         },
-        Commands::Mcp { .. } => Err("forge mcp is served from main".into()),
         Commands::Inspect { project } => {
             let project = project_or_default(project, "");
             if project.as_os_str().is_empty() {
@@ -1905,10 +1673,10 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                     }
                     let mut args = Vec::new();
                     if let Some(mode) = &appearance {
-                        args.extend([forge_uitest::explore::APPEARANCE_ARG.to_string(), mode.clone()]);
+                        args.extend([forge_uitest::APPEARANCE_ARG.to_string(), mode.clone()]);
                     }
                     if largest_text {
-                        args.extend(forge_uitest::explore::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
+                        args.extend(forge_uitest::LARGEST_TEXT_ARGS.iter().map(|a| a.to_string()));
                     }
                     args.extend(launch_arg);
                     ui::launch(runner, udid.as_deref(), &project, terminate, &args, &mut out)
@@ -2082,59 +1850,6 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 UiCommands::Accept { run, scenario, only } => {
                     ui::accept(&run, scenario.as_deref(), &only, &mut out)
                 }
-                UiCommands::Explore {
-                    udid,
-                    project,
-                    app,
-                    any_app,
-                    actions,
-                    minutes,
-                    seed,
-                    texts,
-                    skip,
-                    allow_destructive,
-                    real_data,
-                    largest_text,
-                    appearance,
-                    launch_arg,
-                    per_screen,
-                    no_screenshots,
-                    out: dir,
-                    since,
-                    changed,
-                    focus,
-                    previous,
-                    no_previous,
-                    verify,
-                    fixture,
-                } => {
-                    let options = ui::ExploreOptions {
-                        since,
-                        changed,
-                        focus,
-                        previous,
-                        no_previous,
-                        verify,
-                        fixture,
-                        actions,
-                        minutes,
-                        seed,
-                        texts,
-                        skip,
-                        allow_destructive,
-                        real_data,
-                        largest_text,
-                        appearance,
-                        launch_args: launch_arg,
-                        per_screen,
-                        screenshots: !no_screenshots,
-                    };
-                    match app {
-                        Some(app) => ui::explore_app(udid.as_deref(), &app, any_app, options, dir.as_deref(), &mut out),
-                        None => ui::explore(runner, udid.as_deref(), &project, options, dir.as_deref(), &mut out),
-                    }
-                }
-                UiCommands::Focus { project, since, changed } => focus::show(&project, since.as_deref(), &changed, &mut out),
                 UiCommands::Start { udid, idle_minutes, exit_with } => ui_session::start(udid.as_deref(), idle_minutes, exit_with, &mut out),
                 UiCommands::Stop { udid } => ui_session::stop(udid.as_deref(), &mut out),
                 UiCommands::Status { udid } => ui_session::status(udid.as_deref(), &mut out),
@@ -2165,48 +1880,6 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
             }
         },
     }
-}
-
-fn serve_mcp(
-    root: Option<PathBuf>,
-    allow: Vec<String>,
-    bundle_ids: Vec<String>,
-    udid: Option<String>,
-    no_device: bool,
-    json: bool,
-) -> Result<(), String> {
-    if json {
-        return Err("forge mcp speaks MCP on stdout; it has no --json result".into());
-    }
-    let root = root
-        .map(|r| absolute_from_cwd(&r))
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let root = root
-        .canonicalize()
-        .map_err(|e| format!("{}: {e}", root.display()))?;
-    let workspace = commands::workspace_root();
-    commands::require_workspace(&workspace)?;
-    let forge = std::env::current_exe().map_err(|e| e.to_string())?;
-    eprintln!(
-        "forge mcp: serving {} on stdio (install {})",
-        root.display(),
-        if no_device {
-            "refused, no phone tools"
-        } else if allow.iter().any(|a| a == "install") {
-            "allowed"
-        } else {
-            "refused"
-        }
-    );
-    forge_mcp::serve_stdio(forge_mcp::Options {
-        forge,
-        root,
-        workspace,
-        allow_install: allow.iter().any(|a| a == "install"),
-        bundle_ids,
-        udid,
-        no_device,
-    })
 }
 
 /// `--project` when given; otherwise the current directory when it is an app
@@ -2430,11 +2103,6 @@ fn device_command(cmd: DeviceCommands, json: bool) -> Result<(), String> {
                     "with --json, `forge device logs` needs --for <DURATION> or --limit <N>, so it ends",
                 ))
             }
-            DeviceCommands::Connect { limit: None, .. } => {
-                return Err(report::usage_error(
-                    "with --json, `forge device connect` needs --limit <N>, so it ends",
-                ))
-            }
             _ => None,
         };
         if let Some(data) = data {
@@ -2497,39 +2165,7 @@ fn run_device_command(
                 out,
             )
         }
-        DeviceCommands::Pair { live } => with_target(backend, &live, |t| live::pair(t, out)),
-        DeviceCommands::Unpair { live } => with_target(backend, &live, |t| live::unpair(t, out)),
-        DeviceCommands::Status { live } => with_target(backend, &live, |t| live::status(t, out)),
-        DeviceCommands::Snapshot { live } => {
-            with_target(backend, &live, |t| live::snapshot(t, out))
-        }
-        DeviceCommands::Cmd { live, name, args } => with_target(backend, &live, |t| {
-            live::cmd(t, name.as_deref(), &args, out)
-        }),
-        DeviceCommands::Connect {
-            live,
-            tail,
-            limit,
-            no_follow,
-        } => with_target(backend, &live, |t| {
-            live::connect(t, tail, limit, !no_follow, out)
-        }),
     }
-}
-
-/// Runs a live-connection command against the default pairing store.
-fn with_target(
-    backend: &dyn forge_device::DeviceBackend,
-    args: &LiveArgs,
-    run: impl FnOnce(&live::Target) -> Result<(), String>,
-) -> Result<(), String> {
-    let store = forge_device::PairingStore::default_location().map_err(|e| e.to_string())?;
-    run(&live::Target {
-        backend,
-        udid: args.udid.as_deref(),
-        port: args.port,
-        store: &store,
-    })
 }
 
 #[cfg(test)]

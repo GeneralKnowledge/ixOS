@@ -271,7 +271,7 @@ These go into [ios-ui.md](ios-ui.md#accessibility) and the `forge init` starter:
 
 ### Exploratory testing
 
-The exploratory tester is `forge ui explore` ([forge-explore.md](forge-explore.md)), a subcommand next to `forge ui run`. It never takes part in pass/fail acceptance. It reads the UI tree, tries each safe control once (taps, text into fields, back navigation, scrolling lists below the fold), and reports crashes, error alerts, dead ends and accessibility problems. Each issue comes with a normal `forge ui run` file that replays it, which becomes a deterministic regression test after a person reviews it. Walks are seeded random walks, so their results are reproducible. Apps Forge didn't build are walked through the any-app policy (`--app BUNDLE_ID --any-app`).
+The exploratory tester (seeded walks over an app's screens that report crashes, error alerts, dead ends and accessibility problems, each with a `forge ui run` replay file) moved to the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project on 2026-11-15. It drives the phone through this crate.
 
 ## Milestones
 
@@ -285,7 +285,7 @@ The same milestones serve apps Forge didn't build: [any app on the iPhone](resea
 | M2.5 | Runner-free inspection, if #79's probe passes | `AxDriver` behind `Driver`: `forge ui tree` and read-and-tap tests without the WDA runner |
 | M3 | Accessibility pass across the demos | Identifiers and labels in the starter, Pocket Library, Weather and Chat; `forge ui audit` clean on their main screens; a Dynamic Type run; conventions in ios-ui.md |
 | M4 | Screenshots and conditions | Screenshot comparison against approved baselines (with masked regions for times and dates): built and tested on Linux, not yet run on a phone ([visual-regression.md](visual-regression.md)); offline and slow-network runs through the instruments condition inducer; performance numbers from the devtools stream |
-| M5 | Exploratory testing | `forge ui explore` ([forge-explore.md](forge-explore.md)): seeded walks over a Forge app's screens, crash, alert, dead-end and accessibility checks, and a `forge ui run` replay file per issue. Walked Pocket Library on Cati twice on 2026-11-08, before test data and on test data (forge-explore.md, Phone checks); the fixes since, scrolling below the fold (2026-11-10) and walks of other developers' apps through the any-app policy (2026-11-10) are Linux-tested only, not yet run on an iPhone. Still to come: invariants and performance during the walk. Optionally Forge's own Swift XCTest runner if WDA becomes limiting |
+| M5 | Exploratory testing | Moved to [forge-lab](https://github.com/GeneralKnowledge/forge-lab) (2026-11-15). Walked Pocket Library on Cati twice on 2026-11-08 while it lived here |
 
 ### M0 in detail
 
@@ -326,7 +326,7 @@ forge ui stop                  # stops it; the runner shuts down at once
 - **It stops** on `forge ui stop`, Ctrl-C or SIGTERM, after 30 minutes with no command (`--idle-minutes N`, 0 for never), or when the process given in `--exit-with <pid>` exits.
 - **It repairs itself.** Every 10 s it asks WDA for `/status` (one local USB request). After two misses in a row it restarts the runner; after three failed restarts in a row it gives up and exits. A command that arrives while the runner is starting or restarting waits up to 150 s for it, reading only the state file, then says what happened and points at `forge ui status`.
 - `forge ui setup` uses a running session's runner for its check. Reinstalling the runner (`--runner … --reinstall`) refuses while a session is running: `forge ui stop` first.
-- **`forge mcp` starts one for its UI tools** with `--exit-with <its own pid>`, so the runner lives exactly as long as the MCP server (or 30 idle minutes). If the session can't start, the tools start their own runner as before and the server tries again after 5 minutes.
+- A tool built on forge (forge-lab's MCP server) can start one with `--exit-with <its own pid>`, so the runner lives exactly as long as that tool (or 30 idle minutes).
 - `forge ui serve` is the same thing in the foreground, with its log on the terminal.
 
 On Cati (2026-11-08, WDA 16.15.2): `forge ui start` took 1.5 s; `forge ui tree` took 0.5 s with the session and 1.4 to 1.9 s without. A test file saves one runner start (m0: 9.2 s against 10.1 s), since its steps already shared one runner. Stop, status, and recovery after the session process was killed (`kill -9`; the next command started its own runner) worked as described.

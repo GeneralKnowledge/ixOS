@@ -11,7 +11,7 @@ A replication benchmark takes a real iOS app as a behavioural reference and rebu
 - **Behaviour, not implementation.** Our app is written from scratch, with its own name, icon and look. No code, assets, icons or names are taken from the reference, whatever its licence.
 - **iOS only, on the real iPhone.** The reference is walked on the phone over USB from Linux, not in a simulator (simulators need a Mac).
 - **Rust for state and rules, SwiftUI/ForgeUI for presentation, Apple's frameworks where they fit**, as in any ixOS app.
-- **Evidence, not interpretation.** The explorer (`forge ui explore --app <bundle id> --any-app`, [forge-explore.md](../forge-explore.md#apps-forge-didnt-build)) records what the reference does without an AI model. A person or an agent writes the specification from that evidence and says where a claim comes from.
+- **Evidence, not interpretation.** The explorer (`forge ui explore --app <bundle id> --any-app`, [forge-explore.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-explore.md#apps-forge-didnt-build)) records what the reference does without an AI model. A person or an agent writes the specification from that evidence and says where a claim comes from.
 
 ## What each benchmark folder holds
 

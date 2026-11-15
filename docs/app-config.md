@@ -149,8 +149,8 @@ How UI automation runs the app. Nothing here is written into the app; the app it
 
 | Key | Use |
 |---|---|
-| `test_data_args = ["-ForgeUITestData"]` | Launch arguments that start the app on fresh, throwaway data instead of the person's own. `forge ui explore` refuses to change data without them ([forge-explore.md](forge-explore.md#test-data)). Pocket Library honours `-ForgeUITestData` by using an emptied `PocketLibrary-UITest` folder |
-| `real_data_safe = ["library.settings"]` | Identifiers `forge ui explore --real-data` may tap besides navigation (rows, tabs, back, cancel), because you know they change nothing. Never overrides the never-lists ([forge-explore.md](forge-explore.md#test-data)) |
+| `test_data_args = ["-ForgeUITestData"]` | Launch arguments that start the app on fresh, throwaway data instead of the person's own. UI tests use them, and forge-lab's explorer refuses to change data without them. Pocket Library honours `-ForgeUITestData` by using an emptied `PocketLibrary-UITest` folder |
+| `real_data_safe = ["library.settings"]` | Identifiers forge-lab's explorer may tap on real data (`--real-data`) besides navigation (rows, tabs, back, cancel), because you know they change nothing |
 
 ### `[swift]`
 

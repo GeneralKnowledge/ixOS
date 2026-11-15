@@ -1,6 +1,6 @@
-//! Watching the app during a device run (`forge ui run`, `forge ui explore`):
+//! Watching the app during a device run (`forge ui run`):
 //! its own log lines while the run lasts, and the crash reports it left
-//! behind (docs/forge-m6.md, M6.1). Both go into the run's evidence bundle,
+//! behind. Both go into the run's evidence bundle,
 //! so a failure comes with what the app said before it and, after a crash,
 //! the symbolicated place it crashed.
 //!

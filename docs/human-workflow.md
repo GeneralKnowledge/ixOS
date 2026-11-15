@@ -2,7 +2,7 @@
 
 Forge is a framework for people first. Every ixOS app can be created, built, tested, installed, debugged and reviewed by a person with a terminal, a text editor and the `forge` CLI. No AI coding agent, MCP server, LLM API key, agent configuration file or hosted service is needed at any step.
 
-Agents use the same commands. `forge mcp` and `forge agent setup` are optional layers over them ([Optional agent integration](#optional-agent-integration)).
+Agents use the same commands. `forge agent setup` is an optional layer over them ([Optional agent integration](#optional-agent-integration)).
 
 This page is that workflow, step by step. `scripts/check-human-workflow.sh` runs it, and CI runs the script on every push. The [results table](#what-is-checked-where) says which steps are automated, which need hardware, and which have been seen working on an iPhone.
 
@@ -78,7 +78,6 @@ twin = ["ReadingTimeTests.testReadingTimeRoundsUp"]
 ```bash
 forge test                # the Rust crate (and XCTest on macOS)
 forge check swift         # the model, bindings and tests with plain Swift on Linux; writes twin evidence
-forge ui focus --changed Sources/AppHost/NoteListView.swift   # which controls and UI tests a change touches (no phone)
 ```
 
 `forge check swift` doesn't compile SwiftUI views: only the iOS SDK does (step 7).
@@ -128,22 +127,20 @@ forge diagnose                             # last run, the phone, the install, t
 
 Every `forge` command on the app also appends a line to `.forge/history.jsonl` (the command, when, whether it passed, its log), so you can see later what ran.
 
-### 11. Run a UI test and explore
+### 11. Run a UI test
 
 ```bash
 forge ui run uitests/smoke.toml      # writes a device evidence bundle to .forge/runs/
-forge ui explore --real-data         # look-only walk of the screens; or on test data, see forge-explore.md
 ```
 
 ### 12. Review the evidence
 
 ```bash
 forge verify                         # each requirement: Linux twin, iPhone and person, and whether current
-forge verify --run 2026-11-09T10-00-00     # a record of everything since then, with report.md
 forge verify --accept RT-1 --note "Checked on my phone: 3 min read on a long note"
 ```
 
-`--accept` is yours alone: it needs a terminal, asks for the id to be typed back, and is refused inside `forge mcp` ([evidence.md](evidence.md)).
+`--accept` is yours alone: it needs a terminal, asks for the id to be typed back, and is refused under an MCP server ([evidence.md](evidence.md)).
 
 ## What is checked where
 
@@ -154,27 +151,25 @@ forge verify --accept RT-1 --note "Checked on my phone: 3 min read on a long not
 | 3 `forge inspect`, `forge config show` | Yes | | n/a |
 | 4 Rust rule, `cargo test`, `forge bindings generate` | Yes | | n/a |
 | 5 Swift model test, `requirements.toml` | Yes (the view edit is applied, not compiled) | | n/a |
-| 6 `forge test`, `forge check swift`, `forge ui focus` | Yes (`check swift` in the `swift:6.2` image) | Swift or Docker | n/a |
+| 6 `forge test`, `forge check swift` | Yes (`check swift` in the `swift:6.2` image) | Swift or Docker | n/a |
 | 7 `forge build ios` | No | xtool, the Darwin SDK | Yes, 2026-11-10 |
 | 8 `forge run ios` | No | an iPhone, an Apple ID | Yes, 2026-11-10 |
 | 9 `forge ui launch`, `screenshot`, `tree`, `audit` | No | an iPhone, `forge ui setup` | Yes, 2026-11-10 (`launch`, `screenshot`, `audit`); the row showed the reading time |
 | 10 `device logs`, `device crashes`, `diagnose` | No | an iPhone | Partly, 2026-11-10: `diagnose` passed; a 10 s log capture was empty, so logs are unproven |
-| 11 `forge ui run`, `forge ui explore` | No | an iPhone | `ui run` yes, 2026-11-10 (smoke test 9/9); `explore` not run |
-| 12 `forge verify`, `--run` | Yes (twin column) | | n/a |
+| 11 `forge ui run` | No | an iPhone | Yes, 2026-11-10 (smoke test 9/9) |
+| 12 `forge verify` | Yes (twin column) | | n/a |
 | 12 `forge verify --accept` | No: a person types it | a person | n/a |
 
 With xtool and a phone, `FORGE_HUMAN_DEVICE=1 scripts/check-human-workflow.sh` runs steps 7–11 too. It ran on an iPhone 15 Pro Max (iOS 26.3.1) on 2026-11-10, and a person checked the reading time on the phone. Without `FORGE_HUMAN_DEVICE=1`, the script lists those steps as manual.
 
-The script also checks that nothing agent-shaped took part: no `AGENTS.md`, `CLAUDE.md` or `.mcp.json` in the app, no `forge mcp` journal, and no MCP call in the command history.
+The script also checks that nothing agent-shaped took part: no `AGENTS.md`, `CLAUDE.md` or `.mcp.json` in the app, and no MCP call in the command history.
 
 ## Optional agent integration
 
 | Human-facing (the framework) | Optional agent layer |
 |---|---|
-| The `forge` CLI, `--json` results (`forge.result/1`) | `forge mcp`: MCP tools that run those commands and return their results |
-| `forge inspect`, `forge ui launch`, `forge diagnose`, `forge verify` | `forge_inspect_app`, `forge_launch_app`, `forge_diagnose` (adds the session's last failure), `forge_verify` |
-| `forge ui tap`, `type`, `scroll`, `swipe`, `long-press`, `double-tap`, `drag`, `pinch`, `rotate`, `pick`, `key`, `press`, `open-url`, `alert`, `back`, `app-state`, `reset-permission`, `orientation`, `settle`, `expect` | `forge_ui_act` (one tool, the same actions; coordinates, `lock` and `unlock` stay in the terminal) |
-| The app's `README.md` and Forge's `docs/` | `forge agent setup`: `AGENTS.md` (the app's easy-to-miss rules and the commands), `CLAUDE.md`, `.mcp.json` (`--apple-docs` adds a hosted documentation server) |
-| `forge init` | `forge init --agent` (both at once); `forge_create_app` passes it |
+| The `forge` CLI, `--json` results (`forge.result/1`, [json-output.md](json-output.md)) | Any agent can run the commands and read the result object. An MCP server over them lives in the [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project |
+| The app's `README.md` and Forge's `docs/` | `forge agent setup`: `AGENTS.md` (the app's easy-to-miss rules and the commands) and `CLAUDE.md`; `--apple-docs` adds a `.mcp.json` with a hosted documentation server |
+| `forge init` | `forge init --agent` (both at once) |
 
-The safety rules are the same whoever runs a command: exploration on real data is read-only ([forge-explore.md](forge-explore.md#test-data)), only a person accepts a requirement, and `forge mcp` installs nothing unless the person started it with `--allow install`.
+The safety rules are the same whoever runs a command: only a person accepts a requirement (`forge verify --accept` needs a terminal), and installing spends an app slot whoever asks for it.

@@ -2,8 +2,8 @@ import SwiftUI
 
 /// Dark or light mode for one launch, without changing the phone's setting:
 /// `-ForgeAppearance dark` or `-ForgeAppearance light` as a launch argument
-/// (`forge_launch_app appearance`, `forge ui explore --appearance`, a UI
-/// test's `launch = { args = [...] }`). Without it the app follows the
+/// (`forge ui launch --appearance`, a UI test's `launch = { args = [...]
+/// }`). Without it the app follows the
 /// phone. A launch argument also lands in `UserDefaults`, which is where it
 /// is read. Attach once, to the root view.
 extension View {

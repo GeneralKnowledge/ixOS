@@ -412,8 +412,8 @@ public final class LibraryModel {
     }
 
     /// The launch argument that starts the app on throwaway test data
-    /// (`[ui_test] test_data_args` in forge.toml): `forge ui explore` and UI
-    /// tests pass it so they never touch the person's own library.
+    /// (`[ui_test] test_data_args` in forge.toml): UI tests pass
+    /// it so they never touch the person's own library.
     public static let testDataArgument = "-ForgeUITestData"
 
     /// Whether this launch uses throwaway test data; it is emptied once per

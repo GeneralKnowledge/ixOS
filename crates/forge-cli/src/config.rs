@@ -11,7 +11,7 @@ pub struct ForgeConfig {
     /// xtool.yml (see `app_config.rs` and docs/app-config.md).
     #[serde(default)]
     pub ios: Option<crate::app_config::IosSection>,
-    /// How UI tests and `forge ui explore` run the app (docs/forge-explore.md).
+    /// How UI tests (and forge-lab's explorer) run the app.
     #[serde(default)]
     pub ui_test: Option<UiTestSection>,
     /// The app's Swift module names (docs/app-crate.md).
@@ -60,10 +60,10 @@ pub const DEFAULT_APP_MODULE: &str = "AppHost";
 pub struct UiTestSection {
     /// Launch arguments that start the app on fresh, throwaway data instead
     /// of the person's own (Pocket Library: `["-ForgeUITestData"]`).
-    /// `forge ui explore` refuses to change data without them.
+    /// forge-lab's explorer refuses to change data without them.
     #[serde(default)]
     pub test_data_args: Vec<String>,
-    /// Identifiers `forge ui explore --real-data` may tap besides
+    /// Identifiers forge-lab's explorer (`--real-data`) may tap besides
     /// navigation (rows, tabs, back, cancel), because the developer knows
     /// they change nothing: a button that opens a sheet, a filter. Never
     /// overrides the never-lists (system services, acting outside the

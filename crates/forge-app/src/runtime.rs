@@ -519,7 +519,7 @@ impl<S: Send + 'static> Runtime<S> {
     }
 
     /// The lifecycle the runtime follows, for framework parts that watch it
-    /// (`forge_devtools::DevTools::start`). Apps report phases with
+    /// (such as forge-lab's `forge_devtools::DevTools::start`). Apps report phases with
     /// `set_phase`, not through this.
     pub fn lifecycle(&self) -> &Lifecycle {
         &self.lifecycle

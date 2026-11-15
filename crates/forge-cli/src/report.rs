@@ -1,6 +1,6 @@
 //! `--json`: every command ends with one result object on stdout, for
-//! scripts and for the Forge MCP server. The shape is "The result contract"
-//! in docs/forge-mcp.md (`forge.result/1`).
+//! scripts and for tools built on forge (such as forge-lab's MCP server).
+//! The shape is in docs/json-output.md (`forge.result/1`).
 //!
 //! In JSON mode, stdout carries nothing but that object. Everything a command
 //! or its child processes would print (cargo, xtool, `[forge]` progress) goes

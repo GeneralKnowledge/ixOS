@@ -80,7 +80,7 @@ public final class GoodDogModel {
     }
 
     /// Whether this launch uses throwaway test data (`-ForgeUITestData`, as
-    /// `forge ui run` and `forge ui explore` pass it). Such a launch also
+    /// `forge ui run` passes it). Such a launch also
     /// runs on a fixed clock, so dates and times on screen don't change
     /// between runs and screenshots stay comparable.
     /// ForgeKit's `-ForgeTemporaryData` does the same, so one argument
@@ -89,7 +89,7 @@ public final class GoodDogModel {
         || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
 
     /// With `-ForgeUITestData`, `-ForgeUITestSampleDog` starts on a dog
-    /// that is already set up, so `forge ui explore` can reach Today and My
+    /// that is already set up, so UI tests and walks can reach Today and My
     /// Dog without filling in onboarding (journey.toml covers onboarding).
     /// Never used on the owner's own data.
     public static let sampleDogArgument = "-ForgeUITestSampleDog"

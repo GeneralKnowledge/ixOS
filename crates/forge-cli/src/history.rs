@@ -1,12 +1,14 @@
 //! The app's command history: one JSON line per `forge` command run on an
 //! app, by a person or a script, in `<app>/.forge/history.jsonl`
-//! (`forge.history/1`). `forge verify --run` reads it next to the `forge
-//! mcp` journal, so a run record shows the builds and installs a person ran
-//! at the terminal, not only an agent's tool calls.
+//! (`forge.history/1`). The run records of the forge-lab side project
+//! (GeneralKnowledge/forge-lab) read it next to their MCP journal, so a run
+//! record shows the builds and installs a person ran at the terminal, not
+//! only an agent's tool calls.
 //!
 //! A line holds the command, when, whether it passed, its stage and error
 //! (cut to [`MAX_ERROR`]) and its log file. Never arguments or app output.
-//! Commands run by `forge mcp` are left out: its journal records them.
+//! Commands run under an MCP server (`FORGE_MCP_CHILD`) are left out: its
+//! journal records them.
 //! `.forge/` is git-ignored. Writing is best effort: a history that can't be
 //! written never fails the command.
 
@@ -70,19 +72,19 @@ fn append_to(path: &Path, entry: &Entry, at: &str) {
     }
 }
 
-/// The history lines at or after `since` (a run id, UTC).
-pub fn since(app: &Path, since: &str) -> Vec<Value> {
-    std::fs::read_to_string(app.join(FILE))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-        .filter(|v| v["at"].as_str().is_some_and(|at| at >= since))
-        .collect()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The history lines at or after `since` (a run id, UTC).
+    pub fn since(app: &Path, since: &str) -> Vec<Value> {
+        std::fs::read_to_string(app.join(FILE))
+            .unwrap_or_default()
+            .lines()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter(|v| v["at"].as_str().is_some_and(|at| at >= since))
+            .collect()
+    }
 
     #[test]
     fn lines_are_appended_and_read_back_from_a_time() {

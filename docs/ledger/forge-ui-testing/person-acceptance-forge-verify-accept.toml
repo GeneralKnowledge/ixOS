@@ -1,0 +1,9 @@
+order = 39
+capability = "A person's acceptance: `forge verify --accept <ID> --note` records it as `kind = \"human\"`; `forge verify` shows twin, iPhone and person columns. (Run records moved to the forge-lab side project.)"
+framework = "Yes: forge-cli (`accept`, `verify`)"
+rust_api = "n/a"
+ios_native = "n/a"
+in_app = "n/a: it reads the bundles other commands write"
+iphone = "No"
+documented = "Yes: evidence.md"
+limits = "`--accept` needs a terminal and is refused under an MCP server (`FORGE_MCP_CHILD`), which stops agents and scripts but records a person's claim, not proof they looked. Linux-tested"

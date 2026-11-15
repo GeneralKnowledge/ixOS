@@ -1076,8 +1076,8 @@ fn ios_preflight(
 /// Syncs the app's configuration, then builds the Rust static library and
 /// Swift bindings for an iOS app.
 ///
-/// With `devtools`, the app crate is built with its `devtools` feature: the
-/// live connection to `forge device` (docs/forge-device.md). Never on
+/// With `devtools`, the app crate is built with its own `devtools` feature
+/// (development-only code, such as forge-lab's live connection). Never on
 /// unless asked, so an ordinary build contains none of it.
 fn package_ios(
     runner: &dyn CommandRunner,
@@ -1090,7 +1090,7 @@ fn package_ios(
     let generated = project_dir.join("Generated");
     let package = script(root, "package-ios-library.sh")
         .arg(generated_dir_arg(root, &generated))
-        // The app's name on the live connection (forge device pair/connect).
+        // The app's bundle id, for development-only code that names the app.
         .env("FORGE_APP_ID", &cfg.app.bundle_id)
         .env(
             "FORGE_RUST_FEATURES",
@@ -1480,9 +1480,7 @@ fn install_summary(s: &InstallSummary) -> String {
         s.process
     ));
     if s.devtools {
-        out.push_str(
-            "Development build: with the app open, run `forge device pair` once, then `forge device connect`.\n",
-        );
+        out.push_str("Development build: the app crate's `devtools` feature is on.\n");
     }
     out
 }

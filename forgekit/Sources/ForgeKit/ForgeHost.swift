@@ -47,7 +47,7 @@ public struct ForgeEnvironment: Sendable, Equatable {
     }
 
     /// The launch argument that makes `standard(app:)` use throwaway data:
-    /// UI tests and `forge ui explore` pass it so they never touch the
+    /// UI tests pass it so they never touch the
     /// person's own data. Each launch with it starts on empty data.
     public static let temporaryDataArgument = "-ForgeTemporaryData"
 

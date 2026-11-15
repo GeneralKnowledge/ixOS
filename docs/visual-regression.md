@@ -1,8 +1,8 @@
 # Visual regression: noticing when a screen got worse
 
-Status: 2026-11-08. Built and tested on Linux (`forge-uitest`'s `visual` and `baseline` modules, `forge ui run --visual`, `forge ui accept`, the `forge_accept_screenshots` MCP tool). First phone run 2026-11-08 on Cati (iPhone16,2, iOS 26.3.1): Pocket Library's `m0.toml` recorded its two baselines, then two unchanged runs both matched. The form screenshot had one changed area too small to count (the text cursor, changed ratio 0.0001), which is the rule working. Not yet tried: a deliberate change, and a person confirming the run.
+Status: 2026-11-08. Built and tested on Linux (`forge-uitest`'s `visual` and `baseline` modules, `forge ui run --visual`, `forge ui accept`). First phone run 2026-11-08 on Cati (iPhone16,2, iOS 26.3.1): Pocket Library's `m0.toml` recorded its two baselines, then two unchanged runs both matched. The form screenshot had one changed area too small to count (the text cursor, changed ratio 0.0001), which is the rule working. Not yet tried: a deliberate change, and a person confirming the run.
 
-A UI test that passes says the controls are there and respond. It does not say the screen still looks right: a button pushed off screen by a long label, a list that lost its padding, a dark-mode colour that went unreadable, a toolbar that vanished. An agent changing SwiftUI needs to see that, without a person comparing pictures. This page is item A9 of the [agent capability audit](research/forge-agent-capability-audit.md) and the screenshot half of [Forge UI Testing M4](forge-ui-testing.md#milestones).
+A UI test that passes says the controls are there and respond. It does not say the screen still looks right: a button pushed off screen by a long label, a list that lost its padding, a dark-mode colour that went unreadable, a toolbar that vanished. An agent changing SwiftUI needs to see that, without a person comparing pictures. This page is item A9 of the [agent capability audit](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md) and the screenshot half of [Forge UI Testing M4](forge-ui-testing.md#milestones).
 
 ## How it works
 
@@ -110,11 +110,9 @@ A device bundle (`forge.evidence/1`, [evidence.md](evidence.md#device-runs-forge
 
 A changed screen (or a new accessibility finding) makes `ok` false and sets the `device` verdict of the requirements this scenario proves to `failed`, with a note per screen ("screenshot 2-new-book-form differs from its baseline"). So `forge verify` keeps the requirement open until the change is fixed, or accepted and the test run again. This adds fields only, so the schema stays `forge.evidence/1`.
 
-## For agents (`forge mcp`)
+## For agents
 
-- `forge_run_ui_test` compares by default. Its result carries `data.visual` as above and `data.out` (the run folder). When no step failed but a screen changed, the image it returns is the first diff instead of a failure screenshot.
-- `forge_accept_screenshots` (`run`, optional `only`) runs `forge ui accept`. The conventions tell the agent to accept only after looking: for a new screen, that it is right; for a changed one, that it is the change it meant. Otherwise it fixes the app.
-- `forge_ui_act`'s one-step screenshots are never compared (`--visual off`): one action is not a scenario.
+An agent uses the same commands (`forge ui run --visual`, `forge ui accept`, with `--json`). It accepts only after looking: for a new screen, that it is right; for a changed one, that it is the change it meant. Otherwise it fixes the app.
 
 ## Limits and next steps
 

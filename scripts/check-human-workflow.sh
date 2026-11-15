@@ -41,7 +41,6 @@ export FORGE_WORKSPACE="$ROOT"
 "$FORGE" --version
 "$FORGE" doctor || true   # readiness report; a Linux box without xtool is fine here
 
-START="$(date -u +%Y-%m-%dT%H-%M-%S)"
 APP="$WORK/Shelf"
 cd "$WORK"
 
@@ -130,7 +129,6 @@ else
   echo "no swift on PATH and FORGE_SWIFT_DOCKER unset: forge check swift skipped"
   manual "6. forge check swift (needs the Swift toolchain or Docker): the model, bindings and ReadingTimeTests on Linux"
 fi
-"$FORGE" ui focus --changed Sources/AppHost/NoteListView.swift
 git add -A && git -c user.name=person -c user.email=person@example.com commit -qm "Show reading time"
 
 if [[ "${FORGE_HUMAN_DEVICE:-}" == 1 ]]; then
@@ -175,10 +173,6 @@ if [[ $SWIFT_RAN -eq 1 ]]; then
 else
   "$FORGE" verify --twin-only || true   # no twin evidence without swift: says so
 fi
-"$FORGE" verify --run "$START"
-report="$(ls -d .forge/runs/*-run | tail -1)/report.md"
-[[ -f "$report" ]] || fail "forge verify --run wrote no report.md"
-grep -q 'Commands and tool calls recorded' "$report" || fail "the run record does not count the terminal's commands: $(cat "$report")"
 [[ -s .forge/history.jsonl ]] || fail "no command history in .forge/history.jsonl"
 manual "12. forge verify --accept RT-1 --note \"…\" at your own terminal, after looking at the phone: only a person records an acceptance"
 
@@ -186,7 +180,6 @@ step "No agent was involved"
 for f in AGENTS.md CLAUDE.md .mcp.json; do
   [[ ! -e "$APP/$f" ]] || fail "$f appeared during the workflow"
 done
-if ls -d .forge/runs/*-mcp >/dev/null 2>&1; then fail "an MCP journal exists: forge mcp ran"; fi
 if grep -q '"via":"mcp"' .forge/history.jsonl; then fail "the history records an MCP call"; fi
 
 step "OK: a fresh app in $APP was created, changed, tested and reviewed without an agent"

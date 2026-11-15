@@ -1,6 +1,6 @@
 # Instructions for coding agents: FORGE_APP_NAME
 
-FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust (`rust/`), the screens are SwiftUI (`Sources/AppHost/`), and it is built, signed and installed on an iPhone from Linux with xtool. `README.md` explains the layout; this file lists the rules that are easy to get wrong. Everything below works from the command line, the same way a person works on the app. The MCP server in `.mcp.json` is an optional convenience over the same commands.
+FORGE_APP_NAME is a native iOS app made with Forge: the logic and state are Rust (`rust/`), the screens are SwiftUI (`Sources/AppHost/`), and it is built, signed and installed on an iPhone from Linux with xtool. `README.md` explains the layout; this file lists the rules that are easy to get wrong. Everything below works from the command line, the same way a person works on the app.
 
 ## Rules
 

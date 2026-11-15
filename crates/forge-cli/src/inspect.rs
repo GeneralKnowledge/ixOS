@@ -59,7 +59,7 @@ pub fn scan(app: &Path) -> Result<Value, String> {
                 "{rel} imports a UI framework, so it can't be checked on Linux: keep models to Foundation, Observation, ForgeKit and ForgeFFI"
             ));
         }
-        for (id, prefix) in crate::focus::identifiers(&text) {
+        for (id, prefix) in swift_identifiers(&text) {
             identifiers.push(json!({"id": id, "prefix": prefix, "file": rel}));
         }
         swift.push(json!({"path": rel, "imports": imports, "imports_ui_framework": ui}));
@@ -264,9 +264,82 @@ fn all_files(dir: &Path) -> Vec<PathBuf> {
     out
 }
 
+/// `.accessibilityIdentifier("…")` literals: the identifier, or for an
+/// interpolated one its literal prefix (kept only when it ends at a dot,
+/// so a prefix never covers a whole screen by accident).
+fn swift_identifiers(text: &str) -> Vec<(String, bool)> {
+    let mut out = Vec::new();
+    let needle = ".accessibilityIdentifier(\"";
+    let mut rest = text;
+    while let Some(at) = rest.find(needle) {
+        rest = &rest[at + needle.len()..];
+        let Some(end) = string_end(rest) else { break };
+        let literal = &rest[..end];
+        match literal.find("\\(") {
+            None if !literal.is_empty() => out.push((literal.to_string(), false)),
+            Some(cut) => {
+                let prefix = &literal[..cut];
+                if prefix.ends_with('.') && prefix.len() > 1 {
+                    out.push((prefix.to_string(), true));
+                }
+            }
+            _ => {}
+        }
+    }
+    out.sort();
+    out.dedup();
+    out
+}
+
+/// Where a Swift string literal starting at `s` ends (its closing quote),
+/// stepping over escapes and `\( … )` interpolations.
+fn string_end(s: &str) -> Option<usize> {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    let mut depth = 0usize;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' if depth == 0 && bytes.get(i + 1) == Some(&b'(') => {
+                depth = 1;
+                i += 2;
+                continue;
+            }
+            b'\\' if depth == 0 => {
+                i += 2;
+                continue;
+            }
+            b'(' if depth > 0 => depth += 1,
+            b')' if depth > 0 => depth -= 1,
+            b'"' if depth == 0 => return Some(i),
+            b'\n' => return None,
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn identifiers_and_interpolated_prefixes() {
+        let text = r#"
+            Button("Save") {}.accessibilityIdentifier("record.save")
+            Text(x).accessibilityIdentifier("record.result.\(option.key)")
+            Text(y).accessibilityIdentifier("\(name)")
+            Text(z).accessibilityIdentifier("a\"b")
+        "#;
+        assert_eq!(
+            swift_identifiers(text),
+            vec![
+                ("a\\\"b".to_string(), false),
+                ("record.result.".to_string(), true),
+                ("record.save".to_string(), false),
+            ]
+        );
+    }
 
     const FORGE_TOML: &str = "[app]\nname = \"Tipster\"\nbundle_id = \"org.example.tipster\"\nminimum_ios = \"18.0\"\n\n[rust]\npath = \"rust\"\n\n[build]\nios_device = true\n";
 

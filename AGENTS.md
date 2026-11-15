@@ -7,7 +7,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 - It makes Apple's frameworks productive from Linux. It does not replace SwiftUI, and it is not a cross-platform UI layer or a game engine.
 - iOS is the focus. Android is work in progress: keep it building, add no Android features ([roadmap](docs/roadmap.md#android--work-in-progress)).
 - Linux first. Write instructions for Linux with xtool; macOS and Xcode are optional extras, never assumed.
-- Human first, agent optional. Every step of developing an app works from the `forge` CLI for a person with no AI agent, MCP server or API key ([human-workflow.md](docs/human-workflow.md)). Agents get the same commands, plus optional integration (`forge mcp`, `forge agent setup`).
+- Human first, agent optional. Every step of developing an app works from the `forge` CLI for a person with no AI agent, MCP server or API key ([human-workflow.md](docs/human-workflow.md)). Agents get the same commands, plus `forge agent setup`. The MCP server, the explorer, run records and the live dev connection live in the separate [forge-lab](https://github.com/GeneralKnowledge/forge-lab) side project.
 
 ## Layout
 
@@ -18,7 +18,7 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 | `crates/forge-storage`, `crates/forge-net` | Persistence (JSON, SQLite) and networking |
 | `forgekit/` | The Swift package: ForgeKit (the runtime host) and ForgeUI (the design system), released as GeneralKnowledge/ForgeKit |
 | `crates/forge-cli` | The `forge` command |
-| `crates/forge-device`, `forge-devproto`, `forge-devtools` | Talking to a USB iPhone from Linux, and the live session with development builds |
+| `crates/forge-device`, `forge-devproto`, `forge-uitest`, `forge-crash` | Talking to a USB iPhone from Linux (logs, crashes, UI tests); `forge-devproto` is the encrypted channel Relay uses |
 | `examples/` | Apps. Each Forge app owns its Rust crate in `rust/`; `forgeui-showcase` is a plain SwiftUI app on ForgeUI only |
 | `templates/` | What `forge init` copies; `templates/agent/` is what `forge agent setup` adds |
 | `docs/` | Developer docs. `docs/research/` holds investigations |
@@ -33,9 +33,9 @@ ixOS (Forge Mobile) builds genuinely native iOS apps from Linux: SwiftUI for the
 6. **Never edit `Generated/` by hand.** Regenerate with `forge bindings generate --project <app>` and commit the result.
 7. **Update the [capability ledger](docs/capability-ledger.md) in the same PR as a capability change.** Edit or add its record under `docs/ledger/` and run `forge ledger generate`, which also rewrites the summary in `docs/status.md`; never edit either generated page. "iPhone: Yes" needs a run on a physical iPhone reported by a person; never record a skipped run as passing.
 8. **Physical device steps:** say which step needs the iPhone and what it proves. Don't claim device results you didn't see.
-9. **A capability lives in the CLI, not only in MCP.** Build it as a `forge` command (with `--json`) or in a library the CLI uses; `forge mcp` runs that command and adds only schemas, argument checks and session state. A default app needs no agent files, and safety rules (exploration, installing, `forge verify --accept`) are the same whoever calls. `scripts/check-human-workflow.sh` must keep passing.
+9. **A capability lives in the CLI.** Build it as a `forge` command (with `--json`, [json-output.md](docs/json-output.md)) or in a library the CLI uses; tools built on top (forge-lab's MCP server) run that command. A default app needs no agent files, and safety rules (installing, `forge verify --accept`) are the same whoever calls. `scripts/check-human-workflow.sh` must keep passing.
 10. **xtool changes** go to the fork (`GeneralKnowledge/xtool`). Do not open PRs, issues or comments on upstream xtool.
-11. **Agent and device tooling is frozen** (`forge ui explore`, `forge ui focus`, run records, `forge mcp`, the live dev connection): bug fixes only, no new commands, until the roadmap's P1 to P4 exit criteria are met or the freeze is reviewed on 2026-12-15 ([roadmap](docs/roadmap.md#tooling-freeze-and-reuse-rules)). The one exception is interaction completeness: basic gestures, keys and device navigation in `forge-uitest`, `forge ui` and `forge_ui_act`'s action list. Before building something, check for an existing tool or Apple framework that does it.
+11. **Agent tooling lives in [forge-lab](https://github.com/GeneralKnowledge/forge-lab), not here** (the MCP server, `explore`, `focus`, run records, the live dev connection). Don't add it back to ixOS. Device and UI-test tooling here (`forge ui`, `forge device`) gets bug fixes and interaction completeness only (basic gestures, keys and device navigation) ([roadmap](docs/roadmap.md#tooling-freeze-and-reuse-rules)). Before building something, check for an existing tool or Apple framework that does it.
 
 ## Checking your work
 
@@ -54,13 +54,13 @@ Swift: SwiftUI compiles only with the Darwin SDK. The check is `scripts/check-io
 
 ## Device tools
 
-Publish every build meant for the phone with `forge publish ios --project <app>`, from the laptop. It builds and signs without the phone and adds the build to the one Install page on the tailnet, labelled with its branch and commit; earlier builds, from other branches too, stay on the page. Then tell the person the build is there: they install it from Safari whenever and wherever they like, so no step waits on the phone ([over-the-air.md](docs/over-the-air.md)). Use the cable only for what needs it: logs, crash pulls, `forge ui` and the live connection.
+Publish every build meant for the phone with `forge publish ios --project <app>`, from the laptop. It builds and signs without the phone and adds the build to the one Install page on the tailnet, labelled with its branch and commit; earlier builds, from other branches too, stay on the page. Then tell the person the build is there: they install it from Safari whenever and wherever they like, so no step waits on the phone ([over-the-air.md](docs/over-the-air.md)). Use the cable only for what needs it: logs, crash pulls and `forge ui`.
 
 The laptop is shared, and parallel builds have frozen it, so every heavy build goes through one queue: one at a time, in arrival order, each in a memory and CPU cap that kills a runaway build before it can freeze the machine ([builds.md](docs/builds.md#the-build-queue)). `forge build ios`, `forge run ios`, `forge publish ios` and `scripts/check-ios-xtool.sh` queue by themselves. Anything else heavy on the laptop (`cargo build`, `cargo test`, `swift build`, `xtool dev build`, a build script) runs only as `forge queue run --note "<thread or PR>" -- <command>`, never directly. Use the forge in `~/.cargo/bin` or one built from current main (older copies don't queue), set `FORGE_BUILD_LOCK_NOTE` to your thread or PR, check `forge queue status` before saying a build has started, and never start a second build to get around the wait.
 
 Never make a build wait on the phone. `forge run ios` builds first and looks for the iPhone only at the end; with no phone it stops with the build ready, and the next run rebuilds only what changed and installs. So when a change needs a phone run, start `forge run ios` on the laptop in the same turn, fix any compile errors, and ask the person for the phone only once it says the build is ready: an approval for installing then covers just the quick install. To reuse a build check's work, install from the checkout it built: `scripts/check-ios-xtool.sh` ends by printing the `forge run ios --project …` line for each app it built (with `--ref`, that is the reused worktree), and both build debug Swift on release Rust, so the install recompiles nothing.
 
-On a machine with an iPhone over USB: `forge device list|info|logs|crashes` (`crashes --pull <dir>` symbolicates; `forge crash <file.ips>` reads a report offline), and for a development build (`forge run ios --devtools`) `forge device pair|status|snapshot|cmd|connect`. See [forge-device.md](docs/forge-device.md). The agent-facing design of the dev loop and the MCP server is in [dev-loop.md](docs/dev-loop.md) and [forge-mcp.md](docs/forge-mcp.md).
+On a machine with an iPhone over USB: `forge device list|info|logs|crashes` (`crashes --pull <dir>` symbolicates; `forge crash <file.ips>` reads a report offline). See [forge-device.md](docs/forge-device.md).
 
 ## Docs to read for a task
 

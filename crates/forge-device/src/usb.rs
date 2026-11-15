@@ -14,7 +14,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-use crate::live::LiveStream;
+use crate::LiveStream;
 use crate::{Connection, DeviceBackend, DeviceError, DeviceInfo, DeviceRef, InstalledApp, Result};
 
 /// Label idevice sends with each request; shows up in the phone's logs.

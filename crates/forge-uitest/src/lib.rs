@@ -16,10 +16,7 @@
 //!   ones (visual regression), on Linux.
 
 pub mod baseline;
-pub mod explore;
-pub mod focus;
 pub mod http;
-pub mod model;
 pub mod phone;
 pub mod policy;
 pub mod script;
@@ -29,6 +26,18 @@ pub mod visual;
 pub mod wda;
 
 use std::time::{Duration, Instant};
+
+/// UIKit's own launch arguments for the largest accessibility text size,
+/// honoured by any app launched through XCTest.
+pub const LARGEST_TEXT_ARGS: [&str; 2] = [
+    "-UIPreferredContentSizeCategoryName",
+    "UICTContentSizeCategoryAccessibilityXXXL",
+];
+
+/// Forge's own launch argument for dark or light mode (`-ForgeAppearance
+/// dark`), honoured by Forge apps' root view (`forgeLaunchAppearance()`).
+/// UIKit has no launch argument for it.
+pub const APPEARANCE_ARG: &str = "-ForgeAppearance";
 
 pub use tree::UiNode;
 

@@ -74,7 +74,7 @@ echo "[forge] Building ${CRATE_DIR#"$ROOT/"} for ${TARGET} (${CARGO_PROFILE})...
 # Only the static library is linked into the app. Asking for it alone skips the crate's
 # cdylib, which needs an iOS linker that a Linux host (xtool's Darwin SDK) does not provide.
 # FORGE_RUST_FEATURES: the app crate's features, comma-separated (`forge run
-# ios --devtools` sets `devtools`).
+# ios --devtools` sets `devtools`, the app's own development-only feature).
 FEATURES=()
 if [[ -n "${FORGE_RUST_FEATURES:-}" ]]; then
   FEATURES=(--features "$FORGE_RUST_FEATURES")

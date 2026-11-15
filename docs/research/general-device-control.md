@@ -2,7 +2,7 @@
 
 Status: design, 2026-11-08, revised the same day after Reuben's review, with the first phone results ([Spikes on Cati](#spikes-on-cati), 2026-11-08). **Built so far: priority 1**, the policy, commit gate, journal and `--any-app` for `forge ui` ([Apps Forge didn't build](../forge-ui-testing.md#apps-forge-didnt-build); tested on Linux, not yet on the phone). The rest is design.
 
-**What this is not:** a separate phone-control workstream or a second automation stack. Forge already has the architecture: [Forge UI Testing](../forge-ui-testing.md) (`forge-uitest`'s `Driver`, `UiNode` and `Locator`), and the [agent capability audit](forge-agent-capability-audit.md) of 2026-11-07 already proposed the missing routes: A2 (Apple's accessibility service), A3 (the rest of `idevice`), the exploratory crawler, and evidence bundles (A4). This page applies those plans to apps Forge didn't build, and makes "any app" a first-class use of the same system.
+**What this is not:** a separate phone-control workstream or a second automation stack. Forge already has the architecture: [Forge UI Testing](../forge-ui-testing.md) (`forge-uitest`'s `Driver`, `UiNode` and `Locator`), and the [agent capability audit](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md) of 2026-11-07 already proposed the missing routes: A2 (Apple's accessibility service), A3 (the rest of `idevice`), the exploratory crawler, and evidence bundles (A4). This page applies those plans to apps Forge didn't build, and makes "any app" a first-class use of the same system.
 
 **What Forge can't claim yet:** that it tests arbitrary third-party apps end to end. Tipster proved the agent loop on a physical iPhone for an app Forge built. On another developer's app, Forge has so far read the screen and, once, typed and sent one message with Reuben watching ([spikes](#spikes-on-cati)); that is a working route, not a tested app. Every route below still needs its own validation on other developers' apps. And controlling the screen does not give access to another app's private data: its container, logs and state stay out of reach, and only what the screen shows is readable.
 
@@ -20,7 +20,7 @@ Reuben's proposal (2026-11-08): the machinery that builds, installs and drives F
 
 ## One device model, several routes
 
-The audit's architectural rule ([section 8](forge-agent-capability-audit.md#8-architectural-implications)) is the design: `forge-device` owns the phone (selection, lock, DDI, tunnel, services); `forge-uitest` owns the UI through one `Driver` trait, one `UiNode` model and one `Locator` vocabulary. Every route feeds those, and Forge picks the route per operation.
+The audit's architectural rule ([section 8](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md#8-architectural-implications)) is the design: `forge-device` owns the phone (selection, lock, DDI, tunnel, services); `forge-uitest` owns the UI through one `Driver` trait, one `UiNode` model and one `Locator` vocabulary. Every route feeds those, and Forge picks the route per operation.
 
 | Route | Role | Status |
 |---|---|---|
@@ -89,7 +89,7 @@ UI Testing's exploratory tester ([M5](../forge-ui-testing.md#milestones)) and th
 
 First on Forge's own apps (Pocket Library, Murmur), where it can be checked against the source, then on an app Reuben picks.
 
-**Update, 2026-11-08:** the first version is `forge ui explore` ([forge-explore.md](../forge-explore.md)), for Forge apps only until the policy above lands. It is built and tested on Linux; not yet run on an iPhone.
+**Update, 2026-11-08:** the first version is `forge ui explore` ([forge-explore.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-explore.md)), for Forge apps only until the policy above lands. It is built and tested on Linux; not yet run on an iPhone.
 
 ## Evidence: what the agent actually inspected and tested
 
@@ -97,7 +97,7 @@ First on Forge's own apps (Pocket Library, Murmur), where it can be checked agai
 
 ## Safety
 
-The [MCP tiers](../forge-mcp.md#safety-boundaries) are about what a call costs (slots, App IDs, the account). Other people's apps add a second axis: what the agent may do inside an app that holds the person's accounts, messages and money. The server enforces it, so an agent that read a malicious message in a chat app can't talk its way past the rules.
+The [MCP tiers](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-mcp.md#safety-boundaries) are about what a call costs (slots, App IDs, the account). Other people's apps add a second axis: what the agent may do inside an app that holds the person's accounts, messages and money. The server enforces it, so an agent that read a malicious message in a chat app can't talk its way past the rules.
 
 **Off by default.** Apps outside the project are unreachable unless the person starts `forge mcp --any-app` (or passes `--any-app` to `forge ui`).
 
@@ -200,6 +200,6 @@ What they settle: WDA reads and operates another developer's app on iOS 26.3.1 w
 ## Sources
 
 - Code: `crates/forge-uitest/src/{lib,wda,phone}.rs`, `crates/forge-cli/src/ui.rs`, `crates/forge-mcp/src/tools.rs`, `crates/forge-device/examples/ax_probe.rs`.
-- [Agent capability audit](forge-agent-capability-audit.md): A2, A3, A4, the crawler (7.3), section 8. [Forge UI Testing](../forge-ui-testing.md): routes, M2.5, M5, phone results. [ax-audit.md](ax-audit.md). [evidence.md](../evidence.md).
+- [Agent capability audit](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md): A2, A3, A4, the crawler (7.3), section 8. [Forge UI Testing](../forge-ui-testing.md): routes, M2.5, M5, phone results. [ax-audit.md](ax-audit.md). [evidence.md](../evidence.md).
 - iCTRL README: <https://raw.githubusercontent.com/OpenMinis/iCTRL/HEAD/README.md>, release v1.96.1.
 - Apple: [`XCUIApplication`](https://developer.apple.com/documentation/xctest/xcuiapplication) (`init(bundleIdentifier:)`).

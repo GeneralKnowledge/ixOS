@@ -32,7 +32,7 @@ Mostly no. The framework crates (`forge-app`, `forge-runtime`, `forge-storage`, 
 
 ## Why
 
-**Exploration, run records and MCP.** Maestro does not support physical iPhones, and Appium's non-macOS support needs iOS 18 or later and a root tunnel ([forge-ui-testing.md](../forge-ui-testing.md), [agent capability audit](forge-agent-capability-audit.md)). So this does not duplicate a tool that works here. The problem is scale: it is agent tooling, which the 2026-11-09 direction put last (P6). The MCP server already uses the official `rmcp` SDK and runs `forge` commands, which is the right shape.
+**Exploration, run records and MCP.** Maestro does not support physical iPhones, and Appium's non-macOS support needs iOS 18 or later and a root tunnel ([forge-ui-testing.md](../forge-ui-testing.md), [agent capability audit](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/research/forge-agent-capability-audit.md)). So this does not duplicate a tool that works here. The problem is scale: it is agent tooling, which the 2026-11-09 direction put last (P6). The MCP server already uses the official `rmcp` SDK and runs `forge` commands, which is the right shape.
 
 **Evidence and reports.** The evidence bundle records requirement links and file hashes, which JUnit XML can't, so it stays. But it is a format nobody else reads, so a JUnit file beside it lets any CI system or test viewer show the results.
 

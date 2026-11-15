@@ -4,7 +4,7 @@ One ordered plan for every phone check that is queued after today's merges, run 
 
 The order follows Reuben's review of 2026-11-07 18:42. **Part 1 (steps 1–4) settles the tooling questions** that the agent and MCP work depends on: Apple's accessibility service (#79), WebDriverAgent UI testing (#61), which team xtool signs with, and the launch/screenshot/diagnostics loop. **Part 2 (steps 5–8)** is the queued app checks, in the time that's left. Each step says **which app slot** it uses, **what Reuben does on the phone**, **what runs on the laptop** (through Remote Control, run by Claude, never typed by Reuben), and **the evidence** that decides pass or fail.
 
-*Since this plan was written:* #61, #83, #86, #88 and #89 are merged, so the branch worktree in step 0 is no longer needed: build `forge` from `main`. Results so far are recorded in [ax-audit.md](../research/ax-audit.md) (accessibility service), [forge-ui-testing.md](../forge-ui-testing.md) (WDA) and [dev-loop.md](../dev-loop.md#where-the-loop-stands).
+*Since this plan was written:* #61, #83, #86, #88 and #89 are merged, so the branch worktree in step 0 is no longer needed: build `forge` from `main`. Results so far are recorded in [ax-audit.md](../research/ax-audit.md) (accessibility service), [forge-ui-testing.md](../forge-ui-testing.md) (WDA) and [dev-loop.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/dev-loop.md#where-the-loop-stands).
 
 Nothing here is marked passed until Reuben reports it. Results go back to the runbook each step names (ACCEPTANCE tables, `local-ai.md`, the ledger), not into this file.
 
@@ -133,7 +133,7 @@ Owner: this thread; record the result in [ios-signing.md](../ios-signing.md) and
 
 ## Step 4. The launch, screenshot and diagnostics loop — about 15 minutes
 
-Owner: "Speed up the Linux iOS dev loop" thread ([dev-loop.md](../dev-loop.md)). One measured cycle on Pocket Library with tonight's real commands, to see what an agent would get back. No code changes.
+Owner: "Speed up the Linux iOS dev loop" thread ([dev-loop.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/dev-loop.md)). One measured cycle on Pocket Library with tonight's real commands, to see what an agent would get back. No code changes.
 
 **If `scripts/iphone-acceptance.sh` is available** (from the "Complete the development loop improvements" thread; it needs #61 in the same forge binary and `forge ui setup` done first), run it instead of the commands below: `scripts/iphone-acceptance.sh --app examples/pocket-library --with-ax-probe` (add `--with-mcp` if `forge mcp` is in the build). It removes nothing, only reinstalls Pocket Library over itself, and writes `results.md` (PASS/FAIL/SKIP per step) plus raw JSON. On a free team its S2 "paid team selected" step is expected to FAIL; that's the step 3 result, not a regression. Send `results.md` and the JSON to that thread. Otherwise, run the commands by hand:
 
