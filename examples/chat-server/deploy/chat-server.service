@@ -1,0 +1,27 @@
+# The Chat example's server as a system service on a Linux machine of your
+# own (Reuben's: the Hetzner server), reached only over your tailnet.
+# Installed by deploy.sh; see README.md.
+[Unit]
+Description=ixOS Chat example server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Loopback only: `tailscale serve` puts HTTPS in front of it on the tailnet,
+# so nothing listens on the public interface and tokens never cross a
+# network in the clear.
+ExecStart=/usr/local/bin/chat-server --bind 127.0.0.1:8787 --data /var/lib/ixos-chat/server.json
+Restart=on-failure
+RestartSec=2
+# Its own throwaway user, and only its data directory is writable.
+DynamicUser=yes
+StateDirectory=ixos-chat
+StateDirectoryMode=0700
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+NoNewPrivileges=yes
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

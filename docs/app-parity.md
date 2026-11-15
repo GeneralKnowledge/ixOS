@@ -23,7 +23,7 @@ When the framework gains a better way to do something, every app moves to it, or
 
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` |
 |---|---|---|---|---|---|---|---|---|---|---|
-| chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes |
+| chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | Yes | Yes | Yes | Yes |
 | checklist | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 3) | n/a | No (wave 3) | Yes |
 | commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | No (wave 3) | n/a | Yes | Yes |
 | counter | No (decision) | No (decision) | Yes | No (wave 1) | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) |
@@ -77,8 +77,6 @@ When the framework gains a better way to do something, every app moves to it, or
 | weather | `requirements` | Written with its move to the framework | 3 |
 | weather | `ui-test` | Written with its move to the framework | 3 |
 | weather | `urlsession` | Open-Meteo requests still go through ureq | 3 |
-| chat | `requirements` | Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6 | 4 |
-| chat | `ui-test` | Needs the chat server reachable from the phone; comes with M6 | 4 |
 | good-dog | `device-checks` | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
 | sketchbook | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |
 | soundscape | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |

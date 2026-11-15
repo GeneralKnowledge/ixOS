@@ -55,6 +55,7 @@ struct ConversationListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button("New Conversation", systemImage: "square.and.pencil") { creating = true }
+                    .accessibilityIdentifier("chats.new")
             }
         }
         .sheet(isPresented: $creating) {
@@ -110,6 +111,7 @@ struct ConversationListView: View {
                 NavigationLink(value: ChatRoute(conversationId: conversation.id)) {
                     ConversationRow(conversation: conversation)
                 }
+                .accessibilityIdentifier("chats.conversation.\(conversation.id)")
                 .swipeActions(edge: .leading) { readAction(conversation) }
                 .swipeActions(edge: .trailing) { muteAction(conversation) }
                 .contextMenu {
@@ -236,6 +238,7 @@ private struct NewConversationView: View {
                 Section {
                     TextField("Title", text: $title)
                         .focused($focused)
+                        .accessibilityIdentifier("newConversation.title")
                         .submitLabel(.done)
                         .onSubmit(create)
                 } footer: {
@@ -249,12 +252,14 @@ private struct NewConversationView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
+                        .accessibilityIdentifier("newConversation.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if working {
                         ProgressView()
                     } else {
                         Button("Create", action: create).disabled(trimmed.isEmpty)
+                            .accessibilityIdentifier("newConversation.create")
                     }
                 }
             }

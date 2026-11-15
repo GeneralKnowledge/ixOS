@@ -322,6 +322,34 @@ typedef void (*UniffiCallbackInterfaceAudioFilesMethod0)(uint64_t, RustBuffer, d
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD1
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER_METHOD2
+typedef void (*UniffiCallbackInterfaceBackgroundSchedulerMethod2)(uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION_METHOD0
+typedef void (*UniffiCallbackInterfaceBackgroundTaskCompletionMethod0)(uint64_t, int8_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR_METHOD0
 typedef void (*UniffiCallbackInterfaceBiometricAuthenticatorMethod0)(uint64_t, RustBuffer* _Nonnull, 
@@ -406,6 +434,26 @@ typedef struct UniffiVTableCallbackInterfaceAudioFiles {
     UniffiCallbackInterfaceClone _Nonnull uniffiClone;
     UniffiCallbackInterfaceAudioFilesMethod0 _Nonnull duration;
 } UniffiVTableCallbackInterfaceAudioFiles;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_SCHEDULER
+typedef struct UniffiVTableCallbackInterfaceBackgroundScheduler {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod0 _Nonnull submit;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod1 _Nonnull cancel;
+    UniffiCallbackInterfaceBackgroundSchedulerMethod2 _Nonnull permitted;
+} UniffiVTableCallbackInterfaceBackgroundScheduler;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BACKGROUND_TASK_COMPLETION
+typedef struct UniffiVTableCallbackInterfaceBackgroundTaskCompletion {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceBackgroundTaskCompletionMethod0 _Nonnull finished;
+} UniffiVTableCallbackInterfaceBackgroundTaskCompletion;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_BIOMETRIC_AUTHENTICATOR
@@ -914,6 +962,71 @@ void uniffi_chat_app_fn_init_callback_vtable_audiofiles(const UniffiVTableCallba
 double uniffi_chat_app_fn_method_audiofiles_duration(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDSCHEDULER
+uint64_t uniffi_chat_app_fn_clone_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDSCHEDULER
+void uniffi_chat_app_fn_free_backgroundscheduler(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BACKGROUNDSCHEDULER
+void uniffi_chat_app_fn_init_callback_vtable_backgroundscheduler(const UniffiVTableCallbackInterfaceBackgroundScheduler* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+void uniffi_chat_app_fn_method_backgroundscheduler_submit(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_CANCEL
+void uniffi_chat_app_fn_method_backgroundscheduler_cancel(uint64_t ptr, RustBuffer identifier, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+RustBuffer uniffi_chat_app_fn_method_backgroundscheduler_permitted(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDTASKCOMPLETION
+uint64_t uniffi_chat_app_fn_clone_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDTASKCOMPLETION
+void uniffi_chat_app_fn_free_backgroundtaskcompletion(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_INIT_CALLBACK_VTABLE_BACKGROUNDTASKCOMPLETION
+void uniffi_chat_app_fn_init_callback_vtable_backgroundtaskcompletion(const UniffiVTableCallbackInterfaceBackgroundTaskCompletion* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+void uniffi_chat_app_fn_method_backgroundtaskcompletion_finished(uint64_t ptr, int8_t success, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BACKGROUNDTASKRUN
+uint64_t uniffi_chat_app_fn_clone_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDTASKRUN
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FREE_BACKGROUNDTASKRUN
+void uniffi_chat_app_fn_free_backgroundtaskrun(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_METHOD_BACKGROUNDTASKRUN_EXPIRE
+void uniffi_chat_app_fn_method_backgroundtaskrun_expire(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BIOMETRICAUTHENTICATOR
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_CLONE_BIOMETRICAUTHENTICATOR
 uint64_t uniffi_chat_app_fn_clone_biometricauthenticator(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -1000,6 +1113,11 @@ RustBuffer uniffi_chat_app_fn_func_app_lock_method(RustCallStatus *_Nonnull out_
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_MESSAGE_LINK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_CHAT_MESSAGE_LINK
+RustBuffer uniffi_chat_app_fn_func_chat_message_link(RustBuffer conversation_id, RustBuffer message_id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG
 void uniffi_chat_app_fn_func_forge_log(RustBuffer level, RustBuffer category, RustBuffer message, RustCallStatus *_Nonnull out_status
@@ -1008,12 +1126,6 @@ void uniffi_chat_app_fn_func_forge_log(RustBuffer level, RustBuffer category, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_FORGE_LOG_ENABLED
 int8_t uniffi_chat_app_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_MESSAGE_NOTIFICATION_CATEGORY
-RustBuffer uniffi_chat_app_fn_func_message_notification_category(RustCallStatus *_Nonnull out_status
-    
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
@@ -1051,6 +1163,21 @@ void uniffi_chat_app_fn_func_install_native_ai(uint64_t model, RustCallStatus *_
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AUDIO
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_AUDIO
 void uniffi_chat_app_fn_func_install_native_audio(uint64_t files, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BACKGROUND
+void uniffi_chat_app_fn_func_install_native_background(uint64_t scheduler, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+int8_t uniffi_chat_app_fn_func_native_background_handles(RustBuffer identifier, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint64_t uniffi_chat_app_fn_func_run_native_background_task(RustBuffer identifier, uint64_t completion, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_FN_FUNC_INSTALL_NATIVE_BIOMETRICS
@@ -1340,6 +1467,12 @@ uint16_t uniffi_chat_app_checksum_func_app_lock_method(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_MESSAGE_LINK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_CHAT_MESSAGE_LINK
+uint16_t uniffi_chat_app_checksum_func_chat_message_link(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG
 uint16_t uniffi_chat_app_checksum_func_forge_log(void
@@ -1349,12 +1482,6 @@ uint16_t uniffi_chat_app_checksum_func_forge_log(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_FORGE_LOG_ENABLED
 uint16_t uniffi_chat_app_checksum_func_forge_log_enabled(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
-#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_MESSAGE_NOTIFICATION_CATEGORY
-uint16_t uniffi_chat_app_checksum_func_message_notification_category(void
     
 );
 #endif
@@ -1397,6 +1524,24 @@ uint16_t uniffi_chat_app_checksum_func_install_native_ai(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_AUDIO
 uint16_t uniffi_chat_app_checksum_func_install_native_audio(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_INSTALL_NATIVE_BACKGROUND
+uint16_t uniffi_chat_app_checksum_func_install_native_background(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+uint16_t uniffi_chat_app_checksum_func_native_background_handles(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
+uint16_t uniffi_chat_app_checksum_func_run_native_background_task(void
     
 );
 #endif
@@ -1841,6 +1986,36 @@ uint16_t uniffi_chat_app_checksum_method_textsink_push(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AUDIOFILES_DURATION
 #define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_AUDIOFILES_DURATION
 uint16_t uniffi_chat_app_checksum_method_audiofiles_duration(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_SUBMIT
+uint16_t uniffi_chat_app_checksum_method_backgroundscheduler_submit(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_CANCEL
+uint16_t uniffi_chat_app_checksum_method_backgroundscheduler_cancel(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDSCHEDULER_PERMITTED
+uint16_t uniffi_chat_app_checksum_method_backgroundscheduler_permitted(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDTASKCOMPLETION_FINISHED
+uint16_t uniffi_chat_app_checksum_method_backgroundtaskcompletion_finished(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+#define UNIFFI_FFIDEF_UNIFFI_CHAT_APP_CHECKSUM_METHOD_BACKGROUNDTASKRUN_EXPIRE
+uint16_t uniffi_chat_app_checksum_method_backgroundtaskrun_expire(void
     
 );
 #endif

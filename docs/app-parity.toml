@@ -29,18 +29,6 @@ wave = 1
 reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
-app = "chat"
-rule = "requirements"
-wave = 4
-reason = "Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6"
-
-[[lag]]
-app = "chat"
-rule = "ui-test"
-wave = 4
-reason = "Needs the chat server reachable from the phone; comes with M6"
-
-[[lag]]
 app = "checklist"
 rule = "requirements"
 wave = 3

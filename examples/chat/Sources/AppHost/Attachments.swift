@@ -173,7 +173,7 @@ struct AttachmentsView: View {
                         if attachment.isImage {
                             PhotoThumbnail(model: model, attachment: attachment)
                         } else {
-                            DocumentRow(attachment: attachment, onMine: onMine)
+                            DocumentRow(model: model, attachment: attachment, onMine: onMine)
                         }
                     }
                     .buttonStyle(.plain)
@@ -233,16 +233,19 @@ private struct PhotoThumbnail: View {
     }
 }
 
-/// A document in a bubble: its type's symbol, name and size.
+/// A document in a bubble: a picture of its first page when it is on this
+/// iPhone (Quick Look's thumbnail, `ForgeDocuments`), else its type's
+/// symbol; then its name and size. Documents are fetched only when opened.
 private struct DocumentRow: View {
+    let model: ChatModel
     let attachment: ChatAttachment
     let onMine: Bool
+    @Environment(\.displayScale) private var displayScale
+    @State private var page: CGImage?
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
-                .font(.title2)
-                .frame(width: 32)
+            preview
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.name)
                     .font(.callout.weight(.medium))
@@ -258,6 +261,26 @@ private struct DocumentRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
         )
+        .task(id: attachment.id) {
+            guard page == nil, let url = model.storedFile(for: attachment) else { return }
+            page = await ForgeDocuments.thumbnail(
+                of: url, size: CGSize(width: 32, height: 42), scale: displayScale)
+        }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let page {
+            Image(decorative: page, scale: displayScale)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        } else {
+            Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
+                .font(.title2)
+                .frame(width: 32)
+        }
     }
 }
 

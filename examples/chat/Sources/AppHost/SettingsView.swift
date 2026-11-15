@@ -45,7 +45,7 @@ struct SettingsView: View {
                 Text("Muted Conversations")
             } footer: {
                 Text(
-                    "Muted conversations still show unread messages, without notifications on this iPhone. Notifications arrive only while Chat is open or was used recently: there is no push service."
+                    "Muted conversations still show unread messages, without notifications on this iPhone. Notifications arrive while Chat is open or was used recently, and when iOS lets Chat check for news in the background: there is no push service, so they can be late."
                 )
             }
             Section {
@@ -66,6 +66,7 @@ struct SettingsView: View {
             }
             Section {
                 Button("Sign Out", role: .destructive) { confirmingSignOut = true }
+                    .accessibilityIdentifier("settings.signOut")
             } footer: {
                 Text(
                     "Removes the account from this iPhone's Keychain and its chats from this iPhone. Messages stay on the server."
@@ -77,6 +78,7 @@ struct SettingsView: View {
             "Sign out of Chat?", isPresented: $confirmingSignOut, titleVisibility: .visible
         ) {
             Button("Sign Out", role: .destructive) { model.signOut() }
+                .accessibilityIdentifier("settings.confirmSignOut")
         }
     }
 }
