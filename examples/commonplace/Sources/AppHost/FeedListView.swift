@@ -9,7 +9,8 @@ import SwiftUI
 
 /// Screen 1: the smart timelines (unread, bookmarks, everything) and every
 /// subscription with its unread count. Pull to refresh or the refresh
-/// button fetches every feed; + adds one.
+/// button fetches every feed; + adds one; the search field searches every
+/// saved article; the gear opens Settings.
 struct FeedListView: View {
     @Bindable var model: LibraryModel
     @State private var path: [Route] = []
@@ -17,50 +18,25 @@ struct FeedListView: View {
     @State private var renaming: Feed?
     @State private var newTitle = ""
     @State private var unsubscribing: Feed?
+    @State private var showingSettings = false
+    @State private var query = ""
+    @State private var results: [ArticleSummary] = []
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $path) {
             List {
-                Section {
-                    smartRow(.unread, systemImage: "circle.inset.filled", tone: .accent)
-                    smartRow(.bookmarked, systemImage: "bookmark.fill", tone: .warning)
-                    smartRow(.all, systemImage: "tray.full.fill", tone: .neutral)
+                if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    searchResults
+                } else {
+                    lists
                 }
-                if !model.feeds.isEmpty {
-                    Section("Feeds") {
-                        ForEach(model.feeds) { feed in
-                            NavigationLink(value: Route.timeline(.feed(feedId: feed.id))) {
-                                FeedRow(feed: feed)
-                            }
-                            .accessibilityIdentifier("feeds.feed.\(feed.id)")
-                            .swipeActions {
-                                Button("Unsubscribe", systemImage: "trash", role: .destructive) {
-                                    unsubscribing = feed
-                                }
-                                .accessibilityIdentifier("feeds.unsubscribe")
-                            }
-                            .contextMenu {
-                                Button("Rename", systemImage: "pencil") {
-                                    newTitle = feed.title
-                                    renaming = feed
-                                }
-                                Button("Mark All as Read", systemImage: "checkmark.circle") {
-                                    Task { await model.markAllRead(feedID: feed.id) }
-                                }
-                                Button("Unsubscribe", systemImage: "trash", role: .destructive) {
-                                    unsubscribing = feed
-                                }
-                            }
-                        }
-                    }
-                    Section {
-                        Toggle("Notify About New Articles", isOn: alertsBinding)
-                            .accessibilityIdentifier("feeds.newArticleAlerts")
-                    } footer: {
-                        Text("When a refresh in the background finds new articles.")
-                    }
-                }
+            }
+            .searchable(text: $query, prompt: "Search Articles")
+            // A moment after typing stops; Rust reads the index directly.
+            .task(id: SearchKey(query: query, version: model.version)) {
+                do { try await Task.sleep(for: .milliseconds(250)) } catch { return }
+                results = await model.search(query)
             }
             .overlay { emptyState }
             .refreshable { await model.refresh() }
@@ -85,6 +61,10 @@ struct FeedListView: View {
                 }
             }
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Settings", systemImage: "gearshape") { showingSettings = true }
+                        .accessibilityIdentifier("feeds.settings")
+                }
                 ToolbarItem(placement: .primaryAction) {
                     Button("Add Feed", systemImage: "plus") { isAdding = true }
                         .accessibilityIdentifier("feeds.add")
@@ -99,6 +79,9 @@ struct FeedListView: View {
                 #else
                     ToolbarItem { refreshButton }
                 #endif
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(model: model)
             }
             .sheet(isPresented: $isAdding) {
                 AddFeedView(model: model) { feed in
@@ -136,11 +119,56 @@ struct FeedListView: View {
         }
     }
 
-    private var alertsBinding: Binding<Bool> {
-        Binding(
-            get: { model.newArticleAlerts },
-            set: { on in Task { await model.setNewArticleAlerts(on) } }
-        )
+    /// Matching articles, newest first, opening like timeline rows.
+    @ViewBuilder private var searchResults: some View {
+        if results.isEmpty {
+            ContentUnavailableView.search(text: query)
+        } else {
+            Section("^[\(results.count) article](inflect: true)") {
+                ForEach(results) { article in
+                    NavigationLink(value: Route.article(article.id)) {
+                        ArticleRow(article: article, showsFeed: true, showsSummary: model.settings.showSummaries)
+                    }
+                    .accessibilityIdentifier("search.article.\(article.id)")
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var lists: some View {
+        Section {
+            smartRow(.unread, systemImage: "circle.inset.filled", tone: .accent)
+            smartRow(.bookmarked, systemImage: "bookmark.fill", tone: .warning)
+            smartRow(.all, systemImage: "tray.full.fill", tone: .neutral)
+        }
+        if !model.feeds.isEmpty {
+            Section("Feeds") {
+                ForEach(model.feeds) { feed in
+                    NavigationLink(value: Route.timeline(.feed(feedId: feed.id))) {
+                        FeedRow(feed: feed)
+                    }
+                    .accessibilityIdentifier("feeds.feed.\(feed.id)")
+                    .swipeActions {
+                        Button("Unsubscribe", systemImage: "trash", role: .destructive) {
+                            unsubscribing = feed
+                        }
+                        .accessibilityIdentifier("feeds.unsubscribe")
+                    }
+                    .contextMenu {
+                        Button("Rename", systemImage: "pencil") {
+                            newTitle = feed.title
+                            renaming = feed
+                        }
+                        Button("Mark All as Read", systemImage: "checkmark.circle") {
+                            Task { await model.markAllRead(feedID: feed.id) }
+                        }
+                        Button("Unsubscribe", systemImage: "trash", role: .destructive) {
+                            unsubscribing = feed
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func smartRow(_ timeline: Timeline, systemImage: String, tone: ForgeTone) -> some View {
@@ -203,6 +231,12 @@ struct FeedListView: View {
     private var unsubscribingBinding: Binding<Bool> {
         Binding(get: { unsubscribing != nil }, set: { if !$0 { unsubscribing = nil } })
     }
+}
+
+/// Searches again when the words change or Rust's data does.
+private struct SearchKey: Hashable {
+    let query: String
+    let version: Int
 }
 
 private struct FeedRow: View {

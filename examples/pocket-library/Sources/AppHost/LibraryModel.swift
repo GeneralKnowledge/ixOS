@@ -305,12 +305,15 @@ public final class LibraryModel {
         return try await library.readerChapter(id: id, index: index)
     }
 
-    /// Saves where the reader is. Rust moves the book's page to match, so
-    /// the library, history and stats update too.
+    /// Saves where the reader is: a block of the chapter loaded last, which
+    /// Rust keeps as an anchor. Rust moves the book's page to match, so the
+    /// library, history and stats update too.
     @discardableResult
-    public func saveReadingPosition(_ id: UInt64, chapter: UInt32, fraction: Double) async throws -> Book {
+    public func saveReadingPosition(_ id: UInt64, chapter: UInt32, block: Int) async throws -> Book {
         try await run {
-            try await $0.saveReadingPosition(id: id, position: ReadingPosition(chapter: chapter, fraction: fraction))
+            try await $0.saveReadingPosition(
+                id: id, chapter: chapter,
+                location: ReaderLocation(block: UInt32(max(block, 0)), offset: 0))
         }
     }
 

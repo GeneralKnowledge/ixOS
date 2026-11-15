@@ -6,7 +6,7 @@ This page answers "does it work yet?" in one place. It is made from the same rec
 
 The newcomer path (set up Linux, `forge init`, `forge run ios`) is described in [getting-started.md](getting-started.md); the *Forge Device* and *Forge UI Testing* rows below say how far the tools for running and testing on a phone have been proven. Publishing to the App Store is not supported yet ([first-app-store-release.md](first-app-store-release.md)).
 
-**Of 101 capabilities, 15 work on an iPhone, 14 partly work, 55 are built but haven't been run on an iPhone, and 17 aren't built yet.**
+**Of 102 capabilities, 15 work on an iPhone, 14 partly work, 56 are built but haven't been run on an iPhone, and 17 aren't built yet.**
 
 ## Works on an iPhone
 
@@ -56,7 +56,7 @@ Some of it was seen working on an iPhone. The note says what was seen and what w
 The code exists and is tested on Linux, but nobody has recorded it working on a phone. Expect it to work, and expect surprises.
 
 - **Foundation:** ForgeAppKit application patterns (alerts and destinations as model values, load and submission state, form errors); Rust application foundations: saved state as one versioned document (change-a-copy saves, newer files never touched, unreadable files set aside only on request) and field-by-field validation; Shared app shell (`app_shell!`: phase enum, `Cancellation`, event stream object); Lifecycle phases reported to Rust; Background work and cancellation in Rust; Finishing work in the background: commands and `finishing` work get the time iOS grants after the app leaves the screen, are interrupted when it runs out, and an unfinished run is reported at the next launch; Localize an app (String Catalogs built from Linux)
-- **Data and files:** Relational store with queries (SQLite); Full-text search; Backup and restore archive; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress; CSV import and export
+- **Data and files:** Relational store with queries (SQLite); Full-text search; Backup and restore archive; App directories; Document picker import (copy into app); Share sheet and Save to Files; Managed file store; File-backed upload and download with progress; CSV import and export; Native reader (ForgeReader): documents as sections of styled blocks, HTML into blocks, positions as block anchors, the SwiftUI reading view
 - **Offline delivery:** Durable outgoing queue (sends, edits, deletes, reactions, uploads); Retry with exponential backoff and jitter; Deduplication of retried sends; Delivery state reconciliation after reconnect
 - **Networking:** Cancellable requests; Connectivity (online, Wi-Fi or cellular, metered, Low Data Mode, changes); Bonjour advertise and browse; Device identity and encrypted channel
 - **Native services and permissions:** Keychain secrets; Local notifications; Notification actions and grouping; Deep links (custom URL schemes); Web pages inside the app (WebKit web view, Safari view, HTML the app has, bundled help pages); Permission interface; Location, motion and Bluetooth permissions; Microphone, camera, local network permissions; Photos picker; Barcode and QR scanning; Face ID app lock; Background refresh and processing tasks; Haptics
@@ -94,6 +94,7 @@ Each module is a reusable part of the framework. **Stable** means its main capab
 | Local AI | In progress: A0 shared by Chat and Pocket Library; A1 Relay asks built and tested on Linux | Partial: L0 check app ran on an iPhone 15 Pro Max (2026-11-07): Foundation Models available on a free team; Qwen3.5 0.8B at ~36 tok/s in release; stopping, offline and the 2B skipped, not measured. L1 (Chat's Assistant on Foundation Models) built, not yet run on the phone |
 | Attachments | Planned | Partial: Chat M3 (#56) |
 | Documents | Planned | Partial: Pocket Library (#53) |
+| Reader | Experimental | Partial: Pocket Library and Commonplace; device run pending |
 | Audio | Experimental | Partial: compiled and tested in CI (macOS), not yet run on an iPhone |
 | ForgeUI | Experimental | Yes: showcase built with xtool on Linux and run on an iPhone (light and dark, both themes), 2026-11-10 |
 | ForgeAppKit | Experimental | Partial: built with xtool on Linux inside Device Lab (Pocket Library, Commonplace, FieldKit, Relay, Sketchbook, Soundscape); not yet recorded on an iPhone |

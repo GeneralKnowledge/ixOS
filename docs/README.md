@@ -30,6 +30,7 @@ Read these in order the first time.
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
+| [forge-reader.md](forge-reader.md) | ForgeReader, the native reader: documents as sections of styled blocks, HTML into blocks, reading positions as block anchors, the SwiftUI reading view |
 | [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, reader, documents, media, background tasks, identity, maps, charts), in what order, and how each is proven |
 | [app-config.md](app-config.md) | `forge.toml`: name, version, icon, permission prompts, entitlements |
 | [localization.md](localization.md) | Translating an app: String Catalogs, plurals, permission texts, built from Linux |

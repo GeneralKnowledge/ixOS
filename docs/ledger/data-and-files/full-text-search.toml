@@ -1,9 +1,9 @@
 order = 30
 capability = "Full-text search"
-framework = "Partial: FTS5 is built into `Database`; the query builder is still Chat's own (`fts_query`)"
+framework = "Partial: FTS5 is built into `Database`; the query builders are still the apps' own (Chat's `fts_query`, Commonplace's `match_expression`): a second use, to extract once both have merged"
 rust_api = "Yes"
 ios_native = "n/a"
-in_app = "Yes: Chat M2 search"
+in_app = "Yes: Chat M2 search, Commonplace article search (on its own read-only connection)"
 iphone = "No"
 documented = "Partial: chat-demo.md"
 limits = ""

@@ -592,6 +592,7 @@ dependencies = [
  "feed-rs",
  "forge-app",
  "forge-net",
+ "forge-reader",
  "forge-runtime",
  "forge-services",
  "forge-storage",
@@ -1181,6 +1182,15 @@ dependencies = [
  "rustls-platform-verifier",
  "thiserror 2.0.21",
  "ureq",
+]
+
+[[package]]
+name = "forge-reader"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+ "serde",
+ "url",
 ]
 
 [[package]]
@@ -3064,6 +3074,7 @@ dependencies = [
  "flate2",
  "forge-app",
  "forge-net",
+ "forge-reader",
  "forge-runtime",
  "forge-services",
  "forge-storage",

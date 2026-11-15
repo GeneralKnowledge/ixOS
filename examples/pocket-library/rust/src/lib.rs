@@ -58,6 +58,10 @@ pub use summary::{
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
 
+// ForgeReader's types (sections of blocks, anchors, locations) in this
+// crate's bindings, with its SwiftUI reader views.
+forge_reader::reader_types!();
+
 // Forge AI (docs/forge-ai-plan.md): the on-device model the summaries ask,
 // `native::ai::AiModel` (Swift: `ForgeAppleModel`).
 forge_services::native_services!(ai);
@@ -118,6 +122,11 @@ struct OpenBook {
     id: u64,
     epub_file: String,
     text: EpubText,
+    /// Where the reader opens: the start chapter and the place in it,
+    /// handed out once with that chapter.
+    start: Option<(u32, domain::StartPlace)>,
+    /// The chapter loaded last, for making anchors of the places in it.
+    section: Option<(u32, ReaderSection)>,
 }
 
 /// What an EPUB import does once the file has been read and staged.
@@ -528,13 +537,19 @@ impl Library {
                         id,
                         epub_file,
                         text: EpubText::open_file(&path)?,
+                        start: None,
+                        section: None,
                     });
                 }
                 store.reset_reader();
                 let book = open.as_ref().expect("opened above");
                 let (words, chapters) = (book.text.chapter_words(), book.text.chapters().to_vec());
+                // Lock order: the library's state, then the open book.
                 drop(open);
-                let start = data.get().reader_start(id, &words)?;
+                let (start, place) = data.get().reader_start(id, &words)?;
+                if let Some(book) = lock(&open_book).as_mut().filter(|o| o.id == id) {
+                    book.start = Some((start.chapter, place));
+                }
                 Ok(ReaderContents {
                     book_id: id,
                     title,
@@ -546,7 +561,10 @@ impl Library {
             .await
     }
 
-    /// The text of chapter `index` of a book opened with `open_reader`.
+    /// The text of chapter `index` of a book opened with `open_reader`, and
+    /// the place to scroll to the first time the start chapter is loaded
+    /// (its saved anchor, found again even if the book was re-imported
+    /// with edits; a position saved before anchors is converted here).
     pub async fn reader_chapter(&self, id: u64, index: u32) -> Result<ReaderChapter, LibraryError> {
         let store = Arc::clone(&self.store);
         let open_book = Arc::clone(&self.open_book);
@@ -558,7 +576,22 @@ impl Library {
                     .as_mut()
                     .filter(|o| o.id == id)
                     .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
-                book.text.chapter(index, &store.reader_images(id))
+                let section = book.text.chapter(index, &store.reader_images(id))?;
+                let start = match book.start.take() {
+                    Some((chapter, place)) if chapter == index => {
+                        Some(start_location(&section, place))
+                    }
+                    other => {
+                        book.start = other;
+                        None
+                    }
+                };
+                book.section = Some((index, section.clone()));
+                Ok(ReaderChapter {
+                    index,
+                    section,
+                    start,
+                })
             })
             .await
     }
@@ -570,17 +603,33 @@ impl Library {
     pub async fn save_reading_position(
         &self,
         id: u64,
-        position: ReadingPosition,
+        chapter: u32,
+        location: ReaderLocation,
     ) -> Result<Book, LibraryError> {
-        let words = {
+        let (words, position, anchor) = {
             let open = lock(&self.open_book);
-            open.as_ref()
+            let book = open
+                .as_ref()
                 .filter(|o| o.id == id)
-                .map(|o| o.text.chapter_words())
-                .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?
+                .ok_or_else(|| LibraryError::invalid("open the book in the reader first"))?;
+            let section = book
+                .section
+                .as_ref()
+                .filter(|(index, _)| *index == chapter)
+                .map(|(_, section)| section)
+                .ok_or_else(|| LibraryError::invalid("load the chapter in the reader first"))?;
+            let position = ReadingPosition {
+                chapter,
+                fraction: forge_reader::section_progress(section, location),
+            };
+            (
+                book.text.chapter_words(),
+                position,
+                forge_reader::ReaderAnchor::at(section, location),
+            )
         };
         self.commit_book("save-reading-position", move |data, _, now| {
-            data.save_reading_position(id, position, &words, now)?;
+            data.save_reading_position(id, position, anchor, &words, now)?;
             Ok(id)
         })
         .await
@@ -1323,6 +1372,22 @@ fn non_empty(dir: &str) -> Result<&str, LibraryError> {
         Err(LibraryError::invalid("storage directory must not be empty"))
     } else {
         Ok(dir)
+    }
+}
+
+/// Where in `section` the reader opens for a saved or page-derived place.
+fn start_location(section: &ReaderSection, place: domain::StartPlace) -> ReaderLocation {
+    match place {
+        domain::StartPlace::Anchor(anchor) => anchor.resolve(section).0,
+        domain::StartPlace::BlockFraction(fraction) => {
+            let count = section.blocks.len();
+            let block = (fraction * count as f64).floor() as usize;
+            ReaderLocation {
+                block: block.min(count.saturating_sub(1)) as u32,
+                offset: 0.0,
+            }
+        }
+        domain::StartPlace::WordFraction(fraction) => forge_reader::location_at(section, fraction),
     }
 }
 

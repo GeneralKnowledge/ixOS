@@ -2,7 +2,8 @@
 import ForgeUI
 import SwiftUI
 
-/// Screen 2: one timeline's articles, newest first. Swipe right to mark
+/// Screen 2: one timeline's articles, newest first (or oldest, and without
+/// read ones, as the settings say). Swipe right to mark
 /// read or unread, left to bookmark; tapping opens the article.
 struct TimelineView: View {
     let model: LibraryModel
@@ -13,7 +14,9 @@ struct TimelineView: View {
         List {
             ForEach(articles) { article in
                 NavigationLink(value: Route.article(article.id)) {
-                    ArticleRow(article: article, showsFeed: timeline.feedID == nil)
+                    ArticleRow(
+                        article: article, showsFeed: timeline.feedID == nil,
+                        showsSummary: model.settings.showSummaries)
                 }
                 .accessibilityIdentifier("timeline.article.\(article.id)")
                 .swipeActions(edge: .leading) {
@@ -72,9 +75,11 @@ struct TimelineView: View {
     }
 }
 
-private struct ArticleRow: View {
+/// A timeline or search result row.
+struct ArticleRow: View {
     let article: ArticleSummary
     let showsFeed: Bool
+    var showsSummary = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
@@ -90,7 +95,7 @@ private struct ArticleRow: View {
                     .font(.headline)
                     .foregroundStyle(article.read ? .secondary : .primary)
                     .lineLimit(large ? 4 : 2)
-                if !article.summary.isEmpty {
+                if showsSummary, !article.summary.isEmpty {
                     Text(article.summary)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)

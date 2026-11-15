@@ -201,7 +201,8 @@ pub struct StorageInfo {
 // MARK: Reading EPUBs
 
 /// A place in a book: a chapter (an index into `ReaderContents::chapters`)
-/// and how far through it, 0.0–1.0.
+/// and how far through it by words, 0.0–1.0. The exact place in the
+/// chapter is a block anchor, kept by Rust.
 #[derive(uniffi::Record, Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
 pub struct ReadingPosition {
     pub chapter: u32,
@@ -233,52 +234,14 @@ pub struct ReaderContents {
     pub start: ReadingPosition,
 }
 
-/// A run of text in one style.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct TextSpan {
-    pub text: String,
-    pub bold: bool,
-    pub italic: bool,
-    pub monospace: bool,
-}
-
-/// What a block of a chapter is. The host chooses how each looks.
-#[derive(uniffi::Enum, Clone, Debug, PartialEq, Eq)]
-pub enum TextBlockKind {
-    /// `level` 1–6, as `<h1>`–`<h6>`.
-    Heading {
-        level: u8,
-    },
-    Paragraph,
-    /// Inside a `<blockquote>`.
-    Quote,
-    /// `marker` is "•" or "3." and so on.
-    ListItem {
-        marker: String,
-    },
-    /// Keep line breaks and spacing; show in a fixed-width font.
-    Preformatted,
-    /// A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
-    Separator,
-    /// An image saved for this launch at `file` (absolute path).
-    Image {
-        file: String,
-        alt: String,
-    },
-}
-
-/// One paragraph, heading, image… of a chapter, in reading order.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
-pub struct TextBlock {
-    pub kind: TextBlockKind,
-    /// Empty for separators and images. Line breaks are `\n`.
-    pub spans: Vec<TextSpan>,
-}
-
-/// A chapter's text, ready to lay out.
-#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+/// A chapter's text, ready to lay out: a ForgeReader section (its id is
+/// the chapter's file in the EPUB), and where to scroll to when the reader
+/// opens the book at this chapter.
+#[derive(uniffi::Record, Clone, Debug, PartialEq)]
 pub struct ReaderChapter {
     pub index: u32,
-    pub title: String,
-    pub blocks: Vec<TextBlock>,
+    pub section: crate::ReaderSection,
+    /// The saved place in this chapter, the first time the chapter the book
+    /// opens at is loaded; nil otherwise (start at the top).
+    pub start: Option<crate::ReaderLocation>,
 }

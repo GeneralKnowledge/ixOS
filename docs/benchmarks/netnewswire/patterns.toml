@@ -89,3 +89,21 @@ app_code = "One line in forge.toml"
 duplicated = "Good Dog and Pocket Library each have their own -ForgeUITestData folder, which is emptied at every launch, so neither can check persistence by relaunching (Good Dog's journey.toml says so)"
 shared = "yes"
 why = "Already shared; keeping the data was added to the shared argument rather than to Commonplace. Good Dog and Pocket Library could move to it"
+
+[[pattern]]
+id = "reader-section"
+does = "An article's HTML becomes a reader section of styled blocks (links resolved against the article's address, pictures left on the web), laid out by the shared reading view with the shared text settings"
+provided_by = "forge-reader (blocks_from_html, WebResources, reader_types!) and its Swift views (ForgeReaderSectionView, ForgeReaderTextMenu)"
+app_code = "article_text in store.rs; ArticleReader in ArticleView.swift (header, empty-article footer, where links open)"
+duplicated = "nothing: Pocket Library uses the same code for EPUB chapters"
+shared = "yes"
+why = "Extracted from Pocket Library for this second use"
+
+[[pattern]]
+id = "settings-in-the-store"
+does = "The person's choices (order, hide read, summaries, where links open) are kept by Rust in a settings table and shape the timelines Rust returns"
+provided_by = "forge-storage Database; forge-app command and snapshot"
+app_code = "settings() and set_settings() in store.rs; AppSettings in model.rs; SettingsView.swift"
+duplicated = "Pocket Library keeps LibrarySettings in its JSON document the same way"
+shared = "no"
+why = "Each app's settings are its own; the pattern (Rust keeps them, Swift binds toggles) is already the documented one"

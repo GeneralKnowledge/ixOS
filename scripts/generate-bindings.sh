@@ -146,6 +146,13 @@ else
     # (ImageIO thumbnails, the audio session, web views), for every app. Source of truth:
     # crates/forge-services/swift/helpers/.
     cp "$ROOT/crates/forge-services/swift/helpers/"*.swift "$dir/ForgeFFI/"
+    # ForgeReader's SwiftUI views, when the crate declares the reader's
+    # types (`forge_reader::reader_types!()`). Source of truth:
+    # crates/forge-reader/swift/.
+    if grep -Eq '^public struct ReaderBlock[:{ ]' "$swift"; then
+      cp "$ROOT/crates/forge-reader/swift/"*.swift "$dir/ForgeFFI/"
+      echo "[forge] Added ForgeReader (the reader's SwiftUI views)."
+    fi
     # Native services: when the crate uses `forge_services::native_services!()`,
     # Forge's Swift adapters (Keychain, notifications, ...) compile in the same
     # module as the bindings, so they can implement its protocols. Source of
