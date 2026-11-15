@@ -4,10 +4,22 @@ name: App model
 # app on forge-app and ForgeKit. On Linux, the app's Swift (ForgeKit's host,
 # the model, the cross-language tests) builds and runs against its real Rust
 # core; on macOS the same tests run and the app builds for an iPhone,
-# unsigned. Runs when the runtime, ForgeKit or the app changes.
+# unsigned. Runs when the runtime, ForgeKit or the app changes; pull requests
+# run the Linux job only.
 on:
   push:
-    branches: [main, claude/project-thread-suviqy]
+    branches: [main]
+    paths:
+      - "crates/forge-app/**"
+      - "crates/forge-runtime/**"
+      - "crates/forge-storage/**"
+      - "forgekit/**"
+      - "examples/checklist/**"
+      - "scripts/forgekit.sh"
+      - "scripts/test-forgekit-release.sh"
+      - "scripts/generate-bindings.sh"
+      - ".github/workflows/app-model.yml"
+  pull_request:
     paths:
       - "crates/forge-app/**"
       - "crates/forge-runtime/**"
@@ -32,7 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        # Pull requests run Linux only; macOS runs on main and by hand.
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04"]') || fromJSON('["ubuntu-24.04", "macos-15"]') }}
     name: Checklist (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     steps:

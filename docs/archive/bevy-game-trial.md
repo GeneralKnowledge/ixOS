@@ -1,6 +1,6 @@
 # Trial: an existing Bevy game on an iPhone, built on Linux
 
-Plan, 2026-11-07. Kataster has been built for iPhone on Linux (see [Results so far](#results-so-far)); the trial files are in [`examples/kataster-ios/`](../examples/kataster-ios/). This is a compatibility test: take a small open-source Bevy game, change it as little as possible, and get it running on a physical iPhone from Linux with Forge and xtool. What breaks tells us what ixOS is missing for real-time Rust apps. We do not build a Bevy framework. Anything that turns out to be reusable goes into ixOS as a general capability (see [architecture.md](architecture.md#framework-principles)).
+Plan, 2026-11-07. Kataster has been built for iPhone on Linux (see [Results so far](#results-so-far)); the trial files are in `examples/kataster-ios/`, removed 2026-11-15 and kept in git history ([last version](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/examples/kataster-ios)). This is a compatibility test: take a small open-source Bevy game, change it as little as possible, and get it running on a physical iPhone from Linux with Forge and xtool. What breaks tells us what ixOS is missing for real-time Rust apps. We do not build a Bevy framework. Anything that turns out to be reusable goes into ixOS as a general capability (see [architecture.md](../architecture.md#framework-principles)).
 
 ## The game: Kataster
 

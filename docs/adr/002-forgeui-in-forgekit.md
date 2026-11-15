@@ -11,7 +11,7 @@ ixOS is becoming a native application framework with a SwiftUI design system ([p
 What already exists:
 
 - ForgeKit, the Swift half of the application runtime, is a SwiftPM package whose only source is `forgekit/` in ixOS. `scripts/forgekit.sh release` copies it into the `GeneralKnowledge/ForgeKit` repository and tags it with forge-app's version. That repository holds releases only.
-- SwiftPM needs `Package.swift` at the root of a repository to resolve a package by URL (Phase 0, [finding 3](../../spikes/phase0/RESULTS.md)). A package in a subfolder of ixOS can be used by path inside the checkout, but not by apps outside it.
+- SwiftPM needs `Package.swift` at the root of a repository to resolve a package by URL (Phase 0, [finding 3](../archive/phase0-results.md)). A package in a subfolder of ixOS can be used by path inside the checkout, but not by apps outside it.
 - `forge init` pins new apps to one framework version (`forge-release.toml`), which already covers ForgeKit.
 
 Options:

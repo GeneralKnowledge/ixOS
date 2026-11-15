@@ -60,6 +60,8 @@ Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-a
 2. **iOS networking moves to URLSession** ([native capability roadmap](native-capability-roadmap.md)). `forge-net`'s portable types stay; ureq stays for Linux tools, tests and Android.
 3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
 4. **Evidence bundles also write JUnit XML** (`junit.xml`, [evidence.md](evidence.md#the-evidence-bundle)), so any CI system or test viewer can read the results. No new report features.
+5. **The build queue is finished** (decided 2026-11-15, from the [complexity audit](https://claude.ai/artifact/8yMF8C6NBhtazEYJd4ngyP)): `forge queue` keeps one build at a time, in order, under a memory and CPU cap ([builds.md](builds.md#the-build-queue)). Bug fixes only; no new scheduling, priorities, dashboards or remote features.
+6. **Joining Device Lab is optional** (decided 2026-11-15). A new app is published and tested on its own (`forge publish ios --project <app>`) and is not added to Device Lab's Apps screen by default. Add one only for a combined phone sitting or when the person asks; the apps already hosted stay.
 
 The freeze ends when all four of these exit criteria are met, each checked on a physical iPhone and reported by a person:
 
@@ -83,7 +85,7 @@ An agent takes a real task on an existing app, changes it, checks it on the iPho
 
 ### iPhone acceptance of the integrated framework — In progress
 
-The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](integration/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. So far the starter, the services check and Pocket Library have been built with a patched xtool on Linux (iOS SDK 26.0 recorded); none has been recorded running on an iPhone yet.
+The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. So far the starter, the services check and Pocket Library have been built with a patched xtool on Linux (iOS SDK 26.0 recorded); none has been recorded running on an iPhone yet.
 
 ### Native iOS UI — Done, device check open
 

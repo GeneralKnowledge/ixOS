@@ -2,9 +2,9 @@
 
 Reviewed at `420969d` (main, 2026-11-10), against the application model that is now canonical: `forge-app` (Rust runtime) plus ForgeKit (Swift package), as merged in #141, #142 and #143, with ForgeAppKit and the `document` and `validation` foundations from #146. The older Counter design is not the target, and is assessed only where documents still describe it as the target.
 
-[architecture.md](architecture.md) explains how the pieces fit. This page judges them: what the design is deliberately trading away, what is only a limitation of the current code, and where it should improve. It turns Reuben's review of 2026-11-10 into a checked list: each recommendation is marked **done**, **partial**, **missing** or **deferred** (deliberately, with the reason), with the files involved and the change that would close it.
+[architecture.md](../architecture.md) explains how the pieces fit. This page judges them: what the design is deliberately trading away, what is only a limitation of the current code, and where it should improve. It turns Reuben's review of 2026-11-10 into a checked list: each recommendation is marked **done**, **partial**, **missing** or **deferred** (deliberately, with the reason), with the files involved and the change that would close it.
 
-It builds on the [foundation review](foundation-review.md) (primitives, finding ids such as S4 and N1) and the [app model review](app-model-review.md) (phases 0 to 5), and does not repeat them.
+It builds on the [foundation review](../foundation-review.md) (primitives, finding ids such as S4 and N1) and the [app model review](../app-model-review.md) (phases 0 to 5), and does not repeat them.
 
 ## Verdict
 
@@ -101,7 +101,7 @@ Changes, in order:
 | Newer data refused, never overwritten | Done | `DocumentError::Newer`, `Database` refuses a newer schema |
 | Unreadable data set aside, only after the person agrees | Done for documents | `forge_app::document::set_aside`, `Document::start_fresh`; Pocket Library's `open_fresh` |
 | One writer per data directory | Done | `DataDirectory` lock (`crates/forge-app/src/runtime.rs`), tested in Rust and Swift |
-| Automatic migration conventions | Partial | Hooks exist; the old file is kept before the first write in a new schema ([persistence.md](persistence.md)); no SQL plus Rust data steps yet (S7) |
+| Automatic migration conventions | Partial | Hooks exist; the old file is kept before the first write in a new schema ([persistence.md](../persistence.md)); no SQL plus Rust data steps yet (S7) |
 | Tests with real historical data | Done (convention) | `fixtures/` per app crate with `every_saved_version_still_opens`: Pocket Library, Checklist |
 | Backup and file-protection policy | **Missing** | No per-store classes; `ForgeEnvironment` has no policy; one app-wide `data_protection` in `forge.toml` (S5) |
 | Recovery from corruption | Partial | Documents and SQLite have it, and moved-aside copies are capped at three; no shared recovery screen |
@@ -129,7 +129,7 @@ What is missing is the guarantee around it:
 
 Changes, in order: directory sync in `FileStore` (small, now); the staged-file API, with Pocket Library and Chat moved onto it; storage classes in `ForgeEnvironment` (`data`, `caches`, a re-downloadable media class excluded from backup, file protection per class) applied by ForgeKit at open; a `fixtures/` directory per app crate with a test that every released schema still opens; a copy of the file before any migration. All of it is app model phase 4, now with Pocket Library as its first user.
 
-**Status (2026-11-11).** Done: directory sync, the staged-file API with Pocket Library on it, a copy before migrating, capped recovery copies, and fixtures for Pocket Library and Checklist ([persistence.md](persistence.md)). Chat's attachments are content-named, so they are immutable and need no staging. Its records and files are already consistent under the hashed store. The crash points are now the API's, so the foundation kill test covers them with staging, and a per-app kill test would only repeat it; each app's own part is the sweep predicate, which its unit tests cover. Still open: storage classes (S5, next), and a Rust data-migration hook for SQLite.
+**Status (2026-11-11).** Done: directory sync, the staged-file API with Pocket Library on it, a copy before migrating, capped recovery copies, and fixtures for Pocket Library and Checklist ([persistence.md](../persistence.md)). Chat's attachments are content-named, so they are immutable and need no staging. Its records and files are already consistent under the hashed store. The crash points are now the API's, so the foundation kill test covers them with staging, and a per-app kill test would only repeat it; each app's own part is the sweep predicate, which its unit tests cover. Still open: storage classes (S5, next), and a Rust data-migration hook for SQLite.
 
 ### 3. Lifecycle and durable work
 
@@ -155,7 +155,7 @@ Changes, in order:
 1. **Finishing scope.** Done (2026-11-11). `Runtime::finishing(host)` in `forge-app`, cancelled on expiry; ForgeKit wraps it in `UIApplication.beginBackgroundTask` from `ForgeLifecycle` on `didEnterBackground`, ending the task when finishing work drains. Linux test: expiry cancels it. One short phone check: lock the phone during a finishing job and read the log.
 2. **Relaunch report.** Done (2026-11-11) for the runtime's part: `LaunchReport { unfinished_background_work }`. Migration and recovery outcomes join it with the persistence work.
 3. **Durable contract when the second user arrives** (FieldKit's upload queue, Relay, or Pocket Library's background downloads), with Chat migrated onto it in the same PR. Until then, keep it deferred and say so in `app-model-review.md`, as it already does.
-4. `BGTaskScheduler` and background `URLSession` stay in the [native capability roadmap](native-capability-roadmap.md) (Tier 1, items 5 and 6). They add opportunistic progress to durable work; they do not replace it.
+4. `BGTaskScheduler` and background `URLSession` stay in the [native capability roadmap](../native-capability-roadmap.md) (Tier 1, items 5 and 6). They add opportunistic progress to durable work; they do not replace it.
 
 ### 4. Swift developer experience
 

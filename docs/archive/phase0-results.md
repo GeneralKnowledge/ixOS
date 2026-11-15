@@ -1,6 +1,6 @@
 # Phase 0 results (2026-11-09)
 
-The three architecture experiments from [docs/app-model-review.md](../../docs/app-model-review.md#part-3-phased-plan), run as a strict gate before any runtime work. Everything is in this folder; CI is `.github/workflows/phase0-spike.yml` (run [42601375330](https://github.com/GeneralKnowledge/ixOS/actions/runs/42601375330), commit `0f4a7d8`, green on `ubuntu-24.04` and `macos-15`).
+The three architecture experiments from [app-model-review.md](../app-model-review.md#part-3-phased-plan), run as a strict gate before any runtime work. The experiment code was in `spikes/phase0/`, removed on 2026-11-15 ([last version](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/spikes/phase0)); CI was `.github/workflows/phase0-spike.yml` (run [42601375330](https://github.com/GeneralKnowledge/ixOS/actions/runs/42601375330), commit `0f4a7d8`, green on `ubuntu-24.04` and `macos-15`).
 
 | Folder | What |
 |---|---|

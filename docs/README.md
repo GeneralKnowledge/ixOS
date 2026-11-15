@@ -28,7 +28,6 @@ Read these in order the first time.
 | [persistence.md](persistence.md) | What Forge promises about saved data at each crash point, and what an app does: stage a file before the record that names it, sweep at launch, keep a fixture per schema version |
 | [forgeappkit.md](forgeappkit.md) | ForgeAppKit, application patterns on ForgeUI: alerts, confirmations and destinations as model values, load and submission state, form errors |
 | [architecture.md](architecture.md) | How the Rust core, the Swift layer and the generated bindings fit together |
-| [architecture-assessment.md](architecture-assessment.md) | The architecture's trade-offs: what is intentional, what is a current limitation, and what to improve next, in order |
 | [ffi-policy.md](ffi-policy.md) | The rules for calls between Swift and Rust: async, events, cancellation, errors |
 | [native-services.md](native-services.md) | Keychain, notifications, permissions, location and other iPhone features |
 | [native-capability-roadmap.md](native-capability-roadmap.md) | Which Apple frameworks ixOS wraps next (web view, reader, documents, media, background tasks, identity, maps, charts), in what order, and how each is proven |
@@ -81,8 +80,8 @@ Nothing on the pages above needs an agent. Agents use the same commands, and `fo
 
 These pages are for people working on Forge itself. They are plans, reviews and records of past work, and their status notes describe the day they were written. Check [status.md](status.md) for where things stand now.
 
-- Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) (proposal: shared AI module and AI over Relay), [relay-platform-plan.md](relay-platform-plan.md) (Relay as a platform connecting devices, people and services; milestones M0 to M7) and [relay-transfer-plan.md](relay-transfer-plan.md) (its transfer, messages and rooms detail), [bevy-game-trial.md](bevy-game-trial.md)
+- Demo designs: [chat-demo.md](chat-demo.md), [good-dog-demo.md](good-dog-demo.md), [local-ai.md](local-ai.md), [forge-ai-plan.md](forge-ai-plan.md) (proposal: shared AI module and AI over Relay), [relay-platform-plan.md](relay-platform-plan.md) (Relay as a platform connecting devices, people and services; milestones M0 to M7) and [relay-transfer-plan.md](relay-transfer-plan.md) (its transfer, messages and rooms detail)
 - Milestone plans and reports: [forge-m6.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/forge-m6.md), [m65-run-report.md](https://github.com/GeneralKnowledge/forge-lab/blob/main/docs/m65-run-report.md), [good-dog-pain-points.md](good-dog-pain-points.md)
 - Reviews and audits: [app-model-review.md](app-model-review.md) (what an ixOS application is, and the proposed canonical model), [foundation-review.md](foundation-review.md), [framework-extraction-audit.md](framework-extraction-audit.md), [research/reinvention-audit.md](research/reinvention-audit.md) (where ixOS reinvents existing tools), [research/](research/)
-- Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [integration/](integration/), [testing/](testing/), [toolchain-validation.md](toolchain-validation.md)
-- Decisions and history: [adr/](adr/), [ideal-design.md](ideal-design.md) (historical), [release-process.md](release-process.md) (releasing Forge itself, not your app)
+- Phone runbooks and session records: [native-services-device-check.md](native-services-device-check.md), [local-ai-check.md](local-ai-check.md), [integration/](integration/), [toolchain-validation.md](toolchain-validation.md)
+- Decisions and history: [adr/](adr/), [archive/](archive/) (dated reports and finished trials, kept for their history), [release-process.md](release-process.md) (releasing Forge itself, not your app)

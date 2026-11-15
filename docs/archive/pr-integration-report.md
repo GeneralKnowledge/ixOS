@@ -82,7 +82,7 @@ Android CI on #36 is green after the fix (all 11 view-model tests, the generated
 
 ## What remains unverified
 
-- Nothing from #32–#36 has been run on a physical iPhone yet. [iphone-acceptance.md](iphone-acceptance.md) is the single runbook for it.
+- Nothing from #32–#36 has been run on a physical iPhone yet. [iphone-acceptance.md](../integration/iphone-acceptance.md) is the single runbook for it.
 - The combined branch has not been built with xtool on Linux; the laptop builds above used the PR branches as they were before integration.
 - #35's Apple error wording in `diagnose.rs` is partly from memory; real failures may read differently.
 - `xtool dev run` installs but does not launch the app. Everything that says "run" means install, then open from the home screen.

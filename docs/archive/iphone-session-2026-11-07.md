@@ -236,7 +236,7 @@ Owner: "Plan on-device AI assistant for Chat" thread, #55 (merged). Runbook: [do
 Free a slot by deleting AICheck **only after Reuben confirms the L0 results are recorded**; the models would have to be copied again.
 
 - **Device Lab** (#59, merged; never run on a phone). `forge run ios --project examples/device-lab`. Phone checks are in [examples/device-lab/README.md](../../examples/device-lab/README.md#checking-it-on-an-iphone), items 1–7 (airplane and Wi-Fi changes, Bluetooth, shake, compass, barometer floor-to-ceiling, walk 100 m, battery and Low Power Mode). Most can be done indoors except the 100 m walk.
-- **Kataster** (Bevy trial, #62 merged; low priority per Forge's focus). Laptop: `xtool install ~/kataster-trial/ixos-trial/examples/kataster-ios/Kataster.app`. Phone checks are in [bevy-game-trial.md](../bevy-game-trial.md) step 4: menu and Play, joystick and fire, sound, whole arena in landscape, paused after 30 s in the background, no crash in 5 minutes, frame rate from `forge device logs --process kataster`.
+- **Kataster** (Bevy trial, #62 merged; low priority per Forge's focus). Laptop: `xtool install ~/kataster-trial/ixos-trial/examples/kataster-ios/Kataster.app`. Phone checks are in [bevy-game-trial.md](bevy-game-trial.md) step 4: menu and Play, joystick and fire, sound, whole arena in landscape, paused after 30 s in the background, no crash in 5 minutes, frame rate from `forge device logs --process kataster`.
 
 Pick at most one tonight; Device Lab first, since it exercises framework services other apps will use.
 
