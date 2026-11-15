@@ -1808,6 +1808,18 @@ LSApplicationQueriesSchemes = ["maps"]
     }
 
     #[test]
+    fn a_stamp_left_by_a_killed_publish_is_regenerated() {
+        let (tmp, c) = app("");
+        sync(tmp.path(), &c, Mode::Write { force: false }).unwrap();
+        let clean = read(tmp.path(), INFO_PLIST);
+        let stamp = crate::publish::Stamp::new("1", 60, Some("abc1234".into()), None);
+        let stamped = crate::publish::stamp_info_plist(clean.as_bytes(), &stamp).unwrap();
+        fs::write(tmp.path().join(INFO_PLIST), stamped).unwrap();
+        sync(tmp.path(), &c, Mode::Write { force: false }).unwrap();
+        assert_eq!(read(tmp.path(), INFO_PLIST), clean);
+    }
+
+    #[test]
     fn adopts_hand_written_files_only_when_nothing_is_lost() {
         let old_plist = "<?xml version=\"1.0\"?>\n<plist version=\"1.0\">\n<dict>\n\t<key>CFBundleDisplayName</key>\n\t<string>Demo</string>\n\t<key>NSLocationWhenInUseUsageDescription</key>\n\t<string>Forecast here.</string>\n</dict>\n</plist>\n";
         let old_yml = "version: 1\nbundleID: org.example.demo\n# comment\nproduct: AppHostXtool\ninfoPath: Info.plist\n";

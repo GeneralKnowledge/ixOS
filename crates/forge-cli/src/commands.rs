@@ -1154,6 +1154,9 @@ pub fn build_signed_ipa(
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     };
+    package_ios(runner, root, &project_dir, &cfg, false)?;
+    // After packaging, which regenerates Forge's files (so a stamp left by a
+    // killed publish doesn't count as a change).
     let changes = git(&["status", "--porcelain", "--untracked-files=no", "--", "."])
         .is_some_and(|s| !s.is_empty());
     let commit = git(&["rev-parse", "--short", "HEAD"])
@@ -1161,7 +1164,6 @@ pub fn build_signed_ipa(
         .map(|c| if changes { format!("{c}+changes") } else { c });
     let branch =
         git(&["rev-parse", "--abbrev-ref", "HEAD"]).filter(|b| !b.is_empty() && b != "HEAD");
-    package_ios(runner, root, &project_dir, &cfg, false)?;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
