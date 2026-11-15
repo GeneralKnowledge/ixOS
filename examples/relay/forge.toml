@@ -38,7 +38,8 @@ xtool_product = "RelayXtool"
 orientations = ["portrait"]
 # url_schemes = ["myapp"]           # opens myapp://... links
 # Relay advertises and finds devices with Bonjour; iOS refuses other types.
-bonjour_services = ["_forgerelay._tcp"]
+# _udp: senders of word codes (iroh, Relay M1).
+bonjour_services = ["_forgerelay._tcp", "_forgerelay._udp"]
 
 # The text iOS shows when the app asks for a permission.
 [ios.permissions]

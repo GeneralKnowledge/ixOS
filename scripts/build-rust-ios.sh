@@ -63,6 +63,15 @@ else
   echo "[forge] warning: swift not found; set SDKROOT manually for iOS Rust builds" >&2
 fi
 
+# On Linux no linker can link an iOS dylib (ld64.lld refuses the platform,
+# cc doesn't know -framework). The static library needs none, but Cargo
+# links the cdylibs that dependencies such as iroh declare, so those get an
+# empty file instead (see the script). Xcode's clang (xcrun) is a real iOS
+# linker and stays.
+if [[ "$(uname -s)" == "Linux" ]]; then
+  export CARGO_TARGET_AARCH64_APPLE_IOS_LINKER="${FORGE_IOS_LINKER:-$(cd "$(dirname "$0")" && pwd)/ios-no-dylib-linker.sh}"
+fi
+
 if [[ -z "${SDKROOT:-}" ]]; then
   echo "[forge] error: SDKROOT is not set. Install the Darwin SDK via xtool setup and Xcode.xip." >&2
   exit 1

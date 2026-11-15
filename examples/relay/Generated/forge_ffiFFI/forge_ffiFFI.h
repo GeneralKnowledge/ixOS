@@ -268,9 +268,19 @@ void uniffi_relay_core_fn_method_relaycore_background_time_expired(uint64_t ptr,
 int8_t uniffi_relay_core_fn_method_relaycore_background_work_pending(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_CODE_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_CODE_RECEIVE
+void uniffi_relay_core_fn_method_relaycore_cancel_code_receive(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_INVITATION
 void uniffi_relay_core_fn_method_relaycore_cancel_invitation(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
+RustBuffer uniffi_relay_core_fn_method_relaycore_code_receive_size(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_INVITATION
@@ -316,6 +326,11 @@ RustBuffer uniffi_relay_core_fn_method_relaycore_peers(uint64_t ptr, RustCallSta
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_PHASE
 RustBuffer uniffi_relay_core_fn_method_relaycore_phase(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_RECEIVE_WITH_CODE
+uint64_t uniffi_relay_core_fn_method_relaycore_receive_with_code(uint64_t ptr, RustBuffer code, RustBuffer addresses, RustBuffer endpoint_id
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_REMOVE_TRANSFER
@@ -376,6 +391,11 @@ void uniffi_relay_core_fn_func_forge_log(RustBuffer level, RustBuffer category, 
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_FORGE_LOG_ENABLED
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_FORGE_LOG_ENABLED
 int8_t uniffi_relay_core_fn_func_forge_log_enabled(RustBuffer level, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_WORD_CODE_NUMBER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_WORD_CODE_NUMBER
+uint8_t uniffi_relay_core_fn_func_word_code_number(RustBuffer code, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_FUNC_RELAY_ERROR_KIND
@@ -655,6 +675,12 @@ uint16_t uniffi_relay_core_checksum_func_forge_log_enabled(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_WORD_CODE_NUMBER
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_WORD_CODE_NUMBER
+uint16_t uniffi_relay_core_checksum_func_word_code_number(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RELAY_ERROR_KIND
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_FUNC_RELAY_ERROR_KIND
 uint16_t uniffi_relay_core_checksum_func_relay_error_kind(void
@@ -673,9 +699,21 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_background_work_pending(voi
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_CODE_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_CODE_RECEIVE
+uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_code_receive(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_INVITATION
 uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_invitation(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
+uint16_t uniffi_relay_core_checksum_method_relaycore_code_receive_size(void
     
 );
 #endif
@@ -730,6 +768,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_peers(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PHASE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_PHASE
 uint16_t uniffi_relay_core_checksum_method_relaycore_phase(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_RECEIVE_WITH_CODE
+uint16_t uniffi_relay_core_checksum_method_relaycore_receive_with_code(void
     
 );
 #endif

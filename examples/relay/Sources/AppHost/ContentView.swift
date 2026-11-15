@@ -57,6 +57,7 @@ struct DevicesView: View {
     @State private var network = RelayNetwork()
     @State private var showingCode = false
     @State private var scanning = false
+    @State private var receivingCode = false
     @State private var renaming = false
     @State private var newName = ""
     @State private var preview: URL?
@@ -107,6 +108,9 @@ struct DevicesView: View {
                             .accessibilityIdentifier("devices.showCode")
                         Button("Scan a Code", systemImage: "qrcode.viewfinder") { scanning = true }
                             .accessibilityIdentifier("devices.scan")
+                        Divider()
+                        Button("Receive with a Code", systemImage: "arrow.down.circle") { receivingCode = true }
+                            .accessibilityIdentifier("devices.receiveCode")
                     } label: {
                         Label("Pair a Device", systemImage: "plus")
                     }
@@ -126,6 +130,9 @@ struct DevicesView: View {
             .sheet(isPresented: $scanning) {
                 ScanCodeSheet(model: model)
             }
+            .sheet(isPresented: $receivingCode) {
+                ReceiveCodeSheet(model: model, network: network, preview: $preview)
+            }
             .alert("Rename This Device", isPresented: $renaming) {
                 TextField("Name", text: $newName)
                     .accessibilityIdentifier("rename.name")
@@ -137,7 +144,7 @@ struct DevicesView: View {
                 Text("Other devices see this name.")
             }
             .forgeAlert(Binding(
-                get: { showingCode || scanning ? nil : model.alert },
+                get: { showingCode || scanning || receivingCode ? nil : model.alert },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .quickLookPreview($preview)

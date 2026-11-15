@@ -36,7 +36,8 @@ use relay_core::{Direction, Item, RelayCore, TransferStatus};
 const USAGE: &str = "usage: relay listen [--port N] | pair <code> | peers | \
 send <peer> [--to host:port] (--note TEXT | FILE) | history | name [NEW] | \
 serve-ai --upstream URL [--model M] [--port N] | \
-ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT";
+ask <peer> [--to host:port] [--model M] [--system TEXT] [--max-tokens N] PROMPT | \
+receive-code <code> <host:port> <endpoint-id>";
 
 fn main() {
     if let Err(problem) = run(std::env::args().skip(1).collect()) {
@@ -84,6 +85,25 @@ fn run(args: Vec<String>) -> Result<(), String> {
         "send" => send(&core, rest),
         "serve-ai" => serve_ai(&core, rest),
         "ask" => ask(&core, rest),
+        // The receiver the app uses for word codes, against `relay-spike send`.
+        "receive-code" => {
+            let [code, address, id] = rest else {
+                return Err(USAGE.into());
+            };
+            let got =
+                block_on(core.receive_with_code(code.clone(), vec![address.clone()], id.clone()))
+                    .map_err(|e| e.to_string())?;
+            println!(
+                "Received {} ({} bytes, {} already here) in {:.1}s at {:.1} MB/s: {}",
+                got.name,
+                got.size,
+                got.resumed_from,
+                got.seconds,
+                got.megabytes_per_second,
+                got.path
+            );
+            Ok(())
+        }
         "history" => {
             for t in core.transfers() {
                 println!("{}", describe(&t));

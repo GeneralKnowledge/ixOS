@@ -83,6 +83,74 @@ final class RelayNetwork {
         return resolved.map { [$0] } ?? []
     }
 
+    /// Looks for a code sender (`_forgerelay._udp`) whose TXT record says
+    /// code number `number`, for up to 10 s, then 1.5 s more for a second
+    /// one. Each sender is resolved to an IPv4 "host:port" (Rust can't use a
+    /// link-local IPv6 scope).
+    func findCodeSender(number: UInt8) async -> RelayModel.CodeSender {
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        let matches = CodeMatches()
+        browser.browseResultsChangedHandler = { results, _ in
+            for result in results {
+                guard case .bonjour(let txt) = result.metadata,
+                      txt["n"] == String(number),
+                      let id = txt["id"], !id.isEmpty
+                else { continue }
+                matches.add(id: id, endpoint: result.endpoint)
+            }
+        }
+        browser.start(queue: .main)
+        var waited = 0
+        var firstSeenAt: Int?
+        while waited < 100 {
+            try? await Task.sleep(for: .milliseconds(100))
+            waited += 1
+            if matches.count > 0, firstSeenAt == nil { firstSeenAt = waited }
+            if let first = firstSeenAt, waited - first >= 15 { break }
+        }
+        browser.cancel()
+        let found = matches.all
+        if found.count > 1 { return .several }
+        guard let (id, endpoint) = found.first else { return .none }
+        var addresses: [String] = []
+        if let v4 = await Self.resolve(endpoint, ipv4Only: true) { addresses.append(v4) }
+        if addresses.isEmpty, let any = await Self.resolve(endpoint, ipv4Only: false) { addresses.append(any) }
+        if addresses.isEmpty { return .none }
+        return .found(addresses: addresses, endpointID: id)
+    }
+
+    static let codeServiceType = "_forgerelay._udp"
+
+    /// A Bonjour UDP service's "host:port": a UDP connection is ready once
+    /// the name resolves, and sends nothing.
+    private static func resolve(_ endpoint: NWEndpoint, ipv4Only: Bool) async -> String? {
+        let parameters = NWParameters.udp
+        if ipv4Only, let ip = parameters.defaultProtocolStack.internetProtocol as? NWProtocolIP.Options {
+            ip.version = .v4
+        }
+        let connection = NWConnection(to: endpoint, using: parameters)
+        let resolved: String? = await withCheckedContinuation { continuation in
+            let once = Once(continuation)
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    once.resume(Self.hostPort(connection.currentPath?.remoteEndpoint))
+                case .failed, .cancelled:
+                    once.resume(nil)
+                default:
+                    break
+                }
+            }
+            connection.start(queue: .main)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 5) { once.resume(nil) }
+        }
+        connection.cancel()
+        return resolved
+    }
+
     nonisolated private static func hostPort(_ endpoint: NWEndpoint?) -> String? {
         guard case .hostPort(let host, let port) = endpoint else { return nil }
         let name: String
@@ -126,6 +194,30 @@ final class RelayNetwork {
             }
         }
         return v4 + v6
+    }
+}
+
+/// Code senders seen so far, by endpoint id (Bonjour may report one twice).
+private final class CodeMatches: @unchecked Sendable {
+    private let lock = NSLock()
+    private var found: [String: NWEndpoint] = [:]
+
+    func add(id: String, endpoint: NWEndpoint) {
+        lock.lock()
+        found[id] = endpoint
+        lock.unlock()
+    }
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return found.count
+    }
+
+    var all: [(String, NWEndpoint)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return found.map { ($0.key, $0.value) }
     }
 }
 
