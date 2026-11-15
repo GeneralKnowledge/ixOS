@@ -60,6 +60,8 @@ let package = Package(
             dependencies: [
                 "forge_ffiFFI",
                 .product(name: "ForgeApp", package: "forgekit"),
+                // Linked through Good Dog's crate, so the bindings import it.
+                .product(name: "ForgeNative", package: "forgekit"),
             ],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
@@ -83,6 +85,8 @@ let package = Package(
             dependencies: [
                 "ForgeFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
+                // Good Dog's native services (the shared forge-native crate).
+                .product(name: "ForgeNative", package: "forgekit"),
                 .product(name: "ForgeUIShowcase", package: "forgeui-showcase"),
                 .product(name: "WeatherApp", package: "weather"),
                 .product(name: "ChecklistApp", package: "checklist"),

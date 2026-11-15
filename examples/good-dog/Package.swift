@@ -41,7 +41,8 @@ let package = Package(
         .library(name: "GoodDogXtool", targets: ["GoodDogXtoolApp"]),
     ],
     dependencies: [
-        // ForgeUI only: the design system. Good Dog doesn't use the ForgeKit runtime host.
+        // ForgeUI (the design system) and ForgeNative (the native services).
+        // Good Dog doesn't use the ForgeKit runtime host.
         .package(path: "../../forgekit"),
     ],
     targets: [
@@ -52,7 +53,7 @@ let package = Package(
         ),
         .target(
             name: "GoodDogFFI",
-            dependencies: ["good_dog_appFFI"],
+            dependencies: ["good_dog_appFFI", .product(name: "ForgeNative", package: "forgekit")],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)]
@@ -60,7 +61,11 @@ let package = Package(
         // SwiftUI views and the view model; they call the Rust API in ForgeFFI.
         .target(
             name: "GoodDogApp",
-            dependencies: ["GoodDogFFI", .product(name: "ForgeUI", package: "forgekit")],
+            dependencies: [
+                "GoodDogFFI",
+                .product(name: "ForgeUI", package: "forgekit"),
+                .product(name: "ForgeNative", package: "forgekit"),
+            ],
             path: "Sources/AppHost"
         ),
         .target(
@@ -77,7 +82,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AppHostTests",
-            dependencies: ["GoodDogApp", "GoodDogFFI"],
+            dependencies: ["GoodDogApp", "GoodDogFFI", .product(name: "ForgeNative", package: "forgekit")],
             path: "Tests/AppHostTests",
             linkerSettings: rustLibrary
         ),

@@ -64,7 +64,12 @@ let package = Package(
         ),
         .target(
             name: "FORGE_MODULE_NAMEFFI",
-            dependencies: ["FORGE_LIB_NAMEFFI", .product(name: "ForgeApp", package: "forgekit")],
+            dependencies: [
+                "FORGE_LIB_NAMEFFI",
+                .product(name: "ForgeApp", package: "forgekit"),
+                // The native services' types and their iOS adapters.
+                .product(name: "ForgeNative", package: "forgekit"),
+            ],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)]
@@ -75,6 +80,7 @@ let package = Package(
             dependencies: [
                 "FORGE_MODULE_NAMEFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeNative", package: "forgekit"),
                 .product(name: "ForgeAppKit", package: "forgekit"),
             ],
             path: "Sources/AppHost",
@@ -100,6 +106,7 @@ let package = Package(
                 "FORGE_MODULE_NAMEApp",
                 "FORGE_MODULE_NAMEFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeNative", package: "forgekit"),
                 .product(name: "ForgeAppKit", package: "forgekit"),
             ],
             path: "Tests/AppHostTests",

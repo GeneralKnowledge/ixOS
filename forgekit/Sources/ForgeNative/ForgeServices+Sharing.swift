@@ -1,4 +1,6 @@
-// Forge native services: the share sheet. Source of truth: crates/forge-services/swift/.
+// Forge native services: the share sheet. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import SwiftUI
@@ -37,3 +39,5 @@ extension ForgeShareLink where Label == SwiftUI.Label<Text, Image> {
         self.init(item: item) { SwiftUI.Label(title, systemImage: "square.and.arrow.up") }
     }
 }
+
+#endif

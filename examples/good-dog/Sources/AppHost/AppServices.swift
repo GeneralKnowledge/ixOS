@@ -1,3 +1,4 @@
+@preconcurrency import ForgeNative
 @preconcurrency import GoodDogFFI
 import SwiftUI
 

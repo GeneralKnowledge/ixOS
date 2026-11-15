@@ -124,12 +124,15 @@ else
     local swift="$dir/ForgeFFI/$ns.swift"
     rm -rf "$dir/ForgeFFI"
     mkdir -p "$dir/ForgeFFI" "$dir/${ffi}FFI"
-    if [[ -f "$STAGE/forge_app.swift" ]]; then
-      # The crate uses the application runtime (forge-app). Its contract
-      # types' Swift ships in ForgeKit's ForgeApp module, not here; UniFFI
-      # writes no import for a module of external types, so add it.
-      sed 's/^import Foundation$/import Foundation\n@preconcurrency import ForgeApp/' \
-        "$STAGE/$ns.swift" >"$swift"
+    # Crates on the application runtime (forge-app) or the shared native
+    # services (forge-native) use their types as external types. Their Swift
+    # ships in ForgeKit (ForgeApp, ForgeNative), not here; UniFFI writes no
+    # import for a module of external types, so add it.
+    local imports=""
+    [[ -f "$STAGE/forge_app.swift" ]] && imports+="\n@preconcurrency import ForgeApp"
+    [[ -f "$STAGE/forge_native.swift" ]] && imports+="\n@preconcurrency import ForgeNative"
+    if [[ -n "$imports" ]]; then
+      sed "s/^import Foundation\$/import Foundation$imports/" "$STAGE/$ns.swift" >"$swift"
     else
       cp "$STAGE/$ns.swift" "$swift"
     fi

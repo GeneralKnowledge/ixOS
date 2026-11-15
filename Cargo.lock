@@ -843,7 +843,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "forge-app"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "forge-runtime",
  "forge-storage",
@@ -912,6 +912,17 @@ dependencies = [
  "serde",
  "snow",
  "thiserror",
+]
+
+[[package]]
+name = "forge-native"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "forge-runtime",
+ "forge-services",
+ "tempfile",
+ "uniffi",
 ]
 
 [[package]]

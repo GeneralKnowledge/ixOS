@@ -2,7 +2,7 @@
 
 Forge splits an app in two. Rust holds the logic: state, persistence, networking and domain rules. The native layer holds what makes the device a device. On iOS that layer is SwiftUI plus a set of small Swift adapters. This page covers those adapters, and the Rust interfaces they implement.
 
-| Service | Rust (`crate::native`) | iOS (in `ForgeFFI`) |
+| Service | Rust (`crate::native`) | iOS (`ForgeNative`, or `ForgeFFI` on the macro route) |
 |---------|------------------------|---------------------|
 | Keychain | `SecureStore`; `NativeServices::read_secret_string` / `write_secret_string` / `delete_secret` | `KeychainSecureStore` |
 | App directories | `AppDirectories` (documents, application support, caches, temporary) | `ForgeFiles.appDirectories()` |
@@ -15,6 +15,12 @@ Forge splits an app in two. Rust holds the logic: state, persistence, networking
 Every app from `forge init` has these services installed. Device capabilities (connectivity, device status, motion, location, Bluetooth, audio) are [optional services](#optional-services) an app selects. Android implementations are not written yet. On Android, `NativeServices::installed()` returns `NotInstalled` (see [Android](#android)).
 
 ## How it fits together
+
+The services reach an app by one of two routes while apps move from the first to the second (the first goes once every app has moved):
+
+- **Shared crate (the starter app and Good Dog).** The app crate re-exports `forge-native` (`pub use forge_native as native;`). Its types are UniFFI external types in your API, and their Swift, with Forge's adapters, is ForgeKit's `ForgeNative` product, like the runtime's contract types in `ForgeApp`. Nothing is copied into `Generated/`; app code that uses the adapters imports `ForgeNative`. Optional services are not on this route yet.
+- **Macro (the other apps).** `forge_services::native_services!()` emits the same items into your crate, and `forge build` copies the adapters into `Generated/ForgeFFI`, as described below.
+
 
 ```
 rust/src/lib.rs                      forge_services::native_services!();

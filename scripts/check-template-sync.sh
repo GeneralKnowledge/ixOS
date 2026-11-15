@@ -42,6 +42,12 @@ if [[ -z "$rust_services" || "$rust_services" != "$swift_services" ]]; then
   echo "error: forge-services VERSION (${rust_services:-missing}) and forgeServicesSwiftVersion (${swift_services:-missing}) differ" >&2
   status=1
 fi
+# The same for ForgeKit's copy (ForgeNative), used by apps on forge-native.
+kit_services="$(sed -n 's/^let forgeServicesSwiftVersion: UInt32 = \([0-9]*\)$/\1/p' "$ROOT/forgekit/Sources/ForgeNative/ForgeServices.swift")"
+if [[ "$rust_services" != "$kit_services" ]]; then
+  echo "error: forge-services VERSION (${rust_services:-missing}) and ForgeNative's forgeServicesSwiftVersion (${kit_services:-missing}) differ" >&2
+  status=1
+fi
 
 template_test="$ROOT/templates/ios-app/Tests/AppHostTests/NativeServicesTests.swift"
 if ! grep -q "XCTAssertEqual(nativeServicesVersion(), ${rust_services})" "$template_test"; then

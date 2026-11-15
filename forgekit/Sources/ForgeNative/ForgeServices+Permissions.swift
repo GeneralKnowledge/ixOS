@@ -1,4 +1,6 @@
-// Forge native services: permissions. Source of truth: crates/forge-services/swift/.
+// Forge native services: permissions. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import UserNotifications
@@ -92,3 +94,5 @@ struct NotificationPermissionAdapter: ForgePermissionAdapter {
         }
     }
 }
+
+#endif
