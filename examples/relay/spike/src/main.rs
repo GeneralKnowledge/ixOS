@@ -54,9 +54,13 @@ const APP_ID: &str = "forge-relay/v1";
 /// Time allowed for each step of the code handshake.
 const STEP: Duration = Duration::from_secs(10);
 /// How often a receiver says it is still there during a transfer, and how
-/// long the sender waits before treating it as gone.
+/// long the sender waits before treating it as gone. Generous on purpose:
+/// on a slow or bufferbloated path (a tailnet over a home line) ticks can
+/// arrive seconds late, and giving up costs the receiver a new code. A
+/// receiver that really vanished is still noticed in well under a minute,
+/// and a resumed transfer keeps what already arrived.
 const TICK: Duration = Duration::from_secs(2);
-const SILENCE: Duration = Duration::from_secs(8);
+const SILENCE: Duration = Duration::from_secs(30);
 /// How long a code stays valid.
 const CODE_LIFETIME: Duration = Duration::from_secs(600);
 /// New codes a sender issues (after wrong guesses, collisions or a dropped
@@ -405,7 +409,7 @@ impl CodeHandler {
                 Ok(m) if m == b"done" => return Kind::Done,
                 Ok(_) => return Kind::Dropped,
                 Err(err) => {
-                    eprintln!("receiver went quiet: {err}");
+                    eprintln!("receiver went quiet for {}s: {err}", SILENCE.as_secs());
                     return Kind::Dropped;
                 }
             }
@@ -756,7 +760,10 @@ async fn receive(
                 .map(|_| ())
                 .map_err(anyhow::Error::from)
         }
-        Err(err) => Err(anyhow!("{err}")),
+        Err(err) => Err(anyhow!(
+            "{err:#} after {:.1}s",
+            started.elapsed().as_secs_f64()
+        )),
     };
     let _ = stop.send(());
     let mut send = ticker.await?;

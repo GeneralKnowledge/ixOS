@@ -70,7 +70,7 @@ real machines next):
 | Forced collision (test switch `RELAY_SPIKE_NAMEPLATE`) | The sender saw another sender take its number and issued a new code; a receiver that saw two senders with one number stopped with "two senders nearby are using number 37; ask the sender for a new code" and spent nobody's code |
 | Wrong guess | The receiver is told; the sender says "Someone tried a wrong code, so it no longer works. New code: …"; the new code works and the file is identical |
 | Busy | A second receiver during a transfer is told "the sender is busy" and the code is not spent |
-| Resume | 4 GB transfer, receiver killed after about 0.3 to 0.4 GB, twice: the sender noticed within 8 s (receivers tick every 2 s) and issued a new code; the receiver resumed with "332791808 of 4000000000 bytes already here" and the file was identical (`cmp`) |
+| Resume | 4 GB transfer, receiver killed after about 0.3 to 0.4 GB, twice: the sender noticed within 8 s (receivers tick every 2 s; the window is now 30 s after the slow tailnet run below) and issued a new code; the receiver resumed with "332791808 of 4000000000 bytes already here" and the file was identical (`cmp`) |
 | Memory | Peak resident memory during a 4 GB transfer: receiver 24 MB, sender 21 MB (iroh-blobs file store; the sender hashes the file in place) |
 | Speed | 290 to 364 MB/s over loopback with the file store |
 | Stranger | Still refused with the right hash |
