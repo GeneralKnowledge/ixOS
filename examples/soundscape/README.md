@@ -26,6 +26,12 @@ it runs inside Device Lab (Apps, then Soundscape) and on its own.
   (`project::mix`), and `mixdown` renders the same chain offline (one-pole
   low-pass, feedback echo, gain, balance), so the exported file sounds like
   playback. A mix over full scale is turned down to fit and says so.
+- **A metronome counts in.** Rust renders one pass of the loop's clicks
+  (`click_track`, a tick on every beat, the bar's first accented) to a WAV
+  file in the caches. The app loops it on its own player straight into the
+  main mixer, so it is never recorded or mixed down, and plays its first
+  bar as a count-in before every recording. The on/off switch is saved
+  with the project.
 - Until spike S4 says Rust is safe on the real-time audio thread, live
   effects are Apple's audio units. The Rust filters in `dsp.rs` allocate
   nothing per sample, so they could move there.

@@ -659,6 +659,14 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
     func clearClip(id: UInt64, trackId: UInt64) async throws  -> ProjectDetail
     
     /**
+     * A WAV file of one pass of the project's metronome at `sample_rate`
+     * (see [`dsp::clicks`]): the app loops it under playback and plays its
+     * first bar as the count-in before a recording. Kept in the caches,
+     * one file per tempo, length and rate, written the first time.
+     */
+    func clickTrack(id: UInt64, sampleRate: UInt32) async throws  -> String
+    
+    /**
      * A new project with one empty track. Tempo from 40 to 240 beats per
      * minute, 1 to 16 bars of four beats.
      */
@@ -728,6 +736,12 @@ public protocol SoundscapeCoreProtocol: AnyObject, Sendable {
      * earlier recording.
      */
     func setClip(id: UInt64, trackId: UInt64, sourcePath: String) async throws  -> ProjectDetail
+    
+    /**
+     * Turns the metronome on or off for a project. It is never in the
+     * mixdown.
+     */
+    func setMetronome(id: UInt64, on: Bool) async throws  -> ProjectDetail
     
     /**
      * The host reports the application lifecycle phase.
@@ -905,6 +919,28 @@ open func clearClip(id: UInt64, trackId: UInt64)async throws  -> ProjectDetail  
             completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
             freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
             liftFunc: FfiConverterTypeProjectDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * A WAV file of one pass of the project's metronome at `sample_rate`
+     * (see [`dsp::clicks`]): the app loops it under playback and plays its
+     * first bar as the count-in before a recording. Kept in the caches,
+     * one file per tempo, length and rate, written the first time.
+     */
+open func clickTrack(id: UInt64, sampleRate: UInt32)async throws  -> String  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_click_track(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(sampleRate)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterString.lift,
             errorHandler: FfiConverterTypeSoundscapeError_lift
         )
 }
@@ -1120,6 +1156,26 @@ open func setClip(id: UInt64, trackId: UInt64, sourcePath: String)async throws  
             rustFutureFunc: {
                 uniffi_soundscape_core_fn_method_soundscapecore_set_clip(
                         self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt64.lower(trackId),FfiConverterString.lower(sourcePath)
+                )
+            },
+            pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_soundscape_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_soundscape_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeProjectDetail_lift,
+            errorHandler: FfiConverterTypeSoundscapeError_lift
+        )
+}
+    
+    /**
+     * Turns the metronome on or off for a project. It is never in the
+     * mixdown.
+     */
+open func setMetronome(id: UInt64, on: Bool)async throws  -> ProjectDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_soundscape_core_fn_method_soundscapecore_set_metronome(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterBool.lower(on)
                 )
             },
             pollFunc: ffi_soundscape_core_rust_future_poll_rust_buffer,
@@ -1575,17 +1631,25 @@ public struct ProjectSummary: Equatable, Hashable {
     public var modifiedMs: Int64
     public var tempoBpm: Double
     public var bars: UInt32
+    /**
+     * Whether the metronome clicks while the loop plays and records.
+     */
+    public var metronome: Bool
     public var trackCount: UInt32
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: UInt64, title: String, createdMs: Int64, modifiedMs: Int64, tempoBpm: Double, bars: UInt32, trackCount: UInt32) {
+    public init(id: UInt64, title: String, createdMs: Int64, modifiedMs: Int64, tempoBpm: Double, bars: UInt32, 
+        /**
+         * Whether the metronome clicks while the loop plays and records.
+         */metronome: Bool, trackCount: UInt32) {
         self.id = id
         self.title = title
         self.createdMs = createdMs
         self.modifiedMs = modifiedMs
         self.tempoBpm = tempoBpm
         self.bars = bars
+        self.metronome = metronome
         self.trackCount = trackCount
     }
 
@@ -1611,6 +1675,7 @@ public struct FfiConverterTypeProjectSummary: FfiConverterRustBuffer {
                 modifiedMs: FfiConverterInt64.read(from: &buf), 
                 tempoBpm: FfiConverterDouble.read(from: &buf), 
                 bars: FfiConverterUInt32.read(from: &buf), 
+                metronome: FfiConverterBool.read(from: &buf), 
                 trackCount: FfiConverterUInt32.read(from: &buf)
         )
     }
@@ -1622,6 +1687,7 @@ public struct FfiConverterTypeProjectSummary: FfiConverterRustBuffer {
         FfiConverterInt64.write(value.modifiedMs, into: &buf)
         FfiConverterDouble.write(value.tempoBpm, into: &buf)
         FfiConverterUInt32.write(value.bars, into: &buf)
+        FfiConverterBool.write(value.metronome, into: &buf)
         FfiConverterUInt32.write(value.trackCount, into: &buf)
     }
 }
@@ -2555,6 +2621,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_soundscape_core_checksum_method_soundscapecore_clear_clip() != 43470) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_click_track() != 18791) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_create_project() != 44462) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2595,6 +2664,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_clip() != 57804) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_soundscape_core_checksum_method_soundscapecore_set_metronome() != 23123) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_soundscape_core_checksum_method_soundscapecore_set_phase() != 58514) {

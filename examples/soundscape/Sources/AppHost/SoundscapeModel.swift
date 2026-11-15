@@ -137,6 +137,25 @@ public final class SoundscapeModel {
         return detail
     }
 
+    /// Turns the project's metronome on or off.
+    public func setMetronome(_ project: UInt64, on: Bool) async -> ProjectDetail? {
+        await perform(haptic: false) { core in
+            try await core.setMetronome(id: project, on: on)
+        }
+    }
+
+    /// One pass of the project's metronome as a WAV file at `sampleRate`,
+    /// or `nil` (logged: the loop still plays, just without clicks).
+    public func clickTrack(_ project: UInt64, sampleRate: Double) async -> URL? {
+        do {
+            let path = try await core.clickTrack(id: project, sampleRate: UInt32(sampleRate.rounded()))
+            return URL(fileURLWithPath: path)
+        } catch {
+            log.warn("click track failed: \(error)")
+            return nil
+        }
+    }
+
     /// The whole mixer strip at once; Rust checks it and answers with the
     /// track's mix in AVAudioEngine's units.
     public func setSettings(_ project: UInt64, track: UInt64, _ settings: TrackSettings) async -> ProjectDetail? {

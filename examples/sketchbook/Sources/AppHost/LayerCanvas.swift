@@ -4,16 +4,20 @@ import SwiftUI
 import UIKit
 
 /// One layer on screen: a transparent `PKCanvasView` showing the layer's
-/// drawing. Only the selected layer takes touches and shows the tool
-/// picker; the others just show their ink. When a stroke ends the new
-/// drawing goes to `onChange`, which hands it to Rust (one undo step).
+/// drawing. Only the selected layer takes touches; the others just show
+/// their ink. Every layer follows the sketch's one tool picker, so the pen,
+/// colour and width stay the same when you change layer. When a stroke ends
+/// the new drawing goes to `onChange`, which hands it to Rust (one undo
+/// step).
 struct LayerCanvas: UIViewRepresentable {
     /// The layer's drawing as Rust holds it (`PKDrawing.dataRepresentation()`).
     let drawing: Data?
     let isActive: Bool
+    /// The sketch's tool picker, shared by its layers.
+    let picker: PKToolPicker
     let onChange: (Data) -> Void
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeCoordinator() -> Coordinator { Coordinator(picker: picker) }
 
     func makeUIView(context: Context) -> PKCanvasView {
         let canvas = RustUndoCanvas()
@@ -23,7 +27,12 @@ struct LayerCanvas: UIViewRepresentable {
         canvas.drawingPolicy = .anyInput
         canvas.isScrollEnabled = false
         canvas.contentInsetAdjustmentBehavior = .never
-        canvas.tool = PKInkingTool(.pen, color: .black, width: 4)
+        // The tool chosen on another layer, then whatever is chosen next.
+        canvas.tool = picker.selectedTool
+        picker.addObserver(canvas)
+        // The picker shows while any of the sketch's layers is first
+        // responder, which only the selected one becomes.
+        picker.setVisible(true, forFirstResponder: canvas)
         canvas.delegate = context.coordinator
         canvas.accessibilityIdentifier = "sketch.canvas"
         canvas.accessibilityLabel = "Drawing canvas"
@@ -36,11 +45,13 @@ struct LayerCanvas: UIViewRepresentable {
         coordinator.onChange = onChange
         coordinator.apply(drawing, to: canvas)
         canvas.isUserInteractionEnabled = isActive
-        coordinator.showTools(isActive, on: canvas)
+        coordinator.setActive(isActive, canvas)
     }
 
     static func dismantleUIView(_ canvas: PKCanvasView, coordinator: Coordinator) {
-        coordinator.showTools(false, on: canvas)
+        coordinator.picker.setVisible(false, forFirstResponder: canvas)
+        coordinator.picker.removeObserver(canvas)
+        canvas.resignFirstResponder()
     }
 
     /// A canvas with no undo manager of its own: undo is Rust's, one
@@ -56,8 +67,12 @@ struct LayerCanvas: UIViewRepresentable {
         /// Rust isn't set again (which would reset the canvas mid-stroke).
         private var shown: Data?
         private var applying = false
-        private let picker = PKToolPicker()
-        private var toolsShown = false
+        let picker: PKToolPicker
+        private var active = false
+
+        init(picker: PKToolPicker) {
+            self.picker = picker
+        }
 
         func apply(_ data: Data?, to canvas: PKCanvasView) {
             guard data != shown else { return }
@@ -67,18 +82,15 @@ struct LayerCanvas: UIViewRepresentable {
             applying = false
         }
 
-        func showTools(_ show: Bool, on canvas: PKCanvasView) {
-            guard show != toolsShown else { return }
-            toolsShown = show
-            if show {
-                picker.addObserver(canvas)
-                picker.setVisible(true, forFirstResponder: canvas)
+        /// The selected layer becomes first responder, which shows the
+        /// picker; the layer it replaces doesn't resign, so the picker
+        /// stays up while the new one takes over.
+        func setActive(_ isActive: Bool, _ canvas: PKCanvasView) {
+            guard isActive != active else { return }
+            active = isActive
+            if isActive {
                 // The canvas must be in a window to become first responder.
                 DispatchQueue.main.async { canvas.becomeFirstResponder() }
-            } else {
-                picker.setVisible(false, forFirstResponder: canvas)
-                picker.removeObserver(canvas)
-                canvas.resignFirstResponder()
             }
         }
 
