@@ -7,7 +7,10 @@
 # and so on. Apps that lag today are listed in docs/app-parity.toml with the
 # reason and the plan wave that catches them up. The check fails on a lag
 # that isn't listed (a new copy can't slip in) and on a listed lag that has
-# been fixed (so the list only shrinks). It also checks that
+# been fixed (so the list only shrinks). Each entry has a status: missing
+# (the app should use the framework and doesn't yet; the default), deferred
+# (known work postponed on purpose) or not-applicable (the app has a real
+# reason for its own plumbing). It also checks that
 # docs/app-parity.md, the generated table, is up to date.
 #
 # Usage: scripts/check-app-parity.sh           check (make validate, CI)
@@ -208,6 +211,8 @@ RULE_IDS = {r[0] for r in RULES}
 
 # --- the lag list ---------------------------------------------------------
 
+STATUSES = ("missing", "deferred", "not-applicable")
+
 problems = []
 lag = {}
 for entry in tomllib.loads(read(lag_file)).get("lag", []):
@@ -216,8 +221,20 @@ for entry in tomllib.loads(read(lag_file)).get("lag", []):
         problems.append(f"docs/app-parity.toml: unknown app {key[0]!r}")
     if key[1] not in RULE_IDS:
         problems.append(f"docs/app-parity.toml: unknown rule {key[1]!r}")
-    if not entry.get("reason") or "wave" not in entry:
-        problems.append(f"docs/app-parity.toml: {key[0]}/{key[1]} needs a reason and a wave")
+    status = entry.setdefault("status", "missing")
+    if status not in STATUSES:
+        problems.append(
+            f"docs/app-parity.toml: {key[0]}/{key[1]} has status {status!r}; use one of "
+            + ", ".join(STATUSES)
+        )
+    if not entry.get("reason"):
+        problems.append(f"docs/app-parity.toml: {key[0]}/{key[1]} needs a reason")
+    if status != "not-applicable" and "wave" not in entry:
+        problems.append(f"docs/app-parity.toml: {key[0]}/{key[1]} needs the wave that fixes it")
+    if status == "not-applicable" and "wave" in entry:
+        problems.append(
+            f"docs/app-parity.toml: {key[0]}/{key[1]} is not-applicable, so it has no wave"
+        )
     if key in lag:
         problems.append(f"docs/app-parity.toml: {key[0]}/{key[1]} is listed twice")
     lag[key] = entry
@@ -243,6 +260,10 @@ for name in apps:
             problems.append(f"{name}: {rule_id} passes now; remove it from docs/app-parity.toml")
 
 
+def wave_label(entry):
+    return f"wave {entry['wave']}" if entry.get("wave") else "decision"
+
+
 # --- the generated page ---------------------------------------------------
 
 def cell(name, rule_id):
@@ -255,7 +276,10 @@ def cell(name, rule_id):
     entry = lag.get((name, rule_id))
     if not entry:
         return "**No**"
-    return f"No (wave {entry['wave']})" if entry["wave"] else "No (decision)"
+    if entry["status"] == "not-applicable":
+        return "Not applicable"
+    word = "Deferred" if entry["status"] == "deferred" else "No"
+    return f"{word} ({wave_label(entry)})"
 
 
 lines = [
@@ -271,14 +295,24 @@ lines = [
     "|---|---|",
 ]
 lines += [f"| `{rid}` | {desc} |" for rid, desc, _ in RULES]
+lines += [
+    "",
+    "A rule an app doesn't meet is one of: **No** (missing: the app should use the framework and doesn't yet, with the wave that fixes it), **Deferred** (known work postponed on purpose, with the wave) or **Not applicable** (the app has a real reason for its own plumbing). Whether an app has been proven on an iPhone is a separate question, answered in [device-validation.md](device-validation.md).",
+]
 lines += ["", "## Apps", "", "| App | " + " | ".join(f"`{r[0]}`" for r in RULES) + " |"]
 lines.append("|---" * (len(RULES) + 1) + "|")
 for name in apps:
     lines.append(f"| {name} | " + " | ".join(cell(name, r[0]) for r in RULES) + " |")
-lines += ["", "## Known lag", "", "| App | Rule | Why | Wave |", "|---|---|---|---|"]
-for (name, rule_id), entry in sorted(lag.items(), key=lambda kv: (kv[1]["wave"], kv[0])):
+open_lag = {k: e for k, e in lag.items() if e["status"] != "not-applicable"}
+lines += ["", "## Known lag", "", "| App | Rule | Status | Why | Wave |", "|---|---|---|---|---|"]
+for (name, rule_id), entry in sorted(open_lag.items(), key=lambda kv: (kv[1]["wave"], kv[0])):
     wave = entry["wave"] or "decision"
-    lines.append(f"| {name} | `{rule_id}` | {entry['reason']} | {wave} |")
+    lines.append(f"| {name} | `{rule_id}` | {entry['status']} | {entry['reason']} | {wave} |")
+not_applicable = {k: e for k, e in lag.items() if e["status"] == "not-applicable"}
+if not_applicable:
+    lines += ["", "## Not applicable", "", "| App | Rule | Why |", "|---|---|---|"]
+    for (name, rule_id), entry in sorted(not_applicable.items()):
+        lines.append(f"| {name} | `{rule_id}` | {entry['reason']} |")
 generated = "\n".join(lines) + "\n"
 
 if write:
@@ -291,5 +325,8 @@ if problems:
     for p in problems:
         print(f"[parity] {p}", file=sys.stderr)
     sys.exit(1)
-print(f"[parity] {len(apps)} apps, {len(RULES)} rules, {len(lag)} known lags: OK")
+print(
+    f"[parity] {len(apps)} apps, {len(RULES)} rules, {len(open_lag)} known lags, "
+    f"{len(not_applicable)} not applicable: OK"
+)
 PY

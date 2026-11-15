@@ -1,7 +1,11 @@
 # Known lag behind the framework, per app and rule (docs/app-parity.md).
 # scripts/check-app-parity.sh fails on a lag that isn't listed here and on a
-# listed one that has been fixed, so this list only shrinks. Each entry names
-# the wave of the catch-up plan that removes it (0: waiting on a decision).
+# listed one that has been fixed, so this list only shrinks. Each entry has a
+# status: "missing" (the default: the app should use the framework and
+# doesn't yet), "deferred" (known work postponed on purpose) or
+# "not-applicable" (the app has a real reason for its own plumbing; no wave).
+# Missing and deferred entries name the wave of the catch-up plan that
+# removes them (0: waiting on a decision).
 # Plan: https://claude.ai/artifact/9MTqhUCVKAYVXCrRuAWpeu
 
 [[lag]]
@@ -17,34 +21,10 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "counter"
-rule = "device-lab"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forge-host"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "requirements"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "ui-test"
-wave = 0
-reason = "Proposed for removal; decision pending"
-
-[[lag]]
 app = "device-lab"
 rule = "forge-host"
-wave = 3
-reason = "LabModel keeps its own state; Device Lab's Rust is lab services, not an app core"
+status = "not-applicable"
+reason = "LabModel's state is lab services (sensors, permissions, hosting the other apps), not an app core (decided 2026-11-15)"
 
 [[lag]]
 app = "good-dog"

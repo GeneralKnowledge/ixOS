@@ -6,7 +6,7 @@ name: macOS
 # Use this workflow only when no such machine is available, or to test the
 # Xcode projects and the Swift host tests (XCTest on macOS against each app's
 # Rust core), which xtool doesn't use. Actions tab -> macOS -> Run workflow;
-# leave "apps" empty to check every app, or name some: counter weather chat
+# leave "apps" empty to check every app, or name some: weather chat
 # pocket-library good-dog device-lab template services-check.
 on:
   workflow_dispatch:

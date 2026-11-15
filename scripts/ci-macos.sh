@@ -10,7 +10,7 @@
 #   scripts/ci-macos.sh <app>...            named apps
 #   scripts/ci-macos.sh --list affected <base-sha>   print the selection and stop
 #
-# Apps: counter weather chat pocket-library device-lab template services-check,
+# Apps: weather chat pocket-library device-lab template services-check,
 # plus any other examples/<app> with forge.toml and an Xcode project.
 # "template" is a fresh `forge init` app outside the checkout; "services-check"
 # is the native services device-check app (docs/native-services-device-check.md).
@@ -19,7 +19,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-ALL=(counter weather chat pocket-library device-lab template services-check)
+ALL=(weather chat pocket-library device-lab template services-check)
 # Any other example app with an Xcode project is found, not listed: a new
 # app must never silently get no Swift CI (Good Dog pain point 11).
 for manifest in examples/*/forge.toml; do
@@ -56,7 +56,6 @@ affected() {
       *.md | docs/* | LICENSE* | examples/*-android/* | templates/android-app/* \
         | .github/workflows/android.yml | .github/workflows/screenshots.yml) ;;
       examples/chat-core/* | examples/chat-server/* | examples/chat/*) pick[chat]=1 ;;
-      examples/counter/*) pick[counter]=1 ;;
       examples/weather/*) pick[weather]=1 ;;
       examples/pocket-library/*) pick[pocket-library]=1 ;;
       examples/good-dog/* | examples/good-dog-core/*) pick[good-dog]=1 ;;
@@ -112,9 +111,9 @@ endgroup() { echo "::endgroup::"; }
 
 for app in "${APPS[@]}"; do
   case "$app" in
-    counter | weather)
-      # Their Xcode projects are validated on Linux (rust.yml); the host
-      # tests compile their Swift.
+    weather)
+      # Its Xcode project is validated on Linux (rust.yml); the host
+      # tests compile its Swift.
       group "$app: Swift host tests"
       ./scripts/test-swift-host.sh "examples/$app"
       endgroup

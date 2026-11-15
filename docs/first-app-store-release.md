@@ -28,7 +28,7 @@ This plan doesn't repeat two pieces of work happening alongside it:
 | Good Dog | A real product from Reuben's existing web app; the most commercially interesting | Still being built (GD1 just passed); about to add notifications and the first widget extension; training advice brings welfare and safety review questions | **Second release**, once Pocket Library has proven the pipeline |
 | Weather | Small, on the iPhone | Weather apps are a saturated category (guideline 4.3, spam); depends on a weather API's commercial terms; asks for location | No |
 | Chat, Murmur | Big feature set | Accounts, a server, user-generated content (moderation, reporting and account deletion rules) | No |
-| Counter, Device Lab, Tipster | — | Demos and test tools; would fail minimum functionality | No |
+| Device Lab, Tipster | — | Demos and test tools; would fail minimum functionality | No |
 | Kataster | Game | A port of someone else's open-source game; licence and originality questions | No |
 
 Pocket Library choices to confirm before stage R2, because two of them can't be undone after the first upload:

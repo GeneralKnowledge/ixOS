@@ -24,7 +24,6 @@ test-android-host:
 	cd examples/pocket-library-android && ./gradlew :app:testDebugUnitTest
 
 test-swift-host:
-	./scripts/test-swift-host.sh examples/counter
 	./scripts/test-swift-host.sh examples/weather
 	./scripts/test-swift-host.sh examples/chat
 	./scripts/test-swift-host.sh examples/pocket-library
@@ -38,7 +37,6 @@ clippy:
 	cargo clippy -p forge-storage --all-targets --features sqlite,hash,csv,backup -- -D warnings
 
 bindings:
-	./scripts/generate-bindings.sh examples/counter/Generated
 	./scripts/generate-bindings.sh examples/weather/Generated
 	./scripts/generate-bindings.sh examples/chat/Generated
 	./scripts/generate-bindings.sh examples/pocket-library/Generated
@@ -68,7 +66,7 @@ doctor:
 
 # Package one app's Rust library and bindings: make package-ios APP=examples/chat
 package-ios:
-	./scripts/package-ios-library.sh $(or $(APP),examples/counter)/Generated
+	./scripts/package-ios-library.sh $(or $(APP),examples/pocket-library)/Generated
 
 package-android:
 	./scripts/package-android-library.sh $(or $(APP),examples/pocket-library-android)/Generated

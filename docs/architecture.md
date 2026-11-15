@@ -2,7 +2,7 @@
 
 Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
 
-> **Partly out of date.** The canonical application model is now `forge-app` plus ForgeKit, with Checklist as the reference app ([app-model-review.md](app-model-review.md)). The sections below on Counter, its bridge and its persistence describe the earlier design. [architecture-assessment.md](archive/architecture-assessment.md) lists what to update here, and assesses the design's trade-offs and where it should improve.
+> The application model is `forge-app` plus ForgeKit ([app-model-review.md](app-model-review.md)). [architecture-assessment.md](archive/architecture-assessment.md) assesses the design's trade-offs and where it should improve.
 
 ## Framework principles
 
@@ -68,94 +68,50 @@ What every app crate gets from `forge-runtime`:
 - `app_shell!`: the UniFFI types every app repeats (its phase enum, a `Cancellation`, its event stream object), emitted under the app's own names. The logic stays in the plain Rust above; the macro only adds wrappers.
 - `logging`: one log pipeline for every build (logcat, the iOS system log, recent records in memory, extra sinks for developer tools, panics logged). Logs stay in Rust and the platform log; they never stream across the FFI.
 
-## Counter, the reference app
+## The reference apps
 
-**iOS**
+Checklist (`examples/checklist`) is the smallest app on the runtime; Pocket Library (`examples/pocket-library`) is the full-size reference ([roadmap](roadmap.md), P4). Every app from `forge init` starts in the same shape ([app-crate.md](app-crate.md)):
 
 ```
-SwiftUI (ContentView) → CounterViewModel → CounterBridge (CounterClient) → Generated Swift (ForgeFFI) → counter crate (examples/counter/rust) → forge-runtime, forge-storage
+SwiftUI views → model (@Observable, Foundation only) → ForgeHost (ForgeKit) → generated Swift (<App>FFI) → the app's Rust crate (rust/) → forge-app runtime, forge-storage, forge-net, forge-services
 ```
 
 | Layer | Owns | Must not |
 |-------|------|----------|
-| SwiftUI view + view model (`CounterApp` / `AppHost`) | Presentation state, user messages, task lifetimes | Implement counter rules; import `ForgeFFI` |
-| `CounterBridge` (thin Swift layer) | The Rust instance's lifetime, async/await adapters, event sequences, cancellation forwarding, Swift error translation, `Sendable` value types | Hold state of its own or duplicate Rust logic |
-| Generated `ForgeFFI` | Marshalling | Be edited by hand |
-| Counter crate, FFI modules (`api`, `app`, `session`, `events`) | Commands, queries, events, lifecycle; the serial command thread | Expose domain or store types directly |
-| Counter crate, `domain` / `store` modules | Domain rules / persistence | Know about FFI or threads |
+| SwiftUI views | Layout, ForgeUI components, task lifetimes (`.task`) | Hold app rules; call Rust directly for changes |
+| Model (`@Observable`, imports Foundation and Observation only) | Presentation state, alerts (`ForgeAlert`), forwarding cancellation | Implement domain rules; import SwiftUI or UIKit |
+| `ForgeHost` (ForgeKit) | Opening the core once per process off the main thread, the lifecycle, the event loop, `changes` | Hold app state |
+| Generated bindings | Marshalling | Be edited by hand |
+| The app's Rust crate | Commands, queries, domain rules, validation, persistence, errors with an `ErrorKind` | Know about SwiftUI |
+| `forge-app` `Runtime` | The command thread, published snapshots, events, work scopes, shutdown | Know about any one app |
 
-The bridge is per app: it is Counter-specific glue over the generated types. Apps from `forge init` start smaller: their own Rust crate (`rust/`, see [app-crate.md](app-crate.md)) exports a Swift-friendly API (async commands, an event stream object, typed errors), and the view model calls the generated `ForgeFFI` types directly. Add a bridge layer like Counter's when an app needs `AsyncSequence` events or extra Swift-side cancellation. The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
-
-The Weather example ([examples/weather](../examples/weather/README.md)) has the same layering with `WeatherBridge` (`WeatherClient`, `LocationProvider`) over `ForgeWeatherApp`, which uses `forge-net` for HTTP. It re-exports the generated record and enum types instead of wrapping them, because exercising UniFFI's mapping of nested types is its purpose.
-
-**Android**
-
-```
-Compose (MainActivity) → CounterViewModel → Generated Kotlin (uniffi.forge_ffi) → libforge_ffi.so → counter crate (examples/counter/rust) → forge-runtime, forge-storage
-```
+The Rust-to-Swift contract (async, events, cancellation, lifecycle, errors) is in [ffi-policy.md](ffi-policy.md).
 
 ## Ownership
 
-- **Authoritative counter state** lives in the counter crate's `domain` module inside `ForgeCounterApp` (Rust).
-- Swift holds a **display snapshot**, updated from each command's result and from `StateChanged` events (so a change made by another component sharing the same client also shows).
-- Swift does **not** implement increment/decrement/reset rules locally.
+- **Authoritative state** lives in the app's Rust core, owned by the runtime's command thread.
+- Swift holds a **display copy**, re-read from the core's queries after each command and whenever the host's `changes` moves.
+- Swift does **not** implement the app's rules locally.
 
 ## Persistence
 
-- Versioned JSON file (`forge-counter-v1.json`) via `JsonSnapshotStore`.
-- iOS: storage directory provided at init from Swift (`Application Support/<App>`).
+- Versioned JSON (`forge_storage::JsonFile`, or `forge_app::Document` for one saved file) or SQLite (`forge_storage::Database`, with migrations). [persistence.md](persistence.md) has the guarantees and how to change a schema.
+- iOS: the storage directory comes from the host (`Application Support/<App>`, or a throwaway folder under `-ForgeTemporaryData`), held with `DataDirectory` so only one core writes there.
 - Android: storage directory provided at init from Kotlin (`filesDir` subfolder).
 - Linux tests use temporary directories.
 - Files the app owns (attachments, covers, downloaded models) go in a `forge_storage::files::FileStore` under that directory: the app saves the store's relative names, never absolute paths, and calls `sweep` at launch to drop files no record refers to.
 
-### Action + persistence contract
-
-**Policy:** A domain action commits **only if** the required `save` succeeds.
-
-Implementation (`examples/counter/rust/src/session.rs`, run on the instance's command thread by `src/app.rs`):
-
-1. Clone current engine state into a candidate.
-2. Apply the action on the candidate (domain errors return without touching live state or disk).
-3. Persist the candidate snapshot.
-4. On successful save, replace the live engine with the candidate.
-
-Failed saves leave memory and disk unchanged from the last committed state, and emit no event.
-
 ### Concurrency and persistence
 
-Each `ForgeCounterApp` instance has **one serial command thread** that owns the engine and the store:
+Each core has **one serial command thread**, owned by its `forge_app::Runtime`:
 
-- Every command (and every save) runs there, one at a time, in arrival order. Two commands can never interleave, so there are no lost updates and no lock is held across disk I/O.
-- After a successful save the thread publishes the committed snapshot and then emits `StateChanged`. A state change is never reported before it is on disk.
-- Queries (`snapshot`, `startup_kind`, `active_operation`) read the published snapshot under a short lock. A read during a write returns the state before that write, immediately.
-- A long-running operation (`start_bulk_add`) does its slow part on its own thread, so ordinary commands keep flowing, then sends **one** commit command. It is all-or-nothing: cancelled or failed before the commit, nothing changes. Its amount is applied to the state at the commit point and validated again there. One long-running operation at a time (`OperationInProgress`).
-- Shutdown runs every command already accepted, cancels the running operation and waits for it, ends every event subscription, then stops the thread.
+- Every command runs there, one at a time, in arrival order. Two commands can never interleave, so there are no lost updates and no lock is held across disk I/O.
+- A command changes a copy, saves it, and only then keeps it and publishes it. A failed save leaves memory and disk as they were and announces nothing. After a successful save the runtime raises the revision and sends `Changed`: a change is never reported before it is on disk.
+- Queries read the published snapshot. A read during a write returns the state before that write, immediately.
+- Other slow work (a fetch, an export) runs off the command thread in a work scope (`foreground`, `finishing`, `lifetime`), and ends by sending a command if it changes anything.
+- Shutdown runs every command already accepted, stops running work, ends every event stream, then stops the thread.
 
-Not serialised: queries, and the slow part of a long-running operation. Opening two instances on the same storage directory at the same time is not supported (not enforced; each would overwrite the other's saves). This is **not** a multi-file transactional store — a crash during write may leave the temp file behind, but the primary snapshot file is replaced via rename after a full write.
-
-### Startup
-
-| Condition | Behaviour |
-|-----------|-----------|
-| No snapshot file | Fresh install (`StartupKind::FreshInstall`) |
-| Valid snapshot | Restore (`StartupKind::Restored`) |
-| Corrupt snapshot (bad JSON, empty file, out-of-range values, unknown old version) | `ForgeAppError::CorruptPersistence { reason }` — no silent reset |
-| Snapshot from a newer build (`schema_version` above `SCHEMA_VERSION`) | `ForgeAppError::UnsupportedSchemaVersion { found, supported }` — valid data; hosts must **not** offer a reset |
-| Read failure | `ForgeAppError::PersistenceReadFailed { reason }` |
-| Missing storage directory | `ForgeAppError::StorageDirectoryUnavailable` |
-
-Explicit recovery: Rust exports `recover_counter_app` (Swift: `recoverCounterApp(storageDirectory:)`). The SwiftUI host may wrap that in a view-model method such as `recoverFromCorruption()`. Recovery overwrites the snapshot with a fresh counter **only** when it is corrupt (or missing). Valid data is restored instead, and newer-schema or unreadable data is left untouched and returned as an error. The fresh state is written with the normal atomic replace, so there is no moment without a snapshot file.
-
-### Schema versions and migration
-
-The envelope carries `schema_version`. `SnapshotEnvelope::decode` reads only that field first, then:
-
-- **Newer than this build:** `UnsupportedSchemaVersion`. The rest of the file is not parsed, since a newer build may have changed its shape.
-- **Older:** runs the `migrate` hook in `examples/counter/rust/src/store.rs`, one version step at a time. The upgraded data is written back on the next successful save.
-
-To change the schema, bump `SCHEMA_VERSION` and add a `migrate` arm for the previous version. Keep the filename (`forge-counter-v1.json`) the same, or newer builds will not find older data.
-
-Saves write a temp file, `fsync` it, rename it over the snapshot, then `fsync` the directory so the rename survives power loss (Unix). I/O errors keep the underlying `io::Error` text in their `reason` field so hosts can log it.
+Saves write a temp file, `fsync` it, rename it over the old file, then `fsync` the directory so the rename survives power loss (Unix). Data from a newer build is refused, never overwritten (`NewerData`); unreadable data is reported (`Corrupt`), never silently reset.
 
 ## Build pipeline
 
@@ -176,5 +132,5 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 | `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations, `FileStore` for app-managed files (SHA-256 naming and verified downloads with the `hash` feature), and with the `sqlite` feature `Database` (bundled SQLite: migrations, transactions, FTS5, recovery of a damaged file). Used by Chat since M2 |
 | `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by the Weather example and `chat-core` |
 | `chat-core` (`examples/`) | The Chat demo's domain (exposed by the Chat app's own crate as `ChatCore`): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
-| App crates (`examples/*/rust`) | Each app's UniFFI exports, built as `libforge_ffi`: Counter (command thread, events, cancellable operations), Weather, Chat, Pocket Library |
+| App crates (`examples/*/rust`) | Each app's UniFFI exports, built as `libforge_ffi`. Checklist, Pocket Library, Commonplace, FieldKit, Relay, Sketchbook and Soundscape are on the `forge-app` runtime; Chat, Good Dog and Weather move to it in wave 3 ([app-parity.md](app-parity.md)) |
 | `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

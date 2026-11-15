@@ -44,20 +44,10 @@ cargo test --workspace
 ### UniFFI binding generation (host library)
 
 ```bash
-./scripts/generate-bindings.sh examples/counter/Generated
+./scripts/generate-bindings.sh examples/pocket-library/Generated
 ```
 
-**Outcome:** Produces `ForgeFFI/forge_ffi.swift` and `forge_ffiFFI/forge_ffiFFI.h` + `forge_ffiFFI/module.modulemap`.
-
-Uses:
-
-```bash
-cargo build --manifest-path examples/counter/rust/Cargo.toml
-cargo run -p uniffi-bindgen -- generate \
-  --library examples/counter/rust/target/debug/libforge_ffi.so \
-  --language swift \
-  --out-dir examples/counter/Generated
-```
+**Outcome:** Builds the app's own crate (`[rust] path` in its `forge.toml`) for the host, then runs the workspace's `uniffi-bindgen` on it and writes the Swift bindings and their C module (`Generated/ForgeFFI/`, `Generated/forge_ffiFFI/`, under the module names `forge.toml` gives). `forge bindings generate --project examples/pocket-library` does the same.
 
 ### iOS Rust static library
 
@@ -77,7 +67,7 @@ This is an **external prerequisite**, not a Rust compilation bug on Linux.
 ### Full packaging script
 
 ```bash
-./scripts/package-ios-library.sh examples/counter/Generated
+./scripts/package-ios-library.sh examples/pocket-library/Generated
 ```
 
 Runs binding generation into the given app `Generated/` directory, then attempts iOS static library build (same SDK requirement).
@@ -95,7 +85,7 @@ Runs non-interactive checks. `xtool devices` is wrapped in `timeout 5` to avoid 
 ### Kotlin binding generation
 
 ```bash
-./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
+./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
 ```
 
 **Outcome:** Produces `Generated/uniffi/forge_ffi/forge_ffi.kt` (JNA-based UniFFI scaffolding).
@@ -104,8 +94,8 @@ Runs non-interactive checks. `xtool devices` is wrapped in `timeout 5` to avoid 
 
 ```bash
 export ANDROID_NDK_HOME=...   # NDK r28+ recommended
-./scripts/package-android-library.sh examples/counter-android/Generated
-cd examples/counter-android && ./gradlew :app:assembleDebug
+./scripts/package-android-library.sh examples/pocket-library-android/Generated
+cd examples/pocket-library-android && ./gradlew :app:assembleDebug
 ```
 
 **Outcome:** With SDK/NDK configured, CI and local Linux builds produce a debug APK containing `libforge_ffi.so` for each configured ABI (`arm64-v8a`, `x86_64` by default).
@@ -128,24 +118,24 @@ Included from `./scripts/validate-toolchain.sh` / `forge doctor`.
 
 1. **Host** `cdylib` for UniFFI Swift generation (Linux CI).
 2. **`aarch64-apple-ios` `staticlib`** staged to `build/ios-device/lib/libforge_ffi.a` when `SDKROOT` is set from xtool’s Darwin SDK.
-3. **SwiftPM** links the static library via the `ForgeFFI` target `linkerSettings` in [examples/counter/Package.swift](../examples/counter/Package.swift).
-4. **xtool** builds the SwiftUI app: `cd examples/counter && xtool dev run`.
+3. **SwiftPM** links the static library via the app package's `linkerSettings` (for example [examples/pocket-library/Package.swift](../examples/pocket-library/Package.swift)).
+4. **xtool** builds the SwiftUI app: `cd examples/pocket-library && xtool dev run` (or `forge run ios --project examples/pocket-library`).
 
 **Fallback:** SwiftPM `.binaryTarget` artifact bundle (SE-0482) if `-L`/`-l` flags are rejected by a future SwiftPM version — not required for the current manifest.
 
 **Rejected for v1:** `xcodebuild -create-xcframework` on Linux (tool not part of xtool Linux workflow).
 
-## Manual acceptance: Counter on device
+## Manual acceptance: an example on device
 
 When Darwin SDK, signing, and a USB iPhone are available:
 
 1. `xtool setup` (API key or password auth) and provide `Xcode.xip` path.
 2. Confirm `swift sdk list` shows `darwin`.
-3. From repo root: `cargo run -p forge-cli -- build ios --project examples/counter`
+3. From repo root: `cargo run -p forge-cli -- build ios --project examples/pocket-library`
 4. `xtool devices` — note device UDID.
-5. After build, install/launch per `xtool` help for your version (`forge run ios --project examples/counter` with device attached).
-6. Increment/decrement; force decrement at zero (error, no crash).
-7. Kill app, relaunch — count persists under Application Support.
+5. With the device attached: `forge run ios --project examples/pocket-library`.
+6. Add a book; try to save one with no title (a field error, no crash).
+7. Kill the app, relaunch: the book is still there (saved under Application Support).
 8. Clean rebuild without editing `Generated/*`.
 
 **Cloud Agent status:** Steps 3–8 **not executed** here (no SDK, no device).
@@ -182,17 +172,6 @@ The end-to-end check for "create an app, write its logic in Rust, run it on a ph
 3. "Network check": `https://example.com` shows `HTTP 200`; `expired.`, `wrong.host.`, `untrusted-root.` and `self-signed.badssl.com` each show "The server's certificate was rejected"; `https://localhost:1` and airplane mode show "You appear to be offline."
 4. Change `add_note` in `rust/src/lib.rs` (for example upper-case the text), `forge build android --project . --install` again: new notes show the change.
 5. `adb logcat -d | grep -i -E "ForgeAndroidInitException|UnsatisfiedLinkError|JNI"` prints nothing.
-
-## Counter checklist
-
-| Test | Linux automated | Device manual |
-|------|-----------------|---------------|
-| Increment from zero | `cargo test --manifest-path examples/counter/rust/Cargo.toml` | UI |
-| Decrement at zero rejected | yes | UI error message |
-| Max 1_000_000 | yes | optional |
-| Persistence save/load | `cargo test -p forge-storage` | relaunch |
-| Corrupt JSON | yes | n/a |
-| UniFFI bindings fresh | `./scripts/check-bindings.sh` | n/a |
 
 ## Machine-readable report (`forge doctor --json`)
 

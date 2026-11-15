@@ -7,8 +7,8 @@ cd "$ROOT"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-# The first checks use the Counter example's own crate.
-export FORGE_APP_DIR="$ROOT/examples/counter"
+# The first checks use Pocket Library's own crate.
+export FORGE_APP_DIR="$ROOT/examples/pocket-library"
 
 FAKE="$TMP/libforge_ffi.a"
 touch "$FAKE"
@@ -19,7 +19,7 @@ if "$ROOT/scripts/native-lib-needs-rebuild.sh" "$FAKE" ios; then
   exit 1
 fi
 
-LIBRS="$ROOT/examples/counter/rust/src/lib.rs"
+LIBRS="$ROOT/examples/pocket-library/rust/src/lib.rs"
 # Remember the source mtime so the probe below only bumps it temporarily; the
 # file contents are never modified.
 touch -r "$LIBRS" "$TMP/librs-mtime"

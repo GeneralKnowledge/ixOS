@@ -48,7 +48,7 @@ When the change also needs a phone run, install from the build the check just ma
 |---|---|---|
 | SwiftUI views compile and link for an iPhone | Every app, weekly or by hand, `xcodebuild` | Every app, on the laptop, `xtool dev build` |
 | View models and their tests against the real Rust core, without SwiftUI | macOS XCTest | Linux CI: `forge check swift` for every app with a `requirements.toml` (Good Dog, Pocket Library) and the fresh starter app (`check-fresh-app.sh`), and plain `swift test` for Checklist, ForgeUI and the showcase |
-| Swift host tests that need Apple frameworks (Chat, Counter, Weather, Device Lab, Commonplace, FieldKit) | macOS XCTest | **Not run.** The macOS workflow still runs them by hand. Giving an app a `requirements.toml` (a headless twin, [evidence.md](evidence.md)) brings its portable tests back on Linux CI |
+| Swift host tests that need Apple frameworks (Chat, Weather, Device Lab, Commonplace, FieldKit) | macOS XCTest | **Not run.** The macOS workflow still runs them by hand. Giving an app a `requirements.toml` (a headless twin, [evidence.md](evidence.md)) brings its portable tests back on Linux CI |
 | The Xcode projects (`Xcode/*.xcodeproj`) build | `xcodebuild` | **Not built.** xtool builds from `Package.swift`. Linux CI still checks their layout (`validate-xcode-project.sh`); they matter only to someone with a Mac ([ios-xcode.md](ios-xcode.md)) |
 | Independent of one machine | GitHub runners | Depends on the laptop being set up and awake |
 
