@@ -455,6 +455,43 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&tmp, path).map_err(|e| format!("cannot write {}: {e}", path.display()))
 }
 
+/// Copies an `.ipa` with its files deflate-compressed. xtool stores them
+/// uncompressed, which made a Device Lab download about 100 MB instead of
+/// about 30 MB. Directories, symbolic links and files that are already
+/// compressed are copied as they are; permissions and times are kept.
+/// Returns the size of the copy.
+fn compressed_copy(ipa: &Path, out: &Path) -> Result<u64, String> {
+    use zip::write::SimpleFileOptions;
+    use zip::CompressionMethod;
+    let err = |e: zip::result::ZipError| e.to_string();
+    let mut zip =
+        zip::ZipArchive::new(fs::File::open(ipa).map_err(|e| e.to_string())?).map_err(err)?;
+    let mut writer = zip::ZipWriter::new(fs::File::create(out).map_err(|e| e.to_string())?);
+    for i in 0..zip.len() {
+        let mut file = zip.by_index(i).map_err(err)?;
+        if file.is_dir() || file.is_symlink() || file.compression() != CompressionMethod::Stored {
+            writer.raw_copy_file(file).map_err(err)?;
+            continue;
+        }
+        let name = file.name().map_err(err)?.into_owned();
+        let mut options = SimpleFileOptions::default()
+            .compression_method(CompressionMethod::Deflated)
+            .large_file(file.size() >= u32::MAX as u64);
+        if let Some(mode) = file.unix_mode() {
+            options = options.unix_permissions(mode);
+        }
+        if let Some(time) = file.last_modified() {
+            options = options.last_modified_time(time);
+        }
+        writer.start_file(name, options).map_err(err)?;
+        std::io::copy(&mut file, &mut writer).map_err(|e| e.to_string())?;
+    }
+    writer.finish().map_err(err)?;
+    fs::metadata(out)
+        .map(|m| m.len())
+        .map_err(|e| e.to_string())
+}
+
 /// Adds the `.ipa` as a new build, keeps the newest `keep` builds of each
 /// app (deleting older ones), and rewrites `apps.json` and the page for
 /// `base` (the HTTPS address the phone uses). Earlier builds stay
@@ -484,7 +521,11 @@ pub fn stage(
     fs::create_dir_all(&build_dir)
         .map_err(|e| format!("cannot create {}: {e}", build_dir.display()))?;
     let tmp = build_dir.join("app.ipa.partial");
-    let size = fs::copy(ipa, &tmp).map_err(|e| format!("cannot copy {}: {e}", ipa.display()))?;
+    let size = match compressed_copy(ipa, &tmp) {
+        Ok(size) => size,
+        // An .ipa the zip reader can't handle is published as it is.
+        Err(_) => fs::copy(ipa, &tmp).map_err(|e| format!("cannot copy {}: {e}", ipa.display()))?,
+    };
     fs::rename(&tmp, build_dir.join("app.ipa"))
         .map_err(|e| format!("cannot publish the .ipa: {e}"))?;
     let icon = ipa_icon(ipa).is_some_and(|png| fs::write(build_dir.join("icon.png"), png).is_ok());
@@ -1475,6 +1516,53 @@ mod tests {
             .unwrap();
         zip.write_all(&signed_profile()).unwrap();
         zip.finish().unwrap();
+    }
+
+    #[test]
+    fn a_published_ipa_is_compressed_and_keeps_modes_and_links() {
+        use zip::CompressionMethod;
+        let tmp = tempfile::tempdir().unwrap();
+        let ipa = tmp.path().join("App.ipa");
+        let binary = vec![7u8; 64 * 1024];
+        {
+            // As xtool writes it: every file stored uncompressed.
+            let mut zip = zip::ZipWriter::new(fs::File::create(&ipa).unwrap());
+            let stored = zip::write::SimpleFileOptions::default()
+                .compression_method(CompressionMethod::Stored);
+            zip.add_directory("Payload/AppHost.app/", stored).unwrap();
+            zip.start_file("Payload/AppHost.app/Info.plist", stored)
+                .unwrap();
+            zip.write_all(INFO.as_bytes()).unwrap();
+            zip.start_file(
+                "Payload/AppHost.app/AppHost",
+                stored.unix_permissions(0o755),
+            )
+            .unwrap();
+            zip.write_all(&binary).unwrap();
+            zip.add_symlink("Payload/AppHost.app/Link", "AppHost", stored)
+                .unwrap();
+            zip.finish().unwrap();
+        }
+        let dir = tmp.path().join("pub");
+        let info = read_ipa(&ipa).unwrap();
+        let e = stage(&dir, &ipa, &info, "https://h", Source::default(), 1, 5).unwrap();
+        let published = dir.join(&info.bundle_id).join(&e.id).join("app.ipa");
+        assert!(fs::metadata(&published).unwrap().len() < fs::metadata(&ipa).unwrap().len());
+        let mut zip = zip::ZipArchive::new(fs::File::open(&published).unwrap()).unwrap();
+        let mut exe = zip.by_name("Payload/AppHost.app/AppHost").unwrap();
+        assert_eq!(exe.compression(), CompressionMethod::Deflated);
+        assert_eq!(exe.unix_mode().map(|m| m & 0o777), Some(0o755));
+        let mut bytes = Vec::new();
+        exe.read_to_end(&mut bytes).unwrap();
+        assert_eq!(bytes, binary);
+        drop(exe);
+        assert!(zip
+            .by_name("Payload/AppHost.app/Link")
+            .unwrap()
+            .is_symlink());
+        assert!(zip.by_name("Payload/AppHost.app/").unwrap().is_dir());
+        // The published copy still reads as the same app.
+        assert_eq!(read_ipa(&published).unwrap().bundle_id, info.bundle_id);
     }
 
     #[test]
