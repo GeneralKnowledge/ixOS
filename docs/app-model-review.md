@@ -132,7 +132,7 @@ A collection, with the template standing in for the framework. The test Reuben p
 |---|---|
 | Counter is the reference app, with one serial command thread per instance, no lock across I/O, ordered commands ([architecture.md](architecture.md#concurrency-and-persistence)) | Only Counter does this. Neither starter, nor any demo built since, follows it |
 | "A new app gets [the lifecycle] for free" ([app-crate.md](app-crate.md#lifecycle)) | Not in `--minimal`; not used by Pocket Library or Weather |
-| "Fresh apps work outside the checkout" ([ideal-design.md](ideal-design.md#6-ideal-properties-inferred-product-bar)) | Outside the checkout's directory, yes; without the checkout, no |
+| "Fresh apps work outside the checkout" ([ideal-design.md](archive/ideal-design.md#6-ideal-properties-inferred-product-bar)) | Outside the checkout's directory, yes; without the checkout, no |
 | "No process-global mutable state" ([ffi-policy.md](ffi-policy.md)) | Already noted (R6) |
 | `forge.toml` `background_modes = ["processing"]` | Accepted; nothing to call (R4) |
 
@@ -368,7 +368,7 @@ Each phase is small enough to review on its own and ends with something running.
 - *Foundation review contracts.* Contracts 2 (application model) and 6 (boundary) are absorbed by phases 1 and 2; 1 (storage) is phase 4; 3 (resources), 4 (capabilities) and 5 (operations) follow, each attached to the runtime rather than to individual apps.
 - *Android.* Keep it building: `forge-app` is plain Rust apart from its UniFFI component, and the Kotlin host keeps its current shape until Android is picked up again.
 
-**Phase 0 result (2026-11-09).** All three experiments worked: shared UniFFI types across two Swift modules, ForgeKit consumed as a versioned package, and an app built with the Forge checkout deleted, on Linux and macOS including an unsigned iOS build. Details and the six things they found are in [spikes/phase0/RESULTS.md](../spikes/phase0/RESULTS.md). The shared-types design (`forge-app` as a UniFFI component) is therefore the one to build; the `app_shell!` fallback is not needed.
+**Phase 0 result (2026-11-09).** All three experiments worked: shared UniFFI types across two Swift modules, ForgeKit consumed as a versioned package, and an app built with the Forge checkout deleted, on Linux and macOS including an unsigned iOS build. Details and the six things they found are in [spikes/phase0/RESULTS.md](archive/phase0-results.md). The shared-types design (`forge-app` as a UniFFI component) is therefore the one to build; the `app_shell!` fallback is not needed.
 
 ### Phase 1 result
 
@@ -389,7 +389,7 @@ Decision 4 below is settled: Forge is distributed by git, and ForgeKit is its ow
 - **Termination** of a suspended app comes without notice (`willTerminate` is not guaranteed). A command that had not finished did not happen: its caller never got `Ok`. Because an app's save must be atomic (`forge_storage::JsonFile` and `write_atomic` are, and so are SQLite transactions), the file holds the previous state, never part of the new one.
 - So an app can lose the command in flight, but never data it was told was saved, and never gets a torn file.
 - **Time to finish.** When the app enters the background with commands still running or `finishing` work in flight, ForgeKit asks iOS for time (`beginBackgroundTask`) until that work is done, and finishing work is stopped (`Interrupted`) when the time runs out. A command accepted just before the app leaves the screen therefore usually saves. If iOS ends the app first anyway, the next launch's report says so (`LaunchReport { unfinished_background_work }`).
-- **Not yet covered:** work that must outlive the process (the "durable" scope) waits for a second user of Chat's outbox ([architecture-assessment.md](architecture-assessment.md#3-lifecycle-and-durable-work)).
+- **Not yet covered:** work that must outlive the process (the "durable" scope) waits for a second user of Chat's outbox ([architecture-assessment.md](archive/architecture-assessment.md#3-lifecycle-and-durable-work)).
 - **`shutdown()`** refuses new commands and stops running work. It lets commands already accepted finish on the command thread, and does not wait for them.
 
 **Decisions for Reuben.**

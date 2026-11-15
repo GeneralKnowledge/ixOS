@@ -10,9 +10,6 @@ on:
     paths:
       - "crates/**"
       - "examples/*-android/**"
-      - "examples/counter/rust/**"
-      - "examples/chat-core/**"
-      - "examples/chat-server/**"
       - "examples/pocket-library/rust/**"
       - "templates/android-app/**"
       - "templates/android-rust/**"
@@ -63,8 +60,8 @@ jobs:
           java-version: "17"
           cache: gradle
           cache-dependency-path: |
-            examples/*-android/**/*.gradle.kts
-            examples/*-android/gradle/wrapper/gradle-wrapper.properties
+            templates/android-app/**/*.gradle.kts
+            templates/android-app/gradle/wrapper/gradle-wrapper.properties
 
       - name: Install Android SDK components
         run: |
@@ -82,26 +79,6 @@ jobs:
           echo "ANDROID_NDK_ROOT=$SDK/ndk/28.0.13004108" >> "$GITHUB_ENV"
           echo "NDK_HOME=$SDK/ndk/28.0.13004108" >> "$GITHUB_ENV"
           echo "$SDK/platform-tools" >> "$GITHUB_PATH"
-
-      - name: Package the Counter's Rust library and Kotlin bindings
-        run: ./scripts/package-android-library.sh examples/counter-android/Generated
-
-      - name: Package the Chat example's Rust library and Kotlin bindings
-        run: ./scripts/package-android-library.sh examples/chat-android/Generated
-
-      - name: Build the host libraries and the chat server for JVM unit tests
-        run: |
-          cargo build --manifest-path examples/counter/rust/Cargo.toml
-          cargo build --manifest-path examples/chat-android/rust/Cargo.toml
-          cargo build -p chat-server
-
-      - name: JVM unit tests (view model against the Rust core)
-        working-directory: examples/counter-android
-        run: ./gradlew :app:testDebugUnitTest --no-daemon
-
-      - name: Chat JVM unit tests (session against the Rust core and the mock server)
-        working-directory: examples/chat-android
-        run: ./gradlew :app:testDebugUnitTest --no-daemon
 
       # A new app outside the checkout, with its own Rust crate, through the
       # public CLI: JVM unit tests against its Rust core, then a debug APK
@@ -123,28 +100,13 @@ jobs:
           cargo run -q -p forge-cli -- build android --project "$FRESH_ANDROID_APP"
           ./scripts/verify-android-packaging.sh "$FRESH_ANDROID_APP"
 
-      - name: Assemble Chat debug APK
-        working-directory: examples/chat-android
-        run: ./gradlew :app:assembleDebug --no-daemon
-
-      - name: Verify packaged native libraries
-        run: |
-          ./scripts/verify-android-packaging.sh examples/chat-android
-
       - name: Upload unit test reports
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: android-unit-test-reports
           path: |
-            examples/*/app/build/reports/tests/
             ${{ runner.temp }}/CiTemplateAndroid/app/build/reports/tests/
-
-      - name: Upload Chat debug APK
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: chat-android-debug
-          path: examples/chat-android/app/build/outputs/apk/debug/*.apk
 
   # Android stage 0 (docs/roadmap.md#android--work-in-progress): Pocket
   # Library's own Rust core, unchanged, under a Compose screen on an emulator.

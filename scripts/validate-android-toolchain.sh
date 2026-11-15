@@ -47,7 +47,7 @@ section_targets() {
 }
 section_targets
 
-SO="$ROOT/examples/counter-android/app/src/main/jniLibs/arm64-v8a/libforge_ffi.so"
+SO="$ROOT/examples/pocket-library-android/app/src/main/jniLibs/arm64-v8a/libforge_ffi.so"
 if [[ -f "$SO" ]] && command -v readelf >/dev/null; then
   echo "16 KB page alignment probe on $SO:"
   if readelf -l "$SO" 2>/dev/null | grep -q '0x4000'; then

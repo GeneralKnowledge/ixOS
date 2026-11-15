@@ -4,10 +4,22 @@ name: App model
 # app on forge-app and ForgeKit. On Linux, the app's Swift (ForgeKit's host,
 # the model, the cross-language tests) builds and runs against its real Rust
 # core; on macOS the same tests run and the app builds for an iPhone,
-# unsigned. Runs when the runtime, ForgeKit or the app changes.
+# unsigned. Runs when the runtime, ForgeKit or the app changes; pull requests
+# run the Linux job only.
 on:
   push:
-    branches: [main, claude/project-thread-suviqy]
+    branches: [main]
+    paths:
+      - "crates/forge-app/**"
+      - "crates/forge-runtime/**"
+      - "crates/forge-storage/**"
+      - "forgekit/**"
+      - "examples/checklist/**"
+      - "scripts/forgekit.sh"
+      - "scripts/test-forgekit-release.sh"
+      - "scripts/generate-bindings.sh"
+      - ".github/workflows/app-model.yml"
+  pull_request:
     paths:
       - "crates/forge-app/**"
       - "crates/forge-runtime/**"
@@ -32,7 +44,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-15]
+        # Pull requests run Linux only; macOS runs on main and by hand.
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-24.04"]') || fromJSON('["ubuntu-24.04", "macos-15"]') }}
     name: Checklist (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     steps:
@@ -55,6 +68,9 @@ jobs:
       - name: Host library for Swift
         run: |
           case "$RUNNER_OS" in macOS) dir=macos-host ;; *) dir=linux-host ;; esac
+          # cargo test builds the library for its tests only; the static
+          # library Swift links comes from cargo build.
+          cargo build --manifest-path examples/checklist/rust/Cargo.toml
           mkdir -p "examples/checklist/build/$dir/lib"
           # Checklist names its library checklist_core (another app can link
           # it); Package.swift links it under Forge's fixed name.
@@ -111,7 +127,7 @@ jobs:
           cp rust-toolchain.toml "$RUNNER_TEMP/Checklist/rust/"
           cd "$RUNNER_TEMP/Checklist"
           url=https://github.com/GeneralKnowledge/ixOS
-          sed -i -E "s#^(forge-[a-z]+) = \{ path = \"[./]*crates/forge-[a-z]+\" \}#\1 = { git = \"$url\", rev = \"$FORGE_REV\" }#" rust/Cargo.toml
+          sed -i -E "s#^(forge-[a-z]+) = \{ path = \"[./]*crates/forge-[a-z]+\"(.*) \}#\1 = { git = \"$url\", rev = \"$FORGE_REV\"\2 }#" rust/Cargo.toml
           sed -i "s#.package(path: \"../../forgekit\")#.package(url: \"https://github.com/GeneralKnowledge/ForgeKit.git\", exact: \"$FORGEKIT_TAG\")#" Package.swift
           rm -f rust/Cargo.lock
           grep -n "forge-\|ForgeKit.git" rust/Cargo.toml Package.swift
@@ -129,7 +145,7 @@ jobs:
           # library Swift links comes from cargo build.
           cargo build --manifest-path rust/Cargo.toml
           mkdir -p build/linux-host/lib
-          cp rust/target/debug/libforge_ffi.a build/linux-host/lib/
+          cp rust/target/debug/libchecklist_core.a build/linux-host/lib/libforge_ffi.a
       - name: Swift with the published ForgeKit
         working-directory: ${{ runner.temp }}/Checklist
         run: |

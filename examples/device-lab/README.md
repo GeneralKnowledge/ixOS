@@ -29,8 +29,7 @@ full app: Weather, Checklist, Pocket Library, Good Dog, Commonplace, Chat,
 FieldKit and the ForgeUI Showcase. **Open at Launch** on that screen makes Device Lab start
 in one of them (the `-launchApp weather` launch argument does the same).
 Swipe down to get back to Device Lab. One app on the phone holds all of them.
-(Counter isn't hosted: its Rust crate is shared with the frozen Android app.
-Kataster isn't a Forge app: it is a Bevy trial with no SwiftUI or app crate.)
+(Counter isn't hosted.)
 
 Each app stays in its own folder and is updated there; Device Lab uses it as
 it is:
@@ -47,7 +46,9 @@ it is:
 - `Sources/AppHost/AppsView.swift` lists the apps, opens them, and installs
   their native services and lifecycle (`EmbeddedApps.install()`).
 
-To add an app with a Rust crate:
+Hosting is optional ([roadmap](../../docs/roadmap.md#tooling-freeze-and-reuse-rules), rule 6): a new
+app is published and tested on its own, and joins here only for a combined
+phone sitting or when asked. To add an app with a Rust crate:
 
 1. Make the app hostable, in its own folder (it still builds on its own):
    - `rust/Cargo.toml`: name the library after the app (`[lib] name =

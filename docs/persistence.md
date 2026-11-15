@@ -1,6 +1,6 @@
 # Persistence guarantees
 
-What Forge promises about an app's saved data, what each promise rests on, and the three things an app has to do itself. The primitives are in `forge-storage` (`JsonFile`, `Database`, `FileStore`); `forge-app`'s `Document` is a `JsonFile` with the runtime's error kinds. For the history behind this page see [foundation-review.md](foundation-review.md) (S4, S7, E2) and [architecture-assessment.md](architecture-assessment.md#2-persistence-guarantees).
+What Forge promises about an app's saved data, what each promise rests on, and the three things an app has to do itself. The primitives are in `forge-storage` (`JsonFile`, `Database`, `FileStore`); `forge-app`'s `Document` is a `JsonFile` with the runtime's error kinds. For the history behind this page see [foundation-review.md](foundation-review.md) (S4, S7, E2) and [architecture-assessment.md](archive/architecture-assessment.md#2-persistence-guarantees).
 
 ## The promises
 

@@ -31,7 +31,7 @@ The Android JNI init (`ForgeAndroid.init(context)`) is the only hand-written ent
 ## Generated artifacts
 
 - iOS output: each app's own `Generated/` folder (for example `examples/counter/Generated/`), built from that app's Rust crate (`[rust] path` in its `forge.toml`), so it holds only that app's API — `ForgeFFI/forge_ffi.swift` (Swift target `ForgeFFI`) and `forge_ffiFFI/` (header + `module.modulemap`, SwiftPM system library `forge_ffiFFI`). They live in separate folders because SwiftPM rejects targets with overlapping sources.
-- Android output: `examples/counter-android/Generated/uniffi/forge_ffi/forge_ffi.kt` (from the Counter crate, `examples/counter/rust`) and `examples/chat-android/Generated/` (from `examples/chat-android/rust`). Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
+- Android output: `examples/pocket-library-android/Generated/uniffi/forge_ffi/forge_ffi.kt` (from `examples/pocket-library-android/rust`, which links Pocket Library's core). Each also gets `org/forgemobile/ffi/ForgeAndroid.kt`, copied from `crates/forge-runtime/kotlin/`: the one hand-written JNI entry point (`ForgeAndroid.init(context)`), which exists because UniFFI/JNA cannot pass the app `Context` that the Android HTTPS certificate verifier needs. Nothing else crosses the boundary outside UniFFI.
 - **Do not hand-edit** generated files.
 - Regenerate with `forge bindings generate [app-dir]` (Swift for an iOS app, Kotlin for an Android one) or `FORGE_APP_DIR=<app> ./scripts/generate-bindings.sh [out] [swift|kotlin]`.
 - CI runs `./scripts/check-app-crates.sh` (Swift) and `./scripts/check-bindings.sh` (Kotlin) to detect drift (see below).
@@ -58,8 +58,7 @@ Templates do not commit bindings: `forge init` generates them into the new app, 
 ./scripts/generate-bindings.sh examples/counter/Generated             # Swift
 ./scripts/generate-bindings.sh examples/weather/Generated
 ./scripts/generate-bindings.sh examples/chat/Generated
-./scripts/generate-bindings.sh examples/counter-android/Generated kotlin
-./scripts/generate-bindings.sh examples/chat-android/Generated kotlin
+./scripts/generate-bindings.sh examples/pocket-library-android/Generated kotlin
 #    (or: make bindings bindings-kotlin)
 
 # 2. Confirm the check is clean
@@ -122,7 +121,7 @@ Events (`CounterEvent`) are small and explicit: `StateChanged { snapshot }`, `Op
 
 ## Long-lived event streams (Chat)
 
-`ForgeChatApp` (examples/chat-android/rust/src/chat) is the reference for a stream that outlives any single command. Its contract, which the Swift and Kotlin hosts rely on:
+Chat's `ChatCore` (`examples/chat/rust/src/lib.rs`) is the reference for a stream that outlives any single command. Its contract, which the Swift host relies on (it started as `ForgeChatApp`, shared with the Android example removed on 2026-11-15, so some names below are that API's):
 
 - **Two separate things.** `events()` returns a `ChatEventSubscription` (pull-based like Counter's: `async next()`, `cancel()`, bounded queue of `CHAT_QUEUE_CAPACITY` = 256, then `EventsDropped { count }`). `subscribe(conversation_id)` / `unsubscribe(conversation_id)` open and close a room, and `watch` / `unwatch` keep it live in the background (for `Notify`); the room's server connection runs while it is either. Ending an event stream never ends a connection, or the other way round.
 - **Room connections are explicit commands, not tied to a future's lifetime**, because Swift does not cancel Rust futures (above) and Kotlin does. Both return at once. When the last of `unsubscribe` / `unwatch` returns, `StreamDisconnected { will_retry: false }` is queued and nothing more from that room's connection ever is. The Rust thread behind it ends promptly: ending the stream closes that room's connection, so it does not wait for a server heartbeat. `live_streams()` reports it, and the Rust tests assert it reaches 0.

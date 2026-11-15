@@ -2,7 +2,7 @@
 
 Forge Mobile splits **portable Rust application logic** from **thin platform hosts** and a **typed UniFFI boundary**.
 
-> **Partly out of date.** The canonical application model is now `forge-app` plus ForgeKit, with Checklist as the reference app ([app-model-review.md](app-model-review.md)). The sections below on Counter, its bridge and its persistence describe the earlier design. [architecture-assessment.md](architecture-assessment.md) lists what to update here, and assesses the design's trade-offs and where it should improve.
+> **Partly out of date.** The canonical application model is now `forge-app` plus ForgeKit, with Checklist as the reference app ([app-model-review.md](app-model-review.md)). The sections below on Counter, its bridge and its persistence describe the earlier design. [architecture-assessment.md](archive/architecture-assessment.md) lists what to update here, and assesses the design's trade-offs and where it should improve.
 
 ## Framework principles
 
@@ -58,7 +58,7 @@ The [framework extraction audit](framework-extraction-audit.md) applies these ru
 | Portable Rust framework | Logic shared by every app, with no UniFFI and no platform code of its own | `forge-runtime`, `forge-storage`, `forge-net` |
 | Independent infrastructure | Developer tooling that runs beside the app, never inside its FFI | `forge-cli`, `xtool`, Forge Device (planned) |
 
-Each app owns one Rust crate (`[rust] path` in `forge.toml`, usually `rust/`), staged as `libforge_ffi` (its own library name is the app's, such as `notes_core`), with the Swift module `forge.toml` names (`[swift] bindings_module`: `NotesFFI` for apps from `forge init`, `ForgeFFI` in older ones) and the Kotlin package `uniffi.forge_ffi`. The crate holds the app's domain logic and its UniFFI API; the framework crates supply the plumbing. There is no shared FFI crate: two hosts share a crate only by pointing at the same path (`examples/counter-android` uses `../counter/rust`). See [app-crate.md](app-crate.md) and the rules in [ffi-policy.md](ffi-policy.md#rust-first-rules).
+Each app owns one Rust crate (`[rust] path` in `forge.toml`, usually `rust/`), staged as `libforge_ffi` (its own library name is the app's, such as `notes_core`), with the Swift module `forge.toml` names (`[swift] bindings_module`: `NotesFFI` for apps from `forge init`, `ForgeFFI` in older ones) and the Kotlin package `uniffi.forge_ffi`. The crate holds the app's domain logic and its UniFFI API; the framework crates supply the plumbing. There is no shared FFI crate: two hosts share a crate only by pointing at the same path. See [app-crate.md](app-crate.md) and the rules in [ffi-policy.md](ffi-policy.md#rust-first-rules).
 
 What every app crate gets from `forge-runtime`:
 
@@ -175,6 +175,6 @@ See [toolchain-validation.md](toolchain-validation.md) for verified steps and bl
 | `forge-services` | Native services (Keychain, directories, notifications, permissions, sharing, deep links): `native_services!` emits UniFFI foreign traits in the app's crate, and `swift/` holds the iOS adapters. See [native-services.md](native-services.md) |
 | `forge-storage` | Crash-safe `write_atomic`, `StorageError`, versioned `JsonFile` with migrations, `FileStore` for app-managed files (SHA-256 naming and verified downloads with the `hash` feature), and with the `sqlite` feature `Database` (bundled SQLite: migrations, transactions, FTS5, recovery of a damaged file). Used by Chat since M2 |
 | `forge-net` | `HttpClient` trait, request/response types, `NoopClient`, `StaticClient` (test double), and with the `ureq` feature `UreqClient` (blocking HTTPS, rustls with the platform certificate verifier). `HttpClient::open_stream` reads long-lived bodies (Server-Sent Events) incrementally, and `open_stream_cancellable` lets a `CancelHandle` close the connection from another thread (interrupting a blocked read). Used by the Weather example and `chat-core` |
-| `chat-core` (`examples/`) | The Chat demo's domain (exposed as `ForgeChatApp` by `examples/chat-android/rust`, and by the iOS Chat app's own crate): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
+| `chat-core` (`examples/`) | The Chat demo's domain (exposed by the Chat app's own crate as `ChatCore`): `ChatClient` (commands, per-room SSE pumps with reconnect, one event sink), `ChatRepo` (in-memory and HTTP), JSON store with a `since` cursor. See [chat-demo.md](chat-demo.md) |
 | App crates (`examples/*/rust`) | Each app's UniFFI exports, built as `libforge_ffi`: Counter (command thread, events, cancellable operations), Weather, Chat, Pocket Library |
 | `forge-cli` | Developer commands wrapping scripts; iOS toolchain calls go through the `IosBuilder` trait (`src/ios_builder.rs`, xtool backend today) |

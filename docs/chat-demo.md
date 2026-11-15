@@ -24,17 +24,17 @@ The Chat example is the third demo, after Counter (FFI basics) and Weather (real
 
 Still out of scope: remote push (APNs). Without it, new-message alerts appear only while the app runs, and the app never promises alerts while it is suspended or closed. Also out: end-to-end encryption, and a hosted server (the chat server runs on your own computer).
 
-The Android client ([examples/chat-android](../examples/chat-android/README.md)) is **frozen** at its phase-5 features while the iOS app grows: it keeps building, and its tests run against the new server in anonymous mode.
+The Android client (`examples/chat-android`, frozen at its phase-5 features) was removed on 2026-11-15 to keep one Android example, Pocket Library; its last version is [in git history](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/examples/chat-android).
 
 ## Status
 
 | Phase | What | State |
 |---|---|---|
 | 1 | Rust core, no FFI: [`examples/chat-core`](../examples/chat-core) | **Done** (PR #18). `cargo test -p chat-core` |
-| 2 | FFI boundary (`ForgeChatApp`, now in `examples/chat-android/rust`), Swift + Kotlin bindings | **Done.** `cargo test --manifest-path examples/chat-android/rust/Cargo.toml`; bindings regenerated |
+| 2 | FFI boundary (`ForgeChatApp`, later in `examples/chat-android/rust`, removed 2026-11-15), Swift + Kotlin bindings | **Done.** The iOS app's crate (`ChatCore`) keeps the same contract |
 | 3 | `scripts/mock-chat-server` (axum, in-memory) + `make mock-chat`; since M0 `examples/chat-server` | **Done.** End-to-end test: `cargo test -p chat-server` |
 | 4 | SwiftUI host, [`examples/chat`](../examples/chat/README.md) | **Done.** `scripts/test-swift-host.sh examples/chat` (macOS; runs against the mock server) |
-| 5 | Compose host, [`examples/chat-android`](../examples/chat-android/README.md) (+ the Android TLS decision) | **Done.** `./gradlew :app:testDebugUnitTest` in `examples/chat-android` (runs against the mock server) |
+| 5 | Compose host, `examples/chat-android` (+ the Android TLS decision) | **Done**, then removed 2026-11-15 ([last version](https://github.com/GeneralKnowledge/ixOS/tree/7636ef9/examples/chat-android)) |
 | 6 | CI matrix, README (screenshots from an iPhone, built on Linux), roadmap | **Done** |
 
 The phases above built the original FFI stress test. The flagship milestones (M0 onwards) are in the table at the top.
@@ -47,8 +47,6 @@ examples/chat/rust        # The iOS app's own crate (ChatCore): account + Keycha
 examples/chat-server      # The chat server: accounts, rooms, messages on disk (`make chat-server`)
 examples/chat-cli         # Terminal client on chat-core: be the other person (`make chat-cli`)
 examples/chat             # SwiftUI host
-examples/chat-android/rust/src/chat # ForgeChatApp, the frozen Android example's UniFFI surface
-examples/chat-android     # Compose host (frozen)
 ```
 
 `chat-core`, `chat-server` and `chat-cli` are workspace members, so `cargo test --workspace` (CI, `make test`, `forge check`) runs their tests. `examples/chat/rust` has its own Cargo workspace, like every app from `forge init`; `scripts/check-app-crates.sh` checks it.
@@ -295,12 +293,12 @@ The plan was written before the Weather example landed. Checked against the repo
 | `Cancelled` "if the user navigates away mid-send" | Navigating away never cancels a send; `Cancelled` is what a send reports when the app shuts down while it is in flight | Step 2 of the demo says leaving cancels nothing; both cannot hold. Not cancelling is the better UX (the message is already on the wire). |
 | `StreamDisconnected { conversation_id, reason }` | Added `will_retry` | The UI needs to tell "reconnecting" from "gone". |
 | `ChatError` as listed | Added `InvalidInput` and `ShutDown` | Same grouping as `WeatherError` / `ForgeAppError` (input, lifecycle). |
-| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` (since moved to `examples/chat-android/rust/src/chat`) | At the time one `forge_ffi` library exported every example's API. Each app now owns its crate (see [app-crate.md](app-crate.md)). |
+| Phase 2: `chat-ffi` crate or a module | A module, `forge-ffi/src/chat` (later moved to `examples/chat-android/rust/src/chat`, removed 2026-11-15) | At the time one `forge_ffi` library exported every example's API. Each app now owns its crate (see [app-crate.md](app-crate.md)). |
 | `examples/chat-core` | As planned | It is a workspace member like the crates under `crates/`. |
 
 ## The FFI surface (Phase 2)
 
-`examples/chat-android/rust/src/chat` exposes `ForgeChatApp`. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), a leftover from when every example shared one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
+This section describes `ForgeChatApp`, the Phase 2 surface, which lived in `examples/chat-android/rust/src/chat` until that example was removed on 2026-11-15. The iOS app's own crate (`examples/chat/rust`, `ChatCore`) grew from it and keeps the same stream contract. The types mirror the core with a `Chat` prefix (`ChatConversation`, `ChatMessage`, `ChatMessageStatus`), a leftover from when every example shared one generated module. The contract is in [ffi-policy.md](ffi-policy.md#long-lived-event-streams-chat).
 
 | Rust export | Notes |
 |---|---|

@@ -34,7 +34,7 @@ Native capabilities (web view, documents, media, background tasks, identity, sys
 
 Decided 2026-11-07: ixOS focuses on **iOS**. Android is paused as work in progress:
 
-- The Android code stays: `examples/counter-android`, `examples/chat-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
+- The Android code stays: `examples/pocket-library-android`, `templates/android-app`, `forge init --platform android`, `forge build android` and the `ForgeAndroid` HTTPS init in `forge-runtime`.
 - It keeps building. The Android CI job runs when Android or shared Rust code changes, so shared changes that break it are still caught.
 - It gets no new features. New capabilities (native services, Chat milestones, the demo sequence) are built and proven on iOS only, and the [capability ledger](capability-ledger.md) tracks iOS only.
 - It has not been validated on a physical Android phone, and none of the `forge-services` interfaces has an Android implementation.
@@ -60,6 +60,8 @@ Decided 2026-11-11 (Reuben), from the [reinvention audit](research/reinvention-a
 2. **iOS networking moves to URLSession** ([native capability roadmap](native-capability-roadmap.md)). `forge-net`'s portable types stay; ureq stays for Linux tools, tests and Android.
 3. **A new native service gets a Rust interface only when the Rust core reads its value.** Otherwise the Swift app calls Apple's framework directly ([architecture.md](architecture.md#framework-principles)).
 4. **Evidence bundles also write JUnit XML** (`junit.xml`, [evidence.md](evidence.md#the-evidence-bundle)), so any CI system or test viewer can read the results. No new report features.
+5. **The build queue is finished** (decided 2026-11-15, from the [complexity audit](https://claude.ai/artifact/8yMF8C6NBhtazEYJd4ngyP)): `forge queue` keeps one build at a time, in order, under a memory and CPU cap ([builds.md](builds.md#the-build-queue)). Bug fixes only; no new scheduling, priorities, dashboards or remote features.
+6. **Joining Device Lab is optional** (decided 2026-11-15). A new app is published and tested on its own (`forge publish ios --project <app>`) and is not added to Device Lab's Apps screen by default. Add one only for a combined phone sitting or when the person asks; the apps already hosted stay.
 
 The freeze ends when all four of these exit criteria are met, each checked on a physical iPhone and reported by a person:
 
@@ -83,7 +85,7 @@ An agent takes a real task on an existing app, changes it, checks it on the iPho
 
 ### iPhone acceptance of the integrated framework — In progress
 
-The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](integration/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. So far the starter, the services check and Pocket Library have been built with a patched xtool on Linux (iOS SDK 26.0 recorded); none has been recorded running on an iPhone yet.
+The native starter UI (#32), developer experience (#35), lifecycle (#36), native services (#34) and the Pocket Library acceptance app (#33) are integrated and green in CI together ([integration report](archive/pr-integration-report.md)). What is left is the physical-device run: [integration/iphone-acceptance.md](integration/iphone-acceptance.md) is the single runbook, from a fresh `forge init` app to a Rust change reaching the phone. So far the starter, the services check and Pocket Library have been built with a patched xtool on Linux (iOS SDK 26.0 recorded); none has been recorded running on an iPhone yet.
 
 ### Native iOS UI — Done, device check open
 
@@ -107,7 +109,7 @@ Open: asset-catalog icons and launch screens (xtool cannot compile asset catalog
 
 Android builds are pinned to **AGP 8.7.3 + Gradle 8.10.2** (see [compatibility.md](compatibility.md)). Paused while Android is work in progress. A Dependabot bump to AGP 9 / Gradle 9 broke the Android CI job and was rolled back, in the example and the template. The plan:
 
-1. Migrate `examples/counter-android` and `templates/android-app` together, in one PR, with the Android CI job green.
+1. Migrate `examples/pocket-library-android` and `templates/android-app` together, in one PR, with the Android CI job green.
 2. Keep the example and template plugin versions identical (they are the same contract).
 3. Update the compatibility matrix in the same PR.
 

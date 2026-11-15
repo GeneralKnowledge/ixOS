@@ -1,7 +1,0 @@
-module forge_appFFI {
-    header "forge_appFFI.h"
-    export *
-    use "Darwin"
-    use "_Builtin_stdbool"
-    use "_Builtin_stdint"
-}

@@ -47,7 +47,7 @@ All the docs, by task, are listed in [docs/README.md](docs/README.md), and [docs
 
 `--minimal` starts from a one-screen app to learn from, and [docs/first-app.md](docs/first-app.md) adds a feature to it in about 20 minutes. Leave it out for the full starter, a multi-screen notes app that shows events, networking, the app lifecycle and native services. [docs/getting-started.md](docs/getting-started.md) walks through all of this from a bare Linux machine to the app on your iPhone, including the one-time iPhone steps (Trust, Developer Mode, Apple sign-in).
 
-To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android examples (`examples/counter-android`, `examples/chat-android`) are work in progress.
+To try the bundled examples instead: `forge run ios --project examples/chat` (start `make chat-server ARGS="--bind 0.0.0.0:8787"` first). The Android example (`examples/pocket-library-android`) is work in progress.
 
 [docs/builds.md](docs/builds.md) lists what each build produces: xtool or Xcode, device or simulator, debug or release, and what is not supported yet. A Mac with Xcode works too ([docs/ios-xcode.md](docs/ios-xcode.md)) but is never required.
 
@@ -71,9 +71,7 @@ crates/forge-cli       # `forge` CLI
 examples/checklist        # The first app on the runtime and ForgeKit
 examples/counter          # SwiftUI + xtool app; its rust/ crate holds the counter rules and store
 examples/weather          # SwiftUI weather + location app: real HTTP, nested FFI types, cancellation
-examples/counter-android  # (Android, work in progress) Compose + Gradle app on the same Rust crate as examples/counter
 examples/chat             # SwiftUI chat app: long-lived event stream, room subscriptions, retry (see docs/chat-demo.md)
-examples/chat-android     # (Android, work in progress) The chat app in Compose (frozen at its early features, own rust/ crate)
 examples/chat-core        # Chat demo's Rust core: SSE event stream, subscriptions, store
 examples/pocket-library   # Reading tracker from forge init: own Rust crate, catalogue search, EPUB import
 templates/app-rust        # Starter Rust crate every new iOS app gets as rust/, on forge-app (see docs/app-crate.md)
@@ -94,15 +92,15 @@ cargo run -p forge-cli -- check           # full local CI matrix (or: make check
 cargo run -p forge-cli -- init MyApp --bundle-id org.example.myapp --platform ios
 cargo run -p forge-cli -- init MyApp --path ~/projects/MyApp      # create the app outside the workspace
 cargo run -p forge-cli -- test   # workspace tests + rustfmt check
-cargo run -p forge-cli -- test --project examples/counter-android  # ...plus that app's host tests
+cargo run -p forge-cli -- test --project examples/pocket-library-android  # ...plus that app's host tests
 cargo run -p forge-cli -- bindings generate --project ~/projects/MyApp   # an app's own crate -> its Generated/
-cargo run -p forge-cli -- bindings generate --project examples/counter-android   # Kotlin, for an Android app
+cargo run -p forge-cli -- bindings generate --project examples/pocket-library-android   # Kotlin, for an Android app
 cargo run -p forge-cli -- build ios --project examples/counter       # xtool dev build
 cargo run -p forge-cli -- run ios --project examples/counter         # build and install (xtool dev run); open it on the phone
 cargo run -p forge-cli -- diagnose --project examples/counter        # the app is installed but doesn't work: checks it and says what to do next
 cargo run -p forge-cli -- run ios --project examples/counter --release  # same, Swift release configuration
 cargo run -p forge-cli -- build ios --project examples/counter --package-only  # Rust + bindings only (Xcode on macOS)
-cargo run -p forge-cli -- build android --project examples/counter-android
+cargo run -p forge-cli -- build android --project examples/pocket-library-android
 cargo run -p forge-cli -- devices
 cargo run -p forge-cli -- check swift --project examples/pocket-library   # model + bindings with plain Swift on Linux (not the SwiftUI views)
 cargo run -p forge-cli -- --json run ios --project examples/counter        # one forge.result/1 object on stdout, exit code per stage
@@ -146,7 +144,7 @@ Dual licensed under **MIT OR Apache-2.0** — see [LICENSE-MIT](LICENSE-MIT) and
 - Development builds only: debug APKs on Android, xtool or Xcode development builds on iOS. No App Store or Google Play distribution yet ([docs/builds.md](docs/builds.md)). The plan for the first App Store release, and which of its steps need a Mac, is [docs/first-app-store-release.md](docs/first-app-store-release.md).
 - Apps need a Forge checkout on the same machine: the runtime crates are not published to crates.io yet.
 - Android is work in progress: it has not been validated on a physical phone, gets no new features, and has none of the `forge-services` native services. CI still builds the APK and runs the JVM tests when Android or shared Rust code changes.
-- Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example ([examples/chat](examples/chat/README.md); the frozen Android twin is [examples/chat-android](examples/chat-android/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
+- Networking is demonstrated by the iOS Weather example ([examples/weather](examples/weather/README.md)) and the Chat example ([examples/chat](examples/chat/README.md)). HTTPS certificates are checked with each platform's trust store; on Android the host calls `ForgeAndroid.init(applicationContext)` once at startup ([docs/android-setup.md](docs/android-setup.md#https-certificate-verification)).
 
 - `rust-toolchain.toml` pins Rust; rustup picks it up automatically.
 - `environment.json` bootstraps hosted coding-agent VMs (Ubuntu 24.04): its `install` command installs Swift, xtool, usbmuxd and the iOS Rust target, then runs `cargo fetch`. It is not machine-specific and is not needed for local development. See [docs/linux-setup.md](docs/linux-setup.md#hosted-agent-vms-environmentjson).

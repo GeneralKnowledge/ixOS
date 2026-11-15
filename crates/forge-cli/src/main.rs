@@ -940,7 +940,7 @@ enum BuildCommands {
     Android {
         #[arg(
             long,
-            help = "App directory (default: the current directory if it has forge.toml, else examples/counter-android)"
+            help = "App directory (default: the current directory if it has forge.toml, else examples/pocket-library-android)"
         )]
         project: Option<PathBuf>,
         #[arg(
@@ -1578,7 +1578,7 @@ fn dispatch(cli: Cli, runner: &dyn runner::CommandRunner) -> Result<(), String> 
                 )
             }
             BuildCommands::Android { project, install } => {
-                let project = project_or_default(project, "examples/counter-android");
+                let project = project_or_default(project, "examples/pocket-library-android");
                 commands::build_android(runner, &root, &project, install)
             }
         },

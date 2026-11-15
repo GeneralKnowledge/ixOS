@@ -20,8 +20,11 @@ impl Host {
         let android_sdk = ["ANDROID_HOME", "ANDROID_SDK_ROOT"]
             .iter()
             .any(|k| std::env::var_os(k).is_some_and(|v| !v.is_empty()))
-            || std::fs::read_to_string(root.join(ANDROID_EXAMPLE).join("local.properties"))
-                .is_ok_and(|p| p.lines().any(|l| l.trim_start().starts_with("sdk.dir")));
+            || std::fs::read_to_string(
+                root.join(POCKET_LIBRARY_ANDROID_EXAMPLE)
+                    .join("local.properties"),
+            )
+            .is_ok_and(|p| p.lines().any(|l| l.trim_start().starts_with("sdk.dir")));
         Self {
             android_sdk,
             java: which_program(runner, "java"),
@@ -31,8 +34,6 @@ impl Host {
     }
 }
 
-const ANDROID_EXAMPLE: &str = "examples/counter-android";
-const CHAT_ANDROID_EXAMPLE: &str = "examples/chat-android";
 const POCKET_LIBRARY_ANDROID_EXAMPLE: &str = "examples/pocket-library-android";
 
 struct Step {
@@ -60,8 +61,6 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         (_, false) => Some("swift not found"),
         _ => None,
     };
-    let android_dir = root.join(ANDROID_EXAMPLE);
-    let chat_android_dir = root.join(CHAT_ANDROID_EXAMPLE);
     let pocket_library_android_dir = root.join(POCKET_LIBRARY_ANDROID_EXAMPLE);
     vec![
         Step {
@@ -130,29 +129,11 @@ fn steps(root: &Path, host: Host) -> Vec<Step> {
         Step {
             name: "Android JVM unit tests",
             cmds: vec![
-                // The Chat tests also run against the real chat server.
-                cargo(&[
-                    "build",
-                    "--manifest-path",
-                    "examples/counter/rust/Cargo.toml",
-                ]),
-                cargo(&[
-                    "build",
-                    "--manifest-path",
-                    "examples/chat-android/rust/Cargo.toml",
-                ]),
                 cargo(&[
                     "build",
                     "--manifest-path",
                     "examples/pocket-library-android/rust/Cargo.toml",
                 ]),
-                cargo(&["build", "-p", "chat-server"]),
-                Cmd::new(android_dir.join("gradlew"))
-                    .args([":app:testDebugUnitTest", "--no-daemon"])
-                    .cwd(&android_dir),
-                Cmd::new(chat_android_dir.join("gradlew"))
-                    .args([":app:testDebugUnitTest", "--no-daemon"])
-                    .cwd(&chat_android_dir),
                 Cmd::new(pocket_library_android_dir.join("gradlew"))
                     .args([":app:testDebugUnitTest", "--no-daemon"])
                     .cwd(&pocket_library_android_dir),
@@ -266,13 +247,14 @@ mod tests {
     fn ok_runner(root: &Path) -> MockRunner {
         let mock = MockRunner::default();
         mock.respond("cargo", 0, "").respond("bash", 0, "");
-        for example in [
-            ANDROID_EXAMPLE,
-            CHAT_ANDROID_EXAMPLE,
-            POCKET_LIBRARY_ANDROID_EXAMPLE,
-        ] {
-            mock.respond(&root.join(example).join("gradlew").to_string_lossy(), 0, "");
-        }
+        mock.respond(
+            &root
+                .join(POCKET_LIBRARY_ANDROID_EXAMPLE)
+                .join("gradlew")
+                .to_string_lossy(),
+            0,
+            "",
+        );
         mock
     }
 
@@ -295,12 +277,7 @@ mod tests {
             "check-bindings.sh",
             "check-app-crates.sh",
             "test-native-rebuild.sh",
-            "examples/counter/rust/Cargo.toml",
-            "examples/chat-android/rust/Cargo.toml",
             "examples/pocket-library-android/rust/Cargo.toml",
-            "cargo build -p chat-server",
-            "counter-android/gradlew :app:testDebugUnitTest --no-daemon",
-            "chat-android/gradlew :app:testDebugUnitTest --no-daemon",
             "pocket-library-android/gradlew :app:testDebugUnitTest --no-daemon",
             "examples/counter",
             "examples/weather",

@@ -5,7 +5,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-PROJECT="${1:-$ROOT/examples/counter-android}"
+PROJECT="${1:-$ROOT/examples/pocket-library-android}"
 JNI="$PROJECT/app/src/main/jniLibs"
 
 abis_from_forge_toml() {

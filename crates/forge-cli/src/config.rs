@@ -100,8 +100,8 @@ pub struct AndroidSection {
 /// Where the app's Rust code lives.
 ///
 /// Every app owns a crate: `path = "rust"` (relative to the app, as `forge
-/// init` creates it). Two host apps may share one crate (`counter-android`
-/// uses `path = "../counter/rust"`). `core_crate` / `ffi_crate`, which named
+/// init` creates it). Two host apps may share one crate, with a path such as
+/// `path = "../counter/rust"`. `core_crate` / `ffi_crate`, which named
 /// the workspace's shared `forge-ffi` before it was removed, are still parsed
 /// so the error can say what to write instead.
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
