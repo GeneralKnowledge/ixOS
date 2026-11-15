@@ -2,7 +2,7 @@
 
 test:
 	cargo test --workspace
-	cargo test -p forge-services --features transfers,http
+	cargo test -p forge-services --features transfers,http,ai
 	cargo test -p forge-storage --features sqlite,hash,csv,backup
 
 # The Chat example's server (http://127.0.0.1:8787; accounts and messages in
@@ -39,7 +39,7 @@ fmt:
 
 clippy:
 	cargo clippy --workspace --all-targets -- -D warnings
-	cargo clippy -p forge-services --all-targets --features transfers,http -- -D warnings
+	cargo clippy -p forge-services --all-targets --features transfers,http,ai -- -D warnings
 	cargo clippy -p forge-storage --all-targets --features sqlite,hash,csv,backup -- -D warnings
 
 bindings:

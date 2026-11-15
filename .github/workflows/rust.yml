@@ -49,10 +49,10 @@ jobs:
       - name: test
         run: cargo test --workspace
       # Optional features no workspace member turns on.
-      - name: forge-services transfers and http features (clippy, tests)
+      - name: forge-services transfers, http and ai features (clippy, tests)
         run: |
-          cargo clippy -p forge-services --all-targets --features transfers,http -- -D warnings
-          cargo test -p forge-services --features transfers,http
+          cargo clippy -p forge-services --all-targets --features transfers,http,ai -- -D warnings
+          cargo test -p forge-services --features transfers,http,ai
       - name: forge-storage csv and backup features (clippy, tests)
         run: |
           cargo clippy -p forge-storage --all-targets --features sqlite,hash,csv,backup -- -D warnings
