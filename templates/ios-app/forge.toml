@@ -29,6 +29,10 @@ app_module = "FORGE_MODULE_NAMEApp"
 # so it names the process in `forge device logs --process` and crash reports.
 xtool_product = "FORGE_PACKAGE_NAMEXtool"
 # icon = "Resources/AppIcon.png"    # 1024x1024 PNG
+# Where it runs as a native app: ["iphone"], or ["iphone", "ipad"] once its
+# screens adapt to a wide window (docs/app-config.md). iPhone-only apps
+# still run on an iPad, scaled.
+devices = ["iphone"]
 orientations = ["portrait"]
 # url_schemes = ["myapp"]           # opens myapp://... links
 # background_modes = ["remote-notification"]

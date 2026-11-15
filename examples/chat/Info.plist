@@ -26,6 +26,10 @@
 	<string>Chat connects to the demo chat server on your local network.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Chat records a voice message while you tap the microphone button.</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

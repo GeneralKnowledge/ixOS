@@ -18,24 +18,25 @@ When the framework gains a better way to do something, every app moves to it, or
 | `device-checks` | Every requirement has a device scenario |
 | `ui-test` | At least one `uitests/*.toml` scenario for `forge ui run` |
 | `device-lab` | Reachable from Device Lab's Apps screen |
+| `device-family` | Says which devices it runs on (`[ios] devices`) |
 
 ## Apps
 
-| App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` |
-|---|---|---|---|---|---|---|---|---|---|---|
-| chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes |
-| checklist | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 3) | n/a | No (wave 3) | Yes |
-| commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | No (wave 3) | n/a | Yes | Yes |
-| counter | No (decision) | No (decision) | Yes | No (wave 1) | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) |
-| device-lab | Yes | No (wave 3) | Yes | No (wave 1) | n/a | n/a | n/a | n/a | n/a | n/a |
-| fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
-| forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | No (wave 3) | Yes |
-| good-dog | Yes | No (wave 3) | No (wave 3) | No (wave 1) | n/a | n/a | Yes | No (wave 4) | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | No (wave 1) | No (wave 2) | n/a | Yes | No (wave 2) | Yes | Yes |
-| relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
-| soundscape | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes |
-| weather | No (wave 3) | No (wave 3) | Yes | No (wave 1) | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes |
+| App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes | Yes |
+| checklist | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
+| commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | No (wave 3) | n/a | Yes | Yes | Yes |
+| counter | No (decision) | No (decision) | Yes | No (wave 1) | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) | Yes |
+| device-lab | Yes | No (wave 3) | Yes | No (wave 1) | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes | Yes |
+| forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | No (wave 3) | Yes | Yes |
+| good-dog | Yes | No (wave 3) | No (wave 3) | No (wave 1) | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | No (wave 1) | No (wave 2) | n/a | Yes | No (wave 2) | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 3) | n/a | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| weather | No (wave 3) | No (wave 3) | Yes | No (wave 1) | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
 
 ## Known lag
 

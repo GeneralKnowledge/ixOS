@@ -14,6 +14,7 @@ ios_simulator = false
 # iOS settings; Forge writes Info.plist, App.entitlements and xtool.yml from
 # them (docs/app-config.md).
 [ios]
+devices = ["iphone"]
 xtool_product = "ChatXtool"
 # Message notifications open forgechat://conversation/<id> (LocalChatNotifier).
 url_schemes = ["forgechat"]

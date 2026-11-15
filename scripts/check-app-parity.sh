@@ -179,6 +179,17 @@ def rule_device_lab(app):
     return ok, "" if ok else "not on Device Lab's Apps screen"
 
 
+def rule_device_family(app):
+    # xtool marks every app for iPhone and iPad unless told otherwise, so
+    # each app says where it runs (docs/app-config.md).
+    toml = app / "forge.toml"
+    if toml.is_file():
+        ok = bool(re.search(r"(?m)^devices\s*=", read(toml)))
+        return ok, "" if ok else "forge.toml [ios] doesn't set devices"
+    ok = "<key>UIDeviceFamily</key>" in read(app / "Info.plist")
+    return ok, "" if ok else "Info.plist doesn't set UIDeviceFamily"
+
+
 RULES = [
     ("forgekit", "Uses the ForgeKit package", rule_forgekit),
     ("forge-host", "Rust core on the forge-app runtime, hosted by ForgeHost", rule_forge_host),
@@ -190,6 +201,7 @@ RULES = [
     ("device-checks", "Every requirement has a device scenario", rule_device_checks),
     ("ui-test", "At least one `uitests/*.toml` scenario for `forge ui run`", rule_ui_test),
     ("device-lab", "Reachable from Device Lab's Apps screen", rule_device_lab),
+    ("device-family", "Says which devices it runs on (`[ios] devices`)", rule_device_family),
 ]
 RULE_IDS = {r[0] for r in RULES}
 

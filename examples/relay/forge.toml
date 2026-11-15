@@ -31,6 +31,7 @@ app_module = "RelayApp"
 test_data_args = ["-ForgeTemporaryData"]
 
 [ios]
+devices = ["iphone"]
 # The SwiftPM product xtool builds (Package.swift). It is the app's executable,
 # so it names the process in `forge device logs --process` and crash reports.
 xtool_product = "RelayXtool"
