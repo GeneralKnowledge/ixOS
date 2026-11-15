@@ -1,4 +1,5 @@
 #if os(iOS)
+@preconcurrency import RelayFFI
 import Foundation
 import Network
 import Observation
@@ -123,6 +124,58 @@ final class RelayNetwork {
     }
 
     static let codeServiceType = "_forgerelay._udp"
+
+    @ObservationIgnored private var codeAdvertiser: NetService?
+    @ObservationIgnored private var codeAdvertised: RelayModel.CodeAdvert?
+    @ObservationIgnored private var codeWatcher: NWBrowser?
+
+    /// Advertises a code sender (`_forgerelay._udp`, TXT `v`, `n`, `id`, as
+    /// the M0 spike does) on Rust's port, replacing the last advert; `nil`
+    /// withdraws it.
+    func advertiseCode(_ advert: RelayModel.CodeAdvert?) {
+        guard advert != codeAdvertised else { return }
+        codeAdvertiser?.stop()
+        codeAdvertiser = nil
+        codeAdvertised = advert
+        guard let advert else { return }
+        let name = "relay-\(advert.endpointID.prefix(8))-\(advert.number)"
+        let service = NetService(domain: "local.", type: Self.codeServiceType + ".", name: name, port: Int32(advert.port))
+        let txt: [String: Data] = [
+            "v": Data("1".utf8),
+            "n": Data(String(advert.number).utf8),
+            "id": Data(advert.endpointID.utf8),
+        ]
+        _ = service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        service.publish()
+        codeAdvertiser = service
+    }
+
+    /// Reports every code sender advertising nearby (this device's own
+    /// included; Rust leaves its own id out) until `stopWatchingCodeSenders`.
+    func watchCodeSenders(_ report: @escaping @MainActor @Sendable ([NearbySender]) -> Void) {
+        guard codeWatcher == nil else { return }
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        browser.browseResultsChangedHandler = { results, _ in
+            let senders: [NearbySender] = results.compactMap { result -> NearbySender? in
+                guard case .bonjour(let txt) = result.metadata,
+                      let n = txt["n"].flatMap({ UInt8($0) }),
+                      let id = txt["id"], !id.isEmpty
+                else { return nil }
+                return NearbySender(number: n, endpointId: id)
+            }
+            Task { @MainActor in report(senders) }
+        }
+        browser.start(queue: .main)
+        codeWatcher = browser
+    }
+
+    func stopWatchingCodeSenders() {
+        codeWatcher?.cancel()
+        codeWatcher = nil
+    }
 
     /// A Bonjour UDP service's "host:port": a UDP connection is ready once
     /// the name resolves, and sends nothing.

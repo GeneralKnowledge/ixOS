@@ -27,6 +27,8 @@
 //!   one iPhone and a laptop are enough to try it.
 
 mod code;
+mod code_send;
+mod code_session;
 pub mod link;
 mod model;
 mod record;
@@ -46,6 +48,8 @@ use forge_storage::FileStore;
 
 use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
+use code_send::CodeSendShared;
+pub use code_send::{CodeSend, NearbySender};
 
 pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
@@ -110,6 +114,8 @@ pub struct RelayCore {
     code_dir: PathBuf,
     code_progress: Arc<CodeProgress>,
     code_stop: Mutex<Arc<AtomicBool>>,
+    /// Sending with a word code (`code_send`).
+    code_send: Arc<CodeSendShared>,
     me: Weak<RelayCore>,
 }
 
@@ -165,6 +171,7 @@ impl RelayCore {
             code_dir,
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
+            code_send: Arc::new(CodeSendShared::default()),
             me: me.clone(),
         }))
     }
@@ -219,6 +226,48 @@ impl RelayCore {
             total,
             already: self.code_progress.already.load(Ordering::SeqCst),
         })
+    }
+
+    /// Starts sending the file at `path` with a new word code, in the
+    /// background (Relay M1). Follow it with `code_send_status`: while it
+    /// has a code, the app advertises it with Bonjour and reports other
+    /// senders it sees with `code_send_nearby`. The receiver is another
+    /// Relay or `relay-spike receive <code>` on a computer. One at a time.
+    pub fn send_with_code(&self, path: String) -> Result<(), RelayError> {
+        let path = PathBuf::from(path);
+        if !path.is_file() {
+            return Err(RelayError::File {
+                reason: "there is no file there".into(),
+            });
+        }
+        if self.code_send.running() {
+            return Err(RelayError::Declined {
+                reason: "already sending".into(),
+            });
+        }
+        code_send::start(
+            path,
+            self.code_dir.join("send-store"),
+            Arc::clone(&self.code_send),
+        );
+        Ok(())
+    }
+
+    /// Where the send with a code has got.
+    pub fn code_send_status(&self) -> CodeSend {
+        self.code_send.status()
+    }
+
+    /// The other senders the app sees advertising nearby, replacing the last
+    /// list. A new code avoids their numbers, and if one takes this code's
+    /// number before it is used, the code is replaced.
+    pub fn code_send_nearby(&self, senders: Vec<NearbySender>) {
+        *lock(&self.code_send.nearby) = senders.into_iter().collect();
+    }
+
+    /// Stops the send in progress, if any.
+    pub fn cancel_code_send(&self) {
+        self.code_send.stop.store(true, Ordering::SeqCst);
     }
 
     /// This device, as others see it.

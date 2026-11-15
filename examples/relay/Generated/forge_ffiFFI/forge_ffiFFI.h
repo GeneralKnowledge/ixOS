@@ -273,6 +273,11 @@ int8_t uniffi_relay_core_fn_method_relaycore_background_work_pending(uint64_t pt
 void uniffi_relay_core_fn_method_relaycore_cancel_code_receive(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_CODE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_CODE_SEND
+void uniffi_relay_core_fn_method_relaycore_cancel_code_send(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CANCEL_INVITATION
 void uniffi_relay_core_fn_method_relaycore_cancel_invitation(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -281,6 +286,16 @@ void uniffi_relay_core_fn_method_relaycore_cancel_invitation(uint64_t ptr, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 RustBuffer uniffi_relay_core_fn_method_relaycore_code_receive_size(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_SEND_NEARBY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_SEND_NEARBY
+void uniffi_relay_core_fn_method_relaycore_code_send_nearby(uint64_t ptr, RustBuffer senders, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_SEND_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CODE_SEND_STATUS
+RustBuffer uniffi_relay_core_fn_method_relaycore_code_send_status(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_CREATE_INVITATION
@@ -356,6 +371,11 @@ uint64_t uniffi_relay_core_fn_method_relaycore_send_file(uint64_t ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_NOTE
 uint64_t uniffi_relay_core_fn_method_relaycore_send_note(uint64_t ptr, RustBuffer device_id, RustBuffer text, RustBuffer addresses, RustBuffer cancellation
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SEND_WITH_CODE
+void uniffi_relay_core_fn_method_relaycore_send_with_code(uint64_t ptr, RustBuffer path, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_FN_METHOD_RELAYCORE_SET_PHASE
@@ -705,6 +725,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_code_receive(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_CODE_SEND
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_CODE_SEND
+uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_code_send(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_INVITATION
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CANCEL_INVITATION
 uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_invitation(void
@@ -714,6 +740,18 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_cancel_invitation(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_RECEIVE_SIZE
 uint16_t uniffi_relay_core_checksum_method_relaycore_code_receive_size(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_SEND_NEARBY
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_SEND_NEARBY
+uint16_t uniffi_relay_core_checksum_method_relaycore_code_send_nearby(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_SEND_STATUS
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_CODE_SEND_STATUS
+uint16_t uniffi_relay_core_checksum_method_relaycore_code_send_status(void
     
 );
 #endif
@@ -804,6 +842,12 @@ uint16_t uniffi_relay_core_checksum_method_relaycore_send_file(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE
 #define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_NOTE
 uint16_t uniffi_relay_core_checksum_method_relaycore_send_note(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
+#define UNIFFI_FFIDEF_UNIFFI_RELAY_CORE_CHECKSUM_METHOD_RELAYCORE_SEND_WITH_CODE
+uint16_t uniffi_relay_core_checksum_method_relaycore_send_with_code(void
     
 );
 #endif
