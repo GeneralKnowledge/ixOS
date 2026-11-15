@@ -81,7 +81,7 @@ real machines next):
 
 The laptop (home line) and a Hetzner server, over Tailscale (direct over
 IPv6, not through a DERP relay; ping 49 to 103 ms, 55 ms average), both
-running 0ab5e7e, the receiver using the `--addr`/`--id` form because mDNS
+running the same binary (0ab5e7e, then 2ef86c3 for the rerun), the receiver using the `--addr`/`--id` form because mDNS
 does not cross the tailnet. The home line sets the speed.
 
 | Check | Result |
@@ -90,7 +90,9 @@ does not cross the tailnet. The home line sets the speed.
 | Wrong code | Refused; the old code was then refused too; a new code within 2 s |
 | Malformed first message (`garble`) | A new code within 5 s; that code then received a 20 MB file, identical |
 | 4 GB resume | Receiver killed at 502 MB; the sender issued a new code 32 s later (the 30 s silence window); the receiver resumed from "524091392 of 4000000000 bytes already here" |
-| 1 GB laptop to Hetzner, and finishing the 4 GB resume | **Failed, then fixed:** both were cut off at exactly 600 s. The sender counted the code's ten-minute lifetime even after a receiver had redeemed it, so a transfer longer than ten minutes was ended mid-file. Now the lifetime only limits how long an unused code can be redeemed (`Session::lapse`); a running transfer ends with done, or after 30 s of silence. Rerun pending |
+| 1 GB laptop to Hetzner, and finishing the 4 GB resume | **Failed at 0ab5e7e, fixed in 2ef86c3:** both were cut off at exactly 600 s. The sender counted the code's ten-minute lifetime even after a receiver had redeemed it, so a transfer longer than ten minutes was ended mid-file. Now the lifetime only limits how long an unused code can be redeemed (`Session::lapse`); a running transfer ends with done, or after 30 s of silence |
+| Rerun at 2ef86c3: 1 GB laptop to Hetzner | Identical (sha256), 1057 s at 0.9 MB/s (the home upload), well past the old cut-off |
+| Rerun at 2ef86c3: 4 GB Hetzner to laptop with an interruption | Receiver killed at 501 MB; a new code 32 s later; resumed from "522551296 of 4000000000 bytes already here", fetched the remaining 3.48 GB in 730 s (5 MB/s); identical (sha256) |
 | Plain mDNS between the two | Not possible here: they are not on one network |
 
 An earlier attempt (before the silence window was raised from 8 s to 30 s,
