@@ -1,6 +1,10 @@
 import Foundation
-import WeatherBridge
+@testable import WeatherApp
+@preconcurrency import WeatherFFI
 import XCTest
+#if canImport(Glibc)
+import Glibc
+#endif
 
 /// Integration tests for the Swift bridge against the real Rust core and its
 /// real HTTP client, using local endpoints only (no internet needed).
@@ -133,6 +137,25 @@ final class WeatherClientTests: XCTestCase {
         _ = server
     }
 
+    /// The app's host opens one core per data folder; a second is refused,
+    /// and errors carry the framework's kinds.
+    @MainActor
+    func testTheHostOpensTheCoreAndASecondCoreIsRefused() async throws {
+        let environment = try ForgeEnvironment.temporary()
+        let host = ForgeHost<ForgeWeatherApp>(environment: { environment }) {
+            try ForgeWeatherApp(storageDirectory: $0.dataDirectory)
+        }
+        await host.start()
+        XCTAssertEqual(host.status, .ready)
+        XCTAssertThrowsError(try ForgeWeatherApp(storageDirectory: environment.dataDirectory)) { error in
+            guard case WeatherError.InUse = error else { return XCTFail("\(error)") }
+        }
+        XCTAssertEqual(weatherErrorKind(error: .Offline(reason: "")), .network)
+        XCTAssertEqual(weatherErrorKind(error: .LocationDenied), .needsUser)
+        host.close()
+        XCTAssertEqual(host.status, .closed)
+    }
+
     func testShutdownRefusesNewWork() async throws {
         let client = try client()
         client.shutdown()
@@ -153,10 +176,16 @@ final class SilentServer: @unchecked Sendable {
     private let fd: Int32
 
     init() throws {
-        let socketFD = socket(AF_INET, SOCK_STREAM, 0)
+        #if canImport(Glibc)
+            let socketFD = socket(AF_INET, Int32(SOCK_STREAM.rawValue), 0)
+        #else
+            let socketFD = socket(AF_INET, SOCK_STREAM, 0)
+        #endif
         guard socketFD >= 0 else { throw POSIXError(.EIO) }
         var addr = sockaddr_in()
-        addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        #if !canImport(Glibc)
+            addr.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        #endif
         addr.sin_family = sa_family_t(AF_INET)
         addr.sin_port = 0
         addr.sin_addr.s_addr = in_addr_t(0x7F00_0001).bigEndian

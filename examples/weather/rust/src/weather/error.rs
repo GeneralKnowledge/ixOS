@@ -1,3 +1,4 @@
+use forge_app::{ErrorKind, OpenError, Stopped};
 use forge_net::NetError;
 
 /// Every error the Weather API returns. Grouped like `ForgeAppError` (see
@@ -28,12 +29,23 @@ pub enum WeatherError {
     /// Transport failures that are not "offline" or a certificate problem.
     #[error("network error: {reason}")]
     Network { reason: String },
-    // Cancellation. Not a failure.
+    // Location ("My Location").
+    /// The person said no to location, or turned it off for the app.
+    #[error("location is not allowed")]
+    LocationDenied,
+    /// No position could be found (indoors, no signal, timed out).
+    #[error("location unavailable: {reason}")]
+    LocationUnavailable { reason: String },
+    // Cancellation. Not a failure. Also what a refresh or search gets when
+    // the app leaves the screen: the page refreshes again on return.
     #[error("operation was cancelled")]
     Cancelled,
     // Lifecycle.
     #[error("the weather app instance has been shut down")]
     ShutDown,
+    /// Another Weather core already has this data folder open.
+    #[error("the weather data is open elsewhere")]
+    InUse,
     // Internal. A bug, not an expected condition.
     #[error("internal failure: {reason}")]
     Internal { reason: String },
@@ -65,6 +77,48 @@ impl WeatherError {
             Self::BadResponse { .. } => Some(FetchProblem::BadResponse),
             // A 4xx means the request itself is wrong; stale data would hide it.
             _ => None,
+        }
+    }
+}
+
+/// The framework kind of an error, so ForgeKit presents every app's errors
+/// alike (`ForgeKindedError` in Swift).
+#[uniffi::export]
+pub fn weather_error_kind(error: WeatherError) -> ErrorKind {
+    match error {
+        WeatherError::InvalidInput { .. } => ErrorKind::Invalid,
+        WeatherError::Offline { .. }
+        | WeatherError::Timeout
+        | WeatherError::Certificate { .. }
+        | WeatherError::Network { .. } => ErrorKind::Network,
+        WeatherError::Server { status, .. } if status < 500 => ErrorKind::Refused,
+        WeatherError::Server { .. } | WeatherError::BadResponse { .. } | WeatherError::InUse => {
+            ErrorKind::Unavailable
+        }
+        WeatherError::LocationDenied => ErrorKind::NeedsUser,
+        WeatherError::LocationUnavailable { .. } => ErrorKind::Unavailable,
+        WeatherError::Cancelled => ErrorKind::Cancelled,
+        WeatherError::ShutDown => ErrorKind::ShutDown,
+        WeatherError::Internal { .. } => ErrorKind::Internal,
+    }
+}
+
+/// The runtime stopped the work: shutdown refuses, anything else (the app
+/// left the screen, the host cancelled) is a cancellation.
+impl From<Stopped> for WeatherError {
+    fn from(stopped: Stopped) -> Self {
+        match stopped.kind {
+            ErrorKind::ShutDown => Self::ShutDown,
+            _ => Self::Cancelled,
+        }
+    }
+}
+
+impl From<OpenError> for WeatherError {
+    fn from(error: OpenError) -> Self {
+        match error {
+            OpenError::InUse { .. } => Self::InUse,
+            OpenError::Io { reason } => Self::Internal { reason },
         }
     }
 }

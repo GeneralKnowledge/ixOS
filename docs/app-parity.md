@@ -36,7 +36,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | relay | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | sketchbook | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
 | soundscape | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | Yes | No (wave 3) | Yes | Yes | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
+| weather | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
 
 ## Known lag
 
@@ -51,11 +51,6 @@ When the framework gains a better way to do something, every app moves to it, or
 | device-lab | `forge-host` | LabModel keeps its own state; Device Lab's Rust is lab services, not an app core | 3 |
 | good-dog | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | good-dog | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| weather | `forge-host` | Rust core predates the forge-app runtime | 3 |
-| weather | `location` | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
-| weather | `requirements` | Written with its move to the framework | 3 |
-| weather | `ui-test` | Written with its move to the framework | 3 |
-| weather | `urlsession` | Open-Meteo requests still go through ureq | 3 |
 | checklist | `device-checks` | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
 | commonplace | `device-checks` | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
 | good-dog | `device-checks` | GD requirements without a scenario yet; written with GD2b's phone run | 4 |

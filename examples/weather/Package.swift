@@ -50,24 +50,20 @@ let package = Package(
         ),
         .target(
             name: "WeatherFFI",
-            dependencies: ["weather_coreFFI"],
+            dependencies: ["weather_coreFFI", .product(name: "ForgeApp", package: "forgekit")],
             path: "Generated/ForgeFFI",
             // Generated UniFFI code is built in Swift 5 mode; it is not checked for Swift 6 strict concurrency.
             swiftSettings: [.swiftLanguageMode(.v5)]
         ),
-        // Thin Swift integration layer over the generated bindings: async/await,
-        // cancellation, Swift error types, and CoreLocation. Views and view
-        // models import this, not ForgeFFI.
-        .target(
-            name: "WeatherBridge",
-            dependencies: ["WeatherFFI"],
-            path: "Sources/WeatherBridge"
-        ),
+        // The views, the view model and the thin layer over the generated
+        // bindings (async/await, cancellation, Swift error types). The model
+        // files import Foundation and Observation only, so `forge check
+        // swift` builds and tests them on Linux.
         .target(
             name: "WeatherApp",
             // WeatherFFI also carries Forge's Swift helpers (in-app Safari).
-            dependencies: ["WeatherBridge", "WeatherFFI", .product(name: "ForgeUI", package: "forgekit")],
-            path: "Sources/WeatherApp"
+            dependencies: ["WeatherFFI", .product(name: "ForgeKit", package: "forgekit"), .product(name: "ForgeUI", package: "forgekit")],
+            path: "Sources/AppHost"
         ),
         .target(
             name: "WeatherXtoolApp",
@@ -83,8 +79,8 @@ let package = Package(
         ),
         .testTarget(
             name: "WeatherAppTests",
-            dependencies: ["WeatherApp", "WeatherBridge"],
-            path: "Tests/WeatherAppTests",
+            dependencies: ["WeatherApp", "WeatherFFI", .product(name: "ForgeKit", package: "forgekit")],
+            path: "Tests/AppHostTests",
             linkerSettings: rustLibrary
         ),
     ]

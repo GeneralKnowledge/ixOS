@@ -1,5 +1,4 @@
 import SwiftUI
-import WeatherBridge
 
 /// Colours for one kind of sky, by day or night. Drawn by `SkyBackground`
 /// and used to tint the frosted cards so they sit in the sky.

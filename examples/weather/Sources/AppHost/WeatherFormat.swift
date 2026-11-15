@@ -1,5 +1,4 @@
 import Foundation
-import WeatherBridge
 
 /// Display helpers. Times in a report are local to the place and come as
 /// "YYYY-MM-DDTHH:MM" strings, so they are formatted as text, never through

@@ -1,10 +1,9 @@
 import SwiftUI
-import WeatherBridge
 
 /// The places list: a card per page over its own sky, search to add a city,
 /// swipe to delete and Edit to reorder. Tapping a card shows its page.
 struct LocationsView: View {
-    @ObservedObject var model: WeatherViewModel
+    @Bindable var model: WeatherViewModel
     @Binding var isPresented: Bool
     @State private var query = ""
 
@@ -26,10 +25,11 @@ struct LocationsView: View {
             }
             .toolbar {
                 #if os(iOS)
-                    ToolbarItem(placement: .topBarLeading) { EditButton() }
+                    ToolbarItem(placement: .topBarLeading) { EditButton().accessibilityIdentifier("places.edit") }
                 #endif
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { isPresented = false }
+                        .accessibilityIdentifier("places.done")
                 }
             }
         }
@@ -44,6 +44,7 @@ struct LocationsView: View {
                 PlaceCard(page: page)
             }
             .buttonStyle(.plain)
+            .accessibilityIdentifier(page.isMyLocation ? "places.card.here" : "places.card.\(page.place?.name ?? "place")")
             .listRowSeparator(.hidden)
             .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
             .deleteDisabled(page.isMyLocation)
@@ -84,6 +85,7 @@ struct LocationsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Adds \(place.name) to your places")
+            .accessibilityIdentifier("places.result.\(place.name)")
         }
     }
 }

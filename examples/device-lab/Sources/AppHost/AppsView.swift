@@ -18,6 +18,7 @@ import SketchbookApp
 import SoundscapeApp
 import SwiftUI
 import WeatherApp
+import WeatherFFI
 
 /// The other example apps, run inside Device Lab: one app, one Rust library
 /// (Device Lab's, which links their Rust cores) and one ForgeKit, so the
@@ -121,7 +122,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
     @MainActor @ViewBuilder
     var content: some View {
         switch self {
-        case .weather: WeatherView()
+        case .weather: WeatherRoot(host: EmbeddedApps.weather)
         case .checklist: ChecklistRoot(host: EmbeddedApps.checklist)
         case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
         case .goodDog: GoodDogApp.ContentView()
@@ -178,9 +179,10 @@ private struct AppRow: View {
 /// What the embedded apps need for the life of the process.
 @MainActor
 public enum EmbeddedApps {
-    /// Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
+    /// Weather, Checklist, Pocket Library, Commonplace, FieldKit, Sketchbook, Soundscape and Relay run on the application
     /// runtime: each host owns its Rust core for the whole process, as in
     /// the standalone app, so closing the sheet doesn't close the core.
+    static let weather = WeatherApp.makeAppHost()
     static let checklist = Checklist.makeHost()
     static let library = LibraryModel()
     static let commonplace = CommonplaceApp.makeAppHost()
@@ -216,7 +218,9 @@ public enum EmbeddedApps {
         CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
         ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         FieldKitFFI.ForgeServices.install(keychainService: "\(bundle).fieldkit")
+        WeatherFFI.ForgeServices.install(keychainService: "\(bundle).weather")
         #if canImport(UIKit)
+            ForgeLifecycle.attach(weather)
             ForgeLifecycle.attach(checklist)
             ForgeLifecycle.attach(commonplace)
             ForgeLifecycle.attach(fieldKit)
