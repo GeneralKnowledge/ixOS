@@ -466,6 +466,22 @@ fileprivate final class UniffiHandleMap<T>: @unchecked Sendable {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+    typealias FfiType = UInt8
+    typealias SwiftType = UInt8
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt8 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: UInt8, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
     typealias FfiType = UInt16
     typealias SwiftType = UInt16
@@ -524,6 +540,22 @@ fileprivate struct FfiConverterInt64: FfiConverterPrimitive {
 
     public static func write(_ value: Int64, into buf: inout [UInt8]) {
         writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterDouble: FfiConverterPrimitive {
+    typealias FfiType = Double
+    typealias SwiftType = Double
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> Double {
+        return try lift(readDouble(&buf))
+    }
+
+    public static func write(_ value: Double, into buf: inout [UInt8]) {
+        writeDouble(&buf, lower(value))
     }
 }
 
@@ -617,9 +649,22 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
     func backgroundWorkPending()  -> Bool
     
     /**
+     * Stops the receive in progress, if any; it ends with an error, and
+     * what arrived stays for a resume.
+     */
+    func cancelCodeReceive() 
+    
+    /**
      * Withdraws the open pairing code.
      */
     func cancelInvitation() 
+    
+    /**
+     * The size of the file being received with a code, and how much of it
+     * was already here from an earlier try; `None` when none is running or
+     * the sender hasn't named the file yet.
+     */
+    func codeReceiveSize()  -> CodeSize?
     
     /**
      * A pairing code for the other device to scan, valid once for five
@@ -672,6 +717,17 @@ public protocol RelayCoreProtocol: AnyObject, Sendable {
      * The phase last reported.
      */
     func phase()  -> AppPhase
+    
+    /**
+     * Receives the file a sender offers with a word code such as
+     * `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
+     * computer for now). `addresses` and `endpoint_id` come from the
+     * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
+     * code's number, `id` = the endpoint id). The file is verified chunk by
+     * chunk and saved in Relay's `codes/received` folder; a dropped receive
+     * resumes with the sender's next code. One at a time.
+     */
+    func receiveWithCode(code: String, addresses: [String], endpointId: String) async throws  -> CodeReceipt
     
     /**
      * Removes a history entry and, for a received file, the file.
@@ -825,6 +881,18 @@ open func backgroundWorkPending() -> Bool  {
 }
     
     /**
+     * Stops the receive in progress, if any; it ends with an error, and
+     * what arrived stays for a resume.
+     */
+open func cancelCodeReceive()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_cancel_code_receive(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
      * Withdraws the open pairing code.
      */
 open func cancelInvitation()  {try! rustCall() {
@@ -833,6 +901,20 @@ open func cancelInvitation()  {try! rustCall() {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 }
+}
+    
+    /**
+     * The size of the file being received with a code, and how much of it
+     * was already here from an earlier try; `None` when none is running or
+     * the sender hasn't named the file yet.
+     */
+open func codeReceiveSize() -> CodeSize?  {
+    return try!  FfiConverterOptionTypeCodeSize.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_method_relaycore_code_receive_size(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
 }
     
     /**
@@ -963,6 +1045,31 @@ open func phase() -> AppPhase  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Receives the file a sender offers with a word code such as
+     * `37-grasp-gag-drum` (Relay M1; the sender is `relay-spike send` on a
+     * computer for now). `addresses` and `endpoint_id` come from the
+     * sender's Bonjour advertisement (`CODE_SERVICE_TYPE`, TXT `n` = the
+     * code's number, `id` = the endpoint id). The file is verified chunk by
+     * chunk and saved in Relay's `codes/received` folder; a dropped receive
+     * resumes with the sender's next code. One at a time.
+     */
+open func receiveWithCode(code: String, addresses: [String], endpointId: String)async throws  -> CodeReceipt  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_relay_core_fn_method_relaycore_receive_with_code(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(code),FfiConverterSequenceString.lower(addresses),FfiConverterString.lower(endpointId)
+                )
+            },
+            pollFunc: ffi_relay_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_relay_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_relay_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeCodeReceipt_lift,
+            errorHandler: FfiConverterTypeRelayError_lift
+        )
 }
     
     /**
@@ -1162,6 +1269,142 @@ public func FfiConverterTypeRelayCore_lower(_ value: RelayCore) -> UInt64 {
 }
 
 
+
+
+/**
+ * A finished receive.
+ */
+public struct CodeReceipt: Equatable, Hashable {
+    public var name: String
+    public var path: String
+    public var size: UInt64
+    /**
+     * Bytes that were already here from an earlier, interrupted try.
+     */
+    public var resumedFrom: UInt64
+    public var seconds: Double
+    public var megabytesPerSecond: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, path: String, size: UInt64, 
+        /**
+         * Bytes that were already here from an earlier, interrupted try.
+         */resumedFrom: UInt64, seconds: Double, megabytesPerSecond: Double) {
+        self.name = name
+        self.path = path
+        self.size = size
+        self.resumedFrom = resumedFrom
+        self.seconds = seconds
+        self.megabytesPerSecond = megabytesPerSecond
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CodeReceipt: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodeReceipt: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodeReceipt {
+        return
+            try CodeReceipt(
+                name: FfiConverterString.read(from: &buf), 
+                path: FfiConverterString.read(from: &buf), 
+                size: FfiConverterUInt64.read(from: &buf), 
+                resumedFrom: FfiConverterUInt64.read(from: &buf), 
+                seconds: FfiConverterDouble.read(from: &buf), 
+                megabytesPerSecond: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodeReceipt, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.path, into: &buf)
+        FfiConverterUInt64.write(value.size, into: &buf)
+        FfiConverterUInt64.write(value.resumedFrom, into: &buf)
+        FfiConverterDouble.write(value.seconds, into: &buf)
+        FfiConverterDouble.write(value.megabytesPerSecond, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeReceipt_lift(_ buf: RustBuffer) throws -> CodeReceipt {
+    return try FfiConverterTypeCodeReceipt.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeReceipt_lower(_ value: CodeReceipt) -> RustBuffer {
+    return FfiConverterTypeCodeReceipt.lower(value)
+}
+
+
+/**
+ * The file a code receive is fetching.
+ */
+public struct CodeSize: Equatable, Hashable {
+    public var total: UInt64
+    public var already: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(total: UInt64, already: UInt64) {
+        self.total = total
+        self.already = already
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension CodeSize: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeCodeSize: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> CodeSize {
+        return
+            try CodeSize(
+                total: FfiConverterUInt64.read(from: &buf), 
+                already: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: CodeSize, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.total, into: &buf)
+        FfiConverterUInt64.write(value.already, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeSize_lift(_ buf: RustBuffer) throws -> CodeSize {
+    return try FfiConverterTypeCodeSize.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeCodeSize_lower(_ value: CodeSize) -> RustBuffer {
+    return FfiConverterTypeCodeSize.lower(value)
+}
 
 
 /**
@@ -1688,6 +1931,11 @@ enum RelayError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
     case FileTooLarge
     case BadCode
     case CodeExpired
+    /**
+     * A transfer code (`7-acid-tidy-rug`) that can't be right as typed.
+     */
+    case WordCode(reason: String
+    )
     case UnknownPeer(id: String
     )
     case NotFound(id: UInt64
@@ -1754,35 +2002,38 @@ public struct FfiConverterTypeRelayError: FfiConverterRustBuffer {
         case 5: return .FileTooLarge
         case 6: return .BadCode
         case 7: return .CodeExpired
-        case 8: return .UnknownPeer(
+        case 8: return .WordCode(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 9: return .UnknownPeer(
             id: try FfiConverterString.read(from: &buf)
             )
-        case 9: return .NotFound(
+        case 10: return .NotFound(
             id: try FfiConverterUInt64.read(from: &buf)
             )
-        case 10: return .Unreachable(
+        case 11: return .Unreachable(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 11: return .Refused
-        case 12: return .Declined(
+        case 12: return .Refused
+        case 13: return .Declined(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 13: return .Connection(
+        case 14: return .Connection(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 14: return .File(
+        case 15: return .File(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 15: return .AlreadyListening
-        case 16: return .InUse
-        case 17: return .Corrupt(
+        case 16: return .AlreadyListening
+        case 17: return .InUse
+        case 18: return .Corrupt(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 18: return .NewerData
-        case 19: return .Storage(
+        case 19: return .NewerData
+        case 20: return .Storage(
             reason: try FfiConverterString.read(from: &buf)
             )
-        case 20: return .Stopped(
+        case 21: return .Stopped(
             kind: try FfiConverterTypeErrorKind.read(from: &buf)
             )
 
@@ -1827,64 +2078,69 @@ public struct FfiConverterTypeRelayError: FfiConverterRustBuffer {
             writeInt(&buf, Int32(7))
         
         
-        case let .UnknownPeer(id):
+        case let .WordCode(reason):
             writeInt(&buf, Int32(8))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .UnknownPeer(id):
+            writeInt(&buf, Int32(9))
             FfiConverterString.write(id, into: &buf)
             
         
         case let .NotFound(id):
-            writeInt(&buf, Int32(9))
+            writeInt(&buf, Int32(10))
             FfiConverterUInt64.write(id, into: &buf)
             
         
         case let .Unreachable(reason):
-            writeInt(&buf, Int32(10))
+            writeInt(&buf, Int32(11))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .Refused:
-            writeInt(&buf, Int32(11))
+            writeInt(&buf, Int32(12))
         
         
         case let .Declined(reason):
-            writeInt(&buf, Int32(12))
-            FfiConverterString.write(reason, into: &buf)
-            
-        
-        case let .Connection(reason):
             writeInt(&buf, Int32(13))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case let .File(reason):
+        case let .Connection(reason):
             writeInt(&buf, Int32(14))
             FfiConverterString.write(reason, into: &buf)
             
         
-        case .AlreadyListening:
+        case let .File(reason):
             writeInt(&buf, Int32(15))
+            FfiConverterString.write(reason, into: &buf)
+            
         
-        
-        case .InUse:
+        case .AlreadyListening:
             writeInt(&buf, Int32(16))
         
         
-        case let .Corrupt(reason):
+        case .InUse:
             writeInt(&buf, Int32(17))
+        
+        
+        case let .Corrupt(reason):
+            writeInt(&buf, Int32(18))
             FfiConverterString.write(reason, into: &buf)
             
         
         case .NewerData:
-            writeInt(&buf, Int32(18))
+            writeInt(&buf, Int32(19))
         
         
         case let .Storage(reason):
-            writeInt(&buf, Int32(19))
+            writeInt(&buf, Int32(20))
             FfiConverterString.write(reason, into: &buf)
             
         
         case let .Stopped(kind):
-            writeInt(&buf, Int32(20))
+            writeInt(&buf, Int32(21))
             FfiConverterTypeErrorKind.write(kind, into: &buf)
             
         }
@@ -2087,6 +2343,30 @@ fileprivate struct FfiConverterOptionTypeRuntimeEvents: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeCodeSize: FfiConverterRustBuffer {
+    typealias SwiftType = CodeSize?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeCodeSize.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeCodeSize.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceString: FfiConverterRustBuffer {
     typealias SwiftType = [String]
 
@@ -2232,6 +2512,18 @@ public func forgeLogEnabled(level: ForgeLogLevel) -> Bool  {
 })
 }
 /**
+ * The number a word code starts with (what the sender advertises), or why
+ * the code can't be right as typed. The app uses it to find the sender.
+ */
+public func wordCodeNumber(code: String)throws  -> UInt8  {
+    return try  FfiConverterUInt8.lift(try rustCallWithError(FfiConverterTypeRelayError_lift) {
+        uniffiCallStatus in
+    uniffi_relay_core_fn_func_word_code_number(
+        FfiConverterString.lower(code),uniffiCallStatus
+    )
+})
+}
+/**
  * The framework kind of a Relay error.
  */
 public func relayErrorKind(error: RelayError) -> ErrorKind  {
@@ -2264,6 +2556,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_func_forge_log_enabled() != 64281) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_func_word_code_number() != 39208) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_func_relay_error_kind() != 51284) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -2273,7 +2568,13 @@ private let initializationResult: InitializationResult = {
     if (uniffi_relay_core_checksum_method_relaycore_background_work_pending() != 23259) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_relay_core_checksum_method_relaycore_cancel_code_receive() != 10020) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_relay_core_checksum_method_relaycore_cancel_invitation() != 53288) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_code_receive_size() != 28847) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_create_invitation() != 11711) {
@@ -2301,6 +2602,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_phase() != 61654) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_relay_core_checksum_method_relaycore_receive_with_code() != 34060) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_relay_core_checksum_method_relaycore_remove_transfer() != 50342) {

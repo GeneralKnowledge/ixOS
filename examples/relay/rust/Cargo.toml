@@ -7,7 +7,8 @@
 name = "relay-core"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.89"
+# iroh 1.x needs 1.91.
+rust-version = "1.91"
 publish = false
 
 [lib]
@@ -44,6 +45,16 @@ forge-services = { path = "../../../crates/forge-services", features = ["ai"] }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"], optional = true }
 serde = { version = "1.0", features = ["derive"] }
 thiserror = "2.0"
+# Receiving with a word code (src/code.rs, Relay M1): iroh with relays off,
+# iroh-blobs for verified, resumable files, SPAKE2 for the code. The same
+# versions as the M0 spike (examples/relay/spike), whose sender it talks to.
+iroh = { version = "1", default-features = false, features = ["tls-ring"] }
+iroh-blobs = "0.105"
+spake2 = "0.4"
+sha2 = "0.10"
+hmac = "0.12"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
+log = "0.4"
 # The `relay` command prints its pairing code as a QR code in the terminal.
 qrcode = { version = "0.14", default-features = false, optional = true }
 
