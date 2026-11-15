@@ -99,6 +99,7 @@ let package = Package(
                 .product(name: "SketchbookApp", package: "sketchbook"),
                 .product(name: "SoundscapeApp", package: "soundscape"),
                 .product(name: "RelayApp", package: "relay"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Sources/AppHost",
             swiftSettings: hostSettings

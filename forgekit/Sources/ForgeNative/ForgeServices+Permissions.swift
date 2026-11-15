@@ -9,6 +9,12 @@ import UserNotifications
     import UIKit
 #endif
 
+extension PermissionStatus {
+    /// True when the capability may be used now: granted, or provisional
+    /// (quiet notifications). Rust's `PermissionStatus::allows_use`.
+    public var allowsUse: Bool { self == .granted || self == .provisional }
+}
+
 /// One permission's status and request. Implement it to add a permission
 /// (camera, photos, location, ...) and register it with
 /// `ForgePermissions.shared.register(_:for:)`; see docs/native-services.md.

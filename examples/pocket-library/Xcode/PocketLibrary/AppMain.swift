@@ -1,5 +1,6 @@
 import PocketLibraryApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

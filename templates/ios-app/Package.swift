@@ -82,6 +82,7 @@ let package = Package(
                 .product(name: "ForgeKit", package: "forgekit"),
                 .product(name: "ForgeNative", package: "forgekit"),
                 .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Sources/AppHost",
             swiftSettings: appSettings

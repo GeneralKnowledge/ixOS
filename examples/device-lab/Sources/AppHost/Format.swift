@@ -192,7 +192,3 @@ extension MagneticAccuracy {
         }
     }
 }
-
-extension PermissionStatus {
-    var allowsUse: Bool { self == .granted || self == .provisional }
-}
