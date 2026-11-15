@@ -18,7 +18,7 @@ fi
 
 cargo build -q --manifest-path "$ROOT/Cargo.toml" -p forge-cli
 export FORGE_WORKSPACE="$ROOT"
-"$ROOT/target/debug/forge" init AICheck --platform ios \
+"${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge" init AICheck --platform ios \
   --bundle-id "${FORGE_CHECK_BUNDLE_ID:-org.example.aicheck}" --path "$APP"
 
 cat "$ROOT/scripts/ai-check/ai_check.rs" >>"$APP/rust/src/lib.rs"
@@ -78,10 +78,10 @@ rm "$QWEN_OUT.orig"
 }
 
 # Rewrite Info.plist, xtool.yml and Package.swift's iOS version from forge.toml.
-"$ROOT/target/debug/forge" config sync --project "$APP"
+"${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge" config sync --project "$APP"
 
 cargo test -q --manifest-path "$APP/rust/Cargo.toml"
-"$ROOT/target/debug/forge" bindings generate --project "$APP"
+"${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge" bindings generate --project "$APP"
 echo
 echo "[forge] Local AI check app ready in $APP"
 echo "[forge] Next: forge run ios --project $APP   (iPhone plugged in and unlocked)"

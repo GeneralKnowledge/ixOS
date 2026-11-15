@@ -35,7 +35,7 @@ model="$app/uitests/model"
 changed=Sources/AppHost/ExerciseView.swift
 
 cargo build -q -p forge-cli
-forge="$root/target/debug/forge"
+forge="${CARGO_TARGET_DIR:-$root/target}/debug/forge"
 
 walk() { # name model seed actions [extra args...]
   local name=$1 file=$2 seed=$3 actions=$4

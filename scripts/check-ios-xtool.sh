@@ -50,7 +50,7 @@ queue_this_run() {
   else
     nice -n 10 cargo build -q -p forge-cli
   fi
-  exec "$ROOT/target/debug/forge" queue run -- "$ROOT/scripts/check-ios-xtool.sh" "$@"
+  exec "${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge" queue run -- "$ROOT/scripts/check-ios-xtool.sh" "$@"
 }
 
 # --ref: build another commit in a worktree, by running this script from there.
@@ -172,7 +172,7 @@ echo "[ios-check] Checking: ${APPS[*]}"
 echo "[ios-check] Logs: $LOGS"
 
 cargo build -q -p forge-cli
-FORGE="$ROOT/target/debug/forge"
+FORGE="${CARGO_TARGET_DIR:-$ROOT/target}/debug/forge"
 
 # One app's build: forge apps through `forge build ios` (the app's Rust for
 # aarch64-apple-ios, then `xtool dev build`, unsigned); the ForgeUI showcase,

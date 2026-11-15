@@ -46,7 +46,7 @@ generate_into() {
   local stage
   stage="$(mktemp -d)"
   cargo run --quiet -p uniffi-bindgen -- generate \
-    --library "$ROOT/target/debug/libforge_app.$ext" --language swift --out-dir "$stage" >&2
+    --library "${CARGO_TARGET_DIR:-$ROOT/target}/debug/libforge_app.$ext" --language swift --out-dir "$stage" >&2
   mkdir -p "$out/ForgeApp" "$out/forge_appFFI"
   mv "$stage/forge_app.swift" "$out/ForgeApp/forge_app.swift"
   mv "$stage/forge_appFFI.h" "$out/forge_appFFI/forge_appFFI.h"

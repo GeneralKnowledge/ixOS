@@ -41,7 +41,7 @@ else
 fi
 
 section "UniFFI bindgen"
-if [[ -x "$ROOT/target/debug/uniffi-bindgen" ]] || cargo run -p uniffi-bindgen -- --help >/dev/null 2>&1; then
+if [[ -x "${CARGO_TARGET_DIR:-$ROOT/target}/debug/uniffi-bindgen" ]] || cargo run -p uniffi-bindgen -- --help >/dev/null 2>&1; then
   echo "uniffi-bindgen available via cargo run -p uniffi-bindgen"
 else
   echo "Build workspace first: cargo build -p uniffi-bindgen"
