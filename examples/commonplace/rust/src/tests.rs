@@ -355,6 +355,13 @@ fn errors_have_framework_kinds() {
         app_error_kind(AppError::Http { status: 500 }),
         ErrorKind::Unavailable
     );
+    assert_eq!(
+        app_error_kind(AppError::Offline {
+            reason: String::new()
+        }),
+        ErrorKind::Network
+    );
+    assert_eq!(app_error_kind(AppError::Timeout), ErrorKind::Network);
 }
 
 #[test]

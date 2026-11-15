@@ -6,7 +6,7 @@ import Observation
 
 /// The version of the forge-app contract this ForgeKit was built against.
 /// `ForgeHost.start()` refuses a Rust library that implements another one.
-public let forgeKitContractVersion: UInt32 = 2
+public let forgeKitContractVersion: UInt32 = 3
 
 /// What ForgeKit needs from an app's Rust core. An app's generated core
 /// object already has these methods (the runtime contract it delegates to
@@ -320,6 +320,8 @@ public enum ForgeErrors {
         case .invalid: return "Check what you entered."
         case .notFound: return "That no longer exists."
         case .unavailable: return "Not available right now. Try again later."
+        case .network: return "Couldn't connect. Check your connection and try again."
+        case .refused: return "That was refused."
         case .interrupted: return "Stopped when the app went to the background. Try again."
         case .cancelled: return "Cancelled."
         case .needsUser: return "This needs your permission or sign-in."
@@ -337,7 +339,9 @@ public enum ForgeErrors {
         switch kind {
         case .invalid: return "Check the Details"
         case .notFound: return "Not Found"
-        case .unavailable: return "Can't Connect"
+        case .unavailable: return "Not Available"
+        case .network: return "Can't Connect"
+        case .refused: return "Refused"
         case .interrupted: return "Stopped"
         case .cancelled: return "Cancelled"
         case .needsUser: return "Permission Needed"
@@ -349,10 +353,11 @@ public enum ForgeErrors {
     }
 
     /// Whether trying the same thing again might work: the network or a
-    /// service was down, or the app left the screen part way.
+    /// service was down, or the app left the screen part way. A refusal
+    /// is not: the same request gets the same answer.
     public static func isRetryable(_ kind: ErrorKind) -> Bool {
         switch kind {
-        case .unavailable, .interrupted: return true
+        case .unavailable, .network, .interrupted: return true
         default: return false
         }
     }
