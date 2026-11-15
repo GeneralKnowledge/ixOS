@@ -20,6 +20,8 @@ When the framework gains a better way to do something, every app moves to it, or
 | `device-lab` | Reachable from Device Lab's Apps screen |
 | `device-family` | Says which devices it runs on (`[ios] devices`) |
 
+A rule an app doesn't meet is one of: **No** (missing: the app should use the framework and doesn't yet, with the wave that fixes it), **Deferred** (known work postponed on purpose, with the wave) or **Not applicable** (the app has a real reason for its own plumbing). Whether an app has been proven on an iPhone is a separate question, answered in [device-validation.md](device-validation.md).
+
 ## Apps
 
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
@@ -28,7 +30,7 @@ When the framework gains a better way to do something, every app moves to it, or
 | checklist | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | commonplace | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
 | counter | Yes | No (decision) | Yes | Yes | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) | Yes |
-| device-lab | Yes | No (wave 3) | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
+| device-lab | Yes | Not applicable | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
 | fieldkit | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
 | good-dog | Yes | No (wave 3) | No (wave 3) | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
@@ -40,24 +42,29 @@ When the framework gains a better way to do something, every app moves to it, or
 
 ## Known lag
 
-| App | Rule | Why | Wave |
-|---|---|---|---|
-| counter | `device-lab` | Proposed for removal; decision pending | decision |
-| counter | `forge-host` | Proposed for removal; decision pending | decision |
-| counter | `requirements` | Proposed for removal; decision pending | decision |
-| counter | `ui-test` | Proposed for removal; decision pending | decision |
-| chat | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
-| chat | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| device-lab | `forge-host` | LabModel keeps its own state; Device Lab's Rust is lab services, not an app core | 3 |
-| good-dog | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
-| good-dog | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| weather | `forge-host` | Rust core predates the forge-app runtime | 3 |
-| weather | `location` | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
-| weather | `requirements` | Written with its move to the framework | 3 |
-| weather | `ui-test` | Written with its move to the framework | 3 |
-| weather | `urlsession` | Open-Meteo requests still go through ureq | 3 |
-| checklist | `device-checks` | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
-| commonplace | `device-checks` | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
-| good-dog | `device-checks` | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
-| sketchbook | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |
-| soundscape | `requirements` | Written as the Soundscape and Sketchbook features are finished | 4 |
+| App | Rule | Status | Why | Wave |
+|---|---|---|---|---|
+| counter | `device-lab` | missing | Proposed for removal; decision pending | decision |
+| counter | `forge-host` | missing | Proposed for removal; decision pending | decision |
+| counter | `requirements` | missing | Proposed for removal; decision pending | decision |
+| counter | `ui-test` | missing | Proposed for removal; decision pending | decision |
+| chat | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
+| chat | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
+| good-dog | `appkit-alerts` | missing | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
+| good-dog | `forge-host` | missing | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
+| weather | `forge-host` | missing | Rust core predates the forge-app runtime | 3 |
+| weather | `location` | missing | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
+| weather | `requirements` | missing | Written with its move to the framework | 3 |
+| weather | `ui-test` | missing | Written with its move to the framework | 3 |
+| weather | `urlsession` | missing | Open-Meteo requests still go through ureq | 3 |
+| checklist | `device-checks` | missing | CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt | 4 |
+| commonplace | `device-checks` | missing | CP-5 (error words) needs the fixture server offline; written with slice 2 | 4 |
+| good-dog | `device-checks` | missing | GD requirements without a scenario yet; written with GD2b's phone run | 4 |
+| sketchbook | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
+| soundscape | `requirements` | missing | Written as the Soundscape and Sketchbook features are finished | 4 |
+
+## Not applicable
+
+| App | Rule | Why |
+|---|---|---|
+| device-lab | `forge-host` | LabModel's state is lab services (sensors, permissions, hosting the other apps), not an app core (decided 2026-11-15) |
