@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # ForgeKit, the Swift half of the application runtime, is made here.
 #
-#   scripts/forgekit.sh generate        regenerate forgekit/Sources/ForgeApp and
-#                                       forgekit/Sources/forge_appFFI from crates/forge-app
+#   scripts/forgekit.sh generate        regenerate the UniFFI Swift in forgekit/Sources
+#                                       (ForgeApp from crates/forge-app, ForgeNative's
+#                                       bindings from crates/forge-native)
 #   scripts/forgekit.sh check           the committed bindings match, and the Rust
 #                                       and Swift contract versions agree
 #   scripts/forgekit.sh release DIR     check, then write the release into DIR (a
@@ -37,32 +38,43 @@ swift_contract() {
   sed -n 's/^public let forgeKitContractVersion: UInt32 = \([0-9]*\).*/\1/p' "$KIT/Sources/ForgeKit/ForgeHost.swift"
 }
 
+# The UniFFI components whose Swift ships in ForgeKit, as crate:module:
+# forge-app's contract types (ForgeApp) and the native services' shared
+# interface (ForgeNative, next to its Swift adapters).
+COMPONENTS=("forge-app:forge_app:ForgeApp" "forge-native:forge_native:ForgeNative")
+
 generate_into() {
-  local out="$1"
-  # The cdylib is built only here: forge-app's Cargo.toml declares a plain
-  # library, so apps never link a dylib of it (an iOS build on Linux cannot).
-  cargo rustc -p forge-app --lib --crate-type cdylib >&2
+  local out="$1" entry crate lib module stage ext
   case "$(uname -s)" in Darwin) ext=dylib ;; *) ext=so ;; esac
-  local stage
-  stage="$(mktemp -d)"
-  cargo run --quiet -p uniffi-bindgen -- generate \
-    --library "${CARGO_TARGET_DIR:-$ROOT/target}/debug/libforge_app.$ext" --language swift --out-dir "$stage" >&2
-  mkdir -p "$out/ForgeApp" "$out/forge_appFFI"
-  mv "$stage/forge_app.swift" "$out/ForgeApp/forge_app.swift"
-  mv "$stage/forge_appFFI.h" "$out/forge_appFFI/forge_appFFI.h"
-  mv "$stage/forge_appFFI.modulemap" "$out/forge_appFFI/module.modulemap"
-  rm -rf "$stage"
+  for entry in "${COMPONENTS[@]}"; do
+    IFS=: read -r crate lib module <<<"$entry"
+    # The cdylib is built only here: the crates declare a plain library, so
+    # apps never link a dylib of them (an iOS build on Linux cannot).
+    cargo rustc -p "$crate" --lib --crate-type cdylib >&2
+    stage="$(mktemp -d)"
+    cargo run --quiet -p uniffi-bindgen -- generate \
+      --library "${CARGO_TARGET_DIR:-$ROOT/target}/debug/lib$lib.$ext" --language swift --out-dir "$stage" >&2
+    mkdir -p "$out/$module" "$out/${lib}FFI"
+    mv "$stage/$lib.swift" "$out/$module/$lib.swift"
+    mv "$stage/${lib}FFI.h" "$out/${lib}FFI/${lib}FFI.h"
+    mv "$stage/${lib}FFI.modulemap" "$out/${lib}FFI/module.modulemap"
+    rm -rf "$stage"
+  done
 }
 
 check() {
   local tmp rc=0
   tmp="$(mktemp -d)"
   generate_into "$tmp"
-  for file in ForgeApp/forge_app.swift forge_appFFI/forge_appFFI.h forge_appFFI/module.modulemap; do
-    if ! diff -u "$KIT/Sources/$file" "$tmp/$file"; then
-      echo "error: forgekit/Sources/$file is stale; run scripts/forgekit.sh generate" >&2
-      rc=1
-    fi
+  local entry crate lib module file
+  for entry in "${COMPONENTS[@]}"; do
+    IFS=: read -r crate lib module <<<"$entry"
+    for file in "$module/$lib.swift" "${lib}FFI/${lib}FFI.h" "${lib}FFI/module.modulemap"; do
+      if ! diff -u "$KIT/Sources/$file" "$tmp/$file"; then
+        echo "error: forgekit/Sources/$file is stale; run scripts/forgekit.sh generate" >&2
+        rc=1
+      fi
+    done
   done
   rm -rf "$tmp"
   local rust swift
@@ -89,8 +101,8 @@ case "${1:-}" in
     check
     # The release names the ixOS commit it came from, so it must be that
     # commit, and one on ixOS main (a branch commit can vanish in a squash).
-    if [[ -n "$(git status --porcelain -- forgekit crates/forge-app)" ]]; then
-      echo "error: forgekit/ or crates/forge-app has uncommitted changes; commit them first" >&2
+    if [[ -n "$(git status --porcelain -- forgekit crates/forge-app crates/forge-native)" ]]; then
+      echo "error: forgekit/, crates/forge-app or crates/forge-native has uncommitted changes; commit them first" >&2
       exit 1
     fi
     if [[ -z "${FORGEKIT_ALLOW_UNMERGED:-}" ]]; then

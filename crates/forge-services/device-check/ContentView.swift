@@ -1,4 +1,5 @@
 @preconcurrency import ForgeFFI
+@preconcurrency import ForgeNative
 import SwiftUI
 import UniformTypeIdentifiers
 

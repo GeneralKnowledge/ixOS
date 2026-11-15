@@ -1,4 +1,6 @@
-// Forge native services: Keychain. Source of truth: crates/forge-services/swift/.
+// Forge native services: Keychain. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import Security
@@ -73,3 +75,5 @@ public final class KeychainSecureStore: SecureStore, @unchecked Sendable {
         return .Platform(code: Int64(status), reason: "Keychain \(what): \(text)")
     }
 }
+
+#endif

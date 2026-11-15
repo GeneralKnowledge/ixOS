@@ -926,6 +926,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-native"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "forge-runtime",
+ "forge-services",
+ "tempfile",
+ "uniffi",
+]
+
+[[package]]
 name = "forge-net"
 version = "0.1.0"
 dependencies = [

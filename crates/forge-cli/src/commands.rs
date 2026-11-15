@@ -2535,17 +2535,16 @@ ios_device = true
         }
     }
 
-    /// The minimal starter needs only the runtime and ForgeKit: ForgeUI and
-    /// ForgeAppKit are optional, and only the full starter uses them.
+    /// The minimal starter needs only the runtime, ForgeKit and ForgeUI (for
+    /// `forgeLaunchAppearance()`; ForgeUI links no Rust): ForgeAppKit is
+    /// optional, and only the full starter uses it.
     #[test]
-    fn minimal_starter_needs_only_the_runtime_and_forgekit() {
+    fn minimal_starter_needs_only_the_runtime_forgekit_and_forgeui() {
         let root = workspace_root();
         let full = root.join("templates/ios-app");
         let minimal = root.join(MINIMAL_TEMPLATE);
         let manifest = fs::read_to_string(minimal.join("Package.swift")).unwrap();
-        for product in ["ForgeUI", "ForgeAppKit"] {
-            assert!(!manifest.contains(&format!("\"{product}\"")), "{product}");
-        }
+        assert!(!manifest.contains(r#""ForgeAppKit""#), "{manifest}");
         assert!(manifest.contains(r#""ForgeKit""#), "{manifest}");
         // Every Swift file the minimal app ends up with: the overlay's, and
         // the full starter's that it keeps.
@@ -2579,14 +2578,12 @@ ios_device = true
         assert!(files.len() > 3, "{files:?}");
         for path in files {
             let text = fs::read_to_string(&path).unwrap();
-            for module in ["ForgeUI", "ForgeAppKit"] {
-                assert!(
-                    !text.lines().any(|l| l.trim_start().starts_with("import")
-                        && l.split_whitespace().any(|w| w == module)),
-                    "{} imports {module}",
-                    path.display()
-                );
-            }
+            assert!(
+                !text.lines().any(|l| l.trim_start().starts_with("import")
+                    && l.split_whitespace().any(|w| w == "ForgeAppKit")),
+                "{} imports ForgeAppKit",
+                path.display()
+            );
         }
     }
 

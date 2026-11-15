@@ -18,18 +18,6 @@ reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
 app = "chat"
-rule = "forgekit"
-wave = 3
-reason = "Predates the ForgeKit package; moves with its ForgeHost migration"
-
-[[lag]]
-app = "chat"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "chat"
 rule = "requirements"
 wave = 4
 reason = "Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6"
@@ -39,12 +27,6 @@ app = "chat"
 rule = "ui-test"
 wave = 4
 reason = "Needs the chat server reachable from the phone; comes with M6"
-
-[[lag]]
-app = "commonplace"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "counter"
@@ -57,18 +39,6 @@ app = "counter"
 rule = "forge-host"
 wave = 0
 reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forgekit"
-wave = 0
-reason = "Proposed for removal (the forge init template is the minimal app); decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "counter"
@@ -89,18 +59,6 @@ wave = 3
 reason = "LabModel keeps its own state; Device Lab's Rust is lab services, not an app core"
 
 [[lag]]
-app = "device-lab"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "fieldkit"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
 app = "good-dog"
 rule = "appkit-alerts"
 wave = 3
@@ -119,40 +77,10 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "good-dog"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "pocket-library"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "relay"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "sketchbook"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
 app = "sketchbook"
 rule = "requirements"
 wave = 4
 reason = "Written as the Soundscape and Sketchbook features are finished"
-
-[[lag]]
-app = "soundscape"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "soundscape"
@@ -165,18 +93,6 @@ app = "weather"
 rule = "forge-host"
 wave = 3
 reason = "Rust core predates the forge-app runtime"
-
-[[lag]]
-app = "weather"
-rule = "forgekit"
-wave = 3
-reason = "The oldest demo; predates the ForgeKit package"
-
-[[lag]]
-app = "weather"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "weather"

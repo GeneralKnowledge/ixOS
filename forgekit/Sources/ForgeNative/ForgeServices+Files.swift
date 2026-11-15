@@ -1,4 +1,6 @@
-// Forge native services: app directories and file import. Source of truth: crates/forge-services/swift/.
+// Forge native services: app directories and file import. Part of ForgeKit (ForgeNative).
+
+#if canImport(Darwin)
 
 import Foundation
 import SwiftUI
@@ -62,3 +64,5 @@ extension View {
         }
     }
 }
+
+#endif

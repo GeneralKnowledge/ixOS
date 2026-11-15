@@ -38,8 +38,9 @@ uniffi::setup_scaffolding!();
 
 // Native services (Keychain, app directories, local notifications,
 // permissions, deep links) as `crate::native`. The daily reminder
-// (src/reminders.rs) uses the notifications. See docs/native-services.md.
-forge_services::native_services!();
+// (src/reminders.rs) uses the notifications. Their Swift is ForgeKit's
+// ForgeNative. See docs/native-services.md.
+pub use forge_native as native;
 
 forge_runtime::app_shell! {
     phase: AppPhase,

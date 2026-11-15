@@ -24,19 +24,19 @@ When the framework gains a better way to do something, every app moves to it, or
 
 | App | `forgekit` | `forge-host` | `appkit-alerts` | `forgeui-appearance` | `urlsession` | `location` | `requirements` | `device-checks` | `ui-test` | `device-lab` | `device-family` |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| chat | No (wave 3) | No (wave 3) | No (wave 3) | No (wave 1) | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes | Yes |
+| chat | Yes | No (wave 3) | No (wave 3) | Yes | Yes | n/a | No (wave 4) | n/a | No (wave 4) | Yes | Yes |
 | checklist | Yes | Yes | Yes | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| commonplace | Yes | Yes | Yes | No (wave 1) | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| counter | No (decision) | No (decision) | Yes | No (wave 1) | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) | Yes |
-| device-lab | Yes | No (wave 3) | Yes | No (wave 1) | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
-| fieldkit | Yes | Yes | Yes | No (wave 1) | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| commonplace | Yes | Yes | Yes | Yes | Yes | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| counter | Yes | No (decision) | Yes | Yes | n/a | n/a | No (decision) | n/a | No (decision) | No (decision) | Yes |
+| device-lab | Yes | No (wave 3) | Yes | Yes | n/a | n/a | n/a | n/a | n/a | n/a | Yes |
+| fieldkit | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
 | forgeui-showcase | Yes | n/a | Yes | Yes | n/a | n/a | n/a | n/a | Yes | Yes | Yes |
-| good-dog | Yes | No (wave 3) | No (wave 3) | No (wave 1) | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
-| pocket-library | Yes | Yes | Yes | No (wave 1) | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
-| relay | Yes | Yes | Yes | No (wave 1) | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
-| sketchbook | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| soundscape | Yes | Yes | Yes | No (wave 1) | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
-| weather | No (wave 3) | No (wave 3) | Yes | No (wave 1) | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
+| good-dog | Yes | No (wave 3) | No (wave 3) | Yes | n/a | n/a | Yes | No (wave 4) | Yes | Yes | Yes |
+| pocket-library | Yes | Yes | Yes | Yes | Yes | n/a | Yes | Yes | Yes | Yes | Yes |
+| relay | Yes | Yes | Yes | Yes | n/a | n/a | Yes | Yes | Yes | Yes | Yes |
+| sketchbook | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| soundscape | Yes | Yes | Yes | Yes | n/a | n/a | No (wave 4) | n/a | Yes | Yes | Yes |
+| weather | Yes | No (wave 3) | Yes | Yes | No (wave 3) | No (wave 3) | No (wave 3) | n/a | No (wave 3) | Yes | Yes |
 
 ## Known lag
 
@@ -44,28 +44,14 @@ When the framework gains a better way to do something, every app moves to it, or
 |---|---|---|---|
 | counter | `device-lab` | Proposed for removal; decision pending | decision |
 | counter | `forge-host` | Proposed for removal; decision pending | decision |
-| counter | `forgekit` | Proposed for removal (the forge init template is the minimal app); decision pending | decision |
 | counter | `requirements` | Proposed for removal; decision pending | decision |
 | counter | `ui-test` | Proposed for removal; decision pending | decision |
-| chat | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| commonplace | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| counter | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| device-lab | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| fieldkit | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| good-dog | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| pocket-library | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| relay | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| sketchbook | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| soundscape | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
-| weather | `forgeui-appearance` | ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release | 1 |
 | chat | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | chat | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
-| chat | `forgekit` | Predates the ForgeKit package; moves with its ForgeHost migration | 3 |
 | device-lab | `forge-host` | LabModel keeps its own state; Device Lab's Rust is lab services, not an app core | 3 |
 | good-dog | `appkit-alerts` | Its own ErrorAlert.swift predates ForgeAppKit | 3 |
 | good-dog | `forge-host` | Keeps its own state model from before ForgeHost (friction log rank 1) | 3 |
 | weather | `forge-host` | Rust core predates the forge-app runtime | 3 |
-| weather | `forgekit` | The oldest demo; predates the ForgeKit package | 3 |
 | weather | `location` | Its own LocationProvider.swift predates the location service (FieldKit is now the second user) | 3 |
 | weather | `requirements` | Written with its move to the framework | 3 |
 | weather | `ui-test` | Written with its move to the framework | 3 |

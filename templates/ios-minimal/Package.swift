@@ -72,7 +72,12 @@ let package = Package(
         // SwiftUI views and the view model; they call the Rust API in ForgeFFI.
         .target(
             name: "FORGE_MODULE_NAMEApp",
-            dependencies: ["FORGE_MODULE_NAMEFFI", .product(name: "ForgeKit", package: "forgekit")],
+            dependencies: [
+                "FORGE_MODULE_NAMEFFI",
+                .product(name: "ForgeKit", package: "forgekit"),
+                // forgeLaunchAppearance()
+                .product(name: "ForgeUI", package: "forgekit"),
+            ],
             path: "Sources/AppHost",
             swiftSettings: appSettings
         ),

@@ -207,11 +207,6 @@ extension FieldKitError: ForgeDescribedError {
 extension TripSummary: Identifiable {}
 extension Note: Identifiable {}
 
-extension PermissionStatus {
-    /// True when location may be used now (Rust's `allows_use`).
-    var allowsUse: Bool { self == .granted || self == .provisional }
-}
-
 // MARK: Formatting (Foundation only, so it tests on Linux)
 
 public enum TripFormat {

@@ -42,7 +42,7 @@ pub async fn services_self_check() -> Vec<String> {
     check("installed", Ok(format!("{:?}", services.directories.application_support)));
 
     let key = "services-check";
-    let secret = format!("secret-{}", forge_services::notify::now_ms());
+    let secret = format!("secret-{}", forge_runtime::now_ms());
     check(
         "keychain write/read",
         services

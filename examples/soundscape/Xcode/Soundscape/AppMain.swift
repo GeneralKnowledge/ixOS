@@ -1,5 +1,6 @@
 import SoundscapeApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

@@ -1,5 +1,6 @@
 import CounterApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct CounterLauncher: App {
