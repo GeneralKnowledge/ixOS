@@ -58,6 +58,7 @@ struct DevicesView: View {
     @State private var showingCode = false
     @State private var scanning = false
     @State private var receivingCode = false
+    @State private var sendingCode = false
     @State private var renaming = false
     @State private var newName = ""
     @State private var preview: URL?
@@ -109,6 +110,8 @@ struct DevicesView: View {
                         Button("Scan a Code", systemImage: "qrcode.viewfinder") { scanning = true }
                             .accessibilityIdentifier("devices.scan")
                         Divider()
+                        Button("Send with a Code", systemImage: "arrow.up.circle") { sendingCode = true }
+                            .accessibilityIdentifier("devices.sendCode")
                         Button("Receive with a Code", systemImage: "arrow.down.circle") { receivingCode = true }
                             .accessibilityIdentifier("devices.receiveCode")
                     } label: {
@@ -133,6 +136,9 @@ struct DevicesView: View {
             .sheet(isPresented: $receivingCode) {
                 ReceiveCodeSheet(model: model, network: network, preview: $preview)
             }
+            .sheet(isPresented: $sendingCode) {
+                SendCodeSheet(model: model, network: network)
+            }
             .alert("Rename This Device", isPresented: $renaming) {
                 TextField("Name", text: $newName)
                     .accessibilityIdentifier("rename.name")
@@ -144,7 +150,7 @@ struct DevicesView: View {
                 Text("Other devices see this name.")
             }
             .forgeAlert(Binding(
-                get: { showingCode || scanning || receivingCode ? nil : model.alert },
+                get: { showingCode || scanning || receivingCode || sendingCode ? nil : model.alert },
                 set: { model.alert = $0 }
             )) { action in Task { await model.handle(action) } }
             .quickLookPreview($preview)

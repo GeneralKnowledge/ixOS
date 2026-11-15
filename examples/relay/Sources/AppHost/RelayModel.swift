@@ -280,6 +280,83 @@ public final class RelayModel {
         if !isReceivingCode { codeReceive = .idle }
     }
 
+    // MARK: Sending with a word code (Relay M1)
+
+    /// Where a code send is: the screen shows this.
+    public enum CodeSend: Equatable, Sendable {
+        case idle
+        /// Hashing the file and opening the endpoint.
+        case starting
+        /// Running; Rust's status (the live code, waiting or sending).
+        case running(CodeSendStatus, since: Date)
+        case sent(CodeSendStatus)
+        case failed(String)
+    }
+
+    public private(set) var codeSend: CodeSend = .idle
+
+    public var isSendingCode: Bool {
+        switch codeSend {
+        case .starting, .running: true
+        default: false
+        }
+    }
+
+    /// Starts sending `file` with a word code. `advertise` publishes the
+    /// code's number with Bonjour (`RelayNetwork`), and is called again
+    /// whenever a new code replaces it.
+    public func send(
+        file url: URL,
+        numbersInUse: [UInt8],
+        advertise: (UInt8, String, UInt16) -> Void
+    ) async {
+        codeSend = .starting
+        do {
+            let offer = try await core.sendWithCode(path: url.path, numbersInUse: numbersInUse)
+            codeAdvert = (offer.endpointId, offer.port)
+            advertise(offer.status.number, offer.endpointId, offer.port)
+            advertised = offer.status.generation
+            codeSend = .running(offer.status, since: Date())
+        } catch {
+            log.warn("code send failed to start: \(error)")
+            codeSend = .failed(Self.message(error))
+        }
+    }
+
+    @ObservationIgnored private var codeAdvert: (endpointID: String, port: UInt16)?
+    @ObservationIgnored private var advertised: UInt64 = 0
+
+    /// Re-reads the send's status; re-advertises when the code changed.
+    /// Returns false once the send has ended (the caller stops advertising).
+    @discardableResult
+    public func refreshCodeSend(advertise: (UInt8, String, UInt16) -> Void) -> Bool {
+        guard case .running(_, let since) = codeSend, let status = core.codeSendStatus() else { return false }
+        switch status.state {
+        case .waiting, .sending:
+            if status.generation != advertised, let advert = codeAdvert {
+                advertise(status.number, advert.endpointID, advert.port)
+                advertised = status.generation
+            }
+            codeSend = .running(status, since: since)
+            return true
+        case .sent:
+            codeSend = .sent(status)
+            saveCount += 1
+            return false
+        case .failed:
+            codeSend = .failed(status.note.isEmpty ? "The send stopped." : status.note)
+            return false
+        }
+    }
+
+    public func cancelCodeSend() {
+        core.cancelCodeSend()
+    }
+
+    public func resetCodeSend() {
+        if !isSendingCode { codeSend = .idle }
+    }
+
     nonisolated private static func message(_ error: Error) -> String {
         if let relay = error as? RelayError {
             switch relay {

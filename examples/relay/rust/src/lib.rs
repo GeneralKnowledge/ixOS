@@ -27,6 +27,8 @@
 //!   one iPhone and a laptop are enough to try it.
 
 mod code;
+mod code_send;
+mod code_session;
 pub mod link;
 mod model;
 mod record;
@@ -46,6 +48,8 @@ use forge_storage::FileStore;
 
 use code::CodeProgress;
 pub use code::{CodeReceipt, CODE_SERVICE_TYPE};
+use code_send::CodeSending;
+pub use code_send::{CodeOffer, CodeSendState, CodeSendStatus};
 
 pub use link::AskReport;
 use link::{Inbound, Link, Me, Outgoing, Them};
@@ -110,6 +114,8 @@ pub struct RelayCore {
     code_dir: PathBuf,
     code_progress: Arc<CodeProgress>,
     code_stop: Mutex<Arc<AtomicBool>>,
+    /// Sending with a word code (`code_send`): the one send in progress.
+    code_sending: Arc<CodeSending>,
     me: Weak<RelayCore>,
 }
 
@@ -165,6 +171,7 @@ impl RelayCore {
             code_dir,
             code_progress: Arc::new(CodeProgress::default()),
             code_stop: Mutex::new(Arc::new(AtomicBool::new(false))),
+            code_sending: Arc::new(CodeSending::default()),
             me: me.clone(),
         }))
     }
@@ -219,6 +226,47 @@ impl RelayCore {
             total,
             already: self.code_progress.already.load(Ordering::SeqCst),
         })
+    }
+
+    /// Sends the file at `path` with a word code: this device waits for a
+    /// receiver on the local network (Relay M1). Returns the first code and
+    /// what the app advertises with Bonjour (`CODE_SERVICE_TYPE` on `port`,
+    /// TXT `v=1`, `n` = the code's number, `id` = `endpoint_id`). The send
+    /// then runs by itself: a wrong guess or a dropped transfer replaces the
+    /// code (the app re-advertises when `code_send_status` shows a new
+    /// number), and it ends once the receiver has the file. `numbers_in_use`
+    /// are the numbers other senders nearby advertise, which new codes
+    /// avoid. The file must stay where it is until the send ends. One at a
+    /// time.
+    pub async fn send_with_code(
+        &self,
+        path: String,
+        numbers_in_use: Vec<u8>,
+    ) -> Result<CodeOffer, RelayError> {
+        if lock(&self.code_sending.stop).is_some() {
+            return Err(RelayError::Declined {
+                reason: "already sending with a code".into(),
+            });
+        }
+        code_send::start(
+            std::path::Path::new(&path),
+            numbers_in_use,
+            &self.code_dir.join("send-store"),
+            Arc::clone(&self.code_sending),
+        )
+        .await
+    }
+
+    /// The code send in progress or last finished; `None` before the first.
+    pub fn code_send_status(&self) -> Option<CodeSendStatus> {
+        lock(&self.code_sending.status).clone()
+    }
+
+    /// Stops the code send in progress, if any; it ends as `Failed`.
+    pub fn cancel_code_send(&self) {
+        if let Some(stop) = lock(&self.code_sending.stop).as_ref() {
+            stop.store(true, Ordering::SeqCst);
+        }
     }
 
     /// This device, as others see it.

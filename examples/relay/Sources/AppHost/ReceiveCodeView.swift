@@ -38,6 +38,9 @@ struct ReceiveCodeSheet: View {
                 Section {
                     status
                 }
+                Section {
+                    MemoryLine()
+                }
             }
             .navigationTitle("Receive with a Code")
             .navigationBarTitleDisplayMode(.inline)

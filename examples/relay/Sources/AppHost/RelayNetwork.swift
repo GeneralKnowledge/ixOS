@@ -124,6 +124,53 @@ final class RelayNetwork {
 
     static let codeServiceType = "_forgerelay._udp"
 
+    @ObservationIgnored private var codeAdvert: NetService?
+
+    /// Advertises this device as a code sender: `_forgerelay._udp` on
+    /// Rust's UDP `port`, TXT `v=1`, `n` = the code's number, `id` = the
+    /// endpoint id, the record a receiver (`findCodeSender`, or
+    /// `relay-spike receive` on a computer) looks for. Replaces any earlier
+    /// advert, so a new code's number shows at once.
+    func advertiseCodeSender(number: UInt8, endpointID: String, port: UInt16) {
+        stopCodeAdvert()
+        let name = "relay-\(endpointID.prefix(8))-\(number)"
+        let service = NetService(domain: "local.", type: Self.codeServiceType + ".", name: name, port: Int32(port))
+        let txt: [String: Data] = [
+            "v": Data("1".utf8),
+            "n": Data(String(number).utf8),
+            "id": Data(endpointID.utf8),
+        ]
+        service.setTXTRecord(NetService.data(fromTXTRecord: txt))
+        service.publish()
+        codeAdvert = service
+    }
+
+    func stopCodeAdvert() {
+        codeAdvert?.stop()
+        codeAdvert = nil
+    }
+
+    /// The code numbers other senders on this Wi-Fi advertise now, after
+    /// listening for `seconds`; a new code avoids them.
+    func codeNumbersInUse(seconds: Double = 1.5) async -> [UInt8] {
+        let browser = NWBrowser(
+            for: .bonjourWithTXTRecord(type: Self.codeServiceType, domain: nil),
+            using: .udp
+        )
+        let numbers = NumbersSeen()
+        browser.browseResultsChangedHandler = { results, _ in
+            for result in results {
+                if case .bonjour(let txt) = result.metadata, let n = txt["n"].flatMap({ UInt8($0) }) {
+                    numbers.add(n)
+                }
+            }
+        }
+        browser.start(queue: .main)
+        try? await Task.sleep(for: .milliseconds(Int(seconds * 1000)))
+        browser.cancel()
+        return numbers.all
+    }
+
     /// A Bonjour UDP service's "host:port": a UDP connection is ready once
     /// the name resolves, and sends nothing.
     private static func resolve(_ endpoint: NWEndpoint, ipv4Only: Bool) async -> String? {
@@ -218,6 +265,24 @@ private final class CodeMatches: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return found.map { ($0.key, $0.value) }
+    }
+}
+
+/// Code numbers seen while browsing.
+private final class NumbersSeen: @unchecked Sendable {
+    private let lock = NSLock()
+    private var seen: Set<UInt8> = []
+
+    func add(_ number: UInt8) {
+        lock.lock()
+        seen.insert(number)
+        lock.unlock()
+    }
+
+    var all: [UInt8] {
+        lock.lock()
+        defer { lock.unlock() }
+        return seen.sorted()
     }
 }
 

@@ -34,15 +34,15 @@ use crate::model::RelayError;
 
 /// The Bonjour service a sender advertises.
 pub const CODE_SERVICE_TYPE: &str = "_forgerelay._udp";
-const CODE_ALPN: &[u8] = b"forge-relay/code/1";
+pub(crate) const CODE_ALPN: &[u8] = b"forge-relay/code/1";
 const APP_ID: &str = "forge-relay/v1";
 /// Time allowed for each step of the code handshake.
-const STEP: Duration = Duration::from_secs(10);
+pub(crate) const STEP: Duration = Duration::from_secs(10);
 /// How often the receiver tells the sender it is still there.
-const TICK: Duration = Duration::from_secs(2);
-const GO: u8 = b'K';
-const BUSY: u8 = b'B';
-const GONE: u8 = b'G';
+pub(crate) const TICK: Duration = Duration::from_secs(2);
+pub(crate) const GO: u8 = b'K';
+pub(crate) const BUSY: u8 = b'B';
+pub(crate) const GONE: u8 = b'G';
 
 /// The EFF short word list 1 (CC BY 3.0 US), as the sender uses.
 static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
@@ -53,7 +53,7 @@ static WORDS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
 });
 
 /// One tokio runtime for iroh, started on first use.
-static TOKIO: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
+pub(crate) static TOKIO: LazyLock<tokio::runtime::Runtime> = LazyLock::new(|| {
     tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .thread_name("relay-code")
@@ -104,7 +104,28 @@ impl WordCode {
         })
     }
 
-    fn pake(&self) -> (Spake2<Ed25519Group>, Vec<u8>) {
+    /// A fresh random code whose number isn't in `in_use` (numbers other
+    /// senders nearby advertise), if one is free.
+    pub(crate) fn random(in_use: &[u8]) -> Self {
+        let free: Vec<u8> = (1..=99).filter(|n| !in_use.contains(n)).collect();
+        let number = if free.is_empty() {
+            1 + (random_below(99) as u8)
+        } else {
+            free[random_below(free.len() as u64) as usize]
+        };
+        let pick = || WORDS[random_below(WORDS.len() as u64) as usize].to_string();
+        Self {
+            number,
+            words: [pick(), pick(), pick()],
+        }
+    }
+
+    /// `37-grasp-gag-drum`.
+    pub fn text(&self) -> String {
+        format!("{}-{}", self.number, self.words.join("-"))
+    }
+
+    pub(crate) fn pake(&self) -> (Spake2<Ed25519Group>, Vec<u8>) {
         Spake2::<Ed25519Group>::start_symmetric(
             &Password::new(self.words.join("-").as_bytes()),
             &Identity::new(format!("{APP_ID}/{}", self.number).as_bytes()),
@@ -112,7 +133,22 @@ impl WordCode {
     }
 }
 
-fn confirm(key: &[u8], role: &str, sender: EndpointId, receiver: EndpointId) -> Vec<u8> {
+/// A uniformly random number below `n` (n > 0), from the system's
+/// randomness; codes must not be guessable.
+fn random_below(n: u64) -> u64 {
+    // Rejection sampling, so every value is equally likely.
+    let zone = u64::MAX - (u64::MAX % n);
+    loop {
+        let mut b = [0u8; 8];
+        getrandom::fill(&mut b).expect("system randomness");
+        let v = u64::from_le_bytes(b);
+        if v < zone {
+            return v % n;
+        }
+    }
+}
+
+pub(crate) fn confirm(key: &[u8], role: &str, sender: EndpointId, receiver: EndpointId) -> Vec<u8> {
     let mut mac = Hmac::<Sha256>::new_from_slice(key).expect("any key length");
     mac.update(role.as_bytes());
     mac.update(sender.as_bytes());
@@ -140,20 +176,23 @@ pub struct CodeReceipt {
     pub megabytes_per_second: f64,
 }
 
-fn connection(reason: impl std::fmt::Display) -> RelayError {
+pub(crate) fn connection(reason: impl std::fmt::Display) -> RelayError {
     RelayError::Connection {
         reason: reason.to_string(),
     }
 }
 
-async fn put(send: &mut SendStream, bytes: &[u8]) -> Result<(), RelayError> {
+pub(crate) async fn put(send: &mut SendStream, bytes: &[u8]) -> Result<(), RelayError> {
     send.write_all(&(bytes.len() as u32).to_be_bytes())
         .await
         .map_err(connection)?;
     send.write_all(bytes).await.map_err(connection)
 }
 
-async fn get_within(recv: &mut RecvStream, limit: Duration) -> Result<Vec<u8>, RelayError> {
+pub(crate) async fn get_within(
+    recv: &mut RecvStream,
+    limit: Duration,
+) -> Result<Vec<u8>, RelayError> {
     let read = async {
         let mut len = [0u8; 4];
         recv.read_exact(&mut len).await.map_err(connection)?;
@@ -406,6 +445,19 @@ mod tests {
         let (sa, ma) = a.pake();
         let (sb, mb) = b.pake();
         assert_eq!(sa.finish(&mb).unwrap(), sb.finish(&ma).unwrap());
+    }
+
+    #[test]
+    fn a_random_code_parses_back_and_avoids_numbers_in_use() {
+        let in_use: Vec<u8> = (1..=98).collect();
+        for _ in 0..50 {
+            let code = WordCode::random(&in_use);
+            assert_eq!(code.number, 99);
+            assert_eq!(WordCode::parse(&code.text()).unwrap(), code);
+        }
+        // With every number taken it still makes a code.
+        let all: Vec<u8> = (1..=99).collect();
+        assert!((1..=99).contains(&WordCode::random(&all).number));
     }
 
     #[test]

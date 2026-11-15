@@ -3092,6 +3092,7 @@ dependencies = [
  "forge-runtime",
  "forge-services",
  "forge-storage",
+ "getrandom 0.3.4",
  "hmac",
  "iroh",
  "iroh-blobs",

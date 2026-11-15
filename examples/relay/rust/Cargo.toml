@@ -58,6 +58,8 @@ iroh-blobs = "=0.104.1"
 # (n0-computer/net-tools#267, shellrow/netdev#195).
 libc = "=0.2.189"
 spake2 = "0.4"
+# Random word codes when this device sends (src/code_send.rs).
+getrandom = "0.3"
 sha2 = "0.10"
 hmac = "0.12"
 tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "macros"] }
