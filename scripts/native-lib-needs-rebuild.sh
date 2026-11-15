@@ -60,7 +60,7 @@ META="${ARTIFACT}.forge-build-meta"
 case "$MODE" in
   ios)
     TARGET="${FORGE_IOS_TARGET:-aarch64-apple-ios}"
-    PROFILE="${FORGE_IOS_PROFILE:-release}"
+    PROFILE="${FORGE_IOS_PROFILE:-forge-dev}"
     WANT="${TARGET}|${PROFILE}|${SDKROOT:-}|${FORGE_RUST_FEATURES:-}"
     ;;
   android)

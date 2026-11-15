@@ -19,21 +19,29 @@ esac
 
 mkdir -p "$OUT"
 
-echo "[forge] Building ${CRATE_DIR#"$ROOT/"} (host) for binding generation..."
-if grep -q '^crate-type *=.*"cdylib"' "$CRATE_DIR/Cargo.toml"; then
-  cargo build "${CARGO_SELECT[@]}"
+if [[ -n "${FORGE_BINDINGS_LIBRARY:-}" ]]; then
+  # The library the app links (package-ios-library.sh passes the iOS static
+  # library it just built): UniFFI reads the same metadata from it as from a
+  # host build, so the crate isn't compiled a second time for the host.
+  LIB="$FORGE_BINDINGS_LIBRARY"
+  echo "[forge] Reading the bindings from ${LIB#"$ROOT/"}"
 else
-  # An app crate other apps link (Weather, ...) has no cdylib: as a
-  # dependency, Cargo would link it for iOS, which needs Apple's linker.
-  # UniFFI reads the bindings from a host shared library, so build one here.
-  cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type cdylib
-fi
+  echo "[forge] Building ${CRATE_DIR#"$ROOT/"} (host) for binding generation..."
+  if grep -q '^crate-type *=.*"cdylib"' "$CRATE_DIR/Cargo.toml"; then
+    cargo build "${CARGO_SELECT[@]}"
+  else
+    # An app crate other apps link (Weather, ...) has no cdylib: as a
+    # dependency, Cargo would link it for iOS, which needs Apple's linker.
+    # UniFFI reads the bindings from a host shared library, so build one here.
+    cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type cdylib
+  fi
 
-case "$(uname -s)" in
-  Darwin) LIB_EXT="dylib" ;;
-  *) LIB_EXT="so" ;;
-esac
-LIB="$CARGO_TARGET/debug/lib${LIB_NAME}.${LIB_EXT}"
+  case "$(uname -s)" in
+    Darwin) LIB_EXT="dylib" ;;
+    *) LIB_EXT="so" ;;
+  esac
+  LIB="$CARGO_TARGET/debug/lib${LIB_NAME}.${LIB_EXT}"
+fi
 # The bindings' Swift module is SWIFT_BINDINGS (forge.toml `[swift]
 # bindings_module`, else ForgeFFI) over the C module <library>FFI. The files
 # keep Forge's fixed names (Generated/ForgeFFI/forge_ffi.swift,
@@ -91,6 +99,23 @@ else
   if [[ -f "$STAGE/${SWIFT_BINDINGS}.swift" ]]; then
     mv "$STAGE/${SWIFT_BINDINGS}.swift" "$STAGE/forge_ffi.swift"
   fi
+  # Makes the folder DST hold exactly the files of SRC (both flat), touching
+  # only the files that differ, so unchanged files keep their modification time.
+  sync_dir() {
+    local src="$1" dst="$2" f name
+    mkdir -p "$dst"
+    for f in "$src"/*; do
+      [[ -f "$f" ]] || continue
+      name="${f##*/}"
+      cmp -s "$f" "$dst/$name" || cp "$f" "$dst/$name"
+    done
+    for f in "$dst"/* "$dst"/.[!.]*; do
+      [[ -e "$f" ]] || continue
+      name="${f##*/}"
+      [[ -f "$src/$name" ]] || rm -rf "$f"
+    done
+  }
+
   # One app's Swift module: DIR/ForgeFFI/<file>.swift over the C module
   # DIR/<ffi>FFI/, plus the Swift helpers, native services adapters and
   # logging wrapper its bindings call for.
@@ -162,7 +187,14 @@ else
     fi
   }
 
-  forge_swift_module "$OUT" forge_ffi forge_ffi
+  # Build the module in the staging folder, then copy into OUT only the files
+  # whose contents changed (and drop files no longer generated). Rewriting
+  # every file gave them new modification times on every build, so SwiftPM
+  # recompiled the bindings module, and everything importing it, even when the
+  # Rust API had not changed.
+  forge_swift_module "$STAGE/out" forge_ffi forge_ffi
+  sync_dir "$STAGE/out/ForgeFFI" "$OUT/ForgeFFI"
+  sync_dir "$STAGE/out/forge_ffiFFI" "$OUT/forge_ffiFFI"
   # Older layout kept everything at the top level, which SwiftPM rejects.
   rm -f "$OUT/forge_ffi.swift" "$OUT/forge_ffiFFI.h" "$OUT/forge_ffiFFI.modulemap"
 

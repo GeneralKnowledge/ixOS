@@ -13,7 +13,11 @@ source "$ROOT/scripts/forge-crate.sh"
 REQUESTED_SDKROOT="${SDKROOT:-}"
 
 TARGET="${FORGE_IOS_TARGET:-aarch64-apple-ios}"
-PROFILE="${FORGE_IOS_PROFILE:-release}"
+# forge-dev: development builds (the default, and every `forge build/run/publish
+# ios` without --release). release: --release builds, with the app crate's
+# [profile.release] (link-time optimisation, one codegen unit: the smallest,
+# fastest binary, and by far the slowest build). See docs/builds.md.
+PROFILE="${FORGE_IOS_PROFILE:-forge-dev}"
 
 if ! rustup target list --installed | grep -q "^${TARGET}$"; then
   echo "[forge] Adding Rust target ${TARGET}..."
@@ -70,6 +74,21 @@ case "$PROFILE" in
   *) CARGO_PROFILE="$PROFILE" PROFILE_DIR="$PROFILE" ;;
 esac
 
+# The forge-dev profile: optimised like release (opt-level 3), but without
+# link-time optimisation and with parallel codegen units and incremental
+# compilation, so a change rebuilds in seconds to a minute instead of
+# re-optimising the whole program on one core. An app crate may define its own
+# [profile.forge-dev] in Cargo.toml; otherwise Forge defines it here.
+PROFILE_CONFIG=()
+if [[ "$CARGO_PROFILE" == forge-dev ]] && ! grep -q '^\[profile\.forge-dev\]' "$CRATE_DIR/Cargo.toml"; then
+  PROFILE_CONFIG=(
+    --config 'profile.forge-dev.inherits="release"'
+    --config 'profile.forge-dev.lto=false'
+    --config 'profile.forge-dev.codegen-units=16'
+    --config 'profile.forge-dev.incremental=true'
+  )
+fi
+
 echo "[forge] Building ${CRATE_DIR#"$ROOT/"} for ${TARGET} (${CARGO_PROFILE})..."
 # Only the static library is linked into the app. Asking for it alone skips the crate's
 # cdylib, which needs an iOS linker that a Linux host (xtool's Darwin SDK) does not provide.
@@ -87,7 +106,7 @@ PROFILE_DEBUG_VAR="CARGO_PROFILE_$(echo "$CARGO_PROFILE" | tr 'a-z-' 'A-Z_')_DEB
 if [[ "$CARGO_PROFILE" != "dev" && -z "${!PROFILE_DEBUG_VAR:-}" ]]; then
   export "$PROFILE_DEBUG_VAR=${FORGE_IOS_RUST_DEBUG:-line-tables-only}"
 fi
-cargo rustc "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE" ${FEATURES[@]+"${FEATURES[@]}"}
+cargo rustc ${PROFILE_CONFIG[@]+"${PROFILE_CONFIG[@]}"} "${CARGO_SELECT[@]}" --lib --crate-type staticlib --target "$TARGET" --profile "$CARGO_PROFILE" ${FEATURES[@]+"${FEATURES[@]}"}
 
 OUT_DIR="$NATIVE_OUT/ios-device/lib"
 mkdir -p "$OUT_DIR"
