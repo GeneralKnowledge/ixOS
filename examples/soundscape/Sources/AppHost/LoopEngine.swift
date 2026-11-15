@@ -144,7 +144,7 @@ final class LoopEngine {
     /// clicks counts in first. The input's and output's latency are skipped,
     /// so what you played along to lines up with the loop.
     func record(frames: (Double) -> Int?) async throws -> URL {
-        guard await AVAudioApplication.requestRecordPermission() else { throw Failure.noMicrophone }
+        guard await Self.microphoneAllowed() else { throw Failure.noMicrophone }
         try ForgeAudioSession.activate(.record)
         stop()
         // The microphone joins the graph only when the engine starts with
@@ -208,6 +208,25 @@ final class LoopEngine {
             stop()
         }
         return try await recorder.finished()
+    }
+
+    /// Whether the microphone may be used, asking the first time. Not the
+    /// async `requestRecordPermission()`: AVAudioSession can call its
+    /// completion on the main thread before returning, and resuming
+    /// Swift's bridged continuation from there crashed the app (Record,
+    /// iOS 26.3). The answer is read first; only an undecided permission
+    /// asks, through a continuation of our own.
+    nonisolated private static func microphoneAllowed() async -> Bool {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted: return true
+        case .denied: return false
+        default:
+            return await withCheckedContinuation { (continuation: CheckedContinuation<Bool, Never>) in
+                AVAudioApplication.requestRecordPermission { @Sendable allowed in
+                    continuation.resume(returning: allowed)
+                }
+            }
+        }
     }
 
     /// Ends the recording now, keeping what was recorded so far.
