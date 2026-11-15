@@ -130,7 +130,12 @@ else
     # import for a module of external types, so add it.
     local imports=""
     [[ -f "$STAGE/forge_app.swift" ]] && imports+="\n@preconcurrency import ForgeApp"
-    [[ -f "$STAGE/forge_native.swift" ]] && imports+="\n@preconcurrency import ForgeNative"
+    # A crate on the native_services!() macro has the same names itself, and
+    # can only reach forge-native through another app it links (Device Lab
+    # hosting Good Dog), so it must not import ForgeNative.
+    if [[ -f "$STAGE/forge_native.swift" ]] && ! grep -q 'public func installNativeServices(' "$STAGE/$ns.swift"; then
+      imports+="\n@preconcurrency import ForgeNative"
+    fi
     if [[ -n "$imports" ]]; then
       sed "s/^import Foundation\$/import Foundation$imports/" "$STAGE/$ns.swift" >"$swift"
     else
