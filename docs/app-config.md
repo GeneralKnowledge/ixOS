@@ -173,10 +173,10 @@ For an app that runs other apps inside it (Device Lab's Apps screen):
 
 | Command | Swift configuration | Rust library |
 |---|---|---|
-| `forge build ios`, `forge run ios` | debug (`xtool dev build`) | release profile |
-| `forge build ios --release`, `forge run ios --release` | release (`xtool dev build -c release`) | release profile |
+| `forge build ios`, `forge run ios`, `forge publish ios` | debug (`xtool dev build`) | `forge-dev` profile |
+| `forge build ios --release`, `forge run ios --release`, `forge publish ios --release` | release (`xtool dev build -c release`) | release profile |
 
-The Rust library is optimised in both. Set `FORGE_IOS_PROFILE=debug` for an unoptimised one. Both configurations are development builds signed for your own devices; App Store distribution is not supported yet ([builds.md](builds.md)).
+The Rust library is optimised in both. `forge-dev` leaves out link-time optimisation, so it builds much faster and the app is somewhat larger ([builds.md](builds.md#build-speed)). Set `FORGE_IOS_PROFILE=debug` for an unoptimised one, or `FORGE_IOS_PROFILE=release` for the release profile in a debug build. Both configurations are development builds signed for your own devices; App Store distribution is not supported yet ([builds.md](builds.md)).
 
 ## Xcode (macOS, optional)
 

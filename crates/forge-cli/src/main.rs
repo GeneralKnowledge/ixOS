@@ -1130,7 +1130,7 @@ enum BuildCommands {
             help = "Only build Rust static library and regenerate bindings (skip xtool dev)"
         )]
         package_only: bool,
-        /// Build the Swift app in the release configuration (xtool dev build -c release)
+        /// Build the Swift app in the release configuration (xtool dev build -c release), and the Rust library with its release profile (link-time optimisation)
         #[arg(long, conflicts_with = "package_only")]
         release: bool,
         /// Include the live connection to `forge device` (pair, connect,
@@ -1191,7 +1191,8 @@ enum PublishCommands {
             help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
         )]
         project: Option<PathBuf>,
-        /// Build the Swift app in the release configuration
+        /// Build the Swift app in the release configuration, and the Rust
+        /// library with its release profile (link-time optimisation)
         #[arg(long, conflicts_with = "ipa")]
         release: bool,
         /// Publish this signed .ipa instead of building one
@@ -1250,7 +1251,7 @@ enum RunCommands {
             help = "App directory (default: the current directory if it has forge.toml, else examples/counter)"
         )]
         project: Option<PathBuf>,
-        /// Build the Swift app in the release configuration (xtool dev build -c release)
+        /// Build the Swift app in the release configuration (xtool dev build -c release), and the Rust library with its release profile (link-time optimisation)
         #[arg(long)]
         release: bool,
         /// Include the live connection to `forge device` (pair, connect,

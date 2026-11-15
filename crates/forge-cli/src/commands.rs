@@ -1079,16 +1079,22 @@ fn ios_preflight(
 /// With `devtools`, the app crate is built with its `devtools` feature: the
 /// live connection to `forge device` (docs/forge-device.md). Never on
 /// unless asked, so an ordinary build contains none of it.
+///
+/// The Rust profile follows the Swift configuration: a release build gets
+/// Cargo's `release` profile (link-time optimisation, smallest binary), a
+/// debug build the faster-building `forge-dev` profile (optimised, no LTO;
+/// scripts/build-rust-ios.sh). `FORGE_IOS_PROFILE` set by the caller wins.
 fn package_ios(
     runner: &dyn CommandRunner,
     root: &Path,
     project_dir: &Path,
     cfg: &ForgeConfig,
+    configuration: IosConfiguration,
     devtools: bool,
 ) -> Result<(), String> {
     sync_app_config(project_dir, cfg)?;
     let generated = project_dir.join("Generated");
-    let package = script(root, "package-ios-library.sh")
+    let mut package = script(root, "package-ios-library.sh")
         .arg(generated_dir_arg(root, &generated))
         // The app's name on the live connection (forge device pair/connect).
         .env("FORGE_APP_ID", &cfg.app.bundle_id)
@@ -1096,8 +1102,19 @@ fn package_ios(
             "FORGE_RUST_FEATURES",
             if devtools { "devtools" } else { "" },
         );
+    if std::env::var_os("FORGE_IOS_PROFILE").is_none() {
+        package = package.env("FORGE_IOS_PROFILE", ios_rust_profile(configuration));
+    }
     // Cargo for iOS: the heaviest step, capped (build_lock.rs).
     crate::build_lock::run_heavy(runner, with_app_crate(package, cfg, project_dir))
+}
+
+/// The Cargo profile of the iOS Rust library for a Swift configuration.
+pub(crate) fn ios_rust_profile(configuration: IosConfiguration) -> &'static str {
+    match configuration {
+        IosConfiguration::Debug => "forge-dev",
+        IosConfiguration::Release => "release",
+    }
 }
 
 pub fn build_ios(
@@ -1115,7 +1132,7 @@ pub fn build_ios(
     }
     // One heavy build at a time on this machine (build_lock.rs).
     let _lock = crate::build_lock::acquire("forge build ios", &project_dir)?;
-    package_ios(runner, root, &project_dir, &cfg, devtools)?;
+    package_ios(runner, root, &project_dir, &cfg, configuration, devtools)?;
     if package_only {
         println!(
             "Rust static library and Swift bindings are ready for {} (open Xcode/ or build with {}).",
@@ -1154,7 +1171,7 @@ pub fn build_signed_ipa(
             .filter(|o| o.status.success())
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
     };
-    package_ios(runner, root, &project_dir, &cfg, false)?;
+    package_ios(runner, root, &project_dir, &cfg, configuration, false)?;
     // After packaging, which regenerates Forge's files (so a stamp left by a
     // killed publish doesn't count as a change).
     let changes = git(&["status", "--porcelain", "--untracked-files=no", "--", "."])
@@ -1292,7 +1309,7 @@ fn run_ios_steps(
     status.phase("waiting_for_build_lock");
     let lock = crate::build_lock::acquire("forge run ios", &project_dir)?;
     status.phase("building");
-    package_ios(runner, root, &project_dir, cfg, devtools)?;
+    package_ios(runner, root, &project_dir, cfg, configuration, devtools)?;
     println!(
         "[forge] Building the Swift app ({}) before looking for the iPhone",
         configuration.name()
@@ -1974,6 +1991,41 @@ ios_device = true
             mock.calls().last().unwrap().cwd.as_deref(),
             Some(root.join("apps/demo").as_path())
         );
+    }
+
+    #[test]
+    fn ios_rust_profile_follows_the_swift_configuration() {
+        for (configuration, profile) in [
+            (IosConfiguration::Debug, "forge-dev"),
+            (IosConfiguration::Release, "release"),
+        ] {
+            let (_tmp, root) = workspace(IOS_TOML, &[]);
+            let mock = ready_ios_host();
+            build_ios(
+                &mock,
+                &XtoolBuilder,
+                &root,
+                Path::new("apps/demo"),
+                true,
+                configuration,
+                false,
+            )
+            .unwrap();
+            let calls = mock.calls();
+            let package = calls
+                .iter()
+                .find(|c| c.display().contains("package-ios-library.sh"))
+                .expect("the Rust library is packaged");
+            let set: Vec<_> = package
+                .env
+                .iter()
+                .filter(|(k, _)| k == "FORGE_IOS_PROFILE")
+                .map(|(_, v)| v.to_string_lossy().into_owned())
+                .collect();
+            if std::env::var_os("FORGE_IOS_PROFILE").is_none() {
+                assert_eq!(set, [profile], "{configuration:?}");
+            }
+        }
     }
 
     /// Puts an empty `xtool/AppHostXtool.app` where `xtool dev build` would.
