@@ -650,52 +650,51 @@ fn scope_support() -> &'static Result<(), String> {
 /// SwiftPM sizes its parallel jobs from the machine's core count and
 /// ignores CPU affinity and cgroup CPU quotas, so a capped build could still
 /// start a hundred Swift compilers at once (2026-11-14). xtool runs
-/// `$SWIFTPM_CUSTOM_BIN_DIR/swift-<tool>` when that variable is set, so give
-/// it a folder whose `swift-build` adds the job limit (`-j` for SwiftPM,
-/// `-Xswiftc -j` for each compiler) and whose other `swift-*` tools link to
-/// the real ones. `None` (no change) when Swift isn't on PATH.
-fn swift_jobs_shim(env: Env, jobs: u32) -> Option<PathBuf> {
+/// `swift build` through PATH on Linux, so put a folder first on PATH whose
+/// `swift` adds the job limit to `swift build` (`-j` for SwiftPM,
+/// `-Xswiftc -j` for each compiler) and passes everything else through to
+/// the real one. Returns the new PATH; `None` (no change) when Swift isn't
+/// on PATH.
+fn swift_jobs_path(env: Env, jobs: u32) -> Option<String> {
     if !cfg!(target_os = "linux") {
         return None;
     }
     let path = env("PATH")?;
-    let swift = std::env::split_paths(&path)
-        .map(|d| d.join("swift"))
-        .find(|p| p.is_file())?;
-    let bin = std::fs::canonicalize(swift).ok()?.parent()?.to_path_buf();
-    let real_build = bin.join("swift-build");
-    if !real_build.is_file() {
-        return None;
-    }
     let dir = forge_cache(env)?.join(format!("swift-jobs-{jobs}"));
-    write_swift_jobs_shim(&dir, &bin, jobs).ok()?;
-    Some(dir)
+    let real = std::env::split_paths(&path)
+        .filter(|d| !is_jobs_shim_dir(d))
+        .map(|d| d.join("swift"))
+        // Not canonicalized: `swift` is a symlink to `swift-frontend`, which
+        // acts as the driver only when called by the name `swift`.
+        .find(|p| p.is_absolute() && p.is_file())?;
+    write_swift_jobs_shim(&dir, &real, jobs).ok()?;
+    let rest = std::env::split_paths(&path).filter(|d| !is_jobs_shim_dir(d));
+    std::env::join_paths(std::iter::once(dir).chain(rest))
+        .ok()
+        .map(|p| p.to_string_lossy().into_owned())
 }
 
-fn write_swift_jobs_shim(dir: &Path, bin: &Path, jobs: u32) -> std::io::Result<()> {
+fn is_jobs_shim_dir(dir: &Path) -> bool {
+    dir.file_name()
+        .is_some_and(|n| n.to_string_lossy().starts_with("swift-jobs-"))
+        && dir
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|n| n == "forge")
+}
+
+fn write_swift_jobs_shim(dir: &Path, real_swift: &Path, jobs: u32) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)?;
-    for entry in std::fs::read_dir(bin)? {
-        let entry = entry?;
-        let name = entry.file_name();
-        let name_str = name.to_string_lossy();
-        if !name_str.starts_with("swift-") || name_str == "swift-build" {
-            continue;
-        }
-        let link = dir.join(&name);
-        if std::fs::read_link(&link).ok().as_deref() != Some(entry.path().as_path()) {
-            let _ = std::fs::remove_file(&link);
-            #[cfg(unix)]
-            std::os::unix::fs::symlink(entry.path(), &link)?;
-        }
-    }
-    let real = bin.join("swift-build");
+    let real = real_swift.display().to_string().replace('\'', "'\\''");
     let script = format!(
-        "#!/bin/sh\n# Written by forge (build_lock.rs): limits SwiftPM to {jobs} jobs.\nexec '{}' -j {jobs} -Xswiftc -j{jobs} \"$@\"\n",
-        real.display().to_string().replace('\'', "'\\''")
+        "#!/bin/sh\n\
+         # Written by forge (build_lock.rs): `swift build` with at most {jobs} jobs.\n\
+         if [ \"$1\" = build ]; then shift; exec '{real}' build -j {jobs} -Xswiftc -j{jobs} \"$@\"; fi\n\
+         exec '{real}' \"$@\"\n"
     );
-    let target = dir.join("swift-build");
+    let target = dir.join("swift");
     if std::fs::read_to_string(&target).ok().as_deref() != Some(script.as_str()) {
-        let tmp = dir.join(".swift-build.tmp");
+        let tmp = dir.join(".swift.tmp");
         std::fs::write(&tmp, &script)?;
         #[cfg(unix)]
         {
@@ -737,11 +736,9 @@ pub fn confine(cmd: Cmd) -> Result<Cmd, String> {
     {
         cmd = cmd.env("CARGO_BUILD_JOBS", l.jobs.to_string());
     }
-    if real_env("SWIFTPM_CUSTOM_BIN_DIR").is_none()
-        && !cmd.env.iter().any(|(k, _)| k == "SWIFTPM_CUSTOM_BIN_DIR")
-    {
-        if let Some(dir) = swift_jobs_shim(&real_env, l.jobs) {
-            cmd = cmd.env("SWIFTPM_CUSTOM_BIN_DIR", dir.to_string_lossy().into_owned());
+    if !cmd.env.iter().any(|(k, _)| k == "PATH") {
+        if let Some(path) = swift_jobs_path(&real_env, l.jobs) {
+            cmd = cmd.env("PATH", path);
         }
     }
     if real_env("FORGE_BUILD_SCOPE").is_some() {
@@ -854,27 +851,27 @@ mod tests {
     }
 
     #[test]
-    fn swift_jobs_shim_limits_swift_build_and_links_the_other_tools() {
+    fn swift_jobs_shim_limits_swift_build_only() {
         let tmp = tempfile::tempdir().unwrap();
-        let bin = tmp.path().join("toolchain/usr/bin");
-        fs::create_dir_all(&bin).unwrap();
-        for tool in ["swift", "swift-build", "swift-package", "swiftc"] {
-            fs::write(bin.join(tool), "").unwrap();
-        }
-        let shim = tmp.path().join("shim");
-        write_swift_jobs_shim(&shim, &bin, 3).unwrap();
-        let script = fs::read_to_string(shim.join("swift-build")).unwrap();
+        let real = tmp.path().join("toolchain/usr/bin/swift");
+        let shim = tmp.path().join("forge/swift-jobs-3");
+        write_swift_jobs_shim(&shim, &real, 3).unwrap();
+        let script = fs::read_to_string(shim.join("swift")).unwrap();
         assert!(
-            script.contains("swift-build' -j 3 -Xswiftc -j3 \"$@\""),
+            script.contains(&format!(
+                "exec '{}' build -j 3 -Xswiftc -j3 \"$@\"",
+                real.display()
+            )),
             "{script}"
         );
-        assert_eq!(
-            fs::read_link(shim.join("swift-package")).unwrap(),
-            bin.join("swift-package")
+        assert!(
+            script.ends_with(&format!("exec '{}' \"$@\"\n", real.display())),
+            "{script}"
         );
-        assert!(!shim.join("swiftc").exists(), "only swift-* tools");
+        assert!(is_jobs_shim_dir(&shim));
+        assert!(!is_jobs_shim_dir(real.parent().unwrap()));
         // Writing it again changes nothing and doesn't fail.
-        write_swift_jobs_shim(&shim, &bin, 3).unwrap();
+        write_swift_jobs_shim(&shim, &real, 3).unwrap();
     }
 
     #[test]
