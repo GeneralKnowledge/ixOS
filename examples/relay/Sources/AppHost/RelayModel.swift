@@ -312,7 +312,7 @@ public final class RelayModel {
     ) async {
         codeSend = .starting
         do {
-            let offer = try await core.sendWithCode(path: url.path, numbersInUse: numbersInUse)
+            let offer = try await core.sendWithCode(path: url.path, numbersInUse: Data(numbersInUse))
             codeAdvert = (offer.endpointId, offer.port)
             advertise(offer.status.number, offer.endpointId, offer.port)
             advertised = offer.status.generation

@@ -2,6 +2,7 @@
 @preconcurrency import RelayFFI
 import ForgeUI
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Send a file with a word code (Relay M1): this iPhone waits on the Wi-Fi
 /// and shows a code such as `37-grasp-gag-drum`; the other device types it
