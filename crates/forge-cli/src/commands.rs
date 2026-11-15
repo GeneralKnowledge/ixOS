@@ -1748,7 +1748,29 @@ pub fn install_ios(
     builder: &dyn IosBuilder,
     ipa: &Path,
 ) -> Result<(), String> {
+    if builder.name() == "xtool" {
+        if let Ok(info) = crate::publish::read_ipa(ipa) {
+            refuse_xtool_signed(&info.bundle_id)?;
+        }
+    }
     builder.install(runner, ipa)
+}
+
+/// xtool signs every app it installs and puts `XTL-<team>.` in front of the
+/// bundle id. An `.ipa` it already signed (`forge publish ios` makes these)
+/// would get the prefix twice and install as a second, separate copy of
+/// the app, with its own empty data and one of a free team's 3 app slots.
+fn refuse_xtool_signed(bundle_id: &str) -> Result<(), String> {
+    if !bundle_id.starts_with("XTL-") {
+        return Ok(());
+    }
+    Err(format!(
+        "this .ipa is already signed by xtool (bundle id {bundle_id}). Installing it \
+         again would sign it a second time and add a separate copy of the app \
+         instead of updating yours. Install it from the Install page \
+         (`forge publish ios`), or build and install from the checkout with \
+         `forge run ios`"
+    ))
 }
 
 pub(crate) fn which_program(runner: &dyn CommandRunner, program: &str) -> bool {
@@ -2349,6 +2371,15 @@ ios_device = true
         fn devices_command(&self) -> Option<Cmd> {
             None
         }
+    }
+
+    #[test]
+    fn an_ipa_xtool_already_signed_is_not_installed_again() {
+        // The duplicate Device Lab of 2026-11-15: a published .ipa installed
+        // by cable came out as XTL-ND4P87PX52.XTL-ND4P87PX52.org….
+        let err = refuse_xtool_signed("XTL-ND4P87PX52.org.forgemobile.devicelab").unwrap_err();
+        assert!(err.contains("separate copy"), "{err}");
+        assert!(refuse_xtool_signed("org.forgemobile.devicelab").is_ok());
     }
 
     /// Keeps the app's Info.plist as it was when the Swift build ran.
