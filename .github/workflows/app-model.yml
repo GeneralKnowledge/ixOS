@@ -124,7 +124,7 @@ jobs:
           cp rust-toolchain.toml "$RUNNER_TEMP/Checklist/rust/"
           cd "$RUNNER_TEMP/Checklist"
           url=https://github.com/GeneralKnowledge/ixOS
-          sed -i -E "s#^(forge-[a-z]+) = \{ path = \"[./]*crates/forge-[a-z]+\" \}#\1 = { git = \"$url\", rev = \"$FORGE_REV\" }#" rust/Cargo.toml
+          sed -i -E "s#^(forge-[a-z]+) = \{ path = \"[./]*crates/forge-[a-z]+\"(.*) \}#\1 = { git = \"$url\", rev = \"$FORGE_REV\"\2 }#" rust/Cargo.toml
           sed -i "s#.package(path: \"../../forgekit\")#.package(url: \"https://github.com/GeneralKnowledge/ForgeKit.git\", exact: \"$FORGEKIT_TAG\")#" Package.swift
           rm -f rust/Cargo.lock
           grep -n "forge-\|ForgeKit.git" rust/Cargo.toml Package.swift
