@@ -355,6 +355,16 @@ uint64_t uniffi_good_dog_app_fn_constructor_appcore_new(RustBuffer storage_direc
 uint64_t uniffi_good_dog_app_fn_method_appcore_answer_gate(uint64_t ptr, uint64_t goal_id, int8_t met, RustBuffer now
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_ANSWER_LESSON
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_ANSWER_LESSON
+uint64_t uniffi_good_dog_app_fn_method_appcore_answer_lesson(uint64_t ptr, uint64_t goal_id, RustBuffer lesson_id, uint32_t choice, RustBuffer now
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_COMPLETE_LESSON
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_COMPLETE_LESSON
+uint64_t uniffi_good_dog_app_fn_method_appcore_complete_lesson(uint64_t ptr, uint64_t goal_id, RustBuffer lesson_id, RustBuffer now
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_DOG
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_FN_METHOD_APPCORE_DOG
 RustBuffer uniffi_good_dog_app_fn_method_appcore_dog(uint64_t ptr, RustCallStatus *_Nonnull out_status
@@ -1048,6 +1058,18 @@ uint16_t uniffi_good_dog_app_checksum_func_parse_deep_link(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_GATE
 #define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_GATE
 uint16_t uniffi_good_dog_app_checksum_method_appcore_answer_gate(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_LESSON
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_ANSWER_LESSON
+uint16_t uniffi_good_dog_app_checksum_method_appcore_answer_lesson(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_COMPLETE_LESSON
+#define UNIFFI_FFIDEF_UNIFFI_GOOD_DOG_APP_CHECKSUM_METHOD_APPCORE_COMPLETE_LESSON
+uint16_t uniffi_good_dog_app_checksum_method_appcore_complete_lesson(void
     
 );
 #endif

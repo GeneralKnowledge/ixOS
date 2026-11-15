@@ -17,6 +17,7 @@ struct GoalPathView: View {
     let goalId: UInt64
     @State private var detail: GoalDetail?
     @State private var confirmSetAside = false
+    @State private var openLesson: GoalLesson?
 
     var body: some View {
         Group {
@@ -75,6 +76,10 @@ struct GoalPathView: View {
             Text("Its stages and history are kept. You can pick it up again from My Dog.")
         }
         .errorAlert(LocalizedStringKey(model.actionErrorTitle), message: $model.actionError)
+        .sheet(item: $openLesson) { lesson in
+            LessonView(model: model, goalId: goalId, lesson: lesson)
+                .presentationDetents([.medium, .large])
+        }
     }
 
     @ViewBuilder
@@ -108,6 +113,13 @@ struct GoalPathView: View {
                     LabeledText("Ready when", current.readyWhen, systemImage: "flag.checkered")
                 } header: {
                     Text("Now: \(current.title)")
+                }
+                if !current.lessons.isEmpty {
+                    LessonsSection(
+                        lessons: current.lessons,
+                        active: detail.summary.status == .active,
+                        open: { openLesson = $0 }
+                    )
                 }
                 Section("Practise") {
                     ForEach(current.exercises) { exercise in
@@ -145,6 +157,241 @@ struct GoalPathView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: Lessons
+
+/// A stage's short lessons as a path of steps: done, next, then locked.
+private struct LessonsSection: View {
+    let lessons: [GoalLesson]
+    let active: Bool
+    let open: (GoalLesson) -> Void
+
+    private var doneCount: Int { lessons.filter { $0.state == .done }.count }
+
+    var body: some View {
+        Section {
+            ForEach(Array(lessons.enumerated()), id: \.element.id) { index, lesson in
+                Group {
+                    if lesson.kind == .practise, let exercise = lesson.exercise, lesson.state != .locked, active {
+                        NavigationLink(value: ExerciseRoute(exerciseId: exercise.id, activityId: nil)) {
+                            LessonRow(lesson: lesson, number: index + 1)
+                        }
+                    } else {
+                        Button {
+                            open(lesson)
+                        } label: {
+                            LessonRow(lesson: lesson, number: index + 1)
+                        }
+                        .tint(.primary)
+                        .disabled(lesson.state == .locked || !active)
+                    }
+                }
+                .accessibilityIdentifier("goal.lesson.\(index)")
+            }
+        } header: {
+            Text("Lessons: \(doneCount) of \(lessons.count) done")
+        } footer: {
+            if lessons.contains(where: { $0.kind == .practise && $0.state != .done }) {
+                Text("A practise lesson is done once you record a session of its exercise.")
+            }
+        }
+    }
+}
+
+private struct LessonRow: View {
+    let lesson: GoalLesson
+    let number: Int
+    @Environment(\.forgeTheme) private var theme
+
+    private var symbol: String {
+        switch lesson.state {
+        case .done: "checkmark"
+        case .locked: "lock.fill"
+        case .next, .open: lesson.kind.systemImage
+        }
+    }
+
+    private var fill: Color {
+        switch lesson.state {
+        case .done: theme.colors.tone(.success).solid
+        case .next: theme.colors.accent.solid
+        case .open: theme.colors.accent.soft
+        case .locked: theme.colors.separator
+        }
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(fill)
+                Image(systemName: symbol)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(lesson.state == .done || lesson.state == .next ? .white : theme.colors.textSecondary)
+            }
+            .frame(width: 36, height: 36)
+            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(lesson.title)
+                    .font(lesson.state == .next ? .headline : .body)
+                    .foregroundStyle(lesson.state == .locked ? .secondary : .primary)
+                Text(lesson.kind.title)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if lesson.state == .next {
+                ForgeBadge("Next", tone: .accent)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Lesson \(number): \(lesson.title), \(lesson.kind.title)")
+        .accessibilityValue(lesson.state.spoken)
+    }
+}
+
+private extension LessonState {
+    var spoken: String {
+        switch self {
+        case .done: "Done"
+        case .next: "Next"
+        case .open: "Not done yet"
+        case .locked: "Locked until the lessons before it are done"
+        }
+    }
+}
+
+/// One lesson: read and mark it done, try it today, or answer the quick check.
+struct LessonView: View {
+    let model: GoodDogModel
+    let goalId: UInt64
+    let lesson: GoalLesson
+    @Environment(\.dismiss) private var dismiss
+    @State private var answer: LessonAnswer?
+    @State private var chosen: Int?
+    @State private var working = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Label(lesson.kind.title, systemImage: lesson.kind.systemImage)
+                        .font(.subheadline.weight(.semibold))
+                        .forgeForeground(.accent)
+                    Text(lesson.title)
+                        .font(.title2.bold())
+                    switch lesson.kind {
+                    case .check:
+                        check
+                    case .practise:
+                        if let aim = lesson.aim { Text(aim) }
+                    case .learn, .everyday:
+                        if let body = lesson.body { Text(body) }
+                    }
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .safeAreaInset(edge: .bottom) { footer.padding(20).background(.bar) }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                        .accessibilityIdentifier("lesson.close")
+                }
+            }
+            .disabled(working)
+        }
+        .sensoryFeedback(trigger: answer?.correct) { _, correct in
+            guard let correct else { return nil }
+            return correct ? .success : .warning
+        }
+    }
+
+    @ViewBuilder
+    private var check: some View {
+        if let question = lesson.question {
+            Text(question).font(.headline)
+        }
+        ForEach(Array(lesson.options.enumerated()), id: \.offset) { index, option in
+            Button {
+                Task { await pick(index) }
+            } label: {
+                HStack {
+                    Text(option).multilineTextAlignment(.leading)
+                    Spacer(minLength: 0)
+                    if chosen == index, let answer {
+                        Image(systemName: answer.correct ? "checkmark.circle.fill" : "xmark.circle.fill")
+                            .forgeForeground(answer.correct ? .success : .warning)
+                    }
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.quaternary.opacity(chosen == index ? 1 : 0.5), in: RoundedRectangle(cornerRadius: 12))
+            }
+            .tint(.primary)
+            .disabled(answer != nil)
+            .accessibilityValue(chosen == index ? (answer?.correct == true ? "Right" : "Not quite") : "")
+            .accessibilityIdentifier("lesson.option.\(index)")
+        }
+        if let answer {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(answer.correct ? "That's it!" : "Not quite")
+                    .font(.headline)
+                    .forgeForeground(answer.correct ? .success : .warning)
+                Text(answer.explanation)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("lesson.explanation")
+        }
+    }
+
+    @ViewBuilder
+    private var footer: some View {
+        switch lesson.kind {
+        case .check:
+            if let answer, !answer.correct {
+                wideButton("Try Again", id: "lesson.tryAgain") {
+                    self.answer = nil
+                    chosen = nil
+                }
+            } else if answer?.correct == true {
+                wideButton("Continue", id: "lesson.continue") { dismiss() }
+            }
+        case .learn, .everyday:
+            if lesson.state == .done {
+                wideButton("Done", id: "lesson.done") { dismiss() }
+            } else {
+                wideButton(lesson.kind == .learn ? "Got It" : "I'll Try It Today", id: "lesson.done") {
+                    Task {
+                        working = true
+                        await model.completeLesson(goalId, lessonId: lesson.id)
+                        working = false
+                        dismiss()
+                    }
+                }
+            }
+        case .practise:
+            EmptyView()
+        }
+    }
+
+    private func wideButton(_ title: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).frame(maxWidth: .infinity)
+        }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .accessibilityIdentifier(id)
+    }
+
+    private func pick(_ index: Int) async {
+        working = true
+        defer { working = false }
+        chosen = index
+        answer = await model.answerLesson(goalId, lessonId: lesson.id, choice: UInt32(index))
+        if answer == nil { chosen = nil }
     }
 }
 

@@ -7,8 +7,8 @@
 
 use good_dog_core::coaching::ProgressionConfig;
 use good_dog_core::dog_training::{
-    bundled_exercises, match_pathways, stage_readiness, Pathway, PathwayStage, StageBlocker,
-    StageReadiness,
+    bundled_exercises, match_pathways, stage_readiness, LessonKind as CoreLessonKind, Pathway,
+    PathwayStage, StageBlocker, StageLesson, StageReadiness,
 };
 use serde::{Deserialize, Serialize};
 
@@ -51,6 +51,10 @@ pub(crate) struct StoredGoal {
     pub own_words: Option<String>,
     /// Oldest first.
     pub events: Vec<StoredGoalEvent>,
+    /// Lessons the owner has done, from any stage. Kept when the goal steps
+    /// back, so nothing is lost.
+    #[serde(default)]
+    pub lessons_done: Vec<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -201,6 +205,7 @@ impl Stored {
             started_at_ms: now.ms,
             own_words,
             events: vec![event(now, GoalEventKind::Started)],
+            lessons_done: Vec::new(),
         });
         self.drop_unstarted_plan(now);
         Ok(id)
@@ -377,16 +382,21 @@ impl Stored {
             .stages
             .iter()
             .enumerate()
-            .map(|(i, s)| GoalStage {
-                id: s.id.clone(),
-                title: s.title.clone(),
-                state: if i < current || finished {
+            .map(|(i, s)| {
+                let state = if i < current || finished {
                     StageState::Passed
                 } else if i == current {
                     StageState::Current
                 } else {
                     StageState::Upcoming
-                },
+                };
+                (s, state)
+            })
+            .map(|(s, state)| GoalStage {
+                id: s.id.clone(),
+                title: s.title.clone(),
+                state,
+                lessons: lessons(goal, s, state, name),
                 what_it_means: s.what_it_means.clone(),
                 why_it_matters: s.why_it_matters.clone(),
                 exercises: s
@@ -457,7 +467,20 @@ impl Stored {
                 Some((hits, g.id, pathway, stage))
             })
             .max_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)))
-            .map(|(_, goal_id, pathway, stage)| GoalFocus {
+            .map(|(_, goal_id, pathway, stage)| {
+                let goal = self
+                    .goals
+                    .iter()
+                    .find(|g| g.id == goal_id)
+                    .expect("found above");
+                (goal, pathway, stage)
+            })
+            .map(|(goal, pathway, stage)| {
+                let name = self.dog.as_ref().map_or("your dog", |d| d.name.as_str());
+                let lessons = lessons(goal, stage, StageState::Current, name);
+                (goal.id, pathway, stage, lessons)
+            })
+            .map(|(goal_id, pathway, stage, lessons)| GoalFocus {
                 goal_id,
                 goal_title: pathway.title.clone(),
                 stage_title: stage.title.clone(),
@@ -465,8 +488,206 @@ impl Stored {
                 stage_count: pathway.stages.len() as u32,
                 why: stage.why_it_matters.clone(),
                 everyday_practice: stage.everyday_practice.clone(),
+                lessons_done: lessons
+                    .iter()
+                    .filter(|l| l.state == LessonState::Done)
+                    .count() as u32,
+                lesson_count: lessons.len() as u32,
+                next_lesson: lessons.into_iter().find(|l| l.state == LessonState::Next),
             })
     }
+
+    /// The active goal and its current stage, for a lesson the owner acts
+    /// on. Only the current stage's open lessons (the next one, or any
+    /// already done) can be acted on, so lessons unlock one by one.
+    fn lesson_for(
+        &self,
+        goal_id: u64,
+        lesson_id: &str,
+    ) -> Result<(usize, &'static StageLesson), AppError> {
+        let i = self.goal_index(goal_id)?;
+        let goal = &self.goals[i];
+        if goal.status != GoalStatus::Active {
+            return Err(AppError::InvalidInput {
+                reason: "resume this goal first".into(),
+            });
+        }
+        let pathway = self.pathway(&goal.pathway_id).ok_or(AppError::NotFound {
+            what: "that goal's pathway".into(),
+        })?;
+        let current = pathway.stage_index(&goal.stage_id).unwrap_or(0);
+        let (stage_index, stage) = pathway
+            .stages
+            .iter()
+            .enumerate()
+            .find(|(_, s)| s.lessons.iter().any(|l| l.id == lesson_id))
+            .ok_or(AppError::NotFound {
+                what: "that lesson".into(),
+            })?;
+        let lesson = stage
+            .lessons
+            .iter()
+            .find(|l| l.id == lesson_id)
+            .expect("found above");
+        let locked = match stage_index.cmp(&current) {
+            std::cmp::Ordering::Greater => true,
+            std::cmp::Ordering::Less => false,
+            std::cmp::Ordering::Equal => stage
+                .lessons
+                .iter()
+                .take_while(|l| l.id != lesson_id)
+                .any(|l| !goal.lessons_done.contains(&l.id)),
+        };
+        if locked {
+            return Err(AppError::InvalidInput {
+                reason: "finish the lessons before this one first".into(),
+            });
+        }
+        Ok((i, lesson))
+    }
+
+    /// Marks a learn or everyday lesson done. A practise lesson is done by
+    /// recording a session of its exercise, and a check by answering it.
+    pub fn complete_lesson(&mut self, goal_id: u64, lesson_id: &str) -> Result<(), AppError> {
+        let (i, lesson) = self.lesson_for(goal_id, lesson_id)?;
+        match lesson.kind {
+            CoreLessonKind::Learn | CoreLessonKind::Everyday => {}
+            CoreLessonKind::Practise => {
+                return Err(AppError::InvalidInput {
+                    reason: "record a session of this exercise to finish the lesson".into(),
+                })
+            }
+            CoreLessonKind::Check => {
+                return Err(AppError::InvalidInput {
+                    reason: "answer the question to finish the lesson".into(),
+                })
+            }
+        }
+        mark_done(&mut self.goals[i], lesson_id);
+        Ok(())
+    }
+
+    /// Answers a check lesson: right marks it done; wrong changes nothing,
+    /// and the owner can try again. Either way the explanation comes back.
+    pub fn answer_lesson(
+        &mut self,
+        goal_id: u64,
+        lesson_id: &str,
+        choice: u32,
+    ) -> Result<(bool, String), AppError> {
+        let (i, lesson) = self.lesson_for(goal_id, lesson_id)?;
+        if lesson.kind != CoreLessonKind::Check {
+            return Err(AppError::InvalidInput {
+                reason: "this lesson has no question".into(),
+            });
+        }
+        if choice as usize >= lesson.options.len() {
+            return Err(AppError::InvalidInput {
+                reason: "that isn't one of the answers".into(),
+            });
+        }
+        let correct = lesson.correct_index == Some(choice);
+        if correct {
+            mark_done(&mut self.goals[i], lesson_id);
+        }
+        let name = self.dog.as_ref().map_or("your dog", |d| d.name.as_str());
+        let explanation = with_name(lesson.explanation.as_deref().unwrap_or_default(), name);
+        Ok((correct, explanation))
+    }
+
+    /// A session of `exercise_id` was recorded: it finishes any practise
+    /// lesson for it in an active goal's current stage.
+    pub(crate) fn practised(&mut self, exercise_id: &str) {
+        let pathways = self.pathways;
+        for goal in self
+            .goals
+            .iter_mut()
+            .filter(|g| g.status == GoalStatus::Active)
+        {
+            let Some(stage) = pathways
+                .0
+                .iter()
+                .find(|p| p.id == goal.pathway_id)
+                .and_then(|p| p.stage(&goal.stage_id))
+            else {
+                continue;
+            };
+            let ids: Vec<String> = stage
+                .lessons
+                .iter()
+                .filter(|l| {
+                    l.kind == CoreLessonKind::Practise
+                        && l.exercise_id.as_deref() == Some(exercise_id)
+                })
+                .map(|l| l.id.clone())
+                .collect();
+            for id in ids {
+                mark_done(goal, &id);
+            }
+        }
+    }
+}
+
+fn mark_done(goal: &mut StoredGoal, lesson_id: &str) {
+    if !goal.lessons_done.iter().any(|id| id == lesson_id) {
+        goal.lessons_done.push(lesson_id.to_string());
+    }
+}
+
+fn with_name(text: &str, name: &str) -> String {
+    text.replace("{dog}", name)
+}
+
+/// A stage's lessons for the owner. In the current stage they unlock one
+/// by one; a passed stage's are all open; an upcoming stage's are locked.
+fn lessons(
+    goal: &StoredGoal,
+    stage: &PathwayStage,
+    state: StageState,
+    name: &str,
+) -> Vec<GoalLesson> {
+    let mut next_given = false;
+    stage
+        .lessons
+        .iter()
+        .map(|l| {
+            let done = goal.lessons_done.contains(&l.id);
+            let state = if done {
+                LessonState::Done
+            } else {
+                match state {
+                    StageState::Passed => LessonState::Open,
+                    StageState::Upcoming => LessonState::Locked,
+                    StageState::Current if !next_given => {
+                        next_given = true;
+                        LessonState::Next
+                    }
+                    StageState::Current => LessonState::Locked,
+                }
+            };
+            let text = |t: &Option<String>| t.as_deref().map(|t| with_name(t, name));
+            GoalLesson {
+                id: l.id.clone(),
+                kind: match l.kind {
+                    CoreLessonKind::Learn => LessonKind::Learn,
+                    CoreLessonKind::Practise => LessonKind::Practise,
+                    CoreLessonKind::Everyday => LessonKind::Everyday,
+                    CoreLessonKind::Check => LessonKind::Check,
+                },
+                title: l.title.clone(),
+                state,
+                body: text(&l.body),
+                exercise: l
+                    .exercise_id
+                    .as_deref()
+                    .and_then(exercise)
+                    .map(crate::exercise_summary),
+                aim: text(&l.aim),
+                question: text(&l.question),
+                options: l.options.iter().map(|o| with_name(o, name)).collect(),
+            }
+        })
+        .collect()
 }
 
 /// The pathway that onboarding's "What would help most?" answer starts.

@@ -50,7 +50,57 @@
           "ownerCheck": "In a quiet room, does {dog} look at you within a couple of seconds of hearing their name once?"
         },
         "ifGateFails": "Shorten the game, go somewhere quieter and use a reward your dog loves. Say the name once, not again and again.",
-        "maintenance": "Reward a few name responses on ordinary days, especially when your dog chooses to look at you."
+        "maintenance": "Reward a few name responses on ordinary days, especially when your dog chooses to look at you.",
+        "lessons": [
+          {
+            "id": "recall-name-why",
+            "kind": "learn",
+            "title": "Why their name comes first",
+            "body": "Every recall starts with your dog turning towards you. Before their name means anything, reward every glance they give you on their own. Then their name becomes the sound that says \"look at me, something good is coming\".",
+            "claimIds": [
+              "claim-dt-name-001-check-in",
+              "claim-dt-recall-001-prerequisite-name"
+            ]
+          },
+          {
+            "id": "recall-name-practise",
+            "kind": "practise",
+            "title": "The name game",
+            "exerciseId": "ex-name-response",
+            "aim": "A few short rounds: say {dog}'s name once, and reward the look."
+          },
+          {
+            "id": "recall-name-once",
+            "kind": "learn",
+            "title": "Say it once",
+            "body": "If {dog} doesn't look, don't say their name again and again. Repeating it teaches them it can be ignored. Move a little, make a small noise, or make it easier, then reward the look.",
+            "claimIds": [
+              "claim-dt-name-002-no-repeat-name"
+            ]
+          },
+          {
+            "id": "recall-name-everyday",
+            "kind": "everyday",
+            "title": "Catch it in real life",
+            "body": "Today, when {dog} is already about to look at you, say their name once and reward the look. Three times is plenty."
+          },
+          {
+            "id": "recall-name-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} doesn't look when you say their name. What helps most?",
+            "options": [
+              "Say it again, louder",
+              "Make it easier: move a little or go somewhere quieter, then reward the look",
+              "Wait until they're bored, then try"
+            ],
+            "correctIndex": 1,
+            "explanation": "Repeating the name teaches your dog to tune it out. Making it easier gets the look you can reward.",
+            "claimIds": [
+              "claim-dt-name-002-no-repeat-name"
+            ]
+          }
+        ]
       },
       {
         "id": "recall-near",
@@ -79,7 +129,65 @@
           "safe-002-recall-management",
           "safe-003-no-punish-return"
         ],
-        "maintenance": "A few rewarded recalls on ordinary walks each week, and never call only to end the fun."
+        "maintenance": "A few rewarded recalls on ordinary walks each week, and never call only to end the fun.",
+        "lessons": [
+          {
+            "id": "recall-near-why",
+            "kind": "learn",
+            "title": "One word, always worth it",
+            "body": "Pick one recall word, like \"come\" or \"here\", and make sure everyone at home uses the same one. Call once, step back, and make arriving the best thing that happens: a happy voice and a treat your dog loves.",
+            "claimIds": [
+              "claim-dt-recall-001-prerequisite-name"
+            ]
+          },
+          {
+            "id": "recall-near-practise",
+            "kind": "practise",
+            "title": "Recall in a quiet place",
+            "exerciseId": "ex-recall-foundation",
+            "aim": "Indoors or in the garden: name, recall word, step away, and celebrate when {dog} arrives."
+          },
+          {
+            "id": "recall-near-five",
+            "kind": "learn",
+            "title": "Give them five seconds",
+            "body": "After you call, give {dog} at least five seconds to respond before doing anything else. If they're unlikely to come, don't repeat the word: go and get them calmly instead, so the word keeps its meaning.",
+            "claimIds": [
+              "claim-dt-recall-002-five-second-rule"
+            ]
+          },
+          {
+            "id": "recall-near-late",
+            "kind": "learn",
+            "title": "Late is still a win",
+            "body": "However slowly {dog} comes back, greet them warmly and reward them. Telling a dog off when they arrive teaches them that coming back isn't safe.",
+            "claimIds": [
+              "claim-dt-recall-003-no-punish-late-return"
+            ]
+          },
+          {
+            "id": "recall-near-everyday",
+            "kind": "everyday",
+            "title": "Call when they're coming anyway",
+            "body": "When {dog} is already heading your way at home, say the recall word once and reward them when they reach you."
+          },
+          {
+            "id": "recall-near-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} finally comes back after taking their time. What do you do?",
+            "options": [
+              "Reward them warmly",
+              "Tell them off so they're quicker next time",
+              "Ignore them"
+            ],
+            "correctIndex": 0,
+            "explanation": "Coming back should always pay. A telling-off makes the next recall less likely.",
+            "claimIds": [
+              "claim-dt-recall-003-no-punish-late-return"
+            ]
+          }
+        ]
       },
       {
         "id": "recall-distraction",
@@ -108,7 +216,57 @@
           "safe-002-recall-management",
           "safe-003-no-punish-return"
         ],
-        "maintenance": "Keep the long line for new places. Off-lead only in secure areas you know, or with a trainer's advice."
+        "maintenance": "Keep the long line for new places. Off-lead only in secure areas you know, or with a trainer's advice.",
+        "lessons": [
+          {
+            "id": "recall-distraction-why",
+            "kind": "learn",
+            "title": "A long line keeps it safe",
+            "body": "Until {dog} reliably comes back, practise outside on a long line clipped to a harness. It lets them explore while you stay in control. Never use it to pull them towards you: if they don't come, guide gently or walk over and collect them.",
+            "claimIds": [
+              "claim-dt-escape-001-unreliable-recall-management",
+              "claim-dt-recall-003-no-punish-late-return"
+            ]
+          },
+          {
+            "id": "recall-distraction-practise",
+            "kind": "practise",
+            "title": "Recall with something going on",
+            "exerciseId": "ex-recall-mild-distract",
+            "aim": "On the long line, call once while the distraction is still far away, and reward generously."
+          },
+          {
+            "id": "recall-distraction-step",
+            "kind": "learn",
+            "title": "Small steps up",
+            "body": "Add distance and distraction a little at a time. If {dog} stops coming back, make it easier for a few days: further from the distraction, closer to you, or a quieter place.",
+            "claimIds": [
+              "claim-dt-recall-002-five-second-rule"
+            ]
+          },
+          {
+            "id": "recall-distraction-everyday",
+            "kind": "everyday",
+            "title": "Pay recalls on walks",
+            "body": "On today's walk, call {dog} back once or twice when nothing much is happening, reward them, and let them go back to sniffing. Coming back shouldn't always mean the fun ends."
+          },
+          {
+            "id": "recall-distraction-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "When is it right to let {dog} off the lead in an open space?",
+            "options": [
+              "Once they came back three times today",
+              "When you're confident they'll come back when called, ideally somewhere secure first",
+              "Never, under any circumstances"
+            ],
+            "correctIndex": 1,
+            "explanation": "Off-lead freedom waits until you're confident in their recall. Until then, a long line or a secure field keeps everyone safe.",
+            "claimIds": [
+              "claim-dt-recall-004-offlead-criteria"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -157,7 +315,56 @@
           "ownerCheck": "At home, does {dog} stay relaxed while you clip the lead on, and walk a few steps beside you?"
         },
         "ifGateFails": "Keep the sessions very short, check the harness fits comfortably, and reward just for the lead going on.",
-        "maintenance": "Make the lead going on a calm, good moment before every walk."
+        "maintenance": "Make the lead going on a calm, good moment before every walk.",
+        "lessons": [
+          {
+            "id": "lead-comfort-fit",
+            "kind": "learn",
+            "title": "A harness that fits",
+            "body": "Choose a harness that doesn't sit across the front of {dog}'s shoulders, and fits so you can slip a finger under the straps. A comfortable dog learns; one who is pinched or rubbed just wants it off.",
+            "claimIds": [
+              "claim-dt-harness-001-choose-and-fit"
+            ]
+          },
+          {
+            "id": "lead-comfort-small-steps",
+            "kind": "learn",
+            "title": "Small steps make it easy",
+            "body": "Let {dog} sniff the harness and find treats around it, then feed a treat through the head hole before it ever goes on. Short, happy moments now save a lot of wriggling later.",
+            "claimIds": [
+              "claim-dt-harness-002-introduce-gradually"
+            ]
+          },
+          {
+            "id": "lead-comfort-practise",
+            "kind": "practise",
+            "title": "Lead on, treat, lead off",
+            "exerciseId": "ex-lead-intro",
+            "aim": "A few short rounds at home: clip the lead on, reward, walk a step or two, and take it off again."
+          },
+          {
+            "id": "lead-comfort-everyday",
+            "kind": "everyday",
+            "title": "A good moment before walks",
+            "body": "Today, before you head out, clip the lead on calmly and give {dog} a treat as it goes on."
+          },
+          {
+            "id": "lead-comfort-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} backs away when the harness comes out. What helps most?",
+            "options": [
+              "Hold them still and put it on quickly",
+              "Go back a step: treats around the harness, then through the head hole, before it goes on",
+              "Leave the harness on all day so they get used to it"
+            ],
+            "correctIndex": 1,
+            "explanation": "Building it up in small, rewarding steps lets your dog choose to put their head in. Holding them still makes the harness something to avoid.",
+            "claimIds": [
+              "claim-dt-harness-002-introduce-gradually"
+            ]
+          }
+        ]
       },
       {
         "id": "lead-loose",
@@ -182,7 +389,57 @@
           "ownerCheck": "Somewhere quiet, can {dog} walk ten steps in a row beside you with the lead slack?"
         },
         "ifGateFails": "Go back indoors or to the garden, reward more often at your side, and keep walks short and calm while you practise.",
-        "maintenance": "Reward walking at your side now and then on ordinary walks."
+        "maintenance": "Reward walking at your side now and then on ordinary walks.",
+        "lessons": [
+          {
+            "id": "lead-loose-why",
+            "kind": "learn",
+            "title": "Why dogs pull",
+            "body": "Pulling works when it gets {dog} where they want to go. So when the lead goes tight, stop and wait. The moment it goes slack, move on again. A loose lead becomes the thing that gets them there.",
+            "claimIds": [
+              "claim-dt-ll-001-stop-when-tight"
+            ]
+          },
+          {
+            "id": "lead-loose-practise",
+            "kind": "practise",
+            "title": "Stop and go",
+            "exerciseId": "ex-lead-loose",
+            "aim": "Somewhere quiet: walk on while the lead is slack, stop when it goes tight, and reward {dog} at your side."
+          },
+          {
+            "id": "lead-loose-kit",
+            "kind": "learn",
+            "title": "No quick fixes",
+            "body": "Collars or leads that stop pulling by pinching or tightening are unpleasant for dogs and confusing, and they aren't needed. A comfortable harness and patience teach far more.",
+            "claimIds": [
+              "claim-dt-ll-002-no-aversive-kit",
+              "claim-rspca-prong-002-legal-but-alternatives"
+            ]
+          },
+          {
+            "id": "lead-loose-everyday",
+            "kind": "everyday",
+            "title": "The first few minutes",
+            "body": "Today, for the first few minutes of your walk, stop whenever the lead goes tight and move on as soon as it's slack."
+          },
+          {
+            "id": "lead-loose-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "The lead goes tight as {dog} heads for a smell. What do you do?",
+            "options": [
+              "Keep walking so they learn to keep up",
+              "Stop and wait, then move on when the lead is slack",
+              "Give the lead a quick tug"
+            ],
+            "correctIndex": 1,
+            "explanation": "Stopping means pulling no longer gets your dog where they want to go. A slack lead does.",
+            "claimIds": [
+              "claim-dt-ll-001-stop-when-tight"
+            ]
+          }
+        ]
       },
       {
         "id": "lead-check-in",
@@ -206,7 +463,57 @@
           "ownerCheck": "On a familiar walk, does {dog} look back at you a few times without being asked?"
         },
         "ifGateFails": "Pick a quieter route, reward any glance your way, and use their name once if you need to.",
-        "maintenance": "Keep rewarding check-ins, especially in new places."
+        "maintenance": "Keep rewarding check-ins, especially in new places.",
+        "lessons": [
+          {
+            "id": "lead-check-in-why",
+            "kind": "learn",
+            "title": "A glance is worth rewarding",
+            "body": "When {dog} looks back at you on a walk without being asked, that's a check-in. Reward it, and they'll do it more often, which keeps the lead loose by their own choice.",
+            "claimIds": [
+              "claim-dt-name-001-check-in"
+            ]
+          },
+          {
+            "id": "lead-check-in-practise",
+            "kind": "practise",
+            "title": "Check-ins on a walk",
+            "exerciseId": "ex-check-in-walk",
+            "aim": "On a short, familiar walk: reward every time {dog} looks back at you."
+          },
+          {
+            "id": "lead-check-in-relaxed",
+            "kind": "learn",
+            "title": "Keep the lead relaxed",
+            "body": "If something worries {dog} on a walk, keep the lead secure but loose and move further away. A tight lead can make a dog feel trapped, and a calmer dog can look back at you again.",
+            "claimIds": [
+              "claim-dt-reactive-004-relaxed-lead",
+              "claim-dt-reactive-003-create-distance-reward"
+            ]
+          },
+          {
+            "id": "lead-check-in-everyday",
+            "kind": "everyday",
+            "title": "Pocket a few treats",
+            "body": "Today, carry a few small treats on your walk and reward each time {dog} looks back at you."
+          },
+          {
+            "id": "lead-check-in-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "On a walk, {dog} looks back at you for no reason. What's the best response?",
+            "options": [
+              "Nothing, they didn't do anything",
+              "Reward them, it's a check-in",
+              "Ask them to sit first"
+            ],
+            "correctIndex": 1,
+            "explanation": "Checking in is exactly what you want more of, so reward it the moment it happens.",
+            "claimIds": [
+              "claim-dt-name-001-check-in"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -258,7 +565,58 @@
           "ownerCheck": "In a quiet room, does {dog} lie down on their mat and stay relaxed for about a minute?"
         },
         "ifGateFails": "Practise after a walk or play, when your dog is already tired, and reward calm more often.",
-        "maintenance": "Keep the mat a good place: reward calm there now and then."
+        "maintenance": "Keep the mat a good place: reward calm there now and then.",
+        "lessons": [
+          {
+            "id": "settle-mat-why",
+            "kind": "learn",
+            "title": "Calm can be learned",
+            "body": "On a mat, reward {dog} for small signs of relaxing: lying down, a sigh, shifting their weight, resting their head. Bit by bit, the mat becomes a place to switch off.",
+            "claimIds": [
+              "claim-dt-settle-002-reward-relaxed"
+            ]
+          },
+          {
+            "id": "settle-mat-practise",
+            "kind": "practise",
+            "title": "Relax on the mat",
+            "exerciseId": "ex-mat-settle",
+            "aim": "In a quiet room: put the mat down, wait, and calmly reward each sign of {dog} relaxing on it."
+          },
+          {
+            "id": "settle-mat-quiet",
+            "kind": "learn",
+            "title": "Say less, reward quietly",
+            "body": "Let {dog} choose to relax rather than telling them again and again. When you reward, be calm and quiet: an excited voice can wake them right back up.",
+            "claimIds": [
+              "claim-dt-settle-001-self-directed",
+              "claim-dt-marker-002-calm-marker-word"
+            ]
+          },
+          {
+            "id": "settle-mat-everyday",
+            "kind": "everyday",
+            "title": "Catch them resting",
+            "body": "Today, whenever {dog} chooses to lie on their mat or bed, quietly drop a treat there."
+          },
+          {
+            "id": "settle-mat-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} lies on the mat and lets out a sigh. What do you do?",
+            "options": [
+              "Quietly put a treat down by them",
+              "Praise them excitedly",
+              "Tell them to stay"
+            ],
+            "correctIndex": 0,
+            "explanation": "A sigh is relaxing, which is exactly what you're rewarding. Keeping it calm helps them stay relaxed.",
+            "claimIds": [
+              "claim-dt-settle-002-reward-relaxed",
+              "claim-dt-marker-002-calm-marker-word"
+            ]
+          }
+        ]
       },
       {
         "id": "settle-home",
@@ -284,7 +642,57 @@
         "safetyRuleIds": [
           "safe-004-scope-referral"
         ],
-        "maintenance": "Give your dog quiet rest times every day, and protect their sleep."
+        "maintenance": "Give your dog quiet rest times every day, and protect their sleep.",
+        "lessons": [
+          {
+            "id": "settle-home-rest",
+            "kind": "learn",
+            "title": "Rest is part of training",
+            "body": "Dogs need plenty of rest between walks, play and games. A dog who has had enough sleep finds it far easier to settle while the house is busy.",
+            "claimIds": [
+              "claim-pdsa-enrich-002-balance-rest"
+            ]
+          },
+          {
+            "id": "settle-home-practise",
+            "kind": "practise",
+            "title": "Settle while life goes on",
+            "exerciseId": "ex-calm-home",
+            "aim": "While you do something ordinary, like cooking or a cup of tea, reward {dog} for lying quietly nearby."
+          },
+          {
+            "id": "settle-home-signs",
+            "kind": "learn",
+            "title": "When they can't settle",
+            "body": "Pacing, panting, yawning when not tired or licking their lips can mean {dog} is worried, not just restless. Give them a quiet space, and if it keeps happening or starts suddenly, talk to your vet.",
+            "claimIds": [
+              "claim-pdsa-stress-001-whole-dog-and-context",
+              "claim-pdsa-stress-002-prevention-and-patterns"
+            ]
+          },
+          {
+            "id": "settle-home-everyday",
+            "kind": "everyday",
+            "title": "A cup of tea together",
+            "body": "Today, while you have a cup of tea, quietly reward {dog} for lying down nearby."
+          },
+          {
+            "id": "settle-home-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} keeps pacing and can't settle tonight, which isn't like them. What helps most?",
+            "options": [
+              "Practise the settle for longer",
+              "Give them a quiet space, and talk to your vet if it carries on",
+              "Ignore it, they'll tire eventually"
+            ],
+            "correctIndex": 1,
+            "explanation": "A sudden change can mean your dog is worried or unwell. Help them feel safe, and get it checked if it continues.",
+            "claimIds": [
+              "claim-pdsa-stress-002-prevention-and-patterns"
+            ]
+          }
+        ]
       }
     ]
   },
@@ -332,7 +740,57 @@
           "ownerCheck": "When someone {dog} knows says hello, do all four paws stay on the floor?"
         },
         "ifGateFails": "Ask people to greet more calmly and turn away if your dog jumps, and reward four paws on the floor straight away.",
-        "maintenance": "Everyone at home greets only calm paws on the floor."
+        "maintenance": "Everyone at home greets only calm paws on the floor.",
+        "lessons": [
+          {
+            "id": "visitors-greeting-why",
+            "kind": "learn",
+            "title": "Why dogs jump up",
+            "body": "Jumping up is how many dogs say hello, and attention makes it worth doing again. Greet {dog} only when all four paws are on the floor, so calm is what gets the fuss.",
+            "claimIds": [
+              "claim-dt-jump-001-four-paws",
+              "claim-dt-jump-002-no-reward-jump"
+            ]
+          },
+          {
+            "id": "visitors-greeting-practise",
+            "kind": "practise",
+            "title": "Four paws for a hello",
+            "exerciseId": "ex-greeting-calm",
+            "aim": "With someone {dog} knows: say hello only while four paws are on the floor, and turn away calmly if they jump."
+          },
+          {
+            "id": "visitors-greeting-everyone",
+            "kind": "learn",
+            "title": "Everyone plays the same game",
+            "body": "If one person cuddles {dog} when they jump, they'll keep trying. Ask family and friends to greet only four paws on the floor too.",
+            "claimIds": [
+              "claim-dt-jump-002-no-reward-jump"
+            ]
+          },
+          {
+            "id": "visitors-greeting-everyday",
+            "kind": "everyday",
+            "title": "When you come home",
+            "body": "Today, when you get home, wait for four paws on the floor before you say hello."
+          },
+          {
+            "id": "visitors-greeting-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} jumps up as a friend comes in. What should your friend do?",
+            "options": [
+              "Push them down and say no",
+              "Turn away calmly, and say hello once four paws are down",
+              "Give them a cuddle to calm them down"
+            ],
+            "correctIndex": 1,
+            "explanation": "Any attention, even pushing them down, can reward jumping. Turning away and greeting four paws teaches the better way to say hello.",
+            "claimIds": [
+              "claim-dt-jump-002-no-reward-jump"
+            ]
+          }
+        ]
       },
       {
         "id": "visitors-door",
@@ -360,7 +818,64 @@
           "safe-004-scope-referral",
           "safe-005-growl-not-punish"
         ],
-        "maintenance": "Keep the door calm: reward waiting, and use a gate on busy days."
+        "maintenance": "Keep the door calm: reward waiting, and use a gate on busy days.",
+        "lessons": [
+          {
+            "id": "visitors-door-why",
+            "kind": "learn",
+            "title": "Calm is what opens the door",
+            "body": "The door is where greetings get exciting. Practise with no one there: wait for a calm moment, then open the door as the reward. Then a visitor's hello can be the reward for waiting back.",
+            "claimIds": [
+              "claim-dt-jump-002-no-reward-jump"
+            ]
+          },
+          {
+            "id": "visitors-door-wait",
+            "kind": "practise",
+            "title": "A short wait",
+            "exerciseId": "ex-wait-brief",
+            "aim": "A few short rounds: ask {dog} to wait for a moment, then release and reward them."
+          },
+          {
+            "id": "visitors-door-practise",
+            "kind": "practise",
+            "title": "Door manners",
+            "exerciseId": "ex-door-manners",
+            "aim": "At the front door with no one there: open it only while {dog} waits back, and close it calmly if they rush."
+          },
+          {
+            "id": "visitors-door-worried",
+            "kind": "learn",
+            "title": "Excited or worried?",
+            "body": "Some dogs rush the door because they're worried, not excited: look for lip licking, pinned ears or turning away. Give a worried dog a quiet space away from the door while visitors arrive, and get advice if it carries on.",
+            "claimIds": [
+              "claim-bc-stress-005-help-calm-dog",
+              "claim-pdsa-stress-001-whole-dog-and-context"
+            ]
+          },
+          {
+            "id": "visitors-door-everyday",
+            "kind": "everyday",
+            "title": "Before every walk",
+            "body": "Today, before you open the door for a walk, wait for a calm moment and let the door opening be the reward."
+          },
+          {
+            "id": "visitors-door-check",
+            "kind": "check",
+            "title": "Quick check",
+            "question": "{dog} hides and licks their lips when the doorbell rings. What helps most?",
+            "options": [
+              "Make them greet the visitor so they get used to it",
+              "Give them a quiet space away from the door, and get advice if it carries on",
+              "Practise the door with more visitors"
+            ],
+            "correctIndex": 1,
+            "explanation": "Those are signs of worry, not excitement. Space helps a worried dog feel safe; pushing them to greet can make it worse.",
+            "claimIds": [
+              "claim-bc-stress-005-help-calm-dog"
+            ]
+          }
+        ]
       }
     ]
   }

@@ -319,6 +319,25 @@ public final class GoodDogModel {
         await reload()
     }
 
+    /// Marks a learn or everyday lesson done.
+    public func completeLesson(_ goalId: UInt64, lessonId: String) async {
+        await perform { core, now in
+            _ = try await core.completeLesson(goalId: goalId, lessonId: lessonId, now: now)
+        }
+        await reload()
+    }
+
+    /// Answers a quick check. Nil when Rust refused it (`actionError` says
+    /// why); otherwise right or not, with the explanation.
+    public func answerLesson(_ goalId: UInt64, lessonId: String, choice: UInt32) async -> LessonAnswer? {
+        var answer: LessonAnswer?
+        await perform { core, now in
+            answer = try await core.answerLesson(goalId: goalId, lessonId: lessonId, choice: choice, now: now)
+        }
+        await reload()
+        return answer
+    }
+
     /// The owner's answer to the current stage's question. A "yes" that
     /// moves the goal on sets `celebration`.
     public func answerGate(_ id: UInt64, met: Bool) async {

@@ -138,6 +138,62 @@ pub struct GoalFocus {
     pub why: String,
     /// One way to practise in ordinary life today, outside a session.
     pub everyday_practice: String,
+    /// The stage's next lesson, when one is left.
+    pub next_lesson: Option<GoalLesson>,
+    pub lessons_done: u32,
+    pub lesson_count: u32,
+}
+
+/// What a lesson asks of the owner.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LessonKind {
+    /// A few sentences of teaching.
+    Learn,
+    /// One of the stage's exercises; recording a session of it finishes the
+    /// lesson.
+    Practise,
+    /// One try in ordinary life.
+    Everyday,
+    /// A quick multiple-choice question.
+    Check,
+}
+
+/// Where a lesson is on the owner's route.
+#[derive(uniffi::Enum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LessonState {
+    Done,
+    /// The current stage's next lesson.
+    Next,
+    /// Not done, but open: a stage the owner has already moved past.
+    Open,
+    /// Unlocks once the lessons before it are done.
+    Locked,
+}
+
+/// One short lesson of a stage, worded with the dog's name.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct GoalLesson {
+    pub id: String,
+    pub kind: LessonKind,
+    pub title: String,
+    pub state: LessonState,
+    /// Learn and everyday lessons.
+    pub body: Option<String>,
+    /// Practise lessons: the exercise, and what to aim for.
+    pub exercise: Option<ExerciseSummary>,
+    pub aim: Option<String>,
+    /// Check lessons: the question and its options. Rust keeps the answer.
+    pub question: Option<String>,
+    pub options: Vec<String>,
+}
+
+/// The result of answering a check lesson.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct LessonAnswer {
+    pub correct: bool,
+    /// Why, in a sentence or two: shown whether right or not.
+    pub explanation: String,
+    pub goal: GoalDetail,
 }
 
 /// Where a goal stands.
@@ -200,6 +256,8 @@ pub struct GoalStage {
     pub if_it_is_hard: String,
     /// For passed stages: how to keep the skill.
     pub maintenance: String,
+    /// The stage's lesson plan, in order.
+    pub lessons: Vec<GoalLesson>,
 }
 
 /// Whether the current stage's gate can be asked.

@@ -1,0 +1,42 @@
+# GD-10 on a real iPhone: the sample dog's recall goal shows its first
+# stage's lessons; the first opens, "Got It" marks it done and the next
+# one (practise) becomes the next step.
+# Runs on throwaway data with the sample dog (-ForgeUITestData
+# -ForgeUITestSampleDog), whose recall goal is already started.
+#   forge ui run examples/good-dog/uitests/lessons.toml
+
+name = "GD-10: stage lessons"
+app = "org.forgemobile.gooddog"
+
+[[step]]
+launch = { args = ["-ForgeUITestData", "-ForgeUITestSampleDog"] }
+
+[[step]]
+tap = { id = "today.goal" }
+
+[[step]]
+scroll = { id = "goal.lesson.0" }
+
+[[step]]
+expect = { id = "goal.lesson.0", value = "Next" }
+
+[[step]]
+screenshot = "1-lessons"
+
+[[step]]
+tap = { id = "goal.lesson.0" }
+
+[[step]]
+expect = { id = "lesson.done" }
+
+[[step]]
+screenshot = "2-learn-lesson"
+
+[[step]]
+tap = { id = "lesson.done" }
+
+[[step]]
+expect = { id = "goal.lesson.0", value = "Done" }
+
+[[step]]
+expect = { id = "goal.lesson.1", value = "Next" }

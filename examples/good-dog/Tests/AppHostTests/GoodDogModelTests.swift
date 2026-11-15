@@ -330,4 +330,26 @@ final class GoodDogModelTests: XCTestCase {
         XCTAssertEqual(rhythm.todayIndex, 3, "15 January 2026 is a Thursday")
         XCTAssertFalse(rhythm.summary.isEmpty)
     }
+
+    @MainActor
+    func testLessonsUnlockOneByOneAndAQuickCheckExplainsEitherWay() async throws {
+        let model = await openModel(try makeDirectory())
+        try await model.saveDog(moss)
+        let goal = try XCTUnwrap(model.activeGoals.first)
+        let lessons = try XCTUnwrap(model.goal(id: goal.id)?.stages.first?.lessons)
+        XCTAssertEqual(lessons.first?.state, .next)
+        XCTAssertEqual(model.today?.goalFocus?.nextLesson?.id, lessons.first?.id)
+
+        await model.completeLesson(goal.id, lessonId: lessons[2].id)
+        XCTAssertNotNil(model.actionError, "a locked lesson waits its turn")
+        model.actionError = nil
+        await model.completeLesson(goal.id, lessonId: lessons[0].id)
+        XCTAssertNil(model.actionError)
+        XCTAssertEqual(model.today?.goalFocus?.lessonsDone, 1)
+
+        let check = try XCTUnwrap(lessons.last)
+        XCTAssertEqual(check.kind, .check)
+        let early = await model.answerLesson(goal.id, lessonId: check.id, choice: 1)
+        XCTAssertNil(early, "the check is locked until the lessons before it are done")
+    }
 }
