@@ -31,15 +31,16 @@ sed -i.bak 's/\.macOS(\.v14)/.macOS(.v15)/' "$APP/Package.swift"
 sed -i.bak 's/IPHONEOS_DEPLOYMENT_TARGET = 17.0;/IPHONEOS_DEPLOYMENT_TARGET = 18.0;/' \
   "$APP/Xcode/AICheck.xcodeproj/project.pbxproj"
 
-# Add CoreML-LLM (and its tokenizers) to the AppHost target. The check screen
+# Add CoreML-LLM (and its tokenizers) to the package, after ForgeKit, which
+# forge init points at a release or at the checkout, and to the AppHost target. The check screen
 # is a throwaway, so it builds in Swift 5 mode: CoreML-LLM's types are not
 # Sendable, and strict concurrency would only get in the way of the spike.
 perl -0pi -e '
-  s{(\.package\(path: "[^"]*forgekit"\),)}{$1\n        .package(url: "https://github.com/john-rocky/CoreML-LLM", exact: "'"$COREML_LLM_VERSION"'"),\n        .package(url: "https://github.com/huggingface/swift-transformers", "1.0.0"..<"2.0.0"),};
+  s{(\.package\((?:path: "[^"]*forgekit"|url: "[^"]*ForgeKit\.git"[^)]*)\),)}{$1\n        .package(url: "https://github.com/john-rocky/CoreML-LLM", exact: "'"$COREML_LLM_VERSION"'"),\n        .package(url: "https://github.com/huggingface/swift-transformers", "1.0.0"..<"2.0.0"),};
   s{(name: "AICheckApp",\n            dependencies: \[\n)}{$1                .product(name: "CoreMLLLM", package: "CoreML-LLM"),\n                .product(name: "Tokenizers", package: "swift-transformers"),\n};
   s{(path: "Sources/AppHost",\n            swiftSettings: appSettings)}{$1 + [.swiftLanguageMode(.v5)]};
 ' "$APP/Package.swift"
-grep -q 'CoreML-LLM' "$APP/Package.swift" || { echo "error: could not add CoreML-LLM to Package.swift" >&2; exit 1; }
+grep -q 'package(url: "https://github.com/john-rocky/CoreML-LLM"' "$APP/Package.swift" || { echo "error: could not add CoreML-LLM to Package.swift" >&2; exit 1; }
 grep -q 'appSettings + \[.swiftLanguageMode(.v5)\]' "$APP/Package.swift" || { echo "error: could not patch the AICheckApp target" >&2; exit 1; }
 grep -q '"CoreMLLLM", package' "$APP/Package.swift" || { echo "error: could not add CoreML-LLM to the AICheckApp target" >&2; exit 1; }
 rm -f "$APP"/*.bak "$APP"/Xcode/AICheck.xcodeproj/*.bak
