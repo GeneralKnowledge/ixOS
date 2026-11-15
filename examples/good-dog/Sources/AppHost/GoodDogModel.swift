@@ -319,6 +319,15 @@ public final class GoodDogModel {
         await reload()
     }
 
+    /// Meets a stage's safety rule: confirms how the owner practises, or
+    /// says they've had advice after a worry.
+    public func noteSafety(_ goalId: UInt64, ruleId: String) async {
+        await perform { core, now in
+            _ = try await core.noteSafety(goalId: goalId, ruleId: ruleId, now: now)
+        }
+        await reload()
+    }
+
     /// Marks a learn or everyday lesson done.
     public func completeLesson(_ goalId: UInt64, lessonId: String) async {
         await perform { core, now in

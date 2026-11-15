@@ -702,6 +702,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func maxNameLength()  -> UInt32
     
     /**
+     * Meets one of the current stage's safety rules: the owner confirms
+     * how they practise, or says they've had advice after a worry. A rule
+     * that doesn't apply to the stage is refused.
+     */
+    func noteSafety(goalId: UInt64, ruleId: String, now: LocalTime) async throws  -> GoalDetail
+    
+    /**
      * The goals the owner can start: pathways that suit the dog's age.
      * Empty until DogResearch publishes pathways.
      */
@@ -1102,6 +1109,27 @@ open func maxNameLength() -> UInt32  {
             self.uniffiCloneHandle(),uniffiCallStatus
     )
 })
+}
+    
+    /**
+     * Meets one of the current stage's safety rules: the owner confirms
+     * how they practise, or says they've had advice after a worry. A rule
+     * that doesn't apply to the stage is refused.
+     */
+open func noteSafety(goalId: UInt64, ruleId: String, now: LocalTime)async throws  -> GoalDetail  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_good_dog_app_fn_method_appcore_note_safety(
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(goalId),FfiConverterString.lower(ruleId),FfiConverterTypeLocalTime_lower(now)
+                )
+            },
+            pollFunc: ffi_good_dog_app_rust_future_poll_rust_buffer,
+            completeFunc: ffi_good_dog_app_rust_future_complete_rust_buffer,
+            freeFunc: ffi_good_dog_app_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterTypeGoalDetail_lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
 }
     
     /**
@@ -3569,6 +3597,11 @@ public struct GateStatus: Equatable, Hashable {
      * Rust's plain-English note on where things stand.
      */
     public var note: String
+    /**
+     * The stage's safety rules the owner acts on. Moving on is refused
+     * while one isn't met.
+     */
+    public var safety: [SafetyCheck]
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
@@ -3585,11 +3618,16 @@ public struct GateStatus: Equatable, Hashable {
          */question: String, 
         /**
          * Rust's plain-English note on where things stand.
-         */note: String) {
+         */note: String, 
+        /**
+         * The stage's safety rules the owner acts on. Moving on is refused
+         * while one isn't met.
+         */safety: [SafetyCheck]) {
         self.readyForCheck = readyForCheck
         self.held = held
         self.question = question
         self.note = note
+        self.safety = safety
     }
 
     
@@ -3611,7 +3649,8 @@ public struct FfiConverterTypeGateStatus: FfiConverterRustBuffer {
                 readyForCheck: FfiConverterBool.read(from: &buf), 
                 held: FfiConverterBool.read(from: &buf), 
                 question: FfiConverterString.read(from: &buf), 
-                note: FfiConverterString.read(from: &buf)
+                note: FfiConverterString.read(from: &buf), 
+                safety: FfiConverterSequenceTypeSafetyCheck.read(from: &buf)
         )
     }
 
@@ -3620,6 +3659,7 @@ public struct FfiConverterTypeGateStatus: FfiConverterRustBuffer {
         FfiConverterBool.write(value.held, into: &buf)
         FfiConverterString.write(value.question, into: &buf)
         FfiConverterString.write(value.note, into: &buf)
+        FfiConverterSequenceTypeSafetyCheck.write(value.safety, into: &buf)
     }
 }
 
@@ -5320,6 +5360,99 @@ public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryIte
 #endif
 public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
     return FfiConverterTypeQueryItem.lower(value)
+}
+
+
+/**
+ * One safety rule on a goal stage, worded with the dog's name.
+ */
+public struct SafetyCheck: Equatable, Hashable {
+    public var ruleId: String
+    public var kind: SafetyKind
+    public var met: Bool
+    /**
+     * Confirm: why it matters. Referral: why the stage is held.
+     */
+    public var detail: String
+    /**
+     * Referral: who can help.
+     */
+    public var referral: String?
+    /**
+     * What the owner taps to meet it: the statement they confirm, or that
+     * they've had advice.
+     */
+    public var action: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(ruleId: String, kind: SafetyKind, met: Bool, 
+        /**
+         * Confirm: why it matters. Referral: why the stage is held.
+         */detail: String, 
+        /**
+         * Referral: who can help.
+         */referral: String?, 
+        /**
+         * What the owner taps to meet it: the statement they confirm, or that
+         * they've had advice.
+         */action: String) {
+        self.ruleId = ruleId
+        self.kind = kind
+        self.met = met
+        self.detail = detail
+        self.referral = referral
+        self.action = action
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension SafetyCheck: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSafetyCheck: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SafetyCheck {
+        return
+            try SafetyCheck(
+                ruleId: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeSafetyKind.read(from: &buf), 
+                met: FfiConverterBool.read(from: &buf), 
+                detail: FfiConverterString.read(from: &buf), 
+                referral: FfiConverterOptionString.read(from: &buf), 
+                action: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: SafetyCheck, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.ruleId, into: &buf)
+        FfiConverterTypeSafetyKind.write(value.kind, into: &buf)
+        FfiConverterBool.write(value.met, into: &buf)
+        FfiConverterString.write(value.detail, into: &buf)
+        FfiConverterOptionString.write(value.referral, into: &buf)
+        FfiConverterString.write(value.action, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSafetyCheck_lift(_ buf: RustBuffer) throws -> SafetyCheck {
+    return try FfiConverterTypeSafetyCheck.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSafetyCheck_lower(_ value: SafetyCheck) -> RustBuffer {
+    return FfiConverterTypeSafetyCheck.lower(value)
 }
 
 
@@ -7674,6 +7807,82 @@ public func FfiConverterTypePlanRole_lower(_ value: PlanRole) -> RustBuffer {
 
 
 /**
+ * What a safety rule asks of the owner on this stage.
+ */
+
+public enum SafetyKind: Equatable, Hashable {
+    
+    /**
+     * The owner confirms how they practise ("on a long line outside").
+     */
+    case confirm
+    /**
+     * A worry noted in a session holds the stage until the owner has
+     * asked a vet or behaviourist.
+     */
+    case referral
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension SafetyKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeSafetyKind: FfiConverterRustBuffer {
+    typealias SwiftType = SafetyKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SafetyKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .confirm
+        
+        case 2: return .referral
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: SafetyKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case .confirm:
+            writeInt(&buf, Int32(1))
+        
+        
+        case .referral:
+            writeInt(&buf, Int32(2))
+        
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSafetyKind_lift(_ buf: RustBuffer) throws -> SafetyKind {
+    return try FfiConverterTypeSafetyKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeSafetyKind_lower(_ value: SafetyKind) -> RustBuffer {
+    return FfiConverterTypeSafetyKind.lower(value)
+}
+
+
+
+/**
  * How a practice session went, as the owner reports it.
  */
 
@@ -8823,6 +9032,31 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeSafetyCheck: FfiConverterRustBuffer {
+    typealias SwiftType = [SafetyCheck]
+
+    public static func write(_ value: [SafetyCheck], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeSafetyCheck.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [SafetyCheck] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [SafetyCheck]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeSafetyCheck.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeSessionRecord: FfiConverterRustBuffer {
     typealias SwiftType = [SessionRecord]
 
@@ -9216,6 +9450,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_max_name_length() != 7497) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_good_dog_app_checksum_method_appcore_note_safety() != 17895) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_good_dog_app_checksum_method_appcore_pathways() != 55257) {

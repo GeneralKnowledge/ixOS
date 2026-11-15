@@ -13,8 +13,9 @@ use good_dog_core::coaching::{
 };
 use good_dog_core::dog_training::{
     bundled_exercises, bundled_pathways, check_pathways, match_pathways, parse_pathways,
-    stage_readiness, GoalFocusPolicy, LessonKind, Pathway, StageBlocker,
+    stage_readiness, AppEnforcement, GoalFocusPolicy, LessonKind, Pathway, StageBlocker,
 };
+use good_dog_core::dog_training::{bundled_safety_rules, check_safety_rules};
 
 fn sample() -> Vec<Pathway> {
     parse_pathways(include_str!("fixtures/pathways-sample.json")).expect("sample parses")
@@ -48,6 +49,32 @@ fn every_shipped_stage_has_a_lesson_plan_that_teaches_practises_and_checks() {
             );
         }
     }
+}
+
+#[test]
+fn every_safety_rule_a_stage_names_ships_with_how_the_app_applies_it() {
+    let rules = bundled_safety_rules();
+    let problems = check_safety_rules(bundled_pathways(), rules);
+    assert!(problems.is_empty(), "{problems:#?}");
+    let kind = |id: &str| {
+        rules
+            .iter()
+            .find(|r| r.id == id)
+            .map(|r| r.app_enforcement.clone())
+    };
+    assert!(matches!(
+        kind("safe-002-recall-management"),
+        Some(AppEnforcement::Confirm { .. })
+    ));
+    assert!(matches!(
+        kind("safe-004-scope-referral"),
+        Some(AppEnforcement::ReferOnConcern { .. })
+    ));
+    let mut broken = bundled_pathways().to_vec();
+    broken[0].stages[1].safety_rule_ids.push("safe-999".into());
+    assert!(check_safety_rules(&broken, rules)
+        .iter()
+        .any(|p| p.contains("unknown safety rule safe-999")));
 }
 
 #[test]

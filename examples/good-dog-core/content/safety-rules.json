@@ -1,0 +1,46 @@
+[
+  {
+    "id": "safe-002-recall-management",
+    "title": "Manage recall failure with lines and secure areas",
+    "severity": "critical",
+    "referralText": "If recall does not improve, refer to qualified trainer or behaviourist.",
+    "appEnforcement": {
+      "kind": "confirm",
+      "ownerConfirms": "Outside, {dog} stays on a lead or long line, and is only off the lead somewhere secure.",
+      "why": "Until coming back is reliable, a lead or long line keeps {dog} safe while you practise. Moving on never means off-lead in public."
+    }
+  },
+  {
+    "id": "safe-003-no-punish-return",
+    "title": "Never punish a dog for coming back late",
+    "severity": "high",
+    "referralText": null,
+    "appEnforcement": {
+      "kind": "teach"
+    }
+  },
+  {
+    "id": "safe-004-scope-referral",
+    "title": "Refer beyond training education scope",
+    "severity": "critical",
+    "referralText": "Contact veterinarian for medical causes; seek ABTC-registered Clinical Animal Behaviourist or Veterinary Behaviourist for clinical behaviour treatment.",
+    "appEnforcement": {
+      "kind": "referOnConcern",
+      "heldNote": "You noted a worry about {dog} in a recent session. Aggression, strong fear, a sudden change in behaviour or possible pain need your vet or a qualified behaviourist, not just more training.",
+      "clearedBy": "We've talked to our vet or a qualified behaviourist",
+      "referral": "Start with your vet, to rule out pain or illness. For behaviour, look for an ABTC-registered Clinical Animal Behaviourist or a veterinary behaviourist."
+    }
+  },
+  {
+    "id": "safe-005-growl-not-punish",
+    "title": "Do not punish warning signals without addressing cause",
+    "severity": "critical",
+    "referralText": "Qualified behaviourist; veterinary pain assessment.",
+    "appEnforcement": {
+      "kind": "referOnConcern",
+      "heldNote": "If {dog} growled or gave other warnings, don't tell them off: warnings keep everyone safe. Give {dog} space, and get advice before carrying on.",
+      "clearedBy": "We've talked to our vet or a qualified behaviourist",
+      "referral": "Ask your vet to check for pain first, then find an ABTC-registered Clinical Animal Behaviourist to help with what's worrying {dog}."
+    }
+  }
+]
