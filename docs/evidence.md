@@ -51,7 +51,7 @@ Pocket Library's are in [`examples/pocket-library/requirements.toml`](../example
 |---|---|---|
 | `passed` | Every named test ran and passed | No |
 | `failed` | A named test ran and failed | Yes (stage `test`, exit 14) |
-| `not_run` | A named test is in a file this run couldn't build, because it needs Apple's frameworks. This run says nothing about it; macOS CI or the phone must | No |
+| `not_run` | A named test is in a file this run couldn't build, because it needs Apple's frameworks, or it skipped itself (`XCTSkip`, such as Chat's tests that need a chat server). This run says nothing about it; macOS CI or the phone must | No |
 | `missing` | A named test is in no file at all: renamed or deleted | Yes (stage `test`, exit 14) |
 | `no_twin` | Only a device scenario is named | No |
 | `unverified` | The device verdict, until a device run records one | No |

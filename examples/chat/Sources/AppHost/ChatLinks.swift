@@ -17,3 +17,9 @@ enum ChatLinks {
         return ChatRoute(conversationId: link.route[1], messageId: message)
     }
 }
+
+/// A conversation to open, and optionally a message in it to scroll to.
+struct ChatRoute: Hashable {
+    var conversationId: String
+    var messageId: String? = nil
+}

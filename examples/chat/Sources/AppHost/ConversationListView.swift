@@ -19,12 +19,6 @@ struct ChatsTab: View {
     }
 }
 
-/// A conversation to open, and optionally a message in it to scroll to.
-struct ChatRoute: Hashable {
-    var conversationId: String
-    var messageId: String? = nil
-}
-
 /// The conversations, most recent first, with a preview of the last message
 /// and an unread dot. Swipe to mark read or unread, or to mute. Pull to
 /// refresh re-lists them. The search field finds messages in every
