@@ -17,18 +17,6 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "chat"
-rule = "requirements"
-wave = 4
-reason = "Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6"
-
-[[lag]]
-app = "chat"
-rule = "ui-test"
-wave = 4
-reason = "Needs the chat server reachable from the phone; comes with M6"
-
-[[lag]]
 app = "counter"
 rule = "device-lab"
 wave = 0

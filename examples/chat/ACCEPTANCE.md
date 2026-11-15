@@ -2,7 +2,7 @@
 
 What has been checked, where, and what is still to do, per milestone. Results are kept apart by kind: **automated** (CI on every PR), **local build** (by hand on a development machine) and **physical device** (an iPhone, run by Reuben). A device step is marked done only when it was actually performed and reported. Simulator screenshots are review aids, never acceptance results.
 
-Status as of 2026-11-07.
+Status as of 2026-11-15.
 
 ## M0: Chat on the current framework
 
@@ -239,3 +239,45 @@ Before you start: Chat installed from this branch (`forge run ios --project exam
 | AS10 | In a Mia chat, ask "Write me a short story about a lighthouse" | Mia writes the story, in her own voice, at once | **Failed** on ba45825 (2026-11-08 10:52): three turns of agreeing ("Let's dive into the waves…", "Alright, let's set sail!") without writing it; the plain Assistant writes it. Cause: the character frame and the per-turn reminder asked for one to three sentences. Fixed in #113 (requests are done in full; the reminder no longer limits length). **Done on 90905a0** (2026-11-08 11:14, "Mia worked this time") |
 
 Record for each run: iPhone model, iOS version, xtool version, commit, and anything that differed.
+
+## M5: Notifications, deep links and background work
+
+M5 moves message notifications into the Rust core: it keeps every room live while the app is on screen, decides what to announce (others' new messages in rooms that are not on screen and not muted; never what arrived before the app was last on screen; never twice, even across launches) and posts it through `forge-services`, with Reply and Mark as Read and a deep link to the message. A background refresh (`BGTaskScheduler`, about every 15 minutes when iOS allows) fetches every room, sends the outbox and announces what arrived. A room left open when the phone was locked now counts what arrives as unread, and is read again when the app comes back. Documents in bubbles show their first page once they are on the phone. Device Lab, which hosts Chat with other apps, now routes each notification response and background task to the app it belongs to. Device results are Reuben's reports; nothing here is marked done until he reported it.
+
+### Automated and local
+
+| # | Check | Kind | Status | Evidence |
+|---|-------|------|--------|----------|
+| A33 | chat-core: an open room left behind in the background counts new messages as unread and notifies; coming back marks it read, here and on the server | automated | Done | `cargo test -p chat-core` (`an_open_room_is_not_read_while_the_app_is_away`, 82 tests) |
+| A34 | The app's Rust crate: notifications come from Rust (title, author, text, room, category, deep link), muted rooms, own messages and an open room stay quiet; a background refresh announces what arrived while away, once; signed out it does nothing; the record of what was announced survives a new process | automated | Done | `cargo test --manifest-path examples/chat/rust/Cargo.toml` (`message_notifications_come_from_rust`, `a_background_refresh_announces_what_arrived_while_away`, `a_refresh_signed_out_does_nothing`, `alerts::tests`) |
+| A35 | forge-services: `BackgroundService::handles` | automated | Done | `cargo test -p forge-services --all-features` |
+| A36 | Swift: the model without a Swift notifier, the Rust-built link routes to its message, test-data launches; the shared notification delegate and background registration in the adapters; `ForgeDocuments` | local build (laptop, xtool) | Not yet done | `scripts/check-ios-xtool.sh affected` before merging |
+| A37 | Requirements CH-1 to CH-11 and two UI scenarios (`uitests/journey.toml`, `uitests/messaging.toml`) | local (Linux) | Done | `scripts/check-app-parity.sh` (requirements, device-checks, ui-test) |
+
+## M6: one sitting for M2 to M5
+
+One Device Lab sitting, over the air, about ten minutes, covering the M2, M3, M4 and M5 device runs that were never done (F, G, H above, and the new notification steps). The laptop side (the other person, through `chat-cli` against the project's server) is run for you; you only do the phone steps.
+
+Before you start (done for you): Device Lab published from this branch and installed from the Install page; the chat server running on the Hetzner server behind Tailscale; `chat-cli` signed up there as "Laptop". On the phone: Tailscale on.
+
+| # | Step (phone) | Expected | Covers | Status |
+|---|---|---|---|---|
+| S1 | Device Lab → Apps → Chat. Sign up with your name; the server field already holds the project's server | The Chats list with General, Random, Forge dev. iOS asks for notifications: Allow | M0, M5 | Not yet run |
+| S2 | Open General. The laptop sends "hello"; reply to it (touch and hold → Reply), react with a heart, edit your reply, then delete it | Each change shows at once; the laptop sees each one | M2 (F) | Not yet run |
+| S3 | Tap +, Photo, pick one, send. Then +, Document, pick a PDF from Files, send | The photo as a thumbnail; the PDF as a row with a picture of its first page. Tap each: Quick Look opens them | M3 (G), M5 | Not yet run |
+| S4 | With the text field empty, tap the microphone, say a few words, send; tap play | A voice bubble with a waveform; it plays | M4 (H) | Not yet run |
+| S5 | Go back to the list. The laptop sends to Random | A banner "Random / Laptop / …" while Chat is open | M5 | Not yet run |
+| S6 | Press Home. The laptop sends to Random again. Touch and hold the banner → Reply, type "from the banner", send | Without opening Chat, the laptop receives "from the banner" as a reply | M5 | Not yet run |
+| S7 | The laptop sends to General. Tap the banner | Chat opens on General | M5 | Not yet run |
+| S8 | Leave General open, lock the phone for a minute while the laptop sends to General, unlock | No crash; General shows the message; if a banner came while locked, say so (iOS decides when a refresh runs, so none is also a pass) | M5 | Not yet run |
+| S9 | Airplane Mode on, send "offline", Airplane Mode off | It waits as Sending, then goes out by itself | M2 (outbox) | Not yet run |
+
+Record: iPhone model, iOS version, Device Lab build (branch and commit from the Apps screen), and anything that differed. Results go here and into the ledger in a PR the same day.
+
+### Gap report
+
+Written after the sitting: what Forge made easy for M2 to M5, what Chat had to build itself, and what the framework should take. Known before the sitting:
+
+- **Hosting apps in one process needed framework work** that no single-app test found: the notification delegate, the categories and the background task registrations are the process's, so the last app to install took every notification response and a second app with background tasks would register the same identifiers twice. Fixed in the adapters (a table shared by every app's copy); ForgeKit's copy (forge-native) takes the same change.
+- **A background refresh needs the core open.** Chat opens its core from its root view, so a refresh after iOS ended the app waits for a handler until the window closes. ForgeHost (wave 3) opens the core at launch, which fixes it.
+- **No way to force a refresh on Linux.** `_simulateLaunchForTaskWithIdentifier` needs Xcode's debugger, so S8 can only observe.

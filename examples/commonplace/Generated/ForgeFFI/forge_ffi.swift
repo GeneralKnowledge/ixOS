@@ -7192,6 +7192,20 @@ public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustC
 }
 }
 /**
+ * Whether this library's Rust has a handler for `identifier`
+ * right now. The host asks when several apps' libraries share
+ * one process (Device Lab), to hand a task to the one that
+ * handles it.
+ */
+public func nativeBackgroundHandles(identifier: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_native_background_handles(
+        FfiConverterString.lower(identifier),uniffiCallStatus
+    )
+})
+}
+/**
  * Called by the host when iOS starts a task. Runs the handler
  * registered for `identifier`, or finishes at once (failure) if
  * there is none.
@@ -7256,6 +7270,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_install_native_background() != 62275) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_func_native_background_handles() != 59744) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_func_run_native_background_task() != 57156) {

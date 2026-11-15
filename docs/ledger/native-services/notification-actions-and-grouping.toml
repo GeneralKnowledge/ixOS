@@ -6,4 +6,4 @@ ios_native = "Yes: `UNNotificationCategory`, `UNTextInputNotificationAction`; di
 in_app = "Yes: Chat groups by room, opens the room on tap, and has Reply and Mark as Read on message notifications; Commonplace has Mark All as Read on its new-articles notification; Good Dog has Start Now and Not Today on its daily reminder"
 iphone = "No"
 documented = "Partial: native-services.md, chat-demo.md"
-limits = "Actions handled in the background get a few seconds from iOS. Compiled on macOS CI only so far"
+limits = "Actions handled in the background get a few seconds from iOS. Apps hosted in one process (Device Lab) share the delegate and the categories: a response goes to the app that scheduled the notification (since 2026-11-15). Compiled on macOS CI only so far"

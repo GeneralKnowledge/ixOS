@@ -7,9 +7,37 @@ import UniformTypeIdentifiers
 /// Photos and documents (M3). Rust keeps, uploads, downloads and checks the
 /// files; Swift picks them, shrinks photos, draws thumbnails and previews.
 
-/// Swift-side attachment failures, in the same log as Rust's
-/// (`forge device logs`, the live stream).
-let attachmentLog = ForgeLog("Attachments")
+/// Attachment files under their own names, for Quick Look, thumbnails and
+/// the share sheet. Here rather than in ChatModel because naming a file
+/// after its type needs UniformTypeIdentifiers, which Linux lacks.
+extension ChatModel {
+    /// The attachment under its own name if it is already on this iPhone
+    /// (sent from here, or opened before), without fetching it. For
+    /// thumbnails of documents, which aren't downloaded until opened.
+    public func storedFile(for attachment: ChatAttachment) -> URL? {
+        guard let path = core?.attachmentFile(attachmentId: attachment.id) else { return nil }
+        return try? AttachmentFiles.namedCopy(of: URL(fileURLWithPath: path), for: attachment)
+    }
+
+    /// A file for Quick Look and the share sheet: the attachment under its
+    /// own name. Shows an alert if it cannot be fetched.
+    public func previewFile(for attachment: ChatAttachment) async -> URL? {
+        guard let core else { return nil }
+        do {
+            let path: String
+            if let local = core.attachmentFile(attachmentId: attachment.id) {
+                path = local
+            } else {
+                path = try await core.fetchAttachment(attachmentId: attachment.id)
+            }
+            return try AttachmentFiles.namedCopy(
+                of: URL(fileURLWithPath: path), for: attachment)
+        } catch {
+            actionError = Self.describe(error)
+            return nil
+        }
+    }
+}
 
 /// A file picked in the composer, waiting to be sent with the next message.
 /// `url` is a private copy in the temporary directory: Rust copies it again
@@ -173,7 +201,7 @@ struct AttachmentsView: View {
                         if attachment.isImage {
                             PhotoThumbnail(model: model, attachment: attachment)
                         } else {
-                            DocumentRow(attachment: attachment, onMine: onMine)
+                            DocumentRow(model: model, attachment: attachment, onMine: onMine)
                         }
                     }
                     .buttonStyle(.plain)
@@ -233,16 +261,19 @@ private struct PhotoThumbnail: View {
     }
 }
 
-/// A document in a bubble: its type's symbol, name and size.
+/// A document in a bubble: a picture of its first page when it is on this
+/// iPhone (Quick Look's thumbnail, `ForgeDocuments`), else its type's
+/// symbol; then its name and size. Documents are fetched only when opened.
 private struct DocumentRow: View {
+    let model: ChatModel
     let attachment: ChatAttachment
     let onMine: Bool
+    @Environment(\.displayScale) private var displayScale
+    @State private var page: CGImage?
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
-                .font(.title2)
-                .frame(width: 32)
+            preview
             VStack(alignment: .leading, spacing: 2) {
                 Text(attachment.name)
                     .font(.callout.weight(.medium))
@@ -258,6 +289,26 @@ private struct DocumentRow: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(onMine ? Color.white.opacity(0.2) : Color.primary.opacity(0.06))
         )
+        .task(id: attachment.id) {
+            guard page == nil, let url = model.storedFile(for: attachment) else { return }
+            page = await ForgeDocuments.thumbnail(
+                of: url, size: CGSize(width: 32, height: 42), scale: displayScale)
+        }
+    }
+
+    @ViewBuilder
+    private var preview: some View {
+        if let page {
+            Image(decorative: page, scale: displayScale)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 32, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+        } else {
+            Image(systemName: AttachmentFiles.symbol(for: attachment.mime))
+                .font(.title2)
+                .frame(width: 32)
+        }
     }
 }
 

@@ -11,6 +11,9 @@ public enum ForgeNotifications {
     /// The `userInfo` key holding the notification's own id (iOS can change
     /// the request identifier of a repeating one).
     public static let idKey = "forgeNotificationID"
+    /// The `userInfo` key naming the module whose Rust scheduled it, so a
+    /// response reaches that app's Rust when several share the process.
+    public static let ownerKey = "forgeOwner"
 
     /// The notifier for this process: `UserNotificationsNotifier` in an app,
     /// `UnavailableNotifier` under `swift test` / `swift run`, where the
@@ -25,6 +28,12 @@ public enum ForgeNotifications {
 /// notification that carries a deep link opens it through `ForgeDeepLinks`,
 /// and every response (a tap, an action button, a quick reply, a dismissal)
 /// goes to Rust (`deliverNotificationResponse`).
+///
+/// Several apps can share one process (Device Lab hosts them), each with
+/// its own copy of this class. The centre has one delegate and one set of
+/// categories, so the copies share them (`ForgeProcessTable`): each copy's
+/// categories are kept apart and set together, and a response goes to the
+/// copy whose app scheduled the notification.
 public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNotificationCenterDelegate,
     @unchecked Sendable
 {
@@ -32,10 +41,21 @@ public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNot
 
     private let center: UNUserNotificationCenter
 
+    /// This copy's module, written on its notifications.
+    private let owner = String(reflecting: UserNotificationsNotifier.self)
+
     private override init() {
         center = UNUserNotificationCenter.current()
         super.init()
         center.delegate = self
+        #if canImport(ObjectiveC)
+            let handle: (UNNotificationResponse) -> Void = { [weak self] response in
+                self?.handle(response)
+            }
+            ForgeProcessTable.with(center) { table in
+                ForgeProcessTable.section(table, "responders")[owner] = handle
+            }
+        #endif
     }
 
     public func schedule(notification: LocalNotification) async throws {
@@ -57,7 +77,9 @@ public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNot
         content.sound = .default
         if let subtitle = notification.subtitle { content.subtitle = subtitle }
         if let thread = notification.threadId { content.threadIdentifier = thread }
-        var userInfo: [String: Any] = [ForgeNotifications.idKey: notification.id]
+        var userInfo: [String: Any] = [
+            ForgeNotifications.idKey: notification.id, ForgeNotifications.ownerKey: owner,
+        ]
         if let link = notification.deepLink { userInfo[ForgeNotifications.deepLinkKey] = link }
         content.userInfo = userInfo
         if let category = notification.category { content.categoryIdentifier = category }
@@ -108,15 +130,29 @@ public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNot
                 }
             })
         }
-        let native = categories.map { category in
+        let native = Set(categories.map { category in
             UNNotificationCategory(
                 identifier: category.id,
                 actions: category.actions.map(Self.action),
                 intentIdentifiers: [],
                 // Dismissals reach Rust too (NOTIFICATION_DISMISSED).
                 options: [.customDismissAction])
-        }
-        center.setNotificationCategories(Set(native))
+        })
+        #if canImport(ObjectiveC)
+            // Every app's categories in the process, ours replaced.
+            let all: Set<UNNotificationCategory> = ForgeProcessTable.with(center) { table in
+                let byOwner = ForgeProcessTable.section(table, "categories")
+                byOwner[owner] = native
+                var all = Set<UNNotificationCategory>()
+                for case let set as Set<UNNotificationCategory> in byOwner.allValues {
+                    all.formUnion(set)
+                }
+                return all
+            }
+            center.setNotificationCategories(all)
+        #else
+            center.setNotificationCategories(native)
+        #endif
     }
 
     private static func action(_ action: NotificationAction) -> UNNotificationAction {
@@ -146,12 +182,34 @@ public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNot
         completionHandler([.banner, .list, .sound])
     }
 
-    /// Every response goes to Rust. A tap on the notification, or an action
-    /// that opens the app, also opens its deep link.
+    /// Every response goes to Rust: this app's, or the app's that
+    /// scheduled it when several share the process. A tap on the
+    /// notification, or an action that opens the app, also opens its deep
+    /// link.
     public func userNotificationCenter(
         _ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
+        #if canImport(ObjectiveC)
+            let scheduledBy = response.notification.request.content.userInfo[ForgeNotifications.ownerKey] as? String
+            if let scheduledBy, scheduledBy != owner {
+                let other = ForgeProcessTable.with(center) { table in
+                    ForgeProcessTable.section(table, "responders")[scheduledBy]
+                }
+                if let other = other as? (UNNotificationResponse) -> Void {
+                    other(response)
+                    completionHandler()
+                    return
+                }
+            }
+        #endif
+        handle(response)
+        completionHandler()
+    }
+
+    /// Hands a response to this copy's Rust, and opens its deep link through
+    /// this copy's `ForgeDeepLinks` when it opens the app.
+    private func handle(_ response: UNNotificationResponse) {
         let request = response.notification.request
         let userInfo = request.content.userInfo
         let link = userInfo[ForgeNotifications.deepLinkKey] as? String
@@ -175,7 +233,6 @@ public final class UserNotificationsNotifier: NSObject, LocalNotifier, UNUserNot
         if opensApp, let link, let url = URL(string: link) {
             Task { @MainActor in ForgeDeepLinks.shared.open(url) }
         }
-        completionHandler()
     }
 }
 

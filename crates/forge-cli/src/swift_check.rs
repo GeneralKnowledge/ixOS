@@ -647,7 +647,8 @@ pub fn check_swift(runner: &dyn CommandRunner, root: &Path, project: &Path) -> R
         .filter(|p| p.starts_with(app.join("Tests")))
         .filter_map(|p| p.file_stem().map(|s| s.to_string_lossy().into_owned()))
         .collect();
-    let verdicts = evidence::judge(&reqs, &tests, &skipped_classes);
+    let skipped_tests = evidence::skipped_xctests(&text);
+    let verdicts = evidence::judge(&reqs, &tests, &skipped_classes, &skipped_tests);
     // No test ran (a compile error, or no portable test): nothing to record.
     let bundle = if tests.is_empty() {
         None

@@ -2,6 +2,10 @@
 import Foundation
 import Observation
 
+/// Swift-side attachment failures, in the same log as Rust's
+/// (`forge device logs`, the live stream).
+let attachmentLog = ForgeLog("Attachments")
+
 /// The state of a room's live connection, as the chat screen shows it.
 public enum ConnectionState: Equatable, Sendable {
     case closed
@@ -10,13 +14,6 @@ public enum ConnectionState: Equatable, Sendable {
     /// The connection dropped (or the app was in the background); Rust is
     /// reconnecting.
     case reconnecting(reason: String)
-}
-
-/// Shows local notifications for Rust's `.notify` events. The app uses
-/// `LocalChatNotifier`; tests record them.
-@MainActor
-public protocol ChatNotifier: AnyObject {
-    func post(_ message: ChatMessage, roomTitle: String)
 }
 
 /// The app's presentation state. It holds no chat rules: the account, the
@@ -70,7 +67,6 @@ public final class ChatModel {
     public private(set) var assistant: AssistantModel?
     private let storageDirectory: String?
     private let useKeychain: Bool?
-    @ObservationIgnored private let notifier: ChatNotifier?
     @ObservationIgnored private let assistantEngine: AiModel?
     @ObservationIgnored private var eventTask: Task<Void, Never>?
     @ObservationIgnored private var events: ChatEvents?
@@ -78,18 +74,15 @@ public final class ChatModel {
     /// - Parameters:
     ///   - storageDirectory: where Rust keeps each account's chats; defaults
     ///     to Application Support. Tests pass a temporary folder.
-    ///   - notifier: shows notifications for new messages in rooms that are
-    ///     not open. With one, every room is watched while the app runs.
     ///   - useKeychain: keep the account in the Keychain (the default when
     ///     `ForgeServices.install()` has run) or only in memory (tests).
     ///   - assistantEngine: the on-device model for the assistant (the app
     ///     passes `ForgeAppleModel()`; tests a fake or nothing).
     public init(
-        storageDirectory: String? = nil, notifier: ChatNotifier? = nil, useKeychain: Bool? = nil,
+        storageDirectory: String? = nil, useKeychain: Bool? = nil,
         assistantEngine: AiModel? = nil
     ) {
         self.storageDirectory = storageDirectory
-        self.notifier = notifier
         self.useKeychain = useKeychain
         self.assistantEngine = assistantEngine
     }
@@ -102,8 +95,14 @@ public final class ChatModel {
         guard core == nil else { return }
         phase = .loading
         do {
-            let directory = try storageDirectory ?? Self.applicationSupportDirectory()
-            let keychain = useKeychain ?? nativeServicesInstalled()
+            // UI tests (`forge ui run`, forge.toml [ui_test]) start on a
+            // throwaway store and an account kept only in memory, so they
+            // never touch the person's account or chats.
+            let testData = storageDirectory == nil && Self.usesTestData
+            let directory =
+                try storageDirectory
+                ?? (testData ? Self.temporaryDirectory() : Self.applicationSupportDirectory())
+            let keychain = !testData && (useKeychain ?? nativeServicesInstalled())
             // Opening reads the Keychain and a file: do it off the main actor.
             let core = try await Task.detached {
                 if keychain {
@@ -178,7 +177,6 @@ public final class ChatModel {
         do {
             conversations = try await core.listConversations()
             listError = nil
-            conversations.forEach { watchIfNotifying($0.id) }
         } catch {
             listError = Self.describe(error)
         }
@@ -220,7 +218,6 @@ public final class ChatModel {
         if self.conversation(conversation.id) == nil {
             conversations.append(conversation)
         }
-        watchIfNotifying(conversation.id)
         return conversation.id
     }
 
@@ -373,25 +370,6 @@ public final class ChatModel {
         }
     }
 
-    /// A file for Quick Look and the share sheet: the attachment under its
-    /// own name. Shows an alert if it cannot be fetched.
-    public func previewFile(for attachment: ChatAttachment) async -> URL? {
-        guard let core else { return nil }
-        do {
-            let path: String
-            if let local = core.attachmentFile(attachmentId: attachment.id) {
-                path = local
-            } else {
-                path = try await core.fetchAttachment(attachmentId: attachment.id)
-            }
-            return try AttachmentFiles.namedCopy(
-                of: URL(fileURLWithPath: path), for: attachment)
-        } catch {
-            actionError = Self.describe(error)
-            return nil
-        }
-    }
-
     /// Replaces the text of one of our sent messages, for everyone.
     public func edit(_ message: ChatMessage, to text: String) async {
         guard let core else { return }
@@ -487,12 +465,11 @@ public final class ChatModel {
                 conversations[index] = conversation
             } else {
                 conversations.append(conversation)
-                watchIfNotifying(conversation.id)
             }
-        case .notify(let message):
-            // Rust raises this only for others' new messages in rooms that
-            // are not open.
-            notifier?.post(message, roomTitle: title(of: message.conversationId))
+        case .notify:
+            // Rust posts the notification itself (rust/src/alerts.rs) and
+            // keeps every room live for it.
+            break
         case .messageReceived(let message):
             upsert(message)
             if message.isMine { updateWaitingCount() }
@@ -570,18 +547,26 @@ public final class ChatModel {
         updateWaitingCount()
         phase = newAccount == nil ? .signedOut : .ready
         if newAccount != nil {
-            conversations.forEach { watchIfNotifying($0.id) }
             Task { await refresh() }
         }
     }
 
-    /// Keeps a room live while the app runs, so its news can notify.
-    private func watchIfNotifying(_ conversationId: String) {
-        guard notifier != nil else { return }
-        try? core?.watch(conversationId: conversationId)
-    }
-
     // MARK: Helpers
+
+    /// Whether this launch uses throwaway test data (`-ForgeUITestData`, or
+    /// ForgeKit's `-ForgeTemporaryData`, so one argument works for every app
+    /// in Device Lab).
+    static let usesTestData =
+        ProcessInfo.processInfo.arguments.contains("-ForgeUITestData")
+        || ProcessInfo.processInfo.arguments.contains("-ForgeTemporaryData")
+
+    /// A fresh folder for one test-data launch.
+    static func temporaryDirectory() throws -> String {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("ChatUITest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        return url.path
+    }
 
     /// Text for the screen; `reason` fields are diagnostics from Rust.
     public static func describe(_ error: Error) -> String {

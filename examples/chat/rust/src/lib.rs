@@ -27,6 +27,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use chat_core::{ChatClient, ChatConfig, ChatStore, HttpRepo};
 use forge_runtime::{background, EventHub, Lifecycle, Phase};
 
+pub mod alerts;
 pub mod assistant;
 pub mod credentials;
 mod types;
@@ -49,7 +50,7 @@ forge_runtime::app_shell! {
 // Native services the host implements (Keychain, directories, notifications,
 // permissions, deep links), as `crate::native`. The app installs them with
 // `ForgeServices.install()`; see docs/native-services.md.
-forge_services::native_services!(audio, biometrics, http, ai);
+forge_services::native_services!(audio, biometrics, http, ai, background);
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).
@@ -69,13 +70,26 @@ pub struct ChatCore {
     lifecycle: Lifecycle,
     shut_down: AtomicBool,
     assistant: Arc<AssistantCore>,
+    /// The notifier for message notifications; none in tests that don't
+    /// ask for one, and in `swift test` (no app bundle).
+    services: Option<native::NativeServices>,
 }
 
 /// The signed-in account and its chat engine.
 struct Session {
     account: ChatAccount,
     client: ChatClient,
+    /// Message notifications, when the app has a notifier.
+    alerts: Option<Arc<alerts::Alerts>>,
 }
+
+/// The background refresh (forge.toml `[ios] background_tasks`): catches up
+/// every room and announces what arrived, when iOS gives the app time.
+pub const BACKGROUND_REFRESH: &str = "org.forgemobile.chat.refresh";
+
+/// How often to ask iOS for a refresh. iOS decides when (and whether) it
+/// runs, from how the person uses the app; it is a floor, not a schedule.
+pub const BACKGROUND_REFRESH_EVERY: std::time::Duration = std::time::Duration::from_secs(15 * 60);
 
 #[uniffi::export]
 impl ChatCore {
@@ -86,9 +100,16 @@ impl ChatCore {
     #[uniffi::constructor]
     pub fn new(storage_directory: String) -> Result<Arc<Self>, ChatError> {
         let credentials = KeychainCredentials::installed()?;
-        let core =
-            Self::open(PathBuf::from(storage_directory), Arc::new(credentials)).map(Arc::new)?;
+        let services = native::NativeServices::installed().ok();
+        let core = Self::open_with_services(
+            PathBuf::from(storage_directory),
+            Arc::new(credentials),
+            services,
+        )
+        .map(Arc::new)?;
         core.handle_notification_actions();
+        core.ask_for_notifications();
+        core.register_background_refresh();
         Ok(core)
     }
 
@@ -201,15 +222,16 @@ impl ChatCore {
     /// rooms that are not open (they count as unread).
     pub async fn list_conversations(&self) -> Result<Vec<ChatConversation>, ChatError> {
         let (client, user_id) = self.client_and_user()?;
+        let alerts = self.alerts();
         let result = background("chat-list", move || {
-            client
-                .list_conversations()
-                .map(|list| {
-                    list.into_iter()
-                        .map(|c| types::conversation(c, &user_id))
-                        .collect()
-                })
-                .map_err(ChatError::from)
+            let list = client.list_conversations().map_err(ChatError::from)?;
+            if let Some(alerts) = &alerts {
+                watch_all(&client, alerts);
+            }
+            Ok(list
+                .into_iter()
+                .map(|c| types::conversation(c, &user_id))
+                .collect())
         })
         .await;
         result.map_err(|e| self.rejected(e))
@@ -219,11 +241,16 @@ impl ChatCore {
     /// (`ConversationUpdated`) and returned, ready to open.
     pub async fn create_conversation(&self, title: String) -> Result<ChatConversation, ChatError> {
         let (client, user_id) = self.client_and_user()?;
+        let alerts = self.alerts();
         let result = background("chat-create", move || {
-            client
+            let created = client
                 .create_conversation(&title)
-                .map(|c| types::conversation(c, &user_id))
-                .map_err(ChatError::from)
+                .map_err(ChatError::from)?;
+            if alerts.is_some() {
+                // Best effort: the next list watches it anyway.
+                let _ = client.watch(&created.id);
+            }
+            Ok(types::conversation(created, &user_id))
         })
         .await;
         result.map_err(|e| self.rejected(e))
@@ -591,6 +618,12 @@ impl ChatCore {
                 let _ = client.resume_streams();
             }
         }
+        if change.to.is_foreground() {
+            // What arrived until now is on screen or counted as unread.
+            if let Some(alerts) = self.alerts() {
+                alerts.seen_until(forge_services::notify::now_ms());
+            }
+        }
         self.events.publish(ChatEvent::PhaseChanged {
             phase,
             resumed: change.resumed,
@@ -615,9 +648,16 @@ impl ChatCore {
     }
 }
 
-/// The notification category of a new message (`LocalChatNotifier`), with
-/// Reply and Mark as Read on it.
+/// The notification category of a new message ([`alerts`]), with Reply and
+/// Mark as Read on it.
 pub const MESSAGE_NOTIFICATION: &str = "chat.message";
+
+/// The deep link on a message's notification
+/// (`forgechat://conversation/<room>?message=<id>`).
+#[uniffi::export]
+pub fn chat_message_link(conversation_id: String, message_id: String) -> String {
+    alerts::message_link(&conversation_id, &message_id)
+}
 
 /// The file whose presence turns the app lock on.
 const APP_LOCK_FILE: &str = "app-lock";
@@ -631,12 +671,6 @@ pub fn app_lock_method() -> Option<String> {
     availability
         .can_lock()
         .then(|| availability.name().to_string())
-}
-
-/// [`MESSAGE_NOTIFICATION`], for the Swift notifier.
-#[uniffi::export]
-pub fn message_notification_category() -> String {
-    MESSAGE_NOTIFICATION.into()
 }
 
 impl ChatCore {
@@ -664,8 +698,94 @@ impl ChatCore {
         });
     }
 
+    /// Asks once for notifications (iOS remembers the answer), off the
+    /// caller's thread.
+    fn ask_for_notifications(&self) {
+        let Some(services) = self.services.clone() else {
+            return;
+        };
+        let _ = std::thread::Builder::new()
+            .name("chat-ask-notifications".into())
+            .spawn(move || {
+                forge_runtime::block_on(
+                    services.request_permission(native::NativePermission::Notifications),
+                );
+            });
+    }
+
+    /// Asks iOS for [`BACKGROUND_REFRESH`] windows. Does nothing where the
+    /// host has no background tasks (tests, Linux).
+    fn register_background_refresh(self: &Arc<Self>) {
+        if let Ok(service) = native::background::BackgroundService::installed() {
+            self.register_background_refresh_with(&service);
+        }
+    }
+
+    /// [`register_background_refresh`](Self::register_background_refresh)
+    /// with a given service (tests pass a fake scheduler).
+    pub fn register_background_refresh_with(
+        self: &Arc<Self>,
+        service: &native::background::BackgroundService,
+    ) {
+        let core = Arc::downgrade(self);
+        let registered = service.register_refresh(
+            BACKGROUND_REFRESH,
+            BACKGROUND_REFRESH_EVERY.as_secs_f64(),
+            move |run| {
+                let core = core.clone();
+                async move {
+                    let Some(core) = core.upgrade() else {
+                        return false;
+                    };
+                    // Each run has its own thread, so blocking is fine here.
+                    core.catch_up_in_background(&|| run.is_cancelled()).is_ok()
+                }
+            },
+        );
+        if let Err(e) = registered {
+            forge_runtime::logging::warn!("background refresh not registered: {e}");
+        }
+    }
+
+    /// One background refresh: lists the rooms, fetches what is new in each,
+    /// sends what waits in the outbox, and announces new messages from
+    /// others. `cancelled` is checked between rooms (iOS ending the window).
+    /// Returns how many notifications it posted.
+    pub fn catch_up_in_background(&self, cancelled: &dyn Fn() -> bool) -> Result<u32, ChatError> {
+        let client = match self.client() {
+            Ok(client) => client,
+            // Signed out: nothing to fetch, and nothing went wrong.
+            Err(ChatError::NotSignedIn) => return Ok(0),
+            Err(e) => return Err(e),
+        };
+        let started = std::time::Instant::now();
+        let rooms = client
+            .list_conversations()
+            .map_err(|e| self.rejected(e.into()))?;
+        for room in &rooms {
+            if cancelled() {
+                forge_runtime::logging::info!("background refresh cut short by iOS");
+                return Err(ChatError::Cancelled);
+            }
+            if let Err(e) = client.sync_messages(&room.id) {
+                forge_runtime::logging::warn!("background refresh: a room failed: {e}");
+            }
+        }
+        client.flush_outbox();
+        let announced = self
+            .alerts()
+            .map_or(0, |alerts| alerts.announce_unread(&client));
+        forge_runtime::logging::info!(
+            "background refresh: {} rooms, {} announced, {} ms",
+            rooms.len(),
+            announced,
+            started.elapsed().as_millis()
+        );
+        Ok(u32::try_from(announced).unwrap_or(u32::MAX))
+    }
+
     fn notification_response(&self, response: native::NotificationResponse) {
-        // The room is the notification's thread (LocalChatNotifier).
+        // The room is the notification's thread (alerts::notification).
         let Some(room) = response.thread_id else {
             return;
         };
@@ -699,10 +819,22 @@ impl ChatCore {
         }
     }
 
-    /// Opens with any credential store (tests pass fakes).
+    /// Opens with any credential store (tests pass fakes), without
+    /// notifications.
     pub fn open(
         storage_directory: PathBuf,
         credentials: Arc<dyn Credentials>,
+    ) -> Result<Self, ChatError> {
+        Self::open_with_services(storage_directory, credentials, None)
+    }
+
+    /// Opens with any credential store and, with `services`, message
+    /// notifications through its notifier: every room is then kept live
+    /// while the app is on screen, so its news can be announced.
+    pub fn open_with_services(
+        storage_directory: PathBuf,
+        credentials: Arc<dyn Credentials>,
+        services: Option<native::NativeServices>,
     ) -> Result<Self, ChatError> {
         forge_runtime::logging::init();
         if storage_directory.as_os_str().is_empty() {
@@ -727,6 +859,7 @@ impl ChatCore {
             events: EventHub::with_capacity(EVENT_QUEUE_CAPACITY),
             lifecycle: Lifecycle::new(),
             shut_down: AtomicBool::new(false),
+            services,
         };
         if let Some(stored) = core.credentials.load()? {
             let session = core.open_session(&stored)?;
@@ -745,6 +878,10 @@ impl ChatCore {
         } else {
             Ok(())
         }
+    }
+
+    fn alerts(&self) -> Option<Arc<alerts::Alerts>> {
+        self.lock().as_ref().and_then(|s| s.alerts.clone())
     }
 
     fn client(&self) -> Result<ChatClient, ChatError> {
@@ -785,20 +922,42 @@ impl ChatCore {
             user_id: stored.user_id.clone(),
             ..ChatConfig::default()
         };
+        let alerts = self
+            .services
+            .clone()
+            .map(|services| Arc::new(alerts::Alerts::open(services, directory.clone())));
         let hub = self.events.clone();
         let user_id = stored.user_id.clone();
+        let announcer = alerts.clone();
         let client = ChatClient::open(
             Arc::new(repo),
             ChatStore::in_directory(directory),
             config,
-            move |event: chat_core::ChatEvent| hub.publish(types::event(event, &user_id)),
+            move |event: chat_core::ChatEvent| {
+                if let Some(alerts) = &announcer {
+                    match &event {
+                        chat_core::ChatEvent::ConversationUpdated(room) => {
+                            alerts.remember_title(&room.id, &room.title)
+                        }
+                        chat_core::ChatEvent::Notify(message) => {
+                            alerts.announce(message);
+                        }
+                        _ => {}
+                    }
+                }
+                hub.publish(types::event(event, &user_id))
+            },
         )?;
         if self.lifecycle.phase() == Phase::Background {
             client.pause_streams();
         }
+        if let Some(alerts) = &alerts {
+            watch_all(&client, alerts);
+        }
         Ok(Session {
             account: stored.public(),
             client,
+            alerts,
         })
     }
 
@@ -827,6 +986,18 @@ impl ChatCore {
             });
         }
         error
+    }
+}
+
+/// Keeps every stored room live, so news in rooms that aren't open can be
+/// announced, and gives the notifications the rooms' titles. While the app
+/// is in the background this only records them.
+fn watch_all(client: &ChatClient, alerts: &alerts::Alerts) {
+    for room in client.cached_conversations() {
+        alerts.remember_title(&room.id, &room.title);
+        if let Err(e) = client.watch(&room.id) {
+            forge_runtime::logging::warn!("room not watched: {e}");
+        }
     }
 }
 

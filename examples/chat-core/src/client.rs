@@ -189,6 +189,16 @@ struct State {
     uploaded: HashSet<String>,
 }
 
+impl State {
+    /// Whether the room is on screen: open, and the app in the foreground.
+    /// An open room left behind when the app went to the background is not
+    /// being read, so what a background refresh fetches for it counts as
+    /// unread (and notifies) until the app comes back.
+    fn is_viewing(&self, conversation_id: &str) -> bool {
+        !self.paused && self.open.contains(conversation_id)
+    }
+}
+
 struct Subscription {
     conversation_id: String,
     /// Cancelled when the subscription ends; closes its live connection.
@@ -913,6 +923,28 @@ impl ChatClient {
         state.paused = false;
         let mut rooms: Vec<String> = state.open.union(&state.watched).cloned().collect();
         rooms.sort();
+        // An open room is on screen again: what arrived while away (a
+        // background refresh) is read now, here and on the server.
+        let mut open: Vec<String> = state.open.iter().cloned().collect();
+        open.sort();
+        let reads: Vec<(String, i64)> = open
+            .into_iter()
+            .filter_map(|room| {
+                let up_to = self.inner.mark_read_locally(&mut state, &room)?;
+                Some((room, up_to))
+            })
+            .collect();
+        if !reads.is_empty() {
+            self.inner.persist(&mut state);
+            let inner = Arc::clone(&self.inner);
+            let _ = thread::Builder::new()
+                .name("forge-chat-mark-read".into())
+                .spawn(move || {
+                    for (room, up_to) in reads {
+                        let _ = inner.repo.mark_read(&room, up_to);
+                    }
+                });
+        }
         for room in rooms {
             self.start_stream_locked(&mut state, &room)?;
         }
@@ -1156,7 +1188,7 @@ impl Inner {
         messages: Vec<Message>,
         fetched_since: Option<Option<i64>>,
     ) {
-        let viewing = state.open.contains(conversation_id);
+        let viewing = state.is_viewing(conversation_id);
         let contiguous = match fetched_since {
             None | Some(None) => true,
             Some(Some(since)) => state
@@ -1226,7 +1258,7 @@ impl Inner {
             .find(|m| m.status == MessageStatus::Sent)
             .map(|m| m.sent_at);
         conversation.last_message_at = max_opt(conversation.last_message_at, newest_sent);
-        conversation.unread_count = if state.open.contains(&conversation.id) {
+        conversation.unread_count = if state.is_viewing(&conversation.id) {
             0
         } else if let Some(read) = conversation.read_up_to {
             let unread = messages

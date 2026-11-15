@@ -243,6 +243,17 @@ macro_rules! __native_background {
                 run
             }
 
+            /// Whether this library's Rust has a handler for `identifier`
+            /// right now. The host asks when several apps' libraries share
+            /// one process (Device Lab), to hand a task to the one that
+            /// handles it.
+            #[::uniffi::export]
+            pub fn native_background_handles(identifier: String) -> bool {
+                BackgroundService::installed()
+                    .map(|service| service.handles(&identifier))
+                    .unwrap_or(false)
+            }
+
             #[::uniffi::export]
             pub fn install_native_background(scheduler: Arc<dyn BackgroundScheduler>) {
                 BackgroundService::new(scheduler).install();
@@ -433,6 +444,11 @@ macro_rules! __native_background {
                     if spawned.is_err() {
                         run.finish(false);
                     }
+                }
+
+                /// Whether a handler is registered for `identifier`.
+                pub fn handles(&self, identifier: &str) -> bool {
+                    self.registrations.lock().unwrap().contains_key(identifier)
                 }
 
                 /// Runs waiting for a handler (for tests and diagnostics).

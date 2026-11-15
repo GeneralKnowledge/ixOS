@@ -161,16 +161,20 @@ struct ChatView: View {
             Button("Search in Conversation", systemImage: "magnifyingglass") {
                 searching = true
             }
+            .accessibilityIdentifier("chat.search")
             if muted {
                 Button("Unmute", systemImage: "bell") {
                     model.setMuted(conversationId, false)
                 }
+                .accessibilityIdentifier("chat.unmute")
             } else {
                 Button("Mute", systemImage: "bell.slash") {
                     model.setMuted(conversationId, true)
                 }
+                .accessibilityIdentifier("chat.mute")
             }
         }
+        .accessibilityIdentifier("chat.more")
     }
 
     private var deletingShown: Binding<Bool> {
@@ -634,7 +638,9 @@ private struct Composer: View {
             if !isEditing {
                 Menu {
                     Button("Photo", systemImage: "photo.on.rectangle", action: pickPhotos)
+                        .accessibilityIdentifier("chat.attachPhoto")
                     Button("Document", systemImage: "doc", action: pickFiles)
+                        .accessibilityIdentifier("chat.attachDocument")
                 } label: {
                     Label("Attach", systemImage: "plus.circle.fill")
                         .labelStyle(.iconOnly)
@@ -642,10 +648,12 @@ private struct Composer: View {
                         .foregroundStyle(.secondary)
                 }
                 .disabled(staged.count >= MAX_ATTACHMENTS_PER_MESSAGE_SWIFT)
+                .accessibilityIdentifier("chat.attach")
             }
             TextField("Message", text: $draft, axis: .vertical)
                 .lineLimit(1...6)
                 .focused(focused)
+                .accessibilityIdentifier("chat.composer")
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
                 .overlay {
@@ -656,12 +664,14 @@ private struct Composer: View {
                 Button("Record Voice Message", systemImage: "mic.circle.fill", action: startRecording)
                     .labelStyle(.iconOnly)
                     .font(.title)
+                    .accessibilityIdentifier("chat.record")
             } else {
                 Button(isEditing ? "Save" : "Send", systemImage: isEditing ? "checkmark.circle.fill" : "arrow.up.circle.fill", action: send)
                     .labelStyle(.iconOnly)
                     .font(.title)
                     .disabled(empty)
                     .keyboardShortcut(.return, modifiers: .command)
+                    .accessibilityIdentifier("chat.send")
             }
         }
     }
@@ -690,6 +700,7 @@ private struct Composer: View {
             Button("Cancel", systemImage: "xmark.circle.fill", action: cancel)
                 .labelStyle(.iconOnly)
                 .foregroundStyle(.secondary)
+                .accessibilityIdentifier("chat.cancelContext")
         }
         .frame(maxHeight: 36)
     }
@@ -707,6 +718,7 @@ private struct RecordingBar: View {
             Button("Discard Recording", systemImage: "trash", role: .destructive, action: cancel)
                 .labelStyle(.iconOnly)
                 .font(.title3)
+                .accessibilityIdentifier("chat.discardRecording")
             Circle().fill(.red).frame(width: 10, height: 10)
             Text(AttachmentFiles.timeLabel(recorder.elapsed))
                 .font(.body.monospacedDigit())
@@ -715,6 +727,7 @@ private struct RecordingBar: View {
             Button("Send Voice Message", systemImage: "arrow.up.circle.fill", action: send)
                 .labelStyle(.iconOnly)
                 .font(.title)
+                .accessibilityIdentifier("chat.sendRecording")
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .contain)

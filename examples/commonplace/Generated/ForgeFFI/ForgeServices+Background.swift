@@ -38,21 +38,53 @@ public final class ForgeBackgroundScheduler: BackgroundScheduler, @unchecked Sen
     }
 
     #if os(iOS)
-        /// Registers each permitted identifier once per process. A second
-        /// registration of the same identifier would crash.
+        /// Registers each permitted identifier once per process; a second
+        /// registration of the same identifier would crash. Patterns
+        /// (`prefix.*`, continued-processing tasks) are left to the code that
+        /// submits them.
+        ///
+        /// Several apps can share one process (Device Lab hosts them), each
+        /// with its own copy of this adapter and its own Rust handlers. The
+        /// copies share one table (`ForgeProcessTable`): the first registers
+        /// an identifier with iOS, and each task goes to the copy whose Rust
+        /// has a handler for it, or, if none has one yet (iOS launched the
+        /// app for it before any core opened), to the first copy, whose Rust
+        /// waits for a handler until the window ends.
         func registerPermitted() {
             lock.lock()
             defer { lock.unlock() }
             guard !registered else { return }
             registered = true
-            for identifier in permitted() {
-                let ok = BGTaskScheduler.shared.register(forTaskWithIdentifier: identifier, using: nil) { task in
-                    let run = runNativeBackgroundTask(
-                        identifier: identifier, completion: BackgroundCompletion(task: task))
-                    task.expirationHandler = { run.expire() }
+            let offer: (BGTask, Bool) -> Bool = { task, evenWithoutHandler in
+                guard evenWithoutHandler || nativeBackgroundHandles(identifier: task.identifier) else {
+                    return false
                 }
-                if !ok {
-                    print("[forge] background task \(identifier) could not be registered")
+                let run = runNativeBackgroundTask(
+                    identifier: task.identifier, completion: BackgroundCompletion(task: task))
+                task.expirationHandler = { run.expire() }
+                return true
+            }
+            let scheduler = BGTaskScheduler.shared
+            ForgeProcessTable.with(scheduler) { table in
+                let takers = ForgeProcessTable.section(table, "background")
+                for identifier in permitted() where !identifier.contains("*") {
+                    if let existing = takers[identifier] as? NSMutableArray {
+                        existing.add(offer)
+                        continue
+                    }
+                    takers[identifier] = NSMutableArray(object: offer)
+                    let ok = scheduler.register(forTaskWithIdentifier: identifier, using: nil) { task in
+                        let candidates = ForgeProcessTable.with(BGTaskScheduler.shared) { table in
+                            (ForgeProcessTable.section(table, "background")[identifier] as? NSArray)?
+                                .compactMap { $0 as? (BGTask, Bool) -> Bool } ?? []
+                        }
+                        if candidates.contains(where: { $0(task, false) }) { return }
+                        if let first = candidates.first, first(task, true) { return }
+                        task.setTaskCompleted(success: false)
+                    }
+                    if !ok {
+                        print("[forge] background task \(identifier) could not be registered")
+                    }
                 }
             }
         }

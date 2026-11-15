@@ -2,21 +2,11 @@
 @preconcurrency import ChatFFI
 import XCTest
 
-/// Records notifications instead of showing them.
-@MainActor
-final class RecordingNotifier: ChatNotifier {
-    var posted: [(ChatMessage, String)] = []
-    func post(_ message: ChatMessage, roomTitle: String) {
-        posted.append((message, roomTitle))
-    }
-}
-
 /// The model against the real Rust core and the real chat server: no mocks.
 @MainActor
 final class ChatModelTests: XCTestCase {
-    private func model(notifier: ChatNotifier? = nil) throws -> ChatModel {
-        ChatModel(
-            storageDirectory: try temporaryDirectory(self), notifier: notifier, useKeychain: false)
+    private func model() throws -> ChatModel {
+        ChatModel(storageDirectory: try temporaryDirectory(self), useKeychain: false)
     }
 
     func testFirstLaunchAsksForAnAccount() async throws {
@@ -30,8 +20,7 @@ final class ChatModelTests: XCTestCase {
     func testSignUpThenSendAndReceive() async throws {
         let server = try ChatServer.start()
         defer { server.stop() }
-        let notifier = RecordingNotifier()
-        let me = try model(notifier: notifier)
+        let me = try model()
         let other = try model()
         await me.open()
         await other.open()
@@ -57,9 +46,11 @@ final class ChatModelTests: XCTestCase {
             me.messages(in: "general").contains { $0.body == "in general too" && !$0.isMine }
         }
 
-        // A watched room that is not open notifies.
-        await waitUntil("a notification for random") {
-            notifier.posted.contains { $0.0.body == "hello from the laptop" && $0.1 == "Random" }
+        // A room that is not open counts it as unread. (Notifications are
+        // Rust's: rust/src/tests.rs, `message_notifications_come_from_rust`.)
+        await me.refresh()
+        await waitUntil("random shows unread") {
+            me.conversation("random")?.showsUnread == true
         }
         me.leave("general")
         me.close()

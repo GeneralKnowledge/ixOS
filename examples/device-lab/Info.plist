@@ -10,6 +10,7 @@
 		<string>org.forgemobile.pocketlibrary.booksummary.*</string>
 		<string>XTL-ND4P87PX52.org.forgemobile.pocketlibrary.booksummary.*</string>
 		<string>org.forgemobile.agentlab.commonplace.refresh</string>
+		<string>org.forgemobile.chat.refresh</string>
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Device Lab</string>

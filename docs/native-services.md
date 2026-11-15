@@ -119,7 +119,7 @@ on_notification_response(move |response| match response.action_id.as_str() {
 });
 ```
 
-Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each); Chat's message notifications are the first user (Reply and Mark as Read); Commonplace's new-articles notification (Mark All as Read) and Good Dog's daily reminder (Start Now, Not Today, one notification per day scheduled a week ahead so a day can be skipped) follow.
+Every response reaches the handler with the notification's id, `thread_id`, deep link and any typed text. A tap, or an `opens_app` action, also opens the deep link through `onForgeDeepLink` as before. Responses that arrive before the handler is set (the app was launched by one) wait for it, up to 16. iOS gives an action handled in the background only a few seconds, so hand slow work to the runtime as finishing work, or send it through a durable queue like Chat's outbox. Rust checks the categories (ids present and unique, 1 to 10 actions each). When one process hosts several apps (Device Lab), each app's categories are kept and set together, and a response goes to the Rust of the app that scheduled the notification. Chat's message notifications are the first user (Reply and Mark as Read); Commonplace's new-articles notification (Mark All as Read) and Good Dog's daily reminder (Start Now, Not Today, one notification per day scheduled a week ahead so a day can be skipped) follow.
 
 ### Tests
 
@@ -170,6 +170,7 @@ Some platform code has no Rust side at all. These files are copied into every ap
 |--------|--------------|
 | `ForgeAudioSession` | `activate(.playback)` (spoken audio, plays with the ring switch on silent) or `activate(.record)`, and `deactivate()` so other apps' audio resumes. Needs no permission, so an app that only plays sound (Pocket Library's read-aloud) uses it without selecting `audio`. AVFoundation, iOS only; does nothing elsewhere |
 | `ForgeWeb` | Web pages inside the app, on WebKit and SafariServices; see [Web pages](#web-pages) below. iOS only |
+| `ForgeDocuments` | `thumbnail(of: url, size:, scale:)`: a picture of a document (a PDF's first page, a text or office file, a video frame) from Quick Look's thumbnailer, or nil when Quick Look can't draw one. Name the file with its real extension first. To open a file, use SwiftUI's own `.quickLookPreview($url)`, which shows PDFs with their pages and a share button. Chat's document bubbles use it. Apple platforms only |
 | `ForgeImages` | `thumbnail(of: url, maxPixels:, cached:)` and `thumbnail(of: data, maxPixels:)` decode an image straight to the size shown, the right way up, off the main actor; `writeDownscaledJPEG(from:maxPixels:to:)` turns a picked photo into a smaller JPEG without its location or other metadata; `pixels(_ points:, scale:)` converts a view size. Uses ImageIO only |
 
 ### Web pages
@@ -285,7 +286,7 @@ Face ID falls back to the passcode, so a person whose face isn't recognised can 
 
 ### Background tasks (`background`)
 
-Work iOS runs while the app is in the background or closed, when it chooses (`BGTaskScheduler`). It works on a free team. Commonplace's hourly feed refresh is its first user.
+Work iOS runs while the app is in the background or closed, when it chooses (`BGTaskScheduler`). It works on a free team. Commonplace's hourly feed refresh is its first user; Chat's catch-up (fetch every room, send the outbox, announce new messages) the second.
 
 1. List each task in `forge.toml`: `[ios] background_tasks = ["org.example.app.refresh"]`. Forge writes `BGTaskSchedulerPermittedIdentifiers` and adds the `fetch` and `processing` background modes.
 2. Select the service: `forge_services::native_services!(background)`. `ForgeServices.install()` registers every listed task at launch, which iOS requires before launch ends.
@@ -319,6 +320,8 @@ if let Ok(background) = BackgroundService::installed() {
 | Stop a recurring task | `cancel(id)` |
 
 A handler is async and returns whether it succeeded; each run gets its own thread. `run.on_cancel`, `run.is_cancelled()` and `run.cancelled()` tell it when iOS ends the window; a cancelled run reports failure. When iOS launches the app in the background for a task, `ForgeLifecycle` opens the core (no view will), and the run waits for its handler; it fails if the window ends first.
+
+When one process hosts several apps (Device Lab), each identifier is registered with iOS once, and each run goes to the app whose Rust has a handler for it (or waits in the first app's, when none has opened yet). Identifiers with a `*` are patterns for continued-processing tasks; the code that submits them registers them (Pocket Library's whole-book summary).
 
 iOS decides whether and when a task runs, from how the person uses the app, battery and Low Power Mode. Nothing runs after the person force-quits the app, or while Background App Refresh is off for it (`submit` then fails with `PermissionDenied`). To try a task on a phone without waiting, pause the app in a debugger and run `e -l objc -- (void)[[BGTaskScheduler sharedScheduler] _simulateLaunchForTaskWithIdentifier:@"org.example.app.refresh"]`; that needs Xcode, so on Linux leave the app in the background and check the next day with `forge device logs`.
 

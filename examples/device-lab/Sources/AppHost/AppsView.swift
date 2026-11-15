@@ -126,7 +126,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
         case .goodDog: GoodDogApp.ContentView()
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
-        case .chat: ChatApp.ContentView()
+        case .chat: ChatApp.ContentView(model: EmbeddedApps.chat)
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
         case .sketchbook: SketchbookApp.ContentView(host: EmbeddedApps.sketchbook)
         case .soundscape: SoundscapeApp.ContentView(host: EmbeddedApps.soundscape)
@@ -188,6 +188,9 @@ public enum EmbeddedApps {
     static let sketchbook = SketchbookApp.makeAppHost()
     static let soundscape = SoundscapeApp.makeAppHost()
     static let relay = RelayApp.makeAppHost()
+    /// One Chat core for the process, so its room connections and message
+    /// notifications don't multiply each time the sheet opens.
+    static let chat = ChatApp.ContentView.makeModel()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app

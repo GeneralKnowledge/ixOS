@@ -70,4 +70,43 @@ public enum ForgeServices {
     }
 }
 
+#if canImport(ObjectiveC)
+    import ObjectiveC
+
+    /// One table per process, shared by every copy of these adapters. An app
+    /// that hosts other apps (Device Lab) links several Rust libraries, each
+    /// with its own copy of this file in its own module, but iOS has one
+    /// notification centre and one background task scheduler. The copies
+    /// meet in a dictionary attached to that system object, under a fixed
+    /// key, and lock on the object itself, so the lock and the table are the
+    /// same for all of them.
+    enum ForgeProcessTable {
+        /// Never dereferenced: only its value is compared ("ForgeTab").
+        private static let key = UnsafeRawPointer(bitPattern: 0x466F_7267_6554_6162)!
+
+        /// Runs `body` with the table attached to `anchor`, under a lock on
+        /// `anchor`.
+        static func with<T>(_ anchor: AnyObject, _ body: (NSMutableDictionary) -> T) -> T {
+            objc_sync_enter(anchor)
+            defer { objc_sync_exit(anchor) }
+            let table: NSMutableDictionary
+            if let existing = objc_getAssociatedObject(anchor, key) as? NSMutableDictionary {
+                table = existing
+            } else {
+                table = NSMutableDictionary()
+                objc_setAssociatedObject(anchor, key, table, .OBJC_ASSOCIATION_RETAIN)
+            }
+            return body(table)
+        }
+
+        /// The dictionary under `name` in `table`, created when missing.
+        static func section(_ table: NSMutableDictionary, _ name: String) -> NSMutableDictionary {
+            if let section = table[name] as? NSMutableDictionary { return section }
+            let section = NSMutableDictionary()
+            table[name] = section
+            return section
+        }
+    }
+#endif
+
 #endif
