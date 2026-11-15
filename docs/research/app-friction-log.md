@@ -34,7 +34,7 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
 | A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Open |
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
-| A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
+| A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Documented on `Runtime::command` and pinned by a test (2026-11-15); `rt.post` waits for a second use |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
 | A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Fixed: `write_hashed` |
 | A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Fixed: `import_hashed_keeping_extension`, `import_hashed_with_extension`, `safe_file_name` |

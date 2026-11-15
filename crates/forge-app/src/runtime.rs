@@ -350,6 +350,13 @@ impl<S: Send + 'static> Runtime<S> {
     /// Not cancellable once accepted. After `shutdown`, refused with
     /// `Stopped { kind: ShutDown }`.
     ///
+    /// The command is queued when this is called, not when the future is
+    /// polled, so a caller that can't await (a native service's listener,
+    /// feeding each event to the command thread) can drop the future and the
+    /// command still runs; its result is then only logged if it panics.
+    /// Hold the core weakly in such a listener so it doesn't keep it alive
+    /// (FieldKit's `follow_location`).
+    ///
     /// If iOS suspends the process mid-command, the command finishes on
     /// resume. If the process is killed first, the command did not happen
     /// (the caller never saw `Ok`), so the save inside it must be atomic
