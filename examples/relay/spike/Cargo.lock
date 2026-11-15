@@ -2482,12 +2482,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 
 [[package]]
-name = "pgp-words"
-version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "252db463156011153873b058e3143716dfbb27c04257ef5a9670f74f35f20947"
-
-[[package]]
 name = "pharos"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2859,7 +2853,6 @@ dependencies = [
  "iroh",
  "iroh-blobs",
  "mdns-sd",
- "pgp-words",
  "rand 0.8.8",
  "sha2 0.10.9",
  "spake2",

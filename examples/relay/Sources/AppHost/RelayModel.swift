@@ -82,6 +82,7 @@ public final class RelayModel {
     }
 
     /// A pairing code for this device at `hosts` (its local addresses).
+    @discardableResult
     public func makeInvitation(hosts: [String]) -> Invitation? {
         startListening()
         do {

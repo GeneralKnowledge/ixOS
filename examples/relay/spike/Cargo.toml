@@ -10,7 +10,6 @@ iroh-blobs = "0.105"
 spake2 = "0.4"
 tokio = { version = "1", features = ["full"] }
 anyhow = "1"
-pgp-words = "1.1"
 mdns-sd = "0.13"
 rand = "0.8"
 sha2 = "0.10"

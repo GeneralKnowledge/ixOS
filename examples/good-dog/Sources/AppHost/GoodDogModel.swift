@@ -301,18 +301,22 @@ public final class GoodDogModel {
 
     public func pauseGoal(_ id: UInt64) async {
         await perform { core, now in _ = try await core.pauseGoal(goalId: id, now: now) }
+        await reload()
     }
 
     public func resumeGoal(_ id: UInt64) async {
         await perform { core, now in _ = try await core.resumeGoal(goalId: id, now: now) }
+        await reload()
     }
 
     public func setGoalAside(_ id: UInt64) async {
         await perform { core, now in _ = try await core.setGoalAside(goalId: id, now: now) }
+        await reload()
     }
 
     public func stepBack(_ id: UInt64) async {
         await perform { core, now in _ = try await core.stepBack(goalId: id, now: now) }
+        await reload()
     }
 
     /// The owner's answer to the current stage's question. A "yes" that
@@ -325,6 +329,7 @@ public final class GoodDogModel {
                 self.celebration = celebration
             }
         }
+        await reload()
     }
 
     /// "Not today" on Today, or `false` to take it back.
@@ -350,6 +355,9 @@ public final class GoodDogModel {
 
     // MARK: Private
 
+    /// Runs a command, keeping Rust's refusal for the screen. A command
+    /// whose effect the caller reads straight away reloads after it: the
+    /// `dataChanged` event reloads too, but later, on its own task.
     private func perform(_ command: (AppCore, LocalTime) async throws -> Void) async {
         guard let core else { return }
         do {
