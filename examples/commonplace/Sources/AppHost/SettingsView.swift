@@ -14,16 +14,16 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section("Timelines") {
-                    Toggle("Oldest First", isOn: setting(\.oldestFirst))
+                    Toggle("Oldest First", isOn: setting(.oldestFirst))
                         .accessibilityIdentifier("settings.oldestFirst")
-                    Toggle("Hide Read Articles", isOn: setting(\.hideRead))
+                    Toggle("Hide Read Articles", isOn: setting(.hideRead))
                         .accessibilityIdentifier("settings.hideRead")
-                    Toggle("Show Summaries", isOn: setting(\.showSummaries))
+                    Toggle("Show Summaries", isOn: setting(.showSummaries))
                         .accessibilityIdentifier("settings.showSummaries")
                 }
                 Section {
                     #if os(iOS)
-                        Toggle("Open Links in Commonplace", isOn: setting(\.openLinksInApp))
+                        Toggle("Open Links in Commonplace", isOn: setting(.openLinksInApp))
                             .accessibilityIdentifier("settings.openLinksInApp")
                     #endif
                     Picker("Font", selection: $serif) {
@@ -57,10 +57,10 @@ struct SettingsView: View {
     }
 
     /// A toggle on one of Rust's settings.
-    private func setting(_ key: WritableKeyPath<AppSettings, Bool>) -> Binding<Bool> {
+    private func setting(_ choice: Choice) -> Binding<Bool> {
         Binding(
-            get: { model.settings[keyPath: key] },
-            set: { on in Task { await model.update { $0[keyPath: key] = on } } }
+            get: { choice.value(in: model.settings) },
+            set: { on in Task { await model.update { choice.set(on, in: &$0) } } }
         )
     }
 
@@ -69,5 +69,28 @@ struct SettingsView: View {
             get: { model.newArticleAlerts },
             set: { on in Task { await model.setNewArticleAlerts(on) } }
         )
+    }
+}
+
+/// The settings the toggles change.
+private enum Choice {
+    case oldestFirst, hideRead, showSummaries, openLinksInApp
+
+    func value(in settings: AppSettings) -> Bool {
+        switch self {
+        case .oldestFirst: return settings.oldestFirst
+        case .hideRead: return settings.hideRead
+        case .showSummaries: return settings.showSummaries
+        case .openLinksInApp: return settings.openLinksInApp
+        }
+    }
+
+    func set(_ on: Bool, in settings: inout AppSettings) {
+        switch self {
+        case .oldestFirst: settings.oldestFirst = on
+        case .hideRead: settings.hideRead = on
+        case .showSummaries: settings.showSummaries = on
+        case .openLinksInApp: settings.openLinksInApp = on
+        }
     }
 }

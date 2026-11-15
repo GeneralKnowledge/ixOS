@@ -79,8 +79,14 @@ struct TimelineView: View {
 struct ArticleRow: View {
     let article: ArticleSummary
     let showsFeed: Bool
-    var showsSummary = true
+    let showsSummary: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    init(article: ArticleSummary, showsFeed: Bool, showsSummary: Bool = true) {
+        self.article = article
+        self.showsFeed = showsFeed
+        self.showsSummary = showsSummary
+    }
 
     var body: some View {
         let large = dynamicTypeSize.isAccessibilitySize

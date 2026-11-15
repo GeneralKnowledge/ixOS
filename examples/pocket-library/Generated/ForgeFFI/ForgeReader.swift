@@ -243,7 +243,6 @@ public struct ForgeReaderBlockView: View {
             if !intent.isEmpty { part.inlinePresentationIntent = intent }
             if let link = span.link.flatMap(URL.init(string:)) {
                 part.link = link
-                part.underlineStyle = .single
             }
             text.append(part)
         }
