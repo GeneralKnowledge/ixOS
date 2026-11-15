@@ -100,16 +100,21 @@ while another build was loading the laptop and ping rose to about 1.1 s)
 stalled after 6.4 MB; the next code resumed from the 6,586,368 bytes
 already there.
 
-Not covered yet: the iPhone (M1).
+## iPhone (start of M1, 2026-11-15)
 
-## Not answered yet (needs the laptop)
+Relay's own receiver (`relay_core::code`, with Swift's "Receive with a Code"
+sheet) inside Device Lab, installed by cable at 7f1c94a, on an iPhone 15 Pro
+Max (iOS 26.3.1). The sender was `relay-spike send` on the laptop, on the
+same home Wi-Fi.
 
-- The iOS static library builds with xtool's SDK, and its arm64 size.
-  Command in the spike README; run through `forge queue run` once builds
-  resume.
-- iroh on the phone: first bind, local network permission prompt, a direct
-  connection to the laptop on Wi-Fi from addresses Bonjour resolved, and
-  throughput on a 1 GB file. That is the first stage 1 phone check.
+| Check | Result |
+|---|---|
+| iOS build of the iroh stack | Relay, Device Lab and minimal build with `check-ios-xtool.sh` (needs libc held at 0.2.189, the stub linker for dependencies' cdylibs, and SystemConfiguration). The spike staticlib is 16.2 MB, 11.8 MB stripped |
+| Bonjour finds the Rust sender | Yes: `_forgerelay._udp` from the code's number, no address typed |
+| Laptop to iPhone, 200 MB | Received at the first try with code `88-gem-oil-union`; the sender prints "Sent." only after the receiver has verified every chunk (BLAKE3) and saved the file |
+| Wi-Fi speed | 15.9 MB/s shown on the phone (200 MB in about 12.6 s) |
+| iPhone to Linux | Not yet: the app has no send with a code |
+| Phone memory during a transfer | Not measured yet |
 
 ## What changes for stage 1
 
