@@ -6,14 +6,15 @@ Each claim about NetNewsWire says where it comes from. **Expected** means it is 
 
 | # | NetNewsWire screen | Evidence | Commonplace screen | Identifiers in Commonplace |
 |---|---|---|---|---|
-| S1 | Feeds list: smart feeds (Today, All Unread, Starred), then folders and feeds with unread counts; toolbar with settings, add and refresh | Expected | `FeedListView`: All Unread, Bookmarks, All Articles, then feeds with unread counts; add in the navigation bar, refresh and status in the bottom bar | `feeds.unread`, `feeds.bookmarks`, `feeds.all`, `feeds.feed.<id>`, `feeds.add`, `feeds.refresh`, `feeds.status` |
+| S1 | Feeds list: smart feeds (Today, All Unread, Starred), then folders and feeds with unread counts; toolbar with settings, add and refresh | Expected | `FeedListView`: All Unread, Bookmarks, All Articles, then feeds with unread counts; settings and add in the navigation bar, refresh and status in the bottom bar | `feeds.unread`, `feeds.bookmarks`, `feeds.all`, `feeds.feed.<id>`, `feeds.settings`, `feeds.add`, `feeds.refresh`, `feeds.status` |
 | S2 | Timeline: articles newest first, unread marker, feed name, date, summary | Expected | `TimelineView` | `timeline.article.<id>`, `timeline.markAllRead` |
-| S3 | Article: title, feed, author, date, body; toolbar with star, read state, share, open in browser | Expected | `ArticleView` with `ArticleReader` (plain paragraphs in slice 1) | `article.title`, `article.body`, `article.bookmark`, `article.more`, `article.toggleRead`, `article.openInBrowser`, `article.share` |
+| S3 | Article: title, feed, author, date, body with images and links; toolbar with star, read state, share, open in browser | Expected | `ArticleView`: details, then the body on ForgeReader (headings, quotes, lists, pictures, links); text size and font menu; links open in the web sheet or Safari as Settings say | `article.title`, `article.body`, `article.textSettings`, `article.bookmark`, `article.more`, `article.toggleRead`, `article.showOriginal`, `article.openInBrowser`, `article.share` |
 | S4 | Add feed: an address field, then a confirmation with the feed's name and folder | Expected | `AddFeedView`: the address only; the feed's own name is used | `addFeed.url`, `addFeed.save`, `addFeed.cancel` |
-| S5 | Settings | Expected | None in slice 1 | |
+| S5 | Settings: timeline order, hide read, preview lines, article theme and font, where links open, refresh | Expected | `SettingsView` (sheet): Oldest First, Hide Read Articles, Show Summaries, Open Links in Commonplace, Font, Notify About New Articles | `settings.oldestFirst`, `settings.hideRead`, `settings.showSummaries`, `settings.openLinksInApp`, `settings.font`, `settings.newArticleAlerts`, `settings.done` |
 | S6 | Empty states (no feeds, nothing unread) | Expected | `ForgeStateView` on S1 and S2 | `feeds.addFirst` |
+| S7 | Search: a search field over every article, results as timeline rows | Expected | The feeds list's search field ("Search Articles"; SwiftUI gives it no identifier); results replace the lists | `search.article.<id>` |
 
-Differences already known and accepted: Commonplace has no Today timeline in slice 1, says "bookmark" rather than "star", and asks for no folder when adding.
+Differences already known and accepted: Commonplace has no Today timeline, says "bookmark" rather than "star", asks for no folder when adding (folders are slice 3), and has no article themes beyond the font and text size.
 
 ## Flows
 
@@ -28,6 +29,10 @@ Each is a `forge ui run` file for Commonplace (in `examples/commonplace/uitests/
 | F5 | Refresh with nothing new: no new articles, no duplicates | Expected | Rust test `an_unchanged_or_failing_feed_is_reported_not_fatal` |
 | F6 | Unsubscribe; the feed and its articles are gone | Expected | Rust test `feeds_can_be_renamed_and_removed_and_everything_persists` |
 | F7 | Relaunch; feeds, read state and bookmarks are kept | Expected | Rust test; `subscribe-and-read.toml` relaunches and checks the bookmark |
+| F8 | Search for a word in an article's text; the article is found and opens | Expected | Rust test `search_finds_titles_and_text_by_every_word`; a person's check ([walk.md](walk.md)) |
+| F9 | Change the timeline order and hide read articles; the timelines follow and the choice is kept | Expected | Rust test `settings_are_kept_and_shape_the_timelines`; a person's check |
+| F10 | Tap a link in an article; it opens in the app's browser (or Safari) | Expected | A person's check |
+| F11 | Larger text in the article; the text grows, the place is kept | Expected | A person's check |
 
 ## States and edge cases
 

@@ -240,7 +240,9 @@ fn opening_an_article_marks_it_read_and_gives_its_text() {
     let events = core.events().unwrap();
     let text = block_on(core.open_article(beta.id)).unwrap();
     assert_eq!(text.title, "Beta");
-    assert_eq!(text.paragraphs, vec!["Body of Beta."]);
+    assert_eq!(text.body.blocks.len(), 1);
+    assert_eq!(text.body.blocks[0].text(), "Body of Beta.");
+    assert_eq!(text.body.title, "Beta");
     assert_eq!(text.url.as_deref(), Some("https://fixtures.example/b"));
     assert!(text.read);
     // Saved, then announced.
@@ -486,4 +488,139 @@ fn old_read_articles_are_forgotten_once_the_feed_drops_them() {
     let still = feed::parse(&rss(&[("d", "Delta")])).unwrap();
     store.apply(&[refresh(still)], 90 * day).unwrap();
     assert_eq!(ids(&store), ["Beta", "Delta", "Gamma"]);
+}
+
+#[test]
+fn an_article_body_is_a_reader_section_with_links_and_pictures() {
+    let dir = tempfile::tempdir().unwrap();
+    let html = "&lt;h2&gt;Intro&lt;/h2&gt;&lt;p&gt;See &lt;a href=&quot;/more&quot;&gt;more&lt;/a&gt;.&lt;/p&gt;\
+                &lt;img src=&quot;pic.jpg&quot; alt=&quot;A pic&quot;&gt;&lt;blockquote&gt;Quoted&lt;/blockquote&gt;";
+    let feed = format!(
+        "<?xml version=\"1.0\"?><rss version=\"2.0\"><channel><title>F</title>\
+         <item><title>Rich</title><guid>r</guid><link>https://fixtures.example/posts/r</link>\
+         <description>{html}</description></item></channel></rss>"
+    );
+    let http = StaticClient::new().route(Method::Get, URL, ok(feed.into_bytes(), None));
+    let (core, _) = open_with(dir.path(), http);
+    block_on(core.add_feed(URL.into(), None)).unwrap();
+    let id = core.timeline(Timeline::All)[0].id;
+    let body = block_on(core.open_article(id)).unwrap().body;
+    let kinds: Vec<_> = body.blocks.iter().map(|b| b.kind.clone()).collect();
+    assert_eq!(
+        kinds,
+        vec![
+            ReaderBlockKind::Heading { level: 2 },
+            ReaderBlockKind::Paragraph,
+            ReaderBlockKind::Image {
+                source: "https://fixtures.example/posts/pic.jpg".into(),
+                alt: "A pic".into()
+            },
+            ReaderBlockKind::Quote,
+        ]
+    );
+    // Relative links resolve against the article's own address.
+    assert_eq!(
+        body.blocks[1].spans[1].link.as_deref(),
+        Some("https://fixtures.example/more")
+    );
+    // Ids are stable: the same article gives the same ids.
+    assert_eq!(block_on(core.open_article(id)).unwrap().body, body);
+}
+
+#[test]
+fn search_finds_titles_and_text_by_every_word() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = subscribed(dir.path());
+    let titles = |query: &str| -> Vec<String> {
+        block_on(core.search(query.into()))
+            .unwrap()
+            .into_iter()
+            .map(|a| a.title)
+            .collect()
+    };
+    assert_eq!(titles("beta"), ["Beta"]);
+    // Words are prefixes; every word must match; case doesn't matter.
+    assert_eq!(titles("BOD"), ["Beta", "Alpha"]);
+    assert_eq!(titles("body alph"), ["Alpha"]);
+    assert!(titles("body gamma").is_empty());
+    // Query syntax is text, not an error.
+    assert!(titles("\"AND -( *").is_empty());
+    assert!(titles("   ").is_empty());
+    // A search is a read: no revision, no change event.
+    let revision = core.revision();
+    titles("beta");
+    assert_eq!(core.revision(), revision);
+
+    // Refreshed text is searchable; unsubscribed articles are not.
+    drop(core);
+    let http = StaticClient::new().route(
+        Method::Get,
+        URL,
+        ok(rss(&[("a", "Alpha"), ("b", "Beta"), ("c", "Gamma")]), None),
+    );
+    let (core, _) = open_with(dir.path(), http);
+    block_on(core.refresh(None)).unwrap();
+    let found = block_on(core.search("gamma".into())).unwrap();
+    assert_eq!(found.len(), 1);
+    let feed = core.feeds()[0].id;
+    block_on(core.remove_feed(feed)).unwrap();
+    assert!(block_on(core.search("body".into())).unwrap().is_empty());
+}
+
+#[test]
+fn a_library_from_before_search_is_indexed_when_it_opens() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, _) = subscribed(dir.path());
+    core.shutdown();
+    drop(core);
+    // As if written by slice 1: the index is empty.
+    let db = forge_storage::rusqlite::Connection::open(dir.path().join("library.sqlite")).unwrap();
+    db.execute("DELETE FROM article_search", []).unwrap();
+    drop(db);
+    let (core, _) = open_with(dir.path(), StaticClient::new());
+    assert_eq!(block_on(core.search("alpha".into())).unwrap().len(), 1);
+}
+
+#[test]
+fn settings_are_kept_and_shape_the_timelines() {
+    let dir = tempfile::tempdir().unwrap();
+    let (core, feed) = subscribed(dir.path());
+    assert_eq!(core.settings(), AppSettings::default());
+    let beta = core.timeline(Timeline::All)[0].clone();
+    block_on(core.set_read(beta.id, true)).unwrap();
+
+    let settings = AppSettings {
+        oldest_first: true,
+        hide_read: true,
+        show_summaries: false,
+        open_links_in_app: false,
+    };
+    block_on(core.set_settings(settings.clone())).unwrap();
+    let titles =
+        |t: Timeline| -> Vec<String> { core.timeline(t).into_iter().map(|a| a.title).collect() };
+    // Beta is read, so hidden from All and the feed, but counted.
+    assert_eq!(titles(Timeline::All), ["Alpha"]);
+    assert_eq!(titles(Timeline::Feed { feed_id: feed.id }), ["Alpha"]);
+    assert_eq!(core.counts(Timeline::All).total, 2);
+    block_on(core.set_bookmarked(beta.id, true)).unwrap();
+    assert_eq!(titles(Timeline::Bookmarked), ["Beta"]);
+
+    block_on(core.set_settings(AppSettings {
+        hide_read: false,
+        ..settings.clone()
+    }))
+    .unwrap();
+    // Oldest first.
+    assert_eq!(titles(Timeline::All), ["Alpha", "Beta"]);
+
+    core.shutdown();
+    drop(core);
+    let (core, _) = open_with(dir.path(), StaticClient::new());
+    assert_eq!(
+        core.settings(),
+        AppSettings {
+            hide_read: false,
+            ..settings
+        }
+    );
 }

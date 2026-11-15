@@ -1,0 +1,55 @@
+# The benchmark's F9 (docs/benchmarks/netnewswire/spec.md): Hide Read
+# Articles in Settings empties a feed whose articles are all read. Needs
+# the fixture server on the laptop (docs/benchmarks/netnewswire/fixtures/
+# serve.py); replace the address with the laptop's. Starts on an empty,
+# throwaway library. Search has no scenario: SwiftUI's search field takes
+# no identifier (gap `searchable-identifier`), so a person checks it.
+
+name = "Settings: hide read articles"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "feeds.add" }
+
+[[step]]
+type = { id = "addFeed.url", text = "http://192.168.1.169:8765/rss.xml" }
+
+[[step]]
+tap = { id = "addFeed.save" }
+
+[[step]]
+expect = { label_contains = "Hello from the fixture" }
+
+[[step]]
+tap = { id = "timeline.markAllRead" }
+
+[[step]]
+tap = { id = "BackButton" }
+
+[[step]]
+tap = { id = "feeds.settings" }
+
+[[step]]
+tap = { id = "settings.hideRead" }
+
+[[step]]
+screenshot = "1-settings"
+
+[[step]]
+tap = { id = "settings.done" }
+
+[[step]]
+tap = { id = "feeds.all" }
+
+# Every article is read, so All Articles is empty.
+[[step]]
+expect = { label_contains = "No Articles" }
+
+[[step]]
+screenshot = "2-all-hidden"

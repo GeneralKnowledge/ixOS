@@ -1,0 +1,9 @@
+order = 125
+capability = "Native reader (ForgeReader): documents as sections of styled blocks, HTML into blocks, positions as block anchors, the SwiftUI reading view"
+framework = "Yes: `crates/forge-reader` and its Swift views (`ForgeReader.swift`, copied into an app's bindings by `reader_types!()`)"
+rust_api = "Yes: `blocks_from_html`, `ReaderAnchor::at` and `resolve`, `section_progress`, `location_at`"
+ios_native = "Yes: `ForgeReaderSectionView`, `ForgeReaderBlockView`, `ForgeReaderImage`, `ForgeReaderTextMenu` (SwiftUI text layout, Dynamic Type)"
+in_app = "Yes: Pocket Library (EPUB chapters, saved places as anchors), Commonplace (articles with links and pictures)"
+iphone = "No"
+documented = "Partial: forge-reader.md"
+limits = "Read-aloud stays Pocket Library's until a second app reads aloud. No tables or footnote pop-ups; a picture on the web loads with AsyncImage, uncached. Swift compiled on the laptop only once this lands"

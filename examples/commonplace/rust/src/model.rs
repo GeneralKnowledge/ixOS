@@ -40,9 +40,9 @@ pub struct ArticleSummary {
     pub bookmarked: bool,
 }
 
-/// What the reader shows for one article. This is the boundary the native
-/// reader (docs/native-capability-roadmap.md, Tier 1) will replace: for now
-/// the body is plain paragraphs, with no styling, images or links inside.
+/// What the reader shows for one article: its details, and its body as a
+/// ForgeReader section (headings, paragraphs, quotes, lists, code and
+/// pictures, with bold, italic and links), converted from the feed's HTML.
 #[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
 pub struct ArticleText {
     pub id: i64,
@@ -51,9 +51,35 @@ pub struct ArticleText {
     pub author: Option<String>,
     pub url: Option<String>,
     pub published_at_ms: i64,
-    pub paragraphs: Vec<String>,
+    pub body: crate::ReaderSection,
     pub read: bool,
     pub bookmarked: bool,
+}
+
+/// The person's choices, kept in the library.
+#[derive(uniffi::Record, Clone, Debug, PartialEq, Eq)]
+pub struct AppSettings {
+    /// Timelines list the oldest article first.
+    pub oldest_first: bool,
+    /// The All Articles and feed timelines leave read articles out (All
+    /// Unread and Bookmarks are unchanged).
+    pub hide_read: bool,
+    /// Timeline rows show the start of each article under its title.
+    pub show_summaries: bool,
+    /// Links in an article open inside the app, in a web view; otherwise
+    /// in Safari.
+    pub open_links_in_app: bool,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            oldest_first: false,
+            hide_read: false,
+            show_summaries: true,
+            open_links_in_app: true,
+        }
+    }
 }
 
 /// Which articles a timeline shows.

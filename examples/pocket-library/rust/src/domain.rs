@@ -130,11 +130,28 @@ impl StoredSynopsis {
 /// Where the reader was left, and the page that put the book on. If the
 /// page has changed since (typed in by hand), the reader opens at the new
 /// page instead.
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 pub struct SavedPosition {
     pub chapter: u32,
+    /// How far through the chapter. Saved with an anchor: by words. Saved
+    /// before anchors (no `anchor`): the top block's index over the
+    /// chapter's block count, converted once when the chapter is next read.
     pub fraction: f64,
     pub page: u32,
+    /// The exact place: a block of the chapter (ForgeReader).
+    #[serde(default)]
+    pub anchor: Option<forge_reader::ReaderAnchor>,
+}
+
+/// Where in the start chapter the reader opens.
+#[derive(Clone, Debug, PartialEq)]
+pub enum StartPlace {
+    /// A saved block anchor.
+    Anchor(forge_reader::ReaderAnchor),
+    /// A position saved before anchors: block index over block count.
+    BlockFraction(f64),
+    /// From the book's page: how far through the chapter, by words.
+    WordFraction(f64),
 }
 
 /// Everything in `library.json`. Fields added later carry `#[serde(default)]`
@@ -190,7 +207,7 @@ impl StoredBook {
                 _ => None,
             },
             can_read: self.epub_file.is_some(),
-            reading_position: self.reading_position.map(|p| ReadingPosition {
+            reading_position: self.reading_position.as_ref().map(|p| ReadingPosition {
                 chapter: p.chapter,
                 fraction: p.fraction,
             }),
@@ -591,6 +608,7 @@ impl LibraryData {
         &mut self,
         id: u64,
         position: ReadingPosition,
+        anchor: Option<forge_reader::ReaderAnchor>,
         chapter_words: &[u32],
         now: i64,
     ) -> Result<(), LibraryError> {
@@ -618,6 +636,7 @@ impl LibraryData {
             chapter: position.chapter,
             fraction: position.fraction,
             page: book.current_page,
+            anchor,
         });
         Ok(())
     }
@@ -629,18 +648,29 @@ impl LibraryData {
         &self,
         id: u64,
         chapter_words: &[u32],
-    ) -> Result<ReadingPosition, LibraryError> {
+    ) -> Result<(ReadingPosition, StartPlace), LibraryError> {
         let book = self.book(id)?;
-        let start = ReadingPosition {
-            chapter: 0,
-            fraction: 0.0,
-        };
-        if let Some(saved) = book.reading_position {
+        let start = (
+            ReadingPosition {
+                chapter: 0,
+                fraction: 0.0,
+            },
+            StartPlace::WordFraction(0.0),
+        );
+        if let Some(saved) = &book.reading_position {
             if saved.page == book.current_page && (saved.chapter as usize) < chapter_words.len() {
-                return Ok(ReadingPosition {
-                    chapter: saved.chapter,
-                    fraction: clamp_fraction(saved.fraction),
-                });
+                let fraction = clamp_fraction(saved.fraction);
+                let place = match &saved.anchor {
+                    Some(anchor) => StartPlace::Anchor(anchor.clone()),
+                    None => StartPlace::BlockFraction(fraction),
+                };
+                return Ok((
+                    ReadingPosition {
+                        chapter: saved.chapter,
+                        fraction,
+                    },
+                    place,
+                ));
             }
         }
         if book.status == ReadingStatus::Finished || book.current_page == 0 {
@@ -655,7 +685,8 @@ impl LibraryData {
             }
             _ => 0.0,
         };
-        Ok(position_at(chapter_words, fraction))
+        let position = position_at(chapter_words, fraction);
+        Ok((position, StartPlace::WordFraction(position.fraction)))
     }
 
     /// Applies an edit form: details replace the old ones, and the status

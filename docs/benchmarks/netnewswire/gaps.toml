@@ -16,9 +16,9 @@ second_use = "none yet"
 [[gap]]
 id = "html-to-reader-text"
 reference = "Shows the article's HTML as laid-out text with images and links"
-ixos_today = "No shared reader. Pocket Library turns EPUB XHTML into styled text blocks in its own crate (rust/src/epub.rs, model.rs TextBlock)"
-workaround = "A small tolerant HTML-to-paragraphs function in the app (feed.rs `paragraphs`); no images, links or styling in the reader"
-missing = "The native reader (ForgeReader, capability roadmap Tier 1): a document of blocks with anchors, an HTML importer, and a SwiftUI reading view"
+ixos_today = "Closed in slice 2 (2026-11-15): ForgeReader (crates/forge-reader, docs/forge-reader.md) turns the article's HTML into blocks with links and pictures, and its SwiftUI view lays them out. Pocket Library moved onto it in the same PR"
+workaround = "none now; feed.rs `paragraphs` remains only for row summaries and the search index"
+missing = "Nothing for slice 2. Readable-text extraction from the original web page (roadmap Tier 2) for feeds that send only a summary"
 layer = "rust"
 cost = "large"
 blocks = false
@@ -133,3 +133,36 @@ layer = "cli"
 cost = "small"
 blocks = false
 second_use = "Every new example or forge init app on a free team"
+
+[[gap]]
+id = "read-only-queries"
+reference = "Searches every article as you type"
+ixos_today = "forge-app's commands are serial and every successful one raises the revision and announces a change; the database belongs to the command thread"
+workaround = "Commonplace opens its own read-only SQLite connection (WAL) for search and runs it with Runtime::run, so a search never waits for a command and never counts as a change (store.rs `Searcher`)"
+missing = "A way to run a read against the store that doesn't raise the revision (friction A5), or a read connection Database hands out"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "Chat's search runs as a query on its own store; the same need"
+
+[[gap]]
+id = "fts-query-builder"
+reference = "Search treats what you type as words, not syntax"
+ixos_today = "forge-storage enables FTS5 but has no helper to turn typed words into a safe MATCH expression"
+workaround = "Commonplace's `match_expression` quotes each word and matches it as a prefix; Chat has its own `fts_query`"
+missing = "A small `fts_match(query)` in forge-storage"
+layer = "rust"
+cost = "small"
+blocks = false
+second_use = "Chat (`fts_query`): this is the second, so extract it once both have merged"
+
+[[gap]]
+id = "searchable-identifier"
+reference = "A search field in the feeds list"
+ixos_today = "SwiftUI's `.searchable` field takes no accessibility identifier"
+workaround = "UI tests find the field by its type and prompt (\"Search Articles\"); results carry `search.article.<id>`"
+missing = "Nothing to build: a SwiftUI limit, noted for forge ui scenarios"
+layer = "swift"
+cost = "small"
+blocks = false
+second_use = "Any app with .searchable"

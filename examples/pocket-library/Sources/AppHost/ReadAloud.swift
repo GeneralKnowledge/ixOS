@@ -84,8 +84,8 @@ final class ReadAloud: NSObject {
     /// kept, so a reader moving on from the end of a chapter just calls
     /// `play(from: 0)`.
     func load(_ chapter: ReaderChapter) {
-        texts = chapter.blocks.map(Self.speakableText)
-        chapterTitle = chapter.title
+        texts = chapter.section.blocks.map(Self.speakableText)
+        chapterTitle = chapter.section.title
         word = nil
         block = nil
         utterance = nil
@@ -97,7 +97,7 @@ final class ReadAloud: NSObject {
 
     /// The text spoken for a block: exactly the text the reader shows, so
     /// word ranges line up with it. Scene breaks and pictures are skipped.
-    nonisolated static func speakableText(_ block: TextBlock) -> String {
+    nonisolated static func speakableText(_ block: ReaderBlock) -> String {
         switch block.kind {
         case .separator, .image: return ""
         default: return block.spans.map(\.text).joined()

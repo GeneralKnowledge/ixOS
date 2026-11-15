@@ -25,6 +25,9 @@ forge-app = { path = "../../../crates/forge-app" }
 forge-runtime = { path = "../../../crates/forge-runtime" }
 forge-storage = { path = "../../../crates/forge-storage", features = ["csv", "backup"] }
 forge-net = { path = "../../../crates/forge-net", features = ["ureq"] }
+# ForgeReader: the reader's document, its HTML-to-blocks conversion and
+# reading positions as block anchors (shared with Commonplace).
+forge-reader = { path = "../../../crates/forge-reader", features = ["serde"] }
 # Must match the uniffi-bindgen Forge generates bindings with.
 uniffi = "=0.32.2"
 serde = { version = "1.0", features = ["derive"] }

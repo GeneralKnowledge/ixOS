@@ -1101,7 +1101,7 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_pocket_library_core_fn_method_library_revision(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-    external fun uniffi_pocket_library_core_fn_method_library_save_reading_position(`ptr`: Long,`id`: Long,`position`: RustBuffer.ByValue,
+    external fun uniffi_pocket_library_core_fn_method_library_save_reading_position(`ptr`: Long,`id`: Long,`chapter`: Int,`location`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_pocket_library_core_fn_method_library_search_catalogue(`ptr`: Long,`query`: RustBuffer.ByValue,`cancellation`: RustBuffer.ByValue,
     ): Long
@@ -1445,7 +1445,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_phase() and 0xFFFF) != 29225) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_reader_chapter() and 0xFFFF) != 45028) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_reader_chapter() and 0xFFFF) != 36507) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_restore_library() and 0xFFFF) != 48169) {
@@ -1454,7 +1454,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_revision() and 0xFFFF) != 29913) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_save_reading_position() and 0xFFFF) != 38892) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_save_reading_position() and 0xFFFF) != 898) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_search_catalogue() and 0xFFFF) != 47288) {
@@ -4386,7 +4386,10 @@ public interface PocketLibraryInterface {
     fun `phase`(): AppPhase
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
     suspend fun `readerChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt): ReaderChapter
     
@@ -4410,7 +4413,7 @@ public interface PocketLibraryInterface {
      * like typing the page in. It never finishes a book; the reader offers
      * "Mark as Finished" at the end. A finished book keeps its page.
      */
-    suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `position`: ReadingPosition): Book
+    suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `chapter`: kotlin.UInt, `location`: ReaderLocation): Book
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
@@ -5052,7 +5055,10 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
 
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
@@ -5130,14 +5136,15 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `position`: ReadingPosition) : Book {
+    override suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `chapter`: kotlin.UInt, `location`: ReaderLocation) : Book {
         return uniffiRustCallAsync(
         callWithHandle { uniffiHandle ->
             UniffiLib.uniffi_pocket_library_core_fn_method_library_save_reading_position(
                 uniffiHandle,
                 
         FfiConverterULong.lower(`id`),
-        FfiConverterTypeReadingPosition.lower(`position`),
+        FfiConverterUInt.lower(`chapter`),
+        FfiConverterTypeReaderLocation.lower(`location`),
             )
         },
         { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
@@ -8260,15 +8267,122 @@ public object FfiConverterTypeQueryItem: FfiConverterRustBuffer<QueryItem> {
 
 
 
+data class ReaderAnchor (
+    var `sectionId`: kotlin.String
+    , 
+    var `blockId`: kotlin.String
+    , 
+    var `offset`: kotlin.Double
+    , 
+    var `opening`: kotlin.String
+    , 
+    var `before`: kotlin.String?
+    , 
+    var `after`: kotlin.String?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
 /**
- * A chapter's text, ready to lay out.
+ * @suppress
+ */
+public object FfiConverterTypeReaderAnchor: FfiConverterRustBuffer<ReaderAnchor> {
+    override fun read(buf: ByteBuffer): ReaderAnchor {
+        return ReaderAnchor(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderAnchor) = (
+            FfiConverterString.allocationSize(value.`sectionId`) +
+            FfiConverterString.allocationSize(value.`blockId`) +
+            FfiConverterDouble.allocationSize(value.`offset`) +
+            FfiConverterString.allocationSize(value.`opening`) +
+            FfiConverterOptionalString.allocationSize(value.`before`) +
+            FfiConverterOptionalString.allocationSize(value.`after`)
+    )
+
+    override fun write(value: ReaderAnchor, buf: ByteBuffer) {
+            FfiConverterString.write(value.`sectionId`, buf)
+            FfiConverterString.write(value.`blockId`, buf)
+            FfiConverterDouble.write(value.`offset`, buf)
+            FfiConverterString.write(value.`opening`, buf)
+            FfiConverterOptionalString.write(value.`before`, buf)
+            FfiConverterOptionalString.write(value.`after`, buf)
+    }
+}
+
+
+
+data class ReaderBlock (
+    var `id`: kotlin.String
+    , 
+    var `kind`: ReaderBlockKind
+    , 
+    var `spans`: List<ReaderSpan>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderBlock: FfiConverterRustBuffer<ReaderBlock> {
+    override fun read(buf: ByteBuffer): ReaderBlock {
+        return ReaderBlock(
+            FfiConverterString.read(buf),
+            FfiConverterTypeReaderBlockKind.read(buf),
+            FfiConverterSequenceTypeReaderSpan.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderBlock) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterTypeReaderBlockKind.allocationSize(value.`kind`) +
+            FfiConverterSequenceTypeReaderSpan.allocationSize(value.`spans`)
+    )
+
+    override fun write(value: ReaderBlock, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterTypeReaderBlockKind.write(value.`kind`, buf)
+            FfiConverterSequenceTypeReaderSpan.write(value.`spans`, buf)
+    }
+}
+
+
+
+/**
+ * A chapter's text, ready to lay out: a ForgeReader section (its id is
+ * the chapter's file in the EPUB), and where to scroll to when the reader
+ * opens the book at this chapter.
  */
 data class ReaderChapter (
     var `index`: kotlin.UInt
     , 
-    var `title`: kotlin.String
+    var `section`: ReaderSection
     , 
-    var `blocks`: List<TextBlock>
+    /**
+     * The saved place in this chapter, the first time the chapter the book
+     * opens at is loaded; nil otherwise (start at the top).
+     */
+    var `start`: ReaderLocation?
     
 ){
     
@@ -8286,21 +8400,21 @@ public object FfiConverterTypeReaderChapter: FfiConverterRustBuffer<ReaderChapte
     override fun read(buf: ByteBuffer): ReaderChapter {
         return ReaderChapter(
             FfiConverterUInt.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterSequenceTypeTextBlock.read(buf),
+            FfiConverterTypeReaderSection.read(buf),
+            FfiConverterOptionalTypeReaderLocation.read(buf),
         )
     }
 
     override fun allocationSize(value: ReaderChapter) = (
             FfiConverterUInt.allocationSize(value.`index`) +
-            FfiConverterString.allocationSize(value.`title`) +
-            FfiConverterSequenceTypeTextBlock.allocationSize(value.`blocks`)
+            FfiConverterTypeReaderSection.allocationSize(value.`section`) +
+            FfiConverterOptionalTypeReaderLocation.allocationSize(value.`start`)
     )
 
     override fun write(value: ReaderChapter, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`index`, buf)
-            FfiConverterString.write(value.`title`, buf)
-            FfiConverterSequenceTypeTextBlock.write(value.`blocks`, buf)
+            FfiConverterTypeReaderSection.write(value.`section`, buf)
+            FfiConverterOptionalTypeReaderLocation.write(value.`start`, buf)
     }
 }
 
@@ -8366,9 +8480,144 @@ public object FfiConverterTypeReaderContents: FfiConverterRustBuffer<ReaderConte
 
 
 
+data class ReaderLocation (
+    var `block`: kotlin.UInt
+    , 
+    var `offset`: kotlin.Double
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderLocation: FfiConverterRustBuffer<ReaderLocation> {
+    override fun read(buf: ByteBuffer): ReaderLocation {
+        return ReaderLocation(
+            FfiConverterUInt.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderLocation) = (
+            FfiConverterUInt.allocationSize(value.`block`) +
+            FfiConverterDouble.allocationSize(value.`offset`)
+    )
+
+    override fun write(value: ReaderLocation, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`block`, buf)
+            FfiConverterDouble.write(value.`offset`, buf)
+    }
+}
+
+
+
+data class ReaderSection (
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    var `blocks`: List<ReaderBlock>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderSection: FfiConverterRustBuffer<ReaderSection> {
+    override fun read(buf: ByteBuffer): ReaderSection {
+        return ReaderSection(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeReaderBlock.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderSection) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterSequenceTypeReaderBlock.allocationSize(value.`blocks`)
+    )
+
+    override fun write(value: ReaderSection, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceTypeReaderBlock.write(value.`blocks`, buf)
+    }
+}
+
+
+
+data class ReaderSpan (
+    var `text`: kotlin.String
+    , 
+    var `bold`: kotlin.Boolean
+    , 
+    var `italic`: kotlin.Boolean
+    , 
+    var `monospace`: kotlin.Boolean
+    , 
+    var `link`: kotlin.String?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderSpan: FfiConverterRustBuffer<ReaderSpan> {
+    override fun read(buf: ByteBuffer): ReaderSpan {
+        return ReaderSpan(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderSpan) = (
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterBoolean.allocationSize(value.`bold`) +
+            FfiConverterBoolean.allocationSize(value.`italic`) +
+            FfiConverterBoolean.allocationSize(value.`monospace`) +
+            FfiConverterOptionalString.allocationSize(value.`link`)
+    )
+
+    override fun write(value: ReaderSpan, buf: ByteBuffer) {
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterBoolean.write(value.`bold`, buf)
+            FfiConverterBoolean.write(value.`italic`, buf)
+            FfiConverterBoolean.write(value.`monospace`, buf)
+            FfiConverterOptionalString.write(value.`link`, buf)
+    }
+}
+
+
+
 /**
  * A place in a book: a chapter (an index into `ReaderContents::chapters`)
- * and how far through it, 0.0–1.0.
+ * and how far through it by words, 0.0–1.0. The exact place in the
+ * chapter is a block anchor, kept by Rust.
  */
 data class ReadingPosition (
     var `chapter`: kotlin.UInt
@@ -8470,101 +8719,6 @@ public object FfiConverterTypeStorageInfo: FfiConverterRustBuffer<StorageInfo> {
             FfiConverterUInt.write(value.`savedCovers`, buf)
             FfiConverterUInt.write(value.`savedBooks`, buf)
             FfiConverterULong.write(value.`bytes`, buf)
-    }
-}
-
-
-
-/**
- * One paragraph, heading, image… of a chapter, in reading order.
- */
-data class TextBlock (
-    var `kind`: TextBlockKind
-    , 
-    /**
-     * Empty for separators and images. Line breaks are `\n`.
-     */
-    var `spans`: List<TextSpan>
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextBlock: FfiConverterRustBuffer<TextBlock> {
-    override fun read(buf: ByteBuffer): TextBlock {
-        return TextBlock(
-            FfiConverterTypeTextBlockKind.read(buf),
-            FfiConverterSequenceTypeTextSpan.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TextBlock) = (
-            FfiConverterTypeTextBlockKind.allocationSize(value.`kind`) +
-            FfiConverterSequenceTypeTextSpan.allocationSize(value.`spans`)
-    )
-
-    override fun write(value: TextBlock, buf: ByteBuffer) {
-            FfiConverterTypeTextBlockKind.write(value.`kind`, buf)
-            FfiConverterSequenceTypeTextSpan.write(value.`spans`, buf)
-    }
-}
-
-
-
-/**
- * A run of text in one style.
- */
-data class TextSpan (
-    var `text`: kotlin.String
-    , 
-    var `bold`: kotlin.Boolean
-    , 
-    var `italic`: kotlin.Boolean
-    , 
-    var `monospace`: kotlin.Boolean
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextSpan: FfiConverterRustBuffer<TextSpan> {
-    override fun read(buf: ByteBuffer): TextSpan {
-        return TextSpan(
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TextSpan) = (
-            FfiConverterString.allocationSize(value.`text`) +
-            FfiConverterBoolean.allocationSize(value.`bold`) +
-            FfiConverterBoolean.allocationSize(value.`italic`) +
-            FfiConverterBoolean.allocationSize(value.`monospace`)
-    )
-
-    override fun write(value: TextSpan, buf: ByteBuffer) {
-            FfiConverterString.write(value.`text`, buf)
-            FfiConverterBoolean.write(value.`bold`, buf)
-            FfiConverterBoolean.write(value.`italic`, buf)
-            FfiConverterBoolean.write(value.`monospace`, buf)
     }
 }
 
@@ -10317,6 +10471,173 @@ public object FfiConverterTypePermissionStatus: FfiConverterRustBuffer<Permissio
 
 
 
+sealed class ReaderBlockKind {
+    
+    data class Heading(
+        val `level`: kotlin.UByte) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object Paragraph : ReaderBlockKind()
+    
+    
+    object Quote : ReaderBlockKind()
+    
+    
+    data class ListItem(
+        val `marker`: kotlin.String) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object Preformatted : ReaderBlockKind()
+    
+    
+    object Separator : ReaderBlockKind()
+    
+    
+    data class Image(
+        val `source`: kotlin.String, 
+        val `alt`: kotlin.String) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderBlockKind : FfiConverterRustBuffer<ReaderBlockKind>{
+    override fun read(buf: ByteBuffer): ReaderBlockKind {
+        return when(buf.getInt()) {
+            1 -> ReaderBlockKind.Heading(
+                FfiConverterUByte.read(buf),
+                )
+            2 -> ReaderBlockKind.Paragraph
+            3 -> ReaderBlockKind.Quote
+            4 -> ReaderBlockKind.ListItem(
+                FfiConverterString.read(buf),
+                )
+            5 -> ReaderBlockKind.Preformatted
+            6 -> ReaderBlockKind.Separator
+            7 -> ReaderBlockKind.Image(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ReaderBlockKind): ULong = when(value) {
+        is ReaderBlockKind.Heading -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUByte.allocationSize(value.`level`)
+            )
+        }
+        is ReaderBlockKind.Paragraph -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Quote -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.ListItem -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`marker`)
+            )
+        }
+        is ReaderBlockKind.Preformatted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Separator -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Image -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`source`)
+                + FfiConverterString.allocationSize(value.`alt`)
+            )
+        }
+    }
+
+    override fun write(value: ReaderBlockKind, buf: ByteBuffer) {
+        when(value) {
+            is ReaderBlockKind.Heading -> {
+                buf.putInt(1)
+                FfiConverterUByte.write(value.`level`, buf)
+                Unit
+            }
+            is ReaderBlockKind.Paragraph -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ReaderBlockKind.Quote -> {
+                buf.putInt(3)
+                Unit
+            }
+            is ReaderBlockKind.ListItem -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`marker`, buf)
+                Unit
+            }
+            is ReaderBlockKind.Preformatted -> {
+                buf.putInt(5)
+                Unit
+            }
+            is ReaderBlockKind.Separator -> {
+                buf.putInt(6)
+                Unit
+            }
+            is ReaderBlockKind.Image -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`source`, buf)
+                FfiConverterString.write(value.`alt`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 /**
  * Where a book is in the reader's life.
  */
@@ -10685,194 +11006,6 @@ public object FfiConverterTypeSummaryStage : FfiConverterRustBuffer<SummaryStage
             }
             is SummaryStage.Overview -> {
                 buf.putInt(8)
-                Unit
-            }
-        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
-    }
-}
-
-
-
-
-
-/**
- * What a block of a chapter is. The host chooses how each looks.
- */
-sealed class TextBlockKind {
-    
-    /**
-     * `level` 1–6, as `<h1>`–`<h6>`.
-     */
-    data class Heading(
-        val `level`: kotlin.UByte) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-    object Paragraph : TextBlockKind()
-    
-    
-    /**
-     * Inside a `<blockquote>`.
-     */
-    object Quote : TextBlockKind()
-    
-    
-    /**
-     * `marker` is "•" or "3." and so on.
-     */
-    data class ListItem(
-        val `marker`: kotlin.String) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-    /**
-     * Keep line breaks and spacing; show in a fixed-width font.
-     */
-    object Preformatted : TextBlockKind()
-    
-    
-    /**
-     * A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
-     */
-    object Separator : TextBlockKind()
-    
-    
-    /**
-     * An image saved for this launch at `file` (absolute path).
-     */
-    data class Image(
-        val `file`: kotlin.String, 
-        val `alt`: kotlin.String) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-
-    
-
-    
-    
-
-
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextBlockKind : FfiConverterRustBuffer<TextBlockKind>{
-    override fun read(buf: ByteBuffer): TextBlockKind {
-        return when(buf.getInt()) {
-            1 -> TextBlockKind.Heading(
-                FfiConverterUByte.read(buf),
-                )
-            2 -> TextBlockKind.Paragraph
-            3 -> TextBlockKind.Quote
-            4 -> TextBlockKind.ListItem(
-                FfiConverterString.read(buf),
-                )
-            5 -> TextBlockKind.Preformatted
-            6 -> TextBlockKind.Separator
-            7 -> TextBlockKind.Image(
-                FfiConverterString.read(buf),
-                FfiConverterString.read(buf),
-                )
-            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
-        }
-    }
-
-    override fun allocationSize(value: TextBlockKind): ULong = when(value) {
-        is TextBlockKind.Heading -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterUByte.allocationSize(value.`level`)
-            )
-        }
-        is TextBlockKind.Paragraph -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Quote -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.ListItem -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterString.allocationSize(value.`marker`)
-            )
-        }
-        is TextBlockKind.Preformatted -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Separator -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Image -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterString.allocationSize(value.`file`)
-                + FfiConverterString.allocationSize(value.`alt`)
-            )
-        }
-    }
-
-    override fun write(value: TextBlockKind, buf: ByteBuffer) {
-        when(value) {
-            is TextBlockKind.Heading -> {
-                buf.putInt(1)
-                FfiConverterUByte.write(value.`level`, buf)
-                Unit
-            }
-            is TextBlockKind.Paragraph -> {
-                buf.putInt(2)
-                Unit
-            }
-            is TextBlockKind.Quote -> {
-                buf.putInt(3)
-                Unit
-            }
-            is TextBlockKind.ListItem -> {
-                buf.putInt(4)
-                FfiConverterString.write(value.`marker`, buf)
-                Unit
-            }
-            is TextBlockKind.Preformatted -> {
-                buf.putInt(5)
-                Unit
-            }
-            is TextBlockKind.Separator -> {
-                buf.putInt(6)
-                Unit
-            }
-            is TextBlockKind.Image -> {
-                buf.putInt(7)
-                FfiConverterString.write(value.`file`, buf)
-                FfiConverterString.write(value.`alt`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -11335,6 +11468,38 @@ public object FfiConverterOptionalTypeChapterSynopsis: FfiConverterRustBuffer<Ch
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeReaderLocation: FfiConverterRustBuffer<ReaderLocation?> {
+    override fun read(buf: ByteBuffer): ReaderLocation? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeReaderLocation.read(buf)
+    }
+
+    override fun allocationSize(value: ReaderLocation?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeReaderLocation.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ReaderLocation?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeReaderLocation.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeReadingPosition: FfiConverterRustBuffer<ReadingPosition?> {
     override fun read(buf: ByteBuffer): ReadingPosition? {
         if (buf.get().toInt() == 0) {
@@ -11763,24 +11928,24 @@ public object FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer<List<Que
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer<List<TextBlock>> {
-    override fun read(buf: ByteBuffer): List<TextBlock> {
+public object FfiConverterSequenceTypeReaderBlock: FfiConverterRustBuffer<List<ReaderBlock>> {
+    override fun read(buf: ByteBuffer): List<ReaderBlock> {
         val len = buf.getInt()
-        return List<TextBlock>(len) {
-            FfiConverterTypeTextBlock.read(buf)
+        return List<ReaderBlock>(len) {
+            FfiConverterTypeReaderBlock.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<TextBlock>): ULong {
+    override fun allocationSize(value: List<ReaderBlock>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTextBlock.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeReaderBlock.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<TextBlock>, buf: ByteBuffer) {
+    override fun write(value: List<ReaderBlock>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeTextBlock.write(it, buf)
+            FfiConverterTypeReaderBlock.write(it, buf)
         }
     }
 }
@@ -11791,24 +11956,24 @@ public object FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer<List<Tex
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer<List<TextSpan>> {
-    override fun read(buf: ByteBuffer): List<TextSpan> {
+public object FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer<List<ReaderSpan>> {
+    override fun read(buf: ByteBuffer): List<ReaderSpan> {
         val len = buf.getInt()
-        return List<TextSpan>(len) {
-            FfiConverterTypeTextSpan.read(buf)
+        return List<ReaderSpan>(len) {
+            FfiConverterTypeReaderSpan.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<TextSpan>): ULong {
+    override fun allocationSize(value: List<ReaderSpan>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTextSpan.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeReaderSpan.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<TextSpan>, buf: ByteBuffer) {
+    override fun write(value: List<ReaderSpan>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeTextSpan.write(it, buf)
+            FfiConverterTypeReaderSpan.write(it, buf)
         }
     }
 }

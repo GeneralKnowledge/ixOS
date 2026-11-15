@@ -1,0 +1,27 @@
+[package]
+name = "forge-reader"
+version = "0.1.0"
+description = "ForgeReader: generic readable documents (sections of styled text blocks with stable ids), HTML into blocks, and reading positions as block anchors"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+# Plain Rust: no UniFFI here. An app exposes these types to Swift with
+# `forge_reader::reader_types!()` after `uniffi::setup_scaffolding!()`,
+# which declares them as UniFFI remote types in the app's own crate, so they
+# join the app's one bindings module (as forge-services' macro does). The
+# Swift reader view (swift/ForgeReader.swift) is copied into that module by
+# `forge bindings generate` when the bindings contain the reader types.
+[features]
+default = []
+# Serialize anchors (and the rest) into an app's own saved files.
+serde = ["dep:serde"]
+
+[dependencies]
+quick-xml = "0.42"
+url = "2"
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+uniffi = { workspace = true }
