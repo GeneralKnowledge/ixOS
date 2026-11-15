@@ -11,7 +11,7 @@ import XCTest
 final class MessagingTests: XCTestCase {
     private func signedIn(_ name: String, on server: ChatServer) async throws -> ChatModel {
         let model = ChatModel(
-            storageDirectory: try temporaryDirectory(self), notifier: nil, useKeychain: false)
+            storageDirectory: try temporaryDirectory(self), useKeychain: false)
         await model.open()
         try await model.signUp(serverURL: server.url, displayName: name)
         await waitUntil("\(name)'s rooms listed") { !model.conversations.isEmpty }

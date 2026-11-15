@@ -1,5 +1,6 @@
 import CounterApp
 import SwiftUI
+import ForgeUI
 
 // The xtool entry point. CounterLauncher is the same app for `swift run` and the Xcode project.
 @main

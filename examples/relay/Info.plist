@@ -18,6 +18,10 @@
 	<string>Scan another device's pairing code.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Relay finds your paired devices on this network and sends them notes and files directly, encrypted.</string>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
+	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

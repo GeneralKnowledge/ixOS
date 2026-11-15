@@ -527,6 +527,9 @@ private struct GateSection: View {
                 .font(.subheadline)
                 .forgeForeground(gate.held ? .warning : .neutral)
                 .accessibilityIdentifier("goal.gate.note")
+            ForEach(gate.safety) { check in
+                SafetyRow(model: model, goalId: goalId, check: check)
+            }
             if !gate.held {
                 Text(gate.question)
                     .font(.headline)
@@ -538,6 +541,7 @@ private struct GateSection: View {
                         Text("Yes").frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(gate.safety.contains { !$0.met })
                     .accessibilityLabel("Yes, we're there")
                     .accessibilityIdentifier("goal.gate.yes")
                     Button {
@@ -558,6 +562,55 @@ private struct GateSection: View {
         } footer: {
             Text("Moving on is your call: you see your dog every day. A stage that's harder than expected can always go back.")
         }
+    }
+}
+
+/// A safety rule on the stage: something to confirm about how the owner
+/// practises, or a worry that needs a vet or behaviourist first.
+private struct SafetyRow: View {
+    let model: GoodDogModel
+    let goalId: UInt64
+    let check: SafetyCheck
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch check.kind {
+            case .confirm:
+                Label("Staying safe", systemImage: check.met ? "checkmark.shield.fill" : "shield")
+                    .font(.subheadline.weight(.semibold))
+                    .forgeForeground(check.met ? .success : .accent)
+                Text(check.detail).font(.subheadline)
+                if check.met {
+                    Text(check.action)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                } else {
+                    noteButton(check.action)
+                }
+            case .referral:
+                Label("Get advice first", systemImage: "cross.case.fill")
+                    .font(.subheadline.weight(.semibold))
+                    .forgeForeground(.warning)
+                if let referral = check.referral {
+                    Text(referral).font(.subheadline)
+                }
+                noteButton(check.action)
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+    }
+
+    private func noteButton(_ title: String) -> some View {
+        Button {
+            Task { await model.noteSafety(goalId, ruleId: check.ruleId) }
+        } label: {
+            Text(title)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.bordered)
+        .accessibilityIdentifier("goal.safety.\(check.ruleId)")
     }
 }
 

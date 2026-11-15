@@ -1,5 +1,6 @@
 import PocketLibraryApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeAppLauncher: App {
@@ -7,6 +8,8 @@ struct ForgeAppLauncher: App {
     @State private var model = LibraryModel()
 
     init() {
+        // URLSession for catalogue requests (docs/native-services.md).
+        AppServices.install()
         model.attachToLifecycle()
     }
 

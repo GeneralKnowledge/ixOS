@@ -1,0 +1,34 @@
+# What Commonplace (slice 1) must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux). `device`: UI scenarios for
+# `forge ui run`; their verdicts come only from a run on an iPhone. The
+# subscribe and mark-read scenarios need the fixture feed server
+# (docs/benchmarks/netnewswire/fixtures/serve.py).
+
+[[requirement]]
+id = "CP-1"
+statement = "A new library is empty, and with no feeds nothing is fetched on launch and no alert shows. UI tests start on throwaway data that is empty unless the test keeps the last launch's."
+twin = ["LibraryModelTests.testANewLibraryIsEmpty", "LibraryModelTests.testNothingToRefreshIsNeverStale", "LibraryModelTests.testThrowawayDataStartsEmptyUnlessKept"]
+device = ["uitests/smoke.toml"]
+
+[[requirement]]
+id = "CP-2"
+statement = "A feed address that isn't one is refused with words for the screen, and nothing is added."
+twin = ["LibraryModelTests.testABadAddressIsRefusedWithWordsForTheScreen"]
+device = ["uitests/bad-address.toml"]
+
+[[requirement]]
+id = "CP-3"
+statement = "Subscribing to a feed shows its articles; reading one lowers the unread count, and a bookmark is still there after a relaunch."
+device = ["uitests/subscribe-and-read.toml"]
+
+[[requirement]]
+id = "CP-4"
+statement = "Mark All as Read clears a feed's unread count."
+device = ["uitests/mark-all-read.toml"]
+
+[[requirement]]
+id = "CP-5"
+statement = "Alerts and feed rows say what went wrong in plain words (offline, not found, the site's error), errors carry the framework's kinds, and internal reasons never reach the screen."
+twin = ["LibraryModelTests.testOpeningAMissingArticleSetsTheAlert", "LibraryModelTests.testAlertsAndFeedRowsSayWhatHappened", "LibraryModelTests.testErrorsHaveFrameworkKinds", "LibraryModelTests.testErrorReasonsStayOffTheScreen"]
+

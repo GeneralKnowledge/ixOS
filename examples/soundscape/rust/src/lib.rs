@@ -184,6 +184,57 @@ impl SoundscapeCore {
         self.project(id)
     }
 
+    /// Turns the metronome on or off for a project. It is never in the
+    /// mixdown.
+    pub async fn set_metronome(&self, id: u64, on: bool) -> Result<ProjectDetail, SoundscapeError> {
+        self.edit_project("set-metronome", id, move |p| {
+            p.metronome = on;
+            Ok(())
+        })
+        .await
+    }
+
+    /// A WAV file of one pass of the project's metronome at `sample_rate`
+    /// (see [`dsp::clicks`]): the app loops it under playback and plays its
+    /// first bar as the count-in before a recording. Kept in the caches,
+    /// one file per tempo, length and rate, written the first time.
+    pub async fn click_track(&self, id: u64, sample_rate: u32) -> Result<String, SoundscapeError> {
+        if sample_rate == 0 {
+            return Err(SoundscapeError::range("sample rate"));
+        }
+        let (tempo_bpm, bars) = {
+            let all = self.projects.get();
+            let p = all.get(id)?;
+            (p.tempo_bpm, p.bars)
+        };
+        let path = self.caches.join("clicks").join(format!(
+            "{}-{bars}-{sample_rate}.wav",
+            (tempo_bpm * 1000.0).round() as u64
+        ));
+        let work = self.rt.foreground(None);
+        self.rt
+            .run("click-track", work, move |_| {
+                if !path.exists() {
+                    if let Some(dir) = path.parent() {
+                        std::fs::create_dir_all(dir).map_err(|err| SoundscapeError::Storage {
+                            reason: format!("create the clicks folder: {err}"),
+                        })?;
+                    }
+                    let partial = path.with_extension("partial");
+                    dsp::write(
+                        &partial,
+                        &dsp::clicks(tempo_bpm, bars, sample_rate),
+                        sample_rate,
+                    )?;
+                    std::fs::rename(&partial, &path).map_err(|err| SoundscapeError::Storage {
+                        reason: format!("keep the click track: {err}"),
+                    })?;
+                }
+                Ok(path.to_string_lossy().into_owned())
+            })
+            .await
+    }
+
     /// Deletes a project and the recordings only it used.
     pub async fn delete_project(&self, id: u64) -> Result<(), SoundscapeError> {
         self.rt
@@ -484,6 +535,7 @@ fn summary(p: &Project) -> ProjectSummary {
         modified_ms: p.modified_ms,
         tempo_bpm: p.tempo_bpm,
         bars: p.bars,
+        metronome: p.metronome,
         track_count: p.tracks.len() as u32,
     }
 }

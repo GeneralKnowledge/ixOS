@@ -1,0 +1,51 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/reader.toml
+#
+# PL-9: open the sample book (-PocketLibrarySampleBook) in the reader, which
+# covers the app (ForgeAppKit forgeFullScreenCover), start Read Aloud, stop
+# it and close the reader. The phone speaks for a moment. That the spoken
+# text is the shown text is checked by ReadAloudTests.
+
+name = "PL-9: the reader and read aloud"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-PocketLibrarySampleBook", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.book.1" }
+
+[[step]]
+tap = { id = "bookDetail.read" }
+
+[[step]]
+expect = { id = "reader.readAloud", enabled = true }
+
+[[step]]
+screenshot = "1-reader"
+
+[[step]]
+tap = { id = "reader.readAloud" }
+
+[[step]]
+expect = { kind = "Button", label = "Stop Reading Aloud" }
+
+[[step]]
+screenshot = "2-reading-aloud"
+
+[[step]]
+tap = { kind = "Button", label = "Stop Reading Aloud" }
+
+[[step]]
+expect = { id = "reader.readAloud", enabled = true }
+
+[[step]]
+tap = { id = "reader.close" }
+
+[[step]]
+expect = { id = "bookDetail.read" }

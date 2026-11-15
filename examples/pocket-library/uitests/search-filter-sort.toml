@@ -1,0 +1,97 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/search-filter-sort.toml
+#
+# PL-3 and PL-6: two books; search narrows the list; finishing a book from
+# the Activity tab reaches the Library tab, where the Finished filter shows it.
+
+name = "PL-3, PL-6: search and filter, and a change from another tab"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.empty.add" }
+
+[[step]]
+tap = { id = "library.add.manual" }
+
+[[step]]
+type = { id = "bookForm.title", text = "Emma" }
+
+[[step]]
+tap = { id = "bookForm.save" }
+
+[[step]]
+back = {}
+
+[[step]]
+tap = { id = "library.add" }
+
+[[step]]
+tap = { id = "library.add.manual" }
+
+[[step]]
+type = { id = "bookForm.title", text = "Dune" }
+
+[[step]]
+type = { id = "bookForm.currentPage", text = "10" }
+
+[[step]]
+tap = { id = "bookForm.save" }
+
+[[step]]
+back = {}
+
+# PL-3: search.
+[[step]]
+type = { kind = "SearchField", text = "Emma" }
+
+[[step]]
+expect = { id = "library.book.1" }
+
+[[step]]
+expect = { id = "library.book.2", count = 0 }
+
+[[step]]
+screenshot = "1-search"
+
+[[step]]
+clear = { kind = "SearchField" }
+
+[[step]]
+expect = { id = "library.book.2" }
+
+# PL-6: finish Dune from the Activity tab.
+[[step]]
+tap = { id = "tab.activity" }
+
+[[step]]
+tap = { id = "activity.book.2" }
+
+[[step]]
+tap = { id = "bookDetail.markFinished" }
+
+[[step]]
+tap = { id = "tab.library" }
+
+# PL-3: the Finished filter shows only Dune.
+[[step]]
+tap = { id = "library.filter" }
+
+[[step]]
+tap = { kind = "Button", label = "Finished" }
+
+[[step]]
+expect = { id = "library.book.2" }
+
+[[step]]
+expect = { id = "library.book.1", count = 0 }
+
+[[step]]
+screenshot = "2-finished-filter"

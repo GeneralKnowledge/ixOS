@@ -1,0 +1,25 @@
+[package]
+name = "forge-native"
+version = "0.1.0"
+description = "The native services' shared interface (Keychain, files, notifications, permissions, sharing, deep links) as one UniFFI component; its Swift and the iOS adapters ship in ForgeKit"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "forge_native"
+# A plain library only, like forge-app: every app links it into its own
+# static library. scripts/forgekit.sh builds the cdylib it generates
+# ForgeKit's Swift from with `cargo rustc --crate-type cdylib`.
+
+[dependencies]
+# The plain-Rust logic behind the items (link parsing, validation, Slot).
+forge-services = { workspace = true }
+uniffi = "=0.32.2"
+# UniFFI's async foreign traits name `::async_trait`.
+async-trait = "0.1"
+
+[dev-dependencies]
+forge-runtime = { workspace = true }
+tempfile = "3.14"

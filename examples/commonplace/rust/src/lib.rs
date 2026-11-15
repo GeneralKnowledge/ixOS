@@ -18,8 +18,13 @@
 //!   a window (`native::background`), as work that lives until iOS ends the
 //!   window.
 //!
-//! The reader's text comes through [`ArticleText`], the boundary the native
-//! reader from docs/native-capability-roadmap.md will replace.
+//! - **search** reads the library through its own read-only SQLite
+//!   connection (FTS5), so it never waits for a command and never counts as
+//!   a change.
+//!
+//! An article's text is a ForgeReader section ([`ArticleText::body`]):
+//! the feed's HTML as styled blocks with links and pictures, laid out by
+//! ForgeReader's SwiftUI views.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -34,11 +39,15 @@ mod model;
 mod store;
 
 pub use model::*;
-use store::{FetchResult, Fetched, Flag, Snapshot, Store};
+use store::{FetchResult, Fetched, Flag, Searcher, Snapshot, Store};
 
 // No namespace argument: UniFFI takes the library's name (commonplace_core), so this
 // crate keeps its own bindings when another app links it.
 uniffi::setup_scaffolding!();
+
+// ForgeReader's types (an article's body is a `ReaderSection`), with its
+// SwiftUI reader views.
+forge_reader::reader_types!();
 
 // Native services the host implements (Keychain, app directories, local
 // notifications, permissions, deep links), as `crate::native`, `http` (on
@@ -89,6 +98,7 @@ pub struct AppCore {
     snapshot: Arc<Published<Snapshot>>,
     http: Arc<dyn HttpClient>,
     storage_directory: PathBuf,
+    searcher: Arc<Searcher>,
     /// Set by `new`: tells the refresh log whether URLSession or ureq ran.
     transport: std::sync::OnceLock<Arc<native::http::PreferInstalled>>,
 }
@@ -118,10 +128,26 @@ impl AppCore {
         self.snapshot.get().feeds.clone()
     }
 
-    /// The articles a timeline shows, newest first.
+    /// The articles a timeline shows, newest first (oldest first with that
+    /// setting; read ones left out of All Articles and feeds with
+    /// "hide read").
     pub fn timeline(&self, timeline: Timeline) -> Vec<ArticleSummary> {
         let snapshot = self.snapshot.get();
-        snapshot
+        let hide_read = snapshot.settings.hide_read;
+        let articles = snapshot.articles.iter().filter(|a| match &timeline {
+            Timeline::All => !(hide_read && a.read),
+            Timeline::Unread => !a.read,
+            Timeline::Bookmarked => a.bookmarked,
+            Timeline::Feed { feed_id } => a.feed_id == *feed_id && !(hide_read && a.read),
+        });
+        ordered(articles.cloned(), &snapshot.settings)
+    }
+
+    /// How many articles a timeline holds and how many of them are unread
+    /// (whatever "hide read" leaves out of the list).
+    pub fn counts(&self, timeline: Timeline) -> TimelineCounts {
+        let snapshot = self.snapshot.get();
+        let articles: Vec<_> = snapshot
             .articles
             .iter()
             .filter(|a| match &timeline {
@@ -130,17 +156,45 @@ impl AppCore {
                 Timeline::Bookmarked => a.bookmarked,
                 Timeline::Feed { feed_id } => a.feed_id == *feed_id,
             })
-            .cloned()
-            .collect()
-    }
-
-    /// How many articles a timeline holds and how many of them are unread.
-    pub fn counts(&self, timeline: Timeline) -> TimelineCounts {
-        let articles = self.timeline(timeline);
+            .collect();
         TimelineCounts {
             total: articles.len() as u32,
             unread: articles.iter().filter(|a| !a.read).count() as u32,
         }
+    }
+
+    /// The person's settings.
+    pub fn settings(&self) -> AppSettings {
+        self.snapshot.get().settings.clone()
+    }
+
+    /// Saves the person's settings; timelines follow them at once.
+    pub async fn set_settings(&self, settings: AppSettings) -> Result<(), AppError> {
+        self.rt
+            .command("set-settings", move |state| {
+                state.store.set_settings(&settings)?;
+                state.publish();
+                Ok(())
+            })
+            .await
+    }
+
+    /// The articles whose title or text holds every word of `query`, in
+    /// timeline order. Reads the library directly (never waits for a
+    /// command); an empty query finds nothing.
+    pub async fn search(&self, query: String) -> Result<Vec<ArticleSummary>, AppError> {
+        let searcher = Arc::clone(&self.searcher);
+        let snapshot = Arc::clone(&self.snapshot);
+        let work = self.rt.lifetime(None);
+        self.rt
+            .run("search", work, move |_| {
+                let ids: std::collections::HashSet<i64> =
+                    searcher.search(&query)?.into_iter().collect();
+                let snapshot = snapshot.get();
+                let found = snapshot.articles.iter().filter(|a| ids.contains(&a.id));
+                Ok(ordered(found.cloned(), &snapshot.settings))
+            })
+            .await
     }
 
     /// One article's row, or nil once its feed is gone.
@@ -542,6 +596,7 @@ impl AppCore {
         let storage_directory = PathBuf::from(storage_directory);
         let directory = DataDirectory::open(&storage_directory)?;
         let store = Store::open(directory.path())?;
+        let searcher = Arc::new(Searcher::open(directory.path())?);
         let snapshot = store.snapshot()?;
         // Never log feed addresses, titles or article text.
         forge_runtime::logging::info!(
@@ -560,9 +615,23 @@ impl AppCore {
             snapshot: published,
             http,
             storage_directory,
+            searcher,
             transport: std::sync::OnceLock::new(),
         }))
     }
+}
+
+/// Articles (newest first, as the snapshot holds them) in the order the
+/// settings ask for.
+fn ordered(
+    articles: impl Iterator<Item = ArticleSummary>,
+    settings: &AppSettings,
+) -> Vec<ArticleSummary> {
+    let mut articles: Vec<_> = articles.collect();
+    if settings.oldest_first {
+        articles.reverse();
+    }
+    articles
 }
 
 /// The address to subscribe to, from what the person typed.

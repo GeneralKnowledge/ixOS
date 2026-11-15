@@ -50,7 +50,7 @@ examples/pocket-library/
 
 **Chapter summaries** split the work the same way. Rust plans them (`summary.rs`: the token estimate, the parts, the prompts, retrying a declined or too-long part in halves, cleaning up the answer) and saves them; Swift's `AppleIntelligenceSummarizer` implements Rust's `SummaryModel` trait with Foundation Models and answers one request at a time. No inference happens in Rust, and the tests run the plan against a fake model.
 
-**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and whenever its ForgeKit `ForgeHost` says something changed; it holds no rules of its own. The App owns the model, so the Rust library lives as long as the process, and `attachToLifecycle()` reports the app's lifecycle: catalogue searches stop in the background, while imports and exports are `finishing` work that keeps going in the time iOS grants. Presentation state is ForgeAppKit values: the Library screen's sheets are one `LibraryDestination`, its delete confirmation and errors one `ForgeAlert`, so the model tests check "Delete asks first" without SwiftUI. `LibraryError` conforms to `ForgeDescribedError` (ErrorText.swift), so every alert uses the same words, and a cancelled request shows nothing.
+**SwiftUI owns** read-aloud (`AVSpeechSynthesizer`, the audio session, lock-screen controls), navigation (a `TabView` with a `NavigationStack` per tab), lists, forms, sheets, confirmation dialogs, swipe actions, context menus, search fields, the document picker, the share sheet, remote images (`AsyncImage`), haptics, and all text shown to the user. `LibraryModel` is an `@Observable` class that calls Rust and re-reads its state after each command and whenever its ForgeKit `ForgeHost` says something changed; it holds no rules of its own. The App owns the model, so the Rust library lives as long as the process, and `attachToLifecycle()` reports the app's lifecycle: catalogue searches stop in the background, while imports and exports are `finishing` work that keeps going in the time iOS grants. Presentation state is ForgeAppKit values: the Library screen's sheets and pushed book are one `LibraryDestination`, the reader (a full-screen cover over the tabs) is `fullScreen`, its delete confirmation and errors one `ForgeAlert`, so the model tests check "Delete asks first" without SwiftUI. `LibraryError` conforms to `ForgeDescribedError` (ErrorText.swift), so every alert uses the same words, and a cancelled request shows nothing.
 
 **Threads.** Every Rust method that touches the disk or network is `async` and runs on its own thread (`forge_runtime::background`), so SwiftUI awaits it from the main actor. Reads (`books`, `stats`, `history`) are plain memory reads.
 
@@ -58,7 +58,7 @@ examples/pocket-library/
 
 **Persistence.** Every change is written (atomically) before the call returns, so the app can be suspended or killed at any time. Covers are saved under `covers/` and EPUBs under `books/`, stored as file names, never absolute paths: iOS moves an app's container when it is reinstalled. A library written by a newer app version is refused and never overwritten; an unreadable one can be set aside (it is kept as `library.unreadable-<time>.json`) and the app started fresh.
 
-**Networking.** HTTPS through `forge-net` (rustls with the iOS trust store), a 15-second timeout, and a User-Agent naming the app, as Open Library asks. The catalogue sits behind the `BookCatalogue` trait, so another service could replace it; the tests run the Open Library client against canned responses.
+**Networking.** On iOS, catalogue requests go through URLSession (Forge's `http` service, installed by `AppServices.install()`), so they follow the system's proxy, VPN, Low Data Mode and trust store; before that, and in Linux tests, through `forge-net`'s own client. A 15-second timeout, and a User-Agent naming the app, as Open Library asks. The catalogue sits behind the `BookCatalogue` trait, so another service could replace it; the tests run the Open Library client against canned responses.
 
 **Lifecycle.** The app keeps one `Library` for its whole life. When it returns to the foreground it re-reads its state (so "this year" and "last 7 days" are current). Nothing needs saving when it goes to the background. Leaving a catalogue search (or starting a new one) cancels its Swift task, and the model passes that on to Rust through a `Cancellation`, so the HTTP request stops at once instead of running to its timeout. `shutdown` stops any request still in flight.
 
@@ -85,6 +85,15 @@ The Rust crate's tests cover the reading rules, persistence across reopening, sc
 
 ```bash
 POCKET_LIBRARY_EPUB=~/Books/some-book.epub cargo test --manifest-path rust/Cargo.toml real_epub -- --nocapture
+```
+
+## Checking it on an iPhone
+
+`requirements.toml` lists what the app must do. Each requirement has a Linux twin test and a UI scenario in `uitests/` that `forge ui run` drives on the phone. The scenarios run in Device Lab, which hosts Pocket Library on the phone, on throwaway test data, so they never touch your own library. Launch arguments set that data up: `-ForgeTemporaryData` (empty, and `-ForgeKeepTestData` to relaunch on the same), `-PocketLibrarySampleBook` (a short sample EPUB to read) and `-PocketLibraryUnreadableTestData` (a library file that can't be read).
+
+```bash
+forge ui run examples/pocket-library/uitests/catalogue.toml    # one scenario; the phone needs to be online for this one
+forge verify --project examples/pocket-library                 # each requirement's twin and device verdicts
 ```
 
 ## Not included

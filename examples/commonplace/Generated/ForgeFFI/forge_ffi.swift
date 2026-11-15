@@ -472,6 +472,22 @@ private let UNIFFI_CALLBACK_UNEXPECTED_ERROR: Int32 = 2
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
+    typealias FfiType = UInt8
+    typealias SwiftType = UInt8
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt8 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: UInt8, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
     typealias FfiType = UInt16
     typealias SwiftType = UInt16
@@ -670,7 +686,8 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func backgroundWorkPending()  -> Bool
     
     /**
-     * How many articles a timeline holds and how many of them are unread.
+     * How many articles a timeline holds and how many of them are unread
+     * (whatever "hide read" leaves out of the list).
      */
     func counts(timeline: Timeline)  -> TimelineCounts
     
@@ -736,6 +753,13 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
      */
     func revision()  -> UInt64
     
+    /**
+     * The articles whose title or text holds every word of `query`, in
+     * timeline order. Reads the library directly (never waits for a
+     * command); an empty query finds nothing.
+     */
+    func search(query: String) async throws  -> [ArticleSummary]
+    
     func setBookmarked(articleId: Int64, bookmarked: Bool) async throws 
     
     /**
@@ -752,13 +776,25 @@ public protocol AppCoreProtocol: AnyObject, Sendable {
     func setRead(articleId: Int64, read: Bool) async throws 
     
     /**
+     * Saves the person's settings; timelines follow them at once.
+     */
+    func setSettings(settings: AppSettings) async throws 
+    
+    /**
+     * The person's settings.
+     */
+    func settings()  -> AppSettings
+    
+    /**
      * Refuses new commands, stops work in flight and ends event
      * streams. Commands already accepted still finish and save.
      */
     func shutdown() 
     
     /**
-     * The articles a timeline shows, newest first.
+     * The articles a timeline shows, newest first (oldest first with that
+     * setting; read ones left out of All Articles and feeds with
+     * "hide read").
      */
     func timeline(timeline: Timeline)  -> [ArticleSummary]
     
@@ -892,7 +928,8 @@ open func backgroundWorkPending() -> Bool  {
 }
     
     /**
-     * How many articles a timeline holds and how many of them are unread.
+     * How many articles a timeline holds and how many of them are unread
+     * (whatever "hide read" leaves out of the list).
      */
 open func counts(timeline: Timeline) -> TimelineCounts  {
     return try!  FfiConverterTypeTimelineCounts_lift(try! rustCall() {
@@ -1078,6 +1115,27 @@ open func revision() -> UInt64  {
 })
 }
     
+    /**
+     * The articles whose title or text holds every word of `query`, in
+     * timeline order. Reads the library directly (never waits for a
+     * command); an empty query finds nothing.
+     */
+open func search(query: String)async throws  -> [ArticleSummary]  {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_search(
+                        self.uniffiCloneHandle(),FfiConverterString.lower(query)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_rust_buffer,
+            completeFunc: ffi_commonplace_core_rust_future_complete_rust_buffer,
+            freeFunc: ffi_commonplace_core_rust_future_free_rust_buffer,
+            liftFunc: FfiConverterSequenceTypeArticleSummary.lift,
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
 open func setBookmarked(articleId: Int64, bookmarked: Bool)async throws   {
     return
         try  await uniffiRustCallAsync(
@@ -1143,6 +1201,37 @@ open func setRead(articleId: Int64, read: Bool)async throws   {
 }
     
     /**
+     * Saves the person's settings; timelines follow them at once.
+     */
+open func setSettings(settings: AppSettings)async throws   {
+    return
+        try  await uniffiRustCallAsync(
+            rustFutureFunc: {
+                uniffi_commonplace_core_fn_method_appcore_set_settings(
+                        self.uniffiCloneHandle(),FfiConverterTypeAppSettings_lower(settings)
+                )
+            },
+            pollFunc: ffi_commonplace_core_rust_future_poll_void,
+            completeFunc: ffi_commonplace_core_rust_future_complete_void,
+            freeFunc: ffi_commonplace_core_rust_future_free_void,
+            liftFunc: { $0 },
+            errorHandler: FfiConverterTypeAppError_lift
+        )
+}
+    
+    /**
+     * The person's settings.
+     */
+open func settings() -> AppSettings  {
+    return try!  FfiConverterTypeAppSettings_lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_method_appcore_settings(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+})
+}
+    
+    /**
      * Refuses new commands, stops work in flight and ends event
      * streams. Commands already accepted still finish and save.
      */
@@ -1155,7 +1244,9 @@ open func shutdown()  {try! rustCall() {
 }
     
     /**
-     * The articles a timeline shows, newest first.
+     * The articles a timeline shows, newest first (oldest first with that
+     * setting; read ones left out of All Articles and feeds with
+     * "hide read").
      */
 open func timeline(timeline: Timeline) -> [ArticleSummary]  {
     return try!  FfiConverterSequenceTypeArticleSummary.lift(try! rustCall() {
@@ -3408,6 +3499,99 @@ public func FfiConverterTypeAppDirectories_lower(_ value: AppDirectories) -> Rus
 
 
 /**
+ * The person's choices, kept in the library.
+ */
+public struct AppSettings: Equatable, Hashable {
+    /**
+     * Timelines list the oldest article first.
+     */
+    public var oldestFirst: Bool
+    /**
+     * The All Articles and feed timelines leave read articles out (All
+     * Unread and Bookmarks are unchanged).
+     */
+    public var hideRead: Bool
+    /**
+     * Timeline rows show the start of each article under its title.
+     */
+    public var showSummaries: Bool
+    /**
+     * Links in an article open inside the app, in a web view; otherwise
+     * in Safari.
+     */
+    public var openLinksInApp: Bool
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Timelines list the oldest article first.
+         */oldestFirst: Bool, 
+        /**
+         * The All Articles and feed timelines leave read articles out (All
+         * Unread and Bookmarks are unchanged).
+         */hideRead: Bool, 
+        /**
+         * Timeline rows show the start of each article under its title.
+         */showSummaries: Bool, 
+        /**
+         * Links in an article open inside the app, in a web view; otherwise
+         * in Safari.
+         */openLinksInApp: Bool) {
+        self.oldestFirst = oldestFirst
+        self.hideRead = hideRead
+        self.showSummaries = showSummaries
+        self.openLinksInApp = openLinksInApp
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension AppSettings: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeAppSettings: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> AppSettings {
+        return
+            try AppSettings(
+                oldestFirst: FfiConverterBool.read(from: &buf), 
+                hideRead: FfiConverterBool.read(from: &buf), 
+                showSummaries: FfiConverterBool.read(from: &buf), 
+                openLinksInApp: FfiConverterBool.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: AppSettings, into buf: inout [UInt8]) {
+        FfiConverterBool.write(value.oldestFirst, into: &buf)
+        FfiConverterBool.write(value.hideRead, into: &buf)
+        FfiConverterBool.write(value.showSummaries, into: &buf)
+        FfiConverterBool.write(value.openLinksInApp, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppSettings_lift(_ buf: RustBuffer) throws -> AppSettings {
+    return try FfiConverterTypeAppSettings.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeAppSettings_lower(_ value: AppSettings) -> RustBuffer {
+    return FfiConverterTypeAppSettings.lower(value)
+}
+
+
+/**
  * One article in a timeline: what a row shows.
  */
 public struct ArticleSummary: Equatable, Hashable {
@@ -3511,9 +3695,9 @@ public func FfiConverterTypeArticleSummary_lower(_ value: ArticleSummary) -> Rus
 
 
 /**
- * What the reader shows for one article. This is the boundary the native
- * reader (docs/native-capability-roadmap.md, Tier 1) will replace: for now
- * the body is plain paragraphs, with no styling, images or links inside.
+ * What the reader shows for one article: its details, and its body as a
+ * ForgeReader section (headings, paragraphs, quotes, lists, code and
+ * pictures, with bold, italic and links), converted from the feed's HTML.
  */
 public struct ArticleText: Equatable, Hashable {
     public var id: Int64
@@ -3522,20 +3706,20 @@ public struct ArticleText: Equatable, Hashable {
     public var author: String?
     public var url: String?
     public var publishedAtMs: Int64
-    public var paragraphs: [String]
+    public var body: ReaderSection
     public var read: Bool
     public var bookmarked: Bool
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, paragraphs: [String], read: Bool, bookmarked: Bool) {
+    public init(id: Int64, feedTitle: String, title: String, author: String?, url: String?, publishedAtMs: Int64, body: ReaderSection, read: Bool, bookmarked: Bool) {
         self.id = id
         self.feedTitle = feedTitle
         self.title = title
         self.author = author
         self.url = url
         self.publishedAtMs = publishedAtMs
-        self.paragraphs = paragraphs
+        self.body = body
         self.read = read
         self.bookmarked = bookmarked
     }
@@ -3562,7 +3746,7 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
                 author: FfiConverterOptionString.read(from: &buf), 
                 url: FfiConverterOptionString.read(from: &buf), 
                 publishedAtMs: FfiConverterInt64.read(from: &buf), 
-                paragraphs: FfiConverterSequenceString.read(from: &buf), 
+                body: FfiConverterTypeReaderSection.read(from: &buf), 
                 read: FfiConverterBool.read(from: &buf), 
                 bookmarked: FfiConverterBool.read(from: &buf)
         )
@@ -3575,7 +3759,7 @@ public struct FfiConverterTypeArticleText: FfiConverterRustBuffer {
         FfiConverterOptionString.write(value.author, into: &buf)
         FfiConverterOptionString.write(value.url, into: &buf)
         FfiConverterInt64.write(value.publishedAtMs, into: &buf)
-        FfiConverterSequenceString.write(value.paragraphs, into: &buf)
+        FfiConverterTypeReaderSection.write(value.body, into: &buf)
         FfiConverterBool.write(value.read, into: &buf)
         FfiConverterBool.write(value.bookmarked, into: &buf)
     }
@@ -4607,6 +4791,312 @@ public func FfiConverterTypeQueryItem_lift(_ buf: RustBuffer) throws -> QueryIte
 #endif
 public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
     return FfiConverterTypeQueryItem.lower(value)
+}
+
+
+public struct ReaderAnchor: Equatable, Hashable {
+    public var sectionId: String
+    public var blockId: String
+    public var offset: Double
+    public var opening: String
+    public var before: String?
+    public var after: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(sectionId: String, blockId: String, offset: Double, opening: String, before: String?, after: String?) {
+        self.sectionId = sectionId
+        self.blockId = blockId
+        self.offset = offset
+        self.opening = opening
+        self.before = before
+        self.after = after
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderAnchor: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderAnchor: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderAnchor {
+        return
+            try ReaderAnchor(
+                sectionId: FfiConverterString.read(from: &buf), 
+                blockId: FfiConverterString.read(from: &buf), 
+                offset: FfiConverterDouble.read(from: &buf), 
+                opening: FfiConverterString.read(from: &buf), 
+                before: FfiConverterOptionString.read(from: &buf), 
+                after: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderAnchor, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sectionId, into: &buf)
+        FfiConverterString.write(value.blockId, into: &buf)
+        FfiConverterDouble.write(value.offset, into: &buf)
+        FfiConverterString.write(value.opening, into: &buf)
+        FfiConverterOptionString.write(value.before, into: &buf)
+        FfiConverterOptionString.write(value.after, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderAnchor_lift(_ buf: RustBuffer) throws -> ReaderAnchor {
+    return try FfiConverterTypeReaderAnchor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderAnchor_lower(_ value: ReaderAnchor) -> RustBuffer {
+    return FfiConverterTypeReaderAnchor.lower(value)
+}
+
+
+public struct ReaderBlock: Equatable, Hashable {
+    public var id: String
+    public var kind: ReaderBlockKind
+    public var spans: [ReaderSpan]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, kind: ReaderBlockKind, spans: [ReaderSpan]) {
+        self.id = id
+        self.kind = kind
+        self.spans = spans
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderBlock: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderBlock: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderBlock {
+        return
+            try ReaderBlock(
+                id: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeReaderBlockKind.read(from: &buf), 
+                spans: FfiConverterSequenceTypeReaderSpan.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderBlock, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterTypeReaderBlockKind.write(value.kind, into: &buf)
+        FfiConverterSequenceTypeReaderSpan.write(value.spans, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlock_lift(_ buf: RustBuffer) throws -> ReaderBlock {
+    return try FfiConverterTypeReaderBlock.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlock_lower(_ value: ReaderBlock) -> RustBuffer {
+    return FfiConverterTypeReaderBlock.lower(value)
+}
+
+
+public struct ReaderLocation: Equatable, Hashable {
+    public var block: UInt32
+    public var offset: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(block: UInt32, offset: Double) {
+        self.block = block
+        self.offset = offset
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderLocation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderLocation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderLocation {
+        return
+            try ReaderLocation(
+                block: FfiConverterUInt32.read(from: &buf), 
+                offset: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderLocation, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.block, into: &buf)
+        FfiConverterDouble.write(value.offset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderLocation_lift(_ buf: RustBuffer) throws -> ReaderLocation {
+    return try FfiConverterTypeReaderLocation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderLocation_lower(_ value: ReaderLocation) -> RustBuffer {
+    return FfiConverterTypeReaderLocation.lower(value)
+}
+
+
+public struct ReaderSection: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var blocks: [ReaderBlock]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, blocks: [ReaderBlock]) {
+        self.id = id
+        self.title = title
+        self.blocks = blocks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderSection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderSection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderSection {
+        return
+            try ReaderSection(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                blocks: FfiConverterSequenceTypeReaderBlock.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderSection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeReaderBlock.write(value.blocks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSection_lift(_ buf: RustBuffer) throws -> ReaderSection {
+    return try FfiConverterTypeReaderSection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSection_lower(_ value: ReaderSection) -> RustBuffer {
+    return FfiConverterTypeReaderSection.lower(value)
+}
+
+
+public struct ReaderSpan: Equatable, Hashable {
+    public var text: String
+    public var bold: Bool
+    public var italic: Bool
+    public var monospace: Bool
+    public var link: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, bold: Bool, italic: Bool, monospace: Bool, link: String?) {
+        self.text = text
+        self.bold = bold
+        self.italic = italic
+        self.monospace = monospace
+        self.link = link
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderSpan {
+        return
+            try ReaderSpan(
+                text: FfiConverterString.read(from: &buf), 
+                bold: FfiConverterBool.read(from: &buf), 
+                italic: FfiConverterBool.read(from: &buf), 
+                monospace: FfiConverterBool.read(from: &buf), 
+                link: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderSpan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.bold, into: &buf)
+        FfiConverterBool.write(value.italic, into: &buf)
+        FfiConverterBool.write(value.monospace, into: &buf)
+        FfiConverterOptionString.write(value.link, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSpan_lift(_ buf: RustBuffer) throws -> ReaderSpan {
+    return try FfiConverterTypeReaderSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSpan_lower(_ value: ReaderSpan) -> RustBuffer {
+    return FfiConverterTypeReaderSpan.lower(value)
 }
 
 
@@ -5781,6 +6271,117 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 
+
+public enum ReaderBlockKind: Equatable, Hashable {
+    
+    case heading(level: UInt8
+    )
+    case paragraph
+    case quote
+    case listItem(marker: String
+    )
+    case preformatted
+    case separator
+    case image(source: String, alt: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ReaderBlockKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderBlockKind: FfiConverterRustBuffer {
+    typealias SwiftType = ReaderBlockKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderBlockKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .heading(level: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 2: return .paragraph
+        
+        case 3: return .quote
+        
+        case 4: return .listItem(marker: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .preformatted
+        
+        case 6: return .separator
+        
+        case 7: return .image(source: try FfiConverterString.read(from: &buf), alt: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ReaderBlockKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .heading(level):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt8.write(level, into: &buf)
+            
+        
+        case .paragraph:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .quote:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .listItem(marker):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(marker, into: &buf)
+            
+        
+        case .preformatted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .separator:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .image(source,alt):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(source, into: &buf)
+            FfiConverterString.write(alt, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlockKind_lift(_ buf: RustBuffer) throws -> ReaderBlockKind {
+    return try FfiConverterTypeReaderBlockKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlockKind_lower(_ value: ReaderBlockKind) -> RustBuffer {
+    return FfiConverterTypeReaderBlockKind.lower(value)
+}
+
+
+
 /**
  * Something the user can share through the system share sheet.
  * The host presents it (on iOS `ForgeShareLink`).
@@ -6299,6 +6900,56 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
         return seq
     }
 }
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeReaderBlock: FfiConverterRustBuffer {
+    typealias SwiftType = [ReaderBlock]
+
+    public static func write(_ value: [ReaderBlock], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeReaderBlock.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ReaderBlock] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ReaderBlock]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeReaderBlock.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer {
+    typealias SwiftType = [ReaderSpan]
+
+    public static func write(_ value: [ReaderSpan], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeReaderSpan.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ReaderSpan] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [ReaderSpan]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeReaderSpan.read(from: &buf))
+        }
+        return seq
+    }
+}
 private let UNIFFI_RUST_FUTURE_POLL_READY: Int8 = 0
 private let UNIFFI_RUST_FUTURE_POLL_WAKE: Int8 = 1
 
@@ -6541,6 +7192,20 @@ public func installNativeBackground(scheduler: BackgroundScheduler)  {try! rustC
 }
 }
 /**
+ * Whether this library's Rust has a handler for `identifier`
+ * right now. The host asks when several apps' libraries share
+ * one process (Device Lab), to hand a task to the one that
+ * handles it.
+ */
+public func nativeBackgroundHandles(identifier: String) -> Bool  {
+    return try!  FfiConverterBool.lift(try! rustCall() {
+        uniffiCallStatus in
+    uniffi_commonplace_core_fn_func_native_background_handles(
+        FfiConverterString.lower(identifier),uniffiCallStatus
+    )
+})
+}
+/**
  * Called by the host when iOS starts a task. Runs the handler
  * registered for `identifier`, or finishes at once (failure) if
  * there is none.
@@ -6607,6 +7272,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_func_install_native_background() != 62275) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_func_native_background_handles() != 59744) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_func_run_native_background_task() != 57156) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6625,7 +7293,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_background_work_pending() != 63345) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_commonplace_core_checksum_method_appcore_counts() != 25863) {
+    if (uniffi_commonplace_core_checksum_method_appcore_counts() != 33442) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_appcore_events() != 2896) {
@@ -6661,6 +7329,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_revision() != 2945) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_search() != 12825) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_set_bookmarked() != 19311) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -6673,10 +7344,16 @@ private let initializationResult: InitializationResult = {
     if (uniffi_commonplace_core_checksum_method_appcore_set_read() != 20553) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_commonplace_core_checksum_method_appcore_set_settings() != 21296) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_commonplace_core_checksum_method_appcore_settings() != 23596) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_commonplace_core_checksum_method_appcore_shutdown() != 58551) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_commonplace_core_checksum_method_appcore_timeline() != 61422) {
+    if (uniffi_commonplace_core_checksum_method_appcore_timeline() != 41218) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_commonplace_core_checksum_method_localnotifier_schedule() != 37230) {

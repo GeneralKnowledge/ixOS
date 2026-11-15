@@ -24,6 +24,7 @@ app_module = "FieldKitApp"
 test_data_args = ["-ForgeTemporaryData"]
 
 [ios]
+devices = ["iphone"]
 xtool_product = "FieldKitXtool"
 orientations = ["portrait"]
 

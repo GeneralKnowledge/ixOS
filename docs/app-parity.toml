@@ -17,54 +17,6 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "chat"
-rule = "forgekit"
-wave = 3
-reason = "Predates the ForgeKit package; moves with its ForgeHost migration"
-
-[[lag]]
-app = "chat"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "chat"
-rule = "requirements"
-wave = 4
-reason = "Acceptance lives in examples/chat/ACCEPTANCE.md; becomes requirements with M6"
-
-[[lag]]
-app = "chat"
-rule = "ui-test"
-wave = 4
-reason = "Needs the chat server reachable from the phone; comes with M6"
-
-[[lag]]
-app = "checklist"
-rule = "requirements"
-wave = 3
-reason = "No requirements written yet"
-
-[[lag]]
-app = "checklist"
-rule = "ui-test"
-wave = 3
-reason = "No UI scenario yet"
-
-[[lag]]
-app = "commonplace"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "commonplace"
-rule = "requirements"
-wave = 3
-reason = "No requirements written yet"
-
-[[lag]]
 app = "counter"
 rule = "device-lab"
 wave = 0
@@ -75,18 +27,6 @@ app = "counter"
 rule = "forge-host"
 wave = 0
 reason = "Proposed for removal; decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forgekit"
-wave = 0
-reason = "Proposed for removal (the forge init template is the minimal app); decision pending"
-
-[[lag]]
-app = "counter"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "counter"
@@ -107,30 +47,6 @@ wave = 3
 reason = "LabModel keeps its own state; Device Lab's Rust is lab services, not an app core"
 
 [[lag]]
-app = "device-lab"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "fieldkit"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "fieldkit"
-rule = "requirements"
-wave = 3
-reason = "No requirements written yet"
-
-[[lag]]
-app = "forgeui-showcase"
-rule = "ui-test"
-wave = 3
-reason = "No UI scenario yet; P1 was checked by hand"
-
-[[lag]]
 app = "good-dog"
 rule = "appkit-alerts"
 wave = 3
@@ -149,58 +65,10 @@ wave = 3
 reason = "Keeps its own state model from before ForgeHost (friction log rank 1)"
 
 [[lag]]
-app = "good-dog"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "pocket-library"
-rule = "device-checks"
-wave = 2
-reason = "Only PL-10 has a device scenario; P4 needs all of them"
-
-[[lag]]
-app = "pocket-library"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "pocket-library"
-rule = "urlsession"
-wave = 2
-reason = "Open Library catalogue requests still go through ureq on iOS"
-
-[[lag]]
-app = "relay"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
-app = "relay"
-rule = "requirements"
-wave = 3
-reason = "No requirements written yet"
-
-[[lag]]
-app = "sketchbook"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
-
-[[lag]]
 app = "sketchbook"
 rule = "requirements"
 wave = 4
 reason = "Written as the Soundscape and Sketchbook features are finished"
-
-[[lag]]
-app = "soundscape"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "soundscape"
@@ -213,18 +81,6 @@ app = "weather"
 rule = "forge-host"
 wave = 3
 reason = "Rust core predates the forge-app runtime"
-
-[[lag]]
-app = "weather"
-rule = "forgekit"
-wave = 3
-reason = "The oldest demo; predates the ForgeKit package"
-
-[[lag]]
-app = "weather"
-rule = "forgeui-appearance"
-wave = 1
-reason = "ForgeUI has no launch appearance helper yet; it moves there with the ForgeKit 0.6 release"
 
 [[lag]]
 app = "weather"
@@ -249,3 +105,15 @@ app = "weather"
 rule = "urlsession"
 wave = 3
 reason = "Open-Meteo requests still go through ureq"
+
+[[lag]]
+app = "checklist"
+rule = "device-checks"
+wave = 4
+reason = "CL-3 (background and cancelling) is proved by twin tests only; a phone scenario needs a slow search to interrupt"
+
+[[lag]]
+app = "commonplace"
+rule = "device-checks"
+wave = 4
+reason = "CP-5 (error words) needs the fixture server offline; written with slice 2"

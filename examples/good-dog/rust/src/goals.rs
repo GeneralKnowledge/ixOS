@@ -7,8 +7,8 @@
 
 use good_dog_core::coaching::ProgressionConfig;
 use good_dog_core::dog_training::{
-    bundled_exercises, match_pathways, stage_readiness, LessonKind as CoreLessonKind, Pathway,
-    PathwayStage, StageBlocker, StageLesson, StageReadiness,
+    bundled_exercises, bundled_safety_rules, match_pathways, stage_readiness, AppEnforcement,
+    LessonKind as CoreLessonKind, Pathway, PathwayStage, StageBlocker, StageLesson, StageReadiness,
 };
 use serde::{Deserialize, Serialize};
 
@@ -55,6 +55,16 @@ pub(crate) struct StoredGoal {
     /// back, so nothing is lost.
     #[serde(default)]
     pub lessons_done: Vec<String>,
+    /// When the owner met a safety rule: confirmed how they practise, or
+    /// said they'd had advice after a worry. Newest last.
+    #[serde(default)]
+    pub safety_notes: Vec<StoredSafetyNote>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub(crate) struct StoredSafetyNote {
+    pub rule_id: String,
+    pub at_ms: i64,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -84,6 +94,10 @@ pub(crate) enum GoalEventKind {
     Resumed,
     SetAside,
     Finished,
+    /// The owner met a safety rule (`StoredSafetyNote`).
+    SafetyNoted {
+        rule_id: String,
+    },
 }
 
 impl Stored {
@@ -206,6 +220,7 @@ impl Stored {
             own_words,
             events: vec![event(now, GoalEventKind::Started)],
             lessons_done: Vec::new(),
+            safety_notes: Vec::new(),
         });
         self.drop_unstarted_plan(now);
         Ok(id)
@@ -318,6 +333,20 @@ impl Stored {
                 reason: held_reason(&readiness),
             });
         }
+        if let Some(unmet) = self
+            .safety_checks(&self.goals[i], stage)
+            .into_iter()
+            .find(|c| !c.met)
+        {
+            return Err(AppError::InvalidInput {
+                reason: match unmet.kind {
+                    SafetyKind::Confirm => {
+                        "confirm how you practise first: it keeps everyone safe".into()
+                    }
+                    SafetyKind::Referral => unmet.detail,
+                },
+            });
+        }
         let goal = &mut self.goals[i];
         goal.events.push(event(
             now,
@@ -414,11 +443,20 @@ impl Stored {
         let gate = (!finished).then(|| {
             let stage = &pathway.stages[current];
             let readiness = self.readiness(pathway, stage, now);
+            let safety = self.safety_checks(goal, stage);
+            let referral = safety
+                .iter()
+                .find(|c| c.kind == SafetyKind::Referral && !c.met);
             GateStatus {
                 ready_for_check: readiness.ready_for_check(),
-                held: readiness.held(),
+                held: readiness.held() || referral.is_some(),
                 question: stage.gate.owner_check.replace("{dog}", name),
-                note: gate_note(&readiness, name, goal.status),
+                note: match referral {
+                    // A worry comes before any training reason.
+                    Some(check) => check.detail.clone(),
+                    _ => gate_note(&readiness, name, goal.status),
+                },
+                safety,
             }
         });
         let history = goal
@@ -495,6 +533,106 @@ impl Stored {
                 lesson_count: lessons.len() as u32,
                 next_lesson: lessons.into_iter().find(|l| l.state == LessonState::Next),
             })
+    }
+
+    /// The safety rules of `stage` the owner acts on, worded for the dog.
+    /// A confirm rule is met once confirmed (for any stage of the goal); a
+    /// referral rule is shown only while a worry noted in a session of the
+    /// stage's exercises, since the goal started, is newer than the
+    /// owner's last "we've had advice".
+    pub(crate) fn safety_checks(
+        &self,
+        goal: &StoredGoal,
+        stage: &PathwayStage,
+    ) -> Vec<SafetyCheck> {
+        let name = self.dog.as_ref().map_or("your dog", |d| d.name.as_str());
+        let last_note = |rule_id: &str| {
+            goal.safety_notes
+                .iter()
+                .filter(|n| n.rule_id == rule_id)
+                .map(|n| n.at_ms)
+                .max()
+        };
+        stage
+            .safety_rule_ids
+            .iter()
+            .filter_map(|id| bundled_safety_rules().iter().find(|r| &r.id == id))
+            .filter_map(|rule| match &rule.app_enforcement {
+                AppEnforcement::Confirm {
+                    owner_confirms,
+                    why,
+                } => Some(SafetyCheck {
+                    rule_id: rule.id.clone(),
+                    kind: SafetyKind::Confirm,
+                    met: last_note(&rule.id).is_some(),
+                    detail: with_name(why, name),
+                    referral: None,
+                    action: with_name(owner_confirms, name),
+                }),
+                AppEnforcement::ReferOnConcern {
+                    held_note,
+                    referral,
+                    cleared_by,
+                } => {
+                    let since = last_note(&rule.id)
+                        .unwrap_or(i64::MIN)
+                        .max(goal.started_at_ms - 1);
+                    let worry = self.sessions.iter().any(|s| {
+                        s.welfare_concern
+                            && s.completed_at_ms > since
+                            && stage.exercise_ids.contains(&s.exercise_id)
+                    });
+                    worry.then(|| SafetyCheck {
+                        rule_id: rule.id.clone(),
+                        kind: SafetyKind::Referral,
+                        met: false,
+                        detail: with_name(held_note, name),
+                        referral: Some(with_name(referral, name)),
+                        action: with_name(cleared_by, name),
+                    })
+                }
+                AppEnforcement::Teach => None,
+            })
+            .collect()
+    }
+
+    /// The owner meets one of the current stage's safety rules: confirms
+    /// how they practise, or says they've had advice after a worry.
+    pub fn note_safety(
+        &mut self,
+        goal_id: u64,
+        rule_id: &str,
+        now: LocalTime,
+    ) -> Result<(), AppError> {
+        let i = self.goal_index(goal_id)?;
+        let goal = &self.goals[i];
+        let stage = self
+            .pathway(&goal.pathway_id)
+            .and_then(|p| p.stage(&goal.stage_id))
+            .ok_or(AppError::NotFound {
+                what: "that goal's pathway".into(),
+            })?;
+        if !self
+            .safety_checks(goal, stage)
+            .iter()
+            .any(|c| c.rule_id == rule_id)
+        {
+            return Err(AppError::InvalidInput {
+                reason: "that doesn't apply to this stage".into(),
+            });
+        }
+        let goal = &mut self.goals[i];
+        goal.safety_notes.push(StoredSafetyNote {
+            rule_id: rule_id.to_string(),
+            at_ms: now.ms,
+        });
+        goal.events.push(event(
+            now,
+            GoalEventKind::SafetyNoted {
+                rule_id: rule_id.to_string(),
+            },
+        ));
+        Ok(())
     }
 
     /// The active goal and its current stage, for a lesson the owner acts
@@ -809,5 +947,13 @@ fn event_text(kind: &GoalEventKind, pathway: &Pathway) -> String {
         GoalEventKind::Resumed => "Picked up again".into(),
         GoalEventKind::SetAside => "Set aside".into(),
         GoalEventKind::Finished => "Every stage done: now it's occasional practice".into(),
+        GoalEventKind::SafetyNoted { rule_id } => match bundled_safety_rules()
+            .iter()
+            .find(|r| &r.id == rule_id)
+            .map(|r| &r.app_enforcement)
+        {
+            Some(AppEnforcement::ReferOnConcern { .. }) => "Got advice after a worry".into(),
+            _ => "Confirmed how you practise safely".into(),
+        },
     }
 }

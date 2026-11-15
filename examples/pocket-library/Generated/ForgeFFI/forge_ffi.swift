@@ -488,6 +488,22 @@ fileprivate struct FfiConverterUInt8: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
+    typealias FfiType = UInt16
+    typealias SwiftType = UInt16
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt16 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
     typealias FfiType = UInt32
     typealias SwiftType = UInt32
@@ -940,6 +956,469 @@ public func FfiConverterTypeAiModel_lower(_ value: AiModel) -> UInt64 {
 
 
 /**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+public protocol HttpStreamBodyProtocol: AnyObject, Sendable {
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+    func fail(error: HttpTransportError) 
+    
+    /**
+     * The server closed the body normally.
+     */
+    func finish() 
+    
+    /**
+     * The next bytes of the body.
+     */
+    func receive(data: Data) 
+    
+}
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+open class HttpStreamBody: HttpStreamBodyProtocol, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_httpstreambody(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pocket_library_core_fn_free_httpstreambody(handle, $0) }
+    }
+
+    
+
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+open func fail(error: HttpTransportError)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httpstreambody_fail(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpTransportError_lower(error),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The server closed the body normally.
+     */
+open func finish()  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httpstreambody_finish(
+            self.uniffiCloneHandle(),uniffiCallStatus
+    )
+}
+}
+    
+    /**
+     * The next bytes of the body.
+     */
+open func receive(data: Data)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httpstreambody_receive(
+            self.uniffiCloneHandle(),
+        FfiConverterData.lower(data),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamBody: FfiConverter {
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpStreamBody
+
+    public static func lift(_ handle: UInt64) throws -> HttpStreamBody {
+        return HttpStreamBody(unsafeFromHandle: handle)
+    }
+
+    public static func lower(_ value: HttpStreamBody) -> UInt64 {
+        return value.uniffiCloneHandle()
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamBody {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpStreamBody, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lift(_ handle: UInt64) throws -> HttpStreamBody {
+    return try FfiConverterTypeHttpStreamBody.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamBody_lower(_ value: HttpStreamBody) -> UInt64 {
+    return FfiConverterTypeHttpStreamBody.lower(value)
+}
+
+
+
+
+
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+public protocol HttpTransport: AnyObject, Sendable {
+    
+    func send(request: HttpRequest) throws  -> HttpResponse
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    func openStream(request: HttpRequest, body: HttpStreamBody) throws  -> HttpStreamHead
+    
+    func cancel(id: UInt64) 
+    
+}
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+open class HttpTransportImpl: HttpTransport, @unchecked Sendable {
+    fileprivate let handle: UInt64
+
+    /// Used to instantiate a [FFIObject] without an actual handle, for fakes in tests, mostly.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public struct NoHandle {
+        public init() {}
+    }
+
+    // TODO: We'd like this to be `private` but for Swifty reasons,
+    // we can't implement `FfiConverter` without making this `required` and we can't
+    // make it `required` without making it `public`.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    required public init(unsafeFromHandle handle: UInt64) {
+        self.handle = handle
+    }
+
+    // This constructor can be used to instantiate a fake object.
+    // - Parameter noHandle: Placeholder value so we can have a constructor separate from the default empty one that may be implemented for classes extending [FFIObject].
+    //
+    // - Warning:
+    //     Any object instantiated with this constructor cannot be passed to an actual Rust-backed object. Since there isn't a backing handle the FFI lower functions will crash.
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public init(noHandle: NoHandle) {
+        self.handle = 0
+    }
+
+#if swift(>=5.8)
+    @_documentation(visibility: private)
+#endif
+    public func uniffiCloneHandle() -> UInt64 {
+        return try! rustCall { uniffi_pocket_library_core_fn_clone_httptransport(self.handle, $0) }
+    }
+    // No primary constructor declared for this class.
+
+    deinit {
+        if handle == 0 {
+            // Mock objects have handle=0 don't try to free them
+            return
+        }
+
+        try! rustCall { uniffi_pocket_library_core_fn_free_httptransport(handle, $0) }
+    }
+
+    
+
+    
+open func send(request: HttpRequest)throws  -> HttpResponse  {
+    return try  FfiConverterTypeHttpResponse_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httptransport_send(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),uniffiCallStatus
+    )
+})
+}
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+open func openStream(request: HttpRequest, body: HttpStreamBody)throws  -> HttpStreamHead  {
+    return try  FfiConverterTypeHttpStreamHead_lift(try rustCallWithError(FfiConverterTypeHttpTransportError_lift) {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httptransport_open_stream(
+            self.uniffiCloneHandle(),
+        FfiConverterTypeHttpRequest_lower(request),
+        FfiConverterTypeHttpStreamBody_lower(body),uniffiCallStatus
+    )
+})
+}
+    
+open func cancel(id: UInt64)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_method_httptransport_cancel(
+            self.uniffiCloneHandle(),
+        FfiConverterUInt64.lower(id),uniffiCallStatus
+    )
+}
+}
+    
+
+    
+}
+
+
+
+// Put the implementation in a struct so we don't pollute the top-level namespace
+fileprivate struct UniffiCallbackInterfaceHttpTransport {
+
+    // Create the VTable using a series of closures.
+    // Swift automatically converts these into C callback functions.
+    //
+    // Store the vtable directly.
+    static let vtable: UniffiVTableCallbackInterfaceHttpTransport = UniffiVTableCallbackInterfaceHttpTransport(
+        uniffiFree: { (uniffiHandle: UInt64) -> () in
+            do {
+                try FfiConverterTypeHttpTransport.handleMap.remove(handle: uniffiHandle)
+            } catch {
+                print("Uniffi callback interface HttpTransport: handle missing in uniffiFree")
+            }
+        },
+        uniffiClone: { (uniffiHandle: UInt64) -> UInt64 in
+            do {
+                return try FfiConverterTypeHttpTransport.handleMap.clone(handle: uniffiHandle)
+            } catch {
+                fatalError("Uniffi callback interface HttpTransport: handle missing in uniffiClone")
+            }
+        },
+        send: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpResponse in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.send(
+                     request: try FfiConverterTypeHttpRequest_lift(request)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpResponse_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        openStream: { (
+            uniffiHandle: UInt64,
+            request: RustBuffer,
+            body: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HttpStreamHead in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.openStream(
+                     request: try FfiConverterTypeHttpRequest_lift(request),
+                     body: try FfiConverterTypeHttpStreamBody_lift(body)
+                )
+            }
+
+            
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHttpStreamHead_lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHttpTransportError_lower
+            )
+        },
+        cancel: { (
+            uniffiHandle: UInt64,
+            id: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterTypeHttpTransport.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return uniffiObj.cancel(
+                     id: try FfiConverterUInt64.lift(id)
+                )
+            }
+
+            
+            let writeReturn = { () }
+            uniffiTraitInterfaceCall(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn
+            )
+        }
+    )
+
+    // Rust stores this pointer for future callback invocations, so it must live
+    // for the process lifetime (not just for the init function call).
+    //
+    // `nonisolated(unsafe)` is needed under Swift 6 strict concurrency.
+    // This is safe because the pointee is initialized once during static init
+    // and never mutated by either side of the FFI.  Its fields are C function pointers.
+    nonisolated(unsafe) static let vtablePtr: UnsafePointer<UniffiVTableCallbackInterfaceHttpTransport> = {
+        let ptr = UnsafeMutablePointer<UniffiVTableCallbackInterfaceHttpTransport>.allocate(capacity: 1)
+        ptr.initialize(to: vtable)
+        return UnsafePointer(ptr)
+    }()
+}
+
+private func uniffiCallbackInitHttpTransport() {
+    uniffi_pocket_library_core_fn_init_callback_vtable_httptransport(UniffiCallbackInterfaceHttpTransport.vtablePtr)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransport: FfiConverter {
+    fileprivate static let handleMap = UniffiHandleMap<HttpTransport>()
+
+    typealias FfiType = UInt64
+    typealias SwiftType = HttpTransport
+
+    public static func lift(_ handle: UInt64) throws -> HttpTransport {
+        if ((handle & 1) == 0) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return HttpTransportImpl(unsafeFromHandle: handle)
+        } else {
+            // Swift-generated handle, get the object from the handle map
+            return try handleMap.remove(handle: handle)
+        }
+    }
+
+    public static func lower(_ value: HttpTransport) -> UInt64 {
+         if let rustImpl = value as? HttpTransportImpl {
+             // Rust-implemented object.  Clone the handle and return it
+            return rustImpl.uniffiCloneHandle()
+         } else {
+            // Swift object, generate a new vtable handle and return that.
+            return handleMap.insert(obj: value)
+         }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransport {
+        let handle: UInt64 = try readInt(&buf)
+        return try lift(handle)
+    }
+
+    public static func write(_ value: HttpTransport, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lift(_ handle: UInt64) throws -> HttpTransport {
+    return try FfiConverterTypeHttpTransport.lift(handle)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransport_lower(_ value: HttpTransport) -> UInt64 {
+    return FfiConverterTypeHttpTransport.lower(value)
+}
+
+
+
+
+
+
+/**
  * The library the host opens once and shares. Thread-safe.
  */
 public protocol LibraryProtocol: AnyObject, Sendable {
@@ -1070,7 +1549,10 @@ public protocol LibraryProtocol: AnyObject, Sendable {
     func phase()  -> AppPhase
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
     func readerChapter(id: UInt64, index: UInt32) async throws  -> ReaderChapter
     
@@ -1094,7 +1576,7 @@ public protocol LibraryProtocol: AnyObject, Sendable {
      * like typing the page in. It never finishes a book; the reader offers
      * "Mark as Finished" at the end. A finished book keeps its page.
      */
-    func saveReadingPosition(id: UInt64, position: ReadingPosition) async throws  -> Book
+    func saveReadingPosition(id: UInt64, chapter: UInt32, location: ReaderLocation) async throws  -> Book
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
@@ -1597,7 +2079,10 @@ open func phase() -> AppPhase  {
 }
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
 open func readerChapter(id: UInt64, index: UInt32)async throws  -> ReaderChapter  {
     return
@@ -1656,12 +2141,12 @@ open func revision() -> UInt64  {
      * like typing the page in. It never finishes a book; the reader offers
      * "Mark as Finished" at the end. A finished book keeps its page.
      */
-open func saveReadingPosition(id: UInt64, position: ReadingPosition)async throws  -> Book  {
+open func saveReadingPosition(id: UInt64, chapter: UInt32, location: ReaderLocation)async throws  -> Book  {
     return
         try  await uniffiRustCallAsync(
             rustFutureFunc: {
                 uniffi_pocket_library_core_fn_method_library_save_reading_position(
-                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterTypeReadingPosition_lower(position)
+                        self.uniffiCloneHandle(),FfiConverterUInt64.lower(id),FfiConverterUInt32.lower(chapter),FfiConverterTypeReaderLocation_lower(location)
                 )
             },
             pollFunc: ffi_pocket_library_core_rust_future_poll_rust_buffer,
@@ -4638,6 +5123,279 @@ public func FfiConverterTypeDeepLink_lower(_ value: DeepLink) -> RustBuffer {
 }
 
 
+public struct HttpHeader: Equatable, Hashable {
+    public var name: String
+    public var value: String
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(name: String, value: String) {
+        self.name = name
+        self.value = value
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpHeader: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpHeader: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpHeader {
+        return
+            try HttpHeader(
+                name: FfiConverterString.read(from: &buf), 
+                value: FfiConverterString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpHeader, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.name, into: &buf)
+        FfiConverterString.write(value.value, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lift(_ buf: RustBuffer) throws -> HttpHeader {
+    return try FfiConverterTypeHttpHeader.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpHeader_lower(_ value: HttpHeader) -> RustBuffer {
+    return FfiConverterTypeHttpHeader.lower(value)
+}
+
+
+/**
+ * One request for the host to send. `id` names it for
+ * `HttpTransport::cancel`.
+ */
+public struct HttpRequest: Equatable, Hashable {
+    public var id: UInt64
+    /**
+     * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+     */
+    public var method: String
+    public var url: String
+    public var headers: [HttpHeader]
+    public var body: Data
+    /**
+     * Send this file as the body instead (an upload); `body` is
+     * then empty.
+     */
+    public var bodyFile: String?
+    public var timeoutMs: UInt64
+    /**
+     * Stop and fail with `Transport` once the response body
+     * grows past this.
+     */
+    public var maxBodyBytes: UInt64
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: UInt64, 
+        /**
+         * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+         */method: String, url: String, headers: [HttpHeader], body: Data, 
+        /**
+         * Send this file as the body instead (an upload); `body` is
+         * then empty.
+         */bodyFile: String?, timeoutMs: UInt64, 
+        /**
+         * Stop and fail with `Transport` once the response body
+         * grows past this.
+         */maxBodyBytes: UInt64) {
+        self.id = id
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+        self.bodyFile = bodyFile
+        self.timeoutMs = timeoutMs
+        self.maxBodyBytes = maxBodyBytes
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpRequest: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpRequest: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpRequest {
+        return
+            try HttpRequest(
+                id: FfiConverterUInt64.read(from: &buf), 
+                method: FfiConverterString.read(from: &buf), 
+                url: FfiConverterString.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf), 
+                bodyFile: FfiConverterOptionString.read(from: &buf), 
+                timeoutMs: FfiConverterUInt64.read(from: &buf), 
+                maxBodyBytes: FfiConverterUInt64.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpRequest, into buf: inout [UInt8]) {
+        FfiConverterUInt64.write(value.id, into: &buf)
+        FfiConverterString.write(value.method, into: &buf)
+        FfiConverterString.write(value.url, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+        FfiConverterOptionString.write(value.bodyFile, into: &buf)
+        FfiConverterUInt64.write(value.timeoutMs, into: &buf)
+        FfiConverterUInt64.write(value.maxBodyBytes, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lift(_ buf: RustBuffer) throws -> HttpRequest {
+    return try FfiConverterTypeHttpRequest.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpRequest_lower(_ value: HttpRequest) -> RustBuffer {
+    return FfiConverterTypeHttpRequest.lower(value)
+}
+
+
+public struct HttpResponse: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+    public var body: Data
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader], body: Data) {
+        self.status = status
+        self.headers = headers
+        self.body = body
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpResponse: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpResponse: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpResponse {
+        return
+            try HttpResponse(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf), 
+                body: FfiConverterData.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpResponse, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+        FfiConverterData.write(value.body, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lift(_ buf: RustBuffer) throws -> HttpResponse {
+    return try FfiConverterTypeHttpResponse.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpResponse_lower(_ value: HttpResponse) -> RustBuffer {
+    return FfiConverterTypeHttpResponse.lower(value)
+}
+
+
+/**
+ * The status and headers of a streamed response.
+ */
+public struct HttpStreamHead: Equatable, Hashable {
+    public var status: UInt16
+    public var headers: [HttpHeader]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(status: UInt16, headers: [HttpHeader]) {
+        self.status = status
+        self.headers = headers
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension HttpStreamHead: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpStreamHead: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpStreamHead {
+        return
+            try HttpStreamHead(
+                status: FfiConverterUInt16.read(from: &buf), 
+                headers: FfiConverterSequenceTypeHttpHeader.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: HttpStreamHead, into buf: inout [UInt8]) {
+        FfiConverterUInt16.write(value.status, into: &buf)
+        FfiConverterSequenceTypeHttpHeader.write(value.headers, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lift(_ buf: RustBuffer) throws -> HttpStreamHead {
+    return try FfiConverterTypeHttpStreamHead.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpStreamHead_lower(_ value: HttpStreamHead) -> RustBuffer {
+    return FfiConverterTypeHttpStreamHead.lower(value)
+}
+
+
 /**
  * The result of importing a catalogue book. The book is saved even when the
  * extras could not be fetched; `warnings` says what is missing.
@@ -5314,20 +6072,158 @@ public func FfiConverterTypeQueryItem_lower(_ value: QueryItem) -> RustBuffer {
 }
 
 
-/**
- * A chapter's text, ready to lay out.
- */
-public struct ReaderChapter: Equatable, Hashable {
-    public var index: UInt32
-    public var title: String
-    public var blocks: [TextBlock]
+public struct ReaderAnchor: Equatable, Hashable {
+    public var sectionId: String
+    public var blockId: String
+    public var offset: Double
+    public var opening: String
+    public var before: String?
+    public var after: String?
 
     // Default memberwise initializers are never public by default, so we
     // declare one manually.
-    public init(index: UInt32, title: String, blocks: [TextBlock]) {
+    public init(sectionId: String, blockId: String, offset: Double, opening: String, before: String?, after: String?) {
+        self.sectionId = sectionId
+        self.blockId = blockId
+        self.offset = offset
+        self.opening = opening
+        self.before = before
+        self.after = after
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderAnchor: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderAnchor: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderAnchor {
+        return
+            try ReaderAnchor(
+                sectionId: FfiConverterString.read(from: &buf), 
+                blockId: FfiConverterString.read(from: &buf), 
+                offset: FfiConverterDouble.read(from: &buf), 
+                opening: FfiConverterString.read(from: &buf), 
+                before: FfiConverterOptionString.read(from: &buf), 
+                after: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderAnchor, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.sectionId, into: &buf)
+        FfiConverterString.write(value.blockId, into: &buf)
+        FfiConverterDouble.write(value.offset, into: &buf)
+        FfiConverterString.write(value.opening, into: &buf)
+        FfiConverterOptionString.write(value.before, into: &buf)
+        FfiConverterOptionString.write(value.after, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderAnchor_lift(_ buf: RustBuffer) throws -> ReaderAnchor {
+    return try FfiConverterTypeReaderAnchor.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderAnchor_lower(_ value: ReaderAnchor) -> RustBuffer {
+    return FfiConverterTypeReaderAnchor.lower(value)
+}
+
+
+public struct ReaderBlock: Equatable, Hashable {
+    public var id: String
+    public var kind: ReaderBlockKind
+    public var spans: [ReaderSpan]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, kind: ReaderBlockKind, spans: [ReaderSpan]) {
+        self.id = id
+        self.kind = kind
+        self.spans = spans
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderBlock: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderBlock: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderBlock {
+        return
+            try ReaderBlock(
+                id: FfiConverterString.read(from: &buf), 
+                kind: FfiConverterTypeReaderBlockKind.read(from: &buf), 
+                spans: FfiConverterSequenceTypeReaderSpan.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderBlock, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterTypeReaderBlockKind.write(value.kind, into: &buf)
+        FfiConverterSequenceTypeReaderSpan.write(value.spans, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlock_lift(_ buf: RustBuffer) throws -> ReaderBlock {
+    return try FfiConverterTypeReaderBlock.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlock_lower(_ value: ReaderBlock) -> RustBuffer {
+    return FfiConverterTypeReaderBlock.lower(value)
+}
+
+
+/**
+ * A chapter's text, ready to lay out: a ForgeReader section (its id is
+ * the chapter's file in the EPUB), and where to scroll to when the reader
+ * opens the book at this chapter.
+ */
+public struct ReaderChapter: Equatable, Hashable {
+    public var index: UInt32
+    public var section: ReaderSection
+    /**
+     * The saved place in this chapter, the first time the chapter the book
+     * opens at is loaded; nil otherwise (start at the top).
+     */
+    public var start: ReaderLocation?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(index: UInt32, section: ReaderSection, 
+        /**
+         * The saved place in this chapter, the first time the chapter the book
+         * opens at is loaded; nil otherwise (start at the top).
+         */start: ReaderLocation?) {
         self.index = index
-        self.title = title
-        self.blocks = blocks
+        self.section = section
+        self.start = start
     }
 
     
@@ -5347,15 +6243,15 @@ public struct FfiConverterTypeReaderChapter: FfiConverterRustBuffer {
         return
             try ReaderChapter(
                 index: FfiConverterUInt32.read(from: &buf), 
-                title: FfiConverterString.read(from: &buf), 
-                blocks: FfiConverterSequenceTypeTextBlock.read(from: &buf)
+                section: FfiConverterTypeReaderSection.read(from: &buf), 
+                start: FfiConverterOptionTypeReaderLocation.read(from: &buf)
         )
     }
 
     public static func write(_ value: ReaderChapter, into buf: inout [UInt8]) {
         FfiConverterUInt32.write(value.index, into: &buf)
-        FfiConverterString.write(value.title, into: &buf)
-        FfiConverterSequenceTypeTextBlock.write(value.blocks, into: &buf)
+        FfiConverterTypeReaderSection.write(value.section, into: &buf)
+        FfiConverterOptionTypeReaderLocation.write(value.start, into: &buf)
     }
 }
 
@@ -5452,9 +6348,188 @@ public func FfiConverterTypeReaderContents_lower(_ value: ReaderContents) -> Rus
 }
 
 
+public struct ReaderLocation: Equatable, Hashable {
+    public var block: UInt32
+    public var offset: Double
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(block: UInt32, offset: Double) {
+        self.block = block
+        self.offset = offset
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderLocation: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderLocation: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderLocation {
+        return
+            try ReaderLocation(
+                block: FfiConverterUInt32.read(from: &buf), 
+                offset: FfiConverterDouble.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderLocation, into buf: inout [UInt8]) {
+        FfiConverterUInt32.write(value.block, into: &buf)
+        FfiConverterDouble.write(value.offset, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderLocation_lift(_ buf: RustBuffer) throws -> ReaderLocation {
+    return try FfiConverterTypeReaderLocation.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderLocation_lower(_ value: ReaderLocation) -> RustBuffer {
+    return FfiConverterTypeReaderLocation.lower(value)
+}
+
+
+public struct ReaderSection: Equatable, Hashable {
+    public var id: String
+    public var title: String
+    public var blocks: [ReaderBlock]
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(id: String, title: String, blocks: [ReaderBlock]) {
+        self.id = id
+        self.title = title
+        self.blocks = blocks
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderSection: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderSection: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderSection {
+        return
+            try ReaderSection(
+                id: FfiConverterString.read(from: &buf), 
+                title: FfiConverterString.read(from: &buf), 
+                blocks: FfiConverterSequenceTypeReaderBlock.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderSection, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.id, into: &buf)
+        FfiConverterString.write(value.title, into: &buf)
+        FfiConverterSequenceTypeReaderBlock.write(value.blocks, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSection_lift(_ buf: RustBuffer) throws -> ReaderSection {
+    return try FfiConverterTypeReaderSection.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSection_lower(_ value: ReaderSection) -> RustBuffer {
+    return FfiConverterTypeReaderSection.lower(value)
+}
+
+
+public struct ReaderSpan: Equatable, Hashable {
+    public var text: String
+    public var bold: Bool
+    public var italic: Bool
+    public var monospace: Bool
+    public var link: String?
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(text: String, bold: Bool, italic: Bool, monospace: Bool, link: String?) {
+        self.text = text
+        self.bold = bold
+        self.italic = italic
+        self.monospace = monospace
+        self.link = link
+    }
+
+    
+
+    
+}
+
+#if compiler(>=6)
+extension ReaderSpan: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderSpan: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderSpan {
+        return
+            try ReaderSpan(
+                text: FfiConverterString.read(from: &buf), 
+                bold: FfiConverterBool.read(from: &buf), 
+                italic: FfiConverterBool.read(from: &buf), 
+                monospace: FfiConverterBool.read(from: &buf), 
+                link: FfiConverterOptionString.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: ReaderSpan, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.text, into: &buf)
+        FfiConverterBool.write(value.bold, into: &buf)
+        FfiConverterBool.write(value.italic, into: &buf)
+        FfiConverterBool.write(value.monospace, into: &buf)
+        FfiConverterOptionString.write(value.link, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSpan_lift(_ buf: RustBuffer) throws -> ReaderSpan {
+    return try FfiConverterTypeReaderSpan.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderSpan_lower(_ value: ReaderSpan) -> RustBuffer {
+    return FfiConverterTypeReaderSpan.lower(value)
+}
+
+
 /**
  * A place in a book: a chapter (an index into `ReaderContents::chapters`)
- * and how far through it, 0.0–1.0.
+ * and how far through it by words, 0.0–1.0. The exact place in the
+ * chapter is a block anchor, kept by Rust.
  */
 public struct ReadingPosition: Equatable, Hashable {
     public var chapter: UInt32
@@ -5592,134 +6667,6 @@ public func FfiConverterTypeStorageInfo_lift(_ buf: RustBuffer) throws -> Storag
 #endif
 public func FfiConverterTypeStorageInfo_lower(_ value: StorageInfo) -> RustBuffer {
     return FfiConverterTypeStorageInfo.lower(value)
-}
-
-
-/**
- * One paragraph, heading, image… of a chapter, in reading order.
- */
-public struct TextBlock: Equatable, Hashable {
-    public var kind: TextBlockKind
-    /**
-     * Empty for separators and images. Line breaks are `\n`.
-     */
-    public var spans: [TextSpan]
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(kind: TextBlockKind, 
-        /**
-         * Empty for separators and images. Line breaks are `\n`.
-         */spans: [TextSpan]) {
-        self.kind = kind
-        self.spans = spans
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TextBlock: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextBlock: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextBlock {
-        return
-            try TextBlock(
-                kind: FfiConverterTypeTextBlockKind.read(from: &buf), 
-                spans: FfiConverterSequenceTypeTextSpan.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TextBlock, into buf: inout [UInt8]) {
-        FfiConverterTypeTextBlockKind.write(value.kind, into: &buf)
-        FfiConverterSequenceTypeTextSpan.write(value.spans, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextBlock_lift(_ buf: RustBuffer) throws -> TextBlock {
-    return try FfiConverterTypeTextBlock.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextBlock_lower(_ value: TextBlock) -> RustBuffer {
-    return FfiConverterTypeTextBlock.lower(value)
-}
-
-
-/**
- * A run of text in one style.
- */
-public struct TextSpan: Equatable, Hashable {
-    public var text: String
-    public var bold: Bool
-    public var italic: Bool
-    public var monospace: Bool
-
-    // Default memberwise initializers are never public by default, so we
-    // declare one manually.
-    public init(text: String, bold: Bool, italic: Bool, monospace: Bool) {
-        self.text = text
-        self.bold = bold
-        self.italic = italic
-        self.monospace = monospace
-    }
-
-    
-
-    
-}
-
-#if compiler(>=6)
-extension TextSpan: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextSpan: FfiConverterRustBuffer {
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextSpan {
-        return
-            try TextSpan(
-                text: FfiConverterString.read(from: &buf), 
-                bold: FfiConverterBool.read(from: &buf), 
-                italic: FfiConverterBool.read(from: &buf), 
-                monospace: FfiConverterBool.read(from: &buf)
-        )
-    }
-
-    public static func write(_ value: TextSpan, into buf: inout [UInt8]) {
-        FfiConverterString.write(value.text, into: &buf)
-        FfiConverterBool.write(value.bold, into: &buf)
-        FfiConverterBool.write(value.italic, into: &buf)
-        FfiConverterBool.write(value.monospace, into: &buf)
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextSpan_lift(_ buf: RustBuffer) throws -> TextSpan {
-    return try FfiConverterTypeTextSpan.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextSpan_lower(_ value: TextSpan) -> RustBuffer {
-    return FfiConverterTypeTextSpan.lower(value)
 }
 
 
@@ -6125,6 +7072,136 @@ public func FfiConverterTypeBookSource_lower(_ value: BookSource) -> RustBuffer 
     return FfiConverterTypeBookSource.lower(value)
 }
 
+
+
+/**
+ * Why a request got no response. A non-2xx status is a
+ * response, not an error.
+ */
+public 
+enum HttpTransportError: Swift.Error, Equatable, Hashable, Foundation.LocalizedError {
+
+    
+    
+    /**
+     * No route, DNS failure, connection refused, no network.
+     */
+    case Offline(reason: String
+    )
+    /**
+     * The server's certificate was rejected.
+     */
+    case Certificate(reason: String
+    )
+    case Timeout
+    case Cancelled
+    case InvalidRequest(reason: String
+    )
+    /**
+     * Anything else (TLS protocol errors, a body too large).
+     */
+    case Transport(reason: String
+    )
+
+    
+
+    
+
+    
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+    
+}
+
+#if compiler(>=6)
+extension HttpTransportError: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHttpTransportError: FfiConverterRustBuffer {
+    typealias SwiftType = HttpTransportError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HttpTransportError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        
+
+        
+        case 1: return .Offline(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 2: return .Certificate(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 3: return .Timeout
+        case 4: return .Cancelled
+        case 5: return .InvalidRequest(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+        case 6: return .Transport(
+            reason: try FfiConverterString.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HttpTransportError, into buf: inout [UInt8]) {
+        switch value {
+
+        
+
+        
+        
+        case let .Offline(reason):
+            writeInt(&buf, Int32(1))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Certificate(reason):
+            writeInt(&buf, Int32(2))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case .Timeout:
+            writeInt(&buf, Int32(3))
+        
+        
+        case .Cancelled:
+            writeInt(&buf, Int32(4))
+        
+        
+        case let .InvalidRequest(reason):
+            writeInt(&buf, Int32(5))
+            FfiConverterString.write(reason, into: &buf)
+            
+        
+        case let .Transport(reason):
+            writeInt(&buf, Int32(6))
+            FfiConverterString.write(reason, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lift(_ buf: RustBuffer) throws -> HttpTransportError {
+    return try FfiConverterTypeHttpTransportError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHttpTransportError_lower(_ value: HttpTransportError) -> RustBuffer {
+    return FfiConverterTypeHttpTransportError.lower(value)
+}
 
 
 /**
@@ -7110,6 +8187,117 @@ public func FfiConverterTypePermissionStatus_lower(_ value: PermissionStatus) ->
 
 
 
+
+public enum ReaderBlockKind: Equatable, Hashable {
+    
+    case heading(level: UInt8
+    )
+    case paragraph
+    case quote
+    case listItem(marker: String
+    )
+    case preformatted
+    case separator
+    case image(source: String, alt: String
+    )
+
+
+
+
+
+}
+
+#if compiler(>=6)
+extension ReaderBlockKind: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeReaderBlockKind: FfiConverterRustBuffer {
+    typealias SwiftType = ReaderBlockKind
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> ReaderBlockKind {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+        
+        case 1: return .heading(level: try FfiConverterUInt8.read(from: &buf)
+        )
+        
+        case 2: return .paragraph
+        
+        case 3: return .quote
+        
+        case 4: return .listItem(marker: try FfiConverterString.read(from: &buf)
+        )
+        
+        case 5: return .preformatted
+        
+        case 6: return .separator
+        
+        case 7: return .image(source: try FfiConverterString.read(from: &buf), alt: try FfiConverterString.read(from: &buf)
+        )
+        
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: ReaderBlockKind, into buf: inout [UInt8]) {
+        switch value {
+        
+        
+        case let .heading(level):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt8.write(level, into: &buf)
+            
+        
+        case .paragraph:
+            writeInt(&buf, Int32(2))
+        
+        
+        case .quote:
+            writeInt(&buf, Int32(3))
+        
+        
+        case let .listItem(marker):
+            writeInt(&buf, Int32(4))
+            FfiConverterString.write(marker, into: &buf)
+            
+        
+        case .preformatted:
+            writeInt(&buf, Int32(5))
+        
+        
+        case .separator:
+            writeInt(&buf, Int32(6))
+        
+        
+        case let .image(source,alt):
+            writeInt(&buf, Int32(7))
+            FfiConverterString.write(source, into: &buf)
+            FfiConverterString.write(alt, into: &buf)
+            
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlockKind_lift(_ buf: RustBuffer) throws -> ReaderBlockKind {
+    return try FfiConverterTypeReaderBlockKind.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeReaderBlockKind_lower(_ value: ReaderBlockKind) -> RustBuffer {
+    return FfiConverterTypeReaderBlockKind.lower(value)
+}
+
+
+
 /**
  * Where a book is in the reader's life.
  */
@@ -7422,138 +8610,6 @@ public func FfiConverterTypeSummaryStage_lift(_ buf: RustBuffer) throws -> Summa
 #endif
 public func FfiConverterTypeSummaryStage_lower(_ value: SummaryStage) -> RustBuffer {
     return FfiConverterTypeSummaryStage.lower(value)
-}
-
-
-
-/**
- * What a block of a chapter is. The host chooses how each looks.
- */
-
-public enum TextBlockKind: Equatable, Hashable {
-    
-    /**
-     * `level` 1–6, as `<h1>`–`<h6>`.
-     */
-    case heading(level: UInt8
-    )
-    case paragraph
-    /**
-     * Inside a `<blockquote>`.
-     */
-    case quote
-    /**
-     * `marker` is "•" or "3." and so on.
-     */
-    case listItem(marker: String
-    )
-    /**
-     * Keep line breaks and spacing; show in a fixed-width font.
-     */
-    case preformatted
-    /**
-     * A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
-     */
-    case separator
-    /**
-     * An image saved for this launch at `file` (absolute path).
-     */
-    case image(file: String, alt: String
-    )
-
-
-
-
-
-}
-
-#if compiler(>=6)
-extension TextBlockKind: Sendable {}
-#endif
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public struct FfiConverterTypeTextBlockKind: FfiConverterRustBuffer {
-    typealias SwiftType = TextBlockKind
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> TextBlockKind {
-        let variant: Int32 = try readInt(&buf)
-        switch variant {
-        
-        case 1: return .heading(level: try FfiConverterUInt8.read(from: &buf)
-        )
-        
-        case 2: return .paragraph
-        
-        case 3: return .quote
-        
-        case 4: return .listItem(marker: try FfiConverterString.read(from: &buf)
-        )
-        
-        case 5: return .preformatted
-        
-        case 6: return .separator
-        
-        case 7: return .image(file: try FfiConverterString.read(from: &buf), alt: try FfiConverterString.read(from: &buf)
-        )
-        
-        default: throw UniffiInternalError.unexpectedEnumCase
-        }
-    }
-
-    public static func write(_ value: TextBlockKind, into buf: inout [UInt8]) {
-        switch value {
-        
-        
-        case let .heading(level):
-            writeInt(&buf, Int32(1))
-            FfiConverterUInt8.write(level, into: &buf)
-            
-        
-        case .paragraph:
-            writeInt(&buf, Int32(2))
-        
-        
-        case .quote:
-            writeInt(&buf, Int32(3))
-        
-        
-        case let .listItem(marker):
-            writeInt(&buf, Int32(4))
-            FfiConverterString.write(marker, into: &buf)
-            
-        
-        case .preformatted:
-            writeInt(&buf, Int32(5))
-        
-        
-        case .separator:
-            writeInt(&buf, Int32(6))
-        
-        
-        case let .image(file,alt):
-            writeInt(&buf, Int32(7))
-            FfiConverterString.write(file, into: &buf)
-            FfiConverterString.write(alt, into: &buf)
-            
-        }
-    }
-}
-
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextBlockKind_lift(_ buf: RustBuffer) throws -> TextBlockKind {
-    return try FfiConverterTypeTextBlockKind.lift(buf)
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
-public func FfiConverterTypeTextBlockKind_lower(_ value: TextBlockKind) -> RustBuffer {
-    return FfiConverterTypeTextBlockKind.lower(value)
 }
 
 
@@ -7896,6 +8952,30 @@ fileprivate struct FfiConverterOptionTypeChapterSynopsis: FfiConverterRustBuffer
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterOptionTypeReaderLocation: FfiConverterRustBuffer {
+    typealias SwiftType = ReaderLocation?
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        guard let value = value else {
+            writeInt(&buf, Int8(0))
+            return
+        }
+        writeInt(&buf, Int8(1))
+        FfiConverterTypeReaderLocation.write(value, into: &buf)
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
+        switch try readInt(&buf) as Int8 {
+        case 0: return nil
+        case 1: return try FfiConverterTypeReaderLocation.read(from: &buf)
+        default: throw UniffiInternalError.unexpectedOptionalTag
+        }
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterOptionTypeReadingPosition: FfiConverterRustBuffer {
     typealias SwiftType = ReadingPosition?
 
@@ -8169,6 +9249,31 @@ fileprivate struct FfiConverterSequenceTypeChapterSynopsis: FfiConverterRustBuff
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer {
+    typealias SwiftType = [HttpHeader]
+
+    public static func write(_ value: [HttpHeader], into buf: inout [UInt8]) {
+        let len = Int32(value.count)
+        writeInt(&buf, len)
+        for item in value {
+            FfiConverterTypeHttpHeader.write(item, into: &buf)
+        }
+    }
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [HttpHeader] {
+        let len: Int32 = try readInt(&buf)
+        var seq = [HttpHeader]()
+        seq.reserveCapacity(Int(len))
+        for _ in 0 ..< len {
+            seq.append(try FfiConverterTypeHttpHeader.read(from: &buf))
+        }
+        return seq
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer {
     typealias SwiftType = [NotificationAction]
 
@@ -8244,23 +9349,23 @@ fileprivate struct FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer {
-    typealias SwiftType = [TextBlock]
+fileprivate struct FfiConverterSequenceTypeReaderBlock: FfiConverterRustBuffer {
+    typealias SwiftType = [ReaderBlock]
 
-    public static func write(_ value: [TextBlock], into buf: inout [UInt8]) {
+    public static func write(_ value: [ReaderBlock], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
-            FfiConverterTypeTextBlock.write(item, into: &buf)
+            FfiConverterTypeReaderBlock.write(item, into: &buf)
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TextBlock] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ReaderBlock] {
         let len: Int32 = try readInt(&buf)
-        var seq = [TextBlock]()
+        var seq = [ReaderBlock]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeTextBlock.read(from: &buf))
+            seq.append(try FfiConverterTypeReaderBlock.read(from: &buf))
         }
         return seq
     }
@@ -8269,23 +9374,23 @@ fileprivate struct FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer {
-    typealias SwiftType = [TextSpan]
+fileprivate struct FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer {
+    typealias SwiftType = [ReaderSpan]
 
-    public static func write(_ value: [TextSpan], into buf: inout [UInt8]) {
+    public static func write(_ value: [ReaderSpan], into buf: inout [UInt8]) {
         let len = Int32(value.count)
         writeInt(&buf, len)
         for item in value {
-            FfiConverterTypeTextSpan.write(item, into: &buf)
+            FfiConverterTypeReaderSpan.write(item, into: &buf)
         }
     }
 
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [TextSpan] {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> [ReaderSpan] {
         let len: Int32 = try readInt(&buf)
-        var seq = [TextSpan]()
+        var seq = [ReaderSpan]()
         seq.reserveCapacity(Int(len))
         for _ in 0 ..< len {
-            seq.append(try FfiConverterTypeTextSpan.read(from: &buf))
+            seq.append(try FfiConverterTypeReaderSpan.read(from: &buf))
         }
         return seq
     }
@@ -8464,6 +9569,18 @@ public func libraryErrorKind(error: LibraryError) -> ErrorKind  {
 })
 }
 /**
+ * Writes a short sample EPUB to `path`, for the host to import: UI tests
+ * launched on empty test data (`-PocketLibrarySampleBook`) use it to have a
+ * book to read.
+ */
+public func writeSampleEpub(path: String)throws   {try rustCallWithError(FfiConverterTypeLibraryError_lift) {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_func_write_sample_epub(
+        FfiConverterString.lower(path),uniffiCallStatus
+    )
+}
+}
+/**
  * Called by the host when the person responds to a
  * notification. Kept until the app sets a handler with
  * [`on_notification_response`].
@@ -8534,6 +9651,16 @@ public func installNativeAi(model: AiModel)  {try! rustCall() {
     )
 }
 }
+/**
+ * Called by the host at launch (`ForgeServices.install()`).
+ */
+public func installNativeHttp(transport: HttpTransport)  {try! rustCall() {
+        uniffiCallStatus in
+    uniffi_pocket_library_core_fn_func_install_native_http(
+        FfiConverterTypeHttpTransport_lower(transport),uniffiCallStatus
+    )
+}
+}
 
 private enum InitializationResult {
     case ok
@@ -8559,6 +9686,9 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_func_library_error_kind() != 3528) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_func_write_sample_epub() != 52776) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_func_deliver_notification_response() != 21590) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8575,6 +9705,9 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_func_install_native_ai() != 30586) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_func_install_native_http() != 63328) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_add_book() != 15939) {
@@ -8637,7 +9770,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_phase() != 29225) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_reader_chapter() != 45028) {
+    if (uniffi_pocket_library_core_checksum_method_library_reader_chapter() != 36507) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_restore_library() != 48169) {
@@ -8646,7 +9779,7 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_library_revision() != 29913) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_pocket_library_core_checksum_method_library_save_reading_position() != 38892) {
+    if (uniffi_pocket_library_core_checksum_method_library_save_reading_position() != 898) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_pocket_library_core_checksum_method_library_search_catalogue() != 47288) {
@@ -8724,6 +9857,24 @@ private let initializationResult: InitializationResult = {
     if (uniffi_pocket_library_core_checksum_method_textsink_push() != 47536) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_pocket_library_core_checksum_method_httpstreambody_fail() != 34056) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_httpstreambody_finish() != 64698) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_httpstreambody_receive() != 26146) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_httptransport_send() != 18400) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_httptransport_open_stream() != 16740) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_pocket_library_core_checksum_method_httptransport_cancel() != 3382) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_pocket_library_core_checksum_method_summaryprogress_changed() != 55110) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -8735,6 +9886,7 @@ private let initializationResult: InitializationResult = {
     }
 
     uniffiCallbackInitAiModel()
+    uniffiCallbackInitHttpTransport()
     uniffiCallbackInitLocalNotifier()
     uniffiCallbackInitPermissionProvider()
     uniffiCallbackInitSecureStore()

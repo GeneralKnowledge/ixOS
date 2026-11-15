@@ -510,6 +510,11 @@ uint64_t uniffi_commonplace_core_fn_method_appcore_rename_feed(uint64_t ptr, int
 uint64_t uniffi_commonplace_core_fn_method_appcore_revision(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SEARCH
+uint64_t uniffi_commonplace_core_fn_method_appcore_search(uint64_t ptr, RustBuffer query
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_BOOKMARKED
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_BOOKMARKED
 uint64_t uniffi_commonplace_core_fn_method_appcore_set_bookmarked(uint64_t ptr, int64_t article_id, int8_t bookmarked
@@ -528,6 +533,16 @@ void uniffi_commonplace_core_fn_method_appcore_set_phase(uint64_t ptr, RustBuffe
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_READ
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_READ
 uint64_t uniffi_commonplace_core_fn_method_appcore_set_read(uint64_t ptr, int64_t article_id, int8_t read
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_SETTINGS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SET_SETTINGS
+uint64_t uniffi_commonplace_core_fn_method_appcore_set_settings(uint64_t ptr, RustBuffer settings
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SETTINGS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SETTINGS
+RustBuffer uniffi_commonplace_core_fn_method_appcore_settings(uint64_t ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_METHOD_APPCORE_SHUTDOWN
@@ -795,6 +810,11 @@ RustBuffer uniffi_commonplace_core_fn_func_parse_deep_link(RustBuffer url, RustC
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_INSTALL_NATIVE_BACKGROUND
 void uniffi_commonplace_core_fn_func_install_native_background(uint64_t scheduler, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_NATIVE_BACKGROUND_HANDLES
+int8_t uniffi_commonplace_core_fn_func_native_background_handles(RustBuffer identifier, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_FN_FUNC_RUN_NATIVE_BACKGROUND_TASK
@@ -1121,6 +1141,12 @@ uint16_t uniffi_commonplace_core_checksum_func_install_native_background(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_NATIVE_BACKGROUND_HANDLES
+uint16_t uniffi_commonplace_core_checksum_func_native_background_handles(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_FUNC_RUN_NATIVE_BACKGROUND_TASK
 uint16_t uniffi_commonplace_core_checksum_func_run_native_background_task(void
@@ -1229,6 +1255,12 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_revision(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SEARCH
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SEARCH
+uint16_t uniffi_commonplace_core_checksum_method_appcore_search(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_BOOKMARKED
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_BOOKMARKED
 uint16_t uniffi_commonplace_core_checksum_method_appcore_set_bookmarked(void
@@ -1250,6 +1282,18 @@ uint16_t uniffi_commonplace_core_checksum_method_appcore_set_phase(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_READ
 #define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_READ
 uint16_t uniffi_commonplace_core_checksum_method_appcore_set_read(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_SETTINGS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SET_SETTINGS
+uint16_t uniffi_commonplace_core_checksum_method_appcore_set_settings(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SETTINGS
+#define UNIFFI_FFIDEF_UNIFFI_COMMONPLACE_CORE_CHECKSUM_METHOD_APPCORE_SETTINGS
+uint16_t uniffi_commonplace_core_checksum_method_appcore_settings(void
     
 );
 #endif

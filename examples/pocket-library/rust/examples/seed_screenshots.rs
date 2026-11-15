@@ -165,6 +165,7 @@ fn main() {
                 chapter: 0,
                 fraction: 0.0,
                 page: book.current_page,
+                anchor: None,
             });
             println!("[seed] readable book id {id}");
         }

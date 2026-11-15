@@ -1719,6 +1719,31 @@ mod tests {
     use super::*;
     use crate::fake::FakeDriver;
 
+    /// Every scenario the example apps ship parses, so a typo in one fails
+    /// here on Linux instead of at the start of a phone sitting.
+    #[test]
+    fn every_example_scenario_parses() {
+        let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples");
+        let mut checked = 0;
+        for app in std::fs::read_dir(&examples).unwrap().flatten() {
+            let Ok(files) = std::fs::read_dir(app.path().join("uitests")) else {
+                continue;
+            };
+            for file in files.flatten() {
+                let path = file.path();
+                if path.extension().is_some_and(|e| e == "toml") {
+                    Script::load(&path).unwrap_or_else(|e| panic!("{e}"));
+                    checked += 1;
+                }
+            }
+        }
+        assert!(
+            checked > 0,
+            "no scenarios found under {}",
+            examples.display()
+        );
+    }
+
     fn node(kind: &str, id: &str, label: &str) -> UiNode {
         UiNode {
             kind: kind.into(),
@@ -2753,14 +2778,31 @@ mod tests {
 
 #[cfg(test)]
 mod example_files {
-    /// The test files in the repository must parse.
+    /// The test files in the repository must parse. Pocket Library's run in
+    /// Device Lab, which hosts it on the phone.
     #[test]
-    fn pocket_library_m0_parses() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../examples/pocket-library/uitests/m0.toml");
-        let script = super::Script::load(&path).unwrap();
-        assert_eq!(script.app, "org.forgemobile.pocketlibrary");
-        assert_eq!(script.steps.len(), 12);
+    fn pocket_library_tests_parse() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../examples/pocket-library/uitests");
+        let mut files: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|x| x == "toml"))
+            .collect();
+        files.sort();
+        assert_eq!(files.len(), 7, "{files:?}");
+        for path in files {
+            let script = super::Script::load(&path).unwrap();
+            assert_eq!(
+                script.app,
+                "org.forgemobile.devicelab",
+                "{}",
+                path.display()
+            );
+        }
+        let m0 = super::Script::load(&dir.join("m0.toml")).unwrap();
+        assert_eq!(m0.steps.len(), 12);
     }
 
     /// Good Dog's journey (GD1) and guided session (GD-7) tests.

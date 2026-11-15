@@ -38,8 +38,9 @@ uniffi::setup_scaffolding!();
 
 // Native services (Keychain, app directories, local notifications,
 // permissions, deep links) as `crate::native`. The daily reminder
-// (src/reminders.rs) uses the notifications. See docs/native-services.md.
-forge_services::native_services!();
+// (src/reminders.rs) uses the notifications. Their Swift is ForgeKit's
+// ForgeNative. See docs/native-services.md.
+pub use forge_native as native;
 
 forge_runtime::app_shell! {
     phase: AppPhase,
@@ -367,6 +368,22 @@ impl AppCore {
                 explanation,
                 goal: stored.goal_detail(goal_id, now)?,
             })
+        })
+        .await
+    }
+
+    /// Meets one of the current stage's safety rules: the owner confirms
+    /// how they practise, or says they've had advice after a worry. A rule
+    /// that doesn't apply to the stage is refused.
+    pub async fn note_safety(
+        &self,
+        goal_id: u64,
+        rule_id: String,
+        now: LocalTime,
+    ) -> Result<GoalDetail, AppError> {
+        self.change("note-safety", move |stored| {
+            stored.note_safety(goal_id, &rule_id, now)?;
+            stored.goal_detail(goal_id, now)
         })
         .await
     }

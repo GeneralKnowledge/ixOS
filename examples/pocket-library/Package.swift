@@ -64,6 +64,7 @@ let package = Package(
                 "PocketLibraryFFI",
                 .product(name: "ForgeAppKit", package: "forgekit"),
                 .product(name: "ForgeKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Sources/AppHost"
         ),

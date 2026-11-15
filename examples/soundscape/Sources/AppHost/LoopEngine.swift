@@ -11,17 +11,24 @@ import Observation
 /// `AVAudioUnitDelay`, into the main mixer. Every number comes from Rust's
 /// `Track.mix`, in these units already, so the mixdown Rust renders sounds
 /// the same. All players start at one host time, so the loops stay in step.
+///
+/// The metronome is one more player, looping Rust's click track (one pass
+/// of the loop, a tick on every beat) straight into the main mixer, so it
+/// is never in a recording or the mixdown. Recording always starts with a
+/// one-bar count-in: the click track's first bar, then the loop.
 @Observable
 @MainActor
 final class LoopEngine {
     enum Failure: LocalizedError {
         case noMicrophone
         case noInput
+        case noSound
 
         var errorDescription: String? {
             switch self {
             case .noMicrophone: "Soundscape can't use the microphone. Allow it in Settings, then try again."
             case .noInput: "There's no microphone to record from."
+            case .noSound: "No sound came from the microphone, so nothing was kept. Try again."
             }
         }
     }
@@ -38,21 +45,44 @@ final class LoopEngine {
     @ObservationIgnored private var strips: [UInt64: Strip] = [:]
     @ObservationIgnored private var loopSeconds: Double = 0
     @ObservationIgnored private var recorder: Recorder?
+    @ObservationIgnored private let clickPlayer = AVAudioPlayerNode()
+    @ObservationIgnored private var clickPath: String?
+    @ObservationIgnored private var clickBuffer: AVAudioPCMBuffer?
+    @ObservationIgnored private var metronome = false
+    @ObservationIgnored private var barSeconds: Double = 0
     private(set) var isPlaying = false
     private(set) var isRecording = false
+    /// The bar of clicks before a recording starts.
+    private(set) var isCountingIn = false
+
+    init() {
+        engine.attach(clickPlayer)
+    }
 
     /// Makes the engine match `project`: a strip per track with a recording,
     /// each loaded with one pass of the loop and set to the track's mix.
-    /// Strips whose recording didn't change keep their buffer.
-    func load(_ project: ProjectDetail) {
+    /// Strips whose recording didn't change keep their buffer. `click` is
+    /// the project's click track (`SoundscapeModel.clickTrack`), or `nil`.
+    func load(_ project: ProjectDetail, click: URL?) {
         let wasPlaying = isPlaying
         let timingChanged = abs(project.loopSeconds - loopSeconds) > 0.0001
         loopSeconds = project.loopSeconds
+        barSeconds = 4 * 60 / project.summary.tempoBpm
+        var reloaded = timingChanged || metronome != project.summary.metronome
+        metronome = project.summary.metronome
+        if click?.path != clickPath {
+            clickPath = click?.path
+            clickBuffer = click.flatMap(Self.wholeFile)
+            engine.disconnectNodeOutput(clickPlayer)
+            if let buffer = clickBuffer {
+                engine.connect(clickPlayer, to: engine.mainMixerNode, format: buffer.format)
+            }
+            reloaded = true
+        }
         let wanted = Set(project.tracks.filter { $0.clip != nil }.map(\.id))
         for id in strips.keys where !wanted.contains(id) {
             detach(id)
         }
-        var reloaded = timingChanged
         for track in project.tracks {
             guard let clip = track.clip else { continue }
             var strip = strips[track.id] ?? attach(track.id)
@@ -92,36 +122,51 @@ final class LoopEngine {
             strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
         }
+        clickPlayer.stop()
+        if metronome, let click = clickBuffer {
+            clickPlayer.scheduleBuffer(click, at: nil, options: .loops, completionHandler: nil)
+            clickPlayer.play(at: start)
+        }
         isPlaying = true
     }
 
     func stop() {
         for strip in strips.values { strip.player.stop() }
+        clickPlayer.stop()
+        isCountingIn = false
         recorder?.cancel()
         recorder = nil
         isPlaying = false
     }
 
     /// Records exactly `frames` frames (one pass of the loop at the input's
-    /// rate) while the other tracks play, and returns the WAV file. The
-    /// input's and output's latency are skipped, so what you played along to
-    /// lines up with the loop.
+    /// rate) while the other tracks play, and returns the WAV file. A bar of
+    /// clicks counts in first. The input's and output's latency are skipped,
+    /// so what you played along to lines up with the loop.
     func record(frames: (Double) -> Int?) async throws -> URL {
         guard await AVAudioApplication.requestRecordPermission() else { throw Failure.noMicrophone }
         try ForgeAudioSession.activate(.record)
+        stop()
+        // The microphone joins the graph only when the engine starts with
+        // it: an engine already running for playback (Play, then Record)
+        // never feeds the tap, and the recording would wait forever.
+        if engine.isRunning { engine.stop() }
         let input = engine.inputNode
         let format = input.outputFormat(forBus: 0)
         guard format.channelCount > 0, format.sampleRate > 0, let length = frames(format.sampleRate) else {
             throw Failure.noInput
         }
-        stop()
         try startEngine()
         let session = AVAudioSession.sharedInstance()
         let latency = session.inputLatency + session.outputLatency + session.ioBufferDuration
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
-        let start = Self.startTime()
+        let countInStart = Self.startTime()
+        let countIn = clickBuffer.flatMap { Self.prefix($0, seconds: barSeconds) }
+        let start = countIn == nil
+            ? countInStart
+            : AVAudioTime(hostTime: countInStart.hostTime + AVAudioTime.hostTime(forSeconds: barSeconds))
         let recorder = try Recorder(
             url: url, format: format, frames: length,
             fromHostTime: start.hostTime + AVAudioTime.hostTime(forSeconds: latency)
@@ -133,14 +178,41 @@ final class LoopEngine {
             strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
         }
+        if let countIn, let click = clickBuffer {
+            // Played back to back: the count-in bar, then the loop's clicks.
+            clickPlayer.scheduleBuffer(countIn, at: nil, options: [], completionHandler: nil)
+            if metronome {
+                clickPlayer.scheduleBuffer(click, at: nil, options: .loops, completionHandler: nil)
+            }
+            clickPlayer.play(at: countInStart)
+            isCountingIn = true
+            let wait = barSeconds + Self.lead
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(wait))
+                self?.isCountingIn = false
+            }
+        }
         isPlaying = true
         isRecording = true
+        // If the microphone stops feeding the tap (the audio route changed,
+        // a call came in), give up rather than wait forever.
+        let deadline = (countIn == nil ? 0 : barSeconds) + loopSeconds + Self.lead + latency + 3
+        let watchdog = Task { [recorder] in
+            guard (try? await Task.sleep(for: .seconds(deadline))) != nil else { return }
+            recorder.fail(Failure.noSound)
+        }
         defer {
+            watchdog.cancel()
             input.removeTap(onBus: 0)
             isRecording = false
             stop()
         }
         return try await recorder.finished()
+    }
+
+    /// Ends the recording now, keeping what was recorded so far.
+    func finishRecording() {
+        recorder?.keep()
     }
 
     /// Made outside the main actor: the engine calls it on its own thread.
@@ -215,9 +287,41 @@ final class LoopEngine {
         return buffer
     }
 
+    /// A whole file (the click track) in one buffer.
+    private static func wholeFile(_ url: URL) -> AVAudioPCMBuffer? {
+        guard let file = try? AVAudioFile(forReading: url),
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))
+        else { return nil }
+        do {
+            try file.read(into: buffer)
+        } catch {
+            return nil
+        }
+        return buffer
+    }
+
+    /// The first `seconds` of `buffer` (the count-in bar), copied.
+    private static func prefix(_ buffer: AVAudioPCMBuffer, seconds: Double) -> AVAudioPCMBuffer? {
+        let frames = min(buffer.frameLength, AVAudioFrameCount((seconds * buffer.format.sampleRate).rounded()))
+        guard frames > 0,
+              let part = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: frames),
+              let from = buffer.floatChannelData, let to = part.floatChannelData
+        else { return nil }
+        let interleaved = buffer.format.isInterleaved
+        let channels = Int(buffer.format.channelCount)
+        for channel in 0..<(interleaved ? 1 : channels) {
+            to[channel].update(from: from[channel], count: Int(frames) * (interleaved ? channels : 1))
+        }
+        part.frameLength = frames
+        return part
+    }
+
+    /// How far ahead playback is scheduled.
+    private static let lead = 0.15
+
     /// A moment just ahead, so every player can be scheduled before it.
     private static func startTime() -> AVAudioTime {
-        AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.15))
+        AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: lead))
     }
 }
 
@@ -256,8 +360,16 @@ private final class Recorder: @unchecked Sendable {
     /// frames still wanted.
     func take(_ buffer: AVAudioPCMBuffer, at when: AVAudioTime) {
         lock.lock()
-        defer { lock.unlock() }
-        guard let file, result == nil else { return }
+        let done = takeLocked(buffer, at: when)
+        lock.unlock()
+        // After the lock, and after `takeLocked` let go of the file, so the
+        // WAV file is closed (its header written) before anyone reads it.
+        done?()
+    }
+
+    /// Called with the lock held; returns the finishing step to run after.
+    private func takeLocked(_ buffer: AVAudioPCMBuffer, at when: AVAudioTime) -> (() -> Void)? {
+        guard let file, result == nil else { return nil }
         let rate = buffer.format.sampleRate
         var skip = 0
         if when.isHostTimeValid {
@@ -267,22 +379,37 @@ private final class Recorder: @unchecked Sendable {
             }
         }
         let available = Int(buffer.frameLength)
-        guard skip < available else { return }
+        guard skip < available else { return nil }
         let count = min(available - skip, frames - written)
-        guard count > 0, let part = Self.slice(buffer, from: skip, count: count) else { return }
+        guard count > 0, let part = Self.slice(buffer, from: skip, count: count) else { return nil }
         do {
             try file.write(from: part)
             written += count
-            if written >= frames { finish(.success(url)) }
+            if written >= frames { return finish(.success(url)) }
         } catch {
-            finish(.failure(error))
+            return finish(.failure(error))
         }
+        return nil
     }
 
     func cancel() {
+        fail(CancellationError())
+    }
+
+    /// Stops early and keeps what was recorded (the loop plays silence
+    /// after it), or cancels if nothing was yet.
+    func keep() {
         lock.lock()
-        defer { lock.unlock() }
-        finish(.failure(CancellationError()))
+        let done = finish(written > 0 ? .success(url) : .failure(CancellationError()))
+        lock.unlock()
+        done?()
+    }
+
+    func fail(_ error: Error) {
+        lock.lock()
+        let done = finish(.failure(error))
+        lock.unlock()
+        done?()
     }
 
     func finished() async throws -> URL {
@@ -302,15 +429,20 @@ private final class Recorder: @unchecked Sendable {
         }
     }
 
-    /// Called with the lock held.
-    private func finish(_ outcome: Result<URL, Error>) {
-        guard result == nil else { return }
-        // Releasing the file closes it, so it is complete on disk.
+    /// Called with the lock held. Drops the file (the last reference once
+    /// the caller's is gone, which closes it) and returns the step that
+    /// resumes the waiting caller, to run once the lock is released.
+    private func finish(_ outcome: Result<URL, Error>) -> (() -> Void)? {
+        guard result == nil else { return nil }
         file = nil
-        if case .failure = outcome { try? FileManager.default.removeItem(at: url) }
         result = outcome
-        continuation?.resume(with: outcome)
-        continuation = nil
+        let continuation = self.continuation
+        self.continuation = nil
+        let url = self.url
+        return {
+            if case .failure = outcome { try? FileManager.default.removeItem(at: url) }
+            continuation?.resume(with: outcome)
+        }
     }
 
     private static func slice(_ buffer: AVAudioPCMBuffer, from start: Int, count: Int) -> AVAudioPCMBuffer? {

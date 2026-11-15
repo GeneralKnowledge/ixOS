@@ -708,6 +708,15 @@ internal interface UniffiCallbackInterfaceAiModelMethod0 : com.sun.jna.Callback 
 internal interface UniffiCallbackInterfaceAiModelMethod1 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`sink`: Long,`uniffiFutureCallback`: UniffiForeignFutureCompleteVoid,`uniffiCallbackData`: Long,`uniffiOutDroppedCallback`: UniffiForeignFutureDroppedCallbackStruct,)
 }
+internal interface UniffiCallbackInterfaceHttpTransportMethod0 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHttpTransportMethod1 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`body`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHttpTransportMethod2 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`id`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
 internal interface UniffiCallbackInterfaceSummaryProgressMethod0 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`stage`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
@@ -808,6 +817,31 @@ internal open class UniffiVTableCallbackInterfaceAiModel(
     }
 
 }
+@Structure.FieldOrder("uniffiFree", "uniffiClone", "send", "openStream", "cancel")
+internal open class UniffiVTableCallbackInterfaceHttpTransport(
+    @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+    @JvmField internal var `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+    @JvmField internal var `send`: UniffiCallbackInterfaceHttpTransportMethod0? = null,
+    @JvmField internal var `openStream`: UniffiCallbackInterfaceHttpTransportMethod1? = null,
+    @JvmField internal var `cancel`: UniffiCallbackInterfaceHttpTransportMethod2? = null,
+) : Structure() {
+    class UniffiByValue(
+        `uniffiFree`: UniffiCallbackInterfaceFree? = null,
+        `uniffiClone`: UniffiCallbackInterfaceClone? = null,
+        `send`: UniffiCallbackInterfaceHttpTransportMethod0? = null,
+        `openStream`: UniffiCallbackInterfaceHttpTransportMethod1? = null,
+        `cancel`: UniffiCallbackInterfaceHttpTransportMethod2? = null,
+    ): UniffiVTableCallbackInterfaceHttpTransport(`uniffiFree`,`uniffiClone`,`send`,`openStream`,`cancel`,), Structure.ByValue
+
+   internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHttpTransport) {
+        `uniffiFree` = other.`uniffiFree`
+        `uniffiClone` = other.`uniffiClone`
+        `send` = other.`send`
+        `openStream` = other.`openStream`
+        `cancel` = other.`cancel`
+    }
+
+}
 @Structure.FieldOrder("uniffiFree", "uniffiClone", "changed")
 internal open class UniffiVTableCallbackInterfaceSummaryProgress(
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
@@ -858,6 +892,8 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_library_error_kind(
     ): Int
+    external fun uniffi_pocket_library_core_checksum_func_write_sample_epub(
+    ): Int
     external fun uniffi_pocket_library_core_checksum_func_deliver_notification_response(
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_install_native_services(
@@ -869,6 +905,8 @@ internal object IntegrityCheckingUniffiLib {
     external fun uniffi_pocket_library_core_checksum_func_parse_deep_link(
     ): Int
     external fun uniffi_pocket_library_core_checksum_func_install_native_ai(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_func_install_native_http(
     ): Int
     external fun uniffi_pocket_library_core_checksum_method_library_add_book(
     ): Int
@@ -968,6 +1006,18 @@ internal object IntegrityCheckingUniffiLib {
     ): Int
     external fun uniffi_pocket_library_core_checksum_method_textsink_push(
     ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httpstreambody_fail(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httpstreambody_finish(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httpstreambody_receive(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httptransport_send(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httptransport_open_stream(
+    ): Int
+    external fun uniffi_pocket_library_core_checksum_method_httptransport_cancel(
+    ): Int
     external fun uniffi_pocket_library_core_checksum_method_summaryprogress_changed(
     ): Int
     external fun uniffi_pocket_library_core_checksum_constructor_library_new(
@@ -989,6 +1039,7 @@ internal object UniffiLib {
     init {
         Native.register(UniffiLib::class.java, findLibraryName(componentName = "pocket_library_core"))
         uniffiCallbackInterfaceAiModel.register(this)
+        uniffiCallbackInterfaceHttpTransport.register(this)
         uniffiCallbackInterfaceLocalNotifier.register(this)
         uniffiCallbackInterfacePermissionProvider.register(this)
         uniffiCallbackInterfaceSecureStore.register(this)
@@ -1050,7 +1101,7 @@ internal object UniffiLib {
     ): Long
     external fun uniffi_pocket_library_core_fn_method_library_revision(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
-    external fun uniffi_pocket_library_core_fn_method_library_save_reading_position(`ptr`: Long,`id`: Long,`position`: RustBuffer.ByValue,
+    external fun uniffi_pocket_library_core_fn_method_library_save_reading_position(`ptr`: Long,`id`: Long,`chapter`: Int,`location`: RustBuffer.ByValue,
     ): Long
     external fun uniffi_pocket_library_core_fn_method_library_search_catalogue(`ptr`: Long,`query`: RustBuffer.ByValue,`cancellation`: RustBuffer.ByValue,
     ): Long
@@ -1130,6 +1181,28 @@ internal object UniffiLib {
     ): Byte
     external fun uniffi_pocket_library_core_fn_method_textsink_push(`ptr`: Long,`text`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Byte
+    external fun uniffi_pocket_library_core_fn_clone_httpstreambody(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_pocket_library_core_fn_free_httpstreambody(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_httpstreambody_fail(`ptr`: Long,`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_httpstreambody_finish(`ptr`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_httpstreambody_receive(`ptr`: Long,`data`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_clone_httptransport(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Long
+    external fun uniffi_pocket_library_core_fn_free_httptransport(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_init_callback_vtable_httptransport(`vtable`: UniffiVTableCallbackInterfaceHttpTransport,
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_method_httptransport_send(`ptr`: Long,`request`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pocket_library_core_fn_method_httptransport_open_stream(`ptr`: Long,`request`: RustBuffer.ByValue,`body`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    external fun uniffi_pocket_library_core_fn_method_httptransport_cancel(`ptr`: Long,`id`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_pocket_library_core_fn_clone_summaryprogress(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
     external fun uniffi_pocket_library_core_fn_free_summaryprogress(`handle`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1144,6 +1217,8 @@ internal object UniffiLib {
     ): Int
     external fun uniffi_pocket_library_core_fn_func_library_error_kind(`error`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBufferErrorKind.ByValue
+    external fun uniffi_pocket_library_core_fn_func_write_sample_epub(`path`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
     external fun uniffi_pocket_library_core_fn_func_deliver_notification_response(`response`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun uniffi_pocket_library_core_fn_func_install_native_services(`directories`: RustBuffer.ByValue,`secureStore`: Long,`notifier`: Long,`permissions`: Long,uniffi_out_err: UniffiRustCallStatus, 
@@ -1155,6 +1230,8 @@ internal object UniffiLib {
     external fun uniffi_pocket_library_core_fn_func_parse_deep_link(`url`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     external fun uniffi_pocket_library_core_fn_func_install_native_ai(`model`: Long,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    external fun uniffi_pocket_library_core_fn_func_install_native_http(`transport`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     external fun ffi_pocket_library_core_rustbuffer_alloc(`size`: Long,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -1284,6 +1361,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_func_library_error_kind() and 0xFFFF) != 3528) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if ((lib.uniffi_pocket_library_core_checksum_func_write_sample_epub() and 0xFFFF) != 52776) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if ((lib.uniffi_pocket_library_core_checksum_func_deliver_notification_response() and 0xFFFF) != 21590) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1300,6 +1380,9 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_func_install_native_ai() and 0xFFFF) != 30586) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_func_install_native_http() and 0xFFFF) != 63328) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_add_book() and 0xFFFF) != 15939) {
@@ -1362,7 +1445,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_phase() and 0xFFFF) != 29225) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_reader_chapter() and 0xFFFF) != 45028) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_reader_chapter() and 0xFFFF) != 36507) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_restore_library() and 0xFFFF) != 48169) {
@@ -1371,7 +1454,7 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if ((lib.uniffi_pocket_library_core_checksum_method_library_revision() and 0xFFFF) != 29913) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if ((lib.uniffi_pocket_library_core_checksum_method_library_save_reading_position() and 0xFFFF) != 38892) {
+    if ((lib.uniffi_pocket_library_core_checksum_method_library_save_reading_position() and 0xFFFF) != 898) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_library_search_catalogue() and 0xFFFF) != 47288) {
@@ -1447,6 +1530,24 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_textsink_push() and 0xFFFF) != 47536) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httpstreambody_fail() and 0xFFFF) != 34056) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httpstreambody_finish() and 0xFFFF) != 64698) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httpstreambody_receive() and 0xFFFF) != 26146) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httptransport_send() and 0xFFFF) != 18400) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httptransport_open_stream() and 0xFFFF) != 16740) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if ((lib.uniffi_pocket_library_core_checksum_method_httptransport_cancel() and 0xFFFF) != 3382) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if ((lib.uniffi_pocket_library_core_checksum_method_summaryprogress_changed() and 0xFFFF) != 55110) {
@@ -1796,6 +1897,33 @@ public object FfiConverterUByte: FfiConverter<UByte, Byte> {
 
     override fun write(value: UByte, buf: ByteBuffer) {
         buf.put(value.toByte())
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterUShort: FfiConverter<UShort, Short> {
+    override fun lift(value: Short): UShort {
+        return value.toUShort()
+    }
+
+    fun lift(value: Int): UShort {
+        return value.toUShort()
+    }
+
+    override fun read(buf: ByteBuffer): UShort {
+        return lift(buf.getShort())
+    }
+
+    override fun lower(value: UShort): Short {
+        return value.toShort()
+    }
+
+    override fun allocationSize(value: UShort) = 2UL
+
+    override fun write(value: UShort, buf: ByteBuffer) {
+        buf.putShort(value.toShort())
     }
 }
 
@@ -2405,6 +2533,723 @@ public object FfiConverterTypeAiModel: FfiConverter<AiModel, Long> {
     override fun allocationSize(value: AiModel) = 8UL
 
     override fun write(value: AiModel, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+public interface HttpStreamBodyInterface {
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */
+    fun `fail`(`error`: HttpTransportException)
+    
+    /**
+     * The server closed the body normally.
+     */
+    fun `finish`()
+    
+    /**
+     * The next bytes of the body.
+     */
+    fun `receive`(`data`: kotlin.ByteArray)
+    
+    companion object
+}
+
+/**
+ * Where the host delivers a streamed body, in order. None of
+ * its calls block.
+ */
+open class HttpStreamBody: Disposable, AutoCloseable, HttpStreamBodyInterface
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_pocket_library_core_fn_free_httpstreambody(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_pocket_library_core_fn_clone_httpstreambody(handle, status)
+        }
+    }
+
+    
+    /**
+     * The body stopped with an error (`Cancelled` when Rust
+     * cancelled it).
+     */override fun `fail`(`error`: HttpTransportException)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httpstreambody_fail(
+        it,
+        
+        FfiConverterTypeHttpTransportError.lower(`error`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The server closed the body normally.
+     */override fun `finish`()
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httpstreambody_finish(
+        it,
+        _status)
+}
+    }
+    
+    
+
+    
+    /**
+     * The next bytes of the body.
+     */override fun `receive`(`data`: kotlin.ByteArray)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httpstreambody_receive(
+        it,
+        
+        FfiConverterByteArray.lower(`data`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpStreamBody: FfiConverter<HttpStreamBody, Long> {
+    override fun lower(value: HttpStreamBody): Long {
+        return value.uniffiCloneHandle()
+    }
+
+    override fun lift(value: Long): HttpStreamBody {
+        return HttpStreamBody(UniffiWithHandle, value)
+    }
+
+    override fun read(buf: ByteBuffer): HttpStreamBody {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: HttpStreamBody) = 8UL
+
+    override fun write(value: HttpStreamBody, buf: ByteBuffer) {
+        buf.putLong(lower(value))
+    }
+}
+
+
+// This template implements a class for working with a Rust struct via a handle
+// to the live Rust struct on the other side of the FFI.
+//
+// There's some subtlety here, because we have to be careful not to operate on a Rust
+// struct after it has been dropped, and because we must expose a public API for freeing
+// theq Kotlin wrapper object in lieu of reliable finalizers. The core requirements are:
+//
+//   * Each instance holds an opaque handle to the underlying Rust struct.
+//     Method calls need to read this handle from the object's state and pass it in to
+//     the Rust FFI.
+//
+//   * When an instance is no longer needed, its handle should be passed to a
+//     special destructor function provided by the Rust FFI, which will drop the
+//     underlying Rust struct.
+//
+//   * Given an instance, calling code is expected to call the special
+//     `destroy` method in order to free it after use, either by calling it explicitly
+//     or by using a higher-level helper like the `use` method. Failing to do so risks
+//     leaking the underlying Rust struct.
+//
+//   * We can't assume that calling code will do the right thing, and must be prepared
+//     to handle Kotlin method calls executing concurrently with or even after a call to
+//     `destroy`, and to handle multiple (possibly concurrent!) calls to `destroy`.
+//
+//   * We must never allow Rust code to operate on the underlying Rust struct after
+//     the destructor has been called, and must never call the destructor more than once.
+//     Doing so may trigger memory unsafety.
+//
+//   * To mitigate many of the risks of leaking memory and use-after-free unsafety, a `Cleaner`
+//     is implemented to call the destructor when the Kotlin object becomes unreachable.
+//     This is done in a background thread. This is not a panacea, and client code should be aware that
+//      1. the thread may starve if some there are objects that have poorly performing
+//     `drop` methods or do significant work in their `drop` methods.
+//      2. the thread is shared across the whole library. This can be tuned by using `android_cleaner = true`,
+//         or `android = true` in the [`kotlin` section of the `uniffi.toml` file](https://mozilla.github.io/uniffi-rs/kotlin/configuration.html).
+//
+// If we try to implement this with mutual exclusion on access to the handle, there is the
+// possibility of a race between a method call and a concurrent call to `destroy`:
+//
+//    * Thread A starts a method call, reads the value of the handle, but is interrupted
+//      before it can pass the handle over the FFI to Rust.
+//    * Thread B calls `destroy` and frees the underlying Rust struct.
+//    * Thread A resumes, passing the already-read handle value to Rust and triggering
+//      a use-after-free.
+//
+// One possible solution would be to use a `ReadWriteLock`, with each method call taking
+// a read lock (and thus allowed to run concurrently) and the special `destroy` method
+// taking a write lock (and thus blocking on live method calls). However, we aim not to
+// generate methods with any hidden blocking semantics, and a `destroy` method that might
+// block if called incorrectly seems to meet that bar.
+//
+// So, we achieve our goals by giving each instance an associated `AtomicLong` counter to track
+// the number of in-flight method calls, and an `AtomicBoolean` flag to indicate whether `destroy`
+// has been called. These are updated according to the following rules:
+//
+//    * The initial value of the counter is 1, indicating a live object with no in-flight calls.
+//      The initial value for the flag is false.
+//
+//    * At the start of each method call, we atomically check the counter.
+//      If it is 0 then the underlying Rust struct has already been destroyed and the call is aborted.
+//      If it is nonzero them we atomically increment it by 1 and proceed with the method call.
+//
+//    * At the end of each method call, we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+//    * When `destroy` is called, we atomically flip the flag from false to true.
+//      If the flag was already true we silently fail.
+//      Otherwise we atomically decrement and check the counter.
+//      If it has reached zero then we destroy the underlying Rust struct.
+//
+// Astute readers may observe that this all sounds very similar to the way that Rust's `Arc<T>` works,
+// and indeed it is, with the addition of a flag to guard against multiple calls to `destroy`.
+//
+// The overall effect is that the underlying Rust struct is destroyed only when `destroy` has been
+// called *and* all in-flight method calls have completed, avoiding violating any of the expectations
+// of the underlying Rust code.
+//
+// This makes a cleaner a better alternative to _not_ calling `destroy()` as
+// and when the object is finished with, but the abstraction is not perfect: if the Rust object's `drop`
+// method is slow, and/or there are many objects to cleanup, and it's on a low end Android device, then the cleaner
+// thread may be starved, and the app will leak memory.
+//
+// In this case, `destroy`ing manually may be a better solution.
+//
+// The cleaner can live side by side with the manual calling of `destroy`. In the order of responsiveness, uniffi objects
+// with Rust peers are reclaimed:
+//
+// 1. By calling the `destroy` method of the object, which calls `rustObject.free()`. If that doesn't happen:
+// 2. When the object becomes unreachable, AND the Cleaner thread gets to call `rustObject.free()`. If the thread is starved then:
+// 3. The memory is reclaimed when the process terminates.
+//
+// [1] https://stackoverflow.com/questions/24376768/can-java-finalize-an-object-when-it-is-still-in-scope/24380219
+//
+
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+public interface HttpTransport {
+    
+    fun `send`(`request`: HttpRequest): HttpResponse
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    fun `openStream`(`request`: HttpRequest, `body`: HttpStreamBody): HttpStreamHead
+    
+    fun `cancel`(`id`: kotlin.ULong)
+    
+    companion object
+}
+
+/**
+ * Implemented by the host (iOS: `URLSession`). `send` and
+ * `open_stream` block their calling thread, a Rust worker
+ * thread.
+ */
+open class HttpTransportImpl: Disposable, AutoCloseable, HttpTransport
+{
+
+    @Suppress("UNUSED_PARAMETER")
+    /**
+     * @suppress
+     */
+    constructor(withHandle: UniffiWithHandle, handle: Long) {
+        this.handle = handle
+        this.cleanable = UniffiLib.CLEANER.register(this, UniffiCleanAction(handle))
+    }
+
+    /**
+     * @suppress
+     *
+     * This constructor can be used to instantiate a fake object. Only used for tests. Any
+     * attempt to actually use an object constructed this way will fail as there is no
+     * connected Rust object.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    constructor(noHandle: NoHandle) {
+        this.handle = 0
+        this.cleanable = null
+    }
+
+    protected val handle: Long
+    protected val cleanable: UniffiCleaner.Cleanable?
+
+    private val wasDestroyed = AtomicBoolean(false)
+    private val callCounter = AtomicLong(1)
+
+    /**
+     * Whether the current object has been destroyed and its reference is gone in the Rust side.
+     */
+    val uniffiIsDestroyed: Boolean get() = wasDestroyed.get()
+
+    override fun destroy() {
+        // Only allow a single call to this method.
+        // TODO: maybe we should log a warning if called more than once?
+        if (this.wasDestroyed.compareAndSet(false, true)) {
+            // This decrement always matches the initial count of 1 given at creation time.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    @Synchronized
+    override fun close() {
+        this.destroy()
+    }
+
+    internal inline fun <R> callWithHandle(block: (handle: Long) -> R): R {
+        // Check and increment the call counter, to keep the object alive.
+        // This needs a compare-and-set retry loop in case of concurrent updates.
+        do {
+            val c = this.callCounter.get()
+            if (c == 0L) {
+                throw IllegalStateException("${this.javaClass.simpleName} object has already been destroyed")
+            }
+            if (c == Long.MAX_VALUE) {
+                throw IllegalStateException("${this.javaClass.simpleName} call counter would overflow")
+            }
+        } while (! this.callCounter.compareAndSet(c, c + 1L))
+        // Now we can safely do the method call without the handle being freed concurrently.
+        try {
+            return block(this.uniffiCloneHandle())
+        } finally {
+            // This decrement always matches the increment we performed above.
+            if (this.callCounter.decrementAndGet() == 0L) {
+                cleanable?.clean()
+            }
+        }
+    }
+
+    // Use a static inner class instead of a closure so as not to accidentally
+    // capture `this` as part of the cleanable's action.
+    private class UniffiCleanAction(private val handle: Long) : Runnable {
+        override fun run() {
+            if (handle == 0.toLong()) {
+                // Fake object created with `NoHandle`, don't try to free.
+                return;
+            }
+            uniffiRustCall { status ->
+                UniffiLib.uniffi_pocket_library_core_fn_free_httptransport(handle, status)
+            }
+        }
+    }
+
+    /**
+     * @suppress
+     */
+    fun uniffiCloneHandle(): Long {
+        if (handle == 0.toLong()) {
+            throw InternalException("uniffiCloneHandle() called on NoHandle object");
+        }
+        return uniffiRustCall() { status ->
+            UniffiLib.uniffi_pocket_library_core_fn_clone_httptransport(handle, status)
+        }
+    }
+
+    
+    @Throws(HttpTransportException::class)override fun `send`(`request`: HttpRequest): HttpResponse {
+            return FfiConverterTypeHttpResponse.lift(
+    callWithHandle {
+    uniffiRustCallWithError(HttpTransportException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httptransport_send(
+        it,
+        
+        FfiConverterTypeHttpRequest.lower(`request`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * Returns once the status and headers have arrived (within
+     * `timeout_ms`), then delivers the body into `body` until
+     * it ends, fails or is cancelled. The body has no size
+     * limit and no idle timeout.
+     */
+    @Throws(HttpTransportException::class)override fun `openStream`(`request`: HttpRequest, `body`: HttpStreamBody): HttpStreamHead {
+            return FfiConverterTypeHttpStreamHead.lift(
+    callWithHandle {
+    uniffiRustCallWithError(HttpTransportException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httptransport_open_stream(
+        it,
+        
+        FfiConverterTypeHttpRequest.lower(`request`),
+        FfiConverterTypeHttpStreamBody.lower(`body`),_status)
+}
+    }
+    )
+    }
+    
+
+    override fun `cancel`(`id`: kotlin.ULong)
+        = 
+    callWithHandle {
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_method_httptransport_cancel(
+        it,
+        
+        FfiConverterULong.lower(`id`),_status)
+}
+    }
+    
+    
+
+    
+
+    
+
+
+    
+    
+    /**
+     * @suppress
+     */
+    companion object
+    
+}
+
+
+
+// Put the implementation in an object so we don't pollute the top-level namespace
+internal object uniffiCallbackInterfaceHttpTransport {
+    internal object `send`: UniffiCallbackInterfaceHttpTransportMethod0 {
+        override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHttpTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`send`(
+                    FfiConverterTypeHttpRequest.lift(`request`),
+                )
+            }
+            val writeReturn = { value: HttpResponse -> uniffiOutReturn.setValue(FfiConverterTypeHttpResponse.lower(value)) }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: HttpTransportException -> FfiConverterTypeHttpTransportError.lower(e) }
+            )
+        }
+    }
+    internal object `openStream`: UniffiCallbackInterfaceHttpTransportMethod1 {
+        override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`body`: Long,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHttpTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`openStream`(
+                    FfiConverterTypeHttpRequest.lift(`request`),
+                    FfiConverterTypeHttpStreamBody.lift(`body`),
+                )
+            }
+            val writeReturn = { value: HttpStreamHead -> uniffiOutReturn.setValue(FfiConverterTypeHttpStreamHead.lower(value)) }
+            uniffiTraitInterfaceCallWithError(
+                uniffiCallStatus,
+                makeCall,
+                writeReturn,
+                { e: HttpTransportException -> FfiConverterTypeHttpTransportError.lower(e) }
+            )
+        }
+    }
+    internal object `cancel`: UniffiCallbackInterfaceHttpTransportMethod2 {
+        override fun callback(`uniffiHandle`: Long,`id`: Long,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
+            val uniffiObj = FfiConverterTypeHttpTransport.handleMap.get(uniffiHandle)
+            val makeCall = { ->
+                uniffiObj.`cancel`(
+                    FfiConverterULong.lift(`id`),
+                )
+            }
+            val writeReturn = { _: Unit -> Unit }
+            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
+        }
+    }
+
+    internal object uniffiFree: UniffiCallbackInterfaceFree {
+        override fun callback(handle: Long) {
+            FfiConverterTypeHttpTransport.handleMap.remove(handle)
+        }
+    }
+
+    internal object uniffiClone: UniffiCallbackInterfaceClone {
+        override fun callback(handle: Long): Long {
+            return FfiConverterTypeHttpTransport.handleMap.clone(handle)
+        }
+    }
+
+    internal var vtable = UniffiVTableCallbackInterfaceHttpTransport.UniffiByValue(
+        uniffiFree,
+        uniffiClone,
+        `send`,
+        `openStream`,
+        `cancel`,
+    )
+
+    // Registers the foreign callback with the Rust side.
+    // This method is generated for each callback interface.
+    internal fun register(lib: UniffiLib) {
+        lib.uniffi_pocket_library_core_fn_init_callback_vtable_httptransport(vtable)
+    }
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpTransport: FfiConverter<HttpTransport, Long> {
+    internal val handleMap = UniffiHandleMap<HttpTransport>()
+
+    override fun lower(value: HttpTransport): Long {
+        if (value is HttpTransportImpl) {
+             // Rust-implemented object.  Clone the handle and return it
+            return value.uniffiCloneHandle()
+         } else {
+            // Kotlin object, generate a new vtable handle and return that.
+            return handleMap.insert(value)
+         }
+    }
+
+    override fun lift(value: Long): HttpTransport {
+        if ((value and 1.toLong()) == 0.toLong()) {
+            // Rust-generated handle, construct a new class that uses the handle to implement the
+            // interface
+            return HttpTransportImpl(UniffiWithHandle, value)
+        } else {
+            // Kotlin-generated handle, get the object from the handle map
+            return handleMap.remove(value)
+        }
+    }
+
+    override fun read(buf: ByteBuffer): HttpTransport {
+        return lift(buf.getLong())
+    }
+
+    override fun allocationSize(value: HttpTransport) = 8UL
+
+    override fun write(value: HttpTransport, buf: ByteBuffer) {
         buf.putLong(lower(value))
     }
 }
@@ -3541,7 +4386,10 @@ public interface PocketLibraryInterface {
     fun `phase`(): AppPhase
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
     suspend fun `readerChapter`(`id`: kotlin.ULong, `index`: kotlin.UInt): ReaderChapter
     
@@ -3565,7 +4413,7 @@ public interface PocketLibraryInterface {
      * like typing the page in. It never finishes a book; the reader offers
      * "Mark as Finished" at the end. A finished book keeps its page.
      */
-    suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `position`: ReadingPosition): Book
+    suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `chapter`: kotlin.UInt, `location`: ReaderLocation): Book
     
     /**
      * Searches the online catalogue. Nothing in the library changes; on any
@@ -4207,7 +5055,10 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
 
     
     /**
-     * The text of chapter `index` of a book opened with `open_reader`.
+     * The text of chapter `index` of a book opened with `open_reader`, and
+     * the place to scroll to the first time the start chapter is loaded
+     * (its saved anchor, found again even if the book was re-imported
+     * with edits; a position saved before anchors is converted here).
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
@@ -4285,14 +5136,15 @@ open class PocketLibrary: Disposable, AutoCloseable, PocketLibraryInterface
      */
     @Throws(LibraryException::class)
     @Suppress("ASSIGNED_BUT_NEVER_ACCESSED_VARIABLE")
-    override suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `position`: ReadingPosition) : Book {
+    override suspend fun `saveReadingPosition`(`id`: kotlin.ULong, `chapter`: kotlin.UInt, `location`: ReaderLocation) : Book {
         return uniffiRustCallAsync(
         callWithHandle { uniffiHandle ->
             UniffiLib.uniffi_pocket_library_core_fn_method_library_save_reading_position(
                 uniffiHandle,
                 
         FfiConverterULong.lower(`id`),
-        FfiConverterTypeReadingPosition.lower(`position`),
+        FfiConverterUInt.lower(`chapter`),
+        FfiConverterTypeReaderLocation.lower(`location`),
             )
         },
         { future, callback, continuation -> UniffiLib.ffi_pocket_library_core_rust_future_poll_rust_buffer(future, callback, continuation) },
@@ -6706,6 +7558,211 @@ public object FfiConverterTypeDeepLink: FfiConverterRustBuffer<DeepLink> {
 
 
 
+data class HttpHeader (
+    var `name`: kotlin.String
+    , 
+    var `value`: kotlin.String
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpHeader: FfiConverterRustBuffer<HttpHeader> {
+    override fun read(buf: ByteBuffer): HttpHeader {
+        return HttpHeader(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HttpHeader) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`value`)
+    )
+
+    override fun write(value: HttpHeader, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * One request for the host to send. `id` names it for
+ * `HttpTransport::cancel`.
+ */
+data class HttpRequest (
+    var `id`: kotlin.ULong
+    , 
+    /**
+     * `GET`, `POST`, `PUT`, `PATCH` or `DELETE`.
+     */
+    var `method`: kotlin.String
+    , 
+    var `url`: kotlin.String
+    , 
+    var `headers`: List<HttpHeader>
+    , 
+    var `body`: kotlin.ByteArray
+    , 
+    /**
+     * Send this file as the body instead (an upload); `body` is
+     * then empty.
+     */
+    var `bodyFile`: kotlin.String?
+    , 
+    var `timeoutMs`: kotlin.ULong
+    , 
+    /**
+     * Stop and fail with `Transport` once the response body
+     * grows past this.
+     */
+    var `maxBodyBytes`: kotlin.ULong
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpRequest: FfiConverterRustBuffer<HttpRequest> {
+    override fun read(buf: ByteBuffer): HttpRequest {
+        return HttpRequest(
+            FfiConverterULong.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeHttpHeader.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterULong.read(buf),
+            FfiConverterULong.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HttpRequest) = (
+            FfiConverterULong.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`method`) +
+            FfiConverterString.allocationSize(value.`url`) +
+            FfiConverterSequenceTypeHttpHeader.allocationSize(value.`headers`) +
+            FfiConverterByteArray.allocationSize(value.`body`) +
+            FfiConverterOptionalString.allocationSize(value.`bodyFile`) +
+            FfiConverterULong.allocationSize(value.`timeoutMs`) +
+            FfiConverterULong.allocationSize(value.`maxBodyBytes`)
+    )
+
+    override fun write(value: HttpRequest, buf: ByteBuffer) {
+            FfiConverterULong.write(value.`id`, buf)
+            FfiConverterString.write(value.`method`, buf)
+            FfiConverterString.write(value.`url`, buf)
+            FfiConverterSequenceTypeHttpHeader.write(value.`headers`, buf)
+            FfiConverterByteArray.write(value.`body`, buf)
+            FfiConverterOptionalString.write(value.`bodyFile`, buf)
+            FfiConverterULong.write(value.`timeoutMs`, buf)
+            FfiConverterULong.write(value.`maxBodyBytes`, buf)
+    }
+}
+
+
+
+data class HttpResponse (
+    var `status`: kotlin.UShort
+    , 
+    var `headers`: List<HttpHeader>
+    , 
+    var `body`: kotlin.ByteArray
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpResponse: FfiConverterRustBuffer<HttpResponse> {
+    override fun read(buf: ByteBuffer): HttpResponse {
+        return HttpResponse(
+            FfiConverterUShort.read(buf),
+            FfiConverterSequenceTypeHttpHeader.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HttpResponse) = (
+            FfiConverterUShort.allocationSize(value.`status`) +
+            FfiConverterSequenceTypeHttpHeader.allocationSize(value.`headers`) +
+            FfiConverterByteArray.allocationSize(value.`body`)
+    )
+
+    override fun write(value: HttpResponse, buf: ByteBuffer) {
+            FfiConverterUShort.write(value.`status`, buf)
+            FfiConverterSequenceTypeHttpHeader.write(value.`headers`, buf)
+            FfiConverterByteArray.write(value.`body`, buf)
+    }
+}
+
+
+
+/**
+ * The status and headers of a streamed response.
+ */
+data class HttpStreamHead (
+    var `status`: kotlin.UShort
+    , 
+    var `headers`: List<HttpHeader>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpStreamHead: FfiConverterRustBuffer<HttpStreamHead> {
+    override fun read(buf: ByteBuffer): HttpStreamHead {
+        return HttpStreamHead(
+            FfiConverterUShort.read(buf),
+            FfiConverterSequenceTypeHttpHeader.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: HttpStreamHead) = (
+            FfiConverterUShort.allocationSize(value.`status`) +
+            FfiConverterSequenceTypeHttpHeader.allocationSize(value.`headers`)
+    )
+
+    override fun write(value: HttpStreamHead, buf: ByteBuffer) {
+            FfiConverterUShort.write(value.`status`, buf)
+            FfiConverterSequenceTypeHttpHeader.write(value.`headers`, buf)
+    }
+}
+
+
+
 /**
  * The result of importing a catalogue book. The book is saved even when the
  * extras could not be fetched; `warnings` says what is missing.
@@ -7210,15 +8267,122 @@ public object FfiConverterTypeQueryItem: FfiConverterRustBuffer<QueryItem> {
 
 
 
+data class ReaderAnchor (
+    var `sectionId`: kotlin.String
+    , 
+    var `blockId`: kotlin.String
+    , 
+    var `offset`: kotlin.Double
+    , 
+    var `opening`: kotlin.String
+    , 
+    var `before`: kotlin.String?
+    , 
+    var `after`: kotlin.String?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
 /**
- * A chapter's text, ready to lay out.
+ * @suppress
+ */
+public object FfiConverterTypeReaderAnchor: FfiConverterRustBuffer<ReaderAnchor> {
+    override fun read(buf: ByteBuffer): ReaderAnchor {
+        return ReaderAnchor(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderAnchor) = (
+            FfiConverterString.allocationSize(value.`sectionId`) +
+            FfiConverterString.allocationSize(value.`blockId`) +
+            FfiConverterDouble.allocationSize(value.`offset`) +
+            FfiConverterString.allocationSize(value.`opening`) +
+            FfiConverterOptionalString.allocationSize(value.`before`) +
+            FfiConverterOptionalString.allocationSize(value.`after`)
+    )
+
+    override fun write(value: ReaderAnchor, buf: ByteBuffer) {
+            FfiConverterString.write(value.`sectionId`, buf)
+            FfiConverterString.write(value.`blockId`, buf)
+            FfiConverterDouble.write(value.`offset`, buf)
+            FfiConverterString.write(value.`opening`, buf)
+            FfiConverterOptionalString.write(value.`before`, buf)
+            FfiConverterOptionalString.write(value.`after`, buf)
+    }
+}
+
+
+
+data class ReaderBlock (
+    var `id`: kotlin.String
+    , 
+    var `kind`: ReaderBlockKind
+    , 
+    var `spans`: List<ReaderSpan>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderBlock: FfiConverterRustBuffer<ReaderBlock> {
+    override fun read(buf: ByteBuffer): ReaderBlock {
+        return ReaderBlock(
+            FfiConverterString.read(buf),
+            FfiConverterTypeReaderBlockKind.read(buf),
+            FfiConverterSequenceTypeReaderSpan.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderBlock) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterTypeReaderBlockKind.allocationSize(value.`kind`) +
+            FfiConverterSequenceTypeReaderSpan.allocationSize(value.`spans`)
+    )
+
+    override fun write(value: ReaderBlock, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterTypeReaderBlockKind.write(value.`kind`, buf)
+            FfiConverterSequenceTypeReaderSpan.write(value.`spans`, buf)
+    }
+}
+
+
+
+/**
+ * A chapter's text, ready to lay out: a ForgeReader section (its id is
+ * the chapter's file in the EPUB), and where to scroll to when the reader
+ * opens the book at this chapter.
  */
 data class ReaderChapter (
     var `index`: kotlin.UInt
     , 
-    var `title`: kotlin.String
+    var `section`: ReaderSection
     , 
-    var `blocks`: List<TextBlock>
+    /**
+     * The saved place in this chapter, the first time the chapter the book
+     * opens at is loaded; nil otherwise (start at the top).
+     */
+    var `start`: ReaderLocation?
     
 ){
     
@@ -7236,21 +8400,21 @@ public object FfiConverterTypeReaderChapter: FfiConverterRustBuffer<ReaderChapte
     override fun read(buf: ByteBuffer): ReaderChapter {
         return ReaderChapter(
             FfiConverterUInt.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterSequenceTypeTextBlock.read(buf),
+            FfiConverterTypeReaderSection.read(buf),
+            FfiConverterOptionalTypeReaderLocation.read(buf),
         )
     }
 
     override fun allocationSize(value: ReaderChapter) = (
             FfiConverterUInt.allocationSize(value.`index`) +
-            FfiConverterString.allocationSize(value.`title`) +
-            FfiConverterSequenceTypeTextBlock.allocationSize(value.`blocks`)
+            FfiConverterTypeReaderSection.allocationSize(value.`section`) +
+            FfiConverterOptionalTypeReaderLocation.allocationSize(value.`start`)
     )
 
     override fun write(value: ReaderChapter, buf: ByteBuffer) {
             FfiConverterUInt.write(value.`index`, buf)
-            FfiConverterString.write(value.`title`, buf)
-            FfiConverterSequenceTypeTextBlock.write(value.`blocks`, buf)
+            FfiConverterTypeReaderSection.write(value.`section`, buf)
+            FfiConverterOptionalTypeReaderLocation.write(value.`start`, buf)
     }
 }
 
@@ -7316,9 +8480,144 @@ public object FfiConverterTypeReaderContents: FfiConverterRustBuffer<ReaderConte
 
 
 
+data class ReaderLocation (
+    var `block`: kotlin.UInt
+    , 
+    var `offset`: kotlin.Double
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderLocation: FfiConverterRustBuffer<ReaderLocation> {
+    override fun read(buf: ByteBuffer): ReaderLocation {
+        return ReaderLocation(
+            FfiConverterUInt.read(buf),
+            FfiConverterDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderLocation) = (
+            FfiConverterUInt.allocationSize(value.`block`) +
+            FfiConverterDouble.allocationSize(value.`offset`)
+    )
+
+    override fun write(value: ReaderLocation, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`block`, buf)
+            FfiConverterDouble.write(value.`offset`, buf)
+    }
+}
+
+
+
+data class ReaderSection (
+    var `id`: kotlin.String
+    , 
+    var `title`: kotlin.String
+    , 
+    var `blocks`: List<ReaderBlock>
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderSection: FfiConverterRustBuffer<ReaderSection> {
+    override fun read(buf: ByteBuffer): ReaderSection {
+        return ReaderSection(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceTypeReaderBlock.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderSection) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`title`) +
+            FfiConverterSequenceTypeReaderBlock.allocationSize(value.`blocks`)
+    )
+
+    override fun write(value: ReaderSection, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`title`, buf)
+            FfiConverterSequenceTypeReaderBlock.write(value.`blocks`, buf)
+    }
+}
+
+
+
+data class ReaderSpan (
+    var `text`: kotlin.String
+    , 
+    var `bold`: kotlin.Boolean
+    , 
+    var `italic`: kotlin.Boolean
+    , 
+    var `monospace`: kotlin.Boolean
+    , 
+    var `link`: kotlin.String?
+    
+){
+    
+
+    
+
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderSpan: FfiConverterRustBuffer<ReaderSpan> {
+    override fun read(buf: ByteBuffer): ReaderSpan {
+        return ReaderSpan(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: ReaderSpan) = (
+            FfiConverterString.allocationSize(value.`text`) +
+            FfiConverterBoolean.allocationSize(value.`bold`) +
+            FfiConverterBoolean.allocationSize(value.`italic`) +
+            FfiConverterBoolean.allocationSize(value.`monospace`) +
+            FfiConverterOptionalString.allocationSize(value.`link`)
+    )
+
+    override fun write(value: ReaderSpan, buf: ByteBuffer) {
+            FfiConverterString.write(value.`text`, buf)
+            FfiConverterBoolean.write(value.`bold`, buf)
+            FfiConverterBoolean.write(value.`italic`, buf)
+            FfiConverterBoolean.write(value.`monospace`, buf)
+            FfiConverterOptionalString.write(value.`link`, buf)
+    }
+}
+
+
+
 /**
  * A place in a book: a chapter (an index into `ReaderContents::chapters`)
- * and how far through it, 0.0–1.0.
+ * and how far through it by words, 0.0–1.0. The exact place in the
+ * chapter is a block anchor, kept by Rust.
  */
 data class ReadingPosition (
     var `chapter`: kotlin.UInt
@@ -7420,101 +8719,6 @@ public object FfiConverterTypeStorageInfo: FfiConverterRustBuffer<StorageInfo> {
             FfiConverterUInt.write(value.`savedCovers`, buf)
             FfiConverterUInt.write(value.`savedBooks`, buf)
             FfiConverterULong.write(value.`bytes`, buf)
-    }
-}
-
-
-
-/**
- * One paragraph, heading, image… of a chapter, in reading order.
- */
-data class TextBlock (
-    var `kind`: TextBlockKind
-    , 
-    /**
-     * Empty for separators and images. Line breaks are `\n`.
-     */
-    var `spans`: List<TextSpan>
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextBlock: FfiConverterRustBuffer<TextBlock> {
-    override fun read(buf: ByteBuffer): TextBlock {
-        return TextBlock(
-            FfiConverterTypeTextBlockKind.read(buf),
-            FfiConverterSequenceTypeTextSpan.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TextBlock) = (
-            FfiConverterTypeTextBlockKind.allocationSize(value.`kind`) +
-            FfiConverterSequenceTypeTextSpan.allocationSize(value.`spans`)
-    )
-
-    override fun write(value: TextBlock, buf: ByteBuffer) {
-            FfiConverterTypeTextBlockKind.write(value.`kind`, buf)
-            FfiConverterSequenceTypeTextSpan.write(value.`spans`, buf)
-    }
-}
-
-
-
-/**
- * A run of text in one style.
- */
-data class TextSpan (
-    var `text`: kotlin.String
-    , 
-    var `bold`: kotlin.Boolean
-    , 
-    var `italic`: kotlin.Boolean
-    , 
-    var `monospace`: kotlin.Boolean
-    
-){
-    
-
-    
-
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextSpan: FfiConverterRustBuffer<TextSpan> {
-    override fun read(buf: ByteBuffer): TextSpan {
-        return TextSpan(
-            FfiConverterString.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterBoolean.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TextSpan) = (
-            FfiConverterString.allocationSize(value.`text`) +
-            FfiConverterBoolean.allocationSize(value.`bold`) +
-            FfiConverterBoolean.allocationSize(value.`italic`) +
-            FfiConverterBoolean.allocationSize(value.`monospace`)
-    )
-
-    override fun write(value: TextSpan, buf: ByteBuffer) {
-            FfiConverterString.write(value.`text`, buf)
-            FfiConverterBoolean.write(value.`bold`, buf)
-            FfiConverterBoolean.write(value.`italic`, buf)
-            FfiConverterBoolean.write(value.`monospace`, buf)
     }
 }
 
@@ -7976,6 +9180,174 @@ public object FfiConverterTypeBookSource : FfiConverterRustBuffer<BookSource>{
 }
 
 
+
+
+
+
+
+/**
+ * Why a request got no response. A non-2xx status is a
+ * response, not an error.
+ */
+sealed class HttpTransportException: kotlin.Exception() {
+    
+    /**
+     * No route, DNS failure, connection refused, no network.
+     */
+    class Offline(
+        
+        val `reason`: kotlin.String
+        ) : HttpTransportException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * The server's certificate was rejected.
+     */
+    class Certificate(
+        
+        val `reason`: kotlin.String
+        ) : HttpTransportException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    class Timeout(
+        ) : HttpTransportException() {
+        override val message
+            get() = ""
+    }
+    
+    class Cancelled(
+        ) : HttpTransportException() {
+        override val message
+            get() = ""
+    }
+    
+    class InvalidRequest(
+        
+        val `reason`: kotlin.String
+        ) : HttpTransportException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+    /**
+     * Anything else (TLS protocol errors, a body too large).
+     */
+    class Transport(
+        
+        val `reason`: kotlin.String
+        ) : HttpTransportException() {
+        override val message
+            get() = "reason=${ `reason` }"
+    }
+    
+
+    
+
+
+    companion object ErrorHandler : UniffiRustCallStatusErrorHandler<HttpTransportException> {
+        override fun lift(error_buf: RustBuffer.ByValue): HttpTransportException = FfiConverterTypeHttpTransportError.lift(error_buf)
+    }
+
+    
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeHttpTransportError : FfiConverterRustBuffer<HttpTransportException> {
+    override fun read(buf: ByteBuffer): HttpTransportException {
+        
+
+        return when(buf.getInt()) {
+            1 -> HttpTransportException.Offline(
+                FfiConverterString.read(buf),
+                )
+            2 -> HttpTransportException.Certificate(
+                FfiConverterString.read(buf),
+                )
+            3 -> HttpTransportException.Timeout()
+            4 -> HttpTransportException.Cancelled()
+            5 -> HttpTransportException.InvalidRequest(
+                FfiConverterString.read(buf),
+                )
+            6 -> HttpTransportException.Transport(
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid error enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: HttpTransportException): ULong {
+        return when(value) {
+            is HttpTransportException.Offline -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is HttpTransportException.Certificate -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is HttpTransportException.Timeout -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HttpTransportException.Cancelled -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+            )
+            is HttpTransportException.InvalidRequest -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+            is HttpTransportException.Transport -> (
+                // Add the size for the Int that specifies the variant plus the size needed for all fields
+                4UL
+                + FfiConverterString.allocationSize(value.`reason`)
+            )
+        }
+    }
+
+    override fun write(value: HttpTransportException, buf: ByteBuffer) {
+        when(value) {
+            is HttpTransportException.Offline -> {
+                buf.putInt(1)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is HttpTransportException.Certificate -> {
+                buf.putInt(2)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is HttpTransportException.Timeout -> {
+                buf.putInt(3)
+                Unit
+            }
+            is HttpTransportException.Cancelled -> {
+                buf.putInt(4)
+                Unit
+            }
+            is HttpTransportException.InvalidRequest -> {
+                buf.putInt(5)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+            is HttpTransportException.Transport -> {
+                buf.putInt(6)
+                FfiConverterString.write(value.`reason`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+
+}
 
 
 
@@ -9099,6 +10471,173 @@ public object FfiConverterTypePermissionStatus: FfiConverterRustBuffer<Permissio
 
 
 
+sealed class ReaderBlockKind {
+    
+    data class Heading(
+        val `level`: kotlin.UByte) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object Paragraph : ReaderBlockKind()
+    
+    
+    object Quote : ReaderBlockKind()
+    
+    
+    data class ListItem(
+        val `marker`: kotlin.String) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+    object Preformatted : ReaderBlockKind()
+    
+    
+    object Separator : ReaderBlockKind()
+    
+    
+    data class Image(
+        val `source`: kotlin.String, 
+        val `alt`: kotlin.String) : ReaderBlockKind()
+        
+    {
+        
+
+        companion object
+    }
+    
+
+    
+
+    
+    
+
+
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeReaderBlockKind : FfiConverterRustBuffer<ReaderBlockKind>{
+    override fun read(buf: ByteBuffer): ReaderBlockKind {
+        return when(buf.getInt()) {
+            1 -> ReaderBlockKind.Heading(
+                FfiConverterUByte.read(buf),
+                )
+            2 -> ReaderBlockKind.Paragraph
+            3 -> ReaderBlockKind.Quote
+            4 -> ReaderBlockKind.ListItem(
+                FfiConverterString.read(buf),
+                )
+            5 -> ReaderBlockKind.Preformatted
+            6 -> ReaderBlockKind.Separator
+            7 -> ReaderBlockKind.Image(
+                FfiConverterString.read(buf),
+                FfiConverterString.read(buf),
+                )
+            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
+        }
+    }
+
+    override fun allocationSize(value: ReaderBlockKind): ULong = when(value) {
+        is ReaderBlockKind.Heading -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterUByte.allocationSize(value.`level`)
+            )
+        }
+        is ReaderBlockKind.Paragraph -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Quote -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.ListItem -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`marker`)
+            )
+        }
+        is ReaderBlockKind.Preformatted -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Separator -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+            )
+        }
+        is ReaderBlockKind.Image -> {
+            // Add the size for the Int that specifies the variant plus the size needed for all fields
+            (
+                4UL
+                + FfiConverterString.allocationSize(value.`source`)
+                + FfiConverterString.allocationSize(value.`alt`)
+            )
+        }
+    }
+
+    override fun write(value: ReaderBlockKind, buf: ByteBuffer) {
+        when(value) {
+            is ReaderBlockKind.Heading -> {
+                buf.putInt(1)
+                FfiConverterUByte.write(value.`level`, buf)
+                Unit
+            }
+            is ReaderBlockKind.Paragraph -> {
+                buf.putInt(2)
+                Unit
+            }
+            is ReaderBlockKind.Quote -> {
+                buf.putInt(3)
+                Unit
+            }
+            is ReaderBlockKind.ListItem -> {
+                buf.putInt(4)
+                FfiConverterString.write(value.`marker`, buf)
+                Unit
+            }
+            is ReaderBlockKind.Preformatted -> {
+                buf.putInt(5)
+                Unit
+            }
+            is ReaderBlockKind.Separator -> {
+                buf.putInt(6)
+                Unit
+            }
+            is ReaderBlockKind.Image -> {
+                buf.putInt(7)
+                FfiConverterString.write(value.`source`, buf)
+                FfiConverterString.write(value.`alt`, buf)
+                Unit
+            }
+        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
+    }
+}
+
+
+
+
+
 /**
  * Where a book is in the reader's life.
  */
@@ -9467,194 +11006,6 @@ public object FfiConverterTypeSummaryStage : FfiConverterRustBuffer<SummaryStage
             }
             is SummaryStage.Overview -> {
                 buf.putInt(8)
-                Unit
-            }
-        }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
-    }
-}
-
-
-
-
-
-/**
- * What a block of a chapter is. The host chooses how each looks.
- */
-sealed class TextBlockKind {
-    
-    /**
-     * `level` 1–6, as `<h1>`–`<h6>`.
-     */
-    data class Heading(
-        val `level`: kotlin.UByte) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-    object Paragraph : TextBlockKind()
-    
-    
-    /**
-     * Inside a `<blockquote>`.
-     */
-    object Quote : TextBlockKind()
-    
-    
-    /**
-     * `marker` is "•" or "3." and so on.
-     */
-    data class ListItem(
-        val `marker`: kotlin.String) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-    /**
-     * Keep line breaks and spacing; show in a fixed-width font.
-     */
-    object Preformatted : TextBlockKind()
-    
-    
-    /**
-     * A scene break: `<hr>`, or a paragraph of only "* * *" and the like.
-     */
-    object Separator : TextBlockKind()
-    
-    
-    /**
-     * An image saved for this launch at `file` (absolute path).
-     */
-    data class Image(
-        val `file`: kotlin.String, 
-        val `alt`: kotlin.String) : TextBlockKind()
-        
-    {
-        
-
-        companion object
-    }
-    
-
-    
-
-    
-    
-
-
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTextBlockKind : FfiConverterRustBuffer<TextBlockKind>{
-    override fun read(buf: ByteBuffer): TextBlockKind {
-        return when(buf.getInt()) {
-            1 -> TextBlockKind.Heading(
-                FfiConverterUByte.read(buf),
-                )
-            2 -> TextBlockKind.Paragraph
-            3 -> TextBlockKind.Quote
-            4 -> TextBlockKind.ListItem(
-                FfiConverterString.read(buf),
-                )
-            5 -> TextBlockKind.Preformatted
-            6 -> TextBlockKind.Separator
-            7 -> TextBlockKind.Image(
-                FfiConverterString.read(buf),
-                FfiConverterString.read(buf),
-                )
-            else -> throw RuntimeException("invalid enum value, something is very wrong!!")
-        }
-    }
-
-    override fun allocationSize(value: TextBlockKind): ULong = when(value) {
-        is TextBlockKind.Heading -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterUByte.allocationSize(value.`level`)
-            )
-        }
-        is TextBlockKind.Paragraph -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Quote -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.ListItem -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterString.allocationSize(value.`marker`)
-            )
-        }
-        is TextBlockKind.Preformatted -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Separator -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-            )
-        }
-        is TextBlockKind.Image -> {
-            // Add the size for the Int that specifies the variant plus the size needed for all fields
-            (
-                4UL
-                + FfiConverterString.allocationSize(value.`file`)
-                + FfiConverterString.allocationSize(value.`alt`)
-            )
-        }
-    }
-
-    override fun write(value: TextBlockKind, buf: ByteBuffer) {
-        when(value) {
-            is TextBlockKind.Heading -> {
-                buf.putInt(1)
-                FfiConverterUByte.write(value.`level`, buf)
-                Unit
-            }
-            is TextBlockKind.Paragraph -> {
-                buf.putInt(2)
-                Unit
-            }
-            is TextBlockKind.Quote -> {
-                buf.putInt(3)
-                Unit
-            }
-            is TextBlockKind.ListItem -> {
-                buf.putInt(4)
-                FfiConverterString.write(value.`marker`, buf)
-                Unit
-            }
-            is TextBlockKind.Preformatted -> {
-                buf.putInt(5)
-                Unit
-            }
-            is TextBlockKind.Separator -> {
-                buf.putInt(6)
-                Unit
-            }
-            is TextBlockKind.Image -> {
-                buf.putInt(7)
-                FfiConverterString.write(value.`file`, buf)
-                FfiConverterString.write(value.`alt`, buf)
                 Unit
             }
         }.let { /* this makes the `when` an expression, which ensures it is exhaustive */ }
@@ -10117,6 +11468,38 @@ public object FfiConverterOptionalTypeChapterSynopsis: FfiConverterRustBuffer<Ch
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeReaderLocation: FfiConverterRustBuffer<ReaderLocation?> {
+    override fun read(buf: ByteBuffer): ReaderLocation? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeReaderLocation.read(buf)
+    }
+
+    override fun allocationSize(value: ReaderLocation?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeReaderLocation.allocationSize(value)
+        }
+    }
+
+    override fun write(value: ReaderLocation?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeReaderLocation.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeReadingPosition: FfiConverterRustBuffer<ReadingPosition?> {
     override fun read(buf: ByteBuffer): ReadingPosition? {
         if (buf.get().toInt() == 0) {
@@ -10433,6 +11816,34 @@ public object FfiConverterSequenceTypeChapterSynopsis: FfiConverterRustBuffer<Li
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeHttpHeader: FfiConverterRustBuffer<List<HttpHeader>> {
+    override fun read(buf: ByteBuffer): List<HttpHeader> {
+        val len = buf.getInt()
+        return List<HttpHeader>(len) {
+            FfiConverterTypeHttpHeader.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<HttpHeader>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeHttpHeader.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<HttpHeader>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeHttpHeader.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeNotificationAction: FfiConverterRustBuffer<List<NotificationAction>> {
     override fun read(buf: ByteBuffer): List<NotificationAction> {
         val len = buf.getInt()
@@ -10517,24 +11928,24 @@ public object FfiConverterSequenceTypeQueryItem: FfiConverterRustBuffer<List<Que
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer<List<TextBlock>> {
-    override fun read(buf: ByteBuffer): List<TextBlock> {
+public object FfiConverterSequenceTypeReaderBlock: FfiConverterRustBuffer<List<ReaderBlock>> {
+    override fun read(buf: ByteBuffer): List<ReaderBlock> {
         val len = buf.getInt()
-        return List<TextBlock>(len) {
-            FfiConverterTypeTextBlock.read(buf)
+        return List<ReaderBlock>(len) {
+            FfiConverterTypeReaderBlock.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<TextBlock>): ULong {
+    override fun allocationSize(value: List<ReaderBlock>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTextBlock.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeReaderBlock.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<TextBlock>, buf: ByteBuffer) {
+    override fun write(value: List<ReaderBlock>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeTextBlock.write(it, buf)
+            FfiConverterTypeReaderBlock.write(it, buf)
         }
     }
 }
@@ -10545,24 +11956,24 @@ public object FfiConverterSequenceTypeTextBlock: FfiConverterRustBuffer<List<Tex
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer<List<TextSpan>> {
-    override fun read(buf: ByteBuffer): List<TextSpan> {
+public object FfiConverterSequenceTypeReaderSpan: FfiConverterRustBuffer<List<ReaderSpan>> {
+    override fun read(buf: ByteBuffer): List<ReaderSpan> {
         val len = buf.getInt()
-        return List<TextSpan>(len) {
-            FfiConverterTypeTextSpan.read(buf)
+        return List<ReaderSpan>(len) {
+            FfiConverterTypeReaderSpan.read(buf)
         }
     }
 
-    override fun allocationSize(value: List<TextSpan>): ULong {
+    override fun allocationSize(value: List<ReaderSpan>): ULong {
         val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTextSpan.allocationSize(it) }.sum()
+        val sizeForItems = value.map { FfiConverterTypeReaderSpan.allocationSize(it) }.sum()
         return sizeForLength + sizeForItems
     }
 
-    override fun write(value: List<TextSpan>, buf: ByteBuffer) {
+    override fun write(value: List<ReaderSpan>, buf: ByteBuffer) {
         buf.putInt(value.size)
         value.iterator().forEach {
-            FfiConverterTypeTextSpan.write(it, buf)
+            FfiConverterTypeReaderSpan.write(it, buf)
         }
     }
 }
@@ -10628,6 +12039,22 @@ public object FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer<List<Text
 }
     )
     }
+    
+
+        /**
+         * Writes a short sample EPUB to `path`, for the host to import: UI tests
+         * launched on empty test data (`-PocketLibrarySampleBook`) use it to have a
+         * book to read.
+         */
+    @Throws(LibraryException::class) fun `writeSampleEpub`(`path`: kotlin.String)
+        = 
+    uniffiRustCallWithError(LibraryException) { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_write_sample_epub(
+    
+        
+        FfiConverterString.lower(`path`),_status)
+}
+    
     
 
         /**
@@ -10717,6 +12144,19 @@ public object FfiConverterSequenceTypeTextSpan: FfiConverterRustBuffer<List<Text
     
         
         FfiConverterTypeAiModel.lower(`model`),_status)
+}
+    
+    
+
+        /**
+         * Called by the host at launch (`ForgeServices.install()`).
+         */ fun `installNativeHttp`(`transport`: HttpTransport)
+        = 
+    uniffiRustCall() { _status ->
+    UniffiLib.uniffi_pocket_library_core_fn_func_install_native_http(
+    
+        
+        FfiConverterTypeHttpTransport.lower(`transport`),_status)
 }
     
     

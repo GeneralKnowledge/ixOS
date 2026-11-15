@@ -109,6 +109,8 @@ class LibraryModel(
                 ErrorKind.INVALID -> "Check what you entered."
                 ErrorKind.NOT_FOUND -> "That book no longer exists."
                 ErrorKind.UNAVAILABLE -> "Not available right now. Try again later."
+                ErrorKind.NETWORK -> "Couldn't connect. Check your connection and try again."
+                ErrorKind.REFUSED -> "That was refused."
                 ErrorKind.INTERRUPTED -> "Stopped when the app went to the background. Try again."
                 ErrorKind.CANCELLED -> "Cancelled."
                 ErrorKind.NEEDS_USER -> "This needs your permission or sign-in."

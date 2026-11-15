@@ -7,9 +7,21 @@ public struct ContentView: View {
     @State private var model: ChatModel
 
     public init() {
-        _model = State(
-            initialValue: ChatModel(
-                notifier: LocalChatNotifier.shared, assistantEngine: ForgeAppleModel()))
+        _model = State(initialValue: Self.makeModel())
+    }
+
+    /// Shows `model`, which the host keeps for the whole process: Device
+    /// Lab opens Chat in a sheet many times, and one core (one set of room
+    /// connections and notifications) must outlive each sheet.
+    public init(model: ChatModel) {
+        _model = State(initialValue: model)
+    }
+
+    /// The model the app uses: the Keychain account and Apple's on-device
+    /// model for the assistant.
+    @MainActor
+    public static func makeModel() -> ChatModel {
+        ChatModel(assistantEngine: ForgeAppleModel())
     }
 
     public var body: some View {
@@ -74,7 +86,7 @@ struct MainTabs: View {
             .tabItem { Label("Settings", systemImage: "gearshape") }
             .tag(Tab.settings)
         }
-        // A tapped message notification opens its room (LocalChatNotifier).
+        // A tapped message notification opens its room (rust/src/alerts.rs).
         .onForgeDeepLink { link in
             guard let route = ChatLinks.route(link) else { return }
             tab = .chats

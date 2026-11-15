@@ -43,6 +43,20 @@ final class SoundscapeModelTests: XCTestCase {
         XCTAssertEqual(quiet.tracks.first?.mix.volume, 0)
     }
 
+    func testMetronome() async throws {
+        let host = makeTemporaryAppHost()
+        await host.start()
+        let model = SoundscapeModel(core: try XCTUnwrap(host.core))
+        let project = try await model.create(title: "Clicks", tempo: 120, bars: 1)
+        let id = project.summary.id
+        XCTAssertTrue(project.summary.metronome)
+
+        let click = try XCTUnwrap(await model.clickTrack(id, sampleRate: 8000))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: click.path))
+        let off = try XCTUnwrap(await model.setMetronome(id, on: false))
+        XCTAssertFalse(off.summary.metronome)
+    }
+
     func testFormatting() {
         XCTAssertEqual(SoundFormat.gain(3.2), "+3 dB")
         XCTAssertEqual(SoundFormat.gain(-12), "−12 dB")

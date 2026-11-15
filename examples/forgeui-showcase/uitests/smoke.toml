@@ -1,0 +1,56 @@
+# The ForgeUI showcase on a real iPhone, in Device Lab (the app on the
+# phone): open a gallery page, show and dismiss an alert, then add a task on
+# the example Tasks screen. Changes nothing kept: the showcase holds its
+# tasks in memory.
+#   forge ui run examples/forgeui-showcase/uitests/smoke.toml
+
+name = "Smoke: gallery alert and a new task"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "forgeUI"] }
+
+[[step]]
+scroll = { id = "gallery.dialogs" }
+
+[[step]]
+tap = { id = "gallery.dialogs" }
+
+[[step]]
+tap = { id = "gallery.dialogs.alert" }
+
+[[step]]
+expect = { id = "alert.ok" }
+
+[[step]]
+screenshot = "1-alert"
+
+[[step]]
+tap = { id = "alert.ok" }
+
+[[step]]
+expect = { id = "alert.ok", gone = true }
+
+[[step]]
+tap = { label = "Screens" }
+
+[[step]]
+tap = { id = "screens.tasks" }
+
+[[step]]
+tap = { id = "tasks.add" }
+
+[[step]]
+type = { id = "taskForm.title", text = "Water the plants" }
+
+[[step]]
+screenshot = "2-new-task"
+
+[[step]]
+tap = { id = "taskForm.confirm" }
+
+[[step]]
+expect = { id = "tasks.row.Water the plants" }

@@ -10,15 +10,16 @@ struct LibraryView: View {
     @Environment(LibraryModel.self) private var model
     @State private var importing = false
     @Environment(\.forgeTheme) private var theme
-    @State private var path = NavigationPath()
 
     private var bindable: Bindable<LibraryModel> { Bindable(model) }
 
     var body: some View {
-        NavigationStack(path: $path) {
+        NavigationStack {
             content
                 .navigationTitle("Library")
-                .navigationDestination(for: UInt64.self) { id in
+                // Pushed books are the model's state too (ForgeAppKit), so
+                // "adding a book opens it" is checked on Linux.
+                .forgeNavigationDestination(bindable.libraryDestination, \.book) { id in
                     BookDetailView(bookID: id)
                 }
                 // The system's own "Search" prompt: Apple's accessibility audit on
@@ -30,10 +31,10 @@ struct LibraryView: View {
         // Sheets, the file picker and alerts are the model's state
         // (ForgeAppKit), so the model tests can check them.
         .forgeSheet(bindable.libraryDestination, equals: .addBook) {
-            BookFormView(mode: .add) { book in path.append(book.id) }
+            BookFormView(mode: .add) { book in model.showBook(book.id) }
         }
         .forgeSheet(bindable.libraryDestination, equals: .catalogue) {
-            CatalogueSearchView { book in path.append(book.id) }
+            CatalogueSearchView { book in model.showBook(book.id) }
         }
         .fileImporter(
             isPresented: bindable.libraryDestination.forgeIs(.importEpub),
@@ -79,7 +80,7 @@ struct LibraryView: View {
         } else {
             List {
                 ForEach(model.books) { book in
-                    NavigationLink(value: book.id) {
+                    NavigationRow { model.showBook(book.id) } label: {
                         BookRow(book: book)
                     }
                     .accessibilityIdentifier("library.book.\(book.id)")
@@ -186,9 +187,9 @@ struct LibraryView: View {
     /// screenshot job shows the reader without UI automation.
     private func openReaderFromLaunchArgument() {
         let id = UserDefaults.standard.integer(forKey: "openReader")
-        guard id > 0, path.isEmpty, model.book(id: UInt64(id))?.canRead == true else { return }
-        path.append(UInt64(id))
-        path.append(ReaderRoute(bookID: UInt64(id)))
+        guard id > 0, model.libraryDestination == nil, model.book(id: UInt64(id))?.canRead == true else { return }
+        model.showBook(UInt64(id))
+        model.showReader(UInt64(id))
     }
 
     private func importEpub(_ url: URL) {

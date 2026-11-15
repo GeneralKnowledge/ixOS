@@ -7,10 +7,12 @@ import FieldKitApp
 import FieldKitFFI
 import ForgeFFI
 import ForgeKit
+import ForgeNative
 import ForgeUIShowcase
 import GoodDogApp
 import GoodDogFFI
 import PocketLibraryApp
+import PocketLibraryFFI
 import RelayApp
 import SketchbookApp
 import SoundscapeApp
@@ -124,7 +126,7 @@ enum EmbeddedApp: String, CaseIterable, Identifiable {
         case .library: PocketLibraryApp.ContentView(model: EmbeddedApps.library)
         case .goodDog: GoodDogApp.ContentView()
         case .commonplace: CommonplaceApp.ContentView(host: EmbeddedApps.commonplace)
-        case .chat: ChatApp.ContentView()
+        case .chat: ChatApp.ContentView(model: EmbeddedApps.chat)
         case .fieldKit: FieldKitApp.ContentView(host: EmbeddedApps.fieldKit)
         case .sketchbook: SketchbookApp.ContentView(host: EmbeddedApps.sketchbook)
         case .soundscape: SoundscapeApp.ContentView(host: EmbeddedApps.soundscape)
@@ -186,6 +188,9 @@ public enum EmbeddedApps {
     static let sketchbook = SketchbookApp.makeAppHost()
     static let soundscape = SoundscapeApp.makeAppHost()
     static let relay = RelayApp.makeAppHost()
+    /// One Chat core for the process, so its room connections and message
+    /// notifications don't multiply each time the sheet opens.
+    static let chat = ChatApp.ContentView.makeModel()
 
     /// Hands `url` to the hosted app whose URL scheme it uses. Each app's
     /// bindings have their own `ForgeDeepLinks`, so a link reaches an app
@@ -204,7 +209,10 @@ public enum EmbeddedApps {
         // service name; everything else (notifications, deep links) is the
         // process's, and the last app to install wins.
         let bundle = Bundle.main.bundleIdentifier ?? "org.forgemobile.devicelab"
-        GoodDogFFI.ForgeServices.install(keychainService: "\(bundle).gooddog")
+        PocketLibraryFFI.ForgeServices.install(keychainService: "\(bundle).pocketlibrary")
+        // Good Dog's services are the shared forge-native crate's, whose
+        // adapters are ForgeKit's ForgeNative module.
+        ForgeNative.ForgeServices.install(keychainService: "\(bundle).gooddog")
         CommonplaceFFI.ForgeServices.install(keychainService: "\(bundle).commonplace")
         ChatFFI.ForgeServices.install(keychainService: "\(bundle).chat")
         FieldKitFFI.ForgeServices.install(keychainService: "\(bundle).fieldkit")

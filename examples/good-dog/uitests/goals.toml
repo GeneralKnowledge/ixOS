@@ -1,4 +1,4 @@
-# GD-8 and GD-9 on a real iPhone: the sample dog's recall goal leads Today
+# GD-8, GD-9 and GD-11 on a real iPhone: the sample dog's recall goal leads Today
 # with the week's practice days; Not Today makes a rest day and is taken
 # back; the goal opens as a path; "Yes" to the first stage's question
 # celebrates and moves on; My Dog adds a second goal.
@@ -7,7 +7,7 @@
 # called", so the recall goal is already started.
 #   forge ui run examples/good-dog/uitests/goals.toml
 
-name = "GD-8, GD-9: goals, rest days and the week"
+name = "GD-8, GD-9, GD-11: goals, rest days, the week and safety"
 app = "org.forgemobile.gooddog"
 
 [[step]]
@@ -72,6 +72,20 @@ expect = { id = "goal.stage.0", value = "Passed" }
 
 [[step]]
 expect = { id = "goal.stage.1", value = "Working on it now" }
+
+# GD-11: the second stage asks the owner to confirm safe practice (a lead
+# or long line) before it can move on.
+[[step]]
+scroll = { id = "goal.safety.safe-002-recall-management" }
+
+[[step]]
+screenshot = "3b-safety-confirm"
+
+[[step]]
+tap = { id = "goal.safety.safe-002-recall-management" }
+
+[[step]]
+expect = { id = "goal.safety.safe-002-recall-management", gone = true }
 
 [[step]]
 tap = { id = "tab.dog" }

@@ -592,6 +592,7 @@ dependencies = [
  "feed-rs",
  "forge-app",
  "forge-net",
+ "forge-reader",
  "forge-runtime",
  "forge-services",
  "forge-storage",
@@ -1153,7 +1154,7 @@ checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
 
 [[package]]
 name = "forge-app"
-version = "0.5.0"
+version = "0.6.0"
 dependencies = [
  "forge-runtime",
  "forge-storage",
@@ -1173,6 +1174,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-native"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "forge-services",
+ "uniffi",
+]
+
+[[package]]
 name = "forge-net"
 version = "0.1.0"
 dependencies = [
@@ -1181,6 +1191,15 @@ dependencies = [
  "rustls-platform-verifier",
  "thiserror 2.0.21",
  "ureq",
+]
+
+[[package]]
+name = "forge-reader"
+version = "0.1.0"
+dependencies = [
+ "quick-xml 0.42.0",
+ "serde",
+ "url",
 ]
 
 [[package]]
@@ -1486,9 +1505,8 @@ dependencies = [
 name = "good-dog-app"
 version = "0.1.0"
 dependencies = [
- "async-trait",
+ "forge-native",
  "forge-runtime",
- "forge-services",
  "forge-storage",
  "good-dog-core",
  "serde",
@@ -3064,6 +3082,7 @@ dependencies = [
  "flate2",
  "forge-app",
  "forge-net",
+ "forge-reader",
  "forge-runtime",
  "forge-services",
  "forge-storage",

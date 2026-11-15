@@ -1,0 +1,37 @@
+# CP-2 on a real iPhone: an address that isn't one is refused with an
+# alert, and the library stays empty. Needs no network. Starts on an empty,
+# throwaway library.
+#   forge ui run examples/commonplace/uitests/bad-address.toml
+
+name = "CP-2: a bad feed address is refused"
+app = "org.forgemobile.agentlab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData"] }
+
+[[step]]
+tap = { id = "feeds.addFirst" }
+
+[[step]]
+type = { id = "addFeed.url", text = "not an address" }
+
+[[step]]
+tap = { id = "addFeed.save" }
+
+[[step]]
+expect = { id = "alert.ok" }
+
+[[step]]
+screenshot = "1-refused"
+
+[[step]]
+tap = { id = "alert.ok" }
+
+[[step]]
+tap = { id = "addFeed.cancel" }
+
+[[step]]
+expect = { id = "feeds.addFirst" }

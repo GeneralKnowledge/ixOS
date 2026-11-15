@@ -124,12 +124,20 @@ else
     local swift="$dir/ForgeFFI/$ns.swift"
     rm -rf "$dir/ForgeFFI"
     mkdir -p "$dir/ForgeFFI" "$dir/${ffi}FFI"
-    if [[ -f "$STAGE/forge_app.swift" ]]; then
-      # The crate uses the application runtime (forge-app). Its contract
-      # types' Swift ships in ForgeKit's ForgeApp module, not here; UniFFI
-      # writes no import for a module of external types, so add it.
-      sed 's/^import Foundation$/import Foundation\n@preconcurrency import ForgeApp/' \
-        "$STAGE/$ns.swift" >"$swift"
+    # Crates on the application runtime (forge-app) or the shared native
+    # services (forge-native) use their types as external types. Their Swift
+    # ships in ForgeKit (ForgeApp, ForgeNative), not here; UniFFI writes no
+    # import for a module of external types, so add it.
+    local imports=""
+    [[ -f "$STAGE/forge_app.swift" ]] && imports+="\n@preconcurrency import ForgeApp"
+    # A crate on the native_services!() macro has the same names itself, and
+    # can only reach forge-native through another app it links (Device Lab
+    # hosting Good Dog), so it must not import ForgeNative.
+    if [[ -f "$STAGE/forge_native.swift" ]] && ! grep -q 'public func installNativeServices(' "$STAGE/$ns.swift"; then
+      imports+="\n@preconcurrency import ForgeNative"
+    fi
+    if [[ -n "$imports" ]]; then
+      sed "s/^import Foundation\$/import Foundation$imports/" "$STAGE/$ns.swift" >"$swift"
     else
       cp "$STAGE/$ns.swift" "$swift"
     fi
@@ -146,6 +154,13 @@ else
     # (ImageIO thumbnails, the audio session, web views), for every app. Source of truth:
     # crates/forge-services/swift/helpers/.
     cp "$ROOT/crates/forge-services/swift/helpers/"*.swift "$dir/ForgeFFI/"
+    # ForgeReader's SwiftUI views, when the crate declares the reader's
+    # types (`forge_reader::reader_types!()`). Source of truth:
+    # crates/forge-reader/swift/.
+    if grep -Eq '^public struct ReaderBlock[:{ ]' "$swift"; then
+      cp "$ROOT/crates/forge-reader/swift/"*.swift "$dir/ForgeFFI/"
+      echo "[forge] Added ForgeReader (the reader's SwiftUI views)."
+    fi
     # Native services: when the crate uses `forge_services::native_services!()`,
     # Forge's Swift adapters (Keychain, notifications, ...) compile in the same
     # module as the bindings, so they can implement its protocols. Source of

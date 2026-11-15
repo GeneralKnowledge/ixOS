@@ -49,7 +49,14 @@ pub struct IosSection {
     /// App icon: a 1024x1024 PNG inside the app (xtool's `iconPath`).
     #[serde(default)]
     pub icon: Option<String>,
-    /// portrait, portrait_upside_down, landscape_left, landscape_right.
+    /// The devices the app runs on as a native app: "iphone", "ipad"
+    /// (UIDeviceFamily). Default iPhone only; an iPhone-only app still runs
+    /// on an iPad, scaled.
+    #[serde(default)]
+    pub devices: Option<Vec<String>>,
+    /// iPhone orientations: portrait, portrait_upside_down, landscape_left,
+    /// landscape_right. On iPad an app supports all four, as iPad
+    /// multitasking requires.
     #[serde(default)]
     pub orientations: Option<Vec<String>>,
     /// Custom URL schemes the app opens (`myapp://...`).
@@ -169,6 +176,24 @@ const ORIENTATIONS: &[(&str, &str)] = &[
     ("landscape_right", "UIInterfaceOrientationLandscapeRight"),
 ];
 
+/// `[ios] devices` names and their UIDeviceFamily numbers.
+const DEVICES: &[(&str, &str)] = &[("iphone", "1"), ("ipad", "2")];
+
+/// The UIDeviceFamily numbers forge.toml asks for, in order: [1] unless
+/// `[ios] devices` says otherwise.
+pub fn device_families(cfg: &ForgeConfig) -> Vec<i64> {
+    let mut families: Vec<i64> = match &ios(cfg).devices {
+        Some(devices) => devices
+            .iter()
+            .filter_map(|d| lookup(DEVICES, d).and_then(|n| n.parse().ok()))
+            .collect(),
+        None => vec![1],
+    };
+    families.sort_unstable();
+    families.dedup();
+    families
+}
+
 const BACKGROUND_MODES: &[&str] = &[
     "audio",
     "bluetooth-central",
@@ -235,6 +260,7 @@ const RESERVED_INFO_KEYS: &[(&str, &str)] = &[
     ("CFBundleIdentifier", "[app] bundle_id"),
     ("CFBundleExecutable", "[ios] xtool_product"),
     ("MinimumOSVersion", "[app] minimum_ios"),
+    ("UIDeviceFamily", "[ios] devices"),
 ];
 
 /// A property-list value.
@@ -417,6 +443,18 @@ pub fn info_plist(cfg: &ForgeConfig) -> Result<BTreeMap<String, Plist>, String> 
                 .iter()
                 .filter_map(|o| lookup(ORIENTATIONS, o).map(str::to_string)),
         ),
+    );
+    // Always written: xtool otherwise declares every app for iPhone and iPad.
+    let families = device_families(cfg);
+    if families.contains(&2) {
+        map.insert(
+            "UISupportedInterfaceOrientations~ipad".into(),
+            Plist::strings(ORIENTATIONS.iter().map(|(_, key)| key.to_string())),
+        );
+    }
+    map.insert(
+        "UIDeviceFamily".into(),
+        Plist::Array(families.into_iter().map(Plist::Integer).collect()),
     );
     if !ios.url_schemes.is_empty() {
         let mut url_type = BTreeMap::new();
@@ -768,6 +806,19 @@ pub fn validate(cfg: &ForgeConfig) -> Result<(), String> {
             return Err(format!(
                 "[ios] icon = \"{icon}\": use a .png path inside the app, such as \"Resources/AppIcon.png\""
             ));
+        }
+    }
+    if let Some(devices) = &ios.devices {
+        if devices.is_empty() {
+            return Err("[ios] devices must list at least one device".into());
+        }
+        for d in devices {
+            if lookup(DEVICES, d).is_none() {
+                return Err(format!(
+                    "[ios] devices: unknown \"{d}\" (use {})",
+                    one_of(DEVICES)
+                ));
+            }
         }
     }
     if let Some(orientations) = &ios.orientations {
@@ -1412,6 +1463,15 @@ pub fn xcode_differences(cfg: &ForgeConfig, app_dir: &Path) -> Vec<String> {
             ));
         }
     }
+    let want: Vec<String> = device_families(cfg).iter().map(i64::to_string).collect();
+    let want = want.join(",");
+    for have in values("TARGETED_DEVICE_FAMILY") {
+        if have.replace(' ', "") != want {
+            out.push(format!(
+                "{rel}: TARGETED_DEVICE_FAMILY is {have} but forge.toml devices means {want}"
+            ));
+        }
+    }
     if !project
         .lines()
         .any(|l| l.trim_start().starts_with("INFOPLIST_FILE = "))
@@ -1584,6 +1644,34 @@ ios_device = true
         assert!(yml.contains("product: AppHostXtool\n"));
         assert!(yml.contains("infoPath: Info.plist\n"));
         assert!(!yml.contains("entitlementsPath"));
+    }
+
+    #[test]
+    fn devices_set_the_device_family() {
+        // Without the key an app is iPhone only, never xtool's iPhone + iPad.
+        let info = info_plist(&cfg("").unwrap()).unwrap();
+        assert_eq!(
+            info["UIDeviceFamily"],
+            Plist::Array(vec![Plist::Integer(1)])
+        );
+        assert!(!info.contains_key("UISupportedInterfaceOrientations~ipad"));
+        let c = cfg("[ios]\ndevices = [\"ipad\", \"iphone\"]\n").unwrap();
+        let info = info_plist(&c).unwrap();
+        assert_eq!(
+            info["UIDeviceFamily"],
+            Plist::Array(vec![Plist::Integer(1), Plist::Integer(2)])
+        );
+        // iPad multitasking needs every orientation.
+        assert_eq!(
+            info["UISupportedInterfaceOrientations~ipad"],
+            Plist::strings(ORIENTATIONS.iter().map(|(_, k)| k.to_string()))
+        );
+        let bad = cfg("[ios]\ndevices = [\"watch\"]\n").unwrap_err();
+        assert!(bad.contains("[ios] devices: unknown \"watch\""), "{bad}");
+        let empty = cfg("[ios]\ndevices = []\n").unwrap_err();
+        assert!(empty.contains("at least one device"), "{empty}");
+        let raw = cfg("[ios.info]\nUIDeviceFamily = [1]\n").unwrap_err();
+        assert!(raw.contains("[ios] devices"), "{raw}");
     }
 
     #[test]
@@ -1988,6 +2076,17 @@ LSApplicationQueriesSchemes = ["maps"]
         );
         assert!(diffs.contains("DEVELOPMENT_TEAM is unset"), "{diffs}");
         assert!(diffs.contains("INFOPLIST_FILE"), "{diffs}");
+        assert!(!diffs.contains("TARGETED_DEVICE_FAMILY"), "{diffs}");
+        fs::write(
+            proj.join("project.pbxproj"),
+            "\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";\n\t\t\t\tINFOPLIST_FILE = ../Info.plist;\n",
+        )
+        .unwrap();
+        let diffs = xcode_differences(&c, tmp.path()).join("\n");
+        assert!(
+            diffs.contains("TARGETED_DEVICE_FAMILY is 1,2 but forge.toml devices means 1"),
+            "{diffs}"
+        );
     }
 
     /// The committed examples' generated files match their forge.toml (CI's

@@ -59,3 +59,9 @@ id = "GD-10"
 statement = "Each goal stage has a short lesson plan (learn, practise, everyday, quick check) that unlocks one lesson at a time; recording a session finishes a practise lesson, and a quick check explains its answer whether right or wrong."
 twin = ["GoodDogModelTests.testLessonsUnlockOneByOneAndAQuickCheckExplainsEitherWay"]
 device = ["uitests/lessons.toml"]
+
+[[requirement]]
+id = "GD-11"
+statement = "A goal stage applies its DogResearch safety rules: the owner confirms safe practice (a lead or long line for recall) before the stage can move on, and a worry noted in a session holds the stage, pointing to a vet or behaviourist, until the owner says they've had advice."
+twin = ["GoodDogModelTests.testASafetyRuleIsConfirmedBeforeTheStageCanMoveOn"]
+device = ["uitests/goals.toml"]

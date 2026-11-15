@@ -18,6 +18,7 @@ ios_simulator = false
 # this section on every `forge build ios` / `forge run ios` (or `forge config
 # sync`), so edit them here, not in those files. All keys: docs/app-config.md.
 [ios]
+devices = ["iphone"]
 xtool_product = "PocketLibraryXtool"
 orientations = ["portrait"]
 # Read-aloud keeps speaking when the screen locks or the app is in the background.

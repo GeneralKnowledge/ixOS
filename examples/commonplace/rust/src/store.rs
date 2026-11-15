@@ -2,15 +2,17 @@
 //! command thread touches it; every change is one transaction.
 
 use std::path::Path;
+use std::sync::Mutex;
 
-use forge_storage::rusqlite::{params, OptionalExtension, Transaction};
+use forge_storage::rusqlite::{params, Connection, OpenFlags, OptionalExtension, Transaction};
 use forge_storage::{Database, Opened};
 
 use crate::feed::{self, ParsedFeed};
-use crate::model::{AppError, ArticleSummary, ArticleText, Feed};
+use crate::model::{AppError, AppSettings, ArticleSummary, ArticleText, Feed};
 
 /// Schema steps: step `i` brings the file from version `i` to `i + 1`.
-const MIGRATIONS: &[&str] = &["
+const MIGRATIONS: &[&str] = &[
+    "
     CREATE TABLE feeds (
         id INTEGER PRIMARY KEY,
         url TEXT NOT NULL UNIQUE,
@@ -39,7 +41,24 @@ const MIGRATIONS: &[&str] = &["
         UNIQUE (feed_id, guid)
     );
     CREATE INDEX articles_by_date ON articles(published_at_ms DESC, id DESC);
-"];
+",
+    "
+    -- Search: each article's title and text, by article id. Filled by Rust
+    -- (the text is the article's HTML as plain text); an article's row goes
+    -- with it.
+    CREATE VIRTUAL TABLE article_search USING fts5(
+        title, body, tokenize = 'unicode61 remove_diacritics 2'
+    );
+    CREATE TRIGGER article_search_forget AFTER DELETE ON articles BEGIN
+        DELETE FROM article_search WHERE rowid = old.id;
+    END;
+    -- The person's settings (AppSettings), one row per setting.
+    CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+",
+];
+
+/// The most results a search returns.
+const MAX_RESULTS: usize = 500;
 
 /// How long a row's summary is, in characters.
 const SUMMARY_CHARS: usize = 200;
@@ -71,6 +90,7 @@ pub struct Snapshot {
     pub feeds: Vec<Feed>,
     /// Every article, newest first.
     pub articles: Vec<ArticleSummary>,
+    pub settings: AppSettings,
     /// Where each feed is fetched from, with its cache validators.
     pub sources: Vec<FeedSource>,
 }
@@ -100,7 +120,79 @@ impl Store {
         db.connection()
             .execute_batch("PRAGMA foreign_keys = ON;")
             .map_err(AppError::from)?;
-        Ok(Self { db })
+        let mut store = Self { db };
+        store.index_if_behind()?;
+        Ok(store)
+    }
+
+    /// Fills the search index when it doesn't hold every article: once
+    /// after the update that added search, and after anything that left it
+    /// short.
+    fn index_if_behind(&mut self) -> Result<(), AppError> {
+        let c = self.db.connection();
+        let articles: i64 = c.query_row("SELECT COUNT(*) FROM articles", [], |r| r.get(0))?;
+        let indexed: i64 = c.query_row("SELECT COUNT(*) FROM article_search", [], |r| r.get(0))?;
+        if articles == indexed {
+            return Ok(());
+        }
+        self.db.transaction(|tx| {
+            tx.execute("DELETE FROM article_search", [])?;
+            let rows: Vec<(i64, String, String)> = {
+                let mut q = tx.prepare("SELECT id, title, html FROM articles")?;
+                let rows = q
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                rows
+            };
+            for (id, title, html) in &rows {
+                index_article(tx, *id, title, html)?;
+            }
+            forge_runtime::logging::info!("search index rebuilt for {} articles", rows.len());
+            Ok::<_, AppError>(())
+        })
+    }
+
+    /// The person's settings (defaults for any never set).
+    pub fn settings(&self) -> Result<AppSettings, AppError> {
+        let mut settings = AppSettings::default();
+        let mut q = self
+            .db
+            .connection()
+            .prepare("SELECT key, value FROM settings")?;
+        let rows = q
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<Result<Vec<_>, _>>()?;
+        for (key, value) in rows {
+            let on = value == "1";
+            match key.as_str() {
+                "oldest_first" => settings.oldest_first = on,
+                "hide_read" => settings.hide_read = on,
+                "show_summaries" => settings.show_summaries = on,
+                "open_links_in_app" => settings.open_links_in_app = on,
+                // A setting from a newer version: kept, not understood.
+                _ => {}
+            }
+        }
+        Ok(settings)
+    }
+
+    pub fn set_settings(&mut self, settings: &AppSettings) -> Result<(), AppError> {
+        let values = [
+            ("oldest_first", settings.oldest_first),
+            ("hide_read", settings.hide_read),
+            ("show_summaries", settings.show_summaries),
+            ("open_links_in_app", settings.open_links_in_app),
+        ];
+        self.db.transaction(|tx| {
+            for (key, on) in values {
+                tx.execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                     ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                    params![key, if on { "1" } else { "0" }],
+                )?;
+            }
+            Ok(())
+        })
     }
 
     pub fn snapshot(&self) -> Result<Snapshot, AppError> {
@@ -153,6 +245,7 @@ impl Store {
             feeds,
             articles,
             sources: self.sources()?,
+            settings: self.settings()?,
         })
     }
 
@@ -316,14 +409,24 @@ impl Store {
                 [id],
                 |r| {
                     let html: String = r.get(6)?;
+                    let url: Option<String> = r.get(4)?;
+                    let title: String = r.get(2)?;
+                    let blocks = forge_reader::blocks_from_html(
+                        &html,
+                        &mut forge_reader::WebResources::new(url.as_deref()),
+                    );
                     Ok(ArticleText {
                         id: r.get(0)?,
                         feed_title: r.get(1)?,
-                        title: r.get(2)?,
+                        title: title.clone(),
                         author: r.get(3)?,
-                        url: r.get(4)?,
+                        url,
                         published_at_ms: r.get(5)?,
-                        paragraphs: feed::paragraphs(&html),
+                        body: forge_reader::ReaderSection {
+                            id: "article".into(),
+                            title,
+                            blocks,
+                        },
                         read: r.get(7)?,
                         bookmarked: r.get(8)?,
                     })
@@ -365,6 +468,14 @@ fn merge_articles(
              WHERE feed_id = ?1 AND guid = ?2",
             params![feed_id, a.guid, a.title, a.url, a.author, a.html, summary],
         )?;
+        if changed > 0 {
+            let id: i64 = tx.query_row(
+                "SELECT id FROM articles WHERE feed_id = ?1 AND guid = ?2",
+                params![feed_id, a.guid],
+                |r| r.get(0),
+            )?;
+            index_article(tx, id, &a.title, &a.html)?;
+        }
         if changed == 0 {
             tx.execute(
                 "INSERT INTO articles (feed_id, guid, title, url, author, html, summary,
@@ -382,6 +493,7 @@ fn merge_articles(
                     now_ms
                 ],
             )?;
+            index_article(tx, tx.last_insert_rowid(), &a.title, &a.html)?;
             added += 1;
         }
     }
@@ -418,6 +530,66 @@ fn forget_old_articles(
         }
     }
     Ok(forgotten)
+}
+
+/// Puts an article's title and text in the search index (replacing what
+/// was there).
+fn index_article(tx: &Transaction<'_>, id: i64, title: &str, html: &str) -> Result<(), AppError> {
+    tx.execute("DELETE FROM article_search WHERE rowid = ?1", [id])?;
+    tx.execute(
+        "INSERT INTO article_search (rowid, title, body) VALUES (?1, ?2, ?3)",
+        params![id, title, feed::paragraphs(html).join("\n")],
+    )?;
+    Ok(())
+}
+
+/// Searches the library through its own read-only connection, so a search
+/// never waits for a command and never counts as a change (SQLite's WAL
+/// lets it read while the command thread writes).
+pub struct Searcher {
+    connection: Mutex<Connection>,
+}
+
+impl Searcher {
+    /// Opens `library.sqlite` in `directory` for reading, after `Store::open`.
+    pub fn open(directory: &Path) -> Result<Self, AppError> {
+        let connection = Connection::open_with_flags(
+            directory.join("library.sqlite"),
+            OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
+        )?;
+        Ok(Self {
+            connection: Mutex::new(connection),
+        })
+    }
+
+    /// The ids of the articles whose title or text holds every word of
+    /// `query` (a word matches as a prefix: "feed" finds "feeds"). Empty
+    /// for a query with no words.
+    pub fn search(&self, query: &str) -> Result<Vec<i64>, AppError> {
+        let Some(expression) = match_expression(query) else {
+            return Ok(Vec::new());
+        };
+        let connection = forge_runtime::lock(&self.connection);
+        let mut q = connection.prepare_cached(
+            "SELECT rowid FROM article_search WHERE article_search MATCH ?1 LIMIT ?2",
+        )?;
+        let ids = q
+            .query_map(params![expression, MAX_RESULTS as i64], |r| r.get(0))?
+            .collect::<Result<Vec<i64>, _>>()?;
+        Ok(ids)
+    }
+}
+
+/// What the person typed as an FTS5 query: each word quoted (so `AND`,
+/// `-` or a `"` in it is text, not syntax) and matched as a prefix.
+fn match_expression(query: &str) -> Option<String> {
+    let words: Vec<String> = query
+        .split_whitespace()
+        .map(|w| w.replace('"', ""))
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{w}\"*"))
+        .collect();
+    (!words.is_empty()).then(|| words.join(" "))
 }
 
 /// A name for a feed that has no title: its address's host.

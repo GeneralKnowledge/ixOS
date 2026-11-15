@@ -1,5 +1,6 @@
 import GoodDogApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeApplication: App {

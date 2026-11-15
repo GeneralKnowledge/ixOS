@@ -177,6 +177,25 @@ final class LibraryModelTests: XCTestCase {
     }
 
     @MainActor
+    func testScreensAreTheModelsDestinations() async throws {
+        let model = await openModel(try makeDirectory())
+        // Adding from the sheet closes it and opens the new book.
+        model.libraryDestination = .addBook
+        let book = try await model.add(input("Dune"))
+        model.showBook(book.id)
+        XCTAssertEqual(model.libraryDestination, .book(book.id))
+        XCTAssertEqual(model.libraryDestination?.book, book.id)
+        // The reader covers the app over whichever tab opened it, and
+        // leaves that tab's pushed book where it was.
+        model.showReader(book.id)
+        XCTAssertEqual(model.fullScreen?.reader?.bookID, book.id)
+        XCTAssertEqual(model.libraryDestination, .book(book.id))
+        model.fullScreen = nil
+        XCTAssertNil(model.fullScreen?.reader)
+        model.close()
+    }
+
+    @MainActor
     func testDeletingAsksFirstAndConfirmingDeletes() async throws {
         let model = await openModel(try makeDirectory())
         let book = try await model.add(input("Doomed"))

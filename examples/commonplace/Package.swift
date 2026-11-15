@@ -72,6 +72,7 @@ let package = Package(
                 "CommonplaceFFI",
                 .product(name: "ForgeKit", package: "forgekit"),
                 .product(name: "ForgeAppKit", package: "forgekit"),
+                .product(name: "ForgeUI", package: "forgekit"),
             ],
             path: "Sources/AppHost"
         ),

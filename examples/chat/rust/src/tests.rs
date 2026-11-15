@@ -610,3 +610,155 @@ fn the_app_lock_needs_a_way_to_unlock_and_survives_a_relaunch() {
     again.set_app_lock(false).unwrap();
     assert!(!again.app_lock());
 }
+
+/// A core with notifications through the forge-services fakes, signed up
+/// on `server` as `name`.
+fn notifying_core(
+    server: &Server,
+    dir: &std::path::Path,
+    name: &str,
+) -> (Arc<ChatCore>, crate::native::testing::Fakes) {
+    let (services, fakes) = NativeServices::for_tests(dir.join("services"));
+    let core = ChatCore::open_with_services(
+        dir.join("chats"),
+        Arc::new(MemoryCredentials::default()),
+        Some(services),
+    )
+    .map(Arc::new)
+    .unwrap();
+    block_on(core.sign_up(server.url.clone(), name.into())).unwrap();
+    core.set_phase(AppPhase::Active);
+    (core, fakes)
+}
+
+#[test]
+fn message_notifications_come_from_rust() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let (me, fakes) = notifying_core(&server, &dir.path().join("me"), "Me");
+    let other =
+        ChatCore::with_memory_credentials(dir.path().join("other").to_string_lossy().into())
+            .unwrap();
+    block_on(other.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    let rooms = block_on(me.list_conversations()).unwrap();
+    let general = rooms
+        .iter()
+        .find(|c| c.title == "General")
+        .unwrap()
+        .id
+        .clone();
+    let random = rooms
+        .iter()
+        .find(|c| c.title == "Random")
+        .unwrap()
+        .id
+        .clone();
+    // Listing watches every room, so news in rooms that aren't open arrives.
+    wait_until("every room is live", || {
+        me.live_streams() as usize == rooms.len()
+    });
+    me.set_muted(random.clone(), true).unwrap();
+
+    block_on(other.list_conversations()).unwrap();
+    let hello = block_on(other.send_message(general.clone(), "hello from Ana".into())).unwrap();
+    block_on(other.send_message(random.clone(), "muted room".into())).unwrap();
+    wait_until("the notification", || {
+        !fakes.notifier.scheduled().is_empty()
+    });
+    std::thread::sleep(Duration::from_millis(200));
+    let shown = fakes.notifier.scheduled();
+    assert_eq!(shown.len(), 1, "the muted room stays quiet: {shown:#?}");
+    let note = &shown[0];
+    assert_eq!(note.id, hello.id);
+    assert_eq!(note.title, "General");
+    assert_eq!(note.subtitle.as_deref(), Some("Ana"));
+    assert_eq!(note.body, "hello from Ana");
+    assert_eq!(note.thread_id.as_deref(), Some(general.as_str()));
+    assert_eq!(note.category.as_deref(), Some(MESSAGE_NOTIFICATION));
+    let link = crate::native::parse_deep_link(note.deep_link.clone().unwrap()).unwrap();
+    assert_eq!(
+        link.route,
+        vec!["conversation".to_string(), general.clone()]
+    );
+    assert_eq!(link.query_value("message"), Some(hello.id.as_str()));
+
+    // Our own messages and an open room never notify.
+    block_on(me.send_message(general.clone(), "mine".into())).unwrap();
+    me.subscribe(general.clone()).unwrap();
+    block_on(other.send_message(general.clone(), "while open".into())).unwrap();
+    std::thread::sleep(Duration::from_millis(300));
+    assert_eq!(fakes.notifier.scheduled().len(), 1);
+    me.shutdown();
+}
+
+#[test]
+fn a_background_refresh_announces_what_arrived_while_away() {
+    let server = Server::in_memory();
+    let dir = tempfile::tempdir().unwrap();
+    let (me, fakes) = notifying_core(&server, &dir.path().join("me"), "Me");
+    let other =
+        ChatCore::with_memory_credentials(dir.path().join("other").to_string_lossy().into())
+            .unwrap();
+    block_on(other.sign_up(server.url.clone(), "Ana".into())).unwrap();
+    let rooms = block_on(me.list_conversations()).unwrap();
+    let general = rooms
+        .iter()
+        .find(|c| c.title == "General")
+        .unwrap()
+        .id
+        .clone();
+    // Left open on screen when the phone was locked.
+    me.subscribe(general.clone()).unwrap();
+    me.set_phase(AppPhase::Background);
+    wait_until("streams stop", || me.live_streams() == 0);
+
+    // iOS gives the app a window later.
+    let (service, scheduler) =
+        crate::native::background::BackgroundService::for_tests(&[BACKGROUND_REFRESH]);
+    me.register_background_refresh_with(&service);
+    let submitted = scheduler.submitted.lock().unwrap().clone();
+    assert_eq!(submitted.len(), 1);
+    assert_eq!(submitted[0].identifier, BACKGROUND_REFRESH);
+
+    block_on(other.list_conversations()).unwrap();
+    let missed = block_on(other.send_message(general.clone(), "are you there?".into())).unwrap();
+    let (_run, results) =
+        crate::native::background::testing::FakeScheduler::start(&service, BACKGROUND_REFRESH);
+    wait_until("the run finishes", || !results.lock().unwrap().is_empty());
+    assert_eq!(*results.lock().unwrap(), vec![true]);
+    let shown = fakes.notifier.scheduled();
+    assert_eq!(shown.len(), 1, "{shown:#?}");
+    assert_eq!(shown[0].id, missed.id);
+    let room = me
+        .cached_conversations()
+        .into_iter()
+        .find(|c| c.id == general)
+        .unwrap();
+    assert_eq!(room.unread_count, 1, "not read while the phone was locked");
+
+    // A second window announces nothing new.
+    assert_eq!(me.catch_up_in_background(&|| false).unwrap(), 0);
+
+    // Back on screen: the open room is read at once.
+    me.set_phase(AppPhase::Active);
+    wait_until("read", || {
+        me.cached_conversations()
+            .into_iter()
+            .any(|c| c.id == general && c.unread_count == 0)
+    });
+    me.shutdown();
+}
+
+#[test]
+fn a_refresh_signed_out_does_nothing() {
+    let dir = tempfile::tempdir().unwrap();
+    let (services, fakes) = NativeServices::for_tests(dir.path().join("services"));
+    let core = ChatCore::open_with_services(
+        dir.path().join("chats"),
+        Arc::new(MemoryCredentials::default()),
+        Some(services),
+    )
+    .unwrap();
+    assert_eq!(core.catch_up_in_background(&|| false).unwrap(), 0);
+    assert!(fakes.notifier.scheduled().is_empty());
+}

@@ -1,5 +1,6 @@
 import CommonplaceApp
 import SwiftUI
+import ForgeUI
 
 @main
 struct ForgeAppLauncher: App {

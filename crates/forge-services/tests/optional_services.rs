@@ -344,6 +344,8 @@ fn background_refresh_recurs_and_runs_its_handler() {
     use background::*;
 
     let (service, fake) = BackgroundService::for_tests(&["app.refresh", "app.upkeep"]);
+    // Nothing handled yet: a host with several apps offers tasks elsewhere.
+    assert!(!service.handles("app.refresh"));
     let ran = Arc::new(Mutex::new(Vec::new()));
     let seen = ran.clone();
     service
@@ -355,6 +357,8 @@ fn background_refresh_recurs_and_runs_its_handler() {
             }
         })
         .unwrap();
+    assert!(service.handles("app.refresh"));
+    assert!(!service.handles("app.upkeep"));
     // Registering asks iOS for the first window.
     assert_eq!(
         *fake.submitted.lock().unwrap(),

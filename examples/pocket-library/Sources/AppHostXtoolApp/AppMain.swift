@@ -1,5 +1,6 @@
 import PocketLibraryApp
 import SwiftUI
+import ForgeUI
 
 // The xtool entry point. AppHostLauncher is the same app for `swift run` and the Xcode project.
 @main
@@ -8,6 +9,8 @@ struct ForgeAppXtool: App {
     @State private var model = LibraryModel()
 
     init() {
+        // URLSession for catalogue requests (docs/native-services.md).
+        AppServices.install()
         model.attachToLifecycle()
     }
 

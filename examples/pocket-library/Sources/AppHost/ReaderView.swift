@@ -4,23 +4,14 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-/// Pushed from a book's detail screen to open it in the reader.
-struct ReaderRoute: Hashable {
-    let bookID: UInt64
-}
-
 /// Reads a book's EPUB: one chapter at a time, scrolling, with the book's
-/// text laid out natively (so it follows Dynamic Type, dark mode and the
-/// reader's own text settings). Rust parses the EPUB and decides what the
-/// position means for the book's page; this view only lays out blocks and
-/// reports which one is at the top.
+/// text laid out natively by ForgeReader (so it follows Dynamic Type, dark
+/// mode and the reader's own text settings). Rust parses the EPUB, keeps
+/// the place as a block anchor and decides what it means for the book's
+/// page; this view reports which block is at the top.
 struct ReaderView: View {
     let bookID: UInt64
     @Environment(LibraryModel.self) private var model
-    @Environment(\.dynamicTypeSize) private var systemTextSize
-    /// Steps larger or smaller than the system text size.
-    @AppStorage("readerTextSizeStep") private var textStep = 0
-    @AppStorage("readerSerif") private var serif = true
 
     @State private var contents: ReaderContents?
     @State private var chapter: ReaderChapter?
@@ -35,7 +26,7 @@ struct ReaderView: View {
     @State private var showingContents = false
     @State private var showingSummary = false
     @State private var showingBookSummary = false
-    @State private var lastSaved: ReadingPosition?
+    @State private var lastSaved: SavedPlace?
     @State private var finishedCount = 0
     /// Counts chapter loads: each gets a fresh scroll view.
     @State private var loadCount = 0
@@ -56,14 +47,14 @@ struct ReaderView: View {
                 ProgressView()
             }
         }
-        .navigationTitle(chapter?.title ?? contents?.title ?? "")
+        .navigationTitle(chapter?.section.title ?? contents?.title ?? "")
         .inlineNavigationTitle()
         .hidesTabBar()
         .toolbar { toolbar }
         .sheet(isPresented: $showingContents) {
             if let contents {
                 ReaderContentsSheet(contents: contents, current: chapter?.index ?? 0) { index in
-                    Task { await show(chapter: index, fraction: 0) }
+                    Task { await show(chapter: index) }
                 }
                 .presentationDetents([.medium, .large])
             }
@@ -71,7 +62,7 @@ struct ReaderView: View {
         .sheet(isPresented: $showingSummary) {
             if let chapter {
                 ChapterSummarySheet(
-                    chapterTitle: chapter.title,
+                    chapterTitle: chapter.section.title,
                     state: ChapterSummaryState(
                         library: model, bookID: bookID, chapter: chapter.index,
                         model: ForgeAppleModel(permissiveContentTransformations: true))
@@ -106,43 +97,19 @@ struct ReaderView: View {
     // MARK: Layout
 
     private func reader(_ contents: ReaderContents, _ chapter: ReaderChapter) -> some View {
-        ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 16) {
-                    ForEach(Array(chapter.blocks.enumerated()), id: \.offset) { index, block in
-                        ReaderBlockView(
-                            block: block,
-                            serif: serif,
-                            spokenWord: readAloud.block == index ? readAloud.word : nil
-                        )
-                        .id(index)
-                    }
-                    chapterEnd(contents, chapter)
-                        .id(chapter.blocks.count)
-                }
-                .scrollTargetLayout()
-                .padding()
-                .frame(maxWidth: 640)
-                .frame(maxWidth: .infinity)
-                .dynamicTypeSize(textSize)
-            }
-            .scrollPosition(id: $topBlock, anchor: .top)
-            .task(id: loadCount) {
-                // A new chapter starts at the top; a restored one at the
-                // saved block, once its rows exist.
-                guard let target = pendingScroll else { return }
-                if target > 0 {
-                    try? await Task.sleep(for: .milliseconds(50))
-                    proxy.scrollTo(target, anchor: .top)
-                }
-                topBlock = target
-                pendingScroll = nil
-            }
-            // Follow the voice: the block being read goes to the top.
-            .onChange(of: readAloud.block) { _, block in
-                guard let block, readAloud.state == .playing, pendingScroll == nil else { return }
-                withAnimation { proxy.scrollTo(block, anchor: .top) }
-            }
+        ForgeReaderSectionView(
+            blocks: chapter.section.blocks,
+            topBlock: $topBlock,
+            scrollTarget: $pendingScroll,
+            spokenBlock: readAloud.block,
+            spokenWord: readAloud.word,
+            header: { EmptyView() },
+            footer: { chapterEnd(contents, chapter) }
+        )
+        // Follow the voice: the block being read goes to the top.
+        .onChange(of: readAloud.block) { _, block in
+            guard let block, readAloud.state == .playing, pendingScroll == nil else { return }
+            pendingScroll = block
         }
         // A fresh scroll view per chapter, so each starts at its top.
         .id(loadCount)
@@ -164,7 +131,7 @@ struct ReaderView: View {
             Divider()
             if let next = contents.chapters.first(where: { $0.index == chapter.index + 1 }) {
                 Button {
-                    Task { await show(chapter: next.index, fraction: 0) }
+                    Task { await show(chapter: next.index) }
                 } label: {
                     Label("Next: \(next.title)", systemImage: "chevron.forward")
                         .multilineTextAlignment(.center)
@@ -196,7 +163,7 @@ struct ReaderView: View {
         let index = Int(chapter.index)
         return HStack {
             Button("Previous Chapter", systemImage: "chevron.backward") {
-                Task { await show(chapter: chapter.index - 1, fraction: 0) }
+                Task { await show(chapter: chapter.index - 1) }
             }
             .labelStyle(.iconOnly)
             .disabled(index == 0 || loadingChapter)
@@ -213,7 +180,7 @@ struct ReaderView: View {
             .accessibilityElement(children: .combine)
             Spacer()
             Button("Next Chapter", systemImage: "chevron.forward") {
-                Task { await show(chapter: chapter.index + 1, fraction: 0) }
+                Task { await show(chapter: chapter.index + 1) }
             }
             .labelStyle(.iconOnly)
             .disabled(index + 1 >= count || loadingChapter)
@@ -269,22 +236,7 @@ struct ReaderView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button("Larger Text", systemImage: "textformat.size.larger") { textStep += 1 }
-                    .disabled(textSize == DynamicTypeSize.allCases.last)
-                Button("Smaller Text", systemImage: "textformat.size.smaller") { textStep -= 1 }
-                    .disabled(textSize == DynamicTypeSize.allCases.first)
-                if textStep != 0 {
-                    Button("System Text Size", systemImage: "arrow.counterclockwise") { textStep = 0 }
-                }
-                Picker("Font", selection: $serif) {
-                    Text("Serif").tag(true)
-                    Text("System").tag(false)
-                }
-            } label: {
-                Label("Text Settings", systemImage: "textformat.size")
-            }
-            .accessibilityIdentifier("reader.textSettings")
+            ForgeReaderTextMenu(identifier: "reader.textSettings")
         }
         ToolbarItem(placement: .primaryAction) {
             Button("Contents", systemImage: "list.bullet") { showingContents = true }
@@ -313,12 +265,6 @@ struct ReaderView: View {
         }
     }
 
-    private var textSize: DynamicTypeSize {
-        let sizes = DynamicTypeSize.allCases
-        let base = sizes.firstIndex(of: systemTextSize) ?? sizes.startIndex
-        return sizes[min(max(base + textStep, 0), sizes.count - 1)]
-    }
-
     /// How far through the book the top of the screen is, by words (for
     /// the progress bar only; Rust works out the page).
     private func bookFraction(_ contents: ReaderContents, _ chapter: ReaderChapter) -> Double {
@@ -329,8 +275,9 @@ struct ReaderView: View {
     }
 
     private func fraction(in chapter: ReaderChapter) -> Double {
-        guard !chapter.blocks.isEmpty else { return 0 }
-        return min(Double(topBlock ?? 0) / Double(chapter.blocks.count), 1)
+        let blocks = chapter.section.blocks
+        guard !blocks.isEmpty else { return 0 }
+        return min(Double(topBlock ?? 0) / Double(blocks.count), 1)
     }
 
     // MARK: Actions
@@ -340,22 +287,26 @@ struct ReaderView: View {
         do {
             let contents = try await model.openReader(bookID)
             self.contents = contents
-            lastSaved = contents.start
             prepareReadAloud(contents)
-            await show(chapter: contents.start.chapter, fraction: contents.start.fraction)
+            await show(chapter: contents.start.chapter)
         } catch {
             openError = ForgeFailure(error)
         }
     }
 
-    private func show(chapter index: UInt32, fraction: Double) async {
+    /// Loads chapter `index`: at its top, or at the saved place the first
+    /// time the chapter the book opens at is loaded (Rust resolves the
+    /// saved anchor).
+    private func show(chapter index: UInt32) async {
         savePosition()
         loadingChapter = true
         defer { loadingChapter = false }
         do {
             let loaded = try await model.chapter(bookID, index: index)
-            let last = max(loaded.blocks.count - 1, 0)
-            pendingScroll = min(Int((fraction * Double(loaded.blocks.count)).rounded(.down)), last)
+            let last = max(loaded.section.blocks.count - 1, 0)
+            let start = min(Int(loaded.start?.block ?? 0), last)
+            pendingScroll = start
+            if lastSaved == nil { lastSaved = SavedPlace(chapter: index, block: start) }
             topBlock = nil
             chapter = loaded
             loadCount += 1
@@ -390,25 +341,23 @@ struct ReaderView: View {
                     readAloud.stop()
                     return
                 }
-                await show(chapter: chapter.index + 1, fraction: 0)
+                await show(chapter: chapter.index + 1)
             }
         }
     }
 
     private func savePosition(block: Int? = nil) {
         guard let chapter, pendingScroll == nil else { return }
-        let fraction = block.map { chapter.blocks.isEmpty ? 0 : min(Double($0) / Double(chapter.blocks.count), 1) }
-            ?? fraction(in: chapter)
-        let position = ReadingPosition(chapter: chapter.index, fraction: fraction)
-        guard position != lastSaved else { return }
+        let place = SavedPlace(chapter: chapter.index, block: block ?? topBlock ?? 0)
+        guard place != lastSaved else { return }
         let previous = lastSaved
-        lastSaved = position
+        lastSaved = place
         Task {
             do {
-                try await model.saveReadingPosition(bookID, chapter: position.chapter, fraction: position.fraction)
+                try await model.saveReadingPosition(bookID, chapter: place.chapter, block: place.block)
             } catch {
                 // Not saved: the next move, or leaving, tries again.
-                if lastSaved == position { lastSaved = previous }
+                if lastSaved == place { lastSaved = previous }
                 self.error = .failure(error)
             }
         }
@@ -426,121 +375,15 @@ struct ReaderView: View {
     }
 }
 
+/// A block of a chapter: what the reader last saved.
+private struct SavedPlace: Equatable {
+    let chapter: UInt32
+    let block: Int
+}
+
 private struct PositionKey: Hashable {
     let chapter: UInt32?
     let block: Int?
-}
-
-/// One paragraph, heading, quote, list item, scene break or image.
-struct ReaderBlockView: View {
-    let block: TextBlock
-    let serif: Bool
-    /// The word being read aloud, if this block is being read.
-    var spokenWord: NSRange?
-
-    private var design: Font.Design { serif ? .serif : .default }
-
-    var body: some View {
-        switch block.kind {
-        case .heading(let level):
-            Text(attributed)
-                .font(.system(headingStyle(level), design: design, weight: .semibold))
-                .padding(.top, level <= 2 ? 16 : 8)
-                .accessibilityAddTraits(.isHeader)
-        case .paragraph:
-            Text(attributed)
-                .font(.system(.body, design: design))
-                .lineSpacing(4)
-        case .quote:
-            Text(attributed)
-                .font(.system(.body, design: design))
-                .lineSpacing(4)
-                .foregroundStyle(.secondary)
-                .padding(.leading, 16)
-                .overlay(alignment: .leading) {
-                    Capsule()
-                        .fill(.quaternary)
-                        .frame(width: 3)
-                }
-        case .listItem(let marker):
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(marker)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
-                Text(attributed)
-                    .lineSpacing(4)
-            }
-            .font(.system(.body, design: design))
-        case .preformatted:
-            ScrollView(.horizontal) {
-                Text(attributed)
-                    .font(.system(.callout, design: .monospaced))
-            }
-        case .separator:
-            Text("⁂")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel("Section break")
-        case .image(let file, let alt):
-            ReaderImage(file: file, alt: alt)
-        }
-    }
-
-    private func headingStyle(_ level: UInt8) -> Font.TextStyle {
-        switch level {
-        case 1: return .title
-        case 2: return .title2
-        case 3: return .title3
-        default: return .headline
-        }
-    }
-
-    private var attributed: AttributedString {
-        var text = AttributedString()
-        for span in block.spans {
-            var part = AttributedString(span.text)
-            var intent: InlinePresentationIntent = []
-            if span.bold { intent.insert(.stronglyEmphasized) }
-            if span.italic { intent.insert(.emphasized) }
-            if span.monospace { intent.insert(.code) }
-            if !intent.isEmpty { part.inlinePresentationIntent = intent }
-            text.append(part)
-        }
-        if let spokenWord, let range = Range<AttributedString.Index>(spokenWord, in: text) {
-            text[range].backgroundColor = Color.accentColor.opacity(0.3)
-        }
-        return text
-    }
-}
-
-/// A picture from the book, scaled to the text column.
-private struct ReaderImage: View {
-    let file: String
-    let alt: String
-    @State private var image: Image?
-    @State private var loaded = false
-
-    var body: some View {
-        Group {
-            if let image {
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .frame(maxWidth: .infinity)
-            } else if !loaded {
-                ProgressView()
-                    .frame(maxWidth: .infinity, minHeight: 120)
-            }
-        }
-        .accessibilityElement()
-        .accessibilityLabel(alt.isEmpty ? "Picture" : alt)
-        .accessibilityHidden(alt.isEmpty)
-        .task(id: file) {
-            image = await CoverThumbnails.image(at: file, maxPixels: 1600)
-            loaded = true
-        }
-    }
 }
 
 /// The book's table of contents; picking a chapter opens it.

@@ -1,9 +1,11 @@
 @preconcurrency import FORGE_MODULE_NAMEFFI
+@preconcurrency import ForgeNative
 import SwiftUI
 
 /// The native services (Keychain, app directories, local notifications,
 /// permissions, deep links) that the Rust core uses through
-/// `crate::native` (see `rust/src/lib.rs` and docs/native-services.md).
+/// `crate::native` (see `rust/src/lib.rs` and docs/native-services.md). Their
+/// Swift is ForgeKit's ForgeNative module.
 ///
 /// The app's entry point calls `AppServices.install()` once and attaches
 /// `.receivesDeepLinks()` to the root view. Views that react to links use

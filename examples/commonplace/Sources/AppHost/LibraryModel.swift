@@ -26,6 +26,8 @@ public final class LibraryModel {
     /// Whether a background refresh that finds new articles sends a
     /// notification (with a Mark All as Read button).
     public private(set) var newArticleAlerts = false
+    /// The person's settings, as Rust keeps them.
+    public private(set) var settings: AppSettings
 
     public let core: AppCore
     @ObservationIgnored private var refreshing: Cancellation?
@@ -33,12 +35,14 @@ public final class LibraryModel {
     public init(core: AppCore) {
         self.core = core
         feeds = core.feeds()
+        settings = core.settings()
         newArticleAlerts = core.newArticleAlerts()
     }
 
     /// Re-reads from Rust. Cheap: Rust hands over its published snapshot.
     public func reload() {
         feeds = core.feeds()
+        settings = core.settings()
         version += 1
     }
 
@@ -85,6 +89,32 @@ public final class LibraryModel {
         } catch {
             log.warn("opening an article failed: \(error)")
             throw error
+        }
+    }
+
+    /// The articles whose title or text holds every word of `query`, in
+    /// timeline order. Empty for an empty query or if the search failed
+    /// (logged: a search box shows no alert).
+    public func search(_ query: String) async -> [ArticleSummary] {
+        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return [] }
+        do {
+            return try await core.search(query: query)
+        } catch {
+            log.warn("search failed: \(error)")
+            return []
+        }
+    }
+
+    // MARK: Settings
+
+    /// Saves a change to the settings; the timelines follow at once.
+    public func update(_ change: (inout AppSettings) -> Void) async {
+        var changed = settings
+        change(&changed)
+        guard changed != settings else { return }
+        settings = changed
+        if !(await perform { try await $0.setSettings(settings: changed) }) {
+            settings = core.settings()
         }
     }
 

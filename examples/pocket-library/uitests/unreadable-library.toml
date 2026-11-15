@@ -1,0 +1,33 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/unreadable-library.toml
+#
+# PL-5: the test library starts as a file that isn't a library
+# (-PocketLibraryUnreadableTestData). The app says it can't open it and
+# offers a fresh start, which asks first and then opens an empty library.
+# That the old file is kept is checked by the Linux twin.
+
+name = "PL-5: an unreadable library can be started fresh"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-PocketLibraryUnreadableTestData", "-launchApp", "library"] }
+
+[[step]]
+expect = { id = "open.startFresh" }
+
+[[step]]
+screenshot = "1-cannot-open"
+
+[[step]]
+tap = { id = "open.startFresh" }
+
+[[step]]
+tap = { kind = "Button", label = "Start New Library" }
+
+[[step]]
+expect = { id = "library.empty.add" }

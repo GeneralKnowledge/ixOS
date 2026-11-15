@@ -1,8 +1,7 @@
 //! Reads an EPUB's text for the reader: the chapters in reading order with
-//! their titles, and each chapter as blocks of styled text (headings,
-//! paragraphs, quotes, list items, scene breaks, images) for the host to lay
-//! out natively. The book's own CSS is not used: the host chooses the look,
-//! so text follows the reader's settings, Dynamic Type and dark mode.
+//! their titles, and each chapter as a ForgeReader section of styled blocks
+//! (`forge_reader::blocks_from_html` turns its XHTML into them) for the
+//! host to lay out natively.
 //!
 //! An [`EpubText`] keeps the zip open, so turning to a chapter reads only
 //! that chapter.
@@ -12,6 +11,7 @@ use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
+use forge_reader::{HtmlResources, ReaderBlockKind, ReaderSection};
 use forge_storage::FileStore;
 use quick_xml::events::{BytesStart, Event};
 
@@ -20,7 +20,7 @@ use crate::epub::{
     resolve, resolve_entity, unsupported, xml_reader, Archive, MAX_COVER_BYTES, MAX_TEXT_BYTES,
 };
 use crate::error::LibraryError;
-use crate::model::{ChapterSummary, ReaderChapter, TextBlock, TextBlockKind, TextSpan};
+use crate::model::ChapterSummary;
 
 /// One chapter is at most this much XHTML (a whole novel is ~1 MB).
 const MAX_CHAPTER_BYTES: u64 = 16 * 1024 * 1024;
@@ -120,13 +120,14 @@ impl<R: Read + Seek> EpubText<R> {
         self.chapters.iter().map(|c| c.words).collect()
     }
 
-    /// Chapter `index` as blocks. Its images are saved in `images` and
-    /// named by absolute path.
+    /// Chapter `index` as a reader section (its id is the chapter's path
+    /// in the zip). Its images are saved in `images` and named by absolute
+    /// path.
     pub fn chapter(
         &mut self,
         index: u32,
         images: &FileStore,
-    ) -> Result<ReaderChapter, LibraryError> {
+    ) -> Result<ReaderSection, LibraryError> {
         let path = self
             .paths
             .get(index as usize)
@@ -144,9 +145,9 @@ impl<R: Read + Seek> EpubText<R> {
             images,
             saved: HashMap::new(),
         };
-        let blocks = parse_blocks(&xhtml, &mut |src| saver.save(src));
-        Ok(ReaderChapter {
-            index,
+        let blocks = forge_reader::blocks_from_html(&xhtml, &mut saver);
+        Ok(ReaderSection {
+            id: path,
             title: self.chapters[index as usize].title.clone(),
             blocks,
         })
@@ -166,29 +167,31 @@ impl<R: Read + Seek> EpubText<R> {
         let Some(xhtml) = read_text(&mut self.archive, &path, MAX_CHAPTER_BYTES)? else {
             return Ok(Vec::new());
         };
-        Ok(parse_blocks(&xhtml, &mut |_| None)
+        Ok(forge_reader::blocks_from_html(&xhtml, &mut NoImages)
             .into_iter()
-            .filter_map(|block| match block.kind {
-                TextBlockKind::Image { .. } | TextBlockKind::Separator => None,
-                TextBlockKind::ListItem { marker } => Some(format!(
-                    "{marker} {}",
-                    block
-                        .spans
-                        .iter()
-                        .map(|s| s.text.as_str())
-                        .collect::<String>()
-                )),
-                _ => Some(
-                    block
-                        .spans
-                        .iter()
-                        .map(|s| s.text.as_str())
-                        .collect::<String>(),
-                ),
+            .filter_map(|block| match &block.kind {
+                ReaderBlockKind::Image { .. } | ReaderBlockKind::Separator => None,
+                ReaderBlockKind::ListItem { marker } => Some(format!("{marker} {}", block.text())),
+                _ => Some(block.text()),
             })
             .map(|text| text.trim().to_string())
             .filter(|text| !text.is_empty())
             .collect())
+    }
+}
+
+/// Leaves pictures out (summaries read text only).
+struct NoImages;
+
+impl HtmlResources for NoImages {
+    fn image(&mut self, _src: &str) -> Option<String> {
+        None
+    }
+}
+
+impl<R: Read + Seek> HtmlResources for ImageSaver<'_, R> {
+    fn image(&mut self, src: &str) -> Option<String> {
+        self.save(src)
     }
 }
 
@@ -390,497 +393,15 @@ fn collapse(text: &str) -> String {
     text.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-// MARK: Chapter text
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Container {
-    Heading(u8),
-    Paragraph,
-    ListItem,
-    Pre,
-    Quote,
-    /// `<ul>`/`<ol>`: list items need their marker.
-    List,
-}
-
-/// Turns a chapter's XHTML into blocks. `save_image` gets an `<img src>` (or
-/// SVG `<image href>`) and returns the saved file, or `None` to skip it.
-pub(crate) fn parse_blocks(
-    xhtml: &str,
-    save_image: &mut dyn FnMut(&str) -> Option<String>,
-) -> Vec<TextBlock> {
-    let mut reader = xml_reader(xhtml);
-    let mut b = Builder::default();
-    // Files without a <body> (not valid, but seen) are read whole.
-    let has_body = xhtml.contains("<body");
-    let mut in_body = !has_body;
-    // A malformed chapter still shows what was read before the error.
-    while let Ok(event) = reader.read_event() {
-        match event {
-            Event::Start(e) => {
-                let name = e.local_name();
-                let name = name.as_ref();
-                if name == "body" {
-                    in_body = true;
-                    continue;
-                }
-                if !in_body {
-                    continue;
-                }
-                b.start(name, &e, save_image);
-            }
-            Event::Empty(e) => {
-                if in_body {
-                    let name = e.local_name();
-                    b.empty(name.as_ref(), &e, save_image);
-                }
-            }
-            Event::End(e) => {
-                let name = e.local_name();
-                let name = name.as_ref();
-                if name == "body" {
-                    in_body = false;
-                    continue;
-                }
-                if in_body {
-                    b.end(name);
-                }
-            }
-            Event::Text(t) if in_body && b.skip == 0 => b.text(&t.xml10_content()),
-            Event::CData(t) if in_body && b.skip == 0 => b.text(&t.xml10_content()),
-            Event::GeneralRef(r) if in_body && b.skip == 0 => b.text(&resolve_entity(
-                &r.xml10_content(),
-                r.resolve_char_ref().ok().flatten(),
-            )),
-            Event::Eof => break,
-            _ => {}
-        }
-    }
-    b.flush();
-    b.blocks
-}
-
-#[derive(Default)]
-struct Builder {
-    blocks: Vec<TextBlock>,
-    spans: Vec<TextSpan>,
-    /// Open block elements, innermost last (with the element's name, so a
-    /// stray end tag closes nothing it should not).
-    containers: Vec<(String, Container)>,
-    /// Counters of the open lists: `Some(n)` for `<ol>`, `None` for `<ul>`.
-    lists: Vec<Option<u32>>,
-    /// The marker of the list item being read.
-    marker: Option<String>,
-    bold: u32,
-    italic: u32,
-    mono: u32,
-    /// Inside `<script>`, `<style>`, `<head>`…: ignore text.
-    skip: u32,
-}
-
-fn is_block(name: &str) -> bool {
-    matches!(
-        name,
-        "p" | "div"
-            | "section"
-            | "article"
-            | "header"
-            | "footer"
-            | "aside"
-            | "main"
-            | "nav"
-            | "figure"
-            | "figcaption"
-            | "blockquote"
-            | "li"
-            | "ul"
-            | "ol"
-            | "dl"
-            | "dt"
-            | "dd"
-            | "pre"
-            | "table"
-            | "tr"
-            | "td"
-            | "th"
-            | "caption"
-            | "h1"
-            | "h2"
-            | "h3"
-            | "h4"
-            | "h5"
-            | "h6"
-    )
-}
-
-impl Builder {
-    fn start(
-        &mut self,
-        name: &str,
-        e: &BytesStart<'_>,
-        save_image: &mut dyn FnMut(&str) -> Option<String>,
-    ) {
-        match name {
-            "script" | "style" | "head" | "title" => self.skip += 1,
-            // HTML-style void elements written without a slash.
-            "br" | "hr" | "img" | "image" => self.empty(name, e, save_image),
-            "b" | "strong" => self.bold += 1,
-            "i" | "em" | "cite" | "dfn" | "var" => self.italic += 1,
-            "code" | "tt" | "kbd" | "samp" => self.mono += 1,
-            _ if is_block(name) => {
-                self.flush();
-                let container = match name {
-                    "h1" => Container::Heading(1),
-                    "h2" => Container::Heading(2),
-                    "h3" => Container::Heading(3),
-                    "h4" => Container::Heading(4),
-                    "h5" => Container::Heading(5),
-                    "h6" => Container::Heading(6),
-                    "pre" => Container::Pre,
-                    "blockquote" => Container::Quote,
-                    "ul" => {
-                        self.lists.push(None);
-                        Container::List
-                    }
-                    "ol" => {
-                        let start = attribute(e, "start")
-                            .and_then(|s| s.trim().parse::<u32>().ok())
-                            .unwrap_or(1);
-                        self.lists.push(Some(start));
-                        Container::List
-                    }
-                    "li" => {
-                        self.marker = Some(match self.lists.last_mut() {
-                            Some(Some(n)) => {
-                                let marker = format!("{n}.");
-                                *n += 1;
-                                marker
-                            }
-                            _ => "•".to_string(),
-                        });
-                        Container::ListItem
-                    }
-                    _ => Container::Paragraph,
-                };
-                self.containers.push((name.to_string(), container));
-            }
-            _ => {}
-        }
-    }
-
-    fn empty(
-        &mut self,
-        name: &str,
-        e: &BytesStart<'_>,
-        save_image: &mut dyn FnMut(&str) -> Option<String>,
-    ) {
-        match name {
-            "br" => self.push_text("\n", true),
-            "hr" => {
-                self.flush();
-                self.push_block(TextBlockKind::Separator, Vec::new());
-            }
-            "img" | "image" => {
-                let src = if name == "img" {
-                    attribute(e, "src")
-                } else {
-                    // SVG <image xlink:href> (cover pages).
-                    attribute(e, "href")
-                };
-                if let Some(file) = src.and_then(|src| save_image(&src)) {
-                    self.flush();
-                    let alt = attribute(e, "alt").unwrap_or_default();
-                    self.push_block(
-                        TextBlockKind::Image {
-                            file,
-                            alt: collapse(&alt),
-                        },
-                        Vec::new(),
-                    );
-                }
-            }
-            _ if is_block(name) => self.flush(),
-            _ => {}
-        }
-    }
-
-    fn end(&mut self, name: &str) {
-        match name {
-            "script" | "style" | "head" | "title" => self.skip = self.skip.saturating_sub(1),
-            "b" | "strong" => self.bold = self.bold.saturating_sub(1),
-            "i" | "em" | "cite" | "dfn" | "var" => self.italic = self.italic.saturating_sub(1),
-            "code" | "tt" | "kbd" | "samp" => self.mono = self.mono.saturating_sub(1),
-            _ if is_block(name) => {
-                self.flush();
-                // Close up to the matching element; ignore a stray end tag.
-                if let Some(at) = self.containers.iter().rposition(|(n, _)| n == name) {
-                    for (_, container) in self.containers.drain(at..) {
-                        if container == Container::List {
-                            self.lists.pop();
-                        }
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    fn in_pre(&self) -> bool {
-        self.containers.iter().any(|(_, c)| *c == Container::Pre)
-    }
-
-    fn text(&mut self, text: &str) {
-        let pre = self.in_pre();
-        self.push_text(text, pre);
-    }
-
-    /// Adds text in the current style. Outside `<pre>`, runs of whitespace
-    /// become one space, and none at the start of a block or line.
-    fn push_text(&mut self, text: &str, keep_whitespace: bool) {
-        let mut out = String::with_capacity(text.len());
-        let mut last = self
-            .spans
-            .last()
-            .and_then(|s| s.text.chars().last())
-            .unwrap_or('\n');
-        for c in text.chars() {
-            if keep_whitespace {
-                out.push(c);
-                last = c;
-            } else if c.is_whitespace() && c != '\u{a0}' {
-                // A no-break space is deliberate: kept.
-                if last != ' ' && last != '\n' {
-                    out.push(' ');
-                    last = ' ';
-                }
-            } else {
-                out.push(c);
-                last = c;
-            }
-        }
-        if out.is_empty() {
-            return;
-        }
-        let (bold, italic, monospace) = (self.bold > 0, self.italic > 0, self.mono > 0);
-        match self.spans.last_mut() {
-            Some(span) if (span.bold, span.italic, span.monospace) == (bold, italic, monospace) => {
-                span.text.push_str(&out)
-            }
-            _ => self.spans.push(TextSpan {
-                text: out,
-                bold,
-                italic,
-                monospace,
-            }),
-        }
-    }
-
-    /// Ends the block being read, if it has any text.
-    fn flush(&mut self) {
-        let mut spans = std::mem::take(&mut self.spans);
-        let pre = self.in_pre();
-        if !pre {
-            // A space before a line break, and blank edges, are not text.
-            for span in &mut spans {
-                while span.text.contains(" \n") {
-                    span.text = span.text.replace(" \n", "\n");
-                }
-            }
-            if let Some(first) = spans.first_mut() {
-                first.text = first.text.trim_start().to_string();
-            }
-            if let Some(last) = spans.last_mut() {
-                last.text = last.text.trim_end().to_string();
-            }
-        } else if let Some(last) = spans.last_mut() {
-            last.text = last.text.trim_end_matches(['\n', '\r']).to_string();
-        }
-        spans.retain(|s| !s.text.is_empty());
-        if spans.is_empty() {
-            return;
-        }
-        let kind = self.kind();
-        let kind = if kind == TextBlockKind::Paragraph && is_scene_break(&spans) {
-            spans.clear();
-            TextBlockKind::Separator
-        } else {
-            kind
-        };
-        self.push_block(kind, spans);
-    }
-
-    fn kind(&mut self) -> TextBlockKind {
-        let innermost = self
-            .containers
-            .iter()
-            .rev()
-            .map(|(_, c)| *c)
-            .find(|c| *c != Container::Paragraph && *c != Container::List);
-        let quoted = self.containers.iter().any(|(_, c)| *c == Container::Quote);
-        match innermost {
-            Some(Container::Heading(level)) => TextBlockKind::Heading { level },
-            Some(Container::Pre) => TextBlockKind::Preformatted,
-            // The first block of an item carries its marker; later
-            // paragraphs of the same item are plain.
-            Some(Container::ListItem) => match self.marker.take() {
-                Some(marker) => TextBlockKind::ListItem { marker },
-                None if quoted => TextBlockKind::Quote,
-                None => TextBlockKind::Paragraph,
-            },
-            _ if quoted => TextBlockKind::Quote,
-            _ => TextBlockKind::Paragraph,
-        }
-    }
-
-    fn push_block(&mut self, kind: TextBlockKind, spans: Vec<TextSpan>) {
-        // Two scene breaks in a row are one.
-        if kind == TextBlockKind::Separator
-            && self
-                .blocks
-                .last()
-                .is_some_and(|b| b.kind == TextBlockKind::Separator)
-        {
-            return;
-        }
-        self.blocks.push(TextBlock { kind, spans });
-    }
-}
-
-/// "* * *", "#", "~~~", "⁂" and the like on their own.
-fn is_scene_break(spans: &[TextSpan]) -> bool {
-    let text: String = spans.iter().map(|s| s.text.as_str()).collect();
-    let marks: Vec<char> = text.chars().filter(|c| !c.is_whitespace()).collect();
-    !marks.is_empty()
-        && marks.len() <= 12
-        && marks.iter().all(|c| {
-            matches!(
-                c,
-                '*' | '#' | '~' | '•' | '·' | '⁂' | '❧' | '◆' | '♦' | '§' | '_' | '='
-            )
-        })
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::epub::tests::sample_epub;
+    use forge_reader::ReaderBlock;
     use std::io::{Cursor, Write};
 
-    fn blocks(xhtml: &str) -> Vec<TextBlock> {
-        parse_blocks(xhtml, &mut |src| Some(format!("/saved/{src}")))
-    }
-
-    fn plain(text: &str) -> TextSpan {
-        TextSpan {
-            text: text.into(),
-            bold: false,
-            italic: false,
-            monospace: false,
-        }
-    }
-
-    fn texts(blocks: &[TextBlock]) -> Vec<String> {
-        blocks
-            .iter()
-            .map(|b| b.spans.iter().map(|s| s.text.as_str()).collect())
-            .collect()
-    }
-
-    #[test]
-    fn paragraphs_headings_and_styles() {
-        let html = r#"<?xml version="1.0"?><html xmlns="http://www.w3.org/1999/xhtml">
-<head><title>Skip me</title><style>p { color: red }</style></head>
-<body>
-  <h1 class="chapter">Chapter <br/>One</h1>
-  <p>It was a <em>dark</em> and
-     <strong>stormy</strong> night.</p>
-  <p>   </p>
-  <div><p>Nested&#160;text &amp; more</p></div>
-  <p>Line one<br/>line two</p>
-</body></html>"#;
-        let blocks = blocks(html);
-        assert_eq!(
-            texts(&blocks),
-            vec![
-                "Chapter\nOne",
-                "It was a dark and stormy night.",
-                "Nested\u{a0}text & more",
-                "Line one\nline two"
-            ]
-        );
-        assert_eq!(blocks[0].kind, TextBlockKind::Heading { level: 1 });
-        assert_eq!(blocks[1].kind, TextBlockKind::Paragraph);
-        assert_eq!(
-            blocks[1].spans,
-            vec![
-                plain("It was a "),
-                TextSpan {
-                    text: "dark".into(),
-                    bold: false,
-                    italic: true,
-                    monospace: false
-                },
-                plain(" and "),
-                TextSpan {
-                    text: "stormy".into(),
-                    bold: true,
-                    italic: false,
-                    monospace: false
-                },
-                plain(" night."),
-            ]
-        );
-    }
-
-    #[test]
-    fn quotes_lists_pre_breaks_and_images() {
-        let html = r#"<html><body>
-<blockquote><p>Quoted.</p></blockquote>
-<ol start="3"><li>Three</li><li><p>Four</p><p>more of four</p></li></ol>
-<ul><li>Dot</li></ul>
-<pre>  keep
-    this</pre>
-<p class="center">* * *</p>
-<hr/>
-<p>After the break</p>
-<img src="../images/map.png" alt="A  map"/>
-<p>Text with <code>code</code>.</p>
-</body></html>"#;
-        let blocks = blocks(html);
-        let kinds: Vec<_> = blocks.iter().map(|b| b.kind.clone()).collect();
-        assert_eq!(
-            kinds,
-            vec![
-                TextBlockKind::Quote,
-                TextBlockKind::ListItem {
-                    marker: "3.".into()
-                },
-                TextBlockKind::ListItem {
-                    marker: "4.".into()
-                },
-                TextBlockKind::Paragraph,
-                TextBlockKind::ListItem {
-                    marker: "•".into()
-                },
-                TextBlockKind::Preformatted,
-                TextBlockKind::Separator,
-                TextBlockKind::Paragraph,
-                TextBlockKind::Image {
-                    file: "/saved/../images/map.png".into(),
-                    alt: "A map".into()
-                },
-                TextBlockKind::Paragraph,
-            ]
-        );
-        assert_eq!(texts(&blocks)[5], "  keep\n    this");
-        assert!(blocks[9].spans[1].monospace);
-    }
-
-    #[test]
-    fn html_style_void_tags_and_broken_markup_still_read() {
-        let html = "<html><body><p>One<br>two</p><p>Unclosed <i>italic</p><p>Next</body></html>";
-        let blocks = blocks(html);
-        assert_eq!(texts(&blocks), vec!["One\ntwo", "Unclosed italic", "Next"]);
+    fn texts(blocks: &[ReaderBlock]) -> Vec<String> {
+        blocks.iter().map(ReaderBlock::text).collect()
     }
 
     /// An EPUB 2 book (NCX contents) whose first chapter is split across
@@ -960,8 +481,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let cover = book.chapter(0, &FileStore::new(dir.path())).unwrap();
         // The 3-byte "jpg" is a real JPEG signature, so it is saved…
-        let [TextBlock {
-            kind: TextBlockKind::Image { file, .. },
+        let [ReaderBlock {
+            kind: ReaderBlockKind::Image { source: file, .. },
             ..
         }] = cover.blocks.as_slice()
         else {

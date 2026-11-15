@@ -7,7 +7,7 @@ use forge_runtime::{CancelHandle, Delivery, Phase, Subscription};
 
 /// The version of this contract. ForgeKit refuses a Rust library built
 /// against a different one, so a mismatched framework fails at launch.
-pub const CONTRACT_VERSION: u32 = 2;
+pub const CONTRACT_VERSION: u32 = 3;
 
 /// The contract version the linked Rust library implements.
 #[uniffi::export]
@@ -57,8 +57,17 @@ pub enum ErrorKind {
     Invalid,
     /// The thing no longer exists.
     NotFound,
-    /// Offline or a service is down. Try again later.
+    /// Something the app needs is down or switched off right now (a
+    /// service answered that it is unavailable, a feature is turned off).
+    /// Try again later.
     Unavailable,
+    /// A server or another device couldn't be reached, or the connection
+    /// broke part way. Try again, perhaps on another network.
+    Network,
+    /// The other side (a server, a paired device) understood and said no.
+    /// Trying the same thing again won't help; the person has to change
+    /// something first (sign in again, pair again, ask the owner).
+    Refused,
     /// Stopped because the app left the screen. Safe to retry on return.
     Interrupted,
     /// Cancelled by the user or the host.

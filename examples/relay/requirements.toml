@@ -1,0 +1,12 @@
+# What Relay must do, and what proves it (docs/evidence.md).
+# `twin`: XCTests that drive the real view model against the real Rust core
+# (`forge check swift` runs them on Linux; two cores talk over localhost).
+# `device`: UI scenarios for `forge ui run`; their verdicts come only from a
+# run on an iPhone. The phone scenario shows the pairing code; sending
+# between two phones needs a second device and was checked by hand.
+
+[[requirement]]
+id = "RL-1"
+statement = "A device shows a pairing code; another pairs with it and sends a note to its address (IPv6 in brackets), which arrives as received, and both remember the pairing."
+twin = ["RelayModelTests.testPairAndSendANote", "RelayModelTests.testFormatting"]
+device = ["uitests/smoke.toml"]

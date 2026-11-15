@@ -1001,6 +1001,48 @@ fn pause_stops_streams_and_resume_catches_up() {
 }
 
 #[test]
+fn an_open_room_is_not_read_while_the_app_is_away() {
+    let h = harness();
+    h.client.list_conversations().unwrap();
+    h.client.subscribe("general").unwrap();
+    h.wait_connected("general");
+    h.client.pause_streams();
+    wait_until("pumps end", || h.client.live_pumps() == 0);
+    h.drain();
+
+    // A background refresh fetches what arrived for the room left open.
+    let missed = h
+        .repo
+        .inject("general", "ana", "while the phone was locked");
+    h.client.sync_messages("general").unwrap();
+    let events = h.drain();
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, ChatEvent::Notify(m) if m.id == missed.id)),
+        "{events:#?}"
+    );
+    let general = |client: &ChatClient| {
+        client
+            .cached_conversations()
+            .into_iter()
+            .find(|c| c.id == "general")
+            .unwrap()
+    };
+    assert_eq!(general(&h.client).unread_count, 1);
+    let read_call = format!("read general {}", missed.sent_at);
+    assert!(!h.repo.calls().contains(&read_call));
+
+    // Back on screen: read at once, here and on the server.
+    h.client.resume_streams().unwrap();
+    assert_eq!(general(&h.client).unread_count, 0);
+    wait_until("the server has the read", || {
+        h.repo.calls().contains(&read_call)
+    });
+    h.client.shutdown();
+}
+
+#[test]
 fn own_messages_are_recognised_by_account_id() {
     let repo = Arc::new(InMemoryRepo::with_rooms(&[("general", "General")]));
     let (tx, events) = mpsc::channel();

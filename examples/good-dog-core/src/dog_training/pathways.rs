@@ -142,6 +142,93 @@ impl Pathway {
     }
 }
 
+/// A DogResearch safety rule a goal stage names, with how the app applies
+/// it. Exported beside the pathways into `content/safety-rules.json`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SafetyRule {
+    pub id: String,
+    pub title: String,
+    pub severity: String,
+    #[serde(default)]
+    pub referral_text: Option<String>,
+    pub app_enforcement: AppEnforcement,
+}
+
+/// How the app applies a safety rule on a goal stage. Text uses `{dog}`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum AppEnforcement {
+    /// The stage can't move on until the owner confirms `owner_confirms`.
+    Confirm { owner_confirms: String, why: String },
+    /// A welfare concern on the stage's exercises holds the stage, showing
+    /// `held_note` and `referral`, until the owner says `cleared_by`.
+    ReferOnConcern {
+        held_note: String,
+        referral: String,
+        cleared_by: String,
+    },
+    /// Taught by the stage's lessons; DogResearch's QA checks it. Nothing
+    /// to do at runtime.
+    Teach,
+}
+
+pub fn parse_safety_rules(json: &str) -> Result<Vec<SafetyRule>, ContentError> {
+    Ok(serde_json::from_str(json)?)
+}
+
+const SAFETY_RULES_JSON: &str = include_str!("../../content/safety-rules.json");
+
+/// The safety rules the shipped pathways name.
+///
+/// # Panics
+///
+/// Never in practice: the bundled JSON is fixed at compile time and
+/// `tests/pathways.rs` parses and checks it.
+pub fn bundled_safety_rules() -> &'static [SafetyRule] {
+    static RULES: OnceLock<Vec<SafetyRule>> = OnceLock::new();
+    RULES.get_or_init(|| parse_safety_rules(SAFETY_RULES_JSON).expect("bundled safety-rules.json"))
+}
+
+/// Every stage's safety rules exist and have the text the app shows.
+pub fn check_safety_rules(pathways: &[Pathway], rules: &[SafetyRule]) -> Vec<String> {
+    let mut problems = Vec::new();
+    for rule in rules {
+        let texts: Vec<&String> = match &rule.app_enforcement {
+            AppEnforcement::Confirm {
+                owner_confirms,
+                why,
+            } => vec![owner_confirms, why],
+            AppEnforcement::ReferOnConcern {
+                held_note,
+                referral,
+                cleared_by,
+            } => vec![held_note, referral, cleared_by],
+            AppEnforcement::Teach => vec![],
+        };
+        if texts.iter().any(|t| t.trim().is_empty()) {
+            problems.push(format!("{}: app enforcement text is empty", rule.id));
+        }
+    }
+    for pathway in pathways {
+        for stage in &pathway.stages {
+            for id in &stage.safety_rule_ids {
+                if !rules.iter().any(|r| &r.id == id) {
+                    problems.push(format!(
+                        "{}/{}: unknown safety rule {id}",
+                        pathway.id, stage.id
+                    ));
+                }
+            }
+        }
+    }
+    problems
+}
+
 pub fn parse_pathways(json: &str) -> Result<Vec<Pathway>, ContentError> {
     Ok(serde_json::from_str(json)?)
 }

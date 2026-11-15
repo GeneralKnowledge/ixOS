@@ -10,7 +10,7 @@ Device Lab (Apps, then Sketchbook) and on its own.
 | Step | What | State |
 |---|---|---|
 | S1 | Rust core (`rust/`): sketches, layers, one undo history per sketch, export plans | Done, tested on Linux |
-| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with a Quick Look preview, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
+| S2 | SwiftUI app: sketch grid, PencilKit canvas per layer, layer panel, PNG/PDF export with Save to Photos, Share and Quick Look, hosted in Device Lab | Written; not yet built with xtool or run on a phone |
 
 ## How the work is split
 
@@ -30,6 +30,11 @@ Device Lab (Apps, then Sketchbook) and on its own.
   `export_plan(ids, format)` lists each page's visible, non-empty layers
   bottom first with their opacity, and the file path to write (one PNG per
   sketch, or one PDF).
+- **One tool picker per sketch.** Every layer's canvas follows the same
+  `PKToolPicker`, so the pen, colour and width stay when you change layer.
+- **Exports go to Photos or the share sheet.** After rendering, a sheet
+  shows the page with Save to Photos (PNG, add-only access), Share and
+  Quick Look.
 - Drawings nothing needs any more (not the saved sketches, not an undo
   step) are deleted after each change; a crash between writing a drawing and
   saving is cleaned up at the next launch.
@@ -49,6 +54,7 @@ cargo test --manifest-path examples/sketchbook/rust/Cargo.toml
 | `Sources/AppHost/SketchView.swift` | One sketch: the layers stacked on the paper, Undo and Redo, paper, export |
 | `Sources/AppHost/LayerCanvas.swift` | One layer's `PKCanvasView`; hands each finished stroke to Rust |
 | `Sources/AppHost/LayersPanel.swift` | Layers top first: select, hide, reorder, opacity, rename, duplicate, clear, delete |
+| `Sources/AppHost/ExportSheet.swift` | What an export made: Save to Photos, Share, Quick Look |
 | `Sources/AppHost/SketchRenderer.swift` | Draws export pages and thumbnails from Rust's export plan |
 | `Sources/AppHost/PaperBackground.swift` | The paper's lines, squares or dots, on screen and in exports |
 

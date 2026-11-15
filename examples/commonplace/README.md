@@ -4,7 +4,9 @@ A native, local-first reading application built with ixOS: subscribe to RSS, Ato
 
 It is also the first **replication benchmark** for ixOS: its behaviour is benchmarked against NetNewsWire, an open-source iOS feed reader, to find what ixOS is missing for a real app. Commonplace is written from scratch, with its own name and look; it uses none of NetNewsWire's code or assets. The benchmark's brief, specification, gap log and pattern inventory are in [docs/benchmarks/netnewswire/](../../docs/benchmarks/netnewswire/README.md).
 
-**Slice 1 (now):** subscriptions, refresh with HTTP caching, parsing (RSS, Atom, JSON Feed), the timelines (All Unread, Bookmarks, All Articles, each feed), read and unread, bookmarks, SQLite on the device, and navigation. The reader shows plain paragraphs behind one boundary (`ArticleReader` in Swift, `ArticleText` in Rust) until the native reader from the capability roadmap replaces it. Search and settings come later.
+**Slice 1:** subscriptions, refresh with HTTP caching, parsing (RSS, Atom, JSON Feed), the timelines (All Unread, Bookmarks, All Articles, each feed), read and unread, bookmarks, SQLite on the device, and navigation.
+
+**Slice 2 (now):** articles on [ForgeReader](../../docs/forge-reader.md), the native reader it shares with Pocket Library (headings, quotes, lists, code, pictures and links, with text size and font); search over every article (SQLite FTS5, on its own read-only connection); Settings (Oldest First, Hide Read Articles, Show Summaries, Open Links in Commonplace, Font, new-article notifications); links open in the in-app web view or Safari. Folders and OPML are slice 3.
 
 ## Run it
 
@@ -31,8 +33,8 @@ The first time you run on an iPhone:
 |------|------------|
 | `rust/src/lib.rs` | Your app's logic, state, persistence and networking. Everything marked `#[uniffi::export]` is callable from Swift. |
 | `rust/Cargo.toml` | Rust dependencies. Add crates here as usual (`cargo add --manifest-path rust/Cargo.toml <crate>`). The Forge crates (`forge-app`, the runtime the core embeds, and the others) are pinned to a framework release, as ForgeKit is in `Package.swift`. |
-| `rust/src/feed.rs`, `rust/src/store.rs` | Feed parsing and plain text; the SQLite library (`library.sqlite`). |
-| `Sources/AppHost/` | `AppHost.swift`, where ForgeKit's host opens the Rust core once and follows the app lifecycle; the SwiftUI screens (`ContentView.swift` is the root; `FeedListView`, `TimelineView`, `ArticleView` with the `ArticleReader` boundary, `AddFeedView`); and `LibraryModel.swift`, the model that calls Rust. |
+| `rust/src/feed.rs`, `rust/src/store.rs` | Feed parsing and plain text; the SQLite library (`library.sqlite`): feeds, articles, the search index and settings. |
+| `Sources/AppHost/` | `AppHost.swift`, where ForgeKit's host opens the Rust core once and follows the app lifecycle; the SwiftUI screens (`ContentView.swift` is the root; `FeedListView` with search, `TimelineView`, `ArticleView` on ForgeReader, `AddFeedView`, `SettingsView`); and `LibraryModel.swift`, the model that calls Rust. |
 | `Tests/AppHostTests/` | XCTest suite against the real Rust library (macOS only). |
 | `uitests/` | UI tests that drive the app on a plugged-in iPhone from Linux (`forge ui run uitests/smoke.toml`). They find controls by their accessibility identifiers (`feeds.add`, `addFeed.save`). |
 | `Generated/` | Swift bindings generated from `rust/`. Do not edit; `forge run ios` and `forge bindings generate` rewrite them. |

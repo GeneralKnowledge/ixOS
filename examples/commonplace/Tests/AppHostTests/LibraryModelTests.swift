@@ -75,6 +75,37 @@ final class LibraryModelTests: XCTestCase {
     }
 
     @MainActor
+    func testSettingsAreRustsAndKeptAcrossLaunches() async throws {
+        let dir = try makeDirectory()
+        // The first launch's model and core go out of scope before the
+        // relaunch: the core holds the library's lock until it is released.
+        do {
+            let (host, model) = try await open(dir)
+            XCTAssertEqual(
+                model.settings,
+                AppSettings(oldestFirst: false, hideRead: false, showSummaries: true, openLinksInApp: true))
+            await model.update { $0.hideRead = true }
+            XCTAssertTrue(model.settings.hideRead)
+            XCTAssertNil(model.alert)
+            host.close()
+        }
+        let (host, model) = try await open(dir)
+        XCTAssertTrue(model.settings.hideRead)
+        host.close()
+    }
+
+    @MainActor
+    func testAnEmptySearchFindsNothing() async throws {
+        let (host, model) = try await open(try makeDirectory())
+        let found = await model.search("  ")
+        XCTAssertEqual(found, [])
+        let none = await model.search("anything")
+        XCTAssertEqual(none, [])
+        XCTAssertNil(model.alert)
+        host.close()
+    }
+
+    @MainActor
     func testNothingToRefreshIsNeverStale() async throws {
         let (host, model) = try await open(try makeDirectory())
         XCTAssertFalse(model.isStale(), "no feeds, nothing to refresh on launch")

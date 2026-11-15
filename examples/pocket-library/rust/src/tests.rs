@@ -310,15 +310,28 @@ fn an_imported_epub_opens_in_the_reader() {
         }
     );
 
+    // Chapter 2 isn't where the book opens: no start place.
     let chapter = block_on(library.reader_chapter(book.id, 1)).unwrap();
     assert_eq!(chapter.index, 1);
-    assert_eq!(chapter.blocks[0].kind, TextBlockKind::Heading { level: 1 });
-    assert_eq!(chapter.blocks[1].kind, TextBlockKind::Paragraph);
-    assert!(chapter.blocks[1].spans[0].text.starts_with("word word"));
+    assert_eq!(chapter.start, None);
+    let blocks = &chapter.section.blocks;
+    assert_eq!(blocks[0].kind, ReaderBlockKind::Heading { level: 1 });
+    assert_eq!(blocks[1].kind, ReaderBlockKind::Paragraph);
+    assert!(blocks[1].spans[0].text.starts_with("word word"));
+    assert!(blocks.iter().all(|b| !b.id.is_empty()));
+    // The first chapter is, the first time it loads.
+    let first = block_on(library.reader_chapter(book.id, 0)).unwrap();
+    assert_eq!(first.start, Some(at(0, 0.0)));
+    let again = block_on(library.reader_chapter(book.id, 0)).unwrap();
+    assert_eq!(again.start, None);
     assert!(matches!(
         block_on(library.reader_chapter(book.id, 2)),
         Err(LibraryError::InvalidInput { .. })
     ));
+}
+
+fn at(block: u32, offset: f64) -> ReaderLocation {
+    ReaderLocation { block, offset }
 }
 
 #[test]
@@ -329,28 +342,29 @@ fn reading_moves_the_page_and_is_remembered() {
     assert_eq!(book.total_pages, Some(8));
     assert!(
         matches!(
-            block_on(library.save_reading_position(
-                book.id,
-                ReadingPosition {
-                    chapter: 0,
-                    fraction: 0.5
-                }
-            )),
+            block_on(library.save_reading_position(book.id, 0, at(1, 0.5))),
             Err(LibraryError::InvalidInput { .. })
         ),
         "the reader must be open first"
     );
     block_on(library.open_reader(book.id)).unwrap();
+    assert!(
+        matches!(
+            block_on(library.save_reading_position(book.id, 1, at(1, 0.5))),
+            Err(LibraryError::InvalidInput { .. })
+        ),
+        "and the chapter loaded"
+    );
+    block_on(library.reader_chapter(book.id, 1)).unwrap();
 
-    // Halfway through chapter 2 of 2 is three quarters of the book.
-    let middle = ReadingPosition {
-        chapter: 1,
-        fraction: 0.5,
-    };
-    let book = block_on(library.save_reading_position(book.id, middle)).unwrap();
+    // Halfway through chapter 2's text (block 1 of heading and paragraph)
+    // is about three quarters of the book.
+    let book = block_on(library.save_reading_position(book.id, 1, at(1, 0.5))).unwrap();
     assert_eq!(book.status, ReadingStatus::Reading);
     assert_eq!(book.current_page, 6);
-    assert_eq!(book.reading_position, Some(middle));
+    let middle = book.reading_position.unwrap();
+    assert_eq!(middle.chapter, 1);
+    assert!((middle.fraction - 0.5).abs() < 0.01, "{middle:?}");
     assert!(matches!(
         library.history(Some(book.id), 10)[0].kind,
         ActivityKind::Progress {
@@ -360,32 +374,35 @@ fn reading_moves_the_page_and_is_remembered() {
     ));
 
     // The very end stops a page short: finishing is the reader's choice.
-    let end = ReadingPosition {
-        chapter: 1,
-        fraction: 1.0,
-    };
-    let book = block_on(library.save_reading_position(book.id, end)).unwrap();
+    let book = block_on(library.save_reading_position(book.id, 1, at(1, 1.0))).unwrap();
     assert_eq!(
         (book.status, book.current_page),
         (ReadingStatus::Reading, 7)
     );
 
-    // Reopened later, the reader starts where it was left.
+    // Reopened later, the reader starts at the same block.
     library.shutdown();
     drop(library);
     let library = open(dir.path());
     let contents = block_on(library.open_reader(book.id)).unwrap();
-    assert_eq!(contents.start, end);
+    assert_eq!(contents.start.chapter, 1);
+    let chapter = block_on(library.reader_chapter(book.id, 1)).unwrap();
+    assert_eq!(chapter.start, Some(at(1, 1.0)));
 
     // A page typed in by hand wins over the saved position.
     let book = block_on(library.update_progress(book.id, 2)).unwrap();
     let start = block_on(library.open_reader(book.id)).unwrap().start;
     assert_eq!(start.chapter, 0);
     assert!((start.fraction - 0.5).abs() < 0.01, "{start:?}");
+    let chapter = block_on(library.reader_chapter(book.id, 0)).unwrap();
+    let place = chapter.start.unwrap();
+    assert_eq!(place.block, 1);
+    assert!((place.offset - 0.5).abs() < 0.01, "{place:?}");
 
     // A finished book keeps its page and status while it is re-read.
     block_on(library.set_status(book.id, ReadingStatus::Finished)).unwrap();
-    let book = block_on(library.save_reading_position(book.id, middle)).unwrap();
+    block_on(library.reader_chapter(book.id, 1)).unwrap();
+    let book = block_on(library.save_reading_position(book.id, 1, at(1, 0.5))).unwrap();
     assert_eq!(
         (book.status, book.current_page),
         (ReadingStatus::Finished, 8)
@@ -395,6 +412,44 @@ fn reading_moves_the_page_and_is_remembered() {
         block_on(library.open_reader(book.id)).unwrap().start,
         middle
     );
+}
+
+#[test]
+fn a_position_saved_before_anchors_is_converted_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let library = open(dir.path());
+    let book = import_readable(&library, dir.path(), "Old");
+    library.shutdown();
+    drop(library);
+    // An older library.json: chapter 2, the top block's index over the
+    // block count (1 of 2), and no anchor.
+    let path = dir.path().join("library.json");
+    let mut json: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let stored = json["data"]["books"]
+        .as_array_mut()
+        .unwrap()
+        .iter_mut()
+        .find(|b| b["id"] == book.id)
+        .unwrap();
+    stored["reading_position"] = serde_json::json!({"chapter": 1, "fraction": 0.5, "page": 0});
+    std::fs::write(&path, serde_json::to_string(&json).unwrap()).unwrap();
+
+    let library = open(dir.path());
+    assert_eq!(
+        block_on(library.open_reader(book.id))
+            .unwrap()
+            .start
+            .chapter,
+        1
+    );
+    let chapter = block_on(library.reader_chapter(book.id, 1)).unwrap();
+    assert_eq!(chapter.start, Some(at(1, 0.0)));
+    // The next save is an anchor.
+    block_on(library.save_reading_position(book.id, 1, at(1, 0.0))).unwrap();
+    block_on(library.open_reader(book.id)).unwrap();
+    let chapter = block_on(library.reader_chapter(book.id, 1)).unwrap();
+    assert_eq!(chapter.start, Some(at(1, 0.0)));
 }
 
 #[test]
@@ -476,13 +531,13 @@ fn imports_a_real_epub_when_given_one() {
             chapter.title,
             chapter.in_contents,
             chapter.words,
-            text.blocks.len()
+            text.section.blocks.len()
         );
     }
     if std::env::var("POCKET_LIBRARY_DUMP").is_ok() {
         let first = contents.chapters.iter().find(|c| c.words > 200).unwrap();
         let text = block_on(library.reader_chapter(book.id, first.index)).unwrap();
-        for block in text.blocks.iter().take(25) {
+        for block in text.section.blocks.iter().take(25) {
             eprintln!("{block:?}");
         }
     }

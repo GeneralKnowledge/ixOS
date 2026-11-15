@@ -35,7 +35,7 @@ Pocket Library choices to confirm before stage R2, because two of them can't be 
 
 1. **Bundle ID.** `org.forgemobile.pocketlibrary` is permanent once uploaded. Use a reverse domain Reuben controls.
 2. **App name.** App Store names are unique; check that "Pocket Library" is free in App Store Connect when creating the record.
-3. **iPhone only.** Leaving out iPad avoids iPad screenshots and iPad layout review. Check `UIDeviceFamily` in the xtool build.
+3. **iPhone only.** Leaving out iPad avoids iPad screenshots and iPad layout review. `[ios] devices = ["iphone"]` in `forge.toml` (every app's setting since 2026-11-15) writes `UIDeviceFamily = [1]`; without it xtool would mark the build for iPad too.
 
 ## What Linux can do and what needs a Mac
 

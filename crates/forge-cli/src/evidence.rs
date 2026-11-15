@@ -158,13 +158,28 @@ pub enum Verdict {
     NoTwin,
 }
 
+/// The tests XCTest skipped (`XCTSkip`, for example a test that needs a
+/// server the run doesn't have), as `Class.method`.
+pub fn skipped_xctests(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("Test Case '"))
+        .filter_map(|rest| rest.split_once("' "))
+        .filter(|(_, tail)| tail.starts_with("skipped"))
+        .map(|(raw, _)| normalise_test_name(raw))
+        .collect()
+}
+
 /// Judges each requirement from the test results. `skipped_classes` are the
 /// test classes in files left out of the run (file stem = class name, the
-/// convention every app here follows).
+/// convention every app here follows); `skipped_tests` are the tests that
+/// were built but skipped themselves (`skipped_xctests`). Neither proves
+/// anything either way, so both are `NotRun`, not `Missing`.
 pub fn judge(
     reqs: &[Requirement],
     tests: &[TestResult],
     skipped_classes: &[String],
+    skipped_tests: &[String],
 ) -> Vec<(Verdict, Vec<String>)> {
     let by_name: BTreeMap<&str, &TestResult> = tests.iter().map(|t| (t.name.as_str(), t)).collect();
     reqs.iter()
@@ -182,6 +197,9 @@ pub fn judge(
                         let class = name.split('.').next().unwrap_or("");
                         if skipped_classes.iter().any(|c| c == class) {
                             notes.push(format!("{name} needs Apple's frameworks"));
+                            Verdict::NotRun
+                        } else if skipped_tests.iter().any(|t| t == name) {
+                            notes.push(format!("{name} skipped itself in this run"));
                             Verdict::NotRun
                         } else {
                             notes.push(format!("{name} did not run: no such test"));
@@ -708,7 +726,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             req("gone", &["LibraryModelTests.testRenamed"]),
             req("device", &[]),
         ];
-        let v: Vec<Verdict> = judge(&reqs, &parse_xctest(LINUX), &["ReadAloudTests".into()])
+        let v: Vec<Verdict> = judge(&reqs, &parse_xctest(LINUX), &["ReadAloudTests".into()], &[])
             .into_iter()
             .map(|(v, _)| v)
             .collect();
@@ -725,6 +743,45 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
     }
 
     #[test]
+    fn a_test_that_skipped_itself_is_not_run_not_missing() {
+        let req = |id: &str, twin: &[&str]| Requirement {
+            id: id.into(),
+            statement: String::new(),
+            twin: twin.iter().map(|s| s.to_string()).collect(),
+            device: vec![],
+        };
+        let output = "\
+Test Case 'ChatModelTests.testNeedsServer' started at 2026-11-15 13:37:39.750
+ChatServer.swift:16: ChatModelTests.testNeedsServer : Test skipped - CHAT_SERVER is not set
+Test Case 'ChatModelTests.testNeedsServer' skipped (0.0 seconds)
+Test Case '-[AppHostTests.ChatModelTests testAlsoSkipped]' skipped (0.001 seconds).
+Test Case 'ChatModelTests.testA' passed (0.009 seconds)
+";
+        let skipped = skipped_xctests(output);
+        assert_eq!(
+            skipped,
+            [
+                "ChatModelTests.testNeedsServer",
+                "ChatModelTests.testAlsoSkipped"
+            ]
+        );
+        let reqs = [
+            req(
+                "skipped",
+                &["ChatModelTests.testA", "ChatModelTests.testNeedsServer"],
+            ),
+            req("gone", &["ChatModelTests.testRenamed"]),
+        ];
+        let v = judge(&reqs, &parse_xctest(output), &[], &skipped);
+        assert_eq!(v[0].0, Verdict::NotRun);
+        assert_eq!(
+            v[0].1,
+            ["ChatModelTests.testNeedsServer skipped itself in this run"]
+        );
+        assert_eq!(v[1].0, Verdict::Missing);
+    }
+
+    #[test]
     fn a_bundle_is_written_and_never_claims_the_device() {
         let app = tempfile::tempdir().unwrap();
         let reqs = [Requirement {
@@ -734,7 +791,7 @@ Test Case 'LibraryModelTests.testB' failed (0.014 seconds)
             device: vec![],
         }];
         let tests = parse_xctest(LINUX);
-        let verdicts = judge(&reqs, &tests, &[]);
+        let verdicts = judge(&reqs, &tests, &[], &[]);
         let run = Run {
             command: "check swift",
             kind: "linux-twin",

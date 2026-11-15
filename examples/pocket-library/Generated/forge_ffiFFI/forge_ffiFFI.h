@@ -315,6 +315,27 @@ typedef void (*UniffiCallbackInterfaceAiModelMethod1)(uint64_t, RustBuffer, uint
     );
 
 #endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD0
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod0)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD1
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod1)(uint64_t, RustBuffer, uint64_t, RustBuffer* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HTTP_TRANSPORT_METHOD2
+typedef void (*UniffiCallbackInterfaceHttpTransportMethod2)(uint64_t, uint64_t, void* _Nonnull, 
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_PROGRESS_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_SUMMARY_PROGRESS_METHOD0
 typedef void (*UniffiCallbackInterfaceSummaryProgressMethod0)(uint64_t, RustBuffer, void* _Nonnull, 
@@ -363,6 +384,17 @@ typedef struct UniffiVTableCallbackInterfaceAiModel {
     UniffiCallbackInterfaceAiModelMethod0 _Nonnull describe;
     UniffiCallbackInterfaceAiModelMethod1 _Nonnull generate;
 } UniffiVTableCallbackInterfaceAiModel;
+
+#endif
+#ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+#define UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_HTTP_TRANSPORT
+typedef struct UniffiVTableCallbackInterfaceHttpTransport {
+    UniffiCallbackInterfaceFree _Nonnull uniffiFree;
+    UniffiCallbackInterfaceClone _Nonnull uniffiClone;
+    UniffiCallbackInterfaceHttpTransportMethod0 _Nonnull send;
+    UniffiCallbackInterfaceHttpTransportMethod1 _Nonnull openStream;
+    UniffiCallbackInterfaceHttpTransportMethod2 _Nonnull cancel;
+} UniffiVTableCallbackInterfaceHttpTransport;
 
 #endif
 #ifndef UNIFFI_FFIDEF_V_TABLE_CALLBACK_INTERFACE_SUMMARY_PROGRESS
@@ -511,7 +543,7 @@ uint64_t uniffi_pocket_library_core_fn_method_library_revision(uint64_t ptr, Rus
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SAVE_READING_POSITION
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SAVE_READING_POSITION
-uint64_t uniffi_pocket_library_core_fn_method_library_save_reading_position(uint64_t ptr, uint64_t id, RustBuffer position
+uint64_t uniffi_pocket_library_core_fn_method_library_save_reading_position(uint64_t ptr, uint64_t id, uint32_t chapter, RustBuffer location
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_LIBRARY_SEARCH_CATALOGUE
@@ -709,6 +741,61 @@ int8_t uniffi_pocket_library_core_fn_method_textsink_is_stopped(uint64_t ptr, Ru
 int8_t uniffi_pocket_library_core_fn_method_textsink_push(uint64_t ptr, RustBuffer text, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_HTTPSTREAMBODY
+uint64_t uniffi_pocket_library_core_fn_clone_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_HTTPSTREAMBODY
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_HTTPSTREAMBODY
+void uniffi_pocket_library_core_fn_free_httpstreambody(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_FAIL
+void uniffi_pocket_library_core_fn_method_httpstreambody_fail(uint64_t ptr, RustBuffer error, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_FINISH
+void uniffi_pocket_library_core_fn_method_httpstreambody_finish(uint64_t ptr, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPSTREAMBODY_RECEIVE
+void uniffi_pocket_library_core_fn_method_httpstreambody_receive(uint64_t ptr, RustBuffer data, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_HTTPTRANSPORT
+uint64_t uniffi_pocket_library_core_fn_clone_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FREE_HTTPTRANSPORT
+void uniffi_pocket_library_core_fn_free_httptransport(uint64_t handle, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_INIT_CALLBACK_VTABLE_HTTPTRANSPORT
+void uniffi_pocket_library_core_fn_init_callback_vtable_httptransport(const UniffiVTableCallbackInterfaceHttpTransport* _Nonnull vtable
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_SEND
+RustBuffer uniffi_pocket_library_core_fn_method_httptransport_send(uint64_t ptr, RustBuffer request, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_OPEN_STREAM
+RustBuffer uniffi_pocket_library_core_fn_method_httptransport_open_stream(uint64_t ptr, RustBuffer request, uint64_t body, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_METHOD_HTTPTRANSPORT_CANCEL
+void uniffi_pocket_library_core_fn_method_httptransport_cancel(uint64_t ptr, uint64_t id, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYPROGRESS
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_CLONE_SUMMARYPROGRESS
 uint64_t uniffi_pocket_library_core_fn_clone_summaryprogress(uint64_t handle, RustCallStatus *_Nonnull out_status
@@ -745,6 +832,11 @@ uint32_t uniffi_pocket_library_core_fn_func_epub_words_per_page(RustCallStatus *
 RustBuffer uniffi_pocket_library_core_fn_func_library_error_kind(RustBuffer error, RustCallStatus *_Nonnull out_status
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_WRITE_SAMPLE_EPUB
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_WRITE_SAMPLE_EPUB
+void uniffi_pocket_library_core_fn_func_write_sample_epub(RustBuffer path, RustCallStatus *_Nonnull out_status
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_DELIVER_NOTIFICATION_RESPONSE
 void uniffi_pocket_library_core_fn_func_deliver_notification_response(RustBuffer response, RustCallStatus *_Nonnull out_status
@@ -775,6 +867,11 @@ RustBuffer uniffi_pocket_library_core_fn_func_parse_deep_link(RustBuffer url, Ru
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_AI
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_AI
 void uniffi_pocket_library_core_fn_func_install_native_ai(uint64_t model, RustCallStatus *_Nonnull out_status
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_FN_FUNC_INSTALL_NATIVE_HTTP
+void uniffi_pocket_library_core_fn_func_install_native_http(uint64_t transport, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_POCKET_LIBRARY_CORE_RUSTBUFFER_ALLOC
@@ -1055,6 +1152,12 @@ uint16_t uniffi_pocket_library_core_checksum_func_library_error_kind(void
     
 );
 #endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_WRITE_SAMPLE_EPUB
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_WRITE_SAMPLE_EPUB
+uint16_t uniffi_pocket_library_core_checksum_func_write_sample_epub(void
+    
+);
+#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_DELIVER_NOTIFICATION_RESPONSE
 uint16_t uniffi_pocket_library_core_checksum_func_deliver_notification_response(void
@@ -1088,6 +1191,12 @@ uint16_t uniffi_pocket_library_core_checksum_func_parse_deep_link(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_AI
 uint16_t uniffi_pocket_library_core_checksum_func_install_native_ai(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_FUNC_INSTALL_NATIVE_HTTP
+uint16_t uniffi_pocket_library_core_checksum_func_install_native_http(void
     
 );
 #endif
@@ -1382,6 +1491,42 @@ uint16_t uniffi_pocket_library_core_checksum_method_textsink_is_stopped(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
 #define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_TEXTSINK_PUSH
 uint16_t uniffi_pocket_library_core_checksum_method_textsink_push(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FAIL
+uint16_t uniffi_pocket_library_core_checksum_method_httpstreambody_fail(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_FINISH
+uint16_t uniffi_pocket_library_core_checksum_method_httpstreambody_finish(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPSTREAMBODY_RECEIVE
+uint16_t uniffi_pocket_library_core_checksum_method_httpstreambody_receive(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_SEND
+uint16_t uniffi_pocket_library_core_checksum_method_httptransport_send(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_OPEN_STREAM
+uint16_t uniffi_pocket_library_core_checksum_method_httptransport_open_stream(void
+    
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+#define UNIFFI_FFIDEF_UNIFFI_POCKET_LIBRARY_CORE_CHECKSUM_METHOD_HTTPTRANSPORT_CANCEL
+uint16_t uniffi_pocket_library_core_checksum_method_httptransport_cancel(void
     
 );
 #endif

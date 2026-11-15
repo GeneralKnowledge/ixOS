@@ -1,0 +1,49 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/invalid-details.toml
+#
+# PL-4: a current page past the last page is refused under the field, the
+# form stays open, and Cancel leaves the library empty.
+
+name = "PL-4: invalid details are refused and change nothing"
+app = "org.forgemobile.devicelab"
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.empty.add" }
+
+[[step]]
+tap = { id = "library.add.manual" }
+
+[[step]]
+type = { id = "bookForm.title", text = "Short Book" }
+
+[[step]]
+type = { id = "bookForm.currentPage", text = "50" }
+
+[[step]]
+type = { id = "bookForm.totalPages", text = "10" }
+
+[[step]]
+tap = { id = "bookForm.save" }
+
+[[step]]
+expect = { label = "Error: The current page is past the last page (10)." }
+
+[[step]]
+expect = { id = "bookForm.save" }
+
+[[step]]
+screenshot = "1-refused"
+
+[[step]]
+tap = { id = "bookForm.cancel" }
+
+[[step]]
+expect = { id = "library.empty.add" }

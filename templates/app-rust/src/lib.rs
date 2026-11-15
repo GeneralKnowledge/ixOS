@@ -37,10 +37,11 @@ use serde::{Deserialize, Serialize};
 uniffi::setup_scaffolding!();
 
 // Native services the host implements (Keychain, app directories, local
-// notifications, permissions, deep links), as `crate::native`. The iOS host
-// installs them with `ForgeServices.install()`; Rust code uses
+// notifications, permissions, deep links), as `crate::native`. Their Swift
+// ships in ForgeKit (ForgeNative); the iOS host installs them with
+// `ForgeServices.install()`, and Rust code uses
 // `native::NativeServices::installed()`. See docs/native-services.md.
-forge_services::native_services!();
+pub use forge_native as native;
 
 // `forge_log` for the host: Swift's `ForgeLog("Category").warn(...)` writes
 // into the same log as Rust (system log, recent records, `forge device`).
@@ -149,11 +150,11 @@ pub fn app_error_kind(error: AppError) -> ErrorKind {
         AppError::InvalidInput { .. } => ErrorKind::Invalid,
         AppError::NotFound { .. } => ErrorKind::NotFound,
         AppError::Storage { .. } => ErrorKind::Internal,
-        AppError::InUse
-        | AppError::Offline { .. }
+        AppError::InUse => ErrorKind::Unavailable,
+        AppError::Offline { .. }
         | AppError::Certificate { .. }
         | AppError::Timeout
-        | AppError::Network { .. } => ErrorKind::Unavailable,
+        | AppError::Network { .. } => ErrorKind::Network,
         AppError::Cancelled => ErrorKind::Cancelled,
         AppError::Interrupted => ErrorKind::Interrupted,
         AppError::ShutDown => ErrorKind::ShutDown,

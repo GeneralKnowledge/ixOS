@@ -3,6 +3,7 @@
 // `forge check swift` on Linux.
 #if canImport(Security)
 import GoodDogApp
+@preconcurrency import ForgeNative
 @preconcurrency import GoodDogFFI
 import Foundation
 import XCTest

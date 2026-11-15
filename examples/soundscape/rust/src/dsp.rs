@@ -96,6 +96,37 @@ pub fn write(path: &Path, frames: &[Frame], sample_rate: u32) -> Result<(), Soun
     Ok(())
 }
 
+/// How long one metronome click rings, in seconds.
+const CLICK_SECONDS: f64 = 0.03;
+
+/// One pass of a loop's metronome: a short tick on every beat (four to the
+/// bar), higher and louder on the first beat of each bar, silence between.
+/// The app loops it under playback and plays its first bar as the count-in.
+pub fn clicks(tempo_bpm: f64, bars: u32, sample_rate: u32) -> Vec<Frame> {
+    let rate = f64::from(sample_rate);
+    let beat = 60.0 / tempo_bpm * rate;
+    let beats = bars as usize * 4;
+    let len = (beat * beats as f64).round() as usize;
+    let ring = (CLICK_SECONDS * rate) as usize;
+    let mut frames = vec![[0.0f32; 2]; len];
+    for n in 0..beats {
+        let (hz, level) = if n % 4 == 0 {
+            (1_600.0, 0.8)
+        } else {
+            (1_000.0, 0.5)
+        };
+        let start = (beat * n as f64).round() as usize;
+        for i in 0..ring.min(len.saturating_sub(start)) {
+            let t = i as f64 / rate;
+            // A sine that dies away, so it ticks rather than beeps.
+            let fade = 1.0 - i as f64 / ring as f64;
+            let s = (level * fade * fade * (2.0 * PI * hz * t).sin()) as f32;
+            frames[start + i] = [s, s];
+        }
+    }
+    frames
+}
+
 /// Changes the sample rate by straight-line interpolation: plain, and good
 /// enough for sketching. Same rate is a copy.
 pub fn resample(frames: &[Frame], from: u32, to: u32) -> Vec<Frame> {
@@ -297,6 +328,26 @@ mod tests {
         assert_eq!(out[10][0], 0.5);
         assert_eq!(out[20][0], 0.25);
         assert_eq!(out[5][0], 0.0);
+    }
+
+    #[test]
+    fn clicks_fill_one_pass_and_accent_each_bar() {
+        // 120 bpm, two bars at 8 kHz: eight beats of 4,000 frames.
+        let c = clicks(120.0, 2, 8_000);
+        assert_eq!(c.len(), 32_000);
+        let loudest = |from: usize| {
+            c[from..from + 240]
+                .iter()
+                .map(|f| f[0].abs())
+                .fold(0.0, f32::max)
+        };
+        assert!(
+            loudest(0) > loudest(4_000),
+            "the bar's first beat is accented"
+        );
+        assert!(loudest(16_000) > loudest(20_000));
+        assert!(loudest(4_000) > 0.1);
+        assert_eq!(c[2_000], [0.0, 0.0], "silence between beats");
     }
 
     #[test]

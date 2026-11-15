@@ -1,5 +1,6 @@
 @preconcurrency import ForgeFFI
 import SwiftUI
+import ForgeUI
 
 /// The app's root: one navigation stack over the dashboard. It owns the
 /// model, keeps it following Rust while on screen, and tells Rust when the

@@ -3,4 +3,5 @@
 
 public let forgeSelectedServices: [(name: String, install: @Sendable () throws -> Void)] = [
     ("Ai", ForgeServices.installAi),
+    ("Http", ForgeServices.installHttp),
 ]

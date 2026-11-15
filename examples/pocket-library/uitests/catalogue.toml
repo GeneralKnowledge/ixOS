@@ -1,0 +1,78 @@
+# Runs in Device Lab, which hosts Pocket Library on the phone, on throwaway
+# test data (-ForgeTemporaryData), so it never touches your own library.
+# Run with the phone plugged in:
+#   forge ui run examples/pocket-library/uitests/catalogue.toml
+#
+# PL-7 and PL-8, and the catalogue through URLSession (the http service):
+# a search shows Open Library results; leaving during a search closes it and
+# adds nothing; with online search switched off, the Add menu's catalogue
+# item is disabled and Settings says why. Needs the phone online.
+
+name = "PL-7, PL-8: catalogue search, leaving it, and switching it off"
+app = "org.forgemobile.devicelab"
+timeout = 20
+
+[[step]]
+terminate = {}
+
+[[step]]
+launch = { args = ["-ForgeTemporaryData", "-launchApp", "library"] }
+
+[[step]]
+tap = { id = "library.empty.add" }
+
+[[step]]
+tap = { id = "library.add.catalogue" }
+
+[[step]]
+type = { kind = "SearchField", text = "the hobbit" }
+
+[[step]]
+key = "return"
+
+[[step]]
+expect = { id = "catalogue.results" }
+
+[[step]]
+screenshot = "1-results"
+
+# PL-8: search again and leave at once.
+[[step]]
+type = { kind = "SearchField", text = "tolkien", clear = true }
+
+[[step]]
+key = "return"
+
+[[step]]
+tap = { id = "catalogue.cancel" }
+
+[[step]]
+expect = { id = "catalogue.cancel", gone = true }
+
+[[step]]
+expect = { id = "library.empty.add" }
+
+# PL-7: switch online search off.
+[[step]]
+tap = { id = "tab.settings" }
+
+[[step]]
+tap = { id = "settings.onlineCatalogue" }
+
+[[step]]
+screenshot = "2-switched-off"
+
+[[step]]
+tap = { id = "tab.library" }
+
+[[step]]
+tap = { id = "library.empty.add" }
+
+[[step]]
+expect = { id = "library.add.catalogue", enabled = false }
+
+[[step]]
+screenshot = "3-menu"
+
+[[step]]
+key = "dismiss"

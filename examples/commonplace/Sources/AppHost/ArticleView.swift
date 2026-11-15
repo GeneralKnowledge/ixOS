@@ -3,9 +3,9 @@ import ForgeAppKit
 import ForgeUI
 import SwiftUI
 
-/// Screen 3: one article. Opening it marks it read (Rust does). The toolbar
-/// bookmarks it, marks it unread, shows the original page and shares its
-/// link.
+/// Screen 3: one article, on ForgeReader. Opening it marks it read (Rust
+/// does). The toolbar sets the text size and font, bookmarks it, marks it
+/// unread, shows the original page and shares its link.
 struct ArticleView: View {
     let model: LibraryModel
     let articleID: Int64
@@ -23,7 +23,11 @@ struct ArticleView: View {
             text,
             retry: ForgeStateAction("Try Again", identifier: "article.retry") { attempt += 1 }
         ) { text in
-            ArticleReader(text: text)
+            ArticleReader(text: text, openLinksInApp: linksOpenInApp) { url in
+                #if os(iOS)
+                    original = .link(url)
+                #endif
+            }
         }
         .toolbar { toolbar }
         #if os(iOS)
@@ -37,10 +41,20 @@ struct ArticleView: View {
         }
     }
 
+    /// The web sheet is iOS's; elsewhere links go to the browser.
+    private var linksOpenInApp: Bool {
+        #if os(iOS)
+            return model.settings.openLinksInApp
+        #else
+            return false
+        #endif
+    }
+
     @ToolbarContentBuilder private var toolbar: some ToolbarContent {
         // The row's state, which Rust keeps current after each change.
         let summary = model.article(id: articleID)
         ToolbarItemGroup(placement: .primaryAction) {
+            ForgeReaderTextMenu(identifier: "article.textSettings")
             if let summary {
                 Button(
                     summary.bookmarked ? "Remove Bookmark" : "Bookmark",
@@ -83,48 +97,57 @@ private struct OpenRequest: Hashable {
     let attempt: Int
 }
 
-/// The reader's boundary: everything the reading surface shows comes in
-/// `ArticleText`, and nothing else in the app depends on how it is drawn.
-/// For now it is plain paragraphs; the native reader from the capability
-/// roadmap (Tier 1) replaces this view without changing the rest.
+/// The article on ForgeReader: its details above, then its body laid out
+/// as blocks (headings, quotes, lists, code, pictures) that follow the
+/// reader's text settings. Links open in the web sheet or in Safari, as
+/// the settings say.
 struct ArticleReader: View {
     let text: ArticleText
+    let openLinksInApp: Bool
+    let openInApp: (URL) -> Void
+    @State private var topBlock: Int?
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(text.feedTitle)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(text.title)
-                        .font(.title2.bold())
-                        .accessibilityAddTraits(.isHeader)
-                        .accessibilityIdentifier("article.title")
-                    HStack {
-                        if let author = text.author {
-                            Text(author)
-                        }
-                        Text(text.published, format: .dateTime.day().month().year().hour().minute())
-                    }
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                }
-                if text.paragraphs.isEmpty {
-                    Text("This feed sends no text for the article. Open it in the browser to read it.")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(Array(text.paragraphs.enumerated()), id: \.offset) { _, paragraph in
-                        Text(paragraph)
-                            .font(.body)
-                            .textSelection(.enabled)
-                    }
-                }
-            }
-            .padding()
-            .frame(maxWidth: 700, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
+        ForgeReaderSectionView(
+            blocks: text.body.blocks,
+            topBlock: $topBlock,
+            header: { header },
+            footer: { footer }
+        )
         .accessibilityIdentifier("article.body")
+        .environment(\.openURL, OpenURLAction { url in
+            guard openLinksInApp, let scheme = url.scheme?.lowercased(),
+                  scheme == "https" || scheme == "http" else { return .systemAction }
+            openInApp(url)
+            return .handled
+        })
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(text.feedTitle)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(.secondary)
+            Text(text.title)
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityIdentifier("article.title")
+            HStack {
+                if let author = text.author {
+                    Text(author)
+                }
+                Text(text.published, format: .dateTime.day().month().year().hour().minute())
+            }
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder private var footer: some View {
+        if text.body.blocks.isEmpty {
+            Text("This feed sends no text for the article. Open it in the browser to read it.")
+                .foregroundStyle(.secondary)
+        }
     }
 }

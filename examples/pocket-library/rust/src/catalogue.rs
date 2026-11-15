@@ -88,8 +88,11 @@ impl<C: HttpClient> OpenLibrary<C> {
         timeout: Duration,
         cancel: &CancelHandle,
     ) -> Result<Response, LibraryError> {
+        // Open Library asks clients to name themselves. Set on the request,
+        // not the client, so URLSession (the `http` service) sends it too.
         let request = Request::get(url)
             .header("Accept", "application/json")
+            .header("User-Agent", crate::USER_AGENT)
             .timeout(timeout);
         let response = self.http.send_cancellable(&request, cancel)?;
         check_status(&response)?;
@@ -486,6 +489,19 @@ pub(crate) mod tests {
             ol.cover("https://evil.test/x.jpg", &CancelHandle::new()),
             Err(LibraryError::InvalidInput { .. })
         ));
+    }
+
+    #[test]
+    fn every_request_names_the_app() {
+        let url = catalogue(StaticClient::new()).search_url("hobbit");
+        let ol = catalogue(StaticClient::new().route(Method::Get, url, ok(SEARCH_BODY)));
+        let _ = ol.search("hobbit", &CancelHandle::new());
+        let sent = ol.http.received();
+        assert!(!sent.is_empty());
+        for request in sent {
+            let agent = request.headers.iter().find(|h| h.name == "User-Agent");
+            assert_eq!(agent.map(|h| h.value.as_str()), Some(crate::USER_AGENT));
+        }
     }
 
     #[test]

@@ -1,0 +1,12 @@
+order = 145
+module = "Reader"
+layer = "Optional"
+crate = "`forge-reader` (Rust), its Swift views in the app's bindings module"
+provides = "Reader documents (sections of styled blocks with stable ids), HTML and XHTML into blocks, links and pictures, reading positions as block anchors that survive edits, progress by words, the SwiftUI reading view and text settings"
+native_apis = "SwiftUI text layout, `AttributedString` links, ImageIO for saved pictures"
+dependencies = "`quick-xml`, `url`"
+ios = "Partial: Pocket Library and Commonplace; device run pending"
+android = "No"
+desktop = "No"
+status = "Experimental"
+exercised_by = "Pocket Library (EPUB), Commonplace (feed articles)"

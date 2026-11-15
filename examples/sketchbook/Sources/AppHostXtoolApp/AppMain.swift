@@ -1,5 +1,6 @@
 import SketchbookApp
 import SwiftUI
+import ForgeUI
 
 // The xtool entry point. AppHostLauncher is the same app for `swift run` and the Xcode project.
 @main

@@ -41,7 +41,14 @@ pub struct Project {
     pub modified_ms: i64,
     pub tempo_bpm: f64,
     pub bars: u32,
+    /// Whether the metronome clicks while the loop plays and records.
+    #[serde(default = "metronome_on")]
+    pub metronome: bool,
     pub tracks: Vec<SavedTrack>,
+}
+
+fn metronome_on() -> bool {
+    true
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -103,6 +110,7 @@ impl Projects {
             modified_ms: now_ms,
             tempo_bpm,
             bars,
+            metronome: true,
             tracks: vec![new_track(track, "Track 1".into())],
         });
         Ok(id)

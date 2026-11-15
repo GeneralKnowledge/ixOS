@@ -10,6 +10,7 @@
 		<string>org.forgemobile.pocketlibrary.booksummary.*</string>
 		<string>XTL-ND4P87PX52.org.forgemobile.pocketlibrary.booksummary.*</string>
 		<string>org.forgemobile.agentlab.commonplace.refresh</string>
+		<string>org.forgemobile.chat.refresh</string>
 	</array>
 	<key>CFBundleDisplayName</key>
 	<string>Device Lab</string>
@@ -54,6 +55,10 @@
 		<string>audio</string>
 		<string>fetch</string>
 		<string>processing</string>
+	</array>
+	<key>UIDeviceFamily</key>
+	<array>
+		<integer>1</integer>
 	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
