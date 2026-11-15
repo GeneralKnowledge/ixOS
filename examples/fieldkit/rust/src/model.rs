@@ -1,7 +1,7 @@
 //! The types FieldKit's API speaks in, and its errors.
 
-use forge_app::{ErrorKind, OpenError, Stopped};
-use forge_storage::{FileStoreError, StorageError};
+use forge_app::ErrorKind;
+use forge_storage::FileStoreError;
 
 /// The longest trip title, in characters.
 pub const MAX_TITLE_CHARS: u32 = 80;
@@ -126,23 +126,7 @@ pub fn fieldkit_error_kind(error: FieldKitError) -> ErrorKind {
     }
 }
 
-impl From<Stopped> for FieldKitError {
-    fn from(stopped: Stopped) -> Self {
-        Self::Stopped { kind: stopped.kind }
-    }
-}
-
-impl From<StorageError> for FieldKitError {
-    fn from(err: StorageError) -> Self {
-        match err {
-            StorageError::CorruptData { reason } => Self::Corrupt { reason },
-            StorageError::UnsupportedSchemaVersion { .. } => Self::NewerData,
-            other => Self::Storage {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
+forge_app::app_error_conversions!(FieldKitError: Stopped, OpenError, StorageError);
 
 impl From<forge_storage::rusqlite::Error> for FieldKitError {
     fn from(err: forge_storage::rusqlite::Error) -> Self {
@@ -159,17 +143,6 @@ impl From<FileStoreError> for FieldKitError {
                 reason: err.to_string(),
             },
             other => Self::File {
-                reason: other.to_string(),
-            },
-        }
-    }
-}
-
-impl From<OpenError> for FieldKitError {
-    fn from(err: OpenError) -> Self {
-        match err {
-            OpenError::InUse { .. } => Self::InUse,
-            other => Self::Storage {
                 reason: other.to_string(),
             },
         }

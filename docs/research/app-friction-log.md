@@ -38,7 +38,7 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
 | A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Fixed: `write_hashed` |
 | A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Fixed: `import_hashed_keeping_extension`, `import_hashed_with_extension`, `safe_file_name` |
-| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Open |
+| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Conversions fixed: `forge_app::app_error_conversions!` (2026-11-15); `start_fresh` and title file names open |
 | A16 | Relay | The Noise channel and framing Relay needs live in `forge-devproto`, a frozen tooling crate | Limit | Open: second use, extract after merge |
 | A17 | Relay | Pair secrets sit in the app's JSON file: the Keychain service needs the iOS host, so tests and the Linux command can't use it | Limit | Open |
 | A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
@@ -282,6 +282,13 @@ from a title.
 conversions (or a documented `#[derive]`), `Document`-backed `start_fresh`
 in the template, and `forge_storage::files::title_file_name` with
 numbering for repeats.
+
+**Fixed in part (2026-11-15, overnight pass).** `forge_app::app_error_conversions!(MyError)`
+writes `From<Stopped>`, `From<OpenError>` and `From<DocumentError>` (and
+`From<StorageError>` when listed) for an error with the standard cases.
+Checklist, FieldKit, Sketchbook and Soundscape use it; Relay keeps its own
+until its stage 1 work settles. `start_fresh` and title file names are
+still open.
 
 ## A16. The encrypted channel lives in a tooling crate
 

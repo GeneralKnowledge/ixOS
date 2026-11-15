@@ -32,6 +32,7 @@
 //! ```
 
 mod contract;
+mod conversions;
 pub mod document;
 mod executor;
 mod published;
@@ -50,6 +51,8 @@ pub use validation::{FieldError, Invalid, Validator};
 // Re-exported so `export_runtime!` and apps need no direct dependency.
 #[doc(hidden)]
 pub use forge_runtime as __runtime;
+#[doc(hidden)]
+pub use forge_storage as __storage;
 
 uniffi::setup_scaffolding!("forge_app");
 
