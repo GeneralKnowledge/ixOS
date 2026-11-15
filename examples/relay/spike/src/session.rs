@@ -108,6 +108,22 @@ impl Session {
         self.expired = true;
     }
 
+    /// Another sender took this code's number. Only an unused, live code is
+    /// given up: the code is expired at once, under the same lock as the
+    /// check, so no receiver can be admitted on it between the check and
+    /// the reissue. Returns whether the caller should issue a new code.
+    /// A collision reported for a code that has since been used (or
+    /// replaced) is ignored, so it cannot cut off a handshake in progress.
+    /// In the Lean model this is `expire`, taken only when the code is
+    /// unspent.
+    pub fn collided(&mut self, gen: u64) -> bool {
+        if gen != self.gen || self.spent || self.expired {
+            return false;
+        }
+        self.expired = true;
+        true
+    }
+
     /// A new code replaces this one.
     pub fn reissue(&mut self) {
         *self = Session {
@@ -240,6 +256,54 @@ mod tests {
         assert!(s.is_current(s.gen));
     }
 
+    #[test]
+    fn a_collision_on_an_unused_code_expires_it_at_once() {
+        let mut s = Session::new();
+        assert!(s.collided(s.gen));
+        assert_eq!(
+            s.attempt().0,
+            Answer::Gone,
+            "no receiver between the check and the reissue"
+        );
+        assert!(!s.collided(s.gen), "reported once");
+    }
+
+    #[test]
+    fn a_collision_queued_before_a_receiver_was_admitted_is_ignored() {
+        let mut s = Session::new();
+        // The collision is seen while the code is unused...
+        let queued = s.gen;
+        // ...but a receiver is admitted before the sender handles it.
+        let (answer, gen) = s.attempt();
+        assert_eq!(answer, Answer::Go);
+        let before = s.clone();
+        assert!(!s.collided(queued), "a code in use must not be replaced");
+        assert_eq!(s, before);
+        assert!(
+            s.finish(gen, Ending::Proved),
+            "the handshake still completes"
+        );
+        assert_eq!(s.allowed, 1);
+    }
+
+    #[test]
+    fn a_collision_after_a_finished_attempt_is_ignored() {
+        let mut s = Session::new();
+        let queued = s.gen;
+        let (_, gen) = s.attempt();
+        s.finish(gen, Ending::WrongCode);
+        assert!(!s.collided(queued));
+    }
+
+    #[test]
+    fn a_collision_about_a_replaced_code_is_ignored() {
+        let mut s = Session::new();
+        let old = s.gen;
+        s.reissue();
+        assert!(!s.collided(old));
+        assert_eq!(s.answer(), Answer::Go);
+    }
+
     /// Every sequence of steps keeps the invariant, refusals change nothing,
     /// and a spent or expired code never answers `Go` before a reissue.
     /// A small deterministic generator, so no extra dependency.
@@ -258,7 +322,7 @@ mod tests {
             for _ in 0..60 {
                 let was_unusable = s.spent || s.expired;
                 let gen_before = s.gen;
-                match next(5) {
+                match next(6) {
                     0 => {
                         let before = s.clone();
                         let (answer, gen) = s.attempt();
@@ -282,6 +346,18 @@ mod tests {
                         }
                     }
                     2 => s.expire(),
+                    5 => {
+                        // A collision report, possibly queued long ago.
+                        let gen = s.gen.saturating_sub(next(2));
+                        let was_in_use = s.busy || s.spent;
+                        let before = s.clone();
+                        if s.collided(gen) {
+                            assert!(!was_in_use, "a collision replaced a code in use");
+                            assert_eq!(s.answer(), Answer::Gone);
+                        } else {
+                            assert_eq!(s, before, "an ignored collision changed the session");
+                        }
+                    }
                     3 => s.reissue(),
                     _ => {
                         // A stale finish from an older code.

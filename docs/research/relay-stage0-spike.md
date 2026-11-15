@@ -75,7 +75,7 @@ real machines next):
 | Speed | 290 to 364 MB/s over loopback with the file store |
 | Stranger | Still refused with the right hash |
 | Malformed first message (test command `garble`) | Counts as a wrong code: the sender issues a new code at once and that code works (file identical). Before the fix a malformed message left the code marked busy forever |
-| Session rules | The sender's code session is a pure state machine (`src/session.rs`) that mirrors `verification/relay/CodeSession.lean`: every admitted attempt ends in exactly one `finish` (proved, wrong code or dropped); busy and gone answers change nothing; a spent or expired code is refused until it is replaced; collision and handshake events carry the code's generation and events about a replaced code are ignored. 11 unit tests, one of them 2,000 random sequences of 60 steps checking the model's invariant after every step |
+| Session rules | The sender's code session is a pure state machine (`src/session.rs`) that mirrors `verification/relay/CodeSession.lean`: every admitted attempt ends in exactly one `finish` (proved, wrong code or dropped); busy and gone answers change nothing; a spent or expired code is refused until it is replaced; collision and handshake events carry the code's generation and events about a replaced code are ignored; a collision only replaces a code that is still unused, and expires it under the same lock so no receiver slips in before the new code (a collision queued before a receiver was admitted no longer cuts that handshake off). 15 unit tests, one of them 2,000 random sequences of 60 steps checking the model's invariant after every step |
 
 Not covered yet: two physical machines on a real network (next), and the
 iPhone (M1).

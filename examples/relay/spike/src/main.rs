@@ -577,8 +577,19 @@ async fn send(path: PathBuf, store_dir: &Path) -> Result<()> {
             Ok(None) => break Err(anyhow!("stopped")),
             Err(_) => break Err(anyhow!("the code expired")),
         };
-        if event.kind != Kind::Done && !session.lock().unwrap().machine.is_current(event.gen) {
-            // About a code that has already been replaced.
+        let stale = {
+            let mut s = session.lock().unwrap();
+            match event.kind {
+                Kind::Done => false,
+                // Checked and acted on under one lock: a collision queued
+                // while the code was unused may arrive after a receiver was
+                // admitted, and must not cut that handshake off.
+                Kind::Collision => !s.machine.collided(event.gen),
+                _ => !s.machine.is_current(event.gen),
+            }
+        };
+        if stale {
+            // About a code that has been used or replaced since.
             continue;
         }
         let why = match event.kind {
