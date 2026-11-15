@@ -33,7 +33,7 @@ use std::sync::{Arc, Mutex, Weak};
 use forge_app::{Cancellation, DataDirectory, ErrorKind, Published, Runtime};
 use forge_runtime::{lock, now_ms};
 use forge_storage::rusqlite::Connection;
-use forge_storage::{FileStore, Opened};
+use forge_storage::{files, FileStore, Opened};
 
 pub use export::ExportFormat;
 pub use model::{
@@ -401,7 +401,7 @@ impl FieldKitCore {
         let media = self.media_root.clone();
         let path = self.caches.join(format!(
             "{}.{}",
-            export_name(&trip.title),
+            files::title_file_name(&trip.title, "Trip"),
             format.extension()
         ));
         let work = self.rt.finishing(cancellation.as_deref());
@@ -647,26 +647,6 @@ fn sample_from(fix: &LocationFix) -> LocationSample {
         altitude_m: fix.altitude_m,
         horizontal_accuracy_m: fix.horizontal_accuracy_m,
         timestamp_ms: fix.timestamp_ms,
-    }
-}
-
-/// A file name from a trip title: letters, digits, spaces and dashes only.
-fn export_name(title: &str) -> String {
-    let name: String = title
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == ' ' || c == '-' {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect();
-    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
-    if name.is_empty() {
-        "Trip".into()
-    } else {
-        name
     }
 }
 

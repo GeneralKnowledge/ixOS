@@ -28,7 +28,7 @@ use std::sync::Arc;
 
 use forge_app::{Cancellation, DataDirectory, Document, ErrorKind, Published, Runtime};
 use forge_runtime::now_ms;
-use forge_storage::FileStore;
+use forge_storage::{files, FileStore};
 
 pub use model::{
     soundscape_error_kind, Clip, Echo, Mixdown, ProjectDetail, ProjectSummary, SoundscapeError,
@@ -344,10 +344,10 @@ impl SoundscapeCore {
         let all = self.projects.get();
         let project = all.get(id)?.clone();
         let recordings = self.recordings.clone();
-        let path = self
-            .caches
-            .join("mixdowns")
-            .join(format!("{}.wav", file_name(&project.title)));
+        let path = self.caches.join("mixdowns").join(format!(
+            "{}.wav",
+            files::title_file_name(&project.title, "Mixdown")
+        ));
         let work = self.rt.finishing(cancellation.as_deref());
         self.rt
             .run("mixdown", work, move |cancel| {
@@ -491,26 +491,6 @@ fn summary(p: &Project) -> ProjectSummary {
 fn stopped() -> SoundscapeError {
     SoundscapeError::Stopped {
         kind: ErrorKind::Cancelled,
-    }
-}
-
-/// A file name from a title: letters, digits, spaces and dashes only.
-fn file_name(title: &str) -> String {
-    let name: String = title
-        .chars()
-        .map(|c| {
-            if c.is_alphanumeric() || c == ' ' || c == '-' {
-                c
-            } else {
-                ' '
-            }
-        })
-        .collect();
-    let name = name.split_whitespace().collect::<Vec<_>>().join(" ");
-    if name.is_empty() {
-        "Mixdown".into()
-    } else {
-        name
     }
 }
 

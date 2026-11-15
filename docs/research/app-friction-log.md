@@ -31,14 +31,14 @@ Severity: **blocker** (had to stop), **limit** (had to work around),
 | A3 | FieldKit | SQLite can't store `u64`, so SQLite apps use `i64` ids and file-based apps use `u64` | Annoyance | Open |
 | A4 | FieldKit | Great-circle distance lives in `forge_services::sensors`, so a pure Rust core depends on the native services crate | Annoyance | Open |
 | A5 | FieldKit | The runtime has no way to read data the command thread owns without a command, and every command raises the revision | Limit | Open |
-| A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Open |
+| A6 | FieldKit | No date formatting in the framework: an ISO 8601 writer by hand for GPX and GeoJSON | Annoyance | Fixed: `forge_runtime::time` (second use: Weather) |
 | A7 | FieldKit | `forge init FieldKit` names the library `field_kit_core`, and the template's folders and test target are still called `AppHost` | Annoyance | Open |
 | A8 | FieldKit | `PermissionStatus::allows_use` is Rust only, so each app redefines `allowsUse` in Swift | Annoyance | Open |
 | A9 | FieldKit | Feeding a native service's events into commands has no documented pattern: a listener queues a command and drops the future | Limit | Open |
 | A10 | FieldKit | The location adapter can't keep recording in the background (no `allowsBackgroundLocationUpdates`, no background mode) | Limit | Open, needed by F3 |
 | A13 | Sketchbook | `FileStore` can name a file by its SHA-256 only when importing from a path; bytes in memory need the app's own `sha2` and hex | Annoyance | Fixed: `write_hashed` |
 | A14 | Soundscape, Relay | A2 again: Soundscape keeps `.wav` by hashing first then importing (two reads), and `safe_name` turns `photo.jpg` into `photo-jpg`, so Relay keeps received names by hand | Limit | Fixed: `import_hashed_keeping_extension`, `import_hashed_with_extension`, `safe_file_name` |
-| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Conversions fixed: `forge_app::app_error_conversions!` (2026-11-15); `start_fresh` and title file names open |
+| A15 | Sketchbook, Soundscape, Relay | Every `Document` app writes the same `From` impls for its error, the same `start_fresh` constructor and the same "file name from a title" helper | Annoyance | Conversions fixed: `forge_app::app_error_conversions!`; title file names fixed: `files::title_file_name(s)` (2026-11-15); `start_fresh` open |
 | A16 | Relay | The Noise channel and framing Relay needs live in `forge-devproto`, a frozen tooling crate | Limit | Open: second use, extract after merge |
 | A17 | Relay | Pair secrets sit in the app's JSON file: the Keychain service needs the iOS host, so tests and the Linux command can't use it | Limit | Open |
 | A18 | Relay | The runtime has no shape for a long-lived listener: a raw thread, a stop flag and `block_on(command)` from connection threads | Limit | Open, like A9 |
@@ -141,6 +141,11 @@ way to query data too large to publish.
 **Framework.** Accept for now. If a second app needs dates in Rust, add a
 small `forge_runtime::time` with ISO 8601 in and out, or allow the `time`
 crate in app crates.
+
+**Fixed (2026-11-15, overnight pass).** Weather had its own copy of the
+same date algorithm, so that is the second use. `forge_runtime::time` has
+`civil_from_days` and `utc_iso8601`; FieldKit's exports and Weather's local
+times use them. Parsing stays out until an app needs it.
 
 ## A7. Template names
 
@@ -287,8 +292,10 @@ numbering for repeats.
 writes `From<Stopped>`, `From<OpenError>` and `From<DocumentError>` (and
 `From<StorageError>` when listed) for an error with the standard cases.
 Checklist, FieldKit, Sketchbook and Soundscape use it; Relay keeps its own
-until its stage 1 work settles. `start_fresh` and title file names are
-still open.
+until its stage 1 work settles. File names from titles, which FieldKit,
+Sketchbook and Soundscape each wrote, are
+`forge_storage::files::title_file_name(title, fallback)` and
+`title_file_names` (numbering repeats). `start_fresh` is still open.
 
 ## A16. The encrypted channel lives in a tooling crate
 

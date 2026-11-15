@@ -37,6 +37,7 @@ mod jni_init;
 mod lifecycle;
 pub mod logging;
 mod shell;
+pub mod time;
 
 pub use background::{background, background_cancellable, block_on, Background};
 pub use events::{Delivery, EventHub, Subscription, DEFAULT_QUEUE_CAPACITY};

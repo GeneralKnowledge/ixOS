@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use forge_app::{DataDirectory, Document, Published, Runtime};
 use forge_runtime::now_ms;
-use forge_storage::FileStore;
+use forge_storage::{files, FileStore};
 
 use book::{Book, Edit, History, Page};
 pub use model::{
@@ -463,7 +463,7 @@ impl SketchbookCore {
             ExportFormat::Pdf if pages.len() == 1 => vec![pages[0].title.as_str()],
             ExportFormat::Pdf => vec!["Sketches"],
         };
-        let paths = unique_names(&titles)
+        let paths = files::title_file_names(&titles, "Sketch")
             .into_iter()
             .map(|name| {
                 folder
@@ -620,38 +620,6 @@ fn thumbnail_owner(name: &str) -> Option<u64> {
         .and_then(|s| s.parse().ok())
 }
 
-/// File names from titles: letters, digits, spaces and dashes, with " 2",
-/// " 3" added to repeats.
-fn unique_names(titles: &[&str]) -> Vec<String> {
-    let mut seen: HashMap<String, u32> = HashMap::new();
-    titles
-        .iter()
-        .map(|title| {
-            let cleaned: String = title
-                .chars()
-                .map(|c| {
-                    if c.is_alphanumeric() || c == ' ' || c == '-' {
-                        c
-                    } else {
-                        ' '
-                    }
-                })
-                .collect();
-            let mut name = cleaned.split_whitespace().collect::<Vec<_>>().join(" ");
-            if name.is_empty() {
-                name = "Sketch".into();
-            }
-            let count = seen.entry(name.to_lowercase()).or_insert(0);
-            *count += 1;
-            if *count > 1 {
-                format!("{name} {count}")
-            } else {
-                name
-            }
-        })
-        .collect()
-}
-
 forge_app::export_runtime!(SketchbookCore, rt);
 
 #[cfg(test)]
@@ -661,7 +629,10 @@ mod tests {
     #[test]
     fn export_names_are_clean_and_unique() {
         assert_eq!(
-            unique_names(&["Harbour/Night", "harbour night", "", "Harbour Night"]),
+            files::title_file_names(
+                &["Harbour/Night", "harbour night", "", "Harbour Night"],
+                "Sketch"
+            ),
             vec![
                 "Harbour Night",
                 "harbour night 2",

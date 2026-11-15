@@ -654,6 +654,50 @@ pub fn safe_file_name(text: &str) -> String {
     }
 }
 
+/// A file name for something a person titled, for a file the person will
+/// see (an export, a share): letters, digits, spaces and dashes are kept,
+/// anything else becomes a space, and runs of spaces become one. `Fish &
+/// chips: day 2` becomes `Fish chips day 2`. A title with nothing left
+/// becomes `fallback`. Add the extension yourself.
+pub fn title_file_name(title: &str, fallback: &str) -> String {
+    let kept: String = title
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == ' ' || c == '-' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let name = kept.split_whitespace().collect::<Vec<_>>().join(" ");
+    if name.is_empty() {
+        fallback.to_string()
+    } else {
+        name
+    }
+}
+
+/// [`title_file_name`] for several files that go together (one export of
+/// many sketches): repeats get ` 2`, ` 3` and so on, ignoring case, so no
+/// two names collide.
+pub fn title_file_names<S: AsRef<str>>(titles: &[S], fallback: &str) -> Vec<String> {
+    let mut seen: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+    titles
+        .iter()
+        .map(|title| {
+            let name = title_file_name(title.as_ref(), fallback);
+            let count = seen.entry(name.to_lowercase()).or_insert(0);
+            *count += 1;
+            if *count > 1 {
+                format!("{name} {count}")
+            } else {
+                name
+            }
+        })
+        .collect()
+}
+
 /// Turns any text (a title, a catalogue key, a URL path) into one valid name
 /// part: ASCII letters, digits, `-` and `_` are kept, everything else becomes
 /// `-`. Empty text becomes `file`.
@@ -774,6 +818,20 @@ fn collect_temporaries(dir: &Path, ours: &str, out: &mut Vec<PathBuf>) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn title_file_names_keep_words_and_number_repeats() {
+        assert_eq!(
+            title_file_name("Fish & chips: day 2", "Trip"),
+            "Fish chips day 2"
+        );
+        assert_eq!(title_file_name("  Café   walk ", "Trip"), "Café walk");
+        assert_eq!(title_file_name("../..", "Trip"), "Trip");
+        assert_eq!(
+            title_file_names(&["Cat", "cat", "Dog", "CAT", "!!"], "Sketch"),
+            ["Cat", "cat 2", "Dog", "CAT 3", "Sketch"]
+        );
+    }
+
     use super::*;
 
     fn store() -> (tempfile::TempDir, FileStore) {
