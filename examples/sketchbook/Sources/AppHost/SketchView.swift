@@ -1,7 +1,7 @@
 #if os(iOS)
 @preconcurrency import SketchbookFFI
 import ForgeAppKit
-import QuickLook
+import PencilKit
 import SwiftUI
 
 /// Screen 2: one sketch. Its layers are stacked canvases over the paper;
@@ -15,10 +15,17 @@ struct SketchView: View {
     @State private var detail: SketchDetail?
     @State private var selected: UInt64?
     @State private var showingLayers = false
-    @State private var preview: URL?
+    @State private var exported: SketchExport?
     /// Strokes sent to Rust and not answered yet. While any are out, an
     /// answer for an earlier stroke would put the canvas back a stroke.
     @State private var pendingDraws = 0
+    /// One tool picker for every layer, so the tool stays when the layer
+    /// changes. It starts on a black pen.
+    @State private var picker: PKToolPicker = {
+        let picker = PKToolPicker()
+        picker.selectedTool = PKInkingTool(.pen, color: .black, width: 4)
+        return picker
+    }()
 
     var body: some View {
         Group {
@@ -35,10 +42,12 @@ struct SketchView: View {
             LayersPanel(model: model, sketchID: sketchID, detail: $detail, selected: $selected)
                 .presentationDetents([.medium, .large])
         }
-        .quickLookPreview($preview)
-        // While the layers sheet is up, it shows the alerts.
+        .sheet(item: $exported) { export in
+            ExportSheet(export: export)
+        }
+        // While a sheet is up, it shows the alerts.
         .forgeAlert(Binding(
-            get: { showingLayers ? nil : model.alert },
+            get: { showingLayers || exported != nil ? nil : model.alert },
             set: { model.alert = $0 }
         )) { action in
             Task { if let changed = await model.handle(action) { show(changed) } }
@@ -63,7 +72,8 @@ struct SketchView: View {
             ForEach(detail.layers) { layer in
                 LayerCanvas(
                     drawing: model.drawing(at: layer.drawingPath),
-                    isActive: layer.id == selected && layer.visible
+                    isActive: layer.id == selected && layer.visible,
+                    picker: picker
                 ) { data in
                     draw(data, on: layer.id)
                 }
@@ -117,7 +127,7 @@ struct SketchView: View {
                     }
                 }
                 .accessibilityIdentifier("sketch.paper")
-                Section("Export") {
+                Section("Save or Share") {
                     Button("PNG Image", systemImage: "photo") { export(.png) }
                         .accessibilityIdentifier("sketch.export.png")
                     Button("PDF Document", systemImage: "doc.richtext") { export(.pdf) }
@@ -163,7 +173,12 @@ struct SketchView: View {
     private func export(_ format: ExportFormat) {
         guard let plan = model.exportPlan([sketchID], format: format) else { return }
         do {
-            preview = try SketchRenderer.write(plan)
+            let url = try SketchRenderer.write(plan)
+            exported = SketchExport(
+                url: url,
+                format: format,
+                image: plan.pages.first.map { SketchRenderer.image($0, scale: 1) }
+            )
         } catch {
             model.report(error)
         }

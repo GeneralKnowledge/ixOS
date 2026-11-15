@@ -15,6 +15,8 @@ struct ProjectView: View {
 
     @State private var detail: ProjectDetail?
     @State private var engine = LoopEngine()
+    /// The metronome's click track for the project's tempo and length.
+    @State private var click: URL?
     @State private var recording: UInt64?
     @State private var settingTiming = false
     @State private var tempo = 100.0
@@ -62,6 +64,16 @@ struct ProjectView: View {
         .onChange(of: changes) {
             if recording == nil { show(model.detail(projectID)) }
         }
+        // A new click track when the tempo or length changes.
+        .task(id: clickKey) {
+            guard clickKey != nil else { return }
+            click = await model.clickTrack(projectID, sampleRate: 48_000)
+            if let detail { engine.load(detail, click: click) }
+        }
+    }
+
+    private var clickKey: String? {
+        detail.map { "\($0.summary.tempoBpm)-\($0.summary.bars)" }
     }
 
     private func mixer(_ detail: ProjectDetail) -> some View {
@@ -141,12 +153,27 @@ struct ProjectView: View {
             }
             .accessibilityLabel(engine.isPlaying ? "Stop" : "Play")
             .accessibilityIdentifier("project.play")
+            Button {
+                toggleMetronome()
+            } label: {
+                Image(systemName: "metronome")
+                    .font(.title3)
+                    .frame(width: 44, height: 44)
+                    .foregroundStyle(metronomeOn ? Color.accentColor : .secondary)
+                    .background(metronomeOn ? Color.accentColor.opacity(0.15) : .clear, in: Circle())
+            }
+            .accessibilityLabel("Metronome")
+            .accessibilityValue(metronomeOn ? "On" : "Off")
+            .accessibilityIdentifier("project.metronome")
+            .disabled(recording != nil)
             VStack(alignment: .leading) {
                 if model.isMixing {
                     Text("Mixing down…")
                     Button("Stop Mixing") { model.stopMixdown() }
                         .font(.footnote)
                         .accessibilityIdentifier("project.stopMixdown")
+                } else if engine.isCountingIn {
+                    Text("Get ready: one bar…").foregroundStyle(.orange)
                 } else if recording != nil {
                     Text("Recording one pass…").foregroundStyle(.red)
                 } else if let summary = detail?.summary, let detail {
@@ -190,9 +217,16 @@ struct ProjectView: View {
 
     // MARK: Actions
 
+    private var metronomeOn: Bool { detail?.summary.metronome ?? true }
+
     private func show(_ changed: ProjectDetail?) {
         detail = changed
-        if let changed { engine.load(changed) }
+        if let changed { engine.load(changed, click: click) }
+    }
+
+    private func toggleMetronome() {
+        let on = !metronomeOn
+        Task { if let changed = await model.setMetronome(projectID, on: on) { show(changed) } }
     }
 
     private func record(_ track: Track) {

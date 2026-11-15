@@ -108,6 +108,8 @@ pub struct ProjectSummary {
     pub modified_ms: i64,
     pub tempo_bpm: f64,
     pub bars: u32,
+    /// Whether the metronome clicks while the loop plays and records.
+    pub metronome: bool,
     pub track_count: u32,
 }
 

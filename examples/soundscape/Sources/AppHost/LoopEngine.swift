@@ -11,6 +11,11 @@ import Observation
 /// `AVAudioUnitDelay`, into the main mixer. Every number comes from Rust's
 /// `Track.mix`, in these units already, so the mixdown Rust renders sounds
 /// the same. All players start at one host time, so the loops stay in step.
+///
+/// The metronome is one more player, looping Rust's click track (one pass
+/// of the loop, a tick on every beat) straight into the main mixer, so it
+/// is never in a recording or the mixdown. Recording always starts with a
+/// one-bar count-in: the click track's first bar, then the loop.
 @Observable
 @MainActor
 final class LoopEngine {
@@ -38,21 +43,44 @@ final class LoopEngine {
     @ObservationIgnored private var strips: [UInt64: Strip] = [:]
     @ObservationIgnored private var loopSeconds: Double = 0
     @ObservationIgnored private var recorder: Recorder?
+    @ObservationIgnored private let clickPlayer = AVAudioPlayerNode()
+    @ObservationIgnored private var clickPath: String?
+    @ObservationIgnored private var clickBuffer: AVAudioPCMBuffer?
+    @ObservationIgnored private var metronome = false
+    @ObservationIgnored private var barSeconds: Double = 0
     private(set) var isPlaying = false
     private(set) var isRecording = false
+    /// The bar of clicks before a recording starts.
+    private(set) var isCountingIn = false
+
+    init() {
+        engine.attach(clickPlayer)
+    }
 
     /// Makes the engine match `project`: a strip per track with a recording,
     /// each loaded with one pass of the loop and set to the track's mix.
-    /// Strips whose recording didn't change keep their buffer.
-    func load(_ project: ProjectDetail) {
+    /// Strips whose recording didn't change keep their buffer. `click` is
+    /// the project's click track (`SoundscapeModel.clickTrack`), or `nil`.
+    func load(_ project: ProjectDetail, click: URL?) {
         let wasPlaying = isPlaying
         let timingChanged = abs(project.loopSeconds - loopSeconds) > 0.0001
         loopSeconds = project.loopSeconds
+        barSeconds = 4 * 60 / project.summary.tempoBpm
+        var reloaded = timingChanged || metronome != project.summary.metronome
+        metronome = project.summary.metronome
+        if click?.path != clickPath {
+            clickPath = click?.path
+            clickBuffer = click.flatMap(Self.wholeFile)
+            engine.disconnectNodeOutput(clickPlayer)
+            if let buffer = clickBuffer {
+                engine.connect(clickPlayer, to: engine.mainMixerNode, format: buffer.format)
+            }
+            reloaded = true
+        }
         let wanted = Set(project.tracks.filter { $0.clip != nil }.map(\.id))
         for id in strips.keys where !wanted.contains(id) {
             detach(id)
         }
-        var reloaded = timingChanged
         for track in project.tracks {
             guard let clip = track.clip else { continue }
             var strip = strips[track.id] ?? attach(track.id)
@@ -92,20 +120,27 @@ final class LoopEngine {
             strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
         }
+        clickPlayer.stop()
+        if metronome, let click = clickBuffer {
+            clickPlayer.scheduleBuffer(click, at: nil, options: .loops, completionHandler: nil)
+            clickPlayer.play(at: start)
+        }
         isPlaying = true
     }
 
     func stop() {
         for strip in strips.values { strip.player.stop() }
+        clickPlayer.stop()
+        isCountingIn = false
         recorder?.cancel()
         recorder = nil
         isPlaying = false
     }
 
     /// Records exactly `frames` frames (one pass of the loop at the input's
-    /// rate) while the other tracks play, and returns the WAV file. The
-    /// input's and output's latency are skipped, so what you played along to
-    /// lines up with the loop.
+    /// rate) while the other tracks play, and returns the WAV file. A bar of
+    /// clicks counts in first. The input's and output's latency are skipped,
+    /// so what you played along to lines up with the loop.
     func record(frames: (Double) -> Int?) async throws -> URL {
         guard await AVAudioApplication.requestRecordPermission() else { throw Failure.noMicrophone }
         try ForgeAudioSession.activate(.record)
@@ -121,7 +156,11 @@ final class LoopEngine {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString)
             .appendingPathExtension("wav")
-        let start = Self.startTime()
+        let countInStart = Self.startTime()
+        let countIn = clickBuffer.flatMap { Self.prefix($0, seconds: barSeconds) }
+        let start = countIn == nil
+            ? countInStart
+            : AVAudioTime(hostTime: countInStart.hostTime + AVAudioTime.hostTime(forSeconds: barSeconds))
         let recorder = try Recorder(
             url: url, format: format, frames: length,
             fromHostTime: start.hostTime + AVAudioTime.hostTime(forSeconds: latency)
@@ -132,6 +171,20 @@ final class LoopEngine {
             guard let buffer = strip.buffer else { continue }
             strip.player.scheduleBuffer(buffer, at: nil, options: .loops, completionHandler: nil)
             strip.player.play(at: start)
+        }
+        if let countIn, let click = clickBuffer {
+            // Played back to back: the count-in bar, then the loop's clicks.
+            clickPlayer.scheduleBuffer(countIn, at: nil, options: [], completionHandler: nil)
+            if metronome {
+                clickPlayer.scheduleBuffer(click, at: nil, options: .loops, completionHandler: nil)
+            }
+            clickPlayer.play(at: countInStart)
+            isCountingIn = true
+            let wait = barSeconds + Self.lead
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(wait))
+                self?.isCountingIn = false
+            }
         }
         isPlaying = true
         isRecording = true
@@ -215,9 +268,41 @@ final class LoopEngine {
         return buffer
     }
 
+    /// A whole file (the click track) in one buffer.
+    private static func wholeFile(_ url: URL) -> AVAudioPCMBuffer? {
+        guard let file = try? AVAudioFile(forReading: url),
+              let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length))
+        else { return nil }
+        do {
+            try file.read(into: buffer)
+        } catch {
+            return nil
+        }
+        return buffer
+    }
+
+    /// The first `seconds` of `buffer` (the count-in bar), copied.
+    private static func prefix(_ buffer: AVAudioPCMBuffer, seconds: Double) -> AVAudioPCMBuffer? {
+        let frames = min(buffer.frameLength, AVAudioFrameCount((seconds * buffer.format.sampleRate).rounded()))
+        guard frames > 0,
+              let part = AVAudioPCMBuffer(pcmFormat: buffer.format, frameCapacity: frames),
+              let from = buffer.floatChannelData, let to = part.floatChannelData
+        else { return nil }
+        let interleaved = buffer.format.isInterleaved
+        let channels = Int(buffer.format.channelCount)
+        for channel in 0..<(interleaved ? 1 : channels) {
+            to[channel].update(from: from[channel], count: Int(frames) * (interleaved ? channels : 1))
+        }
+        part.frameLength = frames
+        return part
+    }
+
+    /// How far ahead playback is scheduled.
+    private static let lead = 0.15
+
     /// A moment just ahead, so every player can be scheduled before it.
     private static func startTime() -> AVAudioTime {
-        AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: 0.15))
+        AVAudioTime(hostTime: mach_absolute_time() + AVAudioTime.hostTime(forSeconds: lead))
     }
 }
 

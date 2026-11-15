@@ -164,3 +164,35 @@ fn bad_input_changes_nothing() {
     assert_eq!(core.revision(), revision);
     assert_eq!(core.project(id).unwrap(), p);
 }
+
+#[test]
+fn the_metronome_is_saved_and_its_click_track_is_one_pass() {
+    let dir = tempfile::tempdir().unwrap();
+    let core = open(&dir).unwrap();
+    let project = block_on(core.create_project("Clicks".into(), 120.0, 2)).unwrap();
+    let id = project.summary.id;
+    assert!(project.summary.metronome, "new projects click");
+
+    let path = block_on(core.click_track(id, 48_000)).unwrap();
+    let reader = hound::WavReader::open(&path).unwrap();
+    assert_eq!(reader.spec().sample_rate, 48_000);
+    assert_eq!(
+        u64::from(reader.duration()),
+        core.loop_frames(id, 48_000).unwrap(),
+        "loops in step with the recordings"
+    );
+    assert_eq!(
+        block_on(core.click_track(id, 48_000)).unwrap(),
+        path,
+        "kept, not rewritten"
+    );
+
+    let off = block_on(core.set_metronome(id, false)).unwrap();
+    assert!(!off.summary.metronome);
+    drop(core);
+    let core = open(&dir).unwrap();
+    assert!(
+        !core.project(id).unwrap().summary.metronome,
+        "survives a restart"
+    );
+}
